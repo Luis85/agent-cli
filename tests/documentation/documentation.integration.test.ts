@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
-import { validateUiLibrary } from '../../src/application/ui.ts';
+import { validateUiLibrary } from '../../src/domain/ui-library.ts';
 import { renderUiComponents } from '../../src/infrastructure/ui-renderers.ts';
 import { renderUiStories } from '../../src/infrastructure/ui-stories.ts';
 import { uiFrameworks } from '../../src/domain/ui.ts';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { validateUiLibrary } from '../../src/application/ui.ts';
+import { componentDependencies, selectUiComponents, validateUiLibrary } from '../../src/domain/ui-library.ts';
 import { encodeText } from '../../src/infrastructure/documents.ts';
 import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
 import { standardUiCatalog } from '../../src/infrastructure/ui-catalog.ts';
@@ -61,4 +61,19 @@ describe('strict Markdown UI definitions', () => {
     const parent = definition('parent', { root: { tag: 'div', children: [{ slot: 'children' }, { component: 'child', children: [{ slot: 'children' }] }] } });
     expect(() => validateUiLibrary([child, parent])).toThrow(expect.objectContaining({ code: 'INVALID_UI' }));
   });
+});
+
+
+it('selects transitive component references including projected children in library order', () => {
+  const leaf = definition('leaf');
+  const projected = definition('projected');
+  const child = definition('child', { root: { component: 'leaf' } });
+  const parent = definition('parent', { root: { component: 'child', children: [{ component: 'projected' }, { component: 'leaf' }] } });
+  const library = [projected, parent, definition('unrelated'), child, leaf];
+  expect(componentDependencies(parent.root)).toEqual(['child', 'leaf', 'projected']);
+  expect(selectUiComponents(library, 'parent')).toEqual([projected, parent, child, leaf]);
+});
+
+it('reports missing components when selecting a reference closure', () => {
+  expect(() => selectUiComponents([definition('parent', { root: { component: 'missing' } })], 'parent')).toThrow(expect.objectContaining({ code: 'UNKNOWN_UI_COMPONENT' }));
 });

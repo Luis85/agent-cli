@@ -23,6 +23,7 @@ The shipped configuration is:
     "dataExports": "exports/data-sources"
   },
   "settings": {
+    "language": "en",
     "json": false,
     "dryRun": false
   },
@@ -45,7 +46,7 @@ The workspace layout is fixed: `bin/app.js` is the executable, `bin/config.json`
 
 `project open <id>` saves the active project in `bin/data/context.json`; `project current` reports it and `project close` returns to workspace scope. Document paths and generated source are relative to the active project, or the workspace when none is selected. Document generation defaults to `notes`, TypeScript generation to `src/domain`, and skill installation to `.agents/skills` within that scope. `--out` overrides a command's output directory. Templates and plugins remain shared under the workspace's `bin` folder. See [project contexts](../how-to/manage-projects.md).
 
-Command-line values take precedence: `--root` selects the workspace and `--json` / `--no-json` and `--dry-run` / `--no-dry-run` override settings. Put routing options `--root` and `--no-plugins` before the command, for example `node bin/app.js --root /path/to/workspace setup --dry-run`. Formatting and dry-run flags may appear on either side of the command. Do not pass `--json=false`; use the negated flag. `settings.json` controls compact formatting, not whether results use JSON.
+Command-line values take precedence: `--root` selects the workspace and `--json` / `--no-json` and `--dry-run` / `--no-dry-run` override settings. Put routing options `--root` and `--no-plugins` before the command, for example `node bin/app.js --root /path/to/workspace setup --dry-run`. Formatting, dry-run and `--lang en|de` flags may appear on either side of the command. `settings.language` defaults to `en`; `--lang` overrides it for the invocation. `config` reports the effective language, and `setup --lang de` stores it when creating a missing configuration. Existing configuration files are preserved. See [language selection and diagnostic scope](language.md). Do not pass `--json=false`; use the negated flag. `settings.json` controls compact formatting, not whether results use JSON.
 
 UI generation adds configurable paths without changing the fixed `bin` layout:
 

@@ -19,14 +19,16 @@ async function fixture(dryRun = false) {
   await mkdir(root); await mkdir(bundle);
   await writeFile(join(bundle, 'app.js'), 'console.log("portable")');
   await writeFile(join(bundle, 'package.json'), '{"type":"commonjs","main":"app.js"}');
+  await mkdir(join(bundle, 'config'));
+  await writeFile(join(bundle, 'config/default.json'), '{}\n');
   await mkdir(join(bundle, 'data/docs/reference'), { recursive: true });
   await writeFile(join(bundle, 'data/docs/reference/cli.md'), '# Commands\n');
-  await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['app.js', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json'] }));
+  await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['app.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json'] }));
   const config: AppConfig = {
     schemaVersion: 1,
     paths: { projects: 'work/projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources' },
     ui: { framework: 'html' },
-    settings: { json: true, dryRun: false }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [] },
+    settings: { json: true, dryRun: false, language: 'en' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [] },
   };
   const files = await NodeFiles.at(root), events = new EventBus();
   for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (_v): _v is unknown => true });
@@ -38,7 +40,7 @@ async function fixture(dryRun = false) {
 it('installs fixed environment directories and configured projects through workspace writes', async () => {
   const { root, setup, events, config } = await fixture();
   const result = await setup.run();
-  expect(result.dryRun).toBe(false); expect(result.skipped).toEqual([]); expect(result.changes).toHaveLength(10);
+  expect(result.dryRun).toBe(false); expect(result.skipped).toEqual([]); expect(result.changes).toHaveLength(11);
   const installed = JSON.parse(await readFile(join(root, 'bin/config.json'), 'utf8'));
   expect(installed).toEqual(config);
   expect(installed.paths).toEqual(config.paths);
@@ -48,9 +50,9 @@ it('installs fixed environment directories and configured projects through works
   expect(await readFile(join(root, 'bin/plugins/.gitkeep'))).toHaveLength(0);
   const guidance = await readFile(join(root, 'AGENTS.md'), 'utf8');
   for (const command of ['--if-match', 'node bin/app.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
-  expect(await readdir(join(root, 'bin'))).toEqual(['app.js', 'config.json', 'data', 'package.json', 'plugins', 'templates']);
+  expect(await readdir(join(root, 'bin'))).toEqual(['app.js', 'config', 'config.json', 'data', 'package.json', 'plugins', 'templates']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
-  expect(events.history).toHaveLength(10);
+  expect(events.history).toHaveLength(11);
 });
 it('preserves existing configuration, bundle, template, skill and agent instructions on repeated setup', async () => {
   const { root, setup, events } = await fixture();
@@ -59,21 +61,21 @@ it('preserves existing configuration, bundle, template, skill and agent instruct
   for (const path of edited) await writeFile(join(root, path), `User content for ${path}`);
   const count = events.history.length;
   const result = await setup.run();
-  expect(result.changes).toEqual([]); expect(result.skipped).toHaveLength(10);
+  expect(result.changes).toEqual([]); expect(result.skipped).toHaveLength(11);
   expect(events.history).toHaveLength(count);
   for (const path of edited) expect(await readFile(join(root, path), 'utf8')).toBe(`User content for ${path}`);
 });
 it('previews every new destination without creating directories or publishing events', async () => {
   const { root, setup, events } = await fixture(true);
   const result = await setup.run();
-  expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(10);
+  expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(11);
   expect(await readdir(root)).toEqual([]); expect(events.history).toEqual([]);
 });
 it('fills missing setup files while retaining an existing AGENTS.md', async () => {
   const { root, setup } = await fixture();
   await writeFile(join(root, 'AGENTS.md'), 'Existing project instructions');
   const result = await setup.run();
-  expect(result.skipped).toEqual(['AGENTS.md']); expect(result.changes).toHaveLength(9);
+  expect(result.skipped).toEqual(['AGENTS.md']); expect(result.changes).toHaveLength(10);
   expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe('Existing project instructions');
 });
 it('copies only distribution assets and excludes environment data from its fixed snapshot', async () => {
@@ -84,7 +86,7 @@ it('copies only distribution assets and excludes environment data from its fixed
   await writeFile(join(bundle, 'config.json'), '{"private":"configuration"}');
   await writeFile(join(bundle, 'data/context.json'), '{"activeProject":"private-project"}');
   const artifacts = await readSetupArtifacts(bundle);
-  expect(artifacts.map(artifact => artifact.path)).toEqual(['app.js', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json']);
+  expect(artifacts.map(artifact => artifact.path)).toEqual(['app.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json']);
   await writeFile(join(bundle, 'app.js'), 'changed after snapshot');
   expect(new TextDecoder().decode(artifacts.find(artifact => artifact.path === 'app.js')!.bytes)).toContain('portable');
 });
@@ -95,6 +97,15 @@ it('rejects a distribution asset replaced by a symlink before planning installat
   await symlink(join(root, 'private.txt'), join(bundle, 'data/docs/reference/cli.md'));
   await expect(readSetupArtifacts(bundle)).rejects.toThrow();
   expect(await readdir(root)).toEqual(['private.txt']);
+});
+it.each(['missing-defaults', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
+  const { bundle } = await fixture();
+  const path = join(bundle, 'data/distribution.json');
+  const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
+  if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
+  else manifest.files.push('app.js');
+  await writeFile(path, JSON.stringify(manifest));
+  await expect(readSetupArtifacts(bundle)).rejects.toMatchObject({ code: 'INVALID_SETUP' });
 });
 it('fails safely on destination symlinks instead of treating access errors as missing files', async () => {
   const { root, bundle, setup, events } = await fixture();

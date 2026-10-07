@@ -1,6 +1,7 @@
 import { mkdir, copyFile, writeFile, readFile, readdir, chmod, cp, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import distributionPolicy from '../distribution-policy.json' with { type: 'json' };
 await mkdir('bin/data', { recursive: true });
 const { version, engines } = JSON.parse(await readFile('package.json', 'utf8'));
 // The local CommonJS boundary lets app.js run in projects declaring type:module.
@@ -51,7 +52,7 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.l
 await writeFile('bin/data/THIRD-PARTY-NOTICES.md', notices.join('\n'));
 // Ship type-only SDK declarations; runtime plugins need no package imports.
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.sdk.json'], { stdio: 'inherit' });
-const files = ['config/default.json', 'app.js', 'package.json', 'data/LICENSE', 'data/README.md', 'data/THIRD-PARTY-NOTICES.md', 'data/distribution.json'];
+const files = [...distributionPolicy.requiredAssets, 'data/LICENSE', 'data/README.md', 'data/THIRD-PARTY-NOTICES.md'];
 async function collect(directory) {
   for (const entry of await readdir(`bin/${directory}`, { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
@@ -62,6 +63,6 @@ async function collect(directory) {
 }
 for (const directory of ownedDirectories) await collect(`data/${directory}`);
 await collect('skills');
-await writeFile('bin/data/distribution.json', JSON.stringify({ schemaVersion: 1, files: files.sort() }, null, 2) + '\n');
+await writeFile('bin/data/distribution.json', JSON.stringify({ schemaVersion: distributionPolicy.schemaVersion, files: files.sort() }, null, 2) + '\n');
 const bundle = await readFile('bin/app.js', 'utf8');
 if (/require\(["']yaml["']\)/.test(bundle)) throw new Error('YAML was not bundled');

@@ -1,16 +1,24 @@
 import { expect, it } from 'vitest';
 import { readdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-it('keeps domain and application dependencies pointing inward', async () => {
+import { join, resolve } from 'node:path';
+import { boundaryViolations } from './import-boundaries.ts';
+
+async function sourceFiles(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await sourceFiles(path));
+    else if (/\.[cm]?[jt]sx?$/.test(entry.name)) files.push(path);
+  }
+  return files;
+}
+
+it('keeps every domain and application dependency pointing inward', async () => {
+  const violations: string[] = [];
   for (const layer of ['domain', 'application']) {
-    for (const name of await readdir(resolve('src', layer))) {
-      const text = await readFile(resolve('src', layer, name), 'utf8');
-      const imports = [...text.matchAll(/(?:from\s+|import\s*\()["']([^"']+)/g)].map(m => m[1]!);
-      for (const path of imports) {
-        expect(path).not.toMatch(/node:|infrastructure|presentation/);
-        if (layer === 'domain') expect(path).not.toContain('application');
-        expect(path.startsWith('.')).toBe(true);
-      }
+    for (const file of await sourceFiles(resolve('src', layer))) {
+      violations.push(...boundaryViolations(file, await readFile(file, 'utf8')));
     }
   }
+  expect(violations).toEqual([]);
 });

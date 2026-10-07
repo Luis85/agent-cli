@@ -17,7 +17,7 @@ const configSchema = z.strictObject({
     dataSources: relativePath.default('data-sources'), dataGenerated: relativePath.default('src/data-sources'),
     dataFixtures: relativePath.default('test-data'), dataImports: relativePath.default('imports/data-sources'), dataExports: relativePath.default('exports/data-sources'),
   }).prefault({}),
-  settings: z.strictObject({ json: z.boolean().default(false), dryRun: z.boolean().default(false) }).prefault({}),
+  settings: z.strictObject({ language: z.enum(['en', 'de']).default('en'), json: z.boolean().default(false), dryRun: z.boolean().default(false) }).prefault({}),
   templates: z.strictObject({ dateFormat: z.string().min(1).default('YYYY-MM-DD'), timeFormat: z.string().min(1).default('HH:mm') }).prefault({}),
   plugins: z.strictObject({ enabled: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).refine(ids => new Set(ids).size === ids.length, 'Duplicate plugin IDs.').default([]) }).prefault({}),
   ui: z.strictObject({ framework: z.enum(['html', 'htmx', 'vanilla', 'vue', 'svelte', 'react', 'angular']).default('html') }).prefault({}),

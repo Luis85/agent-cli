@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { ensure } from '../domain/errors.ts';
 import { vaultPath } from '../domain/file.ts';
 import type { SetupArtifact } from '../application/setup.ts';
+import distributionPolicy from './distribution-policy.json';
 
-const ownedAsset = /^(?:app\.js|package\.json|config\/default\.json|skills\/.+|data\/(?:LICENSE|README\.md|THIRD-PARTY-NOTICES\.md|distribution\.json|(?:docs|examples|types|licenses)\/.+))$/;
+const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 
 /** Copy only declared distribution assets, never workspace state or user extensions. */
 export async function readSetupArtifacts(bundleDir: string): Promise<SetupArtifact[]> {
@@ -23,10 +24,10 @@ export async function readSetupArtifacts(bundleDir: string): Promise<SetupArtifa
     return readFile(current);
   };
   const manifest: unknown = JSON.parse(new TextDecoder().decode(await readAsset('data/distribution.json')));
-  ensure(typeof manifest === 'object' && manifest !== null && 'schemaVersion' in manifest && manifest.schemaVersion === 1 && 'files' in manifest && Array.isArray(manifest.files), 'INVALID_SETUP', 'The distribution manifest is invalid. Rebuild or download the complete bin folder.');
+  ensure(typeof manifest === 'object' && manifest !== null && 'schemaVersion' in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && 'files' in manifest && Array.isArray(manifest.files), 'INVALID_SETUP', 'The distribution manifest is invalid. Rebuild or download the complete bin folder.');
   const files: unknown[] = manifest.files;
   ensure(files.every((path): path is string => typeof path === 'string') && new Set(files).size === files.length, 'INVALID_SETUP', 'The distribution manifest must contain unique paths.');
-  ensure(['app.js', 'package.json', 'data/distribution.json'].every(path => files.includes(path)), 'INVALID_SETUP', 'The distribution manifest is incomplete.');
+  ensure(distributionPolicy.requiredAssets.every(path => files.includes(path)), 'INVALID_SETUP', 'The distribution manifest is incomplete.');
   const artifacts: SetupArtifact[] = [];
   for (const path of files as string[]) artifacts.push({ path, bytes: await readAsset(path) });
   return artifacts;

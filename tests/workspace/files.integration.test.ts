@@ -46,6 +46,29 @@ describe('guarded filesystem', () => {
     await expect(files.writeBatch([write('a.md')], false)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY' });
     expect(await readdir(root)).toEqual(['.agent-cli.lock']);
   });
+  it('retains committed evidence and notifications when removing the lock fails', async () => {
+    const events = new EventBus();
+    events.define({ id: 'file.created', validate: (_value): _value is unknown => true });
+    files = await NodeFiles.at(root, message => events.warn(message));
+    const adapter = files as unknown as { releaseLock(lock: string): Promise<void> };
+    vi.spyOn(adapter, 'releaseLock').mockRejectedValue(new Error('Cleanup denied'));
+    const result = await new Workspace(files, new ObsidianDocuments(), events, false).write([write('committed.md')]);
+    expect(result.changes).toMatchObject([{ path: 'committed.md', operation: 'created' }]);
+    expect(events.history).toMatchObject([{ id: 'file.created', payload: { path: 'committed.md' } }]);
+    expect(events.warnings).toEqual([expect.stringContaining('Cleanup denied')]);
+    expect(await readFile(join(root, 'committed.md'), 'utf8')).toBe('Hello');
+    expect(await readdir(root)).toEqual(['.agent-cli.lock', 'committed.md']);
+  });
+  it('preserves the primary write failure even when lock cleanup and reporting fail', async () => {
+    const warning = vi.fn(() => { throw new Error('Broken diagnostics'); });
+    files = await NodeFiles.at(root, warning);
+    const adapter = files as unknown as { releaseLock(lock: string): Promise<void> };
+    vi.spyOn(adapter, 'releaseLock').mockRejectedValue(new Error('Cleanup denied'));
+    await writeFile(join(root, 'existing.md'), 'Original');
+    await expect(files.writeBatch([write('existing.md')], false)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('Cleanup denied'));
+    expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('Original');
+  });
   it('snapshots mutable plugin plans before asynchronous filesystem work', async () => {
     const request = write('original.md', 'Original');
     const requests: WriteRequest[] = [request];

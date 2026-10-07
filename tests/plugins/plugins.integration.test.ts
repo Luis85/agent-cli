@@ -1,3 +1,4 @@
+import { globalOptions } from '../../src/presentation/arguments.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -126,7 +127,7 @@ it('does not fall back to CommonJS when an ESM entry fails during evaluation', a
   await writeFile(join(root, 'plugins/broken/main.js'), 'module.exports = {};');
   await expect(loadEnabledPlugins('plugins', ['broken'], files, registry, events)).rejects.toThrow('ESM broken');
 });
-it.each(['json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'])('reserves the global --%s option for the host', option => {
+it.each(Object.keys(globalOptions))('reserves the global --%s option for the host', option => {
   const registry = new Registry(), events = new EventBus();
   expect(() => registry.register({ ...plugin('quality'), commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', options: { [option]: 'boolean' }, run() {} }] }, events)).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
 });

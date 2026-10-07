@@ -13,6 +13,7 @@ async function checkout() {
   temporary.push(root);
   await mkdir(join(root, 'src/infrastructure/scripts'), { recursive: true });
   await cp(resolve('src/infrastructure/scripts/release.mjs'), join(root, 'src/infrastructure/scripts/release.mjs'));
+  await cp(resolve('src/infrastructure/distribution-policy.json'), join(root, 'src/infrastructure/distribution-policy.json'));
   await cp(resolve('package.json'), join(root, 'package.json'));
   await cp(resolve('bin'), join(root, 'bin'), { recursive: true });
   return root;
@@ -114,5 +115,14 @@ describe('release distribution', () => {
     manifest.files.push('data/context.json');
     await writeFile(path, JSON.stringify(manifest));
     expect(() => release(root)).toThrow('Invalid distribution asset: data/context.json');
+  });
+  it.each(['missing-defaults', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
+    const root = await checkout();
+    const path = join(root, 'bin/data/distribution.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
+    if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
+    else manifest.files.push('app.js');
+    await writeFile(path, JSON.stringify(manifest));
+    expect(() => release(root)).toThrow('Missing or invalid distribution manifest');
   });
 });

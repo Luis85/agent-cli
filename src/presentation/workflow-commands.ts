@@ -1,28 +1,10 @@
-import { AppError, ensure, isRecord } from '../domain/errors.ts';
-import type { FileRepository } from '../application/ports.ts';
+import { ensure, isRecord } from '../domain/errors.ts';
 import { vaultPath } from '../domain/file.ts';
-import type { LoadedConfig } from '../application/config.ts';
-import type { DocumentTemplates } from '../application/templates.ts';
-import type { ProjectService } from '../application/projects.ts';
-import type { UiLibrary } from '../application/ui.ts';
-import type { DataSourceLibrary } from '../application/data-sources.ts';
 import type { Command, CommandContext } from '../application/plugins.ts';
 import { arity, value } from './arguments.ts';
+import { parseJson } from './input.ts';
+import type { WorkflowServices } from './services.ts';
 
-export interface WorkflowServices {
-  loaded: LoadedConfig;
-  files: FileRepository;
-  templates: DocumentTemplates;
-  projects: ProjectService;
-  uiLibrary: UiLibrary;
-  dataSources: DataSourceLibrary;
-  installTemplates(): Promise<unknown>;
-  setup(): Promise<unknown>;
-}
-export function parseJson(text: string): unknown {
-  try { return JSON.parse(text) as unknown; }
-  catch { throw new AppError('INVALID_JSON', 'Expected valid JSON input.', 2); }
-}
 export async function makeDocument(title: string, flags: Record<string, string | boolean>, context: CommandContext, services: WorkflowServices) {
   ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), 'INVALID_NAME', 'Document title must be a nonempty filename without path separators.');
   const template = value(flags, 'template', true)!;

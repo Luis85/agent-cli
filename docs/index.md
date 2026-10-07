@@ -36,6 +36,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | Reference | Contents |
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
+| [CLI language](reference/language.md) | English/German selection, translated guidance and stable machine output |
 | [Configuration](reference/configuration.md) | Defaults, precedence, paths and workspace/project scope |
 | [Component definitions and targets](reference/ui-components.md) | YAML fields, composition, bindings, output artifacts and target dependencies |
 | [Storybook](reference/storybook.md) | CSF generation, metadata and native extension modules |

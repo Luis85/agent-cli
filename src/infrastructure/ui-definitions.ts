@@ -3,6 +3,7 @@ import { stringify } from 'yaml';
 import { AppError, ensure } from '../domain/errors.ts';
 import { vaultPath } from '../domain/file.ts';
 import type { UiDefinition, UiJson, UiNode } from '../domain/ui.ts';
+import { uiVoidTags } from '../domain/ui-syntax.ts';
 import type { UiDefinitionCodec } from '../application/ui.ts';
 import { ObsidianDocuments } from './documents.ts';
 
@@ -16,11 +17,10 @@ const prop = z.strictObject({ type: z.enum(['string', 'number', 'boolean']), def
   if (property.default !== undefined && typeof property.default !== property.type) context.addIssue({ code: 'custom', message: 'Prop default must match its declared type.' });
 });
 const attribute = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/).refine(name => !/^on|^v-/i.test(name) && !['innerHTML', 'dangerouslySetInnerHTML', 'ref', 'key'].includes(name), 'Event handlers and framework runtime attributes belong in native code');
-const voidTags = new Set('area base br col embed hr img input link meta param source track wbr'.split(' '));
 const node: z.ZodType<UiNode> = z.lazy(() => z.union([
   z.strictObject({ tag: z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: z.record(attribute, value).optional(), text: z.string().optional(), children: z.array(node).optional() }).superRefine((element, context) => {
     if (element.tag === 'svg' || element.tag === 'math') context.addIssue({ code: 'custom', message: 'SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets.' });
-    if (voidTags.has(element.tag) && (element.text !== undefined || element.children?.length)) context.addIssue({ code: 'custom', message: `Void element ${element.tag} cannot have text or children.` });
+    if (uiVoidTags.has(element.tag) && (element.text !== undefined || element.children?.length)) context.addIssue({ code: 'custom', message: `Void element ${element.tag} cannot have text or children.` });
   }),
   z.strictObject({ component: id, props: values.optional(), children: z.array(node).optional() }),
   z.strictObject({ slot: z.literal('children') }),

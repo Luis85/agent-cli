@@ -1,37 +1,24 @@
-import { AppError, ensure, isRecord } from '../domain/errors.ts';
-import { vaultPath } from '../domain/file.ts';
+import { ensure } from '../domain/errors.ts';
 import type { Command, CommandContext } from '../application/plugins.ts';
-import { parseJson, type WorkflowServices } from './workflow-commands.ts';
+import type { WorkflowServices } from './services.ts';
+import { generationControls, generationOutputPath } from './generation-controls.ts';
 import { arity, value } from './arguments.ts';
 
 export const dataSourceGenerationOptions = { 'test-data-out': 'string' } as const;
 
 export async function makeDataSource(id: string, flags: Record<string, string | boolean>, context: CommandContext, services: WorkflowServices) {
   const config = services.loaded.config;
-  const scoped = (path: string) => {
-    const relative = vaultPath(path);
-    return context.project ? `${context.project.directory}/${relative}` : relative;
-  };
+  const scoped = (path: string) => generationOutputPath(path, context.project);
   const directory = value(flags, 'library') ?? config.paths.dataSources;
-  const revisionsPath = value(flags, 'revisions-from'), planPath = value(flags, 'plan-out');
-  const planning = flags.plan === true || planPath !== undefined;
-  ensure(!(planning && flags.check), 'INVALID_ARGUMENT', 'Choose --plan/--plan-out or --check.');
-  ensure(!(revisionsPath !== undefined && (planning || flags.check)), 'INVALID_ARGUMENT', 'Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.');
-  let revisions: Record<string, string> | undefined;
-  if (revisionsPath !== undefined) {
-    const parsed = parseJson(new TextDecoder('utf-8', { fatal: true }).decode((await context.workspace.files.read(revisionsPath)).bytes));
-    ensure(isRecord(parsed) && Object.values(parsed).every(revision => typeof revision === 'string' && /^[a-f0-9]{64}$/.test(revision)), 'INVALID_INPUT', '--revisions-from must map generated workspace paths to SHA-256 revisions.');
-    revisions = parsed as Record<string, string>;
-  }
+  const { mode, manifestPath, revisions } = await generationControls(flags, context.workspace.files);
   const options = {
     source: id, outputDirectory: scoped(value(flags, 'out') ?? config.paths.dataGenerated),
     testDataDirectory: scoped(value(flags, 'test-data-out') ?? config.paths.dataFixtures),
     ...(revisions ? { revisions } : {}),
   };
-  if (planning || flags.check) {
-    const result = await services.dataSources.plan(directory, options, planPath === undefined ? undefined : scoped(planPath));
-    if (flags.check && !result.matches) throw new AppError('DATA_SOURCE_DRIFT', 'Generated adapter or test data is missing or differs from its definition. Run the same command with --plan to review changes.', 5, { outputs: result.outputs.map(({ path, status }) => ({ path, status })) });
-    return { generator: 'data-source', library: directory, ...(flags.check ? { check: true } : { plan: true }), ...result };
+  if (mode !== 'generate') {
+    const result = mode === 'check' ? await services.dataSources.check(directory, options) : await services.dataSources.plan(directory, options, manifestPath === undefined ? undefined : scoped(manifestPath));
+    return { generator: 'data-source', library: directory, ...(mode === 'check' ? { check: true } : { plan: true }), ...result };
   }
   return { generator: 'data-source', library: directory, ...await services.dataSources.generate(directory, options) };
 }

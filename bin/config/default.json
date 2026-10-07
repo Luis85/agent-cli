@@ -14,6 +14,7 @@
     "dataExports": "exports/data-sources"
   },
   "settings": {
+    "language": "en",
     "json": false,
     "dryRun": false
   },

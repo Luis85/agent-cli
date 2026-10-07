@@ -4,7 +4,7 @@
 
 Run `node bin/app.js [routing options] <command> [options]`. Routing options `--root <directory>` and `--no-plugins` must precede the command because they select the workspace and loaded command catalog. For example, `node bin/app.js --root /path/to/workspace --no-plugins setup --dry-run`.
 
-Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run` and `--help` (`-h`) before or after the command. Use `node bin/app.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md).
+Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/app.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md) and [language selection](language.md).
 
 ## Output and errors
 

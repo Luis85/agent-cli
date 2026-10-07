@@ -5,7 +5,7 @@ export interface AppConfig {
     projects: string; components: string; ui: string; stories: string; componentImports: string; componentExports: string;
     dataSources: string; dataGenerated: string; dataFixtures: string; dataImports: string; dataExports: string;
   };
-  settings: { json: boolean; dryRun: boolean };
+  settings: { json: boolean; dryRun: boolean; language: 'en' | 'de' };
   templates: { dateFormat: string; timeFormat: string };
   plugins: { enabled: string[] };
   ui: { framework: 'html' | 'htmx' | 'vanilla' | 'vue' | 'svelte' | 'react' | 'angular' };
