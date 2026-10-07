@@ -1,9 +1,0 @@
-{
-  "name": "forge-bundle",
-  "version": "0.1.0",
-  "private": true,
-  "main": "app.cjs",
-  "engines": {
-    "node": ">=22.12.0"
-  }
-}

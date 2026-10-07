@@ -11,28 +11,25 @@ const relativePath = z.string().min(1).transform(value => value.replace(/\/+$/, 
 const configSchema = z.strictObject({
   schemaVersion: z.literal(1).default(1),
   paths: z.strictObject({
-    root: z.string().min(1).default('..'), projects: relativePath.default('projects'),
-    templates: relativePath.default('templates'), output: relativePath.default('notes'),
-    generated: relativePath.default('src/domain'), plugins: relativePath.default('.agent-cli/plugins'),
-    skills: relativePath.default('.agents/skills'),
+    projects: relativePath.refine(value => value.toLowerCase() !== 'bin' && !value.toLowerCase().startsWith('bin/'), 'Projects must be outside the fixed bin directory.').default('projects'),
   }).prefault({}),
   settings: z.strictObject({ json: z.boolean().default(false), dryRun: z.boolean().default(false) }).prefault({}),
   templates: z.strictObject({ dateFormat: z.string().min(1).default('YYYY-MM-DD'), timeFormat: z.string().min(1).default('HH:mm') }).prefault({}),
   plugins: z.strictObject({ enabled: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).refine(ids => new Set(ids).size === ids.length, 'Duplicate plugin IDs.').default([]) }).prefault({}),
 });
 
-export async function loadConfig(options: { defaultPath: string; explicitPath?: string; cwd: string; root?: string }): Promise<LoadedConfig> {
-  const path = resolve(options.cwd, options.explicitPath ?? options.defaultPath);
+export async function loadConfig(options: { defaultPath: string; cwd: string; root?: string }): Promise<LoadedConfig> {
+  const root = options.root !== undefined ? resolve(options.cwd, options.root) : resolve(dirname(options.defaultPath), '..');
+  const path = resolve(root, 'bin/config.json');
   let content: unknown;
   let exists = true;
   try { content = JSON.parse(await readFile(path, 'utf8')) as unknown; }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !options.explicitPath) { content = {}; exists = false; }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') { content = {}; exists = false; }
     else throw new AppError('INVALID_CONFIG', `Cannot read configuration ${path}: ${error instanceof Error ? error.message : String(error)}`, 2);
   }
   const parsed = configSchema.safeParse(content);
   if (!parsed.success) throw new AppError('INVALID_CONFIG', parsed.error.issues.map(issue => `${issue.path.join('.') || 'config'}: ${issue.message}`).join('; '), 2);
   const config = parsed.data;
-  config.paths.root = options.root !== undefined ? resolve(options.cwd, options.root) : exists ? resolve(dirname(path), config.paths.root) : options.cwd;
-  return { path: exists ? path : null, config };
+  return { path: exists ? path : null, root, config };
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/fallow/schema.json",
   "minimumVersion": "3.31.0",
-  "entry": ["src/main.ts", "src/sdk.ts", "tests/**/*.test.ts", "vite.config.ts", "examples/plugins/*/main.mjs"],
+  "entry": ["src/main.ts", "src/sdk.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "examples/plugins/*/main.mjs"],
   "ignorePatterns": ["bin/**", "release/**"],
   "failOnParseError": true,
   "rules": {

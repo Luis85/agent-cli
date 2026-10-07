@@ -9,18 +9,19 @@
     "node": ">=22.12.0"
   },
   "bin": {
-    "forge": "bin/app/app.cjs"
+    "forge": "bin/app.js"
   },
   "scripts": {
     "dev": "vite build --watch --emptyOutDir=false",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node scripts/quality/typecheck.mjs",
     "build": "vite build && node scripts/package.mjs",
     "test": "vitest run",
     "check": "npm run check:fast && npm run build && npm test",
     "release": "npm run check && node scripts/release.mjs",
     "lint": "node scripts/quality/lint.mjs",
     "analyze": "node scripts/quality/analyze.mjs",
-    "check:fast": "npm run lint && npm run analyze && npm run typecheck"
+    "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
+    "check:structure": "node scripts/quality/structure.mjs"
   },
   "dependencies": {
     "commander": "^15.0.0",
@@ -32,8 +33,10 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/jsdom": "27.0.0",
     "@types/node": "^22.18.0",
     "fallow": "3.31.0",
+    "jsdom": "27.4.0",
     "oxlint": "1.86.0",
     "typescript": "~5.9.3",
     "vite": "^7.1.9",

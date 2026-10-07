@@ -1,12 +1,6 @@
 {
   "schemaVersion": 1,
   "paths": {
-    "root": "..",
-    "templates": "templates",
-    "output": "notes",
-    "generated": "src/domain",
-    "plugins": ".agent-cli/plugins",
-    "skills": ".agents/skills",
     "projects": "projects"
   },
   "settings": {

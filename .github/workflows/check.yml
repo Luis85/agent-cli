@@ -33,8 +33,8 @@ jobs:
           retention-days: 7
       - name: Verify committed bundle
         run: |
-          git diff --exit-code -- bin/app bin/config.json
-          test -z "$(git ls-files --others --exclude-standard bin/app bin/config.json)"
+          git diff --exit-code -- bin
+          test -z "$(git ls-files --others --exclude-standard bin)"
       - run: node scripts/release.mjs
       - uses: actions/upload-artifact@v4
         with:

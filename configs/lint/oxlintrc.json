@@ -4,7 +4,15 @@
     "correctness": "error"
   },
   "rules": {
-    "no-debugger": "error"
+    "no-debugger": "error",
+    "max-lines": [
+      "error",
+      {
+        "max": 400,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ]
   },
   "overrides": [
     {
@@ -23,6 +31,21 @@
                 "message": "Keep domain and application platform independent; inject a port instead."
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"
+      ],
+      "rules": {
+        "max-lines": [
+          "error",
+          {
+            "max": 450,
+            "skipBlankLines": true,
+            "skipComments": true
           }
         ]
       }

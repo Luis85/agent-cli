@@ -3,6 +3,7 @@ import metadata from '../package.json';
 import { AppError, ensure, isRecord } from './domain/errors.ts';
 import { EventBus } from './application/events.ts';
 import { Workspace } from './application/workspace.ts';
+import { ScopedFiles } from './application/scoped-files.ts';
 import { Registry, type CommandContext } from './application/plugins.ts';
 import { ProjectService } from './application/projects.ts';
 import { SetupService } from './application/setup.ts';
@@ -22,6 +23,7 @@ async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
   const registry = new Registry(), events = new EventBus();
   let result: Record<string, unknown>;
+  let activeContext: Pick<CommandContext, 'workspaceRoot' | 'root' | 'project'> | undefined;
   let compact = tokens.includes('--json');
   try {
     const bootstrap = parseBootstrap(tokens);
@@ -30,33 +32,40 @@ async function run(): Promise<void> {
       ensure(parsed.args.length === 0, 'INVALID_ARGUMENT', '--version does not accept a command.');
       result = { ok: true, data: { name: 'The Forge', version: metadata.version, apiVersion: 1 } };
     } else {
-      const loaded = await loadConfig({ defaultPath: resolve(__dirname, '../config.json'), explicitPath: value(bootstrap.flags, 'config'), cwd: process.cwd(), root: value(bootstrap.flags, 'root') });
+      const loaded = await loadConfig({ defaultPath: resolve(__dirname, 'config.json'), cwd: process.cwd(), root: value(bootstrap.flags, 'root') });
       const config = loaded.config;
       config.settings.json = bootstrap.flags['no-json'] ? false : bootstrap.flags.json ? true : config.settings.json;
       config.settings.dryRun = bootstrap.flags['no-dry-run'] ? false : bootstrap.flags['dry-run'] ? true : config.settings.dryRun;
       compact = config.settings.json;
-      const files = await NodeFiles.at(config.paths.root);
+      const files = await NodeFiles.at(loaded.root);
+      activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.path === 'string' && typeof v.revision === 'string' && typeof v.bytes === 'number' && v.operation === id.slice(5) });
-      let workspace: Workspace;
+      let environment: Workspace;
       for (const generator of generators) registry.add(registry.generators, generator);
       for (const skill of builtinSkills) registry.add(registry.skills, skill);
       for (const command of commands(registry, {
-        loaded, templates: new MarkdownTemplates(),
-        get projects() { return new ProjectService(files, workspace, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
-        setup: async () => new SetupService(workspace, config, await readSetupArtifacts(__dirname), [...registry.skills.values()]).run(),
+        loaded, files, templates: new MarkdownTemplates(),
+        get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
+        setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()]).run(),
       })) registry.add(registry.commands, command);
-      if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins(config.paths.plugins, config.plugins.enabled, files, registry, events);
+      if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.commands.get(id);
       ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${id}. Run help or schema.`);
       const parsed = parseArguments(tokens, { ...globalOptions, ...command.options });
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
-      for (const option of ['root', 'config', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
+      for (const option of ['root', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
       compact = config.settings.json;
-      workspace = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun);
-      const context: CommandContext = { workspace, events, root: files.root, input: async () => {
+      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun);
+      // Management and recovery remain available even if saved project context is stale.
+      const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
+      const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
+      const project = environmentCommand ? null : await projects.current();
+      const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun) : environment;
+      activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
+      const context: CommandContext = { workspace, events, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
@@ -73,11 +82,11 @@ async function run(): Promise<void> {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
     result = { ok: false, error: { code: error instanceof AppError ? error.code : 'OPERATION_FAILED', message: error instanceof Error ? error.message : String(error) } };
   } finally { await registry.dispose(events); }
-  try { process.stdout.write(JSON.stringify({ ...result, events: events.history, warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
+  try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: events.history, warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
   catch {
     process.exitCode = 1;
     // Keep committed change evidence even if a plugin command returns invalid data.
-    process.stdout.write(JSON.stringify({ ok: false, error: { code: 'INVALID_RESULT', message: 'Command returned non-serializable data. Inspect committed events before retrying.' }, events: events.history, warnings: events.warnings }) + '\n');
+    process.stdout.write(JSON.stringify({ ok: false, error: { code: 'INVALID_RESULT', message: 'Command returned non-serializable data. Inspect committed events before retrying.' }, ...(activeContext ? { context: activeContext } : {}), events: events.history, warnings: events.warnings }) + '\n');
   }
 }
 void run();
