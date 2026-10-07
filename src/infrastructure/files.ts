@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { AppError, ensure } from '../domain/errors.ts';
+import { AppError, ensure, isRecord } from '../domain/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../domain/file.ts';
 import type { FileRepository } from '../application/ports.ts';
 
@@ -58,6 +58,7 @@ export class NodeFiles implements FileRepository {
     ensure((await this.stored(path))?.revision === expected, 'CONFLICT', `File changed; read again before writing: ${path}`);
   }
   async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
+    ensure(Array.isArray(writes) && Array.from(writes).every(write => isRecord(write) && typeof write.path === 'string' && write.bytes instanceof Uint8Array && (write.expectedRevision === undefined || typeof write.expectedRevision === 'string')), 'INVALID_PLAN', 'Write plans must contain file requests with Uint8Array bytes.');
     // Plugins retain their input objects: freeze the plan's values before the first await.
     const requests = writes.map(write => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
     ensure(requests.length > 0 && new Set(requests.map(w => w.path)).size === requests.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');

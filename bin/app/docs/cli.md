@@ -12,7 +12,7 @@ Every built-in invocation emits one JSON document on stdout, with no prompts or 
 {"ok":true,"data":{"dryRun":false,"changes":[]},"events":[],"warnings":[]}
 ```
 
-Failures have `ok:false` and `error:{code,message}`. Agents must inspect both the exit code and `ok`. Codes: 0 success, 1 runtime/I/O/plugin error, 2 invalid input or conflict, 3 missing file, 4 workspace writer busy. Errors include `CONFLICT`, `INVALID_PATH`, `UNSAFE_PATH`, `INVALID_CANVAS`, `INVALID_BASE`, `INVALID_YAML`, `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`, `AMBIGUOUS_EDIT`, `WORKSPACE_BUSY`, and `ROLLBACK_FAILED`. Unexpected parser/I/O errors use `OPERATION_FAILED`. No automatic retry occurs.
+Failures have `ok:false` and `error:{code,message}`. Agents must inspect both the exit code and `ok`. Codes: 0 success, 1 runtime/I/O/plugin error, 2 invalid input or conflict, 3 missing file, 4 workspace writer busy. Errors include `INVALID_ARGUMENT`, `CONFLICT`, `INVALID_PATH`, `UNSAFE_PATH`, `INVALID_CANVAS`, `INVALID_BASE`, `INVALID_YAML`, `UNKNOWN_COMMAND`, `UNKNOWN_OPTION`, `AMBIGUOUS_EDIT`, `WORKSPACE_BUSY`, and `ROLLBACK_FAILED`. Unexpected parser/I/O errors use `OPERATION_FAILED`. Invalid `list --kind` values and flags that do not apply to the selected action (for example, `skills list --out skills` or `project list --kind domain`) fail with `INVALID_ARGUMENT` instead of being ignored. No automatic retry occurs.
 
 A listener warning does not make a committed write fail. Check `events` and read the result before retrying anything after a warning. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope schema is versioned by `schema.data.apiVersion` (currently 1).
 
@@ -25,7 +25,7 @@ A listener warning does not make a committed write fail. Check `events` and read
 | `config` | none | Effective validated configuration and selected paths |
 | `templates` | `[list / inspect <template.md>]` | Discover Markdown templates and their inputs |
 | `formats` | none | Native extension inventory and processing limits |
-| `list` | `[--kind markdown]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files |
+| `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / attachment]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files |
 | `read` | `<path>` | SHA-256 revision, byte count, parsed document or base64 bytes |
 | `validate` | `<path>` | Structural document check; attachments are marked `opaque-bytes` |
 | `create` | `<path> [--content text / --from path / --stdin] [--encoding base64]` | New file only; Markdown/Canvas/Base can use default empty documents |

@@ -1,6 +1,7 @@
 import { ensure } from './errors.ts';
 
 export function vaultPath(input: string): string {
+  // oxlint-disable-next-line no-control-regex -- Vault paths must reject ASCII control characters.
   ensure(typeof input === 'string' && input.length > 0 && !/[\x00-\x1f\\:]/.test(input), 'INVALID_PATH', 'Use a nonempty, relative POSIX path.');
   const parts = input.split('/');
   ensure(parts.every(p => p && p !== '.' && p !== '..'), 'INVALID_PATH', 'Absolute paths, empty segments and traversal are forbidden.');

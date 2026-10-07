@@ -16,10 +16,10 @@ export function parseJson(text: string): unknown {
   catch { throw new AppError('INVALID_JSON', 'Expected valid JSON input.', 2); }
 }
 export async function makeDocument(title: string, flags: Record<string, string | boolean>, context: CommandContext, services: WorkflowServices) {
-  ensure(title.trim() === title && title.length > 0 && !/[\/\\:]/.test(title), 'INVALID_NAME', 'Document title must be a nonempty filename without path separators.');
+  ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), 'INVALID_NAME', 'Document title must be a nonempty filename without path separators.');
   const template = value(flags, 'template', true)!;
-  const source = await context.workspace.files.read(`${services.loaded.config.paths.templates}/${template}`);
   ensure(template.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
+  const source = await context.workspace.files.read(`${services.loaded.config.paths.templates}/${template}`);
   const inline = value(flags, 'values'), from = value(flags, 'values-from');
   ensure(inline === undefined || from === undefined, 'INVALID_INPUT', 'Use either --values or --values-from.');
   const data = from === undefined ? parseJson(inline ?? '{}') : parseJson(new TextDecoder('utf-8', { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
@@ -41,6 +41,7 @@ export function workflowCommands(services: WorkflowServices): Command[] {
         return { directory: config.paths.templates, templates: (await workspace.files.list()).filter(path => path.startsWith(prefix) && path.toLowerCase().endsWith('.md')).map(path => path.slice(prefix.length)) };
       }
       ensure(action === 'inspect', 'INVALID_ARGUMENT', 'Use templates list or templates inspect <template.md>.'); arity(args, 2);
+      ensure(args[1]!.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
       const path = `${config.paths.templates}/${args[1]!}`;
       return { path, ...services.templates.inspect((await workspace.files.read(path)).bytes) };
     } },

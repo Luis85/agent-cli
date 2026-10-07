@@ -91,21 +91,41 @@ describe('Forge project management', () => {
     expect(componentScaffold('billing', 'Invoice', 'projects')).toEqual(componentScaffold('billing', 'Invoice', 'projects'));
   });
 
-  it('type-checks, builds and runs the generated library and both component test suites', async () => {
+  it('checks the generated library and both component kinds, diagnoses mistakes, and passes after repair', async () => {
     await service().create('billing');
     await service().component('billing', 'Invoice');
     await service().component('billing', 'FindInvoice', 'application');
     // Use the test workspace's existing toolchain; no dependency install or network access.
     const project = join(root, 'projects/billing');
     await symlink(resolve('node_modules'), join(project, 'node_modules'), 'dir');
-    const commands = [
-      [resolve('node_modules/typescript/bin/tsc'), '--noEmit'],
-      [resolve('node_modules/vite/bin/vite.js'), 'build'],
-      [resolve('node_modules/typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
-      [resolve('node_modules/vitest/vitest.mjs'), 'run', '--maxWorkers', '1', '--minWorkers', '1'],
-    ];
-    for (const args of commands) await execute(process.execPath, args, { cwd: project, timeout: 20000, maxBuffer: 1024 * 1024 });
+    const run = (script: string) => execute('npm', ['run', script], { cwd: project, timeout: 30000, maxBuffer: 4 * 1024 * 1024 });
+    const quality = (script: string) => execute(process.execPath, [`scripts/quality/${script}.mjs`], { cwd: project, timeout: 20000, maxBuffer: 4 * 1024 * 1024 });
+    await run('check');
+    const invoice = join(project, 'src/domain/invoice.ts');
+    const original = await readFile(invoice, 'utf8');
+    await writeFile(invoice, original + '\ndebugger;\n');
+    await expect(quality('lint')).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('no-debugger') });
+    await writeFile(invoice, original);
+    await quality('lint');
+
+    const unused = join(project, 'src/domain/unused.ts');
+    await writeFile(unused, 'export const orphan = true;\n');
+    await expect(quality('analyze')).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('src/domain/unused.ts') });
+    await rm(unused);
+    await quality('analyze');
+
+    const adapter = join(project, 'src/infrastructure/runtime.ts');
+    await writeFile(adapter, 'export const runtime = () => true;\n');
+    await writeFile(invoice, "import { runtime } from '../infrastructure/runtime.ts';\nruntime();\n" + original);
+    await expect(quality('analyze')).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('boundary') });
+    await writeFile(invoice, original);
+    await rm(adapter);
+
+    await writeFile(invoice, "import { readFile } from 'node:fs/promises';\nvoid readFile;\n" + original);
+    await expect(quality('lint')).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('no-restricted-imports') });
+    await writeFile(invoice, original);
+    await run('check:fast');
     expect(await readFile(join(project, 'dist/index.js'), 'utf8')).toContain('ProjectIdentity');
     expect(await readFile(join(project, 'dist/index.d.ts'), 'utf8')).toContain('ProjectIdentity');
-  }, 30000);
+  }, 60000);
 });
