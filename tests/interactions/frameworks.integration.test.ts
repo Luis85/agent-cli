@@ -7,9 +7,9 @@ import ts from 'typescript';
 import { parse, compileScript } from '@vue/compiler-sfc';
 import { compile } from 'svelte/compiler';
 import { parseTemplate } from '@angular/compiler';
-import type { UiDefinition } from '../../src/domain/ui.ts';
-import type { InteractionDefinition } from '../../src/domain/interaction.ts';
-import { renderUiComponents } from '../../src/infrastructure/ui-renderers.ts';
+import type { UiDefinition } from '../../src/domain/ui/definition.ts';
+import type { InteractionDefinition } from '../../src/domain/interactions/definition.ts';
+import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
 import { formDefinition, formInteractions, formRuntimeScenario } from '../support/interaction-form-runtime.ts';
 
 const temporary: string[] = [];

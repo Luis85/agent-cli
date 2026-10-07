@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { nativeFormats } from '../../src/domain/file.ts';
+import { nativeFormats } from '../../src/domain/documents/file.ts';
 import { portableCli } from '../support/portable-cli.ts';
 
 const fixture = portableCli();

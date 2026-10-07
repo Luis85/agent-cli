@@ -1,0 +1,75 @@
+import { ensure, isRecord } from '../../domain/shared/errors.ts';
+import { nativeFormats, fileKind } from '../../domain/documents/file.ts';
+import type { Command, CommandContext } from '../../application/plugins/registry.ts';
+import { arity, value } from '../cli/arguments.ts';
+import { encodeText, parseJson, readInputBytes } from '../cli/input.ts';
+
+async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
+  const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');
+  const encoding = value(flags, 'encoding') ?? 'utf8';
+  ensure(['utf8', 'base64'].includes(encoding), 'INVALID_ENCODING', 'Use utf8 or base64. --from copies raw bytes by default.');
+  if (encoding === 'base64') {
+    const text = Buffer.from(bytes).toString('utf8').trim();
+    ensure(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text), 'INVALID_ENCODING', 'Invalid base64 input.');
+    return Buffer.from(text, 'base64');
+  }
+  return bytes;
+}
+const contentOptions = { content: 'string', from: 'string', stdin: 'boolean', encoding: 'string' } as const;
+
+function defaultDocument(kind: ReturnType<typeof fileKind>): Uint8Array {
+  if (kind === 'canvas') return encodeText('{"nodes":[],"edges":[]}\n');
+  if (kind === 'base') return encodeText('views:\n  - type: table\n    name: Table\n');
+  return encodeText('');
+}
+
+export function documentCommands(): Command[] {
+  return [
+    { id: 'list', description: 'List regular files in stable path order; skip symlinks, Git and node_modules.', usage: 'list [--kind markdown|canvas|base|image|audio|video|pdf|attachment]', options: { kind: 'string' }, async run(args, flags, { workspace }) {
+      arity(args, 0); const kind = value(flags, 'kind');
+      const kinds = [...Object.keys(nativeFormats), 'attachment'];
+      ensure(kind === undefined || kinds.includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${kinds.join(', ')}.`);
+      return { files: (await workspace.files.list()).filter(p => !kind || fileKind(p) === kind).map(path => ({ path, kind: fileKind(path) })) };
+    } },
+    { id: 'read', description: 'Read a document or base64 attachment with its SHA-256 revision.', usage: 'read <path>', async run(args, _, { workspace }) { arity(args, 1); return workspace.read(args[0]!); } },
+    { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, or Base structure.', usage: 'validate <path>', async run(args, _, { workspace }) {
+      arity(args, 1); const file = await workspace.files.read(args[0]!); workspace.codec.validate(file.path, file.bytes);
+      return { path: file.path, valid: true, kind: fileKind(file.path), validation: ['markdown', 'canvas', 'base'].includes(fileKind(file.path)) ? 'structure' : 'opaque-bytes' };
+    } },
+    { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64]', options: contentOptions, async run(args, flags, context) {
+      arity(args, 1); const path = args[0]!;
+      const hasInput = flags.content !== undefined || flags.from !== undefined || flags.stdin === true;
+      const kind = fileKind(path);
+      ensure(hasInput || flags.encoding === undefined, 'INVALID_INPUT', '--encoding requires an input source.');
+      ensure(hasInput || ['markdown', 'canvas', 'base'].includes(kind), 'INVALID_INPUT', 'Attachments require content, from, or stdin.');
+      const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
+      return context.workspace.write([{ path, bytes }]);
+    } },
+    { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', options: { ...contentOptions, 'if-match': 'string' }, async run(args, flags, context) {
+      arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(flags, context), expectedRevision: value(flags, 'if-match') }]);
+    } },
+    { id: 'edit', description: 'Append to Markdown or replace exactly one literal match.', usage: 'edit <note.md> --if-match sha256 (--append --content text | --find text --replace text)', options: { 'if-match': 'string', append: 'boolean', content: 'string', find: 'string', replace: 'string' }, async run(args, flags, { workspace }) {
+      arity(args, 1); const path = args[0]!;
+      ensure(fileKind(path) === 'markdown', 'UNSUPPORTED_EDIT', 'Use edit for Markdown, patch for Canvas/Bases, and write for attachments.');
+      const revision = value(flags, 'if-match', true)!;
+      return workspace.edit(path, revision, bytes => {
+        const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+        if (flags.append) { ensure(flags.find === undefined && flags.replace === undefined, 'INVALID_INPUT', 'Do not combine append and replace.'); return encodeText(text + value(flags, 'content', true)!); }
+        ensure(flags.content === undefined, 'INVALID_INPUT', '--content requires --append.');
+        const find = value(flags, 'find', true)!, replacement = value(flags, 'replace', true)!;
+        const first = text.indexOf(find);
+        ensure(find.length > 0 && first >= 0 && text.indexOf(find, first + 1) < 0, 'AMBIGUOUS_EDIT', 'The find text must match exactly once, including overlapping matches.');
+        return encodeText(text.replace(find, () => replacement));
+      });
+    } },
+    { id: 'properties', description: 'Merge YAML frontmatter properties while preserving the Markdown body.', usage: 'properties <note.md> --set JSON --if-match sha256', options: { set: 'string', 'if-match': 'string' }, async run(args, flags, { workspace }) {
+      arity(args, 1); ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
+      const changes = parseJson(value(flags, 'set', true)!); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');
+      return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.properties(bytes, changes));
+    } },
+    { id: 'patch', description: 'Set a Canvas/Base JSON Pointer; - appends to an existing array.', usage: 'patch <path> --pointer /nodes/- --value JSON --if-match sha256', options: { pointer: 'string', value: 'string', 'if-match': 'string' }, async run(args, flags, { workspace }) {
+      arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
+      return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
+    } },
+  ];
+}

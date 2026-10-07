@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EventBus } from '../../src/application/events.ts';
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 
 const create = () => {
   const bus = new EventBus(new NodeEventScope());

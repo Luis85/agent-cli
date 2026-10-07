@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -60,7 +61,7 @@ describe('localized portable CLI', () => {
     expect(german.body.error.code).toBe(english.body.error.code);
     expect(german.body.error.message).toContain('nicht gefunden');
     expect(german.body.error.details.localization.originalMessage).toBe(english.body.error.message);
-    expect(german.body.events).toEqual([]);
+    expect(committedEvents(german.body.events)).toEqual([]);
     for (const args of [['--lang', 'fr', 'help'], ['help', '--lang', 'fr'], ['--lang', 'en', 'help', '--lang', 'de']]) {
       const result = cli(args);
       expect(result.status).toBe(2);

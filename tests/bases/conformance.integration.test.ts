@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stringify } from 'yaml';
-import { Bases } from '../../src/application/bases.ts';
-import { NodeBasesQueryEngine } from '../../src/infrastructure/bases.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
+import { Bases } from '../../src/application/bases/query.ts';
+import { NodeBasesQueryEngine } from '../../src/infrastructure/bases/engine.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
 let root: string, bases: Bases;
 async function put(path: string, source: string): Promise<void> {

@@ -16,12 +16,20 @@ export default {
       return [{ path: `${directory}/${name}.md`, bytes: encode(`# ${name}\n\n- [ ] Acceptance criteria\n- [ ] Domain invariants\n- [ ] Tests pass\n- [ ] Documentation updated\n`) }];
     },
   }],
-  events: [{ id: 'quality.checked', validate: value => value !== null && typeof value === 'object' && Number.isInteger(value.count) }],
+  events: [{ id: 'quality.checked', description: 'The quality command counted Markdown notes.', validate: value => value !== null && typeof value === 'object' && Number.isInteger(value.count) }],
   skills: [{ id: 'quality.review', content: '---\nname: quality-review\ndescription: Review an engineering change against a checklist.\n---\n\nRead the acceptance criteria, inspect the diff, test invariants and record the evidence.\n' }],
-  onload(context) {
+  async onload(context) {
+    // Replay is an explicit snapshot of this invocation, not persistent history.
+    const observe = record => {
+      if (record.id === 'workspace.failed' || record.id === 'claude.failed') {
+        context.events.warn(`Quality observed ${record.id}: ${record.payload.error.code}. Inspect the original error and committed state before retrying.`);
+      }
+    };
+    await context.events.replay(observe);
+    this.unsubscribeAll = context.events.onAny(observe);
     this.unsubscribe = context.events.on('quality.checked', payload => {
       if (payload.count === 0) context.events.warn('No Markdown notes found.');
     });
   },
-  onunload() { this.unsubscribe?.(); },
+  onunload() { this.unsubscribe?.(); this.unsubscribeAll?.(); },
 };

@@ -92,6 +92,10 @@ Use the [documentation hub](docs/index.md) to choose a learning path or find an 
 
 The [idea-to-production example pack](examples/idea-to-production/README.md) includes filled-in discovery, requirements, design, implementation, testing and production artifacts. [Agent skills](bin/skills/forge-workflow.md) and the [runnable example plugin](examples/plugins/quality/main.mjs) support day-to-day use.
 
+## Source organization
+
+The source uses domain, application, infrastructure and presentation layers, each divided into concern folders such as `claude`, `ui` and `workspace`. `src/main.ts` composes the runtime; `src/sdk.ts` exposes plugin types. Build and quality tooling lives in `scripts/`, with versioned policies in `configs/`. The repository's `src/README.md` maps entry points; the [architecture](docs/explanation/architecture.md) explains dependency rules.
+
 ## Develop
 
 ```sh

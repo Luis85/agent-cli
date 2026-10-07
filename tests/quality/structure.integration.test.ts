@@ -11,15 +11,15 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'forge-structure-'));
   temporary.push(root);
   for (const directory of ['src', 'tests', 'scripts/quality']) await mkdir(join(root, directory), { recursive: true });
-  for (const file of ['structure.mjs', 'shared.mjs', 'lint.mjs']) await cp(resolve('src/infrastructure/scripts/quality', file), join(root, 'scripts/quality', file));
+  for (const file of ['structure.mjs', 'shared.mjs', 'lint.mjs']) await cp(resolve('scripts/quality', file), join(root, 'scripts/quality', file));
   await cp(resolve('configs/lint'), join(root, 'configs/lint'), { recursive: true });
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
   await writeFile(join(root, 'src/index.ts'), 'export {};\n');
   return root;
 }
 
-function check(root: string, task = 'structure') {
-  const result = spawnSync(process.execPath, [`scripts/quality/${task}.mjs`], { cwd: root, encoding: 'utf8' });
+function check(root: string, task = 'structure', args: string[] = []) {
+  const result = spawnSync(process.execPath, [`scripts/quality/${task}.mjs`, ...args], { cwd: root, encoding: 'utf8' });
   if (result.error) throw result.error;
   return { status: result.status, output: JSON.parse(result.stdout) };
 }
@@ -100,5 +100,50 @@ describe('structure quality gate', () => {
     const result = check(root);
     expect(result.status).toBe(1);
     expect(result.output.report.violations).toContainEqual(expect.objectContaining({ path: 'src/misplaced.unit.test.ts', rule: 'test-location' }));
+  });
+
+  it('accepts grouped sources, extensible concern names, fixed entrypoints and separate tooling', async () => {
+    const root = await fixture();
+    await rm(join(root, 'src/index.ts'));
+    for (const path of [
+      'src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts',
+      'src/domain/documents/file.ts', 'src/application/new-concern/deep/service.ts',
+      'src/infrastructure/workspace/files.ts', 'src/presentation/cli/commands.ts',
+      'scripts/release.mjs',
+    ]) {
+      await mkdir(join(root, path, '..'), { recursive: true });
+      await writeFile(join(root, path), 'export {};\n');
+    }
+    const result = check(root, 'structure', ['--source-layout', 'forge']);
+    expect(result.status).toBe(0);
+    expect(result.output.report.violations).toEqual([]);
+  });
+
+  it.each([
+    'src/index.ts', 'src/domain/file.ts', 'src/application/ports.ts',
+    'src/infrastructure/codec.ts', 'src/presentation/commands.ts',
+    'src/utils/shared/errors.ts', 'src/scripts/quality/lint.mjs',
+  ])('rejects misplaced Forge source %s', async path => {
+    const root = await fixture();
+    await rm(join(root, 'src/index.ts'));
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(join(root, path), 'export {};\n');
+    const result = check(root, 'structure', ['--source-layout', 'forge']);
+    expect(result.status).toBe(1);
+    expect(result.output.report.violations).toEqual([expect.objectContaining({ path, rule: 'source-location' })]);
+  });
+
+  it('keeps the default portable gate compatible with generated project entrypoints', async () => {
+    const root = await fixture();
+    await mkdir(join(root, 'src/domain'), { recursive: true });
+    await writeFile(join(root, 'src/domain/project-identity.ts'), 'export {};\n');
+    expect(check(root).status).toBe(0);
+    expect(check(root, 'structure', ['--source-layout', 'forge']).status).toBe(1);
+  });
+
+  it.each([['--source-layout'], ['--source-layout', 'unknown'], ['--unknown'], ['--source-layout', 'forge', 'ignored']].map(args => [args]))('rejects unsupported structure arguments %j', async args => {
+    const result = check(await fixture(), 'structure', args);
+    expect(result.status).toBe(1);
+    expect(result.output.errors).toEqual([expect.stringContaining('--source-layout forge')]);
   });
 });

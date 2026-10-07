@@ -14,9 +14,9 @@ import { compile } from 'svelte/compiler';
 import { parseTemplate, VERSION as compilerVersion } from '@angular/compiler';
 import { VERSION as angularVersion } from '@angular/core';
 import { JSDOM } from 'jsdom';
-import type { UiDefinition, UiFramework } from '../../src/domain/ui.ts';
-import { renderUiComponents } from '../../src/infrastructure/ui-renderers.ts';
-import { standardUiCatalog } from '../../src/infrastructure/ui-catalog.ts';
+import type { UiDefinition, UiFramework } from '../../src/domain/ui/definition.ts';
+import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
+import { standardUiCatalog } from '../../src/infrastructure/ui/catalog.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))); });

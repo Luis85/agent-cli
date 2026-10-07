@@ -2,9 +2,9 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ScopedFiles } from '../../src/application/scoped-files.ts';
-import { NodeFiles, revisionOf } from '../../src/infrastructure/files.ts';
-import type { WriteRequest } from '../../src/domain/file.ts';
+import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
+import { NodeFiles, revisionOf } from '../../src/infrastructure/workspace/files.ts';
+import type { WriteRequest } from '../../src/domain/documents/file.ts';
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 const write = (path: string, content = 'Original') => ({ path, bytes: bytes(content) });

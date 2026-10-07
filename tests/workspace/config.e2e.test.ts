@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeAll, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -21,7 +22,7 @@ it('loads fixed workspace configuration and allows invocation overrides', async 
     expect(loaded.body.data.path).toBe(config);
     const make = ['make', 'entity', 'ConfiguredItem', '--out', 'generated/models'];
     const preview = cli(make, undefined, invocation);
-    expect(preview.status).toBe(0); expect(preview.body.data.dryRun).toBe(true); expect(preview.body.events).toEqual([]);
+    expect(preview.status).toBe(0); expect(preview.body.data.dryRun).toBe(true); expect(committedEvents(preview.body.events)).toEqual([]);
     expect(await readdir(configuredRoot)).toEqual(['bin']);
     expect(cli(['--no-dry-run', ...make], undefined, invocation).status).toBe(0);
     expect(await readFile(join(configuredRoot, 'generated/models/configured-item.ts'), 'utf8')).toContain('class ConfiguredItem');

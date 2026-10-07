@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stringify } from 'yaml';
-import { Bases } from '../../src/application/bases.ts';
-import { NodeBasesQueryEngine } from '../../src/infrastructure/bases.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
+import { Bases } from '../../src/application/bases/query.ts';
+import { NodeBasesQueryEngine } from '../../src/infrastructure/bases/engine.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
 let root: string, bases: Bases;
 const put = async (path: string, content: string | Uint8Array) => {

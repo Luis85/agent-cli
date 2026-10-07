@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { EventBus } from '../../src/application/events.ts';
-import { UiLibrary, type UiRenderer } from '../../src/application/ui.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
-import { standardUiCatalog } from '../../src/infrastructure/ui-catalog.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { UiLibrary, type UiRenderer } from '../../src/application/ui/library.ts';
+import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
+import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
+import { standardUiCatalog } from '../../src/infrastructure/ui/catalog.ts';
 
 let root: string, files: NodeFiles;
 const codec = new MarkdownUiDefinitions();

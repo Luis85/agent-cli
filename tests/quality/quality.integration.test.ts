@@ -15,7 +15,7 @@ async function put(root: string, file: string, content: string) {
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'forge-quality-'));
   roots.push(root);
-  await cp(resolve('src/infrastructure/scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
+  await cp(resolve('scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
   await cp(resolve('configs'), join(root, 'configs'), { recursive: true });
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
   const config = JSON.parse(await readFile(join(root, 'configs/quality/fallow.json'), 'utf8'));
@@ -86,7 +86,7 @@ describe('agent quality gates', () => {
 
   it('allows platform imports in infrastructure adapters', async () => {
     const root = await fixture();
-    await put(root, 'src/infrastructure/files.ts', "import { readFileSync } from 'node:fs';\nexport const read = readFileSync;\nexport const filesystem = require('node:fs');\n");
+    await put(root, 'src/infrastructure/workspace/files.ts', "import { readFileSync } from 'node:fs';\nexport const read = readFileSync;\nexport const filesystem = require('node:fs');\n");
     expect(run(root, 'lint').output).toMatchObject({ ok: true, errors: [] });
   });
 

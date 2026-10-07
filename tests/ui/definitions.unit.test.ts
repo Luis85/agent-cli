@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { componentDependencies, selectUiComponents, validateUiLibrary } from '../../src/domain/ui-library.ts';
-import { encodeText } from '../../src/infrastructure/documents.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
-import { standardUiCatalog } from '../../src/infrastructure/ui-catalog.ts';
+import { componentDependencies, selectUiComponents, validateUiLibrary } from '../../src/domain/ui/library.ts';
+import { encodeText } from '../../src/infrastructure/documents/codec.ts';
+import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
+import { standardUiCatalog } from '../../src/infrastructure/ui/catalog.ts';
 
 const codec = new MarkdownUiDefinitions();
 const source = (id: string, fields: Record<string, unknown> = {}, body = '# Description\n\nKeep **Markdown** and {{prose}} intact.\n') => encodeText(`---\n${stringify({ schemaVersion: 1, id, root: { tag: 'div', children: [{ slot: 'children' }] }, ...fields })}---\n${body}`);

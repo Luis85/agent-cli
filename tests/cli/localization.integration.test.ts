@@ -1,17 +1,17 @@
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadConfig } from '../../src/infrastructure/config.ts';
+import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { germanCommands, germanGenerators } from '../../src/presentation/localization-catalog.ts';
-import { germanErrors } from '../../src/presentation/localization-errors.ts';
-import { commands } from '../../src/presentation/commands.ts';
-import { basesCommand } from '../../src/presentation/bases-commands.ts';
-import { claudeCommand } from '../../src/presentation/claude-commands.ts';
-import { generators } from '../../src/infrastructure/generators.ts';
-import { Registry } from '../../src/application/plugins.ts';
-import type { WorkflowServices } from '../../src/presentation/services.ts';
+import { germanCommands, germanGenerators } from '../../src/presentation/localization/catalog.ts';
+import { germanErrors } from '../../src/presentation/localization/errors.ts';
+import { commands } from '../../src/presentation/cli/commands.ts';
+import { basesCommand } from '../../src/presentation/bases/commands.ts';
+import { claudeCommand } from '../../src/presentation/claude/commands.ts';
+import { generators } from '../../src/infrastructure/generation/generators.ts';
+import { Registry } from '../../src/application/plugins/registry.ts';
+import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
 
 async function sources(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });

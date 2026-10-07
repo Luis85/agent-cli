@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
-import { isSafeNavigationUrl, type InteractionDefinition } from '../../src/domain/interaction.ts';
-import type { UiDefinition } from '../../src/domain/ui.ts';
-import { validateUiLibrary } from '../../src/domain/ui-library.ts';
-import { componentInteractionIds } from '../../src/domain/ui-interactions.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
+import { isSafeNavigationUrl, type InteractionDefinition } from '../../src/domain/interactions/definition.ts';
+import type { UiDefinition } from '../../src/domain/ui/definition.ts';
+import { validateUiLibrary } from '../../src/domain/ui/library.ts';
+import { componentInteractionIds } from '../../src/domain/ui/interactions.ts';
+import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
 
 const component = (overrides: Partial<UiDefinition> = {}): UiDefinition => ({
   schemaVersion: 1, id: 'toggle', sourcePath: 'components/toggle.md', description: '# Toggle\n', props: {},

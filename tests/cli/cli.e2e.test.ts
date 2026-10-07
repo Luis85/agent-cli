@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeAll, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -37,7 +38,7 @@ it.each([
     const result = cli(args);
     expect(result.status).toBe(2);
     expect(result.body.error.code).toBe('INVALID_ARGUMENT');
-    expect(result.body.events).toEqual([]);
+    expect(committedEvents(result.body.events)).toEqual([]);
   });
 
 it('treats flag-shaped command values as literal data without overriding configured dry runs or routing', async () => {
@@ -52,12 +53,12 @@ it('treats flag-shaped command values as literal data without overriding configu
       expect(result.status, literal).toBe(0);
       expect(result.body.data.dryRun, literal).toBe(true);
       expect(result.body.data.changes[0]).toMatchObject({ path: 'preview.md', bytes: Buffer.byteLength(literal), revision: createHash('sha256').update(literal).digest('hex') });
-      expect(result.body.events, literal).toEqual([]);
+      expect(committedEvents(result.body.events), literal).toEqual([]);
       expect(await readdir(isolated)).toEqual(['bin']);
     }
     const committed = cli([...args, 'create', 'literal.md', '--content', '--version', '--no-dry-run'], undefined, invocation);
     expect(committed.status).toBe(0); expect(committed.body.data.dryRun).toBe(false);
-    expect(committed.body.events).toHaveLength(1);
+    expect(committedEvents(committed.body.events)).toHaveLength(1);
     expect(await readFile(join(isolated, 'literal.md'), 'utf8')).toBe('--version');
     const lateRouting = cli([...args, 'create', 'late-routing.md', '--content', 'text', '--no-dry-run', '--root', project], undefined, invocation);
     expect(lateRouting.status).not.toBe(0); expect(lateRouting.body.events).toEqual([]);

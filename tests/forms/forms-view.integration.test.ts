@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { z } from 'zod';
-import type { FormDefinition } from '../../src/infrastructure/scaffolds/form-model.js';
-import { renderForm } from '../../src/infrastructure/scaffolds/form-view.js';
+import type { FormDefinition } from '../../src/infrastructure/projects/templates/form-model.js';
+import { renderForm } from '../../src/infrastructure/projects/templates/form-view.js';
 
 const definition: FormDefinition<{ name: string; email: string; description: string }> = {
   id: 'contact', title: 'Contact <script>alert(1)</script>', description: 'Tell us about your project', submitLabel: 'Create',

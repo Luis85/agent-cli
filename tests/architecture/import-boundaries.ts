@@ -5,17 +5,22 @@ import ts from 'typescript';
 export function boundaryViolations(file: string, source: string): string[] {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const domain = resolve('src/domain'), application = resolve('src/application');
+  const infrastructure = resolve('src/infrastructure'), presentation = resolve('src/presentation');
   const within = (directory: string, target: string) => target.startsWith(directory + sep);
-  const allowed = within(domain, file) ? [domain] : [domain, application];
+  const isInfrastructure = within(infrastructure, file), isPresentation = within(presentation, file);
+  const allowed = within(domain, file) ? [domain] : [domain, application, ...(isInfrastructure ? [infrastructure] : isPresentation ? [presentation] : [])];
   const violations: string[] = [];
   const check = (specifier: ts.Node | undefined) => {
     if (!specifier || !ts.isStringLiteralLike(specifier)) {
-      violations.push('Computed module dependencies cannot prove inward boundaries.');
+      if (!isInfrastructure) violations.push('Computed module dependencies cannot prove inward boundaries.');
       return;
     }
     const path = specifier.text;
     const target = resolve(dirname(file), path);
-    if (!path.startsWith('.') || !allowed.some(directory => within(directory, target))) {
+    const external = !path.startsWith('.');
+    const approvedExternal = isInfrastructure || (isPresentation && path === 'commander');
+    const approvedAsset = (isPresentation && target === resolve('package.json')) || (isInfrastructure && !within(resolve('src'), target));
+    if (external ? !approvedExternal : !approvedAsset && !allowed.some(directory => within(directory, target))) {
       violations.push(`${relative(process.cwd(), file)} imports ${path}`);
     }
   };
@@ -32,5 +37,18 @@ export function boundaryViolations(file: string, source: string): string[] {
     ts.forEachChild(node, visit);
   };
   visit(tree);
+  return violations;
+}
+
+/** SDK consumers receive types only; importing this entry must never start host behavior. */
+export function sdkViolations(file: string, source: string): string[] {
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const violations = boundaryViolations(file, source);
+  for (const statement of tree.statements) {
+    const typeExport = ts.isExportDeclaration(statement) && statement.moduleSpecifier && (
+      statement.isTypeOnly || (statement.exportClause && ts.isNamedExports(statement.exportClause) && statement.exportClause.elements.length > 0 && statement.exportClause.elements.every(element => element.isTypeOnly))
+    );
+    if (!typeExport) violations.push(`${relative(process.cwd(), file)} must contain only type exports from domain or application modules.`);
+  }
   return violations;
 }

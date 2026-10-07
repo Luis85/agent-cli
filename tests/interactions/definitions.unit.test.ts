@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { interactionTriggerEvents } from '../../src/domain/interaction.ts';
-import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interaction-definitions.ts';
+import { interactionTriggerEvents } from '../../src/domain/interactions/definition.ts';
+import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
 
 const codec = new MarkdownInteractionDefinitions();
 const base = { schemaVersion: 1, id: 'toggle-expanded', event: 'click', actions: [{ type: 'toggle-state', state: 'expanded' }] };

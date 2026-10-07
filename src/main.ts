@@ -1,45 +1,48 @@
 import { resolve } from 'node:path';
 import metadata from '../package.json';
-import { AppError, ensure, isRecord } from './domain/errors.ts';
-import { EventBus } from './application/events.ts';
-import { NodeEventScope } from './infrastructure/event-scope.ts';
-import { ClaudeLifecycle } from './application/claude-lifecycle.ts';
-import { Workspace } from './application/workspace.ts';
-import { ScopedFiles } from './application/scoped-files.ts';
-import { Registry, type CommandContext } from './application/plugins.ts';
-import { ProjectService } from './application/projects.ts';
-import { SetupService } from './application/setup.ts';
-import { UiLibrary } from './application/ui.ts';
-import { DataSourceLibrary } from './application/data-sources.ts';
-import { InteractionLibrary } from './application/interactions.ts';
-import { TemplateInstaller } from './application/templates.ts';
-import { NodeFiles } from './infrastructure/files.ts';
-import { ObsidianDocuments } from './infrastructure/documents.ts';
-import { loadEnabledPlugins } from './infrastructure/plugins.ts';
-import { loadConfig } from './infrastructure/config.ts';
-import { MarkdownTemplates } from './infrastructure/templates.ts';
-import { workflowTemplates } from './infrastructure/workflow-templates.ts';
-import { projectScaffold, componentScaffold } from './infrastructure/project-scaffolds.ts';
-import { readSetupArtifacts } from './infrastructure/setup-artifacts.ts';
-import { generators } from './infrastructure/generators.ts';
-import { MarkdownUiDefinitions } from './infrastructure/ui-definitions.ts';
-import { standardUiCatalog } from './infrastructure/ui-catalog.ts';
-import { componentArtifact, renderUiComponents } from './infrastructure/ui-renderers.ts';
-import { renderUiStories } from './infrastructure/ui-stories.ts';
-import { MarkdownDataSourceDefinitions } from './infrastructure/data-source-definitions.ts';
-import { TypeScriptDataSourceRenderer } from './infrastructure/data-source-generator.ts';
-import { MarkdownInteractionDefinitions } from './infrastructure/interaction-definitions.ts';
-import { builtinSkills } from './infrastructure/skills.ts';
-import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude-agents.ts';
-import { claudeTarget } from './infrastructure/claude-target.ts';
-import { NodeClaudeRuntime } from './infrastructure/claude-runtime.ts';
-import { claudeCommand } from './presentation/claude-commands.ts';
-import { Bases } from './application/bases.ts';
-import { NodeBasesQueryEngine } from './infrastructure/bases.ts';
-import { basesCommand } from './presentation/bases-commands.ts';
-import { commands } from './presentation/commands.ts';
-import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/arguments.ts';
-import { language, Localizer } from './presentation/localization.ts';
+import { AppError, ensure } from './domain/shared/errors.ts';
+import { EventBus } from './application/plugins/events.ts';
+import { registerHostEvents } from './application/plugins/host-events.ts';
+import { invokeCommand } from './application/plugins/invocation.ts';
+import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
+import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
+import { Workspace } from './application/workspace/workspace.ts';
+import { ScopedFiles } from './application/workspace/scoped-files.ts';
+import { Registry, type CommandContext } from './application/plugins/registry.ts';
+import { ProjectService } from './application/projects/projects.ts';
+import { SetupService } from './application/workspace/setup.ts';
+import { UiLibrary } from './application/ui/library.ts';
+import { DataSourceLibrary } from './application/data-sources/library.ts';
+import { InteractionLibrary } from './application/interactions/library.ts';
+import { TemplateInstaller } from './application/templates/templates.ts';
+import { NodeFiles } from './infrastructure/workspace/files.ts';
+import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
+import { loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
+import { loadConfig } from './infrastructure/workspace/config.ts';
+import { MarkdownTemplates } from './infrastructure/templates/markdown.ts';
+import { workflowTemplates } from './infrastructure/templates/workflows.ts';
+import { projectScaffold, componentScaffold } from './infrastructure/projects/scaffolds.ts';
+import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
+import { generators } from './infrastructure/generation/generators.ts';
+import { MarkdownUiDefinitions } from './infrastructure/ui/definitions.ts';
+import { standardUiCatalog } from './infrastructure/ui/catalog.ts';
+import { componentArtifact, renderUiComponents } from './infrastructure/ui/renderers.ts';
+import { renderUiStories } from './infrastructure/ui/stories.ts';
+import { MarkdownDataSourceDefinitions } from './infrastructure/data-sources/definitions.ts';
+import { TypeScriptDataSourceRenderer } from './infrastructure/data-sources/generator.ts';
+import { MarkdownInteractionDefinitions } from './infrastructure/interactions/definitions.ts';
+import { builtinSkills } from './infrastructure/skills/builtin.ts';
+import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude/agents.ts';
+import { claudeTarget } from './infrastructure/claude/target.ts';
+import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
+import { claudeCommand } from './presentation/claude/commands.ts';
+import { Bases } from './application/bases/query.ts';
+import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
+import { basesCommand } from './presentation/bases/commands.ts';
+import { commands } from './presentation/cli/commands.ts';
+import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/cli/arguments.ts';
+import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
+import { language, Localizer } from './presentation/localization/localization.ts';
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -66,8 +69,7 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       const files = await NodeFiles.at(loaded.root, message => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
-      for (const id of ['file.created', 'file.updated', 'file.deleted']) events.define({ id, validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.path === 'string' && typeof v.revision === 'string' && typeof v.bytes === 'number' && v.operation === id.slice(5) });
-      events.define({ id: 'claude.executed', validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.executable === 'string' && typeof v.cwd === 'string' && Number.isInteger(v.exitCode) });
+      registerHostEvents(events);
       let environment: Workspace;
       for (const generator of generators) registry.add(registry.generators, generator);
       for (const skill of builtinSkills) registry.add(registry.skills, skill);
@@ -89,6 +91,7 @@ async function run(): Promise<void> {
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec))));
       if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
+      await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.commands.get(id);
       ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${id}. Run help or schema.`);
@@ -102,14 +105,11 @@ async function run(): Promise<void> {
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
       compact = config.settings.json;
-      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun);
-      // Management and recovery remain available even if saved project context is stale.
-      const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates', 'components', 'data-sources', 'interactions'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
+      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root);
+      const policy = invocationPolicy(id, parsed.args.slice(1), parsed.flags);
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
-      const requestedProject = id === 'make' && ['ui', 'stories', 'data-source'].includes(parsed.args[1] ?? '') ? value(parsed.flags, 'project') : undefined;
-      const claudeWorkspaceCommand = id === 'claude' && (parsed.args.length === 1 || parsed.args[1] === 'capabilities');
-      const project = environmentCommand || claudeWorkspaceCommand ? null : requestedProject !== undefined ? await projects.inspect(requestedProject) : await projects.current();
-      const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun) : environment;
+      const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
+      const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun, resolve(files.root, project.directory)) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
       const context: CommandContext = { workspace, events, claude, ...activeContext, input: async () => {
@@ -118,12 +118,16 @@ async function run(): Promise<void> {
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
         return Buffer.concat(chunks);
       } };
-      // Discovery and setup do not need plugin activation or its side effects.
-      if (!parsed.flags.help && !claudeWorkspaceCommand && !['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup'].includes(id)) await registry.activate(context);
-      const data = parsed.flags.help
-        ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
-        : await command.run(parsed.args.slice(1), parsed.flags, context);
-      result = { ok: true, data: localizer.result(parsed.flags.help ? 'help' : id, data) };
+      const commandId = parsed.flags.help ? 'help' : id;
+      const data = await invokeCommand(events, {
+        command: commandId, root: context.root, workspaceRoot: context.workspaceRoot, dryRun: workspace.dryRun,
+      }, async () => { if (policy.activatePlugins) await registry.activate(context); }, async () => {
+        const output = parsed.flags.help
+          ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
+          : await command.run(parsed.args.slice(1), parsed.flags, context);
+        return localizer.result(commandId, output);
+      });
+      result = { ok: true, data };
     }
   } catch (error) {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;

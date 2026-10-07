@@ -18,7 +18,9 @@
     ],
     "rules": [
       { "from": "domain", "allow": ["domain"] },
-      { "from": "application", "allow": ["domain", "application"] }
+      { "from": "application", "allow": ["domain", "application"] },
+      { "from": "infrastructure", "allow": ["domain", "application", "infrastructure"] },
+      { "from": "presentation", "allow": ["domain", "application", "presentation"] }
     ]
   }
 }

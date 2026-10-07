@@ -1,13 +1,13 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudeSettings } from '../../src/application/claude-settings.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
+import { ClaudeSettings } from '../../src/application/claude/settings.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const path = '.claude/settings.json';

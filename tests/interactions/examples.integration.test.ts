@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
-import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interaction-definitions.ts';
-import { validateUiLibrary } from '../../src/domain/ui-library.ts';
+import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
+import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
+import { validateUiLibrary } from '../../src/domain/ui/library.ts';
 
 it('keeps the interactive-form tutorial examples schema-valid and mutually compatible', async () => {
   const componentPath = 'examples/interactions/components/contact-request.md';

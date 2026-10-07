@@ -1,17 +1,17 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SetupService } from '../../src/application/setup.ts';
-import { TemplateInstaller } from '../../src/application/templates.ts';
-import type { AppConfig } from '../../src/application/config.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates.ts';
-import { workflowTemplates } from '../../src/infrastructure/workflow-templates.ts';
+import { SetupService } from '../../src/application/workspace/setup.ts';
+import { TemplateInstaller } from '../../src/application/templates/templates.ts';
+import type { AppConfig } from '../../src/application/workspace/config.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
+import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
+import { workflowTemplates } from '../../src/infrastructure/templates/workflows.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const documents = new ObsidianDocuments(), templates = new MarkdownTemplates();

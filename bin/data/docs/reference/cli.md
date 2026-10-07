@@ -8,7 +8,7 @@ Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--lang en
 
 ## Output and errors
 
-Every built-in invocation emits one JSON document on stdout, with no prompts or ANSI sequences:
+Every built-in invocation emits one JSON document on stdout, with no prompts or ANSI sequences. This envelope example abbreviates the event list:
 
 ```json
 {"ok":true,"data":{"dryRun":false,"changes":[]},"context":{"workspaceRoot":"/workspace","root":"/workspace","project":null},"events":[],"warnings":[]}
@@ -18,7 +18,9 @@ Failures have `ok:false` and `error:{code,message}` with optional structured `er
 
 `context` identifies the executed scope, rather than just the saved selection: `workspaceRoot` is the environment root, `root` is the root used for this command, and `project` is the selected project metadata or `null` for workspace scope. Check it before interpreting relative paths in changes or events. `project current` reports the saved selection in `data.project`; workspace commands can have `context.project:null` while a project is open. Version output and failures before scope resolution may have no context.
 
-A listener warning does not make a committed write fail. Check `events` and read the result before retrying anything after a warning. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope schema is versioned by `schema.data.apiVersion` (currently 1).
+A listener warning does not make a committed write fail. Check the original `error`, result details and committed `file.*` events before retrying after a warning or failure: activation, execution or result serialization can fail after earlier work changed state. Reread affected files and their revisions rather than assuming failure rolled everything back. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope schema is versioned by `schema.data.apiVersion` (currently 1).
+
+`events` includes command, workspace, Claude and plugin lifecycle notifications as well as file commits and custom plugin events. Started and terminal command/workspace/Claude phases share an invocation-local `operationId`; workspace `root` and Claude `cwd` identify their scope. Dry runs emit phase records but no file-commit records. Direct repository calls and arbitrary plugin code are outside workspace phase coverage. Event payloads summarize failures with codes and status, preserving detailed errors in the response. History retains at most 1,000 records from this invocation, with a warning when later live notifications are omitted. See [host events and replay](plugins.md#host-events-and-correlation).
 
 ## Commands
 
@@ -46,7 +48,7 @@ A listener warning does not make a committed write fail. Check `events` and read
 | `make stories` | `<id> [--framework target] [--library directory] [--interactions-library directory] [--project id] [--out directory] [--stories-out directory] [--revisions-from file.json] [--plan] [--plan-out file.json] [--check]` | Generate stories referring to existing UI at `--out` or its default; stories go to `--stories-out` or its default |
 | `data-sources` | `list / init / inspect <id> / validate / create <id> / import / export [--library directory]` | Manage workspace REST/local JSON source definitions; create accepts `--kind`, import/export accept `--from`/`--out` |
 | `make data-source` | `<id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from file.json / --plan / --plan-out file.json / --check]` | Generate TypeScript adapters and deterministic test data with guarded regeneration and drift checks; see [data-source reference](data-sources.md) |
-| `events` | none | Registered events and delivery semantics |
+| `events` | none | Registered event IDs, descriptions and invocation delivery/replay semantics |
 | `plugins` | none | Enabled manifests loaded from shared workspace `bin/plugins` |
 | `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
 | `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md) |

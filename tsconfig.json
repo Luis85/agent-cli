@@ -25,6 +25,6 @@
     "vitest.config.ts"
   ],
   "exclude": [
-    "src/infrastructure/scripts"
+    "scripts"
   ]
 }

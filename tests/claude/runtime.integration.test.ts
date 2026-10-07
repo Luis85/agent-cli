@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { NodeClaudeRuntime } from '../../src/infrastructure/claude-runtime.ts';
+import { NodeClaudeRuntime } from '../../src/infrastructure/claude/runtime.ts';
 
 const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
@@ -117,7 +117,7 @@ describe('installed Claude CLI adapter', () => {
   });
 
   it.skipIf(process.platform === 'win32').each(['SIGINT', 'SIGTERM'] as const)('stops native work when the host receives %s', async signal => {
-    const adapter = new URL('../../src/infrastructure/claude-runtime.ts', import.meta.url).href;
+    const adapter = new URL('../../src/infrastructure/claude/runtime.ts', import.meta.url).href;
     const { script, cwd } = await fixture(`
       import { NodeClaudeRuntime } from ${JSON.stringify(adapter)};
       try {

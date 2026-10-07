@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
 import { chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -21,12 +22,12 @@ describe('portable native Claude management', () => {
     const preview = cli(['agents', 'create', 'reviews/security', '--stdin', '--dry-run'], source);
     expect(preview.status).toBe(0);
     expect(preview.body.data).toMatchObject({ dryRun: true, target: { scope: 'project', directory: join(selected, '.claude') } });
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(selected, '.claude/agents/reviews/security.md'))).rejects.toMatchObject({ code: 'ENOENT' });
     const created = cli(['agents', 'create', 'reviews/security', '--stdin'], source);
     expect(created.status).toBe(0);
     expect(created.body.context.root).toBe(selected);
-    expect(created.body.events.map((event: { id: string }) => event.id)).toEqual(['file.created']);
+    expect(committedEvents(created.body.events).map((event: { id: string }) => event.id)).toEqual(['file.created']);
     expect(await readFile(join(selected, '.claude/agents/reviews/security.md'), 'utf8')).toBe(source);
     for (const directory of [root, join(root, 'projects/beta')]) await expect(readFile(join(directory, '.claude/agents/reviews/security.md'))).rejects.toMatchObject({ code: 'ENOENT' });
     const before = cli(['agents', 'inspect', 'reviews/security']).body.data;
@@ -37,9 +38,9 @@ describe('portable native Claude management', () => {
     expect(cli(['agents', 'remove', 'reviews/security', '--if-match', before.revision]).body.error.code).toBe('CONFLICT');
     const current = cli(['agents', 'inspect', 'reviews/security']).body.data;
     expect(cli(['agents', 'export', 'reviews/security']).body.data.session.reviewer.prompt).toContain('$ARGUMENTS');
-    expect(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision, '--dry-run']).body.events).toEqual([]);
+    expect(committedEvents(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision, '--dry-run']).body.events)).toEqual([]);
     expect(await readFile(join(selected, current.path), 'utf8')).toBe(next);
-    expect(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision]).body.events[0].id).toBe('file.deleted');
+    expect(committedEvents(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision]).body.events)[0]?.id).toBe('file.deleted');
     await expect(readFile(join(selected, current.path))).rejects.toMatchObject({ code: 'ENOENT' });
   }, 20000);
 
@@ -82,7 +83,7 @@ describe('portable native Claude management', () => {
     const preview = cli([...args, '--dry-run']);
     expect(preview.status).toBe(0);
     expect(preview.body.data).toMatchObject({ dryRun: true, outputRoot: selected, preview: [{ path: out, content: expect.stringContaining('name: reviewer') }] });
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(selected, out))).rejects.toMatchObject({ code: 'ENOENT' });
     const exported = cli(args);
     expect(exported.status).toBe(0);
@@ -110,7 +111,7 @@ describe('portable native Claude management', () => {
     expect(replacementPreview.status).toBe(0);
     expect(replacementPreview.body.data.preview[0].content).toContain('Review release changes');
     expect(await readFile(join(selected, out), 'utf8')).toBe(exported.body.data.content);
-    expect(replacementPreview.body.events).toEqual([]);
+    expect(committedEvents(replacementPreview.body.events)).toEqual([]);
     const replaced = cli([...args, '--if-match', destinationRevision]);
     expect(replaced.status).toBe(0);
     expect(replaced.body.data.changes[0]).toMatchObject({ path: out, operation: 'updated' });
@@ -124,7 +125,7 @@ describe('portable native Claude management', () => {
   it('creates native plugin assets and round-trips binary files without executing plugin code', async () => {
     const { root, cli } = await workspace('plugin-assets');
     const manifest = { name: 'team-tools', description: 'Team helpers', version: '1.0.0', future: { retain: true } };
-    expect(cli(['plugins', 'create', 'plugins/team', '--stdin', '--dry-run'], JSON.stringify(manifest)).body.events).toEqual([]);
+    expect(committedEvents(cli(['plugins', 'create', 'plugins/team', '--stdin', '--dry-run'], JSON.stringify(manifest)).body.events)).toEqual([]);
     await expect(readFile(join(root, 'plugins/team/.claude-plugin/plugin.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(cli(['plugins', 'create', 'plugins/team', '--stdin'], JSON.stringify(manifest)).status).toBe(0);
     expect(cli(['agents', 'create', 'review', '--scope', 'plugin', '--directory', 'plugins/team', '--stdin'], source).status).toBe(0);
@@ -152,7 +153,7 @@ describe('portable native Claude management', () => {
     expect(preview.status).toBe(0);
     expect(preview.body.data.target).toMatchObject({ scope: 'user', directory });
     expect(preview.body.context.root).toBe(root);
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readdir(join(fixture.project, 'isolated-user-config'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(cli(['agents', 'create', 'review', ...flags, '--stdin'], source).status).toBe(0);
     expect(await readFile(join(directory, 'agents/review.md'), 'utf8')).toBe(source);

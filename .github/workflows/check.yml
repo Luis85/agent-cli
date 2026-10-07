@@ -35,7 +35,7 @@ jobs:
         run: |
           git diff --exit-code -- bin
           test -z "$(git ls-files --others --exclude-standard bin)"
-      - run: node src/infrastructure/scripts/release.mjs
+      - run: node scripts/release.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: forge-node-${{ matrix.node }}

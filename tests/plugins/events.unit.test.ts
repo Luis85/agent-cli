@@ -1,6 +1,6 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { describe, expect, it } from 'vitest';
-import { EventBus } from '../../src/application/events.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
 const create = () => {
   const bus = new EventBus(new NodeEventScope()); bus.define({ id: 'task.changed', validate: (v): v is { id: string } => !!v && typeof v === 'object' && 'id' in v && typeof v.id === 'string' }); return bus;
 };

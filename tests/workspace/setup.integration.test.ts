@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { SetupService } from '../../src/application/setup.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { EventBus } from '../../src/application/events.ts';
-import type { AppConfig } from '../../src/application/config.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates.ts';
-import { readSetupArtifacts } from '../../src/infrastructure/setup-artifacts.ts';
+import { SetupService } from '../../src/application/workspace/setup.ts';
+import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import type { AppConfig } from '../../src/application/workspace/config.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
+import { readSetupArtifacts } from '../../src/infrastructure/workspace/setup-artifacts.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))); });

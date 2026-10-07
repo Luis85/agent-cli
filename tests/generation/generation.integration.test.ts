@@ -1,13 +1,13 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GenerationService } from '../../src/application/generation.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents.ts';
+import { GenerationService } from '../../src/application/generation/plans.ts';
+import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
 
 let root: string, files: NodeFiles, workspace: Workspace;
 const write = (path: string, content: string) => ({ path, bytes: encodeText(content) });
