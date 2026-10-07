@@ -1,5 +1,6 @@
-import { ensure, isRecord } from '../domain/errors.ts';
+import { ensure } from '../domain/errors.ts';
 import { isStructured, type WriteRequest } from '../domain/file.ts';
+import { snapshotWriteRequests } from '../domain/write-plan.ts';
 import type { FileRepository, DocumentCodec } from './ports.ts';
 import type { EventBus } from './events.ts';
 
@@ -12,9 +13,9 @@ export class Workspace {
     return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
   }
   async write(writes: readonly WriteRequest[]) {
-    ensure(Array.isArray(writes) && Array.from(writes).every(write => isRecord(write) && typeof write.path === 'string' && write.bytes instanceof Uint8Array && (write.expectedRevision === undefined || typeof write.expectedRevision === 'string')), 'INVALID_PLAN', 'Write plans must contain file requests with Uint8Array bytes.');
-    for (const write of writes) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-    const changes = await this.files.writeBatch(writes, this.dryRun);
+    const requests = snapshotWriteRequests(writes);
+    for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
+    const changes = await this.files.writeBatch(requests, this.dryRun);
     if (!this.dryRun) for (const change of changes) {
       try { await this.events.emit(`file.${change.operation}`, change); }
       catch (error) { this.events.warn(`Committed ${change.path}; file notification failed: ${error instanceof Error ? error.message : String(error)}`); }

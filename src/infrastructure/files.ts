@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { AppError, ensure, isRecord } from '../domain/errors.ts';
+import { AppError, ensure } from '../domain/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../domain/file.ts';
+import { snapshotWriteRequests } from '../domain/write-plan.ts';
 import type { FileRepository } from '../application/ports.ts';
 
 export const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -10,8 +11,8 @@ const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'E
 interface StoredFile { bytes: Buffer; mode: number; revision: string }
 
 export class NodeFiles implements FileRepository {
-  private constructor(readonly root: string) {}
-  static async at(root: string): Promise<NodeFiles> { return new NodeFiles(await realpath(resolve(root))); }
+  private constructor(readonly root: string, private readonly warn: (message: string) => void) {}
+  static async at(root: string, warn: (message: string) => void = () => {}): Promise<NodeFiles> { return new NodeFiles(await realpath(resolve(root)), warn); }
   async resolvePath(path: string): Promise<string> {
     const parts = vaultPath(path).split('/');
     let current = this.root;
@@ -58,9 +59,7 @@ export class NodeFiles implements FileRepository {
     ensure((await this.stored(path))?.revision === expected, 'CONFLICT', `File changed; read again before writing: ${path}`);
   }
   async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
-    ensure(Array.isArray(writes) && Array.from(writes).every(write => isRecord(write) && typeof write.path === 'string' && write.bytes instanceof Uint8Array && (write.expectedRevision === undefined || typeof write.expectedRevision === 'string')), 'INVALID_PLAN', 'Write plans must contain file requests with Uint8Array bytes.');
-    // Plugins retain their input objects: freeze the plan's values before the first await.
-    const requests = writes.map(write => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
+    const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0 && new Set(requests.map(w => w.path)).size === requests.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
     ensure(!requests.some(a => requests.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
     const lock = join(this.root, '.agent-cli.lock');
@@ -105,8 +104,16 @@ export class NodeFiles implements FileRepository {
       for (const directory of createdDirectories.reverse()) await rmdir(directory).catch(() => {});
       if (failures.length) throw new AppError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
       throw error;
-    } finally { if (locked) await rm(lock, { force: true }); }
+    } finally {
+      if (locked) try { await this.releaseLock(lock); }
+      catch (error) {
+        // A cleanup failure cannot erase committed changes or the primary error.
+        try { this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${error instanceof Error ? error.message : String(error)}`); }
+        catch { /* Diagnostics must not change the write outcome. */ }
+      }
+    }
   }
+  private async releaseLock(lock: string): Promise<void> { await rm(lock, { force: true }); }
   private async replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> {
     const temp = join(resolve(target, '..'), `.agent-cli-tmp-${randomUUID()}`);
     let created = false;

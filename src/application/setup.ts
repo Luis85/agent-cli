@@ -3,12 +3,13 @@ import { vaultPath, type WriteRequest } from '../domain/file.ts';
 import type { AppConfig } from './config.ts';
 import type { Skill } from './plugins.ts';
 import type { Workspace } from './workspace.ts';
+import type { TemplateArtifact } from './templates.ts';
 
 export interface SetupArtifact { path: string; bytes: Uint8Array }
 const encode = (value: string) => new TextEncoder().encode(value);
 const instructions = `# The Forge workflow
 
-Read bin/data/README.md and bin/data/docs/cli.md before using the CLI.
+Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
 Run \`node bin/app.js help\` or \`node bin/app.js schema --json\` to discover commands.
 Environment settings and enabled plugins live in bin/config.json.
 Shared templates live in bin/templates and plugins live in bin/plugins.
@@ -55,6 +56,7 @@ export class SetupService {
     private readonly config: AppConfig,
     private readonly artifacts: readonly SetupArtifact[],
     private readonly skills: readonly Skill[],
+    private readonly templates: readonly TemplateArtifact[] = [],
   ) {}
 
   async run() {
@@ -64,6 +66,7 @@ export class SetupService {
       { path: 'bin/config.json', bytes: encode(JSON.stringify(this.config, null, 2) + '\n') },
       ...this.skills.map(skill => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode(skill.content) })),
       { path: 'bin/templates/entity.md', bytes: encode(entityTemplate) },
+      ...this.templates.map(template => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode(template.content) })),
       { path: 'bin/plugins/.gitkeep', bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
       { path: 'AGENTS.md', bytes: encode(instructions) },
@@ -84,6 +87,10 @@ export class SetupService {
     }
     // An empty plan is a successful no-op, not an invalid workspace write.
     const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
-    return { ...result, skipped };
+    return { ...result, skipped, nextSteps: [
+      { scope: 'workspace', command: 'node bin/app.js templates list', purpose: 'Discover the installed editable planning templates.' },
+      { scope: 'workspace', command: 'node bin/app.js templates inspect workflow/prd.md', purpose: 'Inspect planning inputs before generating a requirements document.' },
+      { scope: 'workspace', command: 'node bin/app.js project list', purpose: 'Find a project, then explicitly open it before generating project files.' },
+    ] };
   }
 }

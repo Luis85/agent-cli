@@ -82,7 +82,12 @@ export class ProjectService {
     ensure(!(await this.files.list()).some(path => path === directory || path.startsWith(directory + '/')), 'PROJECT_EXISTS', `Project directory already contains files: ${directory}`);
     const plan = this.scaffolder.project(name, this.projectsDirectory);
     const result = await this.workspace.write(plan);
-    return { project: { schemaVersion: 1, name, type: 'library', directory }, ...result, ...this.preview(plan) };
+    return { project: { schemaVersion: 1, name, type: 'library', directory }, ...result, ...this.preview(plan), nextSteps: [
+      { scope: 'workspace', command: `node bin/app.js project open ${name}` },
+      { scope: 'project', directory, command: 'npm install' },
+      { scope: 'project', directory, command: 'npm run check' },
+      { scope: 'project', directory, command: 'npm run dev' },
+    ] };
   }
 
   async component(name: string, componentName: string, kind: ComponentKind = 'domain') {
