@@ -45,6 +45,7 @@ describe('built-in localization catalog coverage', () => {
         get projects(): never { throw new Error('Catalog must not access projects'); },
         get uiLibrary(): never { throw new Error('Catalog must not access UI library'); },
         get dataSources(): never { throw new Error('Catalog must not access data sources'); },
+        get interactions(): never { throw new Error('Catalog must not access interactions'); },
         async installTemplates() { throw new Error('Catalog must not install templates'); },
         async setup() { throw new Error('Catalog must not run setup'); },
       };

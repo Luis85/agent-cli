@@ -1,4 +1,5 @@
-import type { UiValue } from './ui.ts';
+import { ensure } from './errors.ts';
+import type { UiDefinition, UiProp, UiState, UiValue } from './ui.ts';
 
 /** HTML semantics and prop syntax shared by validation and every target renderer. */
 export const uiVoidTags: ReadonlySet<string> = new Set('area base br col embed hr img input link meta param source track wbr'.split(' '));
@@ -8,7 +9,7 @@ export type UiBindingPart = { literal: string } | { prop: string };
 export function uiBindingParts(value: string): UiBindingPart[] {
   const parts: UiBindingPart[] = [];
   let last = 0;
-  for (const match of value.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
+  for (const match of value.matchAll(/\{\{\s*((?:state\.)?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
     if (match.index > last) parts.push({ literal: value.slice(last, match.index) });
     parts.push({ prop: match[1]! });
     last = match.index + match[0].length;
@@ -29,4 +30,16 @@ export function uiWholeBinding(value: UiValue): string | undefined {
 
 export function uiHasMalformedBinding(value: UiValue): boolean {
   return typeof value === 'string' && uiBindingParts(value).some(part => 'literal' in part && /\{\{|\}\}/.test(part.literal));
+}
+
+export function uiBindingSource(definition: UiDefinition, name: string): UiProp | UiState | undefined {
+  const fields = name.startsWith('state.') ? definition.state ?? {} : definition.props;
+  const key = name.startsWith('state.') ? name.slice(6) : name;
+  return Object.hasOwn(fields, key) ? fields[key] : undefined;
+}
+
+/** Bindings are references to declared scalar fields, never executable expressions. */
+export function validateUiBindings(definition: UiDefinition, value: UiValue): void {
+  for (const name of uiBindings(value)) ensure(uiBindingSource(definition, name), 'INVALID_UI', `${definition.id} binds unknown field ${name}.`);
+  ensure(!uiHasMalformedBinding(value), 'INVALID_UI', `${definition.id} contains a malformed binding.`);
 }

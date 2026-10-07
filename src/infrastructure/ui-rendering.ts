@@ -13,23 +13,25 @@ export function componentArtifact(definition: UiDefinition, framework: UiFramewo
   return { fileName: `${definition.id}.${extension}`, exportName: framework === 'angular' ? `${className(definition)}Component` : ['html', 'htmx', 'vanilla'].includes(framework) ? `create${className(definition)}` : className(definition), namedExport: framework === 'angular' };
 }
 
-export function expression(value: UiValue, scope = 'props'): string {
+export function expression(value: UiValue, scope = 'props', stateScope = '_uiState'): string {
   if (typeof value !== 'string') return json(value);
   const parts = pieces(value);
-  if (parts.length === 1 && 'prop' in parts[0]!) return `${scope}[${json(parts[0].prop)}]`;
-  return parts.map(part => 'literal' in part ? json(part.literal) : `('' + (${scope}[${json(part.prop)}] ?? ''))`).join(' + ');
+  const binding = (name: string) => name.startsWith('state.') ? `${stateScope}[${json(name.slice(6))}]` : `${scope}[${json(name)}]`;
+  if (parts.length === 1 && 'prop' in parts[0]!) return binding(parts[0].prop);
+  return parts.map(part => 'literal' in part ? json(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(' + ');
 }
 
-export function evaluate(value: UiValue, props: Record<string, UiValue>): UiValue | undefined {
+export function evaluate(value: UiValue, props: Record<string, UiValue>, state: Record<string, UiValue> = {}): UiValue | undefined {
   if (typeof value !== 'string') return value;
   const parts = pieces(value);
-  if (parts.length === 1 && 'prop' in parts[0]!) return props[parts[0].prop];
-  return parts.map(part => 'literal' in part ? part.literal : String(props[part.prop] ?? '')).join('');
+  const binding = (name: string) => name.startsWith('state.') ? state[name.slice(6)] : props[name];
+  if (parts.length === 1 && 'prop' in parts[0]!) return binding(parts[0].prop);
+  return parts.map(part => 'literal' in part ? part.literal : String(binding(part.prop) ?? '')).join('');
 }
 
-export function textExpression(value: string, scope = 'props'): string {
+export function textExpression(value: string, scope = 'props', stateScope = '_uiState'): string {
   const parts = pieces(value);
-  const result = expression(value, scope);
+  const result = expression(value, scope, stateScope);
   return parts.length === 1 && 'prop' in parts[0]! ? `(${result} ?? '')` : result;
 }
 

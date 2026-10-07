@@ -10,6 +10,7 @@ For first-time users and agents learning the workflow. Follow each tutorial in o
 | --- | --- |
 | [Getting started](tutorials/getting-started.md) | A workspace, managed project and safely created planning note |
 | [Your first Markdown-defined UI](tutorials/first-ui.md) | A reusable surface component and composed dashboard generated from Markdown |
+| [An interactive form](tutorials/interactive-form.md) | Component state, reusable event/action definitions and browser behavior |
 | [From idea to production](tutorials/idea-to-production.md) | A worked path through discovery, requirements, design, implementation, testing and production readiness |
 
 The [idea-to-production example pack](../examples/idea-to-production/README.md) supplies editable stage artifacts, prompts and component definitions used by the longer tutorial.
@@ -22,6 +23,7 @@ For users who already know their goal. Each guide states the needed context and 
 | --- | --- |
 | Select a project and control file scope | [Set up and manage projects](how-to/manage-projects.md) |
 | Change paths, transfer definitions or update generated UI | [Maintain and regenerate components](how-to/manage-components.md) |
+| Add and maintain reusable browser behavior | [Manage interaction definitions](how-to/manage-interactions.md) |
 | Generate editable discovery and delivery documents | [Use workflow templates](how-to/use-workflow-templates.md) |
 | Define REST or local JSON sources and generate adapters | [Manage data sources](how-to/manage-data-sources.md) |
 | Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
@@ -39,6 +41,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [CLI language](reference/language.md) | English/German selection, translated guidance and stable machine output |
 | [Configuration](reference/configuration.md) | Defaults, precedence, paths and workspace/project scope |
 | [Component definitions and targets](reference/ui-components.md) | YAML fields, composition, bindings, output artifacts and target dependencies |
+| [Interactions](reference/interactions.md) | Events, ordered actions, component state and executable generated handlers |
 | [Storybook](reference/storybook.md) | CSF generation, metadata and native extension modules |
 | [Data sources](reference/data-sources.md) | Declarative source schemas, generated adapters and configuration |
 | [Forms](reference/forms.md) | Typed form model, validation and HTML renderer APIs |

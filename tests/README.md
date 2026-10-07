@@ -12,6 +12,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
+| [interactions](interactions/) | Declarative event/action schemas, component attachment, generated behavior, and portable workflows |
 | [plugins](plugins/) | Plugin lifecycle, generators, events, and skill installation |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |

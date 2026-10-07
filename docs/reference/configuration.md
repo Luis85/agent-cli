@@ -12,6 +12,9 @@ The shipped configuration is:
   "paths": {
     "projects": "projects",
     "components": "components",
+    "interactions": "interactions",
+    "interactionImports": "imports/interactions",
+    "interactionExports": "exports/interactions",
     "ui": "src/ui",
     "stories": "stories",
     "componentImports": "imports/components",
@@ -52,7 +55,10 @@ UI generation adds configurable paths without changing the fixed `bin` layout:
 
 | Setting | Default | Scope and override |
 | --- | --- | --- |
-| `paths.components` | `components` | Workspace library; `--library` |
+| `paths.components` | `components` | Workspace component library; `--library` |
+| `paths.interactions` | `interactions` | Workspace interaction library; management `--library`, UI/component `--interactions-library` |
+| `paths.interactionImports` | `imports/interactions` | Workspace import source; `interactions import --from` |
+| `paths.interactionExports` | `exports/interactions` | Workspace export destination; `interactions export --out` |
 | `paths.ui` | `src/ui` | Active project or workspace; `make ui/stories --out` |
 | `paths.stories` | `stories` | Active project or workspace; `--stories-out` |
 | `paths.componentImports` | `imports/components` | Workspace import source; `components import --from` |

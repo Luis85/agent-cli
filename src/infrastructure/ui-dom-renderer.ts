@@ -1,28 +1,32 @@
 import { componentDependencies } from '../domain/ui-library.ts';
 import type { UiDefinition, UiNode, UiValue } from '../domain/ui.ts';
+import type { InteractionDefinition } from '../domain/interaction.ts';
 import { uiVoidTags as voidTags, uiBooleanAttributes as booleanAttrs } from '../domain/ui-syntax.ts';
 import { ordered, html, defaults, evaluate, json, expression, defaultAssignments, componentArtifact, className } from './ui-rendering.ts';
+import { hasReactiveDom, reactiveDomModule } from './ui-dom-interactions.ts';
+import { stateDefaults } from './ui-interaction-rendering.ts';
 
-export function staticMarkup(node: UiNode, props: Record<string, UiValue>, definitions: Map<string, UiDefinition>, children = ''): string {
+export function staticMarkup(node: UiNode, props: Record<string, UiValue>, definitions: Map<string, UiDefinition>, children = '', state: Record<string, UiValue> = {}): string {
   if ('slot' in node) return children;
-  const childMarkup = (node.children ?? []).map(child => staticMarkup(child, props, definitions, children)).join('');
+  const childMarkup = (node.children ?? []).map(child => staticMarkup(child, props, definitions, children, state)).join('');
   if ('component' in node) {
     const definition = definitions.get(node.component)!;
     const passed = Object.fromEntries(ordered(node.props ?? {}).flatMap(([key, value]) => {
-      const evaluated = evaluate(value, props);
+      const evaluated = evaluate(value, props, state);
       return evaluated === undefined ? [] : [[key, evaluated]];
     }));
-    return staticMarkup(definition.root, { ...defaults(definition), ...passed }, definitions, childMarkup);
+    return staticMarkup(definition.root, { ...defaults(definition), ...passed }, definitions, childMarkup, stateDefaults(definition));
   }
   const attrs = ordered(node.attrs ?? {}).map(([key, original]) => {
-    const value = evaluate(original, props);
+    const value = evaluate(original, props, state);
     if (value == null || (booleanAttrs.has(key.toLowerCase()) && value === false)) return '';
     return booleanAttrs.has(key.toLowerCase()) && value === true ? ` ${key}` : ` ${key}="${html(value)}"`;
   }).join('');
-  return `<${node.tag}${attrs}>${voidTags.has(node.tag) ? '' : `${node.text === undefined ? '' : html(evaluate(node.text, props))}${childMarkup}</${node.tag}>`}`;
+  return `<${node.tag}${attrs}>${voidTags.has(node.tag) ? '' : `${node.text === undefined ? '' : html(evaluate(node.text, props, state))}${childMarkup}</${node.tag}>`}`;
 }
 
-export function domModule(definition: UiDefinition, definitions: Map<string, UiDefinition>): string {
+export function domModule(definition: UiDefinition, definitions: Map<string, UiDefinition>, interactions: readonly InteractionDefinition[] = []): string {
+  if (hasReactiveDom(definitions)) return reactiveDomModule(definition, interactions);
   const refs = componentDependencies(definition.root);
   const aliases = new Map(refs.map((id, index) => [id, `UiChild_${index}`]));
   const imports = refs.map(id => `import ${aliases.get(id)} from ${json(`./${definitions.get(id)!.id}.js`)};`).join('\n');

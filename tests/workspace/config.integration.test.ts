@@ -8,7 +8,7 @@ beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-config-')); 
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const configPath = () => join(root, 'bin/config.json');
 const load = (extra: { root?: string; cwd?: string } = {}) => loadConfig({ defaultPath: configPath(), cwd: root, ...extra });
-const uiPaths = { components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources' };
+const uiPaths = { components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' };
 describe('Forge configuration', () => {
   it('resolves the environment root from its config and normalizes the projects directory', async () => {
     await writeFile(configPath(), JSON.stringify({ paths: { projects: 'src/' }, settings: { json: true } }));

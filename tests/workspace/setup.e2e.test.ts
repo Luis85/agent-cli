@@ -20,7 +20,7 @@ it('sets up a portable installation idempotently while preserving user-owned fil
     const setup = cli(['setup'], undefined, invocation);
     expect(setup.status).toBe(0); expect(setup.body.events.length).toBeGreaterThan(0);
     expect(await readFile(join(installation, 'AGENTS.md'), 'utf8')).toBe('# Existing engineering process\n');
-    expect(JSON.parse(await readFile(join(installation, 'bin/config.json'), 'utf8')).paths).toEqual({ projects: 'projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources' });
+    expect(JSON.parse(await readFile(join(installation, 'bin/config.json'), 'utf8')).paths).toEqual({ projects: 'projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' });
     expect(await readFile(join(installation, '.agents/skills/forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
     expect(await readFile(join(installation, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
     const repeated = cli(['setup'], undefined, invocation);

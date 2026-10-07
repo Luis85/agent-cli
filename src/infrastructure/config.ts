@@ -14,6 +14,7 @@ const configSchema = z.strictObject({
     projects: relativePath.refine(value => value.toLowerCase() !== 'bin' && !value.toLowerCase().startsWith('bin/'), 'Projects must be outside the fixed bin directory.').default('projects'),
     components: relativePath.default('components'), ui: relativePath.default('src/ui'), stories: relativePath.default('stories'),
     componentImports: relativePath.default('imports/components'), componentExports: relativePath.default('exports/components'),
+    interactions: relativePath.default('interactions'), interactionImports: relativePath.default('imports/interactions'), interactionExports: relativePath.default('exports/interactions'),
     dataSources: relativePath.default('data-sources'), dataGenerated: relativePath.default('src/data-sources'),
     dataFixtures: relativePath.default('test-data'), dataImports: relativePath.default('imports/data-sources'), dataExports: relativePath.default('exports/data-sources'),
   }).prefault({}),

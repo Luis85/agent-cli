@@ -41,6 +41,16 @@ describe('workspace data-source library lifecycle', () => {
     await library().export('custom/library', 'outgoing');
     expect((await files.read('outgoing/nested/products.md')).bytes).toEqual((await files.read('incoming/nested/products.md')).bytes);
   });
+  it('rejects overlapping transfer directories without corrupting recursively discovered definitions', async () => {
+    await library().create('sources', 'products');
+    const before = await files.list();
+    for (const output of ['sources', 'sources/nested']) {
+      await expect(library().export('sources', output)).rejects.toMatchObject({ code: 'INVALID_PATH' });
+      await expect(library().import('sources', output)).rejects.toMatchObject({ code: 'INVALID_PATH' });
+    }
+    expect(await files.list()).toEqual(before);
+    expect((await library().list('sources')).map(source => source.id)).toEqual(['products']);
+  });
   it('rejects duplicates, malformed definitions and collisions before any destination writes', async () => {
     await library().create('incoming', 'products');
     await library().create('library/nested', 'products');

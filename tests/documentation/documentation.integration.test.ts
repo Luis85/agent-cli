@@ -22,7 +22,7 @@ async function markdownFiles(directory: string): Promise<string[]> {
 }
 
 it('keeps Diátaxis, distributed skills, and worked-example navigation connected after packaging moves', async () => {
-  const files = ['README.md', 'AGENTS.md', 'bin/data/README.md', ...await markdownFiles('bin/data/docs'), ...await markdownFiles('bin/data/examples/idea-to-production'), ...await markdownFiles('docs'), ...await markdownFiles('bin/skills'), ...await markdownFiles('examples/idea-to-production')];
+  const files = ['README.md', 'AGENTS.md', 'bin/data/README.md', ...await markdownFiles('bin/data/docs'), ...await markdownFiles('bin/data/examples'), ...await markdownFiles('docs'), ...await markdownFiles('bin/skills'), ...await markdownFiles('examples')];
   const failures: string[] = [];
   for (const path of files) {
     const tree = unified().use(remarkParse).parse(await readFile(path, 'utf8'));

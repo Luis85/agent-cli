@@ -57,7 +57,7 @@ async function compileTypescript(framework: 'react' | 'angular') {
     await mkdir(dirname(path), { recursive: true }); await writeFile(path, file.bytes);
   }
   const program = ts.createProgram(files.map(file => join(directory, file.path)), {
-    strict: true, noEmit: true, skipLibCheck: true, types: [], experimentalDecorators: true,
+    strict: true, noEmit: true, noUnusedLocals: true, noUnusedParameters: true, skipLibCheck: true, types: [], experimentalDecorators: true,
     module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, target: ts.ScriptTarget.ES2022,
     jsx: ts.JsxEmit.ReactJSX,
   });

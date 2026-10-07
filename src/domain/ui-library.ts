@@ -1,13 +1,15 @@
 import { ensure } from './errors.ts';
 import type { UiDefinition, UiNode, UiValue } from './ui.ts';
-import { uiBindings, uiWholeBinding, uiHasMalformedBinding } from './ui-syntax.ts';
+import type { InteractionDefinition } from './interaction.ts';
+import { validateUiInteractions } from './ui-interactions.ts';
+import { uiBindings, uiWholeBinding, uiBindingSource, validateUiBindings } from './ui-syntax.ts';
 
 function checkValue(value: UiValue, type: string, label: string) {
   ensure(typeof value === type, 'INVALID_UI', `${label} must be ${type}.`);
 }
 
 /** Validate the complete graph before rendering or accepting imported definitions. */
-export function validateUiLibrary(definitions: readonly UiDefinition[]): void {
+export function validateUiLibrary(definitions: readonly UiDefinition[], interactions: readonly InteractionDefinition[] = []): void {
   const byId = new Map<string, UiDefinition>();
   for (const definition of definitions) {
     ensure(!byId.has(definition.id), 'DUPLICATE_UI_COMPONENT', `Duplicate component ${definition.id}.`);
@@ -17,10 +19,7 @@ export function validateUiLibrary(definitions: readonly UiDefinition[]): void {
   for (const definition of definitions) {
     const references = new Set<string>(); edges.set(definition.id, references);
     let slots = 0;
-    const checkBinding = (value: UiValue) => {
-      for (const name of uiBindings(value)) ensure(Object.hasOwn(definition.props, name), 'INVALID_UI', `${definition.id} binds unknown prop ${name}.`);
-      ensure(!uiHasMalformedBinding(value), 'INVALID_UI', `${definition.id} contains a malformed prop binding.`);
-    };
+    const checkBinding = (value: UiValue) => validateUiBindings(definition, value);
     const walk = (node: UiNode): void => {
       if ('slot' in node) {
         slots++;
@@ -40,9 +39,9 @@ export function validateUiLibrary(definitions: readonly UiDefinition[]): void {
           checkBinding(value);
           const binding = uiWholeBinding(value);
           if (binding) {
-            const source = definition.props[binding]!;
+            const source = uiBindingSource(definition, binding)!;
             ensure(source.type === targetProp.type, 'INVALID_UI', `Prop binding type differs for ${node.component}.${name}.`);
-            ensure(!targetProp.required || targetProp.default !== undefined || source.required || source.default !== undefined, 'INVALID_UI', `Optional prop ${definition.id}.${binding} cannot satisfy required ${node.component}.${name}.`);
+            ensure(!targetProp.required || targetProp.default !== undefined || ('required' in source && source.required) || source.default !== undefined, 'INVALID_UI', `Optional prop ${definition.id}.${binding} cannot satisfy required ${node.component}.${name}.`);
           }
           else if (!uiBindings(value).length) checkValue(value, targetProp.type, `${node.component}.${name}`);
           else ensure(targetProp.type === 'string', 'INVALID_UI', `Interpolated ${node.component}.${name} must be a string.`);
@@ -68,6 +67,7 @@ export function validateUiLibrary(definitions: readonly UiDefinition[]): void {
     active.delete(id); visited.add(id);
   };
   for (const id of byId.keys()) visit(id);
+  validateUiInteractions(definitions, interactions);
 }
 
 /** Direct references include references nested in a component's projected children. */

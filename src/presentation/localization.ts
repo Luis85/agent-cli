@@ -32,7 +32,7 @@ export class Localizer {
   result(command: string, data: unknown): unknown {
     if (this.language === 'en' || !isRecord(data)) return data;
     if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
-    if ((command === 'components' || command === 'data-sources') && data.status === 'empty' && typeof data.directory === 'string' && typeof data.nextStep === 'string') {
+    if (['components', 'data-sources', 'interactions'].includes(command) && data.status === 'empty' && typeof data.directory === 'string' && typeof data.nextStep === 'string') {
       return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
     if (command === 'formats') return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };

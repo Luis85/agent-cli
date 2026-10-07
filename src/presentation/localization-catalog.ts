@@ -7,6 +7,7 @@ export const germanCommands = {
   project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
   components: 'Markdown-Komponenten verwalten, prüfen, importieren und exportieren.',
   'data-sources': 'Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.',
+  interactions: 'Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.',
   formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
   list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.',
   read: 'Ein Dokument oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.',

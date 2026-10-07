@@ -11,7 +11,10 @@
     "dataGenerated": "src/data-sources",
     "dataFixtures": "test-data",
     "dataImports": "imports/data-sources",
-    "dataExports": "exports/data-sources"
+    "dataExports": "exports/data-sources",
+    "interactions": "interactions",
+    "interactionImports": "imports/interactions",
+    "interactionExports": "exports/interactions"
   },
   "settings": {
     "json": false,

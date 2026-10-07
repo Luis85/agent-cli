@@ -4,6 +4,7 @@ export interface AppConfig {
   paths: {
     projects: string; components: string; ui: string; stories: string; componentImports: string; componentExports: string;
     dataSources: string; dataGenerated: string; dataFixtures: string; dataImports: string; dataExports: string;
+    interactions: string; interactionImports: string; interactionExports: string;
   };
   settings: { json: boolean; dryRun: boolean; language: 'en' | 'de' };
   templates: { dateFormat: string; timeFormat: string };

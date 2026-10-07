@@ -22,7 +22,7 @@ const engines = { "node": ">=22.12.0" };
 const bin = { "forge": "bin/app.js" };
 const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node src/infrastructure/scripts/quality/typecheck.mjs", "build": "vite build && node src/infrastructure/scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node src/infrastructure/scripts/release.mjs", "lint": "node src/infrastructure/scripts/quality/lint.mjs", "analyze": "node src/infrastructure/scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node src/infrastructure/scripts/quality/structure.mjs" };
 const dependencies = { "commander": "^15.0.0", "dayjs": "^1.11.23", "remark-frontmatter": "^5.0.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4", "vue": "3.5.43" };
+const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4", "vue": "3.5.43" };
 const metadata$1 = {
   name,
   version: version$1,
@@ -151,6 +151,11 @@ function vaultPath(input) {
   ensure(parts.every((p) => p && p !== "." && p !== ".."), "INVALID_PATH", "Absolute paths, empty segments and traversal are forbidden.");
   ensure(!parts.some((p) => [".git", ".agent-cli.lock"].includes(p) || p.startsWith(".agent-cli-tmp-")), "INVALID_PATH", "Reserved workspace path.");
   return input;
+}
+function ensureSeparateDirectories(source, destination) {
+  vaultPath(source);
+  vaultPath(destination);
+  ensure(source !== destination && !source.startsWith(`${destination}/`) && !destination.startsWith(`${source}/`), "INVALID_PATH", "Import and export directories must be separate; neither may contain the other.");
 }
 const nativeFormats = {
   markdown: ["md"],
@@ -526,12 +531,31 @@ class SetupService {
   }
 }
 const uiFrameworks = ["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"];
+const interactionEvents = ["click", "dblclick", "input", "change", "submit", "keydown", "keyup", "focus", "blur"];
+const interactionTriggerEvents = /* @__PURE__ */ new Set([...interactionEvents, "focusin", "focusout"]);
+function validateInteractionLibrary(definitions) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const definition2 of definitions) {
+    ensure(!ids.has(definition2.id), "DUPLICATE_INTERACTION", `Duplicate interaction ${definition2.id}.`);
+    ids.add(definition2.id);
+  }
+}
+function isSafeNavigationUrl(value2) {
+  if (!value2 || value2 !== value2.trim() || [...value2].some((character) => character.charCodeAt(0) < 32 || character === "\\") || value2.startsWith("//")) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value2) && !/^https?:\/\//i.test(value2)) return false;
+  try {
+    const url2 = new URL(value2, "https://forge.invalid/");
+    return ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password;
+  } catch {
+    return false;
+  }
+}
 const uiVoidTags = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
 const uiBooleanAttributes = new Set("allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected".split(" "));
 function uiBindingParts(value2) {
   const parts = [];
   let last = 0;
-  for (const match of value2.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
+  for (const match of value2.matchAll(/\{\{\s*((?:state\.)?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
     if (match.index > last) parts.push({ literal: value2.slice(last, match.index) });
     parts.push({ prop: match[1] });
     last = match.index + match[0].length;
@@ -550,10 +574,71 @@ function uiWholeBinding(value2) {
 function uiHasMalformedBinding(value2) {
   return typeof value2 === "string" && uiBindingParts(value2).some((part) => "literal" in part && /\{\{|\}\}/.test(part.literal));
 }
+function uiBindingSource(definition2, name2) {
+  const fields = name2.startsWith("state.") ? definition2.state ?? {} : definition2.props;
+  const key = name2.startsWith("state.") ? name2.slice(6) : name2;
+  return Object.hasOwn(fields, key) ? fields[key] : void 0;
+}
+function validateUiBindings(definition2, value2) {
+  for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
+  ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
+}
+function valueType(definition2, value2) {
+  validateUiBindings(definition2, value2);
+  const binding = uiWholeBinding(value2);
+  if (!binding) return typeof value2;
+  const source = uiBindingSource(definition2, binding);
+  ensure(source.default !== void 0 || "required" in source && source.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
+  return source.type;
+}
+function validateAttachment(definition2, node2, interaction) {
+  for (const action2 of interaction.actions) {
+    if (action2.type === "set-state" || action2.type === "toggle-state") {
+      const state2 = definition2.state?.[action2.state];
+      ensure(state2, "INVALID_UI", `${definition2.id} interaction ${interaction.id} requires state ${action2.state}.`);
+      if (action2.type === "toggle-state") ensure(state2.type === "boolean", "INVALID_UI", `Interaction ${interaction.id} can toggle only boolean state ${action2.state}.`);
+      else if ("fromEvent" in action2) {
+        ensure(["input", "change"].includes(interaction.event), "INVALID_UI", `Interaction ${interaction.id} reads form values only from input/change events.`);
+        ensure(action2.fromEvent === "checked" ? node2.tag === "input" : ["input", "select", "textarea"].includes(node2.tag), "INVALID_UI", `Interaction ${interaction.id} cannot read ${action2.fromEvent} from ${node2.tag}.`);
+        ensure(state2.type === (action2.fromEvent === "checked" ? "boolean" : "string"), "INVALID_UI", `Interaction ${interaction.id} ${action2.fromEvent} does not match state ${action2.state}.`);
+      } else ensure(valueType(definition2, action2.value) === state2.type, "INVALID_UI", `Interaction ${interaction.id} value does not match state ${action2.state}.`);
+    } else if (action2.type === "navigate") {
+      ensure(valueType(definition2, action2.url) === "string", "INVALID_UI", `Interaction ${interaction.id} navigation must resolve to a string.`);
+      if (!uiBindings(action2.url).length) ensure(isSafeNavigationUrl(action2.url), "INVALID_UI", `Interaction ${interaction.id} has an unsafe navigation URL.`);
+    } else {
+      ensure(!interactionTriggerEvents.has(action2.event), "INVALID_UI", `Interaction ${interaction.id} must emit a custom event, not native trigger ${action2.event}.`);
+      for (const value2 of Object.values(action2.detail ?? {})) valueType(definition2, value2);
+    }
+  }
+}
+function validateUiInteractions(definitions, interactions) {
+  validateInteractionLibrary(interactions);
+  const byId = new Map(interactions.map((interaction) => [interaction.id, interaction]));
+  for (const definition2 of definitions) {
+    const walk = (node2) => {
+      if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
+        const interaction = byId.get(id2);
+        ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
+        validateAttachment(definition2, node2, interaction);
+      }
+      if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+    };
+    walk(definition2.root);
+  }
+}
+function componentInteractionIds(definition2) {
+  const ids = /* @__PURE__ */ new Set();
+  const walk = (node2) => {
+    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
+    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+  };
+  walk(definition2.root);
+  return [...ids].sort();
+}
 function checkValue(value2, type2, label) {
   ensure(typeof value2 === type2, "INVALID_UI", `${label} must be ${type2}.`);
 }
-function validateUiLibrary(definitions) {
+function validateUiLibrary(definitions, interactions = []) {
   const byId = /* @__PURE__ */ new Map();
   for (const definition2 of definitions) {
     ensure(!byId.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
@@ -564,10 +649,7 @@ function validateUiLibrary(definitions) {
     const references = /* @__PURE__ */ new Set();
     edges.set(definition2.id, references);
     let slots = 0;
-    const checkBinding = (value2) => {
-      for (const name2 of uiBindings(value2)) ensure(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} binds unknown prop ${name2}.`);
-      ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed prop binding.`);
-    };
+    const checkBinding = (value2) => validateUiBindings(definition2, value2);
     const walk = (node2) => {
       if ("slot" in node2) {
         slots++;
@@ -587,9 +669,9 @@ function validateUiLibrary(definitions) {
           checkBinding(value2);
           const binding = uiWholeBinding(value2);
           if (binding) {
-            const source = definition2.props[binding];
+            const source = uiBindingSource(definition2, binding);
             ensure(source.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
-            ensure(!targetProp.required || targetProp.default !== void 0 || source.required || source.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
+            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source && source.required || source.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
           } else if (!uiBindings(value2).length) checkValue(value2, targetProp.type, `${node2.component}.${name2}`);
           else ensure(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
         }
@@ -615,6 +697,7 @@ function validateUiLibrary(definitions) {
     visited.add(id2);
   };
   for (const id2 of byId.keys()) visit2(id2);
+  validateUiInteractions(definitions, interactions);
 }
 function componentDependencies(root) {
   const dependencies2 = /* @__PURE__ */ new Set();
@@ -706,33 +789,37 @@ class GenerationService {
   }
 }
 class UiLibrary {
-  constructor(workspace, codec, catalog, renderer) {
+  constructor(workspace, codec, catalog, renderer, interactionSource, interactionDirectory = "interactions") {
     this.workspace = workspace;
     this.codec = codec;
     this.catalog = catalog;
     this.renderer = renderer;
+    this.interactionSource = interactionSource;
+    this.interactionDirectory = interactionDirectory;
   }
   workspace;
   codec;
   catalog;
   renderer;
-  async list(directory) {
+  interactionSource;
+  interactionDirectory;
+  async list(directory, interactionDirectory) {
     const definitions = await this.discover(directory);
-    validateUiLibrary(definitions);
+    await this.validateDefinitions(definitions, interactionDirectory);
     return definitions;
   }
-  async inspect(directory, id2) {
+  async inspect(directory, id2, interactionDirectory) {
     const sources = await this.sources(directory);
-    validateUiLibrary(sources.map((source2) => source2.definition));
+    await this.validateDefinitions(sources.map((source2) => source2.definition), interactionDirectory);
     const source = sources.find((candidate) => candidate.definition.id === id2);
     ensure(source, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
   }
-  async validate(directory) {
-    const definitions = await this.list(directory);
+  async validate(directory, interactionDirectory) {
+    const definitions = await this.list(directory, interactionDirectory);
     return { directory, valid: true, status: definitions.length ? "ready" : "empty", count: definitions.length, components: definitions.map((definition2) => definition2.id), ...!definitions.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {} };
   }
-  async create(directory, id2, tag = "div") {
+  async create(directory, id2, tag = "div", interactionDirectory) {
     vaultPath(directory);
     const voidElement = uiVoidTags.has(tag);
     const definition2 = { schemaVersion: 1, id: id2, sourcePath: `${directory}/${id2}.md`, description: `# ${id2}
@@ -740,31 +827,35 @@ class UiLibrary {
 Describe this component.
 `, props: {}, root: { tag, ...!voidElement ? { children: [{ slot: "children" }] } : {} } };
     const bytes = this.codec.serialize(definition2);
-    validateUiLibrary([...await this.discover(directory), this.codec.parse(bytes, definition2.sourcePath)]);
+    await this.validateDefinitions([...await this.discover(directory), this.codec.parse(bytes, definition2.sourcePath)], interactionDirectory);
     return { component: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
   }
-  async init(directory) {
+  async init(directory, interactionDirectory) {
     vaultPath(directory);
     const existing = await this.discover(directory), ids = new Set(existing.map((definition2) => definition2.id));
     const additions = this.catalog.filter((definition2) => !ids.has(definition2.id));
-    validateUiLibrary([...existing, ...additions]);
+    await this.validateDefinitions([...existing, ...additions], interactionDirectory);
     const plan = additions.map((definition2) => ({ path: `${directory}/${definition2.id}.md`, bytes: this.codec.serialize(definition2) }));
     return { components: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
   }
-  async import(sourceDirectory, directory) {
+  async import(sourceDirectory, directory, interactionDirectory) {
     vaultPath(sourceDirectory);
     vaultPath(directory);
+    ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory), imported = sources.map((source) => source.definition), existing = await this.discover(directory);
     ensure(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
-    validateUiLibrary([...existing, ...imported]);
+    await this.validateDefinitions([...existing, ...imported], interactionDirectory);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
     return { components: imported.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
-  async export(directory, outputDirectory) {
+  async export(directory, outputDirectory, interactionDirectory) {
+    vaultPath(directory);
     vaultPath(outputDirectory);
+    ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions = sources.map((source) => source.definition);
-    validateUiLibrary(definitions);
-    validateUiLibrary([...await this.discover(outputDirectory), ...definitions]);
+    const interactions = await this.interactions(interactionDirectory);
+    validateUiLibrary(definitions, interactions);
+    validateUiLibrary([...await this.discover(outputDirectory), ...definitions], interactions);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
     return { components: definitions.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
@@ -785,7 +876,9 @@ Describe this component.
     vaultPath(options.outputDirectory);
     if (options.storiesDirectory) vaultPath(options.storiesDirectory);
     ensure(!(options.storybook || options.storiesOnly) || options.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
-    let definitions = await this.list(directory);
+    const interactions = await this.interactions(options.interactionDirectory);
+    let definitions = await this.discover(directory);
+    validateUiLibrary(definitions, interactions);
     ensure(definitions.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
     if (options.component) ensure(definitions.some((definition2) => definition2.id === options.component), "UNKNOWN_UI_COMPONENT", `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
     if (options.component) definitions = selectUiComponents(definitions, options.component);
@@ -797,11 +890,20 @@ Describe this component.
         throw error2;
       }
     }
+    const ids = new Set(definitions.flatMap(componentInteractionIds));
+    const renderOptions = { ...options, interactions: interactions.filter((interaction) => ids.has(interaction.id)) };
     if (options.storiesOnly) {
       ensure(this.renderer.componentPaths, "UI_RENDERER_UNAVAILABLE", "Standalone stories require a renderer with component artifact paths.");
-      for (const path of this.renderer.componentPaths(definitions, options)) await this.workspace.files.read(path);
+      for (const path of this.renderer.componentPaths(definitions, renderOptions)) await this.workspace.files.read(path);
     }
-    return this.renderer.generate(definitions, options);
+    return this.renderer.generate(definitions, renderOptions);
+  }
+  async interactions(directory = this.interactionDirectory) {
+    vaultPath(directory);
+    return this.interactionSource ? this.interactionSource.list(directory) : [];
+  }
+  async validateDefinitions(definitions, interactionDirectory) {
+    validateUiLibrary(definitions, await this.interactions(interactionDirectory));
   }
   async discover(directory) {
     return (await this.sources(directory)).map((source) => source.definition);
@@ -826,7 +928,7 @@ function validateLibrary(definitions) {
     ids.add(definition2.id);
   }
 }
-function starter(directory, id2, kind) {
+function starter$1(directory, id2, kind) {
   return {
     schemaVersion: 1,
     id: id2,
@@ -867,20 +969,19 @@ class DataSourceLibrary {
   }
   async create(directory, id2, kind = "rest") {
     vaultPath(directory);
-    const definition2 = starter(directory, id2, kind), bytes = this.codec.serialize(definition2);
+    const definition2 = starter$1(directory, id2, kind), bytes = this.codec.serialize(definition2);
     validateLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
     return { source: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
   }
   async init(directory) {
     vaultPath(directory);
     const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
-    const additions = [starter(directory, "example-rest", "rest"), starter(directory, "example-json", "json")].filter((definition2) => !ids.has(definition2.id));
+    const additions = [starter$1(directory, "example-rest", "rest"), starter$1(directory, "example-json", "json")].filter((definition2) => !ids.has(definition2.id));
     const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
     return { sources: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
   }
   async import(sourceDirectory, directory) {
-    vaultPath(sourceDirectory);
-    vaultPath(directory);
+    ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
     ensure(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
     validateLibrary([...await this.list(directory), ...sources.map((source) => source.definition)]);
@@ -888,8 +989,7 @@ class DataSourceLibrary {
     return { sources: sources.map((source) => source.definition.id), ...await this.commit(plan) };
   }
   async export(directory, outputDirectory) {
-    vaultPath(directory);
-    vaultPath(outputDirectory);
+    ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions = sources.map((source) => source.definition);
     validateLibrary([...await this.list(outputDirectory), ...definitions]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
@@ -918,6 +1018,91 @@ class DataSourceLibrary {
       ensure(definitions.length, "UNKNOWN_DATA_SOURCE", `No data source ${options.source} in ${directory}.`);
     }
     return { definitions, writes: this.renderer.generate(definitions, options) };
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+function starter(directory, id2, event = "click") {
+  const input = event === "input" || event === "change";
+  return {
+    schemaVersion: 1,
+    id: id2,
+    event,
+    sourcePath: `${directory}/${id2}.md`,
+    description: `# ${id2}
+
+${input ? "Copies the input value into string state named value." : "Toggles boolean state named expanded."} Declare that state on each consuming component.
+`,
+    actions: input ? [{ type: "set-state", state: "value", fromEvent: "value" }] : [{ type: "toggle-state", state: "expanded" }]
+  };
+}
+class InteractionLibrary {
+  constructor(workspace, codec) {
+    this.workspace = workspace;
+    this.codec = codec;
+  }
+  workspace;
+  codec;
+  async list(directory) {
+    const definitions = (await this.sources(directory)).map((source) => source.definition);
+    validateInteractionLibrary(definitions);
+    return definitions;
+  }
+  async inspect(directory, id2) {
+    const sources = await this.sources(directory);
+    validateInteractionLibrary(sources.map((source2) => source2.definition));
+    const source = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
+    return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
+  }
+  async validate(directory) {
+    const definitions = await this.list(directory);
+    return {
+      directory,
+      valid: true,
+      status: definitions.length ? "ready" : "empty",
+      count: definitions.length,
+      interactions: definitions.map((definition2) => definition2.id),
+      ...!definitions.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {}
+    };
+  }
+  async create(directory, id2, event = "click") {
+    vaultPath(directory);
+    const definition2 = starter(directory, id2, event), bytes = this.codec.serialize(definition2);
+    validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
+    return { interaction: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory) {
+    vaultPath(directory);
+    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = [starter(directory, "toggle-expanded"), starter(directory, "input-value", "input")].filter((definition2) => !ids.has(definition2.id));
+    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
+    return { interactions: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory) {
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory);
+    ensure(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
+    validateInteractionLibrary([...await this.list(directory), ...sources.map((source) => source.definition)]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { interactions: sources.map((source) => source.definition.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory) {
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions = sources.map((source) => source.definition);
+    validateInteractionLibrary([...await this.list(outputDirectory), ...definitions]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { interactions: definitions.map((definition2) => definition2.id), ...await this.commit(plan) };
   }
   async sources(directory) {
     vaultPath(directory);
@@ -3581,10 +3766,10 @@ function requireInt$1() {
   int$2.intOct = intOct;
   return int$2;
 }
-var schema$4 = {};
+var schema$5 = {};
 var hasRequiredSchema$3;
 function requireSchema$3() {
-  if (hasRequiredSchema$3) return schema$4;
+  if (hasRequiredSchema$3) return schema$5;
   hasRequiredSchema$3 = 1;
   var map2 = requireMap();
   var _null2 = require_null();
@@ -3606,13 +3791,13 @@ function requireSchema$3() {
     float2.floatExp,
     float2.float
   ];
-  schema$4.schema = schema2;
-  return schema$4;
+  schema$5.schema = schema2;
+  return schema$5;
 }
-var schema$3 = {};
+var schema$4 = {};
 var hasRequiredSchema$2;
 function requireSchema$2() {
-  if (hasRequiredSchema$2) return schema$3;
+  if (hasRequiredSchema$2) return schema$4;
   hasRequiredSchema$2 = 1;
   var Scalar2 = requireScalar();
   var map2 = requireMap();
@@ -3673,8 +3858,8 @@ function requireSchema$2() {
     }
   };
   const schema2 = [map2.map, seq2.seq].concat(jsonScalars, jsonError);
-  schema$3.schema = schema2;
-  return schema$3;
+  schema$4.schema = schema2;
+  return schema$4;
 }
 var binary = {};
 var hasRequiredBinary;
@@ -3898,7 +4083,7 @@ function requireOmap() {
   omap.omap = omap$1;
   return omap;
 }
-var schema$2 = {};
+var schema$3 = {};
 var bool = {};
 var hasRequiredBool;
 function requireBool() {
@@ -4238,7 +4423,7 @@ function requireTimestamp() {
 }
 var hasRequiredSchema$1;
 function requireSchema$1() {
-  if (hasRequiredSchema$1) return schema$2;
+  if (hasRequiredSchema$1) return schema$3;
   hasRequiredSchema$1 = 1;
   var map2 = requireMap();
   var _null2 = require_null();
@@ -4276,8 +4461,8 @@ function requireSchema$1() {
     timestamp2.floatTime,
     timestamp2.timestamp
   ];
-  schema$2.schema = schema2;
-  return schema$2;
+  schema$3.schema = schema2;
+  return schema$3;
 }
 var hasRequiredTags;
 function requireTags() {
@@ -5536,13 +5721,13 @@ function requireResolveBlockScalar() {
   if (hasRequiredResolveBlockScalar) return resolveBlockScalar;
   hasRequiredResolveBlockScalar = 1;
   var Scalar2 = requireScalar();
-  function resolveBlockScalar$1(ctx, scalar, onError) {
-    const start = scalar.offset;
-    const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+  function resolveBlockScalar$1(ctx, scalar2, onError) {
+    const start = scalar2.offset;
+    const header = parseBlockScalarHeader(scalar2, ctx.options.strict, onError);
     if (!header)
       return { value: "", type: null, comment: "", range: [start, start, start] };
     const type2 = header.mode === ">" ? Scalar2.Scalar.BLOCK_FOLDED : Scalar2.Scalar.BLOCK_LITERAL;
-    const lines = scalar.source ? splitLines(scalar.source) : [];
+    const lines = scalar2.source ? splitLines(scalar2.source) : [];
     let chompStart = lines.length;
     for (let i = lines.length - 1; i >= 0; --i) {
       const content2 = lines[i][1];
@@ -5554,12 +5739,12 @@ function requireResolveBlockScalar() {
     if (chompStart === 0) {
       const value3 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
       let end2 = start + header.length;
-      if (scalar.source)
-        end2 += scalar.source.length;
+      if (scalar2.source)
+        end2 += scalar2.source.length;
       return { value: value3, type: type2, comment: header.comment, range: [start, end2, end2] };
     }
-    let trimIndent = scalar.indent + header.indent;
-    let offset = scalar.offset + header.length;
+    let trimIndent = scalar2.indent + header.indent;
+    let offset = scalar2.offset + header.length;
     let contentStart = 0;
     for (let i = 0; i < chompStart; ++i) {
       const [indent, content2] = lines[i];
@@ -5637,7 +5822,7 @@ function requireResolveBlockScalar() {
       default:
         value2 += "\n";
     }
-    const end = start + header.length + scalar.source.length;
+    const end = start + header.length + scalar2.source.length;
     return { value: value2, type: type2, comment: header.comment, range: [start, end, end] };
   }
   function parseBlockScalarHeader({ offset, props }, strict, onError) {
@@ -5720,8 +5905,8 @@ function requireResolveFlowScalar() {
   hasRequiredResolveFlowScalar = 1;
   var Scalar2 = requireScalar();
   var resolveEnd2 = requireResolveEnd();
-  function resolveFlowScalar$1(scalar, strict, onError) {
-    const { offset, type: type2, source, end } = scalar;
+  function resolveFlowScalar$1(scalar2, strict, onError) {
+    const { offset, type: type2, source, end } = scalar2;
     let _type;
     let value2;
     const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
@@ -5740,7 +5925,7 @@ function requireResolveFlowScalar() {
         break;
       /* istanbul ignore next should not happen */
       default:
-        onError(scalar, "UNEXPECTED_TOKEN", `Expected a flow scalar value, but found: ${type2}`);
+        onError(scalar2, "UNEXPECTED_TOKEN", `Expected a flow scalar value, but found: ${type2}`);
         return {
           value: "",
           type: null,
@@ -5954,26 +6139,26 @@ function requireComposeScalar() {
       tag = findScalarTagByTest(ctx, value2, token, onError);
     else
       tag = ctx.schema[identity2.SCALAR];
-    let scalar;
+    let scalar2;
     try {
       const res = tag.resolve(value2, (msg) => onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg), ctx.options);
-      scalar = identity2.isScalar(res) ? res : new Scalar2.Scalar(res);
+      scalar2 = identity2.isScalar(res) ? res : new Scalar2.Scalar(res);
     } catch (error2) {
       const msg = error2 instanceof Error ? error2.message : String(error2);
       onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg);
-      scalar = new Scalar2.Scalar(value2);
+      scalar2 = new Scalar2.Scalar(value2);
     }
-    scalar.range = range;
-    scalar.source = value2;
+    scalar2.range = range;
+    scalar2.source = value2;
     if (type2)
-      scalar.type = type2;
+      scalar2.type = type2;
     if (tagName)
-      scalar.tag = tagName;
+      scalar2.tag = tagName;
     if (tag.format)
-      scalar.format = tag.format;
+      scalar2.format = tag.format;
     if (comment)
-      scalar.comment = comment;
-    return scalar;
+      scalar2.comment = comment;
+    return scalar2;
   }
   function findScalarTagByName(schema2, value2, tagName, tagToken, onError) {
     if (tagName === "!")
@@ -6912,11 +7097,11 @@ function requireLexer() {
     hasChars(n) {
       return this.pos + n <= this.buffer.length;
     }
-    setNext(state) {
+    setNext(state2) {
       this.buffer = this.buffer.substring(this.pos);
       this.pos = 0;
       this.lineEndPos = null;
-      this.next = state;
+      this.next = state2;
       return null;
     }
     peek(n) {
@@ -7798,37 +7983,37 @@ function requireParser() {
         };
       }
     }
-    *scalar(scalar) {
+    *scalar(scalar2) {
       if (this.type === "map-value-ind") {
         const prev = getPrevProps(this.peek(2));
         const start = getFirstKeyStartProps(prev);
         let sep;
-        if (scalar.end) {
-          sep = scalar.end;
+        if (scalar2.end) {
+          sep = scalar2.end;
           sep.push(this.sourceToken);
-          delete scalar.end;
+          delete scalar2.end;
         } else
           sep = [this.sourceToken];
         const map2 = {
           type: "block-map",
-          offset: scalar.offset,
-          indent: scalar.indent,
-          items: [{ start, key: scalar, sep }]
+          offset: scalar2.offset,
+          indent: scalar2.indent,
+          items: [{ start, key: scalar2, sep }]
         };
         this.onKeyLine = true;
         this.stack[this.stack.length - 1] = map2;
       } else
-        yield* this.lineEnd(scalar);
+        yield* this.lineEnd(scalar2);
     }
-    *blockScalar(scalar) {
+    *blockScalar(scalar2) {
       switch (this.type) {
         case "space":
         case "comment":
         case "newline":
-          scalar.props.push(this.sourceToken);
+          scalar2.props.push(this.sourceToken);
           return;
         case "scalar":
-          scalar.source = this.source;
+          scalar2.source = this.source;
           this.atNewLine = true;
           this.indent = 0;
           if (this.onNewLine) {
@@ -12838,12 +13023,12 @@ function tokenizeBlockQuoteStart(effects, ok, nok) {
   return start;
   function start(code) {
     if (code === 62) {
-      const state = self.containerState;
-      if (!state.open) {
+      const state2 = self.containerState;
+      if (!state2.open) {
         effects.enter("blockQuote", {
           _container: true
         });
-        state.open = true;
+        state2.open = true;
       }
       effects.enter("blockQuotePrefix");
       effects.enter("blockQuoteMarker");
@@ -15708,7 +15893,7 @@ function createTokenizer(parser2, initialize, from) {
     sliceStream,
     write
   };
-  let state = initialize.tokenize.call(context, effects);
+  let state2 = initialize.tokenize.call(context, effects);
   if (initialize.resolveAll) {
     resolveAllConstructs.push(initialize);
   }
@@ -15766,7 +15951,7 @@ function createTokenizer(parser2, initialize, from) {
     }
   }
   function go(code) {
-    state = state(code);
+    state2 = state2(code);
   }
   function consume(code) {
     if (markdownLineEnding(code)) {
@@ -17080,7 +17265,7 @@ function createConstruct(matter2) {
     /** @type {TokenType} */
     fenceType + "Sequence"
   );
-  const valueType = (
+  const valueType2 = (
     /** @type {TokenType} */
     frontmatterType + "Value"
   );
@@ -17154,12 +17339,12 @@ function createConstruct(matter2) {
       if (code === null || markdownLineEnding(code)) {
         return contentEnd(code);
       }
-      effects.enter(valueType);
+      effects.enter(valueType2);
       return contentInside(code);
     }
     function contentInside(code) {
       if (code === null || markdownLineEnding(code)) {
-        effects.exit(valueType);
+        effects.exit(valueType2);
         return contentEnd(code);
       }
       effects.consume(code);
@@ -19125,21 +19310,21 @@ const asciiTabOrNewline = /[\t\n\r]/g;
 function stripTabAndNewline(value2) {
   return value2.replace(asciiTabOrNewline, "");
 }
-function urlHostnameOk(url, hostname) {
+function urlHostnameOk(url2, hostname) {
   hostname.lastIndex = 0;
-  return hostname.test(url.hostname);
+  return hostname.test(url2.hostname);
 }
-function urlProtocolOk(url, protocol) {
+function urlProtocolOk(url2, protocol) {
   protocol.lastIndex = 0;
-  return protocol.test(url.protocol.endsWith(":") ? url.protocol.slice(0, -1) : url.protocol);
+  return protocol.test(url2.protocol.endsWith(":") ? url2.protocol.slice(0, -1) : url2.protocol);
 }
 const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
   $ZodStringFormat.init(inst, def);
   inst._zod.check = (payload) => {
     try {
       const trimmed = payload.value.trim();
-      const url = validateURL(trimmed, def);
-      if (url === URL_BAD_FORMAT) {
+      const url2 = validateURL(trimmed, def);
+      if (url2 === URL_BAD_FORMAT) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -19150,7 +19335,7 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
         });
         return;
       }
-      if (url === URL_UNPARSEABLE) {
+      if (url2 === URL_UNPARSEABLE) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -19160,11 +19345,11 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
         });
         return;
       }
-      if (url === true) {
+      if (url2 === true) {
         payload.value = stripTabAndNewline(trimmed);
         return;
       }
-      if (def.hostname && !urlHostnameOk(url, def.hostname)) {
+      if (def.hostname && !urlHostnameOk(url2, def.hostname)) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -19175,7 +19360,7 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
           continue: !def.abort
         });
       }
-      if (def.protocol && !urlProtocolOk(url, def.protocol)) {
+      if (def.protocol && !urlProtocolOk(url2, def.protocol)) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -19186,7 +19371,7 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
           continue: !def.abort
         });
       }
-      payload.value = def.normalize ? url.href : stripTabAndNewline(trimmed);
+      payload.value = def.normalize ? url2.href : stripTabAndNewline(trimmed);
       return;
     } catch (_) {
       payload.issues.push({
@@ -20632,11 +20817,11 @@ function settle(inst, answer) {
     recursive.set(inst, answer === PROVEN);
   return answer;
 }
-function bucketFor(state, inst) {
-  let bucket = state.buckets.get(inst);
+function bucketFor(state2, inst) {
+  let bucket = state2.buckets.get(inst);
   if (!bucket) {
     bucket = /* @__PURE__ */ new WeakMap();
-    state.buckets.set(inst, bucket);
+    state2.buckets.set(inst, bucket);
   }
   return bucket;
 }
@@ -20694,16 +20879,16 @@ const memo = {
         const input = payload.value;
         if (!isRef(input))
           return base(payload, ctx);
-        let state = ctx[STATE];
-        if (!state) {
-          state = { buckets: /* @__PURE__ */ new WeakMap(), backEdges: void 0 };
-          ctx[STATE] = state;
+        let state2 = ctx[STATE];
+        if (!state2) {
+          state2 = { buckets: /* @__PURE__ */ new WeakMap(), backEdges: void 0 };
+          ctx[STATE] = state2;
         }
         let bucket;
         if (lastCtx === ctx) {
           bucket = lastBucket;
         } else {
-          bucket = bucketFor(state, inst);
+          bucket = bucketFor(state2, inst);
           lastCtx = ctx;
           lastBucket = bucket;
         }
@@ -20715,8 +20900,8 @@ const memo = {
               payload.issues.push(...cloneIssues(hit.issues));
           } else {
             payload.memo = true;
-            state.backEdges ?? (state.backEdges = /* @__PURE__ */ new WeakSet());
-            state.backEdges.add(hit.value);
+            state2.backEdges ?? (state2.backEdges = /* @__PURE__ */ new WeakSet());
+            state2.backEdges.add(hit.value);
           }
           return payload;
         }
@@ -23208,19 +23393,19 @@ const ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
   inst.keyType = def.keyType;
   inst.valueType = def.valueType;
 });
-function record(keyType, valueType, params) {
-  if (!valueType || !valueType._zod) {
+function record(keyType, valueType2, params) {
+  if (!valueType2 || !valueType2._zod) {
     return new ZodRecord({
       type: "record",
       keyType: string$1(),
       valueType: keyType,
-      ...normalizeParams(valueType)
+      ...normalizeParams(valueType2)
     });
   }
   return new ZodRecord({
     type: "record",
     keyType,
-    valueType,
+    valueType: valueType2,
     ...normalizeParams(params)
   });
 }
@@ -23492,6 +23677,9 @@ const configSchema = strictObject({
     stories: relativePath.default("stories"),
     componentImports: relativePath.default("imports/components"),
     componentExports: relativePath.default("exports/components"),
+    interactions: relativePath.default("interactions"),
+    interactionImports: relativePath.default("imports/interactions"),
+    interactionExports: relativePath.default("exports/interactions"),
     dataSources: relativePath.default("data-sources"),
     dataGenerated: relativePath.default("src/data-sources"),
     dataFixtures: relativePath.default("test-data"),
@@ -24047,8 +24235,8 @@ function renderYaml(source, resolve) {
       ensure(!node2.value.includes(prefix), "INVALID_TEMPLATE", "Template placeholders cannot be used in YAML keys.");
     }
     if (!distExports.isScalar(node2) || typeof node2.value !== "string" || key === "key") return;
-    const scalar = node2.value;
-    const exact = sentinels.indexOf(scalar);
+    const scalar2 = node2.value;
+    const exact = sentinels.indexOf(scalar2);
     if (exact >= 0) {
       consumed.add(exact);
       const replacement = document2.createNode(resolved[exact]);
@@ -24058,7 +24246,7 @@ function renderYaml(source, resolve) {
       replacement.anchor = node2.anchor;
       return replacement;
     }
-    node2.value = scalar.replace(sentinelPattern, (_, index2) => {
+    node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
       const position2 = Number(index2);
       consumed.add(position2);
       return asText(resolved[position2]);
@@ -24530,17 +24718,20 @@ export default {
   } }
 ];
 const reserved$1 = new Set("arguments await break case catch children class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
-const identifier$1 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
+const identifier$2 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
 const id = string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 const value$2 = union([string$1(), number().finite(), boolean(), _null()]);
 const json$1 = lazy(() => union([value$2, array(json$1), record(string$1(), json$1)]));
-const values = record(identifier$1, value$2);
+const values = record(identifier$2, value$2);
 const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
   if (property.default !== void 0 && typeof property.default !== property.type) context.addIssue({ code: "custom", message: "Prop default must match its declared type." });
 });
+const state = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2 }).superRefine((field2, context) => {
+  if (typeof field2.default !== field2.type) context.addIssue({ code: "custom", message: "State default must match its declared type." });
+});
 const attribute = string$1().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/).refine((name2) => !/^on|^v-/i.test(name2) && !["innerHTML", "dangerouslySetInnerHTML", "ref", "key"].includes(name2), "Event handlers and framework runtime attributes belong in native code");
 const node = lazy(() => union([
-  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record(attribute, value$2).optional(), text: string$1().optional(), children: array(node).optional() }).superRefine((element2, context) => {
+  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record(attribute, value$2).optional(), text: string$1().optional(), children: array(node).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
     if (element2.tag === "svg" || element2.tag === "math") context.addIssue({ code: "custom", message: "SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets." });
     if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
   }),
@@ -24561,14 +24752,14 @@ const storybook = strictObject({
   const names2 = settings.stories?.map((entry) => entry.name) ?? [];
   if (new Set(names2).size !== names2.length) context.addIssue({ code: "custom", message: "Story names must be unique." });
 });
-const schema$1 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record(identifier$1, prop).default({}), root: node, storybook: storybook.optional() });
+const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record(identifier$2, prop).default({}), state: record(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
 class MarkdownUiDefinitions {
   documents = new ObsidianDocuments();
   parse(bytes, path) {
     vaultPath(path);
     try {
       const document2 = this.documents.inspect("definition.md", bytes);
-      const result = schema$1.safeParse(document2.properties);
+      const result = schema$2.safeParse(document2.properties);
       ensure(result.success, "INVALID_UI", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       const extension2 = result.data.storybook?.extension;
       if (extension2 !== void 0) {
@@ -24653,45 +24844,218 @@ function componentArtifact(definition2, framework) {
   const extension2 = { html: "js", htmx: "js", vanilla: "js", react: "tsx", vue: "vue", svelte: "svelte", angular: "ts" }[framework];
   return { fileName: `${definition2.id}.${extension2}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
 }
-function expression(value2, scope = "props") {
+function expression(value2, scope = "props", stateScope = "_uiState") {
   if (typeof value2 !== "string") return json(value2);
   const parts = uiBindingParts(value2);
-  if (parts.length === 1 && "prop" in parts[0]) return `${scope}[${json(parts[0].prop)}]`;
-  return parts.map((part) => "literal" in part ? json(part.literal) : `('' + (${scope}[${json(part.prop)}] ?? ''))`).join(" + ");
+  const binding = (name2) => name2.startsWith("state.") ? `${stateScope}[${json(name2.slice(6))}]` : `${scope}[${json(name2)}]`;
+  if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
+  return parts.map((part) => "literal" in part ? json(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
 }
-function evaluate(value2, props) {
+function evaluate(value2, props, state2 = {}) {
   if (typeof value2 !== "string") return value2;
   const parts = uiBindingParts(value2);
-  if (parts.length === 1 && "prop" in parts[0]) return props[parts[0].prop];
-  return parts.map((part) => "literal" in part ? part.literal : String(props[part.prop] ?? "")).join("");
+  const binding = (name2) => name2.startsWith("state.") ? state2[name2.slice(6)] : props[name2];
+  if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
+  return parts.map((part) => "literal" in part ? part.literal : String(binding(part.prop) ?? "")).join("");
 }
-function textExpression(value2, scope = "props") {
+function textExpression(value2, scope = "props", stateScope = "_uiState") {
   const parts = uiBindingParts(value2);
-  const result = expression(value2, scope);
+  const result = expression(value2, scope, stateScope);
   return parts.length === 1 && "prop" in parts[0] ? `(${result} ?? '')` : result;
 }
 function defaultAssignments(definition2) {
   return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json(key)}] === undefined) props[${json(key)}] = ${json(prop2.default)};`).join("\n");
 }
-function staticMarkup(node2, props, definitions, children = "") {
+function interactionPrefix(definition2) {
+  let prefix = "_ui";
+  while (Object.keys(definition2.props).some((name2) => name2.startsWith(prefix))) prefix += "_";
+  return prefix;
+}
+function stateDefaults(definition2) {
+  return Object.fromEntries(ordered(definition2.state ?? {}).map(([name2, state2]) => [name2, state2.default]));
+}
+function stateType(definition2) {
+  return `{ ${ordered(definition2.state ?? {}).map(([name2, state2]) => `${json(name2)}: ${state2.type}`).join("; ")} }`;
+}
+const handlerName = (id2, prefix) => `${prefix}Interaction_${id2.replace(/-/g, "_")}`;
+function componentInteractions(definition2, interactions) {
+  const ids = /* @__PURE__ */ new Set();
+  const walk = (node2) => {
+    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
+    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+  };
+  walk(definition2.root);
+  return interactions.filter((interaction) => ids.has(interaction.id)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+function interactionValues(interaction) {
+  return interaction.actions.flatMap((action2) => action2.type === "navigate" ? [action2.url] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
+}
+function interactionUsesState(interaction) {
+  return interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state") || interactionValues(interaction).some((value2) => uiBindings(value2).some((name2) => name2.startsWith("state.")));
+}
+function groupElementInteractions(node2, interactions, prefix = "_ui") {
+  const groups = /* @__PURE__ */ new Map();
+  if (!("tag" in node2)) return [];
+  for (const id2 of node2.interactions ?? []) {
+    const interaction = interactions.find((candidate) => candidate.id === id2);
+    const handlers = groups.get(interaction.event) ?? [];
+    handlers.push(handlerName(id2, prefix));
+    groups.set(interaction.event, handlers);
+  }
+  return [...groups].map(([event, handlers]) => ({ event, handlers }));
+}
+function renderInteractionHandlers(definition2, interactions, options) {
+  const selected = componentInteractions(definition2, interactions);
+  if (!selected.length) return "";
+  const { typescript } = options;
+  const prefix = options.prefix ?? "_ui";
+  const next = `${prefix}Next`, event = `${prefix}Event`;
+  const value2 = (item) => expression(item, options.propsScope ?? "props", next);
+  const eventType = "{ currentTarget: EventTarget | null; target: EventTarget | null; key?: string; preventDefault(): void; stopPropagation(): void }";
+  const functions = selected.map((interaction) => {
+    const lines = [`function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
+    if (interaction.keys) lines.push(`  if (!${json(interaction.keys)}.includes(${event}.key ?? '')) return;`);
+    if (interaction.preventDefault) lines.push(`  ${event}.preventDefault();`);
+    if (interaction.stopPropagation) lines.push(`  ${event}.stopPropagation();`);
+    if (interactionUsesState(interaction)) lines.push(`  const ${next} = { ...${options.stateScope ?? "_uiState"} };`);
+    for (const [index2, action2] of interaction.actions.entries()) {
+      if (action2.type === "toggle-state" || action2.type === "set-state") {
+        let assigned = action2.type === "toggle-state" ? `!${next}[${json(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
+        if (action2.type === "set-state" && "fromEvent" in action2) {
+          const field2 = `${prefix}Value${index2}`;
+          lines.push(`  const ${field2} = (${event}.currentTarget${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
+          lines.push(`  if (typeof ${field2} !== ${json(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
+          assigned = field2;
+        }
+        lines.push(`  ${next}[${json(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
+      } else if (action2.type === "emit") {
+        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json(key)}]` : json(key)}: ${value2(item)}`).join(", ")} }`;
+        lines.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${event}.currentTarget, ${json(action2.event)}, ${detail});`);
+      } else {
+        lines.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${event}.currentTarget, ${value2(action2.url)});`);
+      }
+    }
+    lines.push("}");
+    return lines.join("\n");
+  });
+  const needsEmit = selected.some((interaction) => interaction.actions.some((action2) => action2.type === "emit"));
+  const needsNavigate = selected.some((interaction) => interaction.actions.some((action2) => action2.type === "navigate"));
+  const target = `target${typescript ? ": EventTarget | null" : ""}`;
+  const element2 = `target${typescript ? " as Element | null" : ""}`;
+  const helpers = [];
+  if (needsEmit) helpers.push(`function ${prefix}Emit(${target}, name${typescript ? ": string" : ""}, detail${typescript ? ": Record<string, unknown>" : ""}) {
+  const element = ${element2};
+  const EventConstructor = element?.ownerDocument.defaultView?.CustomEvent ?? globalThis.CustomEvent;
+  element?.dispatchEvent(new EventConstructor(name, { detail, bubbles: true, composed: true }));
+}`);
+  if (needsNavigate) helpers.push(`function ${prefix}Navigate(${target}, value${typescript ? ": unknown" : ""}) {
+  const element = ${element2};
+  if (typeof value !== 'string' || !value || value !== value.trim() || /[\\u0000-\\u001f\\\\]/.test(value) || value.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\\/\\//i.test(value))) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
+  const url = new globalThis.URL(value, element?.ownerDocument.baseURI);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
+  element?.ownerDocument.defaultView?.location.assign(url.href);
+}`);
+  const source = [...helpers, ...functions].join("\n");
+  return options.classMembers ? source.replace(/^function (\w+)\((.*)\) \{$/gm, "$1 = ($2) => {").replace(/^\}$/gm, "};") : source;
+}
+function reactiveDomModule(definition2, interactions) {
+  const references = componentDependencies(definition2.root);
+  const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json(`./${id2}.js`)};`).join("\n");
+  const prefix = interactionPrefix(definition2);
+  function nodeCode(node2) {
+    if ("slot" in node2) return "slot(children)";
+    const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
+    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
+    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json(event)}: [${handlers.join(", ")}]`).join(", ");
+    return `element(${json(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
+  }
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json([...uiBooleanAttributes].sort())});
+const updateProps = Symbol.for('forge.ui.updateProps');
+
+/** Create a live component; mounting and removal remain owned by the caller. */
+export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
+  const props = { ...${json(defaults(definition2))}, ...input };
+${defaultAssignments(definition2)}
+  const _uiState = ${json(stateDefaults(definition2))};
+  const updates = [];
+  const refresh = () => { for (const update of updates) update(); };
+${renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` })}
+  function slot(content) {
+    const fragment = document.createDocumentFragment();
+    for (const child of content) if (child != null) fragment.append(child);
+    return fragment;
+  }
+  function component(factory, values, content) {
+    const result = factory(values(), content);
+    // Capture before a parent sharing this root attaches its own callback.
+    const update = result[updateProps];
+    if (update) updates.push(() => update(values()));
+    return result;
+  }
+  function element(tag, attributes, text, content, listeners) {
+    const result = document.createElement(tag);
+    const previous = Object.create(null);
+    const textNode = text ? document.createTextNode('') : null;
+    if (textNode) result.append(textNode);
+    const update = () => {
+      const values = attributes();
+      for (const [key, value] of Object.entries(values)) {
+        const boolean = booleanAttributes.has(key.toLowerCase());
+        const normalized = value == null || (boolean && value === false) ? null : boolean && value === true ? '' : String(value);
+        if (Object.hasOwn(previous, key) && previous[key] === normalized) continue;
+        if (normalized === null) result.removeAttribute(key); else result.setAttribute(key, normalized);
+        if (key === 'value' && 'value' in result && result.value !== (normalized ?? '')) result.value = normalized ?? '';
+        if (key === 'checked' && 'checked' in result) result.checked = normalized !== null;
+        previous[key] = normalized;
+      }
+      if (textNode) {
+        const value = String(text() ?? '');
+        if (textNode.data !== value) textNode.data = value;
+      }
+    };
+    result.append(...content);
+    update(); updates.push(update);
+    for (const [event, handlers] of Object.entries(listeners)) result.addEventListener(event, value => { for (const handler of handlers) handler(value); });
+    return result;
+  }
+  const result = ${nodeCode(definition2.root)};
+  Object.defineProperty(result, updateProps, { configurable: true, value: input => {
+    for (const key of Object.keys(props)) delete props[key];
+    Object.assign(props, ${json(defaults(definition2))}, input);
+${defaultAssignments(definition2)}
+    refresh();
+  } });
+  return result;
+}
+`;
+}
+function hasReactiveDom(definitions) {
+  function interactive(node2) {
+    return "tag" in node2 && !!node2.interactions?.length || "children" in node2 && !!node2.children?.some(interactive);
+  }
+  return [...definitions.values()].some((definition2) => Object.keys(definition2.state ?? {}).length > 0 || interactive(definition2.root));
+}
+function staticMarkup(node2, props, definitions, children = "", state2 = {}) {
   if ("slot" in node2) return children;
-  const childMarkup = (node2.children ?? []).map((child) => staticMarkup(child, props, definitions, children)).join("");
+  const childMarkup = (node2.children ?? []).map((child) => staticMarkup(child, props, definitions, children, state2)).join("");
   if ("component" in node2) {
     const definition2 = definitions.get(node2.component);
     const passed = Object.fromEntries(ordered(node2.props ?? {}).flatMap(([key, value2]) => {
-      const evaluated = evaluate(value2, props);
+      const evaluated = evaluate(value2, props, state2);
       return evaluated === void 0 ? [] : [[key, evaluated]];
     }));
-    return staticMarkup(definition2.root, { ...defaults(definition2), ...passed }, definitions, childMarkup);
+    return staticMarkup(definition2.root, { ...defaults(definition2), ...passed }, definitions, childMarkup, stateDefaults(definition2));
   }
   const attrs = ordered(node2.attrs ?? {}).map(([key, original]) => {
-    const value2 = evaluate(original, props);
+    const value2 = evaluate(original, props, state2);
     if (value2 == null || uiBooleanAttributes.has(key.toLowerCase()) && value2 === false) return "";
     return uiBooleanAttributes.has(key.toLowerCase()) && value2 === true ? ` ${key}` : ` ${key}="${html(value2)}"`;
   }).join("");
-  return `<${node2.tag}${attrs}>${uiVoidTags.has(node2.tag) ? "" : `${node2.text === void 0 ? "" : html(evaluate(node2.text, props))}${childMarkup}</${node2.tag}>`}`;
+  return `<${node2.tag}${attrs}>${uiVoidTags.has(node2.tag) ? "" : `${node2.text === void 0 ? "" : html(evaluate(node2.text, props, state2))}${childMarkup}</${node2.tag}>`}`;
 }
-function domModule(definition2, definitions) {
+function domModule(definition2, definitions, interactions = []) {
+  if (hasReactiveDom(definitions)) return reactiveDomModule(definition2, interactions);
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}.js`)};`).join("\n");
@@ -24777,59 +25141,112 @@ const reactStyleHelper = `function css(value: unknown): _UiCSSProperties {
 }
 `;
 const reactNames = { class: "className", for: "htmlFor", tabindex: "tabIndex", readonly: "readOnly", autofocus: "autoFocus", autocomplete: "autoComplete", colspan: "colSpan", rowspan: "rowSpan", maxlength: "maxLength", minlength: "minLength", contenteditable: "contentEditable", spellcheck: "spellCheck", srcset: "srcSet", usemap: "useMap", datetime: "dateTime", crossorigin: "crossOrigin", novalidate: "noValidate", formnovalidate: "formNoValidate", acceptcharset: "acceptCharset", httpequiv: "httpEquiv" };
-function reactModule(definition2, definitions) {
+function reactModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const selectedInteractions = componentInteractions(definition2, interactions);
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || selectedInteractions.length > 0;
+  const mutatesState = selectedInteractions.some((interaction) => interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state"));
+  let usesProps = Object.values(definition2.props).some((prop2) => prop2.default !== void 0);
+  let usesState = selectedInteractions.some(interactionUsesState);
+  const trackBindings = (value2) => {
+    for (const binding of uiBindings(value2)) {
+      if (binding.startsWith("state.")) usesState = true;
+      else usesProps = true;
+    }
+  };
+  for (const interaction of selectedInteractions) for (const value2 of interactionValues(interaction)) trackBindings(value2);
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   let usesStyle = false;
   let usesAttributes = false;
+  let usesControls = false;
   function nodeCode(node2) {
-    if ("slot" in node2) return "props.children";
+    if ("slot" in node2) {
+      usesProps = true;
+      return "props.children";
+    }
     const children = (node2.children ?? []).map(nodeCode);
-    if ("tag" in node2 && node2.text !== void 0) children.unshift(`globalThis.String(${textExpression(node2.text)})`);
-    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => {
+    if ("tag" in node2 && node2.text !== void 0) {
+      trackBindings(node2.text);
+      children.unshift(`globalThis.String(${textExpression(node2.text, "props", state2)})`);
+    }
+    const controls = [];
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).flatMap(([key, value2]) => {
+      trackBindings(value2);
+      if (interactive && "tag" in node2 && (key === "value" && ["input", "textarea", "select"].includes(node2.tag) || key === "checked" && node2.tag === "input")) {
+        usesControls = true;
+        const rendered2 = expression(value2, "props", state2);
+        const property = `(element as HTMLInputElement).${key}`;
+        const converted = key === "checked" ? `(${rendered2} != null && (${rendered2} as unknown) !== false)` : `globalThis.String(${rendered2} ?? '')`;
+        controls.push(`if (!globalThis.Object.hasOwn(previous, ${json(key)}) || previous[${json(key)}] !== ${converted}) ${property} = ${converted}; previous[${json(key)}] = ${converted};`);
+        return [`${key === "checked" ? "defaultChecked" : "defaultValue"}: ${converted}`];
+      }
       const isStyle = "tag" in node2 && key === "style";
       if (isStyle) usesStyle = true;
       const isAttribute = "tag" in node2 && !isStyle && !uiBooleanAttributes.has(key.toLowerCase());
       if (isAttribute) usesAttributes = true;
-      const rendered = isStyle ? `css(${expression(value2)})` : isAttribute ? `attribute(${expression(value2)})` : expression(value2);
-      return `${json("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`;
+      const rendered = isStyle ? `css(${expression(value2, "props", state2)})` : isAttribute ? `attribute(${expression(value2, "props", state2)})` : expression(value2, "props", state2);
+      return [`${json("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
     });
+    const events = groupElementInteractions(node2, interactions, prefix);
+    if (events.length || controls.length) {
+      const listeners = events.map(({ event, handlers }, index2) => ({ event, name: `${prefix}Listener${index2}`, body: handlers.map((handler2) => `${handler2}(event);`).join(" ") }));
+      const syncControls = controls.length ? `const previous = ${prefix}ControlValues.get(element) ?? {}; ${controls.join(" ")} ${prefix}ControlValues.set(element, previous);` : "";
+      attrs.push(`ref: (() => { let cleanup: (() => void) | undefined; return (element: HTMLElement | null): void => { cleanup?.(); cleanup = undefined; if (!element) return; ${syncControls} ${listeners.map((listener) => `const ${listener.name} = (event: Event) => { ${listener.body} }; element.addEventListener(${json(listener.event)}, ${listener.name});`).join(" ")} cleanup = () => { ${listeners.map((listener) => `element.removeEventListener(${json(listener.event)}, ${listener.name});`).join(" ")} }; }; })()`);
+    }
     return `_uiCreateElement(${"tag" in node2 ? json(node2.tag) : aliases.get(node2.component)}, {${attrs.join(", ")}}${children.length ? `, ${children.join(", ")}` : ""})`;
   }
   const body = nodeCode(definition2.root);
   const propTypes = ordered(definition2.props).map(([key, prop2]) => `  ${json(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n");
-  return `import { createElement as _uiCreateElement, type ReactNode as _UiReactNode${usesStyle ? ", type CSSProperties as _UiCSSProperties" : ""} } from 'react';
+  return `import { createElement as _uiCreateElement, type ReactNode as _UiReactNode${usesStyle ? ", type CSSProperties as _UiCSSProperties" : ""}${mutatesState ? ", useState as _uiUseState, useRef as _uiUseRef" : ""} } from 'react';
 ${refs.map((id2) => `import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}`)};`).join("\n")}
 export interface ${className(definition2)}Props {
 ${propTypes}${propTypes ? "\n" : ""}  children?: _UiReactNode;
 }
 ${usesStyle ? reactStyleHelper : ""}
-${usesAttributes ? `function attribute(value: unknown): string | undefined {
+${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElement, Record<string, unknown>>();
+` : ""}${usesAttributes ? `function attribute(value: unknown): string | undefined {
   return value == null ? undefined : globalThis.String(value);
 }
 ` : ""}
-export default function ${className(definition2)}(input: ${className(definition2)}Props) {
-  const props = { ...${json(defaults(definition2))}, ...input };
-${defaultAssignments(definition2)}
+export default function ${className(definition2)}(${usesProps ? "input" : "_input"}: ${className(definition2)}Props) {
+${usesProps ? `  const props = { ...${json(defaults(definition2))}, ...input };
+${defaultAssignments(definition2)}` : ""}${mutatesState ? `
+  const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json(stateDefaults(definition2))}));
+  const ${prefix}StateRef = _uiUseRef(${state2});
+` : usesState ? `
+  const ${state2}: ${stateType(definition2)} = ${json(stateDefaults(definition2))};
+` : ""}${selectedInteractions.length ? `
+${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: mutatesState ? `${prefix}StateRef.current` : state2, commit: (next) => `${prefix}StateRef.current = { ...${next} }; ${prefix}SetState(${prefix}StateRef.current);` })}
+` : ""}
   return ${body};
 }
 `;
 }
-function vueModule(definition2, definitions) {
+function vueModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   function nodeCode(node2) {
     if ("slot" in node2) return "<slot />";
     const tag = "tag" in node2 ? node2.tag : aliases.get(node2.component);
-    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` :${key}="${html(expression(value2))}"`).join("");
-    const text2 = "tag" in node2 && node2.text !== void 0 ? `{{ ${html(expression(node2.text))} }}` : "";
-    return `<${tag}${attrs}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` :${key}="${html(expression(value2, "props", state2))}"`).join("");
+    const events = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` @${event}="${html(handlers.map((handler2) => `${handler2}($event)`).join("; "))}"`).join("");
+    const text2 = "tag" in node2 && node2.text !== void 0 ? `{{ ${html(expression(node2.text, "props", state2))} }}` : "";
+    return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
-  return `<script setup lang="ts">
+  return `<script setup lang="ts">${interactive ? `
+import { reactive as _uiReactive } from 'vue';` : ""}
 ${refs.map((id2) => `import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}.vue`)};`).join("\n")}
 const props = defineProps({
 ${ordered(definition2.props).map(([key, prop2]) => `  ${json(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
-});
+});${interactive ? `
+const ${state2} = _uiReactive<${stateType(definition2)}>(${json(stateDefaults(definition2))});
+${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: state2, commit: (next) => `globalThis.Object.assign(${state2}, ${next});` })}
+` : ""}
 <\/script>
 
 <template>
@@ -24837,49 +25254,63 @@ ${ordered(definition2.props).map(([key, prop2]) => `  ${json(key)}: { type: ${pr
 </template>
 `;
 }
-function svelteModule(definition2, definitions) {
+function svelteModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   function svelteExpression(value2) {
-    return expression(value2, "_uiProps");
+    return expression(value2, "_uiProps", state2);
   }
   function nodeCode(node2) {
     if ("slot" in node2) return "<slot />";
     const tag = "tag" in node2 ? node2.tag : aliases.get(node2.component);
     const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` ${key}={${svelteExpression(value2)}}`).join("");
-    const text2 = "tag" in node2 && node2.text !== void 0 ? `{${textExpression(node2.text, "_uiProps")}}` : "";
-    return `<${tag}${attrs}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
+    const events = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` on:${event}={(event) => { ${handlers.map((handler2) => `${handler2}(event);`).join(" ")} }}`).join("");
+    const text2 = "tag" in node2 && node2.text !== void 0 ? `{${textExpression(node2.text, "_uiProps", state2)}}` : "";
+    return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
   return `<script lang="ts">
 ${refs.map((id2) => `  import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}.svelte`)};`).join("\n")}
 ${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json(prop2.default)}` : prop2.required ? "" : " = undefined"};
   export { _uiProp${index2} as ${key} };`).join("\n")}
-  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json(key)}: _uiProp${index2}`).join(", ")}};
+  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
+  let ${state2}: ${stateType(definition2)} = ${json(stateDefaults(definition2))};
+${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, propsScope: "_uiProps", stateScope: state2, commit: (next) => `${state2} = { ...${next} };` })}
+` : ""}
 <\/script>
 
 ${nodeCode(definition2.root)}
 `;
 }
-function angularModule(definition2, definitions) {
+function angularModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   function angularExpression(value2) {
     if (typeof value2 !== "string") return json(value2);
     const parts = uiBindingParts(value2);
-    if (parts.length === 1 && "prop" in parts[0]) return parts[0].prop;
-    return parts.map((part) => "literal" in part ? json(part.literal) : `('' + (${part.prop} ?? ''))`).join(" + ");
+    const binding = (name2) => name2.startsWith("state.") ? `${state2}[${json(name2.slice(6))}]` : name2;
+    if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
+    return parts.map((part) => "literal" in part ? json(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
   }
   function nodeCode(node2) {
     if ("slot" in node2) return "<ng-content></ng-content>";
     const tag = "tag" in node2 ? node2.tag : `ui-${node2.component}`;
     const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => {
       const expr = angularExpression(value2);
-      return ` [${"tag" in node2 ? `attr.${key}` : key}]="${html("tag" in node2 && uiBooleanAttributes.has(key.toLowerCase()) ? `$any(${expr}) === true ? '' : ($any(${expr}) === false ? null : (${expr}))` : expr)}"`;
+      const property = interactive && "tag" in node2 && (key === "value" && ["input", "textarea", "select", "option"].includes(node2.tag) || key === "checked" && node2.tag === "input" || key === "selected" && node2.tag === "option");
+      const propertyValue = property ? key === "value" ? `$any(${expr}) ?? ''` : `$any(${expr}) != null && $any(${expr}) !== false` : expr;
+      return ` [${"tag" in node2 && !property ? `attr.${key}` : key}]="${html("tag" in node2 && !property && uiBooleanAttributes.has(key.toLowerCase()) ? `$any(${expr}) === true ? '' : ($any(${expr}) === false ? null : (${expr}))` : propertyValue)}"`;
     }).join("");
+    const events = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` (${event})="${html(handlers.map((handler2) => `${handler2}($event)`).join("; "))}"`).join("");
     const text2 = "tag" in node2 && node2.text !== void 0 ? `{{ ${html(angularExpression(node2.text))} }}` : "";
-    return `<${tag}${attrs}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
+    return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
-  return `import { Component, Input } from '@angular/core';
+  return `import { Component${Object.keys(definition2.props).length ? ", Input" : ""} } from '@angular/core';
 ${refs.map((id2) => `import { ${componentArtifact(definitions.get(id2), "angular").exportName} as ${aliases.get(id2)} } from ${json(`./${definitions.get(id2).id}`)};`).join("\n")}
 
 @Component({
@@ -24892,7 +25323,10 @@ export class ${componentArtifact(definition2, "angular").exportName} {
 ${ordered(definition2.props).map(([key, prop2]) => {
     const options = prop2.default !== void 0 ? `{ transform: (value: ${prop2.type} | undefined) => value === undefined ? ${json(prop2.default)} : value }` : prop2.required ? "{ required: true }" : "";
     return `  @Input(${options}) ${key}${prop2.required && prop2.default === void 0 ? "!" : ""}: ${prop2.type}${!prop2.required && prop2.default === void 0 ? " | undefined" : ""}${prop2.default === void 0 ? "" : ` = ${json(prop2.default)}`};`;
-  }).join("\n")}
+  }).join("\n")}${interactive ? `
+  ${state2}: ${stateType(definition2)} = ${json(stateDefaults(definition2))};
+${renderInteractionHandlers(definition2, interactions, { typescript: true, classMembers: true, prefix, propsScope: "this", stateScope: `this.${state2}`, commit: (next) => `this.${state2} = { ...${next} };` })}
+` : ""}
 }
 `;
 }
@@ -24905,7 +25339,7 @@ const renderers = {
   svelte: svelteModule,
   angular: angularModule
 };
-function renderUiComponents(input, framework, outputDirectory) {
+function renderUiComponents(input, framework, outputDirectory, interactions = []) {
   vaultPath(outputDirectory);
   ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `Unknown UI framework: ${framework}`);
   const definitions = new Map(input.map((definition2) => [definition2.id, definition2]));
@@ -24923,10 +25357,10 @@ function renderUiComponents(input, framework, outputDirectory) {
   const writes = [];
   for (const definition2 of [...input].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     const artifact = componentArtifact(definition2, framework);
-    const source = renderers[framework](definition2, definitions);
+    const source = renderers[framework](definition2, definitions, interactions);
     writes.push({ path: `${outputDirectory}/${artifact.fileName}`, bytes: new TextEncoder().encode(source) });
     if (["html", "htmx", "vanilla"].includes(framework)) {
-      writes.push({ path: `${outputDirectory}/${definition2.id}.html`, bytes: new TextEncoder().encode(staticMarkup(definition2.root, defaults(definition2), definitions) + "\n") });
+      writes.push({ path: `${outputDirectory}/${definition2.id}.html`, bytes: new TextEncoder().encode(staticMarkup(definition2.root, defaults(definition2), definitions, "", stateDefaults(definition2)) + "\n") });
       writes.push({ path: `${outputDirectory}/${definition2.id}.d.ts`, bytes: new TextEncoder().encode(domDeclaration(definition2)) });
     }
   }
@@ -25022,7 +25456,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
   });
 }
 const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
-const identifier = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
+const identifier$1 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
 const value$1 = union([string$1(), number().finite(), boolean(), _null()]);
 function matches(field2, item) {
   return item === null ? field2.nullable === true : typeof item === field2.type;
@@ -25044,14 +25478,14 @@ const operation = strictObject({
   responsePath: string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/).optional()
 });
 const operations = strictObject({ list: operation.optional(), get: operation.optional(), create: operation.optional(), update: operation.optional(), delete: operation.optional() });
-const schema = strictObject({
+const schema$1 = strictObject({
   schemaVersion: literal$1(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   kind: _enum(["rest", "json"]),
-  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier.default("id"), fields: record(identifier, field) }),
+  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record(identifier$1, field) }),
   rest: strictObject({ baseUrl: string$1().url(), operations }).optional(),
   json: strictObject({ path: string$1().min(1) }).optional(),
-  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record(identifier, value$1)).min(1).max(100).optional() }).optional()
+  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record(identifier$1, value$1)).min(1).max(100).optional() }).optional()
 }).superRefine((definition2, context) => {
   const issue2 = (message) => context.addIssue({ code: "custom", message });
   const fields = definition2.model.fields, primary = fields[definition2.model.idField];
@@ -25061,8 +25495,8 @@ const schema = strictObject({
   if (invalidId(primary?.example) || primary?.enum?.some(invalidId)) issue2("ID examples and enum values cannot be empty or dot path segments.");
   if (definition2.kind === "rest" ? !definition2.rest || !!definition2.json : !definition2.json || !!definition2.rest) issue2("Supply only the configuration matching the source kind.");
   if (definition2.rest) {
-    const url = new URL(definition2.rest.baseUrl);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) issue2("REST baseUrl must be HTTP(S) without credentials, query or fragment.");
+    const url2 = new URL(definition2.rest.baseUrl);
+    if (!["http:", "https:"].includes(url2.protocol) || url2.username || url2.password || url2.search || url2.hash) issue2("REST baseUrl must be HTTP(S) without credentials, query or fragment.");
     const entries = Object.entries(definition2.rest.operations);
     if (!entries.length) issue2("REST must define at least one operation.");
     for (const [name2, config2] of entries) {
@@ -25107,7 +25541,7 @@ class MarkdownDataSourceDefinitions {
     vaultPath(path);
     try {
       const document2 = this.documents.inspect("definition.md", bytes);
-      const result = schema.safeParse(document2.properties);
+      const result = schema$1.safeParse(document2.properties);
       ensure(result.success, "INVALID_DATA_SOURCE", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       if (result.data.json) {
         vaultPath(result.data.json.path);
@@ -25297,6 +25731,62 @@ class TypeScriptDataSourceRenderer {
       { path: `${options.outputDirectory}/${definition2.id}.ts`, bytes: encodeText(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
       { path: `${options.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: encodeText(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
     ]);
+  }
+}
+const identifier = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved state name.");
+const scalar = union([string$1(), number().finite(), boolean(), _null()]).refine((value2) => !uiHasMalformedBinding(value2), "Invalid scalar binding syntax.");
+const safeKey = string$1().min(1).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved detail key.");
+const url = string$1().min(1).refine((value2) => {
+  if (uiHasMalformedBinding(value2)) return false;
+  if (uiWholeBinding(value2)) return true;
+  const example = uiBindingParts(value2).map((part) => "literal" in part ? part.literal : "value").join("");
+  return isSafeNavigationUrl(example);
+}, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
+const action = union([
+  strictObject({ type: literal$1("set-state"), state: identifier, value: scalar }),
+  strictObject({ type: literal$1("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
+  strictObject({ type: literal$1("toggle-state"), state: identifier }),
+  strictObject({ type: literal$1("navigate"), url }),
+  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record(safeKey, scalar).optional() })
+]);
+const schema = strictObject({
+  schemaVersion: literal$1(1),
+  id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  event: _enum(interactionEvents),
+  keys: array(string$1().min(1)).min(1).optional(),
+  preventDefault: boolean().optional(),
+  stopPropagation: boolean().optional(),
+  actions: array(action).min(1)
+}).superRefine((definition2, context) => {
+  if (definition2.keys && !["keydown", "keyup"].includes(definition2.event)) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters require keydown or keyup." });
+  if (definition2.keys && new Set(definition2.keys).size !== definition2.keys.length) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters must be unique." });
+  for (const [index2, entry] of definition2.actions.entries()) {
+    if (entry.type === "set-state" && "fromEvent" in entry && !["input", "change"].includes(definition2.event)) {
+      context.addIssue({ code: "custom", path: ["actions", index2, "fromEvent"], message: "Event value and checked sources require input or change." });
+    }
+  }
+});
+class MarkdownInteractionDefinitions {
+  documents = new ObsidianDocuments();
+  parse(bytes, path) {
+    vaultPath(path);
+    try {
+      const document2 = this.documents.inspect("interaction.md", bytes);
+      const result = schema.safeParse(document2.properties);
+      ensure(result.success, "INVALID_INTERACTION", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      return { ...result.data, description: document2.body, sourcePath: path };
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "INVALID_INTERACTION") throw error2;
+      throw new AppError("INVALID_INTERACTION", `${path}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`, 2);
+    }
+  }
+  serialize(definition2) {
+    const { sourcePath, description: description2, ...frontmatter2 } = definition2;
+    const bytes = new TextEncoder().encode(`---
+${distExports.stringify(frontmatter2)}---
+${description2}`);
+    this.parse(bytes, sourcePath || `${definition2.id}.md`);
+    return bytes;
   }
 }
 const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `app.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/app.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/app.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A CONFLICT means reread and reconcile; never blindly retry with a new revision.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. File events report committed changes; dry runs emit none. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
@@ -28752,51 +29242,51 @@ function workflowCommands(services) {
       return services.setup();
     } },
     { id: "templates", description: "Discover Markdown templates, required placeholders, and install the planning workflow pack.", usage: "templates [list | inspect <template.md> | install [workflow]]", async run(args) {
-      const action = args[0] ?? "list";
-      if (action === "install") {
+      const action2 = args[0] ?? "list";
+      if (action2 === "install") {
         arity(args, 1, 2);
         ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
         return services.installTemplates();
       }
-      if (action === "list") {
+      if (action2 === "list") {
         arity(args, 0, 1);
         const prefix = "bin/templates/";
         return { directory: "bin/templates", templates: (await services.files.list()).filter((path2) => path2.startsWith(prefix) && path2.toLowerCase().endsWith(".md")).map((path2) => path2.slice(prefix.length)) };
       }
-      ensure(action === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
+      ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
       arity(args, 2);
       ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const path = `bin/templates/${vaultPath(args[1])}`;
       return { path, ...services.templates.inspect((await services.files.read(path)).bytes) };
     } },
     { id: "project", description: "Manage TypeScript library projects and add tested domain/application components.", usage: "project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]", options: { kind: "string" }, async run(args, flags) {
-      const action = args[0] ?? "list";
-      if (action !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
-      if (action === "list") {
+      const action2 = args[0] ?? "list";
+      if (action2 !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
+      if (action2 === "list") {
         arity(args, 0, 1);
         return { directory: config2.paths.projects, projects: await services.projects.list() };
       }
-      if (action === "current") {
+      if (action2 === "current") {
         arity(args, 1);
         return { project: await services.projects.current() };
       }
-      if (action === "open") {
+      if (action2 === "open") {
         arity(args, 2);
         return services.projects.open(args[1]);
       }
-      if (action === "close") {
+      if (action2 === "close") {
         arity(args, 1);
         return services.projects.close();
       }
-      if (action === "inspect") {
+      if (action2 === "inspect") {
         arity(args, 1, 2);
         return args[1] ? services.projects.inspect(args[1]) : services.projects.requireCurrent();
       }
-      if (action === "create") {
+      if (action2 === "create") {
         arity(args, 2);
         return services.projects.create(args[1]);
       }
-      ensure(action === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
+      ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
       arity(args, 2, 3);
       const kind = value(flags, "kind") ?? "domain";
       ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
@@ -28831,7 +29321,7 @@ async function generationControls(flags, files) {
   const mode = flags.check ? "check" : planning ? "plan" : "generate";
   return { mode, manifestPath, revisions };
 }
-const uiGenerationOptions = { framework: "string", stories: "boolean", "stories-out": "string" };
+const uiGenerationOptions = { framework: "string", stories: "boolean", "stories-out": "string", "interactions-library": "string" };
 async function makeUi(kind, id2, flags, context, services) {
   const config2 = services.loaded.config;
   const framework = value(flags, "framework") ?? config2.ui.framework;
@@ -28845,6 +29335,7 @@ async function makeUi(kind, id2, flags, context, services) {
   const options = {
     component: id2,
     framework,
+    interactionDirectory: value(flags, "interactions-library") ?? config2.paths.interactions,
     outputDirectory: scoped(value(flags, "out") ?? config2.paths.ui),
     ...storybook2 ? { storiesDirectory: scoped(value(flags, "stories-out") ?? config2.paths.stories) } : {},
     storybook: storybook2,
@@ -28862,17 +29353,18 @@ function uiCommands(services) {
   return [{
     id: "components",
     description: "Manage and validate a shared Markdown UI component library.",
-    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory]",
-    options: { library: "string", from: "string", out: "string", tag: "string" },
+    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
+    options: { library: "string", from: "string", out: "string", tag: "string", "interactions-library": "string" },
     async run(args, flags) {
-      const action = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.components;
-      ensure(flags.from === void 0 || action === "import", "INVALID_ARGUMENT", "--from requires components import.");
-      ensure(flags.out === void 0 || action === "export", "INVALID_ARGUMENT", "--out requires components export.");
-      ensure(flags.tag === void 0 || action === "create", "INVALID_ARGUMENT", "--tag requires components create.");
+      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.components;
+      const interactionDirectory = value(flags, "interactions-library") ?? config2.paths.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
+      ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
       const library = services.uiLibrary;
-      if (action === "list") {
+      if (action2 === "list") {
         arity(args, 0, 1);
-        const definitions = await library.list(directory);
+        const definitions = await library.list(directory, interactionDirectory);
         return { directory, count: definitions.length, status: definitions.length ? "ready" : "empty", ...!definitions.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions.map((definition2) => ({
           id: definition2.id,
           name: definition2.name,
@@ -28882,29 +29374,29 @@ function uiCommands(services) {
           dependencies: componentDependencies(definition2.root)
         })) };
       }
-      if (action === "init") {
+      if (action2 === "init") {
         arity(args, 1);
-        return { directory, ...await library.init(directory) };
+        return { directory, ...await library.init(directory, interactionDirectory) };
       }
-      if (action === "inspect") {
+      if (action2 === "inspect") {
         arity(args, 2);
-        return library.inspect(directory, args[1]);
+        return library.inspect(directory, args[1], interactionDirectory);
       }
-      if (action === "validate") {
+      if (action2 === "validate") {
         arity(args, 1);
-        return library.validate(directory);
+        return library.validate(directory, interactionDirectory);
       }
-      if (action === "create") {
+      if (action2 === "create") {
         arity(args, 2);
-        return library.create(directory, args[1], value(flags, "tag") ?? "div");
+        return library.create(directory, args[1], value(flags, "tag") ?? "div", interactionDirectory);
       }
-      if (action === "import") {
+      if (action2 === "import") {
         arity(args, 1);
-        return library.import(value(flags, "from") ?? config2.paths.componentImports, directory);
+        return library.import(value(flags, "from") ?? config2.paths.componentImports, directory, interactionDirectory);
       }
-      ensure(action === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
       arity(args, 1);
-      return library.export(directory, value(flags, "out") ?? config2.paths.componentExports);
+      return library.export(directory, value(flags, "out") ?? config2.paths.componentExports, interactionDirectory);
     }
   }];
 }
@@ -28934,12 +29426,12 @@ function dataSourceCommands(services) {
     usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
     options: { library: "string", from: "string", out: "string", kind: "string" },
     async run(args, flags) {
-      const action = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.dataSources;
-      ensure(flags.from === void 0 || action === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
-      ensure(flags.out === void 0 || action === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
-      ensure(flags.kind === void 0 || action === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
+      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.dataSources;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
+      ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
       const library = services.dataSources;
-      if (action === "list") {
+      if (action2 === "list") {
         arity(args, 0, 1);
         const definitions = await library.list(directory);
         return {
@@ -28950,31 +29442,89 @@ function dataSourceCommands(services) {
           sources: definitions.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
         };
       }
-      if (action === "init") {
+      if (action2 === "init") {
         arity(args, 1);
         return { directory, ...await library.init(directory) };
       }
-      if (action === "inspect") {
+      if (action2 === "inspect") {
         arity(args, 2);
         return library.inspect(directory, args[1]);
       }
-      if (action === "validate") {
+      if (action2 === "validate") {
         arity(args, 1);
         return library.validate(directory);
       }
-      if (action === "create") {
+      if (action2 === "create") {
         arity(args, 2);
         const kind = value(flags, "kind") ?? "rest";
         ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
         return library.create(directory, args[1], kind);
       }
-      if (action === "import") {
+      if (action2 === "import") {
         arity(args, 1);
         return library.import(value(flags, "from") ?? config2.paths.dataImports, directory);
       }
-      ensure(action === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
       arity(args, 1);
       return library.export(directory, value(flags, "out") ?? config2.paths.dataExports);
+    }
+  }];
+}
+function interactionCommands(services) {
+  const config2 = services.loaded.config;
+  return [{
+    id: "interactions",
+    description: "Manage reusable Markdown interaction definitions for executable UI behavior.",
+    usage: "interactions [list | init | inspect <id> | validate | create <id> [--event click] | import [--from directory] | export [--out directory]] [--library directory]",
+    options: { library: "string", from: "string", out: "string", event: "string" },
+    async run(args, flags) {
+      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires interactions import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires interactions export.");
+      ensure(flags.event === void 0 || action2 === "create", "INVALID_ARGUMENT", "--event requires interactions create.");
+      const library = services.interactions;
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions = await library.list(directory);
+        return {
+          directory,
+          count: definitions.length,
+          status: definitions.length ? "ready" : "empty",
+          ...!definitions.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {},
+          interactions: definitions.map((definition2) => ({
+            id: definition2.id,
+            event: definition2.event,
+            sourcePath: definition2.sourcePath,
+            actions: definition2.actions.map((action22) => action22.type),
+            descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? ""
+          }))
+        };
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1]);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return library.validate(directory);
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        const event = value(flags, "event") ?? "click";
+        ensure(interactionEvents.includes(event), "INVALID_ARGUMENT", `--event must be one of: ${interactionEvents.join(", ")}.`);
+        return library.create(directory, args[1], event);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value(flags, "from") ?? config2.paths.interactionImports, directory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value(flags, "out") ?? config2.paths.interactionExports);
     }
   }];
 }
@@ -29014,6 +29564,7 @@ function commands(registry2, services) {
     ...workflowCommands(services),
     ...uiCommands(services),
     ...dataSourceCommands(services),
+    ...interactionCommands(services),
     { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
@@ -29090,14 +29641,14 @@ function commands(registry2, services) {
       const pointer = value(flags, "pointer", true), data = parseJson(value(flags, "value", true));
       return workspace.edit(args[0], value(flags, "if-match", true), (bytes) => workspace.codec.patch(args[0], bytes, pointer, data));
     } },
-    { id: "make", description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.", usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]", options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string", ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
+    { id: "make", description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.", usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]", options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string", ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
       if (args.length === 0) {
         ensure(["out", "template", "values", "values-from", "date", ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
         return { generators: generatorCatalog() };
       }
       arity(args, 2);
       if (args[0] === "data-source") {
-        ensure(["template", "values", "values-from", "date", "framework", "stories", "stories-out"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Data-source generation accepts library/project/output/test-data/plan/revision options.");
+        ensure(["template", "values", "values-from", "date", ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Data-source generation accepts library/project/output/test-data/plan/revision options.");
         return makeDataSource(args[1], flags, context, services);
       }
       ensure(flags["test-data-out"] === void 0, "INVALID_ARGUMENT", "--test-data-out requires make data-source.");
@@ -29129,19 +29680,19 @@ function commands(registry2, services) {
       return { plugins: registry2.plugins.map((p) => p.manifest) };
     } },
     { id: "skills", description: "List, read or install bundled and plugin agent skills.", usage: "skills [list | show <id> | install] [--out .agents/skills]", options: { out: "string" }, async run(args, flags, { workspace }) {
-      const action = args[0] ?? "list";
-      if (action !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
-      if (action === "list") {
+      const action2 = args[0] ?? "list";
+      if (action2 !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
+      if (action2 === "list") {
         arity(args, 0, 1);
         return { skills: [...registry2.skills.keys()] };
       }
-      if (action === "show") {
+      if (action2 === "show") {
         arity(args, 2);
         const skill = registry2.skills.get(args[1]);
         ensure(skill, "UNKNOWN_SKILL", args[1]);
         return skill;
       }
-      ensure(action === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
+      ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
       arity(args, 1);
       const directory = value(flags, "out") ?? ".agents/skills";
       return workspace.write([...registry2.skills.values()].map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
@@ -29157,6 +29708,7 @@ const germanCommands = {
   project: "TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.",
   components: "Markdown-Komponenten verwalten, prüfen, importieren und exportieren.",
   "data-sources": "Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.",
+  interactions: "Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.",
   formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
   list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
   read: "Ein Dokument oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
@@ -29199,12 +29751,14 @@ const germanErrors = {
   CYCLIC_UI_COMPONENT: "Die Komponenten enthalten einen Zyklus. Entfernen Sie die zyklische Referenz.",
   DATA_SOURCE_RENDERER_UNAVAILABLE: "Für diese Datenquelle ist kein Generator verfügbar.",
   DUPLICATE_DATA_SOURCE: "Die Datenquellen-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
+  DUPLICATE_INTERACTION: "Die Interaktions-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
   DUPLICATE_EVENT: "Die Ereignis-ID ist bereits registriert.",
   DUPLICATE_OPTION: "Eine Option wurde mehrfach oder widersprüchlich angegeben.",
   DUPLICATE_OR_INVALID_ID: "Eine ID ist ungültig oder bereits vergeben.",
   DUPLICATE_PLUGIN: "Das Plugin ist bereits registriert.",
   DUPLICATE_UI_COMPONENT: "Die Komponenten-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
   EMPTY_DATA_SOURCE_LIBRARY: "Die Datenquellenbibliothek ist leer. Führen Sie data-sources init aus oder fügen Sie eine Definition hinzu.",
+  EMPTY_INTERACTION_LIBRARY: "Die Interaktionsbibliothek ist leer. Führen Sie interactions init aus oder fügen Sie eine Definition hinzu.",
   EMPTY_UI_LIBRARY: "Die Komponentenbibliothek ist leer. Führen Sie components init aus oder fügen Sie eine Definition hinzu.",
   EVENT_RECURSION: "Die maximale Ereignistiefe wurde überschritten. Prüfen Sie rekursive Ereignisbehandler.",
   INCOMPATIBLE_PLUGIN: "Das Plugin unterstützt diese API-Version nicht.",
@@ -29215,6 +29769,8 @@ const germanErrors = {
   INVALID_COMPONENT_KIND: "Der Komponententyp ist ungültig. Verwenden Sie domain oder application.",
   INVALID_CONFIG: "Die Konfiguration ist ungültig oder nicht lesbar. Prüfen Sie bin/config.json und die Diagnose.",
   INVALID_DATA_SOURCE: "Die Datenquellendefinition ist ungültig. Prüfen Sie die angegebenen Felder.",
+  INVALID_INTERACTION: "Die Interaktionsdefinition ist ungültig. Prüfen Sie Ereignis, Aktionen und Bindungen.",
+  INVALID_INTERACTION_STATE: "Der Interaktionszustand ist ungültig. Prüfen Sie Zustandstypen, Anfangswerte und Aktionsziele.",
   INVALID_ENCODING: "Die Eingabekodierung ist ungültig. Verwenden Sie gültiges UTF-8 oder Base64.",
   INVALID_EVENT: "Die Ereignisdefinition oder der Ereigniszustand ist ungültig.",
   INVALID_EVENT_LISTENER: "Ein Ereignisbehandler muss eine Funktion sein.",
@@ -29258,6 +29814,7 @@ const germanErrors = {
   UI_RENDERER_UNAVAILABLE: "Für dieses UI-Ziel ist kein Generator verfügbar.",
   UNKNOWN_COMMAND: "Der Befehl ist unbekannt. Verfügbare Befehle finden Sie mit help oder schema.",
   UNKNOWN_DATA_SOURCE: "Die Datenquelle ist unbekannt. Prüfen Sie data-sources list.",
+  UNKNOWN_INTERACTION: "Die Interaktion ist unbekannt. Prüfen Sie interactions list und die zugeordnete Interaktionsbibliothek.",
   UNKNOWN_EVENT: "Das Ereignis ist nicht registriert.",
   UNKNOWN_GENERATOR: "Der Generator ist unbekannt. Verfügbare Generatoren finden Sie mit make.",
   UNKNOWN_OPTION: "Die Option ist unbekannt. Prüfen Sie help <command>.",
@@ -29298,7 +29855,7 @@ class Localizer {
   result(command, data) {
     if (this.language === "en" || !isRecord(data)) return data;
     if (["help", "schema", "make"].includes(command) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
-    if ((command === "components" || command === "data-sources") && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
+    if (["components", "data-sources", "interactions"].includes(command) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
       return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
     if (command === "formats") return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
@@ -29361,14 +29918,17 @@ async function run() {
         get dataSources() {
           return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer());
         },
+        get interactions() {
+          return new InteractionLibrary(environment, new MarkdownInteractionDefinitions());
+        },
         get uiLibrary() {
           return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
             componentPaths: (definitions, options) => definitions.map((definition2) => `${options.outputDirectory}/${componentArtifact(definition2, options.framework).fileName}`),
             generate: (definitions, options) => [
-              ...options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory),
+              ...options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory, options.interactions),
               ...options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory) : []
             ]
-          });
+          }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config2.paths.interactions);
         },
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run()
@@ -29388,7 +29948,7 @@ async function run() {
       config2.settings.dryRun = parsed.flags["no-dry-run"] ? false : parsed.flags["dry-run"] ? true : config2.settings.dryRun;
       compact = config2.settings.json;
       environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun);
-      const environmentCommand = parsed.flags.help || ["help", "schema", "config", "formats", "events", "plugins", "setup", "project", "templates", "components", "data-sources"].includes(id2) || id2 === "make" && (parsed.args.length === 1 || parsed.args[1] === "plugin") || id2 === "skills" && parsed.args[1] !== "install";
+      const environmentCommand = parsed.flags.help || ["help", "schema", "config", "formats", "events", "plugins", "setup", "project", "templates", "components", "data-sources", "interactions"].includes(id2) || id2 === "make" && (parsed.args.length === 1 || parsed.args[1] === "plugin") || id2 === "skills" && parsed.args[1] !== "install";
       const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold });
       const requestedProject = id2 === "make" && ["ui", "stories", "data-source"].includes(parsed.args[1] ?? "") ? value(parsed.flags, "project") : void 0;
       const project = environmentCommand ? null : requestedProject !== void 0 ? await projects.inspect(requestedProject) : await projects.current();

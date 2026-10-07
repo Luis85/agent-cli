@@ -9,6 +9,7 @@ import { ProjectService } from './application/projects.ts';
 import { SetupService } from './application/setup.ts';
 import { UiLibrary } from './application/ui.ts';
 import { DataSourceLibrary } from './application/data-sources.ts';
+import { InteractionLibrary } from './application/interactions.ts';
 import { TemplateInstaller } from './application/templates.ts';
 import { NodeFiles } from './infrastructure/files.ts';
 import { ObsidianDocuments } from './infrastructure/documents.ts';
@@ -25,6 +26,7 @@ import { componentArtifact, renderUiComponents } from './infrastructure/ui-rende
 import { renderUiStories } from './infrastructure/ui-stories.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/data-source-definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/data-source-generator.ts';
+import { MarkdownInteractionDefinitions } from './infrastructure/interaction-definitions.ts';
 import { builtinSkills } from './infrastructure/skills.ts';
 import { commands } from './presentation/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/arguments.ts';
@@ -63,13 +65,14 @@ async function run(): Promise<void> {
         loaded, files, templates: new MarkdownTemplates(),
         get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
+        get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
         get uiLibrary() { return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
           componentPaths: (definitions, options) => definitions.map(definition => `${options.outputDirectory}/${componentArtifact(definition, options.framework).fileName}`),
           generate: (definitions, options) => [
-            ...(options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory)),
+            ...(options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory, options.interactions)),
             ...(options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory!) : []),
           ],
-        }); },
+        }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config.paths.interactions); },
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
       })) registry.add(registry.commands, command);
@@ -89,7 +92,7 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun);
       // Management and recovery remain available even if saved project context is stale.
-      const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates', 'components', 'data-sources'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
+      const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates', 'components', 'data-sources', 'interactions'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
       const requestedProject = id === 'make' && ['ui', 'stories', 'data-source'].includes(parsed.args[1] ?? '') ? value(parsed.flags, 'project') : undefined;
       const project = environmentCommand ? null : requestedProject !== undefined ? await projects.inspect(requestedProject) : await projects.current();

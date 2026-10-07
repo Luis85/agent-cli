@@ -119,3 +119,5 @@ Non-success HTTP responses throw `<Model>DataSourceError` with numeric `status`.
 Generation is create-only unless `--revisions-from` supplies current SHA-256 revisions for every existing output. Map keys use workspace-relative output paths, including project directories; the map file is read relative to the active project/workspace. Missing/stale revisions cause `CONFLICT`; keys outside the generation plan or invalid hashes cause `INVALID_GENERATION_REVISIONS`. Plan/check modes reject `--revisions-from`. `--dry-run` previews an operation without writes or notifications.
 
 Definition failures use `INVALID_DATA_SOURCE`; duplicate IDs use `DUPLICATE_DATA_SOURCE`; a missing selected ID uses `UNKNOWN_DATA_SOURCE`; generation/import from an empty library uses `EMPTY_DATA_SOURCE_LIBRARY`. All generated writes use the workspace's batch collision checks, revision guards and post-commit events.
+
+Definition import/export source and destination directories must be disjoint: neither may equal or contain the other. This prevents transferred Markdown from being rediscovered as part of its own source library.

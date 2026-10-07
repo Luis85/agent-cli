@@ -4,7 +4,8 @@ export type UiFramework = typeof uiFrameworks[number];
 export type UiValue = string | number | boolean | null;
 export type UiJson = UiValue | UiJson[] | { [key: string]: UiJson };
 export interface UiProp { type: 'string' | 'number' | 'boolean'; default?: UiValue; required?: boolean; description?: string }
-export interface UiElement { tag: string; attrs?: Record<string, UiValue>; text?: string; children?: UiNode[] }
+export interface UiState { type: 'string' | 'number' | 'boolean'; default: UiValue }
+export interface UiElement { tag: string; attrs?: Record<string, UiValue>; text?: string; children?: UiNode[]; interactions?: string[] }
 export interface UiReference { component: string; props?: Record<string, UiValue>; children?: UiNode[] }
 export interface UiSlot { slot: 'children' }
 export type UiNode = UiElement | UiReference | UiSlot;
@@ -26,6 +27,7 @@ export interface UiDefinition {
   description: string;
   sourcePath: string;
   props: Record<string, UiProp>;
+  state?: Record<string, UiState>;
   root: UiNode;
   storybook?: UiStorybook;
 }

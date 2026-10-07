@@ -1,5 +1,5 @@
 import { ensure } from '../domain/errors.ts';
-import { vaultPath, type WriteRequest } from '../domain/file.ts';
+import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../domain/file.ts';
 import type { DataSourceDefinition } from '../domain/data-source.ts';
 import type { Workspace } from './workspace.ts';
 import { GenerationService } from './generation.ts';
@@ -66,7 +66,7 @@ export class DataSourceLibrary {
     return { sources: additions.map(definition => definition.id), skipped: [...ids].sort(), ...await this.commit(plan) };
   }
   async import(sourceDirectory: string, directory: string) {
-    vaultPath(sourceDirectory); vaultPath(directory);
+    ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
     ensure(sources.length, 'EMPTY_DATA_SOURCE_LIBRARY', `No data-source definitions in ${sourceDirectory}.`);
     validateLibrary([...await this.list(directory), ...sources.map(source => source.definition)]);
@@ -74,7 +74,7 @@ export class DataSourceLibrary {
     return { sources: sources.map(source => source.definition.id), ...await this.commit(plan) };
   }
   async export(directory: string, outputDirectory: string) {
-    vaultPath(directory); vaultPath(outputDirectory);
+    ensureSeparateDirectories(directory, outputDirectory);
     const sources = await this.sources(directory), definitions = sources.map(source => source.definition);
     validateLibrary([...await this.list(outputDirectory), ...definitions]);
     const plan = sources.map(({ definition, bytes }) => ({ path: `${outputDirectory}/${definition.sourcePath.slice(directory.length + 1)}`, bytes }));

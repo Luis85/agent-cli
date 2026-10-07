@@ -10,6 +10,7 @@ import type { WorkflowServices } from './services.ts';
 import { libraryGenerationOptions } from './generation-controls.ts';
 import { uiCommands, makeUi, uiGenerationOptions } from './ui-commands.ts';
 import { dataSourceCommands, makeDataSource, dataSourceGenerationOptions } from './data-source-commands.ts';
+import { interactionCommands } from './interaction-commands.ts';
 
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const inline = value(flags, 'content'), from = value(flags, 'from');
@@ -44,6 +45,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
     ...workflowCommands(services),
     ...uiCommands(services),
     ...dataSourceCommands(services),
+    ...interactionCommands(services),
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
@@ -99,14 +101,14 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
       arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
     } },
-    { id: 'make', description: 'Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.', usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]', options: { out: 'string', template: 'string', values: 'string', 'values-from': 'string', date: 'string', ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
+    { id: 'make', description: 'Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.', usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]', options: { out: 'string', template: 'string', values: 'string', 'values-from': 'string', date: 'string', ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
       if (args.length === 0) {
         ensure(['out', 'template', 'values', 'values-from', 'date', ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.');
         return { generators: generatorCatalog() };
       }
       arity(args, 2);
       if (args[0] === 'data-source') {
-        ensure(['template', 'values', 'values-from', 'date', 'framework', 'stories', 'stories-out'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Data-source generation accepts library/project/output/test-data/plan/revision options.');
+        ensure(['template', 'values', 'values-from', 'date', ...Object.keys(uiGenerationOptions)].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Data-source generation accepts library/project/output/test-data/plan/revision options.');
         return makeDataSource(args[1]!, flags, context, services);
       }
       ensure(flags['test-data-out'] === undefined, 'INVALID_ARGUMENT', '--test-data-out requires make data-source.');
