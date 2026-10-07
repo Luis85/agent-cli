@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -65,7 +66,7 @@ describe('portable selected-project workflows', () => {
     const preview = run([...args, '--dry-run']);
     expect(preview.status).toBe(0);
     expect(preview.body.data.preview[0].path).toBe('docs/Plan.md');
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(root, 'projects/library/docs/Plan.md'))).rejects.toThrow();
     expect(run(args).status).toBe(0);
     expect(run(['read', 'docs/Plan.md']).body.data.document.properties.owner).toBe('Selected project');
@@ -89,14 +90,14 @@ describe('portable selected-project workflows', () => {
     for (const name of ['alpha', 'beta']) expect(run(['project', 'create', name]).status).toBe(0);
     const initialPreview = run(['project', 'open', 'alpha', '--dry-run']);
     expect(initialPreview.status).toBe(0); expect(initialPreview.body.data.dryRun).toBe(true);
-    expect(initialPreview.body.events).toEqual([]);
+    expect(committedEvents(initialPreview.body.events)).toEqual([]);
     await expect(readFile(join(root, 'bin/data/context.json'))).rejects.toThrow();
     expect(run(['project', 'current']).body.data.project).toBeNull();
     expect(run(['project', 'open', 'alpha']).status).toBe(0);
     const contextBefore = await readFile(join(root, 'bin/data/context.json'));
     for (const args of [['project', 'open', 'beta', '--dry-run'], ['project', 'close', '--dry-run']]) {
       const preview = run(args);
-      expect(preview.status).toBe(0); expect(preview.body.data.dryRun).toBe(true); expect(preview.body.events).toEqual([]);
+      expect(preview.status).toBe(0); expect(preview.body.data.dryRun).toBe(true); expect(committedEvents(preview.body.events)).toEqual([]);
       expect(await readFile(join(root, 'bin/data/context.json'))).toEqual(contextBefore);
       expect(run(['project', 'current']).body.data.project.name).toBe('alpha');
     }
@@ -113,7 +114,7 @@ describe('portable selected-project workflows', () => {
     await rm(join(root, 'projects/alpha/.forge/project.json'));
     const stale = run(['create', 'blocked.md', '--content', '# Do not write']);
     expect(stale.body.error.code).toBe('STALE_PROJECT_CONTEXT');
-    expect(stale.body.events).toEqual([]);
+    expect(committedEvents(stale.body.events)).toEqual([]);
     await expect(readFile(join(root, 'blocked.md'))).rejects.toThrow();
     await expect(readFile(join(root, 'projects/alpha/blocked.md'))).rejects.toThrow();
     expect(run(['schema']).status).toBe(0);
@@ -144,7 +145,7 @@ describe('portable selected-project workflows', () => {
     expect(run(['project', 'create', 'alpha']).status).toBe(0);
     const blocked = run(['create', 'note.md', '--content', '# Selected project']);
     expect(blocked.body.error.code).toBe('STALE_PROJECT_CONTEXT');
-    expect(blocked.body.events).toEqual([]);
+    expect(committedEvents(blocked.body.events)).toEqual([]);
     for (const directory of ['projects', 'other']) await expect(readFile(join(root, directory, 'alpha/note.md'))).rejects.toThrow();
     expect(run(['project', 'open', 'alpha']).status).toBe(0);
     const created = run(['create', 'note.md', '--content', '# Explicit selection']);
@@ -238,7 +239,7 @@ describe('portable selected-project workflows', () => {
     const run = (args: string[]) => cli(args, undefined, { root });
     const unselected = run(['make', 'form', 'ContactDetails']);
     expect(unselected.body.error.code).toBe('PROJECT_REQUIRED');
-    expect(unselected.body.events).toEqual([]);
+    expect(committedEvents(unselected.body.events)).toEqual([]);
     expect(run(['project', 'create', 'library']).status).toBe(0);
     expect(run(['project', 'open', 'library']).status).toBe(0);
     const selectedRoot = join(root, 'projects/library');
@@ -248,20 +249,20 @@ describe('portable selected-project workflows', () => {
     expect(preview.body.data.preview.map((file: { path: string }) => file.path)).toEqual([
       'src/presentation/forms/contact-details.form.ts', 'tests/contact-details.form.unit.test.ts',
     ]);
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(selectedRoot, 'src/presentation/forms/contact-details.form.ts'))).rejects.toThrow();
     await expect(readFile(join(selectedRoot, 'tests/contact-details.form.unit.test.ts'))).rejects.toThrow();
     const created = cli(['make', 'form', 'ContactDetails'], undefined, { root, cwd: bundle });
     expect(created.status).toBe(0);
     expect(created.body.context.root).toBe(selectedRoot);
-    expect(created.body.events).toHaveLength(2);
+    expect(committedEvents(created.body.events)).toHaveLength(2);
     expect(await readFile(join(selectedRoot, 'src/presentation/forms/contact-details.form.ts'), 'utf8')).toContain('ContactDetailsForm');
     expect(await readFile(join(selectedRoot, 'tests/contact-details.form.unit.test.ts'), 'utf8')).toContain('validates and normalizes form data');
     expect(run(['make', 'form', 'ContactDetails']).body.error.code).toBe('CONFLICT');
     for (const out of ['../outside', '/absolute', 'src/../outside']) {
       const rejected = run(['make', 'form', 'UnsafeForm', '--out', out]);
       expect(rejected.body.error.code).toBe('INVALID_PATH');
-      expect(rejected.body.events).toEqual([]);
+      expect(committedEvents(rejected.body.events)).toEqual([]);
     }
     const custom = run(['make', 'form', 'CustomContact', '--out', 'src/presentation/custom-forms']);
     expect(custom.status).toBe(0);

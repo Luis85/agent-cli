@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fileKind, isStructured } from '../../src/domain/file.ts';
+import { fileKind, isStructured } from '../../src/the-forge/domain/documents/file.ts';
 
 describe('file extension classification', () => {
   it.each(['md', 'canvas', 'base', 'png', 'pdf', 'WEBM', 'notes/md', 'notes.v1/md', 'notes.md/README'])('treats extensionless %s as an opaque attachment', path => {

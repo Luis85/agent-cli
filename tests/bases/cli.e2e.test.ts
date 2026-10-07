@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -61,7 +62,7 @@ describe('portable native Bases repositories', () => {
     expect(capabilities.body.data.limits).toContainEqual(expect.stringContaining('not verified against a running Obsidian'));
     for (const response of [listed, inspected, all, named, capabilities]) {
       expect(response.body.context).toEqual({ root, workspaceRoot: root, project: null });
-      expect(response.body.events).toEqual([]);
+      expect(committedEvents(response.body.events)).toEqual([]);
     }
     expect(await readFile(join(root, 'queries/tasks.base'))).toEqual(before);
     expect(await readdir(root)).not.toContain('.agent-cli.lock');
@@ -86,7 +87,8 @@ describe('portable native Bases repositories', () => {
     for (const { args, code } of errors) {
       const result = cli(args);
       expect(result.status).not.toBe(0);
-      expect(result.body).toMatchObject({ ok: false, error: { code }, events: [] });
+      expect(result.body).toMatchObject({ ok: false, error: { code } });
+      expect(committedEvents(result.body.events)).toEqual([]);
       expect(result.body.data).toBeUndefined();
     }
     await put(root, 'broken.base', 'views: invalid\n');
@@ -116,6 +118,6 @@ describe('portable native Bases repositories', () => {
     expect(fixture.cli(['bases', 'query', '../beta/tasks.base'], undefined, { root }).body.error.code).toBe('INVALID_PATH');
     expect(fixture.cli(['project', 'open', 'beta'], undefined, { root }).status).toBe(0);
     expect(fixture.cli(['bases', 'query', 'tasks.base'], undefined, { root }).body.data.files).toEqual(['Beta.md']);
-    expect(result.body.events).toEqual([]);
+    expect(committedEvents(result.body.events)).toEqual([]);
   }, 15000);
 });

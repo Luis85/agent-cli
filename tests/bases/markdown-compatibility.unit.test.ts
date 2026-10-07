@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates.ts';
+import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { MarkdownTemplates } from '../../src/the-forge/infrastructure/templates/markdown.ts';
 
 const documents = new ObsidianDocuments();
 const templates = new MarkdownTemplates();

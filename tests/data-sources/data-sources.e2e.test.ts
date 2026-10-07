@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -33,7 +34,7 @@ async function seed(kind: 'rest' | 'json', directory = 'data-sources') {
 describe('portable data-source workflow', () => {
   it('discovers definitions, reports source revisions, and transfers original Markdown', async () => {
     expect(cli(['data-sources']).body.data).toMatchObject({ status: 'empty', sources: [] });
-    expect(cli(['data-sources', 'init', '--dry-run']).body.events).toEqual([]);
+    expect(committedEvents(cli(['data-sources', 'init', '--dry-run']).body.events)).toEqual([]);
     expect(await readdir(root)).toEqual([]);
     await seed('rest');
     const list = cli(['data-sources', 'list']);
@@ -54,7 +55,7 @@ describe('portable data-source workflow', () => {
     const args = ['make', 'data-source', 'requests', '--out', 'adapters', '--test-data-out', 'fixtures'];
     const first = cli([...args, '--dry-run']), second = cli([...args, '--dry-run']);
     expect(first.status).toBe(0); expect(second.body.data).toEqual(first.body.data);
-    expect(first.body.events).toEqual([]);
+    expect(committedEvents(first.body.events)).toEqual([]);
     expect(first.body.data.preview.map((file: { path: string }) => file.path).sort()).toEqual(['adapters/requests.ts', 'fixtures/requests.fixtures.json']);
     await expect(readFile(join(root, 'adapters/requests.ts'))).rejects.toThrow();
     expect(cli(args).status).toBe(0);
@@ -73,7 +74,7 @@ describe('portable data-source workflow', () => {
     const args = ['make', 'data-source', 'requests'];
     const missing = cli([...args, '--check']);
     expect(missing.status).toBe(5); expect(missing.body.error.code).toBe('DATA_SOURCE_DRIFT');
-    expect(missing.body.events).toEqual([]);
+    expect(committedEvents(missing.body.events)).toEqual([]);
     expect(cli(args).status).toBe(0);
     expect(cli([...args, '--check']).status).toBe(0);
     const path = join(root, 'src/data-sources/requests.ts');
@@ -81,7 +82,7 @@ describe('portable data-source workflow', () => {
     const planned = cli([...args, '--plan']);
     expect(planned.status).toBe(0);
     expect(planned.body.data.outputs.find((output: { status: string }) => output.status === 'changed').currentContent).toBe('user edit\n');
-    expect(planned.body.events).toEqual([]);
+    expect(committedEvents(planned.body.events)).toEqual([]);
     expect(await readFile(path, 'utf8')).toBe('user edit\n');
     expect(cli([...args, '--plan-out', 'review.json']).status).toBe(0);
     await writeFile(path, 'new user edit\n');
@@ -120,7 +121,7 @@ describe('portable data-source workflow', () => {
       ['data-sources', 'list', '--kind', 'json'],
       ['data-sources', 'create', 'new', '--kind', 'sql'],
     ]) {
-      const result = cli(args); expect(result.status, args.join(' ')).not.toBe(0); expect(result.body.events).toEqual([]);
+      const result = cli(args); expect(result.status, args.join(' ')).not.toBe(0); expect(committedEvents(result.body.events)).toEqual([]);
     }
     expect(await readdir(root)).toEqual(['data-sources']);
   });

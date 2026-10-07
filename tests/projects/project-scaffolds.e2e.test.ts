@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeAll, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -15,7 +16,7 @@ it('creates discoverable library projects and tested components in the configure
     const args: string[] = [];
     expect(cli([...args, 'project', 'list']).body.data.projects).toEqual([]);
     const preview = cli([...args, 'project', 'create', 'task-lib', '--dry-run']);
-    expect(preview.status).toBe(0); expect(preview.body.events).toEqual([]);
+    expect(preview.status).toBe(0); expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(project, 'src/task-lib/package.json'))).rejects.toThrow();
     expect(cli([...args, 'project', 'create', 'task-lib']).status).toBe(0);
     const manifest = JSON.parse(await readFile(join(project, 'src/task-lib/package.json'), 'utf8'));
@@ -26,7 +27,7 @@ it('creates discoverable library projects and tested components in the configure
     });
     expect(cli([...args, 'project', 'list']).body.data.projects).toEqual([{ schemaVersion: 1, name: 'task-lib', type: 'library', directory: 'src/task-lib' }]);
     expect(cli([...args, 'project', 'inspect', 'task-lib']).body.data.directory).toBe('src/task-lib');
-    expect(cli([...args, 'project', 'component', 'task-lib', 'WorkItem', '--dry-run']).body.events).toEqual([]);
+    expect(committedEvents(cli([...args, 'project', 'component', 'task-lib', 'WorkItem', '--dry-run']).body.events)).toEqual([]);
     await expect(readFile(join(project, 'src/task-lib/src/domain/work-item.ts'))).rejects.toThrow();
     expect(cli([...args, 'project', 'component', 'task-lib', 'WorkItem']).status).toBe(0);
     expect(await readFile(join(project, 'src/task-lib/tests/work-item.domain.unit.test.ts'), 'utf8')).toContain('rejects an empty identity');

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/application/claude-lifecycle.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/the-forge/application/claude/lifecycle.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 
 function setup(dryRun = false, result = { exitCode: 0, stdout: '{"outcome":"ok"}', stderr: '' }) {
   const events = new EventBus(new NodeEventScope());

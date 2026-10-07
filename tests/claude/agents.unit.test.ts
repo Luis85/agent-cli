@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { validateClaudeAgent } from '../../src/domain/claude-agents.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude-agents.ts';
+import { validateClaudeAgent } from '../../src/the-forge/domain/claude/agents.ts';
+import { parseClaudeAgent, renderClaudeAgent } from '../../src/the-forge/infrastructure/claude/agents.ts';
 
 const metadata = { name: 'code-reviewer', description: 'Review changes for correctness.' };
 

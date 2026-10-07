@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { cp, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -10,8 +11,8 @@ let root: string;
 beforeEach(async () => { root = await mkdtemp(join(fixture.project, 'interactions-')); });
 const cli = (args: string[]) => fixture.cli(args, undefined, { root });
 async function seed() {
-  await cp('examples/interactions/definitions', join(root, 'interactions'), { recursive: true });
-  await cp('examples/interactions/components', join(root, 'components'), { recursive: true });
+  await cp('docs/examples/interactions/definitions', join(root, 'interactions'), { recursive: true });
+  await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });
 }
 
 describe('portable interaction library and executable UI', () => {
@@ -54,7 +55,7 @@ describe('portable interaction library and executable UI', () => {
     for (const framework of ['html', 'htmx', 'vanilla', 'react', 'vue', 'svelte', 'angular']) {
       const result = cli(['make', 'ui', 'contact-request', '--framework', framework, '--out', `generated/${framework}`, '--stories', '--stories-out', `stories/${framework}`, '--dry-run']);
       expect(result.status, framework).toBe(0);
-      expect(result.body.events).toEqual([]);
+      expect(committedEvents(result.body.events)).toEqual([]);
       const sources = result.body.data.preview.map((file: { content: string }) => file.content).join('\n');
       expect(sources, framework).toContain('contact:requested');
       expect(sources, framework).toContain('Request prepared');
@@ -92,7 +93,7 @@ describe('portable interaction library and executable UI', () => {
     await writeFile(path, (await readFile(path, 'utf8')).replace('value: Request prepared', 'value: Ready now'));
     const drift = cli([...args, '--check']);
     expect(drift.status).toBe(5); expect(drift.body.error.code).toBe('UI_DRIFT');
-    expect(drift.body.events).toEqual([]);
+    expect(committedEvents(drift.body.events)).toEqual([]);
     expect(cli([...args, '--plan-out', 'review.json']).status).toBe(0);
     expect(cli([...args, '--revisions-from', 'review.json']).status).toBe(0);
     expect(cli([...args, '--check']).status).toBe(0);
@@ -102,9 +103,9 @@ describe('portable interaction library and executable UI', () => {
   it('honors configured and overridden shared paths while generated output follows the project', async () => {
     await mkdir(join(root, 'bin'));
     await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: { projects: 'apps', interactions: 'shared/actions', interactionImports: 'incoming', interactionExports: 'outgoing' } }));
-    await cp('examples/interactions/definitions', join(root, 'incoming'), { recursive: true });
+    await cp('docs/examples/interactions/definitions', join(root, 'incoming'), { recursive: true });
     expect(cli(['interactions', 'import']).status).toBe(0);
-    await cp('examples/interactions/components', join(root, 'components'), { recursive: true });
+    await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });
     expect(cli(['project', 'create', 'portal']).status).toBe(0);
     expect(cli(['project', 'open', 'portal']).status).toBe(0);
     expect(cli(['interactions', 'list']).body.context.project).toBeNull();
@@ -119,7 +120,7 @@ describe('portable interaction library and executable UI', () => {
   });
 
   it('rejects unresolved behavior and inapplicable options before creating output', async () => {
-    await cp('examples/interactions/components', join(root, 'components'), { recursive: true });
+    await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });
     expect(cli(['make', 'ui', 'contact-request', '--framework', 'html']).body.error.code).toBe('UNKNOWN_INTERACTION');
     for (const args of [
       ['interactions', 'list', '--event', 'click'],
@@ -130,7 +131,7 @@ describe('portable interaction library and executable UI', () => {
     ]) {
       const result = cli(args);
       expect(result.status, args.join(' ')).not.toBe(0);
-      expect(result.body.events).toEqual([]);
+      expect(committedEvents(result.body.events)).toEqual([]);
     }
     expect(await readdir(root)).toEqual(['components']);
   });

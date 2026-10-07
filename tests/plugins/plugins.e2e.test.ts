@@ -23,7 +23,9 @@ it('loads runtime plugins, generators, skills and event subscriptions from a por
     await writeFile(pluginConfig, JSON.stringify({ plugins: { enabled: ['quality'] } }));
     const args: string[] = [];
     const check = cli([...args, 'quality.check', '--label', 'ready']);
-    expect(check.status).toBe(0); expect(check.body.data.label).toBe('ready'); expect(check.body.events[0].id).toBe('quality.checked'); expect(check.body.warnings).toContain('cleaned up');
+    expect(check.status).toBe(0); expect(check.body.data.label).toBe('ready');
+    expect(check.body.events.filter((event: { id: string }) => event.id === 'quality.checked')).toEqual([{ id: 'quality.checked', payload: 'ready' }]);
+    expect(check.body.warnings).toContain('cleaned up');
     const generated = cli([...args, 'make', 'quality.fixture', 'Example', '--out', 'fixtures']);
     expect(generated.status).toBe(0); expect(generated.body.warnings.some((w: string) => w.includes('Observer failed'))).toBe(true);
     expect(await readFile(join(project, 'fixtures/Example.md'), 'utf8')).toBe('# Fixture');

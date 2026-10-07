@@ -1,13 +1,13 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventBus } from '../../src/application/events.ts';
-import { ScopedFiles } from '../../src/application/scoped-files.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { ScopedFiles } from '../../src/the-forge/application/workspace/scoped-files.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const asset = '.claude/agents/reviewer.md';

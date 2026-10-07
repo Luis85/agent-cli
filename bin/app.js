@@ -22,7 +22,7 @@ const type = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const bin = { "forge": "bin/app.js" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node src/infrastructure/scripts/quality/typecheck.mjs", "build": "vite build && node src/infrastructure/scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node src/infrastructure/scripts/release.mjs", "lint": "node src/infrastructure/scripts/quality/lint.mjs", "analyze": "node src/infrastructure/scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node src/infrastructure/scripts/quality/structure.mjs" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge" };
 const dependencies = { "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "remark-frontmatter": "^5.0.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
 const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4", "vue": "3.5.43" };
 const metadata$1 = {
@@ -49,6 +49,16 @@ class AppError extends Error {
   exitCode;
   details;
 }
+function summarizeError(error2) {
+  return error2 instanceof AppError ? { code: error2.code, exitCode: error2.exitCode } : { code: "OPERATION_FAILED", exitCode: 1 };
+}
+function errorMessage(error2) {
+  try {
+    return error2 instanceof Error ? error2.message : String(error2);
+  } catch {
+    return "Operation failed with an unreadable error.";
+  }
+}
 function ensure(condition, code2, message) {
   if (!condition) throw new AppError(code2, message, 2);
 }
@@ -71,10 +81,15 @@ class EventBus {
   }
   delivery;
   definitions = /* @__PURE__ */ new Map();
-  listeners = /* @__PURE__ */ new Map();
+  listeners = /* @__PURE__ */ new Set();
   disposed = false;
+  historyTruncated = false;
+  operationId = 0;
   history = [];
   warnings = [];
+  nextOperationId() {
+    return ++this.operationId;
+  }
   define(definition2) {
     this.defineAll([definition2]);
   }
@@ -84,6 +99,7 @@ class EventBus {
     const staged = new Map(this.definitions);
     for (const definition2 of definitions) {
       ensure(isRecord(definition2) && typeof definition2.id === "string" && /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/.test(definition2.id) && typeof definition2.validate === "function", "INVALID_EVENT", "Invalid event definition.");
+      ensure(definition2.description === void 0 || typeof definition2.description === "string" && definition2.description.trim().length > 0, "INVALID_EVENT", "Event descriptions must be nonempty strings.");
       ensure(!staged.has(definition2.id), "DUPLICATE_EVENT", definition2.id);
       staged.set(definition2.id, definition2);
     }
@@ -92,16 +108,43 @@ class EventBus {
   ids() {
     return [...this.definitions.keys()].sort();
   }
+  catalog() {
+    return this.ids().map((id2) => {
+      const description2 = this.definitions.get(id2).description;
+      return { id: id2, ...description2 === void 0 ? {} : { description: description2 } };
+    });
+  }
   on(id2, listener) {
     ensure(!this.disposed && this.definitions.has(id2), "UNKNOWN_EVENT", id2);
     ensure(typeof listener === "function", "INVALID_EVENT_LISTENER", "Event listeners must be functions.");
-    const entry = { active: true, invoke: listener };
-    const entries = this.listeners.get(id2) ?? /* @__PURE__ */ new Set();
-    entries.add(entry);
-    this.listeners.set(id2, entries);
+    return this.subscribe({ active: true, id: id2, invoke: listener });
+  }
+  onAny(listener) {
+    ensure(!this.disposed, "INVALID_EVENT", "Cannot subscribe after disposal.");
+    ensure(typeof listener === "function", "INVALID_EVENT_LISTENER", "Event listeners must be functions.");
+    return this.subscribe({ active: true, invoke: listener });
+  }
+  async replay(listener) {
+    ensure(!this.disposed, "INVALID_EVENT", "Cannot replay events after disposal.");
+    ensure(typeof listener === "function", "INVALID_EVENT_LISTENER", "Event listeners must be functions.");
+    ensure(this.delivery.depth() < 32, "EVENT_RECURSION", "Event recursion exceeds 32.");
+    const records = structuredClone(this.history);
+    await this.delivery.run(async () => {
+      for (const record2 of records) {
+        if (this.disposed) break;
+        try {
+          await listener(record2);
+        } catch (error2) {
+          this.warn(`Replay ${record2.id}: ${errorMessage(error2)}`);
+        }
+      }
+    });
+  }
+  subscribe(entry) {
+    this.listeners.add(entry);
     return () => {
       entry.active = false;
-      entries.delete(entry);
+      this.listeners.delete(entry);
     };
   }
   once(id2, listener) {
@@ -129,13 +172,17 @@ class EventBus {
     const depth = this.delivery.depth();
     ensure(depth < 32, "EVENT_RECURSION", "Event recursion exceeds 32.");
     if (this.history.length < 1e3) this.history.push({ id: id2, payload: structuredClone(snapshot) });
+    else if (!this.historyTruncated) {
+      this.historyTruncated = true;
+      this.warn("Event history reached 1000 records; later notifications are delivered but omitted from history and replay.");
+    }
     await this.delivery.run(async () => {
-      for (const entry of Array.from(this.listeners.get(id2) ?? [])) {
+      for (const entry of Array.from(this.listeners).filter((listener) => listener.id === void 0 || listener.id === id2)) {
         if (!entry.active || this.disposed) continue;
         try {
-          await entry.invoke(structuredClone(snapshot));
+          await entry.invoke(structuredClone(entry.id === void 0 ? { id: id2, payload: snapshot } : snapshot));
         } catch (error2) {
-          this.warn(`Listener ${id2}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+          this.warn(`Listener ${id2}: ${errorMessage(error2)}`);
         }
       }
     });
@@ -146,6 +193,76 @@ class EventBus {
   dispose() {
     this.disposed = true;
     this.listeners.clear();
+  }
+}
+const text$4 = (value2) => typeof value2 === "string" && value2.length > 0;
+const count = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
+const status = (value2) => Number.isSafeInteger(value2);
+const operation$1 = (value2) => count(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
+const error$1 = (value2) => isRecord(value2) && text$4(value2.code) && status(value2.exitCode);
+const command = (value2) => operation$1(value2) && text$4(value2.command) && text$4(value2.root) && text$4(value2.workspaceRoot);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove"].includes(String(value2.operation)) && (value2.root === null || text$4(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$4);
+const claude = (value2) => operation$1(value2) && text$4(value2.executable) && text$4(value2.cwd);
+const plugin = (value2) => text$4(value2.pluginId);
+const change = (value2) => isRecord(value2) && text$4(value2.path) && text$4(value2.revision) && count(value2.bytes) && ["created", "updated", "deleted"].includes(String(value2.operation));
+const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
+function definition$1(id2, description2, validate2) {
+  return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
+}
+const hostEventDefinitions = [
+  definition$1("command.started", "A routed command is about to activate plugins and run.", command),
+  definition$1("command.succeeded", "A routed command returned successfully.", command),
+  definition$1("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$1(value2.error)),
+  definition$1("workspace.started", "A guarded workspace operation started, including previews.", workspace),
+  definition$1("workspace.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change))),
+  definition$1("workspace.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$1(value2.error)),
+  definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
+  definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
+  definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$1(value2.error) && optionalStatus(value2)),
+  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$4(value2.executable) && text$4(value2.cwd) && status(value2.exitCode)),
+  definition$1("file.created", "A file was committed after successful persistence.", (value2) => change(value2) && value2.operation === "created"),
+  definition$1("file.updated", "An existing file was committed after successful persistence.", (value2) => change(value2) && value2.operation === "updated"),
+  definition$1("file.deleted", "A file was removed; revision and bytes describe its prior content.", (value2) => change(value2) && value2.operation === "deleted"),
+  definition$1("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
+  definition$1("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
+  definition$1("plugin.activated", "A plugin activation hook completed successfully.", plugin),
+  definition$1("plugin.activation-failed", "A plugin activation failed; captured cleanup remains scheduled.", (value2) => plugin(value2) && error$1(value2.error)),
+  definition$1("plugin.unloading", "A started plugin is about to release its invocation resources.", plugin),
+  definition$1("plugin.unloaded", "A plugin cleanup completed successfully.", plugin),
+  definition$1("plugin.unload-failed", "A plugin cleanup failed; remaining cleanup still proceeds.", (value2) => plugin(value2) && error$1(value2.error))
+];
+function registerHostEvents(events) {
+  events.defineAll(hostEventDefinitions);
+}
+async function publishHostEvent(events, id2, payload) {
+  try {
+    if (!events.ids().includes(id2)) return;
+    await events.emit(id2, payload);
+  } catch (error2) {
+    try {
+      events.warn(`Host notification ${id2}: ${errorMessage(error2)}`);
+    } catch {
+    }
+  }
+}
+async function invokeCommand(events, metadata2, activate, run2) {
+  const operation2 = { ...metadata2, operationId: events.nextOperationId() };
+  await publishHostEvent(events, "command.started", operation2);
+  try {
+    await activate();
+    const data = await run2();
+    let snapshot;
+    try {
+      const serialized = JSON.stringify(data);
+      snapshot = serialized === void 0 ? void 0 : JSON.parse(serialized);
+    } catch {
+      throw new AppError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.");
+    }
+    await publishHostEvent(events, "command.succeeded", operation2);
+    return snapshot;
+  } catch (error2) {
+    await publishHostEvent(events, "command.failed", { ...operation2, error: summarizeError(error2) });
+    throw error2;
   }
 }
 class NodeEventScope {
@@ -181,6 +298,35 @@ class ClaudeLifecycle {
   scope;
   events;
   async execute(request) {
+    let detached = request;
+    let snapshotFailure;
+    try {
+      if (isRecord(request)) {
+        detached = { ...request };
+        if (Array.isArray(detached.args)) detached.args = [...detached.args];
+        if (Array.isArray(detached.sensitiveArgs)) detached.sensitiveArgs = [...detached.sensitiveArgs];
+      }
+    } catch (error2) {
+      snapshotFailure = { error: error2 };
+    }
+    const requestedExecutable = !snapshotFailure && isRecord(detached) ? detached.executable ?? "claude" : "claude";
+    const executable = typeof requestedExecutable === "string" && requestedExecutable.trim().length > 0 && !requestedExecutable.includes("\0") ? requestedExecutable : "<invalid>";
+    const operation2 = { operationId: this.events.nextOperationId(), executable, cwd: this.scope.cwd, dryRun: this.scope.dryRun };
+    let exitCode;
+    await publishHostEvent(this.events, "claude.started", operation2);
+    try {
+      if (snapshotFailure) throw snapshotFailure.error;
+      const result = await this.invoke(detached, (status2) => {
+        exitCode = status2;
+      });
+      await publishHostEvent(this.events, "claude.succeeded", { ...operation2, ...exitCode === void 0 ? {} : { exitCode } });
+      return result;
+    } catch (error2) {
+      await publishHostEvent(this.events, "claude.failed", { ...operation2, ...exitCode === void 0 ? {} : { exitCode }, error: summarizeError(error2) });
+      throw error2;
+    }
+  }
+  async invoke(request, observeExit) {
     ensure(isRecord(request), "INVALID_CLAUDE_ARGUMENT", "Claude execution requires an invocation object.");
     const executable = request.executable ?? "claude";
     ensure(typeof executable === "string" && executable.trim().length > 0 && !executable.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
@@ -207,11 +353,8 @@ class ClaudeLifecycle {
     if (this.scope.dryRun) return { dryRun: true, executed: false, plan };
     const result = await this.runtime(executable).run(args, { cwd: this.scope.cwd, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input === void 0 ? {} : { stdin: input } });
     ensure(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
-    try {
-      await this.events.emit("claude.executed", { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
-    } catch (error2) {
-      this.events.warn(`Claude exited with status ${result.exitCode}; notification failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
-    }
+    observeExit(result.exitCode);
+    await publishHostEvent(this.events, "claude.executed", { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
     let data, malformed = false;
     try {
       data = nativeResult(result.stdout, output);
@@ -256,48 +399,81 @@ function snapshotWriteRequests(writes) {
   ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
   return writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
 }
+const changeSummary = (result) => ({ changes: result.changes, bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0) });
 class Workspace {
-  constructor(files, codec, events, dryRun) {
+  constructor(files, codec, events, dryRun, root = null) {
     this.files = files;
     this.codec = codec;
     this.events = events;
     this.dryRun = dryRun;
+    this.root = root;
   }
   files;
   codec;
   events;
   dryRun;
+  root;
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // fallow-ignore-next-line unused-class-member
   async read(path) {
-    const file = await this.files.read(path);
-    return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+    return this.observe("read", [path], async () => {
+      const file = await this.files.read(path);
+      return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+    }, (result) => ({ bytes: result.bytes }));
   }
   async write(writes) {
-    const requests = snapshotWriteRequests(writes);
-    for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-    const changes = await this.files.writeBatch(requests, this.dryRun);
-    return this.committed(changes);
+    let requests;
+    try {
+      requests = snapshotWriteRequests(writes);
+    } catch (error2) {
+      return this.observe("write", [], async () => {
+        throw error2;
+      }, changeSummary);
+    }
+    return this.observe("write", requests.map((request) => request.path), async () => {
+      for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
+      const changes = await this.files.writeBatch(requests, this.dryRun);
+      return this.committed(changes);
+    }, changeSummary);
   }
   async remove(path, expectedRevision) {
-    const change = await this.files.remove(path, expectedRevision, this.dryRun);
-    return this.committed([change]);
+    return this.observe("remove", [path], async () => {
+      const change2 = await this.files.remove(path, expectedRevision, this.dryRun);
+      return this.committed([change2]);
+    }, changeSummary);
   }
   async committed(changes) {
-    if (!this.dryRun) for (const change of changes) {
+    if (!this.dryRun) for (const change2 of changes) {
       try {
-        await this.events.emit(`file.${change.operation}`, change);
+        await this.events.emit(`file.${change2.operation}`, change2);
       } catch (error2) {
-        this.events.warn(`Committed ${change.path}; file notification failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
+        try {
+          this.events.warn(`Committed ${change2.path}; file notification failed: ${errorMessage(error2)}`);
+        } catch {
+        }
       }
     }
     return { dryRun: this.dryRun, changes };
   }
   // CLI handlers and external plugins use this guarded editing API through CommandContext.
   async edit(path, revision, transform2) {
-    const file = await this.files.read(path);
-    ensure(file.revision === revision, "CONFLICT", "File changed; read again before editing.");
-    return this.write([{ path, bytes: transform2(file.bytes), expectedRevision: revision }]);
+    return this.observe("edit", [path], async () => {
+      const file = await this.files.read(path);
+      ensure(file.revision === revision, "CONFLICT", "File changed; read again before editing.");
+      return this.write([{ path, bytes: transform2(file.bytes), expectedRevision: revision }]);
+    }, changeSummary);
+  }
+  async observe(operation2, paths2, action2, summarize) {
+    const payload = { operationId: this.events.nextOperationId(), operation: operation2, root: this.root, paths: paths2.filter((path) => typeof path === "string" && path.length > 0), dryRun: this.dryRun };
+    await publishHostEvent(this.events, "workspace.started", payload);
+    try {
+      const result = await action2();
+      await publishHostEvent(this.events, "workspace.succeeded", { ...payload, ...summarize(result) });
+      return result;
+    } catch (error2) {
+      await publishHostEvent(this.events, "workspace.failed", { ...payload, error: summarizeError(error2) });
+      throw error2;
+    }
   }
 }
 class ScopedFiles {
@@ -317,11 +493,11 @@ class ScopedFiles {
   async writeBatch(writes, dryRun) {
     const requests = snapshotWriteRequests(writes).map((write) => ({ ...write, path: this.prefix + write.path }));
     const changes = await this.files.writeBatch(requests, dryRun);
-    return changes.map((change) => ({ ...change, path: this.relative(change.path) }));
+    return changes.map((change2) => ({ ...change2, path: this.relative(change2.path) }));
   }
   async remove(path, expectedRevision, dryRun) {
-    const change = await this.files.remove(this.prefix + vaultPath(path), expectedRevision, dryRun);
-    return { ...change, path: this.relative(change.path) };
+    const change2 = await this.files.remove(this.prefix + vaultPath(path), expectedRevision, dryRun);
+    return { ...change2, path: this.relative(change2.path) };
   }
   relative(path) {
     ensure(path.startsWith(this.prefix), "INVALID_PATH", "Repository returned a path outside the selected project.");
@@ -343,54 +519,72 @@ class Registry {
   skills = /* @__PURE__ */ new Map();
   plugins = [];
   cleanups = [];
+  published = /* @__PURE__ */ new Set();
   state = "registering";
   add(map2, item) {
     ensure(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(item.id) && !map2.has(item.id), "DUPLICATE_OR_INVALID_ID", item.id);
     map2.set(item.id, item);
   }
-  register(plugin, events) {
+  register(plugin2, events) {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins must register before activation.");
-    ensure(isRecord(plugin), "INVALID_PLUGIN", "Plugin must export an object or class.");
-    validatePluginManifest(plugin.manifest);
-    ensure(!this.plugins.some((p) => p.manifest.id === plugin.manifest.id), "DUPLICATE_PLUGIN", plugin.manifest.id);
-    for (const hook of ["onload", "onunload"]) ensure(plugin[hook] === void 0 || typeof plugin[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
+    ensure(isRecord(plugin2), "INVALID_PLUGIN", "Plugin must export an object or class.");
+    validatePluginManifest(plugin2.manifest);
+    ensure(!this.plugins.some((p) => p.manifest.id === plugin2.manifest.id), "DUPLICATE_PLUGIN", plugin2.manifest.id);
+    for (const hook of ["onload", "onunload"]) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
     for (const key of ["commands", "generators", "events", "skills"]) {
-      ensure(plugin[key] === void 0 || Array.isArray(plugin[key]), "INVALID_PLUGIN", `${key} must be an array.`);
-      for (const contribution of plugin[key] ?? []) {
+      ensure(plugin2[key] === void 0 || Array.isArray(plugin2[key]), "INVALID_PLUGIN", `${key} must be an array.`);
+      for (const contribution of plugin2[key] ?? []) {
         ensure(isRecord(contribution) && typeof contribution.id === "string", "INVALID_PLUGIN", `Invalid ${key} contribution.`);
-        ensure(contribution.id.startsWith(plugin.manifest.id + "."), "PLUGIN_NAMESPACE", `Contribution ${contribution.id} must start with ${plugin.manifest.id}.`);
+        ensure(contribution.id.startsWith(plugin2.manifest.id + "."), "PLUGIN_NAMESPACE", `Contribution ${contribution.id} must start with ${plugin2.manifest.id}.`);
       }
     }
     const commands2 = new Map(this.commands), generators2 = new Map(this.generators), skills = new Map(this.skills);
-    for (const command of plugin.commands ?? []) {
-      ensure(typeof command.run === "function" && typeof command.description === "string" && typeof command.usage === "string", "INVALID_PLUGIN", "Invalid command.");
-      ensure(command.options === void 0 || isRecord(command.options), "INVALID_PLUGIN", "Command options must be an object.");
-      for (const [key, type2] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "lang", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-      this.add(commands2, command);
+    for (const command2 of plugin2.commands ?? []) {
+      ensure(typeof command2.run === "function" && typeof command2.description === "string" && typeof command2.usage === "string", "INVALID_PLUGIN", "Invalid command.");
+      ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", "Command options must be an object.");
+      for (const [key, type2] of Object.entries(command2.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "lang", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
+      this.add(commands2, command2);
     }
-    for (const generator of plugin.generators ?? []) {
+    for (const generator of plugin2.generators ?? []) {
       ensure(typeof generator.generate === "function" && typeof generator.description === "string", "INVALID_PLUGIN", "Invalid generator.");
       this.add(generators2, generator);
     }
-    for (const skill of plugin.skills ?? []) {
+    for (const skill of plugin2.skills ?? []) {
       ensure(typeof skill.content === "string", "INVALID_PLUGIN", "Invalid skill.");
       this.add(skills, skill);
     }
-    events.defineAll(plugin.events ?? []);
-    for (const command of plugin.commands ?? []) this.commands.set(command.id, command);
-    for (const generator of plugin.generators ?? []) this.generators.set(generator.id, generator);
-    for (const skill of plugin.skills ?? []) this.skills.set(skill.id, skill);
-    this.plugins.push(plugin);
+    events.defineAll(plugin2.events ?? []);
+    for (const command2 of plugin2.commands ?? []) this.commands.set(command2.id, command2);
+    for (const generator of plugin2.generators ?? []) this.generators.set(generator.id, generator);
+    for (const skill of plugin2.skills ?? []) this.skills.set(skill.id, skill);
+    this.plugins.push(plugin2);
+  }
+  async publishRegistered(events) {
+    ensure(this.state !== "disposed", "PLUGIN_LIFECYCLE", "Cannot publish registrations after disposal.");
+    for (const plugin2 of this.plugins) {
+      const pluginId = plugin2.manifest.id;
+      if (this.published.has(pluginId)) continue;
+      this.published.add(pluginId);
+      await publishHostEvent(events, "plugin.registered", { pluginId });
+    }
   }
   async activate(context) {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins can activate only once per invocation.");
     this.state = "activating";
     try {
-      for (const plugin of this.plugins) {
-        const onunload = plugin.onunload;
-        if (onunload) this.cleanups.unshift(() => onunload.call(plugin));
-        const result = await plugin.onload?.(context);
-        ensure(result === void 0, "INVALID_PLUGIN", "onload must return nothing; use onunload for cleanup.");
+      await this.publishRegistered(context.events);
+      for (const plugin2 of this.plugins) {
+        const pluginId = plugin2.manifest.id, onunload = plugin2.onunload;
+        this.cleanups.unshift({ pluginId, run: () => onunload?.call(plugin2) });
+        await publishHostEvent(context.events, "plugin.activating", { pluginId });
+        try {
+          const result = await plugin2.onload?.(context);
+          ensure(result === void 0, "INVALID_PLUGIN", "onload must return nothing; use onunload for cleanup.");
+          await publishHostEvent(context.events, "plugin.activated", { pluginId });
+        } catch (error2) {
+          await publishHostEvent(context.events, "plugin.activation-failed", { pluginId, error: summarizeError(error2) });
+          throw error2;
+        }
       }
       this.state = "active";
     } catch (error2) {
@@ -401,10 +595,16 @@ class Registry {
   async dispose(events) {
     this.state = "disposed";
     for (const cleanup of this.cleanups.splice(0)) {
+      await publishHostEvent(events, "plugin.unloading", { pluginId: cleanup.pluginId });
       try {
-        await cleanup();
+        await cleanup.run();
+        await publishHostEvent(events, "plugin.unloaded", { pluginId: cleanup.pluginId });
       } catch (error2) {
-        events.warn(`Plugin cleanup: ${String(error2)}`);
+        await publishHostEvent(events, "plugin.unload-failed", { pluginId: cleanup.pluginId, error: summarizeError(error2) });
+        try {
+          events.warn(`Plugin cleanup: ${errorMessage(error2)}`);
+        } catch {
+        }
       }
     }
     events.dispose();
@@ -415,9 +615,9 @@ function projectName(name2) {
   return name2;
 }
 class ProjectService {
-  constructor(files, workspace, projectsDirectory, scaffolder) {
+  constructor(files, workspace2, projectsDirectory, scaffolder) {
     this.files = files;
-    this.workspace = workspace;
+    this.workspace = workspace2;
     this.projectsDirectory = projectsDirectory;
     this.scaffolder = scaffolder;
     vaultPath(projectsDirectory);
@@ -582,8 +782,8 @@ Describe the entity's responsibility and identity.
 - Describe observable behavior and verification.
 `;
 class SetupService {
-  constructor(workspace, config2, artifacts, skills, templates = []) {
-    this.workspace = workspace;
+  constructor(workspace2, config2, artifacts, skills, templates = []) {
+    this.workspace = workspace2;
     this.config = config2;
     this.artifacts = artifacts;
     this.skills = skills;
@@ -682,6 +882,12 @@ function uiBindingSource(definition2, name2) {
 function validateUiBindings(definition2, value2) {
   for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
   ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
+}
+function interactionValues(interaction) {
+  return interaction.actions.flatMap((action2) => action2.type === "navigate" || action2.type === "upload-form" ? [action2.url] : action2.type === "save-form" ? [action2.key] : action2.type === "download-form" ? [action2.filename] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
+}
+function interactionUsesState(interaction) {
+  return interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state") || interactionValues(interaction).some((value2) => uiBindings(value2).some((name2) => name2.startsWith("state.")));
 }
 function valueType(definition2, value2) {
   validateUiBindings(definition2, value2);
@@ -828,8 +1034,8 @@ function selectUiComponents(definitions, id2) {
   return definitions.filter((definition2) => selected.has(definition2.id));
 }
 class GenerationService {
-  constructor(workspace) {
-    this.workspace = workspace;
+  constructor(workspace2) {
+    this.workspace = workspace2;
   }
   workspace;
   async commit(writes, revisions) {
@@ -874,7 +1080,7 @@ class GenerationService {
   }
   async check(writes, errorCode = "GENERATION_DRIFT") {
     const plan = await this.plan(writes);
-    if (!plan.matches) throw new AppError(errorCode, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", 5, { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
+    if (!plan.matches) throw new AppError(errorCode, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", 5, { outputs: plan.outputs.map(({ path, status: status2 }) => ({ path, status: status2 })) });
     return plan;
   }
   validate(writes) {
@@ -895,8 +1101,8 @@ class GenerationService {
   }
 }
 class UiLibrary {
-  constructor(workspace, codec, catalog, renderer, interactionSource, interactionDirectory = "interactions") {
-    this.workspace = workspace;
+  constructor(workspace2, codec, catalog, renderer, interactionSource, interactionDirectory = "interactions") {
+    this.workspace = workspace2;
     this.codec = codec;
     this.catalog = catalog;
     this.renderer = renderer;
@@ -1050,8 +1256,8 @@ Describe this data source, its ownership and error behavior.
   };
 }
 class DataSourceLibrary {
-  constructor(workspace, codec, renderer) {
-    this.workspace = workspace;
+  constructor(workspace2, codec, renderer) {
+    this.workspace = workspace2;
     this.codec = codec;
     this.renderer = renderer;
   }
@@ -1175,8 +1381,8 @@ ${input ? "Copies the input value into string state named value." : "Toggles boo
   };
 }
 class InteractionLibrary {
-  constructor(workspace, codec) {
-    this.workspace = workspace;
+  constructor(workspace2, codec) {
+    this.workspace = workspace2;
     this.codec = codec;
   }
   workspace;
@@ -1246,8 +1452,8 @@ class InteractionLibrary {
   }
 }
 class TemplateInstaller {
-  constructor(workspace, artifacts) {
-    this.workspace = workspace;
+  constructor(workspace2, artifacts) {
+    this.workspace = workspace2;
     this.artifacts = artifacts;
   }
   workspace;
@@ -1435,7 +1641,7 @@ class NodeFiles {
       await this.releaseLock(lock);
     } catch (error2) {
       try {
-        this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${error2 instanceof Error ? error2.message : String(error2)}`);
+        this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${errorMessage(error2)}`);
       } catch {
       }
     }
@@ -2041,8 +2247,8 @@ function requireNode() {
       };
       const res = toJS2.toJS(this, "", ctx);
       if (typeof onAnchor === "function")
-        for (const { count, res: res2 } of ctx.anchors.values())
-          onAnchor(res2, count);
+        for (const { count: count2, res: res2 } of ctx.anchors.values())
+          onAnchor(res2, count2);
       return typeof reviver === "function" ? applyReviver2.applyReviver(reviver, { "": res }, "", res) : res;
     }
   }
@@ -2149,13 +2355,13 @@ function requireAlias() {
       const anchor2 = anchors3 && source && anchors3.get(source);
       return anchor2 ? anchor2.count * anchor2.aliasCount : 0;
     } else if (identity2.isCollection(node2)) {
-      let count = 0;
+      let count2 = 0;
       for (const item of node2.items) {
         const c = getAliasCount(doc, item, anchors3);
-        if (c > count)
-          count = c;
+        if (c > count2)
+          count2 = c;
       }
-      return count;
+      return count2;
     } else if (identity2.isPair(node2)) {
       const kc = getAliasCount(doc, node2.key, anchors3);
       const vc = getAliasCount(doc, node2.value, anchors3);
@@ -5107,8 +5313,8 @@ function requireDocument() {
       };
       const res = toJS2.toJS(this.contents, jsonArg ?? "", ctx);
       if (typeof onAnchor === "function")
-        for (const { count, res: res2 } of ctx.anchors.values())
-          onAnchor(res2, count);
+        for (const { count: count2, res: res2 } of ctx.anchors.values())
+          onAnchor(res2, count2);
       return typeof reviver === "function" ? applyReviver2.applyReviver(reviver, { "": res }, "", res) : res;
     }
     /**
@@ -5185,12 +5391,12 @@ function requireErrors() {
       lineStr = prev + lineStr;
     }
     if (/[^ ]/.test(lineStr)) {
-      let count = 1;
+      let count2 = 1;
       const end = error2.linePos[1];
       if (end?.line === line && end.col > col) {
-        count = Math.max(1, Math.min(end.col - col, 80 - ci));
+        count2 = Math.max(1, Math.min(end.col - col, 80 - ci));
       }
-      const pointer = " ".repeat(ci) + "^".repeat(count);
+      const pointer = " ".repeat(ci) + "^".repeat(count2);
       error2.message += `:
 
 ${lineStr}
@@ -10154,11 +10360,11 @@ class Processor extends CallableInstance {
         addPlugin(value3, []);
       } else if (typeof value3 === "object") {
         if (Array.isArray(value3)) {
-          const [plugin, ...parameters2] = (
+          const [plugin2, ...parameters2] = (
             /** @type {PluginTuple<Array<unknown>>} */
             value3
           );
-          addPlugin(plugin, parameters2);
+          addPlugin(plugin2, parameters2);
         } else {
           addPreset(value3);
         }
@@ -10189,24 +10395,24 @@ class Processor extends CallableInstance {
         throw new TypeError("Expected a list of plugins, not `" + plugins + "`");
       }
     }
-    function addPlugin(plugin, parameters2) {
+    function addPlugin(plugin2, parameters2) {
       let index2 = -1;
       let entryIndex = -1;
       while (++index2 < attachers.length) {
-        if (attachers[index2][0] === plugin) {
+        if (attachers[index2][0] === plugin2) {
           entryIndex = index2;
           break;
         }
       }
       if (entryIndex === -1) {
-        attachers.push([plugin, ...parameters2]);
+        attachers.push([plugin2, ...parameters2]);
       } else if (parameters2.length > 0) {
         let [primary, ...rest] = parameters2;
         const currentPrimary = attachers[entryIndex][1];
         if (isPlainObject$1(currentPrimary) && isPlainObject$1(primary)) {
           primary = extend$1(true, currentPrimary, primary);
         }
-        attachers[entryIndex] = [plugin, primary, ...rest];
+        attachers[entryIndex] = [plugin2, primary, ...rest];
       }
     }
   }
@@ -12724,9 +12930,9 @@ function addImplementation(editMap, at, remove, add, before) {
     }
     return;
   }
-  const change = [at, remove, add];
-  editMap.map.push(change);
-  editMap.index.set(at, change);
+  const change2 = [at, remove, add];
+  editMap.map.push(change2);
+  editMap.index.set(at, change2);
 }
 const document$1 = {
   tokenize: initializeDocument
@@ -13752,9 +13958,9 @@ class SpliceBuffer {
    *   Any removed items.
    */
   splice(start, deleteCount, items) {
-    const count = deleteCount || 0;
+    const count2 = deleteCount || 0;
     this.setCursor(Math.trunc(start));
-    const removed = this.right.splice(this.right.length - count, Number.POSITIVE_INFINITY);
+    const removed = this.right.splice(this.right.length - count2, Number.POSITIVE_INFINITY);
     if (items) chunkedPush(this.left, items);
     return removed.reverse();
   }
@@ -17850,8 +18056,7 @@ class ObsidianDocuments {
     return result;
   }
 }
-const encodeText = encode$1;
-const encodeYaml = (value2) => encode$1(distExports.stringify(value2));
+const encodeText$1 = encode$1;
 async function readManifest(path, files) {
   const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(path)).bytes);
   let value2;
@@ -18304,14 +18509,14 @@ function codePointLength(str) {
   const units = str.length;
   if (!highSurrogate.test(str))
     return units;
-  let count = units;
+  let count2 = units;
   for (let i = 0; i < units - 1; i++) {
     if ((str.charCodeAt(i) & 64512) === 55296 && (str.charCodeAt(i + 1) & 64512) === 56320) {
-      count--;
+      count2--;
       i++;
     }
   }
-  return count;
+  return count2;
 }
 function getLengthableOrigin(input) {
   if (Array.isArray(input))
@@ -23866,7 +24071,7 @@ async function loadConfig(options) {
     if (error2.code === "ENOENT") {
       content2 = {};
       exists = false;
-    } else throw new AppError("INVALID_CONFIG", `Cannot read configuration ${path}: ${error2 instanceof Error ? error2.message : String(error2)}`, 2);
+    } else throw new AppError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`, 2);
   }
   const parsed = configSchema.safeParse(content2);
   if (!parsed.success) throw new AppError("INVALID_CONFIG", parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "), 2);
@@ -24549,12 +24754,12 @@ it('reports invalid required fields without submitting data', () => {
 });
 `;
 }
-const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n  }\n  if (report.violations.length > 0) errors.push('Resolve test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
+const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/the-forge/main.ts', 'src/the-forge/sdk.ts', 'src/the-forge/vite-env.d.ts'].includes(path)) {\n      if (!/^src\\/the-forge\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path)) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/the-forge/<layer>/<concern>/...; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
 const testConfig = "import { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Classification patterns define the full scope; Vitest defaults hide cypress/dist directories.\n    projects: [\n      { test: { name: 'unit', environment: 'node', exclude: [], include: ['tests/**/*.unit.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'integration', environment: 'node', exclude: [], include: ['tests/**/*.integration.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'e2e', environment: 'node', exclude: [], include: ['tests/**/*.e2e.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n    ],\n  },\n});\n";
 const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
 const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  const discovered = new Set(discovery.report.files);\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
-const qualityShared = "import { readdirSync, mkdirSync, writeFileSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  const files = [];\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  if (!entries.some(entry => entry.name === 'src' && entry.isDirectory())) throw new Error('Required source directory src is missing');\n  for (const entry of entries) {\n    if (['src', 'tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith('src/'))) throw new Error('Source inventory is empty');\n  return files.sort();\n}\n\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
-const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
+const qualityShared = "import { readdirSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n/** @param {string} value */\nfunction containedPath(value) {\n  // oxlint-disable-next-line no-control-regex -- Source roots must reject control characters and Windows/URL separators.\n  return value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\\:\\x00-\\x1f]/.test(part));\n}\n\n/** @param {unknown} error */\nfunction missing(error) { return error instanceof Error && 'code' in error && error.code === 'ENOENT'; }\n\n/** @param {string} root */\nfunction sourceDirectories(root) {\n  const path = resolve(root, 'configs/quality/source.json');\n  /** @type {unknown} */\n  let config;\n  try { config = JSON.parse(readFileSync(path, 'utf8')); }\n  catch (error) {\n    if (missing(error)) return { sourceRoot: 'src', additionalRoots: [] };\n    throw new Error(`Cannot read source inventory configuration configs/quality/source.json: ${error instanceof Error ? error.message : String(error)}`);\n  }\n  if (!config || typeof config !== 'object' || Array.isArray(config) || !('sourceRoot' in config) || typeof config.sourceRoot !== 'string' || Object.keys(config).some(key => !['sourceRoot', 'additionalRoots'].includes(key))) {\n    throw new Error('configs/quality/source.json requires a sourceRoot string and optional additionalRoots list.');\n  }\n  if (config.sourceRoot.split('/')[0] !== 'src' || !containedPath(config.sourceRoot)) {\n    throw new Error('sourceRoot must be src or a contained POSIX subdirectory such as src/the-forge.');\n  }\n  const additional = 'additionalRoots' in config ? config.additionalRoots : [];\n  if (!Array.isArray(additional) || additional.some(value => typeof value !== 'string' || !containedPath(value))) {\n    throw new Error('additionalRoots must contain relative POSIX directory paths.');\n  }\n  /** @type {string[]} */\n  const additionalRoots = additional;\n  const roots = [config.sourceRoot, ...additionalRoots];\n  if (roots.some((root, index) => roots.some((other, otherIndex) => index !== otherIndex && (root === other || root.startsWith(other + '/'))))) {\n    throw new Error('Source inventory roots must be unique and must not contain one another.');\n  }\n  return { sourceRoot: config.sourceRoot, additionalRoots };\n}\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  /** @type {string[]} */\n  const files = [];\n  const { sourceRoot, additionalRoots } = sourceDirectories(root);\n  /** @param {string} directory */\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  for (const selected of [sourceRoot, ...additionalRoots]) {\n    let directory = root;\n    for (const part of selected.split('/')) {\n      directory = join(directory, part);\n      let entry;\n      try { entry = lstatSync(directory); }\n      catch (error) {\n        if (missing(error)) throw new Error(`Required source directory ${selected} is missing`);\n        throw error;\n      }\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${selected}`);\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${selected}`);\n    }\n    visit(selected);\n  }\n  for (const entry of entries) {\n    if (['tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith(sourceRoot + '/'))) throw new Error(`Source inventory is empty: ${sourceRoot}`);\n  return [...new Set(files)].sort();\n}\n\n/** @param {string} name @param {string[]} args */\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\n/** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
+const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/the-forge/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/the-forge/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
 const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
 const json$3 = (value2) => JSON.stringify(value2, null, 2) + "\n";
 const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -24668,7 +24873,7 @@ function projectScaffold(name2, projectsDirectory) {
           { from: "infrastructure", allow: ["domain", "application", "infrastructure"] },
           { from: "presentation", allow: ["domain", "application", "infrastructure", "presentation"] }
         ],
-        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
+        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/the-forge/vite-env.d.ts"] }
       }
     }),
     "tsconfig.json": json$3({
@@ -24692,7 +24897,7 @@ export default defineConfig(({ mode }) => ({
 }));
 `,
     "index.html": demoHtml,
-    "src/vite-env.d.ts": '/// <reference types="vite/client" />\n',
+    "src/the-forge/vite-env.d.ts": '/// <reference types="vite/client" />\n',
     "src/presentation/demo.ts": demoScript,
     "src/presentation/demo.css": demoStyle,
     "src/presentation/forms/form-model.ts": formModel,
@@ -24754,7 +24959,7 @@ Run npm commands from this project directory. Install with npm ci after a lockfi
 }
 const schemaVersion = 1;
 const requiredAssets = ["app.js", "package.json", "config/default.json", "data/distribution.json"];
-const ownedAssetPattern = "^(?:app\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|examples|types|licenses)/.+))$";
+const ownedAssetPattern = "^(?:app\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
 const distributionPolicy = {
   schemaVersion,
   requiredAssets,
@@ -24798,13 +25003,13 @@ const generators = [
     const definition2 = `${directory}/${file}.form.ts`;
     const testImport = minpath.posix.relative("tests", definition2).replace(/\.ts$/, ".js");
     return [
-      { path: definition2, bytes: encodeText(formDefinitionSource(name2, runtimeImport)) },
-      { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText(formDefinitionTestSource(name2, testImport.startsWith(".") ? testImport : `./${testImport}`, "../src/presentation/forms/form-model.js")) }
+      { path: definition2, bytes: encodeText$1(formDefinitionSource(name2, runtimeImport)) },
+      { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText$1(formDefinitionTestSource(name2, testImport.startsWith(".") ? testImport : `./${testImport}`, "../src/presentation/forms/form-model.js")) }
     ];
   } },
   { id: "entity", description: "Domain entity with identity and invariant enforcement.", generate(input, dir) {
     const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export class ${name2} {
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
   private constructor(readonly id: string) {}
 
   static create(id: string): ${name2} {
@@ -24816,7 +25021,7 @@ const generators = [
   } },
   { id: "value-object", description: "Immutable value object with equality and validation.", generate(input, dir) {
     const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export class ${name2} {
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
   private constructor(readonly value: string) { globalThis.Object.freeze(this); }
 
   static from(value: string): ${name2} {
@@ -24830,7 +25035,7 @@ const generators = [
   } },
   { id: "use-case", description: "Application use case with an injected repository port.", generate(input, dir) {
     const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export interface ${name2}Input { readonly id: string }
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2}Input { readonly id: string }
 export interface ${name2}Repository { exists(id: string): globalThis.Promise<boolean> }
 
 export class ${name2} {
@@ -24845,7 +25050,7 @@ export class ${name2} {
   } },
   { id: "event", description: "Typed event payload and runtime descriptor.", generate(input, dir) {
     const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export interface ${name2} { readonly id: string }
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2} { readonly id: string }
 export const ${name2}Event = {
   id: 'app.${file}',
   validate(value: unknown): value is ${name2} {
@@ -24865,8 +25070,8 @@ export const ${name2}Event = {
       author: "Your team"
     };
     return [
-      { path: `${directory}/${file}/manifest.json`, bytes: encodeText(JSON.stringify(manifest, null, 2) + "\n") },
-      { path: `${directory}/${file}/main.mjs`, bytes: encodeText(`let ready = false;
+      { path: `${directory}/${file}/manifest.json`, bytes: encodeText$1(JSON.stringify(manifest, null, 2) + "\n") },
+      { path: `${directory}/${file}/main.mjs`, bytes: encodeText$1(`let ready = false;
 
 export default {
   commands: [{
@@ -25090,19 +25295,8 @@ function stateType(definition2) {
 }
 const handlerName = (id2, prefix) => `${prefix}Interaction_${id2.replace(/-/g, "_")}`;
 function componentInteractions(definition2, interactions) {
-  const ids = /* @__PURE__ */ new Set();
-  const walk = (node2) => {
-    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
-    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
-  };
-  walk(definition2.root);
+  const ids = new Set(componentInteractionIds(definition2));
   return interactions.filter((interaction) => ids.has(interaction.id)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-}
-function interactionValues(interaction) {
-  return interaction.actions.flatMap((action2) => action2.type === "navigate" || action2.type === "upload-form" ? [action2.url] : action2.type === "save-form" ? [action2.key] : action2.type === "download-form" ? [action2.filename] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
-}
-function interactionUsesState(interaction) {
-  return interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state") || interactionValues(interaction).some((value2) => uiBindings(value2).some((name2) => name2.startsWith("state.")));
 }
 function groupElementInteractions(node2, interactions, prefix = "_ui") {
   const groups = /* @__PURE__ */ new Map();
@@ -25672,7 +25866,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
         "} satisfies _Story;"
       );
     }
-    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: encodeText(lines.join("\n") + "\n") };
+    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: encodeText$1(lines.join("\n") + "\n") };
   });
 }
 const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
@@ -25752,8 +25946,8 @@ const schema$1 = strictObject({
       ids.add(recordId);
     }
   }
-  const count = definition2.testData?.count ?? 3;
-  if (!definition2.testData?.records && primary?.enum && primary.enum.length < count) issue2("ID enum must have enough values for the requested test-data count.");
+  const count2 = definition2.testData?.count ?? 3;
+  if (!definition2.testData?.records && primary?.enum && primary.enum.length < count2) issue2("ID enum must have enough values for the requested test-data count.");
 });
 class MarkdownDataSourceDefinitions {
   documents = new ObsidianDocuments();
@@ -25948,8 +26142,8 @@ class TypeScriptDataSourceRenderer {
     vaultPath(options.outputDirectory);
     vaultPath(options.testDataDirectory);
     return [...definitions].sort((left, right) => compare$1(left.id, right.id)).flatMap((definition2) => [
-      { path: `${options.outputDirectory}/${definition2.id}.ts`, bytes: encodeText(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
-      { path: `${options.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: encodeText(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
+      { path: `${options.outputDirectory}/${definition2.id}.ts`, bytes: encodeText$1(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
+      { path: `${options.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: encodeText$1(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
     ]);
   }
 }
@@ -26205,7 +26399,7 @@ function parseClaudeAgent(text2) {
     return { metadata: document2.properties, prompt: document2.body };
   } catch (error2) {
     if (error2 instanceof AppError && error2.code === "INVALID_CLAUDE_AGENT") throw error2;
-    throw new AppError("INVALID_CLAUDE_AGENT", `Invalid agent definition: ${error2 instanceof Error ? error2.message : String(error2)}`, 2);
+    throw new AppError("INVALID_CLAUDE_AGENT", `Invalid agent definition: ${errorMessage(error2)}`, 2);
   }
 }
 function renderClaudeAgent(document2) {
@@ -26240,7 +26434,7 @@ async function claudeTarget(context, flags) {
     const prefix = minpath.relative(root, directory).split("\\").join("/");
     const scoped = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
     return {
-      workspace: new Workspace(scoped, context.workspace.codec, context.events, context.workspace.dryRun),
+      workspace: new Workspace(scoped, context.workspace.codec, context.events, context.workspace.dryRun, directory),
       scope,
       directory,
       agentsDirectory: "agents",
@@ -26294,7 +26488,7 @@ class NodeClaudeRuntime {
         "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE",
         `Cannot access Claude working directory: ${options.cwd}`,
         1,
-        { cause: error2 instanceof Error ? error2.message : String(error2) }
+        { cause: errorMessage(error2) }
       );
     }
     ensure(directory, "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Claude working directory is not a directory: ${options.cwd}`);
@@ -26332,7 +26526,7 @@ class NodeClaudeRuntime {
         try {
           terminationRequested = stop();
         } catch (error2) {
-          if (error2.code !== "ESRCH") details.terminationError = error2 instanceof Error ? error2.message : String(error2);
+          if (error2.code !== "ESRCH") details.terminationError = errorMessage(error2);
         }
         child.stdout.destroy();
         child.stderr.destroy();
@@ -26404,286 +26598,7 @@ class NodeClaudeRuntime {
     });
   }
 }
-const claudePluginCapabilities = {
-  manifest: ".claude-plugin/plugin.json",
-  manifestRequired: false,
-  reference: "https://code.claude.com/docs/en/plugins-reference",
-  validation: "Known manifest shapes and contained relative paths; unknown fields are preserved. Referenced files, installed versions and runtime behavior require Claude Code validation.",
-  components: [
-    { field: "skills", defaultPath: "skills/", forms: ["path", "paths"], loading: "add" },
-    { field: "commands", defaultPath: "commands/", forms: ["path", "paths", "command-map"], loading: "replace" },
-    { field: "agents", defaultPath: "agents/", forms: ["markdown-file", "markdown-files"], loading: "replace" },
-    { field: "hooks", defaultPath: "hooks/hooks.json", forms: ["json-path", "event-map", "mixed-array"], loading: "merge" },
-    { field: "mcpServers", defaultPath: ".mcp.json", forms: ["json-path", "bundle-path", "https-bundle-url", "server-map", "mixed-array"], loading: "merge" },
-    { field: "lspServers", defaultPath: ".lsp.json", forms: ["json-path", "server-map", "mixed-array"], loading: "merge" },
-    { field: "outputStyles", defaultPath: "output-styles/", forms: ["path", "paths"], loading: "replace" },
-    { field: "workflows", defaultPath: "workflows/", forms: ["path", "paths"], loading: "replace" },
-    { field: "settings", defaultPath: "settings.json", forms: ["object"], loading: "file-over-manifest" },
-    { field: "experimental.themes", defaultPath: "themes/", forms: ["path", "paths"], loading: "replace" },
-    { field: "experimental.monitors", defaultPath: "monitors/monitors.json", forms: ["json-path", "monitor-array"], loading: "replace" },
-    { field: "experimental.evals", defaultPath: "evals/", forms: ["path", "paths"], loading: "first-path" },
-    { field: "types", forms: ["declaration-file"], loading: "explicit" },
-    { field: "channels", forms: ["channel-array"], loading: "explicit" },
-    { field: null, defaultPath: "bin/", forms: ["executables"], loading: "append-to-shell-path" }
-  ],
-  supportedSettings: ["agent", "subagentStatusLine"],
-  ignoredPluginAgentFields: ["hooks", "mcpServers", "permissionMode", "initialPrompt"],
-  memoryScopes: ["user", "project", "local"],
-  limits: [
-    "Plugin hooks and MCP servers apply to the enabled plugin, not only its agents.",
-    "Persistent agent memory has no effect when Claude auto memory is disabled.",
-    "LSP configuration does not install the language-server executable.",
-    "Experimental monitors require interactive sessions and are unavailable on supported third-party model platforms.",
-    "Claude may reject unknown nested fields or ignore unknown settings that Forge preserves."
-  ]
-};
-function check(condition, path, requirement) {
-  ensure(condition, "INVALID_CLAUDE_PLUGIN", `${path}: ${requirement}`);
-}
-function object(value2, path) {
-  check(isRecord(value2), path, "must be an object.");
-}
-function jsonValue(value2, ancestors = /* @__PURE__ */ new Set(), depth = 0) {
-  check(depth < 100, "plugin", "JSON nesting is too deep.");
-  if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return;
-  if (typeof value2 === "number") {
-    check(Number.isFinite(value2), "plugin", "numbers must be finite.");
-    return;
-  }
-  check(typeof value2 === "object" && (Array.isArray(value2) || Object.getPrototypeOf(value2) === Object.prototype || Object.getPrototypeOf(value2) === null), "plugin", "must contain JSON-compatible data.");
-  check(!ancestors.has(value2), "plugin", "must not contain circular references.");
-  ancestors.add(value2);
-  for (const child of Object.values(value2)) jsonValue(child, ancestors, depth + 1);
-  ancestors.delete(value2);
-}
-function text$1(value2, path, nonempty2 = false) {
-  check(typeof value2 === "string" && (!nonempty2 || value2.trim().length > 0), path, `must be ${nonempty2 ? "a nonempty" : "a"} string.`);
-}
-function strings(value2, path) {
-  check(Array.isArray(value2) && value2.every((item) => typeof item === "string"), path, "must be an array of strings.");
-}
-function optionalStrings(value2, fields, path) {
-  for (const field2 of fields) if (value2[field2] !== void 0) text$1(value2[field2], `${path}.${field2}`);
-}
-function optionalBooleans(value2, fields, path) {
-  for (const field2 of fields) if (value2[field2] !== void 0) check(typeof value2[field2] === "boolean", `${path}.${field2}`, "must be a boolean.");
-}
-function stringMap(value2, path) {
-  object(value2, path);
-  for (const [key, item] of Object.entries(value2)) text$1(item, `${path}.${key}`);
-}
-function pluginName(value2, path) {
-  text$1(value2, path, true);
-  check(!/[\s@:/\\\x00-\x1f\x7f\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(value2), path, "must contain no whitespace, @, colon, path separators, control or bidirectional formatting characters; use kebab-case.");
-}
-function componentPath(value2, path, extensions, allowRoot = false, prefixRequired = true) {
-  text$1(value2, path, true);
-  if (allowRoot && value2 === ".") return;
-  check(!/[\\:\x00-\x1f\x7f]/.test(value2) && !value2.startsWith("/") && !value2.split("/").includes(".."), path, "must remain inside the plugin root.");
-  check(!prefixRequired || value2.startsWith("./"), path, "must start with ./ and be relative to the plugin root.");
-  if (extensions) check(extensions.some((extension2) => value2.endsWith(extension2)), path, `must end with ${extensions.join(" or ")}.`);
-}
-function paths(value2, path, extensions, allowRoot = false, prefixRequired = true) {
-  if (!Array.isArray(value2)) {
-    componentPath(value2, path, extensions, allowRoot, prefixRequired);
-    return;
-  }
-  value2.forEach((item, index2) => componentPath(item, `${path}[${index2}]`, extensions, allowRoot, prefixRequired));
-}
-function mixed(value2, path, validatePath, validateInline) {
-  const entries = Array.isArray(value2) ? value2 : [value2];
-  entries.forEach((entry, index2) => {
-    const location = Array.isArray(value2) ? `${path}[${index2}]` : path;
-    if (typeof entry === "string") validatePath(entry, location);
-    else validateInline(entry, location);
-  });
-}
-function noShellOptions(value2, path) {
-  if (typeof value2 === "string") check(!value2.includes("${user_config."), path, "cannot substitute user_config values into a shell command.");
-}
-function commands$2(value2, path) {
-  if (typeof value2 === "string" || Array.isArray(value2)) {
-    paths(value2, path);
-    return;
-  }
-  object(value2, path);
-  for (const [name2, entry] of Object.entries(value2)) {
-    const location = `${path}.${name2}`;
-    object(entry, location);
-    check(entry.source !== void 0 !== (entry.content !== void 0), location, "must define exactly one of source or content.");
-    if (entry.source !== void 0) componentPath(entry.source, `${location}.source`, [".md"]);
-    optionalStrings(entry, ["content", "description", "argumentHint", "model"], location);
-    if (entry.allowedTools !== void 0) strings(entry.allowedTools, `${location}.allowedTools`);
-  }
-}
-function mcpServers(value2, path) {
-  object(value2, path);
-  for (const [name2, server] of Object.entries(value2)) {
-    const location = `${path}.${name2}`;
-    object(server, location);
-    optionalStrings(server, ["type", "command", "url", "headersHelper", "cwd"], location);
-    if (server.type !== void 0) check(["stdio", "http", "sse"].includes(server.type), `${location}.type`, "must be stdio, http, or sse.");
-    if (server.type === void 0 || server.type === "stdio") text$1(server.command, `${location}.command`, true);
-    else if (server.type === "http" || server.type === "sse") text$1(server.url, `${location}.url`, true);
-    if (server.args !== void 0) strings(server.args, `${location}.args`);
-    for (const key of ["env", "headers"]) if (server[key] !== void 0) stringMap(server[key], `${location}.${key}`);
-    noShellOptions(server.headersHelper, `${location}.headersHelper`);
-    if (server.oauth !== void 0) {
-      object(server.oauth, `${location}.oauth`);
-      optionalStrings(server.oauth, ["clientId", "authServerMetadataUrl", "scopes"], `${location}.oauth`);
-      if (server.oauth.callbackPort !== void 0) check(Number.isInteger(server.oauth.callbackPort) && Number(server.oauth.callbackPort) > 0 && Number(server.oauth.callbackPort) <= 65535, `${location}.oauth.callbackPort`, "must be an integer between 1 and 65535.");
-    }
-  }
-}
-function mcpPath(value2, path) {
-  if (value2.startsWith("https://")) {
-    let parsed;
-    try {
-      parsed = new URL(value2);
-    } catch {
-    }
-    check(parsed && /\.(mcpb|dxt)$/.test(parsed.pathname), path, "must be an HTTPS URL for a .mcpb or .dxt bundle.");
-  } else componentPath(value2, path, [".json", ".mcpb", ".dxt"]);
-}
-function lspServers(value2, path) {
-  object(value2, path);
-  for (const [name2, server] of Object.entries(value2)) {
-    const location = `${path}.${name2}`;
-    object(server, location);
-    text$1(server.command, `${location}.command`, true);
-    check(server.command.startsWith("/") || !/\s/.test(server.command), `${location}.command`, "must name a binary; put arguments in args.");
-    stringMap(server.extensionToLanguage, `${location}.extensionToLanguage`);
-    check(Object.keys(server.extensionToLanguage).length > 0 && Object.entries(server.extensionToLanguage).every(([extension2, language2]) => extension2.startsWith(".") && language2.length > 0), `${location}.extensionToLanguage`, "must map at least one dot-prefixed extension to a language.");
-    if (server.args !== void 0) strings(server.args, `${location}.args`);
-    if (server.env !== void 0) stringMap(server.env, `${location}.env`);
-    if (server.transport !== void 0) check(typeof server.transport === "string" && ["stdio", "socket"].includes(server.transport), `${location}.transport`, "must be stdio or socket.");
-    optionalStrings(server, ["workspaceFolder"], location);
-    optionalBooleans(server, ["restartOnCrash", "diagnostics"], location);
-    for (const key of ["startupTimeout", "shutdownTimeout", "requestTimeout", "maxRestarts"]) {
-      if (server[key] !== void 0) check(Number.isInteger(server[key]) && Number(server[key]) >= (key === "maxRestarts" ? 0 : 1), `${location}.${key}`, "must be an integer within the supported nonnegative/positive range.");
-    }
-  }
-}
-function userConfig(value2, path) {
-  object(value2, path);
-  for (const [name2, option] of Object.entries(value2)) {
-    const location = `${path}.${name2}`;
-    check(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name2), location, "option keys must be identifiers and cannot start with a digit.");
-    object(option, location);
-    check(typeof option.type === "string" && ["string", "number", "boolean", "directory", "file"].includes(option.type), `${location}.type`, "must be string, number, boolean, directory, or file.");
-    text$1(option.title, `${location}.title`);
-    text$1(option.description, `${location}.description`);
-    optionalBooleans(option, ["required", "multiple", "sensitive"], location);
-    for (const key of ["min", "max"]) if (option[key] !== void 0) check(typeof option[key] === "number" && Number.isFinite(option[key]), `${location}.${key}`, "must be a finite number.");
-    if (option.min !== void 0 && option.max !== void 0) check(Number(option.min) <= Number(option.max), location, "min cannot exceed max.");
-    if (option.default !== void 0) {
-      const initial = option.default;
-      check(typeof initial === "string" || typeof initial === "boolean" || typeof initial === "number" && Number.isFinite(initial) || Array.isArray(initial) && initial.every((item) => typeof item === "string"), `${location}.default`, "must be a string, finite number, boolean, or string array.");
-    }
-    if (option.options !== void 0) {
-      strings(option.options, `${location}.options`);
-      check(option.type === "string" && option.multiple !== true && option.sensitive !== true, location, "options require a single, non-sensitive string.");
-      check(option.options.length > 0 && option.options.every((item) => item.length >= 1 && item.length <= 64), `${location}.options`, "must contain labels of 1 to 64 characters.");
-      check(option.default === void 0 ? option.required === true : typeof option.default === "string" && option.options.includes(option.default), location, "options require a listed default or required: true.");
-    }
-  }
-}
-function monitors(value2, path) {
-  if (typeof value2 === "string") {
-    componentPath(value2, path, [".json"]);
-    return;
-  }
-  check(Array.isArray(value2), path, "must be a JSON path or an array of monitors.");
-  const names2 = /* @__PURE__ */ new Set();
-  for (const [index2, entry] of value2.entries()) {
-    const location = `${path}[${index2}]`;
-    object(entry, location);
-    text$1(entry.name, `${location}.name`, true);
-    check(!names2.has(entry.name), `${location}.name`, "must be unique within the plugin.");
-    names2.add(entry.name);
-    text$1(entry.command, `${location}.command`, true);
-    text$1(entry.description, `${location}.description`);
-    noShellOptions(entry.command, `${location}.command`);
-    if (entry.when !== void 0) check(typeof entry.when === "string" && (entry.when === "always" || /^on-skill-invoke:.+$/.test(entry.when)), `${location}.when`, "must be always or on-skill-invoke:<skill>.");
-  }
-}
-function settings(value2, path) {
-  object(value2, path);
-  optionalStrings(value2, ["agent"], path);
-  if (value2.subagentStatusLine !== void 0) {
-    object(value2.subagentStatusLine, `${path}.subagentStatusLine`);
-    check(value2.subagentStatusLine.type === "command", `${path}.subagentStatusLine.type`, "must be command.");
-    text$1(value2.subagentStatusLine.command, `${path}.subagentStatusLine.command`, true);
-  }
-}
-function hooks(value2, path) {
-  try {
-    validateClaudeHooks(value2);
-  } catch (error2) {
-    if (error2 instanceof AppError) throw new AppError("INVALID_CLAUDE_PLUGIN", `${path}: ${error2.message}`, 2);
-    throw error2;
-  }
-}
-function validateClaudePlugin(value2) {
-  jsonValue(value2);
-  object(value2, "plugin");
-  pluginName(value2.name, "plugin.name");
-  optionalStrings(value2, ["$schema", "displayName", "version", "description", "homepage", "repository", "license", "icon", "documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"], "plugin");
-  if (value2.homepage !== void 0) check(URL.canParse(value2.homepage), "plugin.homepage", "must be a valid URL.");
-  if (value2.keywords !== void 0) strings(value2.keywords, "plugin.keywords");
-  optionalBooleans(value2, ["defaultEnabled"], "plugin");
-  if (value2.metadata !== void 0) object(value2.metadata, "plugin.metadata");
-  if (value2.author !== void 0) {
-    object(value2.author, "plugin.author");
-    text$1(value2.author.name, "plugin.author.name");
-    optionalStrings(value2.author, ["email", "url"], "plugin.author");
-  }
-  if (value2.dependencies !== void 0) {
-    check(Array.isArray(value2.dependencies), "plugin.dependencies", "must be an array.");
-    for (const [index2, entry] of value2.dependencies.entries()) {
-      const location = `plugin.dependencies[${index2}]`;
-      if (typeof entry === "string") {
-        const names2 = entry.split("@");
-        check(names2.length <= 2, location, "must be a name or name@marketplace.");
-        names2.forEach((name2) => pluginName(name2, location));
-      } else {
-        object(entry, location);
-        pluginName(entry.name, `${location}.name`);
-        optionalStrings(entry, ["version"], location);
-        if (entry.marketplace !== void 0) pluginName(entry.marketplace, `${location}.marketplace`);
-      }
-    }
-  }
-  for (const key of ["skills", "agents", "outputStyles", "workflows", "themes"]) {
-    if (value2[key] !== void 0) paths(value2[key], `plugin.${key}`, key === "agents" ? [".md"] : void 0, key === "skills");
-  }
-  if (value2.types !== void 0) componentPath(value2.types, "plugin.types", [".d.ts"]);
-  if (value2.commands !== void 0) commands$2(value2.commands, "plugin.commands");
-  const jsonPath = (entry, path) => componentPath(entry, path, [".json"]);
-  if (value2.hooks !== void 0) mixed(value2.hooks, "plugin.hooks", jsonPath, hooks);
-  if (value2.mcpServers !== void 0) mixed(value2.mcpServers, "plugin.mcpServers", mcpPath, mcpServers);
-  if (value2.lspServers !== void 0) mixed(value2.lspServers, "plugin.lspServers", jsonPath, lspServers);
-  if (value2.settings !== void 0) settings(value2.settings, "plugin.settings");
-  if (value2.userConfig !== void 0) userConfig(value2.userConfig, "plugin.userConfig");
-  if (value2.channels !== void 0) {
-    check(Array.isArray(value2.channels), "plugin.channels", "must be an array.");
-    value2.channels.forEach((channel, index2) => {
-      const location = `plugin.channels[${index2}]`;
-      object(channel, location);
-      text$1(channel.server, `${location}.server`, true);
-      optionalStrings(channel, ["displayName"], location);
-      if (channel.userConfig !== void 0) userConfig(channel.userConfig, `${location}.userConfig`);
-    });
-  }
-  if (value2.monitors !== void 0) monitors(value2.monitors, "plugin.monitors");
-  if (value2.experimental !== void 0) {
-    object(value2.experimental, "plugin.experimental");
-    if (value2.experimental.themes !== void 0) paths(value2.experimental.themes, "plugin.experimental.themes");
-    if (value2.experimental.monitors !== void 0) monitors(value2.experimental.monitors, "plugin.experimental.monitors");
-    if (value2.experimental.evals !== void 0) paths(value2.experimental.evals, "plugin.experimental.evals", void 0, true, false);
-  }
-}
-function text(bytes) {
+function text$1(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
@@ -26691,8 +26606,8 @@ function text(bytes) {
   }
 }
 class ClaudeAgents {
-  constructor(workspace, codec, directory = ".claude/agents") {
-    this.workspace = workspace;
+  constructor(workspace2, codec, directory = ".claude/agents") {
+    this.workspace = workspace2;
     this.codec = codec;
     this.directory = directory;
     vaultPath(directory);
@@ -26710,14 +26625,14 @@ class ClaudeAgents {
       try {
         const snapshot = await this.workspace.files.read(path);
         entry.revision = snapshot.revision;
-        const { metadata: metadata2 } = this.codec.parse(text(snapshot.bytes));
+        const { metadata: metadata2 } = this.codec.parse(text$1(snapshot.bytes));
         entry.name = metadata2.name;
         entry.description = metadata2.description;
         entry.valid = true;
         if (names2.has(entry.name)) duplicates.add(entry.name);
         names2.add(entry.name);
       } catch (error2) {
-        entry.error = { code: error2 instanceof AppError ? error2.code : "OPERATION_FAILED", message: error2 instanceof Error ? error2.message : String(error2) };
+        entry.error = { code: error2 instanceof AppError ? error2.code : "OPERATION_FAILED", message: errorMessage(error2) };
       }
       agents.push(entry);
     }
@@ -26725,7 +26640,7 @@ class ClaudeAgents {
   }
   async inspect(id2) {
     const path = this.path(id2), snapshot = await this.workspace.files.read(path);
-    return { id: id2, path, revision: snapshot.revision, bytes: snapshot.bytes.length, ...this.codec.parse(text(snapshot.bytes)) };
+    return { id: id2, path, revision: snapshot.revision, bytes: snapshot.bytes.length, ...this.codec.parse(text$1(snapshot.bytes)) };
   }
   async create(id2, source) {
     return this.write(id2, source);
@@ -26769,10 +26684,10 @@ function validateHookPolicy(settings2) {
   }
 }
 class ClaudeSettings {
-  constructor(workspace, path, plugin = false) {
-    this.workspace = workspace;
+  constructor(workspace2, path, plugin2 = false) {
+    this.workspace = workspace2;
     this.path = path;
-    this.plugin = plugin;
+    this.plugin = plugin2;
   }
   workspace;
   path;
@@ -26855,190 +26770,6 @@ class ClaudeSettings {
     const content2 = JSON.stringify(settings2, null, 2) + "\n";
     const result = await this.workspace.write([{ path: this.path, bytes: new TextEncoder().encode(content2), ...expected ? { expectedRevision: expected } : {} }]);
     return { path: this.path, ...result, ...result.dryRun ? { preview: [{ path: this.path, content: content2 }] } : {} };
-  }
-}
-const manifestPath = ".claude-plugin/plugin.json";
-function decode(bytes) {
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  } catch {
-    throw new AppError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.", 2);
-  }
-}
-function json(bytes, path) {
-  let value2;
-  try {
-    value2 = JSON.parse(decode(bytes));
-  } catch (error2) {
-    throw new AppError("INVALID_CLAUDE_PLUGIN", `${path}: ${error2 instanceof Error ? error2.message : String(error2)}`, 2);
-  }
-  ensure(isRecord(value2), "INVALID_CLAUDE_PLUGIN", `${path} must contain a JSON object.`);
-  return value2;
-}
-function nativeReferences(manifest) {
-  const result = [];
-  const add = (value2, kind = "other", file = false) => {
-    for (const entry of Array.isArray(value2) ? value2 : [value2]) {
-      if (typeof entry !== "string" || entry.startsWith("https://")) continue;
-      const path = entry.replace(/^\.\//, "").replace(/\/+$/, "");
-      result.push({ path: path === "." ? "" : path, kind, file });
-    }
-  };
-  for (const key of ["skills", "outputStyles", "workflows", "themes"]) add(manifest[key]);
-  add(manifest.agents, "agent", true);
-  add(manifest.types, "other", true);
-  add(manifest.hooks, "hooks", true);
-  add(manifest.lspServers, "lsp", true);
-  add(manifest.mcpServers, "mcp", true);
-  add(manifest.monitors, "other", true);
-  if (isRecord(manifest.commands)) {
-    for (const entry of Object.values(manifest.commands)) if (isRecord(entry)) add(entry.source, "other", true);
-  } else add(manifest.commands);
-  if (isRecord(manifest.experimental)) {
-    add(manifest.experimental.themes);
-    add(manifest.experimental.monitors, "other", true);
-    add(Array.isArray(manifest.experimental.evals) ? manifest.experimental.evals[0] : manifest.experimental.evals);
-  }
-  return result;
-}
-class ClaudePluginService {
-  constructor(workspace, agentCodec) {
-    this.workspace = workspace;
-    this.agentCodec = agentCodec;
-  }
-  workspace;
-  agentCodec;
-  async create(directory, manifest) {
-    validateClaudePlugin(manifest);
-    return this.saveManifest(directory, manifest);
-  }
-  async inspect(directory) {
-    const root = vaultPath(directory), prefix = `${root}/`;
-    const files = (await this.workspace.files.list()).filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length)).sort();
-    try {
-      const snapshot = await this.workspace.files.read(`${prefix}${manifestPath}`);
-      return { directory: root, manifest: json(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
-    } catch (error2) {
-      if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
-      ensure(files.length > 0, "NOT_FOUND", `No regular plugin files found in ${root}.`);
-      return { directory: root, manifest: null, revision: null, inferredName: root.split("/").at(-1), files };
-    }
-  }
-  async update(directory, manifest, revision) {
-    this.requireRevision(revision);
-    validateClaudePlugin(manifest);
-    return this.saveManifest(directory, manifest, revision);
-  }
-  async asset(directory, path) {
-    const target = this.path(directory, path), snapshot = await this.workspace.files.read(target);
-    let document2, validationError;
-    try {
-      document2 = this.workspace.codec.inspect(target, snapshot.bytes);
-    } catch (error2) {
-      document2 = this.workspace.codec.inspect("plugin-asset", snapshot.bytes);
-      validationError = error2 instanceof Error ? error2.message : String(error2);
-    }
-    const result = { directory, asset: path, path: target, revision: snapshot.revision, bytes: snapshot.bytes.length, document: document2, ...validationError ? { validationError } : {} };
-    try {
-      return { ...result, content: decode(snapshot.bytes) };
-    } catch {
-      return result;
-    }
-  }
-  async writeAsset(directory, path, bytes, revision) {
-    const target = this.path(directory, path);
-    if (revision !== void 0) this.requireRevision(revision);
-    const snapshot = Uint8Array.from(bytes);
-    if (path === manifestPath) validateClaudePlugin(json(snapshot, path));
-    else {
-      const { manifest } = await this.inspect(directory);
-      if (manifest !== null) validateClaudePlugin(manifest);
-      this.validateAsset(path, snapshot, manifest === null ? [] : nativeReferences(manifest));
-    }
-    const result = await this.workspace.write([{ path: target, bytes: snapshot, expectedRevision: revision }]);
-    return { directory, asset: path, ...result };
-  }
-  async removeAsset(directory, path, revision) {
-    this.requireRevision(revision);
-    const target = this.path(directory, path);
-    return { directory, asset: path, ...await this.workspace.remove(target, revision) };
-  }
-  async validate(directory) {
-    const root = vaultPath(directory), diagnostics2 = [];
-    let inspected;
-    try {
-      inspected = await this.inspect(root);
-      if (inspected.manifest !== null) validateClaudePlugin(inspected.manifest);
-    } catch (error2) {
-      return { directory: root, valid: false, diagnostics: [{ path: manifestPath, severity: "error", message: error2 instanceof Error ? error2.message : String(error2) }], validation: "structure" };
-    }
-    const references = inspected.manifest === null ? [] : nativeReferences(inspected.manifest);
-    for (const reference of references) {
-      if (reference.path === "") continue;
-      const exists = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path) => path === reference.path || path.startsWith(`${reference.path}/`));
-      if (!exists) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
-    }
-    for (const path of inspected.files) {
-      try {
-        const snapshot = await this.workspace.files.read(this.path(root, path));
-        const warnings = this.validateAsset(path, snapshot.bytes, references);
-        for (const message of warnings) diagnostics2.push({ path, severity: "warning", message });
-      } catch (error2) {
-        diagnostics2.push({ path, severity: "error", message: error2 instanceof Error ? error2.message : String(error2) });
-      }
-    }
-    return {
-      ...inspected,
-      valid: !diagnostics2.some((item) => item.severity === "error"),
-      diagnostics: diagnostics2,
-      validation: "structure",
-      limitations: ["No plugin code, hooks, MCP or LSP servers were executed.", "Claude Code remains authoritative for runtime compatibility and version-specific fields."]
-    };
-  }
-  path(directory, path) {
-    return vaultPath(`${vaultPath(directory)}/${vaultPath(path)}`);
-  }
-  requireRevision(revision) {
-    ensure(typeof revision === "string" && revision.length > 0, "MISSING_ARGUMENT", "A current revision is required to replace or remove a plugin asset.");
-  }
-  async saveManifest(directory, manifest, revision) {
-    const path = this.path(directory, manifestPath), content2 = `${JSON.stringify(manifest, null, 2)}
-`;
-    const result = await this.workspace.write([{ path, bytes: new TextEncoder().encode(content2), expectedRevision: revision }]);
-    return { directory, manifest, ...result, ...this.workspace.dryRun ? { preview: [{ path, content: content2 }] } : {} };
-  }
-  validateAsset(path, bytes, references) {
-    const warnings = [];
-    if (path === manifestPath) {
-      validateClaudePlugin(json(bytes, path));
-      return warnings;
-    }
-    const kinds = new Set(references.filter((reference) => reference.path === path).map((reference) => reference.kind));
-    if (path.startsWith("agents/") && path.endsWith(".md")) kinds.add("agent");
-    if (path === "hooks/hooks.json") kinds.add("hooks");
-    if (path === ".mcp.json") kinds.add("mcp");
-    if (path === ".lsp.json") kinds.add("lsp");
-    if (path === "settings.json") kinds.add("settings");
-    if (kinds.has("agent")) {
-      const { metadata: metadata2 } = this.agentCodec.parse(decode(bytes));
-      for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
-        if (Object.hasOwn(metadata2, key)) warnings.push(`Claude ignores ${key} in plugin agents; use a project/user agent for per-agent configuration.`);
-      }
-    }
-    if (kinds.has("hooks")) {
-      const config2 = json(bytes, path);
-      ensure(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
-      if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
-      if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry) => typeof entry === "string"), "INVALID_CLAUDE_PLUGIN", `${path}: modules must be an array of module paths.`);
-    }
-    if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path)) {
-      const config2 = json(bytes, path);
-      validateClaudePlugin({ name: "asset-validation", mcpServers: config2.mcpServers ?? config2 });
-    }
-    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json(bytes, path) });
-    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json(bytes, path) });
-    this.workspace.codec.validate(path, bytes);
-    return warnings;
   }
 }
 class CommanderError extends Error {
@@ -27341,11 +27072,11 @@ class Help {
    * @returns {number}
    */
   longestSubcommandTermLength(cmd, helper) {
-    return helper.visibleCommands(cmd).reduce((max, command) => {
+    return helper.visibleCommands(cmd).reduce((max, command2) => {
       return Math.max(
         max,
         this.displayWidth(
-          helper.styleSubcommandTerm(helper.subcommandTerm(command))
+          helper.styleSubcommandTerm(helper.subcommandTerm(command2))
         )
       );
     }, 0);
@@ -28240,8 +27971,8 @@ class Command extends node_events.EventEmitter {
    */
   _getCommandAndAncestors() {
     const result = [];
-    for (let command = this; command; command = command.parent) {
-      result.push(command);
+    for (let command2 = this; command2; command2 = command2.parent) {
+      result.push(command2);
     }
     return result;
   }
@@ -28681,22 +28412,22 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Command} command
    * @private
    */
-  _registerCommand(command) {
+  _registerCommand(command2) {
     const knownBy = (cmd) => {
       return [cmd.name()].concat(cmd.aliases());
     };
-    const alreadyUsed = knownBy(command).find(
+    const alreadyUsed = knownBy(command2).find(
       (name2) => this._findCommand(name2)
     );
     if (alreadyUsed) {
       const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
-      const newCmd = knownBy(command).join("|");
+      const newCmd = knownBy(command2).join("|");
       throw new Error(
         `cannot add command '${newCmd}' as already have command '${existingCmd}'`
       );
     }
-    this._initCommandGroup(command);
-    this.commands.push(command);
+    this._initCommandGroup(command2);
+    this.commands.push(command2);
   }
   /**
    * Add an option.
@@ -29870,12 +29601,12 @@ Expecting one of '${allowedValues.join("', '")}'`);
     let suggestion = "";
     if (flag.startsWith("--") && this._showSuggestionAfterError) {
       let candidateFlags = [];
-      let command = this;
+      let command2 = this;
       do {
-        const moreFlags = command.createHelp().visibleOptions(command).filter((option) => option.long).map((option) => option.long);
+        const moreFlags = command2.createHelp().visibleOptions(command2).filter((option) => option.long).map((option) => option.long);
         candidateFlags = candidateFlags.concat(moreFlags);
-        command = command.parent;
-      } while (command && !command._enablePositionalOptions);
+        command2 = command2.parent;
+      } while (command2 && !command2._enablePositionalOptions);
       suggestion = suggestSimilar(flag, candidateFlags);
     }
     const message = `error: unknown option '${flag}'${suggestion}`;
@@ -29907,9 +29638,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
     let suggestion = "";
     if (this._showSuggestionAfterError) {
       const candidateNames = [];
-      this.createHelp().visibleCommands(this).forEach((command) => {
-        candidateNames.push(command.name());
-        if (command.alias()) candidateNames.push(command.alias());
+      this.createHelp().visibleCommands(this).forEach((command2) => {
+        candidateNames.push(command2.name());
+        if (command2.alias()) candidateNames.push(command2.alias());
       });
       suggestion = suggestSimilar(unknownName, candidateNames);
     }
@@ -29980,11 +29711,11 @@ Expecting one of '${allowedValues.join("', '")}'`);
    */
   alias(alias) {
     if (alias === void 0) return this._aliases[0];
-    let command = this;
+    let command2 = this;
     if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
-      command = this.commands[this.commands.length - 1];
+      command2 = this.commands[this.commands.length - 1];
     }
-    if (alias === command._name)
+    if (alias === command2._name)
       throw new Error("Command alias can't be the same as its name");
     const matchingCommand = this.parent?._findCommand(alias);
     if (matchingCommand) {
@@ -29993,7 +29724,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
       );
     }
-    command._aliases.push(alias);
+    command2._aliases.push(alias);
     return this;
   }
   /**
@@ -30205,7 +29936,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
       write: outputContext.write,
       command: this
     };
-    this._getCommandAndAncestors().reverse().forEach((command) => command.emit("beforeAllHelp", eventContext));
+    this._getCommandAndAncestors().reverse().forEach((command2) => command2.emit("beforeAllHelp", eventContext));
     this.emit("beforeHelp", eventContext);
     let helpInformation = this.helpInformation({ error: outputContext.error });
     if (deprecatedCallback) {
@@ -30220,7 +29951,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
     }
     this.emit("afterHelp", eventContext);
     this._getCommandAndAncestors().forEach(
-      (command) => command.emit("afterAllHelp", eventContext)
+      (command2) => command2.emit("afterAllHelp", eventContext)
     );
   }
   /**
@@ -30412,7 +30143,7 @@ function parseBootstrap(tokens) {
   return { flags: parsed.flags, args: tokens.slice(end + (tokens[end] === "--" ? 1 : 0)) };
 }
 function parseArguments(tokens, options, allowUnknown = false) {
-  const command = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
+  const command2 = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
   }, writeErr: () => {
   } });
   const seen = /* @__PURE__ */ new Set();
@@ -30422,15 +30153,15 @@ function parseArguments(tokens, options, allowUnknown = false) {
     const option = new Option(`${short}--${key}${type2 === "string" ? " <value>" : ""}`);
     if (type2 === "string") option.negate = false;
     descriptors.push({ key, option });
-    command.addOption(option);
-    command.on(`option:${option.name()}`, () => {
+    command2.addOption(option);
+    command2.on(`option:${option.name()}`, () => {
       const attribute2 = option.attributeName();
       ensure(!seen.has(attribute2), "DUPLICATE_OPTION", `Repeated or contradictory option --${key}.`);
       seen.add(attribute2);
     });
   }
   try {
-    command.parse(tokens, { from: "user" });
+    command2.parse(tokens, { from: "user" });
   } catch (error2) {
     if (!(error2 instanceof CommanderError)) throw error2;
     const code2 = error2.code === "commander.unknownOption" ? "UNKNOWN_OPTION" : error2.code === "commander.optionMissingArgument" ? "MISSING_ARGUMENT" : "INVALID_ARGUMENT";
@@ -30439,12 +30170,12 @@ function parseArguments(tokens, options, allowUnknown = false) {
   const flags = /* @__PURE__ */ Object.create(null);
   for (const { key, option } of descriptors) {
     if (!seen.has(option.attributeName())) continue;
-    const parsed = command.getOptionValue(option.attributeName());
+    const parsed = command2.getOptionValue(option.attributeName());
     if (option.negate) {
       if (parsed === false) flags[key] = true;
     } else if (typeof parsed === "string" || parsed === true) flags[key] = parsed;
   }
-  return { args: command.args, flags };
+  return { args: command2.args, flags };
 }
 function value(flags, key, required2 = false) {
   const result = flags[key];
@@ -30453,6 +30184,14 @@ function value(flags, key, required2 = false) {
 }
 function arity(args, min, max = min) {
   ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
+}
+function encodeText(text2) {
+  return new TextEncoder().encode(text2);
+}
+async function readInputBytes(flags, context, message) {
+  const from = value(flags, "from"), content2 = value(flags, "content");
+  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message);
+  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : encodeText(content2);
 }
 function parseJson(text2) {
   try {
@@ -30469,12 +30208,590 @@ async function claudeInput(flags, context) {
   return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await claudeBytes(flags, context));
 }
 async function claudeBytes(flags, context) {
-  const from = value(flags, "from"), content2 = value(flags, "content");
-  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", "Supply exactly one of --from <native-file>, --content <text>, or --stdin.");
-  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : new TextEncoder().encode(content2);
+  return readInputBytes(flags, context, "Supply exactly one of --from <native-file>, --content <text>, or --stdin.");
 }
 const claudeInputOptions = ["from", "content", "stdin"];
 const claudeScopeOptions = ["scope", "directory", "claude-dir"];
+async function agentSource(flags, context, services) {
+  const metadata2 = value(flags, "metadata");
+  if (metadata2 === void 0) {
+    ensure(flags.prompt === void 0, "INVALID_INPUT", "--prompt requires --metadata.");
+    return claudeInput(flags, context);
+  }
+  ensure(claudeInputOptions.every((key) => flags[key] === void 0), "INVALID_INPUT", "--metadata/--prompt cannot be combined with file or text input.");
+  return services.agentCodec.render({ metadata: parseJson(metadata2), prompt: value(flags, "prompt", true) });
+}
+async function exportAgent(agent, flags, context, services) {
+  const content2 = services.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt });
+  const result = { ...agent, content: content2, session: { [String(agent.metadata.name)]: { ...agent.metadata, prompt: agent.prompt } } };
+  const out = value(flags, "out");
+  ensure(out !== void 0 || flags["if-match"] === void 0, "INVALID_ARGUMENT", "--if-match requires --out for agent export.");
+  if (out === void 0) return result;
+  ensure(out.endsWith(".md"), "INVALID_ARGUMENT", "Agent exports use a .md destination.");
+  const written = await context.workspace.write([{ path: out, bytes: new TextEncoder().encode(content2), expectedRevision: value(flags, "if-match") }]);
+  return { ...result, outputRoot: context.root, ...written, ...context.workspace.dryRun ? { preview: [{ path: out, content: content2 }] } : {} };
+}
+async function agentCommands(args, flags, context, services) {
+  const action2 = args[0] ?? "list";
+  const mutating = ["update", "remove", "enable", "disable"].includes(action2);
+  const inputs = ["create", "update"].includes(action2) ? [...claudeInputOptions, "metadata", "prompt"] : [];
+  claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "export" ? ["out", "if-match"] : []]);
+  const target = await services.target(context, flags);
+  ensure(target.scope !== "local", "INVALID_ARGUMENT", "Claude agents have project, user, or plugin scope; local applies only to settings.");
+  const agents = new ClaudeAgents(target.workspace, services.agentCodec, target.agentsDirectory);
+  const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
+  let result;
+  if (action2 === "list") {
+    arity(args, 0, 1);
+    result = await agents.list();
+  } else {
+    arity(args, 2);
+    const id2 = args[1];
+    switch (action2) {
+      case "inspect":
+        result = await agents.inspect(id2);
+        break;
+      case "export":
+        result = await exportAgent(await agents.inspect(id2), flags, context, services);
+        break;
+      case "create":
+        result = await agents.create(id2, await agentSource(flags, context, services));
+        break;
+      case "update":
+        result = await agents.update(id2, await agentSource(flags, context, services), value(flags, "if-match", true));
+        break;
+      case "remove":
+        result = await agents.remove(id2, value(flags, "if-match", true));
+        break;
+      default: {
+        ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use agents list, inspect, create, update, remove, enable, disable, or export.");
+        const agent = await agents.inspect(id2);
+        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value(flags, "if-match"));
+      }
+    }
+  }
+  return {
+    target: { scope: target.scope, directory: target.directory },
+    ...result,
+    ...target.scope === "plugin" ? { limitations: "Claude Code ignores hooks, mcpServers, permissionMode and initialPrompt in plugin agents." } : {}
+  };
+}
+async function hookCommands(args, flags, context, services) {
+  const action2 = args[0] ?? "inspect";
+  const mutating = ["set", "add", "remove", "configure", "enable", "disable"].includes(action2);
+  const inputs = ["set", "add", "configure"].includes(action2) ? claudeInputOptions : [];
+  claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "remove" ? ["index"] : []]);
+  const target = await services.target(context, flags);
+  const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
+  const revision = value(flags, "if-match");
+  let result;
+  switch (action2) {
+    case "inspect":
+    case "check":
+      arity(args, 0, 1);
+      result = action2 === "inspect" ? await settings2.inspect() : await settings2.validate();
+      break;
+    case "set":
+    case "configure": {
+      arity(args, 1);
+      const input = parseJson(await claudeInput(flags, context));
+      result = action2 === "set" ? await settings2.set(input, revision) : await settings2.configure(input, revision);
+      break;
+    }
+    case "add":
+      arity(args, 2);
+      result = await settings2.add(args[1], parseJson(await claudeInput(flags, context)), revision);
+      break;
+    case "remove": {
+      arity(args, 2);
+      const index2 = value(flags, "index");
+      result = await settings2.remove(args[1], value(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
+      break;
+    }
+    default:
+      ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use hooks inspect, check, set, add, remove, configure, enable, or disable.");
+      arity(args, 1);
+      result = await settings2.toggle(action2 === "enable", revision);
+  }
+  return { target: { scope: target.scope, directory: target.directory }, ...result };
+}
+const claudePluginCapabilities = {
+  manifest: ".claude-plugin/plugin.json",
+  manifestRequired: false,
+  reference: "https://code.claude.com/docs/en/plugins-reference",
+  validation: "Known manifest shapes and contained relative paths; unknown fields are preserved. Referenced files, installed versions and runtime behavior require Claude Code validation.",
+  components: [
+    { field: "skills", defaultPath: "skills/", forms: ["path", "paths"], loading: "add" },
+    { field: "commands", defaultPath: "commands/", forms: ["path", "paths", "command-map"], loading: "replace" },
+    { field: "agents", defaultPath: "agents/", forms: ["markdown-file", "markdown-files"], loading: "replace" },
+    { field: "hooks", defaultPath: "hooks/hooks.json", forms: ["json-path", "event-map", "mixed-array"], loading: "merge" },
+    { field: "mcpServers", defaultPath: ".mcp.json", forms: ["json-path", "bundle-path", "https-bundle-url", "server-map", "mixed-array"], loading: "merge" },
+    { field: "lspServers", defaultPath: ".lsp.json", forms: ["json-path", "server-map", "mixed-array"], loading: "merge" },
+    { field: "outputStyles", defaultPath: "output-styles/", forms: ["path", "paths"], loading: "replace" },
+    { field: "workflows", defaultPath: "workflows/", forms: ["path", "paths"], loading: "replace" },
+    { field: "settings", defaultPath: "settings.json", forms: ["object"], loading: "file-over-manifest" },
+    { field: "experimental.themes", defaultPath: "themes/", forms: ["path", "paths"], loading: "replace" },
+    { field: "experimental.monitors", defaultPath: "monitors/monitors.json", forms: ["json-path", "monitor-array"], loading: "replace" },
+    { field: "experimental.evals", defaultPath: "evals/", forms: ["path", "paths"], loading: "first-path" },
+    { field: "types", forms: ["declaration-file"], loading: "explicit" },
+    { field: "channels", forms: ["channel-array"], loading: "explicit" },
+    { field: null, defaultPath: "bin/", forms: ["executables"], loading: "append-to-shell-path" }
+  ],
+  supportedSettings: ["agent", "subagentStatusLine"],
+  ignoredPluginAgentFields: ["hooks", "mcpServers", "permissionMode", "initialPrompt"],
+  memoryScopes: ["user", "project", "local"],
+  limits: [
+    "Plugin hooks and MCP servers apply to the enabled plugin, not only its agents.",
+    "Persistent agent memory has no effect when Claude auto memory is disabled.",
+    "LSP configuration does not install the language-server executable.",
+    "Experimental monitors require interactive sessions and are unavailable on supported third-party model platforms.",
+    "Claude may reject unknown nested fields or ignore unknown settings that Forge preserves."
+  ]
+};
+function check(condition, path, requirement) {
+  ensure(condition, "INVALID_CLAUDE_PLUGIN", `${path}: ${requirement}`);
+}
+function object(value2, path) {
+  check(isRecord(value2), path, "must be an object.");
+}
+function jsonValue(value2, ancestors = /* @__PURE__ */ new Set(), depth = 0) {
+  check(depth < 100, "plugin", "JSON nesting is too deep.");
+  if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return;
+  if (typeof value2 === "number") {
+    check(Number.isFinite(value2), "plugin", "numbers must be finite.");
+    return;
+  }
+  check(typeof value2 === "object" && (Array.isArray(value2) || Object.getPrototypeOf(value2) === Object.prototype || Object.getPrototypeOf(value2) === null), "plugin", "must contain JSON-compatible data.");
+  check(!ancestors.has(value2), "plugin", "must not contain circular references.");
+  ancestors.add(value2);
+  for (const child of Object.values(value2)) jsonValue(child, ancestors, depth + 1);
+  ancestors.delete(value2);
+}
+function text(value2, path, nonempty2 = false) {
+  check(typeof value2 === "string" && (!nonempty2 || value2.trim().length > 0), path, `must be ${nonempty2 ? "a nonempty" : "a"} string.`);
+}
+function strings(value2, path) {
+  check(Array.isArray(value2) && value2.every((item) => typeof item === "string"), path, "must be an array of strings.");
+}
+function optionalStrings(value2, fields, path) {
+  for (const field2 of fields) if (value2[field2] !== void 0) text(value2[field2], `${path}.${field2}`);
+}
+function optionalBooleans(value2, fields, path) {
+  for (const field2 of fields) if (value2[field2] !== void 0) check(typeof value2[field2] === "boolean", `${path}.${field2}`, "must be a boolean.");
+}
+function stringMap(value2, path) {
+  object(value2, path);
+  for (const [key, item] of Object.entries(value2)) text(item, `${path}.${key}`);
+}
+function pluginName(value2, path) {
+  text(value2, path, true);
+  check(!/[\s@:/\\\x00-\x1f\x7f\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(value2), path, "must contain no whitespace, @, colon, path separators, control or bidirectional formatting characters; use kebab-case.");
+}
+function componentPath(value2, path, extensions, allowRoot = false, prefixRequired = true) {
+  text(value2, path, true);
+  if (allowRoot && value2 === ".") return;
+  check(!/[\\:\x00-\x1f\x7f]/.test(value2) && !value2.startsWith("/") && !value2.split("/").includes(".."), path, "must remain inside the plugin root.");
+  check(!prefixRequired || value2.startsWith("./"), path, "must start with ./ and be relative to the plugin root.");
+  if (extensions) check(extensions.some((extension2) => value2.endsWith(extension2)), path, `must end with ${extensions.join(" or ")}.`);
+}
+function paths(value2, path, extensions, allowRoot = false, prefixRequired = true) {
+  if (!Array.isArray(value2)) {
+    componentPath(value2, path, extensions, allowRoot, prefixRequired);
+    return;
+  }
+  value2.forEach((item, index2) => componentPath(item, `${path}[${index2}]`, extensions, allowRoot, prefixRequired));
+}
+function mixed(value2, path, validatePath, validateInline) {
+  const entries = Array.isArray(value2) ? value2 : [value2];
+  entries.forEach((entry, index2) => {
+    const location = Array.isArray(value2) ? `${path}[${index2}]` : path;
+    if (typeof entry === "string") validatePath(entry, location);
+    else validateInline(entry, location);
+  });
+}
+function noShellOptions(value2, path) {
+  if (typeof value2 === "string") check(!value2.includes("${user_config."), path, "cannot substitute user_config values into a shell command.");
+}
+function commands$2(value2, path) {
+  if (typeof value2 === "string" || Array.isArray(value2)) {
+    paths(value2, path);
+    return;
+  }
+  object(value2, path);
+  for (const [name2, entry] of Object.entries(value2)) {
+    const location = `${path}.${name2}`;
+    object(entry, location);
+    check(entry.source !== void 0 !== (entry.content !== void 0), location, "must define exactly one of source or content.");
+    if (entry.source !== void 0) componentPath(entry.source, `${location}.source`, [".md"]);
+    optionalStrings(entry, ["content", "description", "argumentHint", "model"], location);
+    if (entry.allowedTools !== void 0) strings(entry.allowedTools, `${location}.allowedTools`);
+  }
+}
+function mcpServers(value2, path) {
+  object(value2, path);
+  for (const [name2, server] of Object.entries(value2)) {
+    const location = `${path}.${name2}`;
+    object(server, location);
+    optionalStrings(server, ["type", "command", "url", "headersHelper", "cwd"], location);
+    if (server.type !== void 0) check(["stdio", "http", "sse"].includes(server.type), `${location}.type`, "must be stdio, http, or sse.");
+    if (server.type === void 0 || server.type === "stdio") text(server.command, `${location}.command`, true);
+    else if (server.type === "http" || server.type === "sse") text(server.url, `${location}.url`, true);
+    if (server.args !== void 0) strings(server.args, `${location}.args`);
+    for (const key of ["env", "headers"]) if (server[key] !== void 0) stringMap(server[key], `${location}.${key}`);
+    noShellOptions(server.headersHelper, `${location}.headersHelper`);
+    if (server.oauth !== void 0) {
+      object(server.oauth, `${location}.oauth`);
+      optionalStrings(server.oauth, ["clientId", "authServerMetadataUrl", "scopes"], `${location}.oauth`);
+      if (server.oauth.callbackPort !== void 0) check(Number.isInteger(server.oauth.callbackPort) && Number(server.oauth.callbackPort) > 0 && Number(server.oauth.callbackPort) <= 65535, `${location}.oauth.callbackPort`, "must be an integer between 1 and 65535.");
+    }
+  }
+}
+function mcpPath(value2, path) {
+  if (value2.startsWith("https://")) {
+    let parsed;
+    try {
+      parsed = new URL(value2);
+    } catch {
+    }
+    check(parsed && /\.(mcpb|dxt)$/.test(parsed.pathname), path, "must be an HTTPS URL for a .mcpb or .dxt bundle.");
+  } else componentPath(value2, path, [".json", ".mcpb", ".dxt"]);
+}
+function lspServers(value2, path) {
+  object(value2, path);
+  for (const [name2, server] of Object.entries(value2)) {
+    const location = `${path}.${name2}`;
+    object(server, location);
+    text(server.command, `${location}.command`, true);
+    check(server.command.startsWith("/") || !/\s/.test(server.command), `${location}.command`, "must name a binary; put arguments in args.");
+    stringMap(server.extensionToLanguage, `${location}.extensionToLanguage`);
+    check(Object.keys(server.extensionToLanguage).length > 0 && Object.entries(server.extensionToLanguage).every(([extension2, language2]) => extension2.startsWith(".") && language2.length > 0), `${location}.extensionToLanguage`, "must map at least one dot-prefixed extension to a language.");
+    if (server.args !== void 0) strings(server.args, `${location}.args`);
+    if (server.env !== void 0) stringMap(server.env, `${location}.env`);
+    if (server.transport !== void 0) check(typeof server.transport === "string" && ["stdio", "socket"].includes(server.transport), `${location}.transport`, "must be stdio or socket.");
+    optionalStrings(server, ["workspaceFolder"], location);
+    optionalBooleans(server, ["restartOnCrash", "diagnostics"], location);
+    for (const key of ["startupTimeout", "shutdownTimeout", "requestTimeout", "maxRestarts"]) {
+      if (server[key] !== void 0) check(Number.isInteger(server[key]) && Number(server[key]) >= (key === "maxRestarts" ? 0 : 1), `${location}.${key}`, "must be an integer within the supported nonnegative/positive range.");
+    }
+  }
+}
+function userConfig(value2, path) {
+  object(value2, path);
+  for (const [name2, option] of Object.entries(value2)) {
+    const location = `${path}.${name2}`;
+    check(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name2), location, "option keys must be identifiers and cannot start with a digit.");
+    object(option, location);
+    check(typeof option.type === "string" && ["string", "number", "boolean", "directory", "file"].includes(option.type), `${location}.type`, "must be string, number, boolean, directory, or file.");
+    text(option.title, `${location}.title`);
+    text(option.description, `${location}.description`);
+    optionalBooleans(option, ["required", "multiple", "sensitive"], location);
+    for (const key of ["min", "max"]) if (option[key] !== void 0) check(typeof option[key] === "number" && Number.isFinite(option[key]), `${location}.${key}`, "must be a finite number.");
+    if (option.min !== void 0 && option.max !== void 0) check(Number(option.min) <= Number(option.max), location, "min cannot exceed max.");
+    if (option.default !== void 0) {
+      const initial = option.default;
+      check(typeof initial === "string" || typeof initial === "boolean" || typeof initial === "number" && Number.isFinite(initial) || Array.isArray(initial) && initial.every((item) => typeof item === "string"), `${location}.default`, "must be a string, finite number, boolean, or string array.");
+    }
+    if (option.options !== void 0) {
+      strings(option.options, `${location}.options`);
+      check(option.type === "string" && option.multiple !== true && option.sensitive !== true, location, "options require a single, non-sensitive string.");
+      check(option.options.length > 0 && option.options.every((item) => item.length >= 1 && item.length <= 64), `${location}.options`, "must contain labels of 1 to 64 characters.");
+      check(option.default === void 0 ? option.required === true : typeof option.default === "string" && option.options.includes(option.default), location, "options require a listed default or required: true.");
+    }
+  }
+}
+function monitors(value2, path) {
+  if (typeof value2 === "string") {
+    componentPath(value2, path, [".json"]);
+    return;
+  }
+  check(Array.isArray(value2), path, "must be a JSON path or an array of monitors.");
+  const names2 = /* @__PURE__ */ new Set();
+  for (const [index2, entry] of value2.entries()) {
+    const location = `${path}[${index2}]`;
+    object(entry, location);
+    text(entry.name, `${location}.name`, true);
+    check(!names2.has(entry.name), `${location}.name`, "must be unique within the plugin.");
+    names2.add(entry.name);
+    text(entry.command, `${location}.command`, true);
+    text(entry.description, `${location}.description`);
+    noShellOptions(entry.command, `${location}.command`);
+    if (entry.when !== void 0) check(typeof entry.when === "string" && (entry.when === "always" || /^on-skill-invoke:.+$/.test(entry.when)), `${location}.when`, "must be always or on-skill-invoke:<skill>.");
+  }
+}
+function settings(value2, path) {
+  object(value2, path);
+  optionalStrings(value2, ["agent"], path);
+  if (value2.subagentStatusLine !== void 0) {
+    object(value2.subagentStatusLine, `${path}.subagentStatusLine`);
+    check(value2.subagentStatusLine.type === "command", `${path}.subagentStatusLine.type`, "must be command.");
+    text(value2.subagentStatusLine.command, `${path}.subagentStatusLine.command`, true);
+  }
+}
+function hooks(value2, path) {
+  try {
+    validateClaudeHooks(value2);
+  } catch (error2) {
+    if (error2 instanceof AppError) throw new AppError("INVALID_CLAUDE_PLUGIN", `${path}: ${error2.message}`, 2);
+    throw error2;
+  }
+}
+function validateClaudePlugin(value2) {
+  jsonValue(value2);
+  object(value2, "plugin");
+  pluginName(value2.name, "plugin.name");
+  optionalStrings(value2, ["$schema", "displayName", "version", "description", "homepage", "repository", "license", "icon", "documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"], "plugin");
+  if (value2.homepage !== void 0) check(URL.canParse(value2.homepage), "plugin.homepage", "must be a valid URL.");
+  if (value2.keywords !== void 0) strings(value2.keywords, "plugin.keywords");
+  optionalBooleans(value2, ["defaultEnabled"], "plugin");
+  if (value2.metadata !== void 0) object(value2.metadata, "plugin.metadata");
+  if (value2.author !== void 0) {
+    object(value2.author, "plugin.author");
+    text(value2.author.name, "plugin.author.name");
+    optionalStrings(value2.author, ["email", "url"], "plugin.author");
+  }
+  if (value2.dependencies !== void 0) {
+    check(Array.isArray(value2.dependencies), "plugin.dependencies", "must be an array.");
+    for (const [index2, entry] of value2.dependencies.entries()) {
+      const location = `plugin.dependencies[${index2}]`;
+      if (typeof entry === "string") {
+        const names2 = entry.split("@");
+        check(names2.length <= 2, location, "must be a name or name@marketplace.");
+        names2.forEach((name2) => pluginName(name2, location));
+      } else {
+        object(entry, location);
+        pluginName(entry.name, `${location}.name`);
+        optionalStrings(entry, ["version"], location);
+        if (entry.marketplace !== void 0) pluginName(entry.marketplace, `${location}.marketplace`);
+      }
+    }
+  }
+  for (const key of ["skills", "agents", "outputStyles", "workflows", "themes"]) {
+    if (value2[key] !== void 0) paths(value2[key], `plugin.${key}`, key === "agents" ? [".md"] : void 0, key === "skills");
+  }
+  if (value2.types !== void 0) componentPath(value2.types, "plugin.types", [".d.ts"]);
+  if (value2.commands !== void 0) commands$2(value2.commands, "plugin.commands");
+  const jsonPath = (entry, path) => componentPath(entry, path, [".json"]);
+  if (value2.hooks !== void 0) mixed(value2.hooks, "plugin.hooks", jsonPath, hooks);
+  if (value2.mcpServers !== void 0) mixed(value2.mcpServers, "plugin.mcpServers", mcpPath, mcpServers);
+  if (value2.lspServers !== void 0) mixed(value2.lspServers, "plugin.lspServers", jsonPath, lspServers);
+  if (value2.settings !== void 0) settings(value2.settings, "plugin.settings");
+  if (value2.userConfig !== void 0) userConfig(value2.userConfig, "plugin.userConfig");
+  if (value2.channels !== void 0) {
+    check(Array.isArray(value2.channels), "plugin.channels", "must be an array.");
+    value2.channels.forEach((channel, index2) => {
+      const location = `plugin.channels[${index2}]`;
+      object(channel, location);
+      text(channel.server, `${location}.server`, true);
+      optionalStrings(channel, ["displayName"], location);
+      if (channel.userConfig !== void 0) userConfig(channel.userConfig, `${location}.userConfig`);
+    });
+  }
+  if (value2.monitors !== void 0) monitors(value2.monitors, "plugin.monitors");
+  if (value2.experimental !== void 0) {
+    object(value2.experimental, "plugin.experimental");
+    if (value2.experimental.themes !== void 0) paths(value2.experimental.themes, "plugin.experimental.themes");
+    if (value2.experimental.monitors !== void 0) monitors(value2.experimental.monitors, "plugin.experimental.monitors");
+    if (value2.experimental.evals !== void 0) paths(value2.experimental.evals, "plugin.experimental.evals", void 0, true, false);
+  }
+}
+const manifestPath = ".claude-plugin/plugin.json";
+function decode(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new AppError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.", 2);
+  }
+}
+function json(bytes, path) {
+  let value2;
+  try {
+    value2 = JSON.parse(decode(bytes));
+  } catch (error2) {
+    throw new AppError("INVALID_CLAUDE_PLUGIN", `${path}: ${errorMessage(error2)}`, 2);
+  }
+  ensure(isRecord(value2), "INVALID_CLAUDE_PLUGIN", `${path} must contain a JSON object.`);
+  return value2;
+}
+function nativeReferences(manifest) {
+  const result = [];
+  const add = (value2, kind = "other", file = false) => {
+    for (const entry of Array.isArray(value2) ? value2 : [value2]) {
+      if (typeof entry !== "string" || entry.startsWith("https://")) continue;
+      const path = entry.replace(/^\.\//, "").replace(/\/+$/, "");
+      result.push({ path: path === "." ? "" : path, kind, file });
+    }
+  };
+  for (const key of ["skills", "outputStyles", "workflows", "themes"]) add(manifest[key]);
+  add(manifest.agents, "agent", true);
+  add(manifest.types, "other", true);
+  add(manifest.hooks, "hooks", true);
+  add(manifest.lspServers, "lsp", true);
+  add(manifest.mcpServers, "mcp", true);
+  add(manifest.monitors, "other", true);
+  if (isRecord(manifest.commands)) {
+    for (const entry of Object.values(manifest.commands)) if (isRecord(entry)) add(entry.source, "other", true);
+  } else add(manifest.commands);
+  if (isRecord(manifest.experimental)) {
+    add(manifest.experimental.themes);
+    add(manifest.experimental.monitors, "other", true);
+    add(Array.isArray(manifest.experimental.evals) ? manifest.experimental.evals[0] : manifest.experimental.evals);
+  }
+  return result;
+}
+class ClaudePluginService {
+  constructor(workspace2, agentCodec) {
+    this.workspace = workspace2;
+    this.agentCodec = agentCodec;
+  }
+  workspace;
+  agentCodec;
+  async create(directory, manifest) {
+    validateClaudePlugin(manifest);
+    return this.saveManifest(directory, manifest);
+  }
+  async inspect(directory) {
+    const root = vaultPath(directory), prefix = `${root}/`;
+    const files = (await this.workspace.files.list()).filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length)).sort();
+    try {
+      const snapshot = await this.workspace.files.read(`${prefix}${manifestPath}`);
+      return { directory: root, manifest: json(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
+    } catch (error2) {
+      if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
+      ensure(files.length > 0, "NOT_FOUND", `No regular plugin files found in ${root}.`);
+      return { directory: root, manifest: null, revision: null, inferredName: root.split("/").at(-1), files };
+    }
+  }
+  async update(directory, manifest, revision) {
+    this.requireRevision(revision);
+    validateClaudePlugin(manifest);
+    return this.saveManifest(directory, manifest, revision);
+  }
+  async asset(directory, path) {
+    const target = this.path(directory, path), snapshot = await this.workspace.files.read(target);
+    let document2, validationError;
+    try {
+      document2 = this.workspace.codec.inspect(target, snapshot.bytes);
+    } catch (error2) {
+      document2 = this.workspace.codec.inspect("plugin-asset", snapshot.bytes);
+      validationError = errorMessage(error2);
+    }
+    const result = { directory, asset: path, path: target, revision: snapshot.revision, bytes: snapshot.bytes.length, document: document2, ...validationError ? { validationError } : {} };
+    try {
+      return { ...result, content: decode(snapshot.bytes) };
+    } catch {
+      return result;
+    }
+  }
+  async writeAsset(directory, path, bytes, revision) {
+    const target = this.path(directory, path);
+    if (revision !== void 0) this.requireRevision(revision);
+    const snapshot = Uint8Array.from(bytes);
+    if (path === manifestPath) validateClaudePlugin(json(snapshot, path));
+    else {
+      const { manifest } = await this.inspect(directory);
+      if (manifest !== null) validateClaudePlugin(manifest);
+      this.validateAsset(path, snapshot, manifest === null ? [] : nativeReferences(manifest));
+    }
+    const result = await this.workspace.write([{ path: target, bytes: snapshot, expectedRevision: revision }]);
+    return { directory, asset: path, ...result };
+  }
+  async removeAsset(directory, path, revision) {
+    this.requireRevision(revision);
+    const target = this.path(directory, path);
+    return { directory, asset: path, ...await this.workspace.remove(target, revision) };
+  }
+  async validate(directory) {
+    const root = vaultPath(directory), diagnostics2 = [];
+    let inspected;
+    try {
+      inspected = await this.inspect(root);
+      if (inspected.manifest !== null) validateClaudePlugin(inspected.manifest);
+    } catch (error2) {
+      return { directory: root, valid: false, diagnostics: [{ path: manifestPath, severity: "error", message: errorMessage(error2) }], validation: "structure" };
+    }
+    const references = inspected.manifest === null ? [] : nativeReferences(inspected.manifest);
+    for (const reference of references) {
+      if (reference.path === "") continue;
+      const exists = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path) => path === reference.path || path.startsWith(`${reference.path}/`));
+      if (!exists) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
+    }
+    for (const path of inspected.files) {
+      try {
+        const snapshot = await this.workspace.files.read(this.path(root, path));
+        const warnings = this.validateAsset(path, snapshot.bytes, references);
+        for (const message of warnings) diagnostics2.push({ path, severity: "warning", message });
+      } catch (error2) {
+        diagnostics2.push({ path, severity: "error", message: errorMessage(error2) });
+      }
+    }
+    return {
+      ...inspected,
+      valid: !diagnostics2.some((item) => item.severity === "error"),
+      diagnostics: diagnostics2,
+      validation: "structure",
+      limitations: ["No plugin code, hooks, MCP or LSP servers were executed.", "Claude Code remains authoritative for runtime compatibility and version-specific fields."]
+    };
+  }
+  path(directory, path) {
+    return vaultPath(`${vaultPath(directory)}/${vaultPath(path)}`);
+  }
+  requireRevision(revision) {
+    ensure(typeof revision === "string" && revision.length > 0, "MISSING_ARGUMENT", "A current revision is required to replace or remove a plugin asset.");
+  }
+  async saveManifest(directory, manifest, revision) {
+    const path = this.path(directory, manifestPath), content2 = `${JSON.stringify(manifest, null, 2)}
+`;
+    const result = await this.workspace.write([{ path, bytes: new TextEncoder().encode(content2), expectedRevision: revision }]);
+    return { directory, manifest, ...result, ...this.workspace.dryRun ? { preview: [{ path, content: content2 }] } : {} };
+  }
+  validateAsset(path, bytes, references) {
+    const warnings = [];
+    if (path === manifestPath) {
+      validateClaudePlugin(json(bytes, path));
+      return warnings;
+    }
+    const kinds = new Set(references.filter((reference) => reference.path === path).map((reference) => reference.kind));
+    if (path.startsWith("agents/") && path.endsWith(".md")) kinds.add("agent");
+    if (path === "hooks/hooks.json") kinds.add("hooks");
+    if (path === ".mcp.json") kinds.add("mcp");
+    if (path === ".lsp.json") kinds.add("lsp");
+    if (path === "settings.json") kinds.add("settings");
+    if (kinds.has("agent")) {
+      const { metadata: metadata2 } = this.agentCodec.parse(decode(bytes));
+      for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
+        if (Object.hasOwn(metadata2, key)) warnings.push(`Claude ignores ${key} in plugin agents; use a project/user agent for per-agent configuration.`);
+      }
+    }
+    if (kinds.has("hooks")) {
+      const config2 = json(bytes, path);
+      ensure(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
+      if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
+      if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry) => typeof entry === "string"), "INVALID_CLAUDE_PLUGIN", `${path}: modules must be an array of module paths.`);
+    }
+    if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path)) {
+      const config2 = json(bytes, path);
+      validateClaudePlugin({ name: "asset-validation", mcpServers: config2.mcpServers ?? config2 });
+    }
+    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json(bytes, path) });
+    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json(bytes, path) });
+    this.workspace.codec.validate(path, bytes);
+    return warnings;
+  }
+}
+const nativePluginActions = ["create", "inspect", "manifest", "check", "asset", "write-asset", "remove-asset"];
+async function nativePlugin(args, flags, context, services) {
+  const [action2, directory, path] = args;
+  claudeOptions(flags, [...["create", "manifest", "write-asset"].includes(action2) ? claudeInputOptions : [], ...["manifest", "write-asset", "remove-asset"].includes(action2) ? ["if-match"] : []]);
+  arity(args, ["asset", "write-asset", "remove-asset"].includes(action2) ? 3 : 2);
+  const plugins = new ClaudePluginService(context.workspace, services.agentCodec);
+  if (action2 === "create") return plugins.create(directory, parseJson(await claudeInput(flags, context)));
+  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value(flags, "if-match", true));
+  if (action2 === "inspect") return plugins.inspect(directory);
+  if (action2 === "check") return plugins.validate(directory);
+  if (action2 === "asset") return plugins.asset(directory, path);
+  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value(flags, "if-match", true));
+  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value(flags, "if-match"));
+}
 const acceptance = { yes: "boolean", "accept-command": "hash" };
 const commands$1 = {
   plugins: {
@@ -30532,7 +30849,7 @@ const commands$1 = {
   }
 };
 const claudeRuntimeOptions = Object.fromEntries(
-  Object.values(commands$1).flatMap((section) => Object.values(section).flatMap((command) => Object.entries(command.options ?? {}).map(([name2, kind]) => [name2, kind === "boolean" ? "boolean" : "string"])))
+  Object.values(commands$1).flatMap((section) => Object.values(section).flatMap((command2) => Object.entries(command2.options ?? {}).map(([name2, kind]) => [name2, kind === "boolean" ? "boolean" : "string"])))
 );
 function actionArgs(section, args) {
   const nested = section === "plugins" && args[0] === "eval" && args[1] === "init";
@@ -30548,10 +30865,10 @@ function commandDefinition(section, action2) {
 }
 function claudeRuntimeOutput(section, args, flags) {
   const { action: action2 } = actionArgs(section, args);
-  const command = commandDefinition(section, action2);
+  const command2 = commandDefinition(section, action2);
   if (section === "plugins" && action2 === "uninstall" && flags.prune === true) return "text";
   if (section === "plugins" && action2 === "eval") return flags["native-json"] === true && flags["native-json-output"] === void 0 ? "json" : "text";
-  return command.output ?? "text";
+  return command2.output ?? "text";
 }
 function claudeRuntimeNeedsInput(section, args, flags) {
   return section === "plugins" && args[0] === "configure" && flags["values-stdin"] === true;
@@ -30609,8 +30926,8 @@ function commandRules(section, action2, operands, flags) {
 }
 function buildClaudeRuntimeArgs(section, args, flags) {
   const { action: action2, operands } = actionArgs(section, args);
-  const command = commandDefinition(section, action2);
-  arity(operands, command.min, command.max ?? command.min);
+  const command2 = commandDefinition(section, action2);
+  arity(operands, command2.min, command2.max ?? command2.min);
   for (const operand of operands) {
     ensure(
       operand.trim().length > 0 && !operand.startsWith("-") && !operand.includes("\0"),
@@ -30622,15 +30939,15 @@ function buildClaudeRuntimeArgs(section, args, flags) {
   for (const [flag, value2] of Object.entries(flags)) {
     if (Object.hasOwn(globalOptions, flag) || flag === "claude-bin" || flag === "timeout") continue;
     if (input && ["content", "from", "stdin"].includes(flag)) continue;
-    if (flag === "scope" && command.scope) {
+    if (flag === "scope" && command2.scope) {
       ensure(
-        typeof value2 === "string" && ["user", "project", "local", ...command.managed ? ["managed"] : []].includes(value2),
+        typeof value2 === "string" && ["user", "project", "local", ...command2.managed ? ["managed"] : []].includes(value2),
         "INVALID_CLAUDE_SCOPE",
         `Invalid scope for Claude ${section} ${action2}: ${String(value2)}.`
       );
       continue;
     }
-    const kind = command.options && Object.hasOwn(command.options, flag) ? command.options[flag] : void 0;
+    const kind = command2.options && Object.hasOwn(command2.options, flag) ? command2.options[flag] : void 0;
     ensure(kind, "INVALID_CLAUDE_OPTION", `--${flag} is not supported by Claude ${section} ${action2}.`);
     const translated2 = optionArgs(flag, kind, value2);
     if (!["native-json", "native-json-output"].includes(flag)) options.push(...translated2);
@@ -30639,15 +30956,13 @@ function buildClaudeRuntimeArgs(section, args, flags) {
   if (section === "runtime") return [action2 === "version" ? "--version" : action2, ...operands];
   const native = section === "plugins" ? ["plugin", ...action2.split(" "), ...operands] : ["plugin", "marketplace", action2, ...operands];
   const unscoped = section === "plugins" && action2 === "disable" && flags.all === true || section === "marketplaces" && action2 === "add" && flags.claudeai === true;
-  if (command.scope && !unscoped) native.push("--scope", typeof flags.scope === "string" ? flags.scope : "project");
+  if (command2.scope && !unscoped) native.push("--scope", typeof flags.scope === "string" ? flags.scope : "project");
   const outputPath = flags["native-json-output"];
   if (typeof outputPath === "string") native.push(...outputPath.startsWith("-") ? [`--json=${outputPath}`] : ["--json", outputPath]);
   else if (claudeRuntimeOutput(section, args, flags) !== "text") native.push("--json");
   native.push(...options);
   return native;
 }
-const nativePluginActions = ["create", "inspect", "manifest", "check", "asset", "write-asset", "remove-asset"];
-const sourceOptions = [...claudeInputOptions, "metadata", "prompt"];
 function claudeCommand(services) {
   return {
     id: "claude",
@@ -30669,10 +30984,11 @@ function claudeCommand(services) {
           lifecycle: { executable: "claude", commands: ["plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval", "marketplaces add|list|remove|update", "runtime version|doctor|install|update"], mutationDefaultScope: "project where the native command supports a scope", dryRun: "Returns command arguments without starting Claude Code." }
         };
       }
-      if (section === "agents" || section === "hooks") return nativeDefinitions(section, args.slice(1), flags, context, services);
+      if (section === "agents") return agentCommands(args.slice(1), flags, context, services);
+      if (section === "hooks") return hookCommands(args.slice(1), flags, context, services);
       if (section === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services);
       ensure(section === "plugins" || section === "marketplaces" || section === "runtime", "INVALID_ARGUMENT", "Use claude agents, hooks, plugins, marketplaces, runtime, or capabilities.");
-      const command = buildClaudeRuntimeArgs(section, args.slice(1), flags);
+      const command2 = buildClaudeRuntimeArgs(section, args.slice(1), flags);
       const timeout = value(flags, "timeout");
       const timeoutMs = timeout === void 0 ? void 0 : Number(timeout);
       ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_ARGUMENT", "--timeout must be milliseconds from 1 to 3600000.");
@@ -30684,97 +31000,9 @@ function claudeCommand(services) {
         input = JSON.stringify(values2) + "\n";
         ensure(new TextEncoder().encode(input).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
       }
-      return context.claude.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
+      return context.claude.execute({ args: command2, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     }
   };
-}
-async function nativeDefinitions(section, args, flags, context, services) {
-  const action2 = args[0] ?? (section === "agents" ? "list" : "inspect");
-  const mutating = ["create", "update", "set", "add", "remove", "configure", "enable", "disable"].includes(action2);
-  const inputs = section === "agents" && ["create", "update"].includes(action2) ? sourceOptions : section === "hooks" && ["set", "add", "configure"].includes(action2) ? claudeInputOptions : [];
-  claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating && action2 !== "create" ? ["if-match"] : [], ...section === "agents" && action2 === "export" ? ["out", "if-match"] : [], ...section === "hooks" && action2 === "remove" ? ["index"] : []]);
-  const target = await services.target(context, flags);
-  const location = { scope: target.scope, directory: target.directory };
-  const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
-  if (section === "hooks") {
-    const revision = value(flags, "if-match");
-    let result2;
-    if (action2 === "inspect" || action2 === "check") {
-      arity(args, 0, 1);
-      result2 = action2 === "inspect" ? await settings2.inspect() : await settings2.validate();
-    } else if (action2 === "set") {
-      arity(args, 1);
-      result2 = await settings2.set(parseJson(await claudeInput(flags, context)), revision);
-    } else if (action2 === "add") {
-      arity(args, 2);
-      result2 = await settings2.add(args[1], parseJson(await claudeInput(flags, context)), revision);
-    } else if (action2 === "configure") {
-      arity(args, 1);
-      result2 = await settings2.configure(parseJson(await claudeInput(flags, context)), revision);
-    } else if (action2 === "remove") {
-      arity(args, 2);
-      const index2 = value(flags, "index");
-      result2 = await settings2.remove(args[1], value(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
-    } else {
-      ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use hooks inspect, check, set, add, remove, configure, enable, or disable.");
-      arity(args, 1);
-      result2 = await settings2.toggle(action2 === "enable", revision);
-    }
-    return { target: location, ...result2 };
-  }
-  ensure(target.scope !== "local", "INVALID_ARGUMENT", "Claude agents have project, user, or plugin scope; local applies only to settings.");
-  const agents = new ClaudeAgents(target.workspace, services.agentCodec, target.agentsDirectory);
-  let result;
-  if (action2 === "list") {
-    arity(args, 0, 1);
-    result = await agents.list();
-  } else {
-    arity(args, 2);
-    const id2 = args[1];
-    if (action2 === "inspect" || action2 === "export") {
-      const agent = await agents.inspect(id2);
-      result = action2 === "inspect" ? agent : { ...agent, content: services.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt }), session: { [String(agent.metadata.name)]: { ...agent.metadata, prompt: agent.prompt } } };
-      if (action2 === "export") {
-        const out = value(flags, "out");
-        ensure(out !== void 0 || flags["if-match"] === void 0, "INVALID_ARGUMENT", "--if-match requires --out for agent export.");
-        if (out !== void 0) {
-          ensure(out.endsWith(".md"), "INVALID_ARGUMENT", "Agent exports use a .md destination.");
-          const content2 = services.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt });
-          result = { ...result, outputRoot: context.root, ...await context.workspace.write([{ path: out, bytes: new TextEncoder().encode(content2), expectedRevision: value(flags, "if-match") }]), ...context.workspace.dryRun ? { preview: [{ path: out, content: content2 }] } : {} };
-        }
-      }
-    } else if (action2 === "create" || action2 === "update") {
-      const metadata2 = value(flags, "metadata");
-      let source;
-      if (metadata2 !== void 0) {
-        ensure(claudeInputOptions.every((key) => flags[key] === void 0), "INVALID_INPUT", "--metadata/--prompt cannot be combined with file or text input.");
-        source = services.agentCodec.render({ metadata: parseJson(metadata2), prompt: value(flags, "prompt", true) });
-      } else {
-        ensure(flags.prompt === void 0, "INVALID_INPUT", "--prompt requires --metadata.");
-        source = await claudeInput(flags, context);
-      }
-      result = action2 === "create" ? await agents.create(id2, source) : await agents.update(id2, source, value(flags, "if-match", true));
-    } else if (action2 === "remove") result = await agents.remove(id2, value(flags, "if-match", true));
-    else {
-      ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use agents list, inspect, create, update, remove, enable, disable, or export.");
-      const agent = await agents.inspect(id2);
-      result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value(flags, "if-match"));
-    }
-  }
-  return { target: location, ...result, ...target.scope === "plugin" ? { limitations: "Claude Code ignores hooks, mcpServers, permissionMode and initialPrompt in plugin agents." } : {} };
-}
-async function nativePlugin(args, flags, context, services) {
-  const [action2, directory, path] = args;
-  claudeOptions(flags, [...["create", "manifest", "write-asset"].includes(action2) ? claudeInputOptions : [], ...["manifest", "write-asset", "remove-asset"].includes(action2) ? ["if-match"] : []]);
-  arity(args, ["asset", "write-asset", "remove-asset"].includes(action2) ? 3 : 2);
-  const plugins = new ClaudePluginService(context.workspace, services.agentCodec);
-  if (action2 === "create") return plugins.create(directory, parseJson(await claudeInput(flags, context)));
-  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value(flags, "if-match", true));
-  if (action2 === "inspect") return plugins.inspect(directory);
-  if (action2 === "check") return plugins.validate(directory);
-  if (action2 === "asset") return plugins.asset(directory, path);
-  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value(flags, "if-match", true));
-  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value(flags, "if-match"));
 }
 class Bases {
   constructor(engine) {
@@ -37222,8 +37450,8 @@ class Preprocessor {
       this._err(ERR.noncharacterInInputStream);
     }
   }
-  retreat(count) {
-    this.pos -= count;
+  retreat(count2) {
+    this.pos -= count2;
     while (this.pos < this.lastGapPos) {
       this.lastGapPos = this.gapStack.pop();
       this.pos--;
@@ -38369,9 +38597,9 @@ class Tokenizer {
     this.consumedAfterSnapshot++;
     return this.preprocessor.advance();
   }
-  _advanceBy(count) {
-    this.consumedAfterSnapshot += count;
-    for (let i = 0; i < count; i++) {
+  _advanceBy(count2) {
+    this.consumedAfterSnapshot += count2;
+    for (let i = 0; i < count2; i++) {
       this.preprocessor.advance();
     }
   }
@@ -44821,7 +45049,7 @@ async function indexBaseFiles(files, codec) {
         properties = document2.properties;
         body = document2.body;
       } catch (error2) {
-        throw new AppError("BASE_INDEX_ERROR", `Cannot index ${path}: ${error2 instanceof Error ? error2.message : String(error2)}`, 2);
+        throw new AppError("BASE_INDEX_ERROR", `Cannot index ${path}: ${errorMessage(error2)}`, 2);
       }
     }
     const links = indexBaseLinks(body, properties, path, paths2);
@@ -45041,7 +45269,7 @@ class NodeBasesQueryEngine {
         ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
         rows.push({ path: file.path, sort, group, groupIndex });
       } catch (error2) {
-        throw new AppError("BASE_EVALUATION_ERROR", `${path}, view ${String(view.name)}, file ${file.path}: ${error2 instanceof Error ? error2.message : String(error2)}`, 2);
+        throw new AppError("BASE_EVALUATION_ERROR", `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`, 2);
       }
     }
     rows.sort((a, b) => {
@@ -45346,6 +45574,93 @@ function dataSourceCommands(services) {
     }
   }];
 }
+const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 })).concat([
+  { id: "document", description: "Render an Obsidian Markdown/frontmatter template with typed values." },
+  { id: "ui", description: "Generate deterministic UI code from Markdown component definitions." },
+  { id: "stories", description: "Generate native Storybook CSF stories for existing UI components." },
+  { id: "data-source", description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown." }
+]);
+function generationCommand(registry2, services) {
+  return {
+    id: "make",
+    description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.",
+    usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]",
+    options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string", ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions },
+    async run(args, flags, context) {
+      if (args.length === 0) {
+        ensure(["out", "template", "values", "values-from", "date", ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
+        return { generators: generatorCatalog(registry2) };
+      }
+      arity(args, 2);
+      if (args[0] === "data-source") {
+        ensure(["template", "values", "values-from", "date", ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Data-source generation accepts library/project/output/test-data/plan/revision options.");
+        return makeDataSource(args[1], flags, context, services);
+      }
+      ensure(flags["test-data-out"] === void 0, "INVALID_ARGUMENT", "--test-data-out requires make data-source.");
+      if (args[0] === "ui" || args[0] === "stories") {
+        ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
+        return makeUi(args[0], args[1], flags, context, services);
+      }
+      ensure([...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Library generation options require make ui, make stories, or make data-source.");
+      if (args[0] === "document") return makeDocument(args[1], flags, context, services);
+      ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
+      const generator = registry2.generators.get(args[0]);
+      ensure(generator, "UNKNOWN_GENERATOR", args[0]);
+      ensure(generator.id !== "plugin" || flags.out === void 0, "INVALID_ARGUMENT", "Plugins are generated in the fixed bin/plugins directory; --out is not supported.");
+      if (generator.id === "form") {
+        ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
+        await context.workspace.files.read("src/presentation/forms/form-model.ts");
+      }
+      const directory = generator.id === "plugin" ? "bin/plugins" : value(flags, "out") ?? (generator.id === "form" ? "src/presentation/forms" : "src/domain");
+      const writes = await generator.generate(args[1], directory);
+      const result = await context.workspace.write(writes);
+      return { generator: generator.id, ...result, ...context.workspace.dryRun ? { preview: writes.map((w) => ({ path: w.path, content: Buffer.from(w.bytes).toString("utf8") })) } : {} };
+    }
+  };
+}
+function catalogCommands(registry2) {
+  const catalog = () => ({
+    name: "The Forge",
+    version: metadata$1.version,
+    apiVersion: 1,
+    node: metadata$1.engines.node,
+    globalOptions,
+    output: "{ ok, data?, error?: {code,message,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
+    commands: [...registry2.commands.values()].map(({ id: id2, description: description2, usage, options }) => ({ id: id2, description: description2, usage, options: options ?? {} })),
+    generators: generatorCatalog(registry2),
+    skills: [...registry2.skills.keys()]
+  });
+  return [
+    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", run(args) {
+      arity(args, 0, 1);
+      if (!args[0]) return catalog();
+      const command2 = registry2.commands.get(args[0]);
+      ensure(command2, "UNKNOWN_COMMAND", args[0]);
+      const { id: id2, description: description2, usage, options } = command2;
+      return { id: id2, description: description2, usage, options: options ?? {}, globalOptions };
+    } },
+    { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", run(args) {
+      arity(args, 0);
+      return catalog();
+    } },
+    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", run(args) {
+      arity(args, 0);
+      return { nativeFormats, structured: ["md", "canvas", "base"], attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
+    } }
+  ];
+}
+function extensionCommands(registry2) {
+  return [
+    { id: "events", description: "List invocation event contracts.", usage: "events", run(args, _, { events }) {
+      arity(args, 0);
+      return { events: events.ids(), contracts: events.catalog(), delivery: "Ordered, awaited, per-listener snapshots; failures become warnings. Lifecycle phases cover commands, workspace operations, Claude execution and plugins. File events follow commits. onAny observes all events; replay reads bounded invocation history. No persistent replay." };
+    } },
+    { id: "plugins", description: "List explicitly loaded plugin manifests.", usage: "plugins", run(args) {
+      arity(args, 0);
+      return { plugins: registry2.plugins.map((p) => p.manifest) };
+    } }
+  ];
+}
 function interactionCommands(services) {
   const config2 = services.loaded.config;
   return [{
@@ -45406,9 +45721,7 @@ function interactionCommands(services) {
   }];
 }
 async function content(flags, context) {
-  const inline = value(flags, "content"), from = value(flags, "from");
-  ensure([inline !== void 0, from !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", "Choose exactly one of --content, --from, or --stdin.");
-  const bytes = from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : encodeText(inline);
+  const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
   const encoding = value(flags, "encoding") ?? "utf8";
   ensure(["utf8", "base64"].includes(encoding), "INVALID_ENCODING", "Use utf8 or base64. --from copies raw bytes by default.");
   if (encoding === "base64") {
@@ -45419,60 +45732,28 @@ async function content(flags, context) {
   return bytes;
 }
 const contentOptions = { content: "string", from: "string", stdin: "boolean", encoding: "string" };
-function commands(registry2, services) {
-  const generatorCatalog = () => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 })).concat([
-    { id: "document", description: "Render an Obsidian Markdown/frontmatter template with typed values." },
-    { id: "ui", description: "Generate deterministic UI code from Markdown component definitions." },
-    { id: "stories", description: "Generate native Storybook CSF stories for existing UI components." },
-    { id: "data-source", description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown." }
-  ]);
-  const catalog = () => ({
-    name: "The Forge",
-    version: metadata$1.version,
-    apiVersion: 1,
-    node: metadata$1.engines.node,
-    globalOptions,
-    output: "{ ok, data?, error?: {code,message,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
-    commands: [...registry2.commands.values()].map(({ id: id2, description: description2, usage, options }) => ({ id: id2, description: description2, usage, options: options ?? {} })),
-    generators: generatorCatalog(),
-    skills: [...registry2.skills.keys()]
-  });
+function defaultDocument(kind) {
+  if (kind === "canvas") return encodeText('{"nodes":[],"edges":[]}\n');
+  if (kind === "base") return encodeText("views:\n  - type: table\n    name: Table\n");
+  return encodeText("");
+}
+function documentCommands() {
   return [
-    ...workflowCommands(services),
-    ...uiCommands(services),
-    ...dataSourceCommands(services),
-    ...interactionCommands(services),
-    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", run(args) {
-      arity(args, 0, 1);
-      if (!args[0]) return catalog();
-      const command = registry2.commands.get(args[0]);
-      ensure(command, "UNKNOWN_COMMAND", args[0]);
-      const { id: id2, description: description2, usage, options } = command;
-      return { id: id2, description: description2, usage, options: options ?? {}, globalOptions };
-    } },
-    { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", run(args) {
-      arity(args, 0);
-      return catalog();
-    } },
-    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", run(args) {
-      arity(args, 0);
-      return { nativeFormats, structured: ["md", "canvas", "base"], attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
-    } },
-    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|attachment]", options: { kind: "string" }, async run(args, flags, { workspace }) {
+    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|attachment]", options: { kind: "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 0);
       const kind = value(flags, "kind");
       const kinds = [...Object.keys(nativeFormats), "attachment"];
       ensure(kind === void 0 || kinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${kinds.join(", ")}.`);
-      return { files: (await workspace.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
+      return { files: (await workspace2.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
     } },
-    { id: "read", description: "Read a document or base64 attachment with its SHA-256 revision.", usage: "read <path>", async run(args, _, { workspace }) {
+    { id: "read", description: "Read a document or base64 attachment with its SHA-256 revision.", usage: "read <path>", async run(args, _, { workspace: workspace2 }) {
       arity(args, 1);
-      return workspace.read(args[0]);
+      return workspace2.read(args[0]);
     } },
-    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, or Base structure.", usage: "validate <path>", async run(args, _, { workspace }) {
+    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, or Base structure.", usage: "validate <path>", async run(args, _, { workspace: workspace2 }) {
       arity(args, 1);
-      const file = await workspace.files.read(args[0]);
-      workspace.codec.validate(file.path, file.bytes);
+      const file = await workspace2.files.read(args[0]);
+      workspace2.codec.validate(file.path, file.bytes);
       return { path: file.path, valid: true, kind: fileKind(file.path), validation: ["markdown", "canvas", "base"].includes(fileKind(file.path)) ? "structure" : "opaque-bytes" };
     } },
     { id: "create", description: "Create a note, Canvas, Base, or file. Existing files are refused.", usage: "create <path> [--content text | --from path | --stdin] [--encoding base64]", options: contentOptions, async run(args, flags, context) {
@@ -45482,19 +45763,19 @@ function commands(registry2, services) {
       const kind = fileKind(path);
       ensure(hasInput || flags.encoding === void 0, "INVALID_INPUT", "--encoding requires an input source.");
       ensure(hasInput || ["markdown", "canvas", "base"].includes(kind), "INVALID_INPUT", "Attachments require content, from, or stdin.");
-      const bytes = hasInput ? await content(flags, context) : kind === "canvas" ? encodeText('{"nodes":[],"edges":[]}\n') : kind === "base" ? encodeYaml({ views: [{ type: "table", name: "Table" }] }) : encodeText("");
+      const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
       return context.workspace.write([{ path, bytes }]);
     } },
     { id: "write", description: "Create or replace a file; replacement requires its current revision.", usage: "write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]", options: { ...contentOptions, "if-match": "string" }, async run(args, flags, context) {
       arity(args, 1);
       return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value(flags, "if-match") }]);
     } },
-    { id: "edit", description: "Append to Markdown or replace exactly one literal match.", usage: "edit <note.md> --if-match sha256 (--append --content text | --find text --replace text)", options: { "if-match": "string", append: "boolean", content: "string", find: "string", replace: "string" }, async run(args, flags, { workspace }) {
+    { id: "edit", description: "Append to Markdown or replace exactly one literal match.", usage: "edit <note.md> --if-match sha256 (--append --content text | --find text --replace text)", options: { "if-match": "string", append: "boolean", content: "string", find: "string", replace: "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 1);
       const path = args[0];
       ensure(fileKind(path) === "markdown", "UNSUPPORTED_EDIT", "Use edit for Markdown, patch for Canvas/Bases, and write for attachments.");
       const revision = value(flags, "if-match", true);
-      return workspace.edit(path, revision, (bytes) => {
+      return workspace2.edit(path, revision, (bytes) => {
         const text2 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
         if (flags.append) {
           ensure(flags.find === void 0 && flags.replace === void 0, "INVALID_INPUT", "Do not combine append and replace.");
@@ -45507,57 +45788,27 @@ function commands(registry2, services) {
         return encodeText(text2.replace(find, () => replacement));
       });
     } },
-    { id: "properties", description: "Merge YAML frontmatter properties while preserving the Markdown body.", usage: "properties <note.md> --set JSON --if-match sha256", options: { set: "string", "if-match": "string" }, async run(args, flags, { workspace }) {
+    { id: "properties", description: "Merge YAML frontmatter properties while preserving the Markdown body.", usage: "properties <note.md> --set JSON --if-match sha256", options: { set: "string", "if-match": "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 1);
       ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
       const changes = parseJson(value(flags, "set", true));
       ensure(isRecord(changes), "INVALID_INPUT", "--set must be a JSON object.");
-      return workspace.edit(args[0], value(flags, "if-match", true), (bytes) => workspace.codec.properties(bytes, changes));
+      return workspace2.edit(args[0], value(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
     } },
-    { id: "patch", description: "Set a Canvas/Base JSON Pointer; - appends to an existing array.", usage: "patch <path> --pointer /nodes/- --value JSON --if-match sha256", options: { pointer: "string", value: "string", "if-match": "string" }, async run(args, flags, { workspace }) {
+    { id: "patch", description: "Set a Canvas/Base JSON Pointer; - appends to an existing array.", usage: "patch <path> --pointer /nodes/- --value JSON --if-match sha256", options: { pointer: "string", value: "string", "if-match": "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 1);
       const pointer = value(flags, "pointer", true), data = parseJson(value(flags, "value", true));
-      return workspace.edit(args[0], value(flags, "if-match", true), (bytes) => workspace.codec.patch(args[0], bytes, pointer, data));
-    } },
-    { id: "make", description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.", usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]", options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string", ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
-      if (args.length === 0) {
-        ensure(["out", "template", "values", "values-from", "date", ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
-        return { generators: generatorCatalog() };
-      }
-      arity(args, 2);
-      if (args[0] === "data-source") {
-        ensure(["template", "values", "values-from", "date", ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Data-source generation accepts library/project/output/test-data/plan/revision options.");
-        return makeDataSource(args[1], flags, context, services);
-      }
-      ensure(flags["test-data-out"] === void 0, "INVALID_ARGUMENT", "--test-data-out requires make data-source.");
-      if (args[0] === "ui" || args[0] === "stories") {
-        ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
-        return makeUi(args[0], args[1], flags, context, services);
-      }
-      ensure([...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Library generation options require make ui, make stories, or make data-source.");
-      if (args[0] === "document") return makeDocument(args[1], flags, context, services);
-      ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
-      const generator = registry2.generators.get(args[0]);
-      ensure(generator, "UNKNOWN_GENERATOR", args[0]);
-      ensure(generator.id !== "plugin" || flags.out === void 0, "INVALID_ARGUMENT", "Plugins are generated in the fixed bin/plugins directory; --out is not supported.");
-      if (generator.id === "form") {
-        ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
-        await context.workspace.files.read("src/presentation/forms/form-model.ts");
-      }
-      const directory = generator.id === "plugin" ? "bin/plugins" : value(flags, "out") ?? (generator.id === "form" ? "src/presentation/forms" : "src/domain");
-      const writes = await generator.generate(args[1], directory);
-      const result = await context.workspace.write(writes);
-      return { generator: generator.id, ...result, ...context.workspace.dryRun ? { preview: writes.map((w) => ({ path: w.path, content: Buffer.from(w.bytes).toString("utf8") })) } : {} };
-    } },
-    { id: "events", description: "List invocation event contracts.", usage: "events", run(args, _, { events }) {
-      arity(args, 0);
-      return { events: events.ids(), delivery: "Ordered, awaited, per-listener snapshots; failures become warnings. File events follow successful commits. No persistent replay." };
-    } },
-    { id: "plugins", description: "List explicitly loaded plugin manifests.", usage: "plugins", run(args) {
-      arity(args, 0);
-      return { plugins: registry2.plugins.map((p) => p.manifest) };
-    } },
-    { id: "skills", description: "List, read or install bundled and plugin agent skills.", usage: "skills [list | show <id> | install] [--out .agents/skills]", options: { out: "string" }, async run(args, flags, { workspace }) {
+      return workspace2.edit(args[0], value(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer, data));
+    } }
+  ];
+}
+function skillsCommand(registry2) {
+  return {
+    id: "skills",
+    description: "List, read or install bundled and plugin agent skills.",
+    usage: "skills [list | show <id> | install] [--out .agents/skills]",
+    options: { out: "string" },
+    async run(args, flags, { workspace: workspace2 }) {
       const action2 = args[0] ?? "list";
       if (action2 !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
       if (action2 === "list") {
@@ -45573,9 +45824,33 @@ function commands(registry2, services) {
       ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
       arity(args, 1);
       const directory = value(flags, "out") ?? ".agents/skills";
-      return workspace.write([...registry2.skills.values()].map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
-    } }
+      return workspace2.write([...registry2.skills.values()].map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
+    }
+  };
+}
+function commands(registry2, services) {
+  return [
+    ...workflowCommands(services),
+    ...uiCommands(services),
+    ...dataSourceCommands(services),
+    ...interactionCommands(services),
+    ...catalogCommands(registry2),
+    ...documentCommands(),
+    generationCommand(registry2, services),
+    ...extensionCommands(registry2),
+    skillsCommand(registry2)
   ];
+}
+function invocationPolicy(id2, args, flags) {
+  const discovery = ["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id2);
+  const claudeCapabilities = id2 === "claude" && (args.length === 0 || args[0] === "capabilities");
+  const workspace2 = flags.help === true || discovery || claudeCapabilities || ["project", "templates", "components", "data-sources", "interactions"].includes(id2) || id2 === "make" && (args.length === 0 || args[0] === "plugin") || id2 === "skills" && args[0] !== "install";
+  const requestedProject = id2 === "make" && ["ui", "stories", "data-source"].includes(args[0] ?? "") ? value(flags, "project") : void 0;
+  return {
+    scope: workspace2 ? "workspace" : "project",
+    activatePlugins: flags.help !== true && !discovery && !claudeCapabilities,
+    ...requestedProject === void 0 ? {} : { requestedProject }
+  };
 }
 const germanCommands = {
   help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
@@ -45618,7 +45893,7 @@ const germanGenerators = {
 const germanGuidance = {
   attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
   otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
-  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. Keine dauerhafte Wiederholung.",
+  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Lebenszyklus-Ereignisse begleiten Befehle, Workspace-Vorgänge, Claude und Plugins. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung.",
   setup: {
     "node bin/app.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
     "node bin/app.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
@@ -45750,9 +46025,9 @@ class Localizer {
     this.language = language2;
   }
   language;
-  command(command) {
-    const description2 = this.language === "de" ? translated(germanCommands, command.id) : void 0;
-    return description2 ? { ...command, description: description2 } : command;
+  command(command2) {
+    const description2 = this.language === "de" ? translated(germanCommands, command2.id) : void 0;
+    return description2 ? { ...command2, description: description2 } : command2;
   }
   generators(items) {
     if (!Array.isArray(items)) return items;
@@ -45762,15 +46037,15 @@ class Localizer {
       return description2 ? { ...item, description: description2 } : item;
     });
   }
-  result(command, data) {
+  result(command2, data) {
     if (this.language === "en" || !isRecord(data)) return data;
-    if (["help", "schema", "make"].includes(command) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
-    if (["components", "data-sources", "interactions"].includes(command) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
-      return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
+    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
+    if (["components", "data-sources", "interactions"].includes(command2) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
+      return { ...data, nextStep: `Führen Sie ${command2} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
-    if (command === "formats") return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command === "events") return { ...data, delivery: germanGuidance.delivery };
-    if (command === "setup" && Array.isArray(data.nextSteps)) return {
+    if (command2 === "formats") return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
+    if (command2 === "events") return { ...data, delivery: germanGuidance.delivery };
+    if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
       ...data,
       nextSteps: data.nextSteps.map((step) => {
         if (!isRecord(step) || typeof step.command !== "string") return step;
@@ -45782,8 +46057,15 @@ class Localizer {
   }
   error(error2) {
     const code2 = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
-    const diagnostic = error2 instanceof Error ? error2.message : String(error2);
-    const details = error2 instanceof AppError ? error2.details : void 0;
+    const diagnostic = errorMessage(error2);
+    let details = error2 instanceof AppError ? error2.details : void 0;
+    if (details) {
+      try {
+        details = JSON.parse(JSON.stringify(details));
+      } catch {
+        details = { diagnostic: "Error details were not JSON-serializable." };
+      }
+    }
     const message = this.language === "de" ? translated(germanErrors, code2) : void 0;
     if (!message) return { code: code2, message: diagnostic, ...details ? { details } : {} };
     return { code: code2, message, details: { ...details, localization: { originalMessage: diagnostic, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
@@ -45814,12 +46096,11 @@ async function run() {
       compact = config2.settings.json;
       const files = await NodeFiles.at(loaded.root, (message) => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
-      for (const id22 of ["file.created", "file.updated", "file.deleted"]) events.define({ id: id22, validate: (v) => isRecord(v) && typeof v.path === "string" && typeof v.revision === "string" && typeof v.bytes === "number" && v.operation === id22.slice(5) });
-      events.define({ id: "claude.executed", validate: (v) => isRecord(v) && typeof v.executable === "string" && typeof v.cwd === "string" && Number.isInteger(v.exitCode) });
+      registerHostEvents(events);
       let environment;
       for (const generator of generators) registry2.add(registry2.generators, generator);
       for (const skill of builtinSkills) registry2.add(registry2.skills, skill);
-      for (const command2 of commands(registry2, {
+      for (const command22 of commands(registry2, {
         loaded,
         files,
         templates: new MarkdownTemplates(),
@@ -45843,41 +46124,50 @@ async function run() {
         },
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run()
-      })) registry2.add(registry2.commands, command2);
+      })) registry2.add(registry2.commands, command22);
       registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       registry2.add(registry2.commands, basesCommand(async (context2) => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context2.root), context2.workspace.codec))));
       if (!bootstrap.flags["no-plugins"]) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events);
+      await registry2.publishRegistered(events);
       const id2 = bootstrap.args[0] ?? "help";
-      const command = registry2.commands.get(id2);
-      ensure(command, "UNKNOWN_COMMAND", `Unknown command ${id2}. Run help or schema.`);
-      const parsed = parseArguments(tokens, { ...globalOptions, ...command.options });
+      const command2 = registry2.commands.get(id2);
+      ensure(command2, "UNKNOWN_COMMAND", `Unknown command ${id2}. Run help or schema.`);
+      const parsed = parseArguments(tokens, { ...globalOptions, ...command2.options });
       const parsedLanguage = value(parsed.flags, "lang");
       if (parsedLanguage !== void 0) localizer = new Localizer(language(parsedLanguage));
       config2.settings.language = localizer.language;
-      for (const [commandId, registered] of registry2.commands) registry2.commands.set(commandId, localizer.command(registered));
+      for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
       for (const option of ["root", "no-plugins"]) ensure(parsed.flags[option] === bootstrap.flags[option], "INVALID_ARGUMENT", `--${option} must precede the command.`);
       config2.settings.json = parsed.flags["no-json"] ? false : parsed.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = parsed.flags["no-dry-run"] ? false : parsed.flags["dry-run"] ? true : config2.settings.dryRun;
       compact = config2.settings.json;
-      environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun);
-      const environmentCommand = parsed.flags.help || ["help", "schema", "config", "formats", "events", "plugins", "setup", "project", "templates", "components", "data-sources", "interactions"].includes(id2) || id2 === "make" && (parsed.args.length === 1 || parsed.args[1] === "plugin") || id2 === "skills" && parsed.args[1] !== "install";
+      environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun, files.root);
+      const policy = invocationPolicy(id2, parsed.args.slice(1), parsed.flags);
       const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold });
-      const requestedProject = id2 === "make" && ["ui", "stories", "data-source"].includes(parsed.args[1] ?? "") ? value(parsed.flags, "project") : void 0;
-      const claudeWorkspaceCommand = id2 === "claude" && (parsed.args.length === 1 || parsed.args[1] === "capabilities");
-      const project = environmentCommand || claudeWorkspaceCommand ? null : requestedProject !== void 0 ? await projects.inspect(requestedProject) : await projects.current();
-      const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config2.settings.dryRun) : environment;
+      const project = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects.inspect(policy.requestedProject) : await projects.current();
+      const workspace2 = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config2.settings.dryRun, minpath.resolve(files.root, project.directory)) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? minpath.resolve(files.root, project.directory) : files.root, project };
-      const claude = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
-      const context = { workspace, events, claude, ...activeContext, input: async () => {
+      const claude2 = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace2.dryRun }, events);
+      const context = { workspace: workspace2, events, claude: claude2, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
         return Buffer.concat(chunks);
       } };
-      if (!parsed.flags.help && !claudeWorkspaceCommand && !["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id2)) await registry2.activate(context);
-      const data = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command.run(parsed.args.slice(1), parsed.flags, context);
-      result = { ok: true, data: localizer.result(parsed.flags.help ? "help" : id2, data) };
+      const commandId = parsed.flags.help ? "help" : id2;
+      const data = await invokeCommand(events, {
+        command: commandId,
+        root: context.root,
+        workspaceRoot: context.workspaceRoot,
+        dryRun: workspace2.dryRun
+      }, async () => {
+        if (policy.activatePlugins) await registry2.activate(context);
+      }, async () => {
+        const output = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed.args.slice(1), parsed.flags, context);
+        return localizer.result(commandId, output);
+      });
+      result = { ok: true, data };
     }
   } catch (error2) {
     process.exitCode = error2 instanceof AppError ? error2.exitCode : 1;

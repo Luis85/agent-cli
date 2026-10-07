@@ -1,13 +1,13 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
-import { globalOptions } from '../../src/presentation/arguments.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
+import { globalOptions } from '../../src/the-forge/presentation/cli/arguments.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadEnabledPlugins } from '../../src/infrastructure/plugins.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { Registry, type CommandContext, type Plugin } from '../../src/application/plugins.ts';
+import { loadEnabledPlugins } from '../../src/the-forge/infrastructure/plugins/loader.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { Registry, type CommandContext, type Plugin } from '../../src/the-forge/application/plugins/registry.ts';
 const plugin = (id: string): Plugin => ({ manifest: { id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Test plugin', author: 'Test' } });
 it('rejects namespace theft, duplicate plugins and reserved global options', () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());

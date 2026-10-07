@@ -1,0 +1,4 @@
+{
+  "sourceRoot": "src/the-forge",
+  "additionalRoots": ["docs/examples", "docs/templates"]
+}

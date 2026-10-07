@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-source-definitions.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/the-forge/infrastructure/data-sources/definitions.ts';
 
 const codec = new MarkdownDataSourceDefinitions();
 const base = { schemaVersion: 1, id: 'products', kind: 'rest', model: { name: 'Product', fields: { id: { type: 'string' }, name: { type: 'string' }, price: { type: 'number' }, available: { type: 'boolean', optional: true } } }, rest: { baseUrl: 'https://api.example.test/v1', operations: { list: { method: 'GET', path: '/products', responsePath: 'data.items' }, get: { method: 'GET', path: '/products/{id}' } } } };

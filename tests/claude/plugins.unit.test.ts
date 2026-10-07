@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claudePluginCapabilities, validateClaudePlugin } from '../../src/domain/claude-plugins.ts';
+import { claudePluginCapabilities, validateClaudePlugin } from '../../src/the-forge/domain/claude/plugins.ts';
 
 describe('native Claude plugin manifest', () => {
   it('accepts name-only manifests and non-semver versions without mutating extensions', () => {

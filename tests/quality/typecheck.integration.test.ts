@@ -9,7 +9,7 @@ it('rejects type errors in every accepted test extension even when runtime asser
   try {
     await cp(resolve('tsconfig.json'), join(root, 'tsconfig.json'));
     await cp(resolve('vitest.config.ts'), join(root, 'vitest.config.ts'));
-    await cp(resolve('src/infrastructure/scripts/quality'), join(root, 'src/infrastructure/scripts/quality'), { recursive: true });
+    await cp(resolve('scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
     const manifest = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as { scripts: { typecheck: string } };
     await writeFile(join(root, 'package.json'), JSON.stringify({ private: true, type: 'module', scripts: { typecheck: manifest.scripts.typecheck } }));

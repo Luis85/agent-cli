@@ -96,7 +96,7 @@ node bin/app.js make ui contact-request --framework react --interactions-library
 ```
 
 The last command assumes your component library already contains the
-[contact-request example](../../examples/interactions/components/contact-request.md)
+[contact-request example](../examples/interactions/components/contact-request.md)
 and the selected interaction library contains its referenced definitions. Imports
 and exports refuse existing destination files. Adjust the three interaction
 paths in `bin/config.json` to make custom locations the defaults.

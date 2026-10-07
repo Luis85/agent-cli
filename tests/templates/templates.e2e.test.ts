@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { beforeAll, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -17,7 +18,7 @@ it('uses the same Markdown-only contract when inspecting and rendering templates
         const result = cli(args);
         expect(result.status).toBe(2);
         expect(result.body.error.code).toBe('INVALID_TEMPLATE');
-        expect(result.body.events).toEqual([]);
+        expect(committedEvents(result.body.events)).toEqual([]);
       }
     }
     expect(cli(['templates', 'inspect', 'example.MD']).body.data.variables).toEqual(['title']);
@@ -37,7 +38,7 @@ it('renders discovered Obsidian templates using typed values, configured paths a
     await writeFile(join(project, 'template-values.json'), JSON.stringify(values));
     const make = [...args, 'make', 'document', 'Work Item', '--template', 'entity.md', '--out', 'documents', '--values-from', 'template-values.json', '--date', '2026-10-07T14:05:00Z'];
     const preview = cli([...make, '--dry-run']);
-    expect(preview.status).toBe(0); expect(preview.body.events).toEqual([]);
+    expect(preview.status).toBe(0); expect(committedEvents(preview.body.events)).toEqual([]);
     expect(preview.body.data.preview[0].path).toBe('documents/Work Item.md');
     await expect(readFile(join(project, 'documents/Work Item.md'))).rejects.toThrow();
     expect(cli(make).status).toBe(0);

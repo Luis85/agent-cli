@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../../src/domain/errors.ts';
-import { language, Localizer } from '../../src/presentation/localization.ts';
+import { AppError } from '../../src/the-forge/domain/shared/errors.ts';
+import { language, Localizer } from '../../src/the-forge/presentation/localization/localization.ts';
 
 describe('presentation localization', () => {
   it('selects explicit supported languages and rejects unsupported values', () => {

@@ -4,7 +4,14 @@ Work through a concrete purchase-approval example: refine the problem, describe 
 
 ## Prepare a workspace
 
-Use Node 22.12 or newer. In a new workspace, copy the complete repository `bin` directory and `examples/idea-to-production` directory, preserving those relative paths. Run all CLI commands below from that workspace root. This keeps tutorial projects outside your Forge source checkout. The executable resolves its workspace from its `bin` location, not the current shell directory.
+Use Node 22.12 or newer. In a new workspace, copy the complete repository `bin` directory and `docs/examples/idea-to-production` directory, preserving those relative paths. Reset the copied checkout configuration and selection only in that new destination:
+
+```sh
+cp bin/config/default.json bin/config.json
+rm -f bin/data/context.json
+```
+
+An extracted release already has generic settings and no selection. Run all CLI commands below from that workspace root. This keeps tutorial projects outside your Forge source checkout. The executable resolves its workspace from its `bin` location, not the current shell directory.
 
 ```sh
 node bin/app.js --version
@@ -19,9 +26,9 @@ Inspect `data.config.paths` and returned `context`; stop if they point at an uni
 
 ## 1. Turn a hypothesis into an acceptance contract
 
-Read the [opportunity](../../examples/idea-to-production/01-opportunity.md), [PRD](../../examples/idea-to-production/02-prd.md) and [use case](../../examples/idea-to-production/03-use-case.md). The product is small enough to reason about: an employee requests a purchase and an assigned manager records exactly one decision. Note what happens when the response is lost or another session has already decided.
+Read the [opportunity](../examples/idea-to-production/01-opportunity.md), [PRD](../examples/idea-to-production/02-prd.md) and [use case](../examples/idea-to-production/03-use-case.md). The product is small enough to reason about: an employee requests a purchase and an assigned manager records exactly one decision. Note what happens when the response is lost or another session has already decided.
 
-Use the first [stage prompt](../../examples/idea-to-production/prompts.md) to refine the artifacts against your own evidence. The sample's targets are hypothetical and its research register is empty. Before committing to a real product, record scope, outcome and ownership decisions. Keep `REQ-*`, `UC-*` and `T-*` identifiers stable so changes remain traceable.
+Use the first [stage prompt](../examples/idea-to-production/prompts.md) to refine the artifacts against your own evidence. The sample's targets are hypothetical and its research register is empty. Before committing to a real product, record scope, outcome and ownership decisions. Keep `REQ-*`, `UC-*` and `T-*` identifiers stable so changes remain traceable.
 
 For your own product, `setup` installs reusable workflow templates under `bin/templates/workflow`. Inspect inputs before generating a new document. In this fresh workspace, no project is selected, so these commands create a workspace document under `planning`:
 
@@ -35,12 +42,12 @@ The fixed example date makes this exercise reproducible; supply the actual plann
 
 ## 2. Inspect the design and component library
 
-Read the [build specification](../../examples/idea-to-production/04-build-specification.md). Its state table includes behavior beyond a static component, such as saving, stale revisions and keyboard error recovery. Inspect the two schema-valid definition files:
+Read the [build specification](../examples/idea-to-production/04-build-specification.md). Its state table includes behavior beyond a static component, such as saving, stale revisions and keyboard error recovery. Inspect the two schema-valid definition files:
 
 ```sh
-node bin/app.js components list --library examples/idea-to-production/components
-node bin/app.js components inspect approval-page --library examples/idea-to-production/components
-node bin/app.js components validate --library examples/idea-to-production/components
+node bin/app.js components list --library docs/examples/idea-to-production/components
+node bin/app.js components inspect approval-page --library docs/examples/idea-to-production/components
+node bin/app.js components validate --library docs/examples/idea-to-production/components
 ```
 
 `approval-page` references `request-summary`, passes scalar props and supplies a child link to its slot. The generator traverses this dependency automatically. Product documents live outside the library directory because component discovery validates every Markdown file under the selected library. The schema excludes arbitrary framework expressions and event code; use native application code for those behaviors.
@@ -50,8 +57,8 @@ node bin/app.js components validate --library examples/idea-to-production/compon
 ```sh
 node bin/app.js project create purchase-approvals --dry-run
 node bin/app.js project create purchase-approvals
-node bin/app.js make ui approval-page --library examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated --dry-run
-node bin/app.js make ui approval-page --library examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated
+node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated --dry-run
+node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated
 ```
 
 Inspect the preview before the final invocation. In a default workspace, output includes two `.tsx` components under `projects/purchase-approvals/src/ui/generated` and two CSF story files under `projects/purchase-approvals/stories/generated`. Check the actual response for paths and verify its `context.root`. `--project` targets this project for the invocation without changing another saved selection.
@@ -65,11 +72,11 @@ The sample's stories vary status and long text. They do not implement decisions 
 Keep data definitions in their own library and output outside domain code:
 
 ```sh
-node bin/app.js data-sources validate --library examples/idea-to-production/sources
-node bin/app.js make data-source purchase-requests --library examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
-node bin/app.js make data-source purchase-requests --library examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
-node bin/app.js make data-source approvers --library examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
-node bin/app.js make data-source approvers --library examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
+node bin/app.js data-sources validate --library docs/examples/idea-to-production/sources
+node bin/app.js make data-source purchase-requests --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
+node bin/app.js make data-source purchase-requests --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
+node bin/app.js make data-source approvers --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
+node bin/app.js make data-source approvers --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
 ```
 
 Each definition produces `<id>.ts` and `<id>.fixtures.json` in the selected directories. The REST adapter's `createPurchaseRequestViewDataSource({ baseUrl, fetch })` factory exposes `get(id)` for this definition; inject your application's authenticated fetch and actual URL. Generation does not contact the placeholder endpoint. The local factory `createDemoApproverDataSource({ loadJson })` uses an injected loader for the configured relative JSON path. Here that path matches the generated approver fixture; root a filesystem loader at the consuming project, or configure deliberate browser fixture serving.
@@ -81,9 +88,9 @@ Adapt the read model into UI props in native feature code: format `amountMinor /
 Edit one definition, validate it, and generate a separate comparison:
 
 ```sh
-node bin/app.js components validate --library examples/idea-to-production/components
-node bin/app.js make ui approval-page --library examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories --dry-run
-node bin/app.js make ui approval-page --library examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories
+node bin/app.js components validate --library docs/examples/idea-to-production/components
+node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories --dry-run
+node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories
 ```
 
 Inspect the changed text and expected import-path differences. Once these directories exist, repeating a create-only generation conflicts; choose a fresh directory or use [reviewed revision-map regeneration](../how-to/manage-components.md). Determinism means identical inputs/framework/paths yield identical bytes; it does not mean existing files are automatically overwritten. Keep authored behavior outside generated files.
@@ -91,13 +98,13 @@ Inspect the changed text and expected import-path differences. Once these direct
 Library, UI, story, import and export paths have configuration settings as well as overrides; see [configuration](../reference/configuration.md). Library/transfer paths are workspace-relative, while UI/story output is relative to the explicitly selected project. You can export this exact fixture library without changing it:
 
 ```sh
-node bin/app.js components export --library examples/idea-to-production/components --out exchange/purchase-ui --dry-run
-node bin/app.js components export --library examples/idea-to-production/components --out exchange/purchase-ui
+node bin/app.js components export --library docs/examples/idea-to-production/components --out exchange/purchase-ui --dry-run
+node bin/app.js components export --library docs/examples/idea-to-production/components --out exchange/purchase-ui
 ```
 
 ## 5. Implement and verify a vertical slice
 
-Use the [delivery plan](../../examples/idea-to-production/05-delivery-plan.md) and implement/test prompts. Scaffold only useful starting points after inspecting the project:
+Use the [delivery plan](../examples/idea-to-production/05-delivery-plan.md) and implement/test prompts. Scaffold only useful starting points after inspecting the project:
 
 ```sh
 node bin/app.js project inspect purchase-approvals --json
@@ -111,6 +118,6 @@ From the target project directory, run `npm install` for the first dependency re
 
 ## 6. Make a release decision from evidence
 
-Complete the [validation/release ledger](../../examples/idea-to-production/06-validation-and-release.md), including manual accessibility results, tenant-isolation/concurrency tests, staging rehearsal and named operational ownership. Use the deploy prompt only after choosing the actual provider, commands and target environment. The Forge has no deployment command.
+Complete the [validation/release ledger](../examples/idea-to-production/06-validation-and-release.md), including manual accessibility results, tenant-isolation/concurrency tests, staging rehearsal and named operational ownership. Use the deploy prompt only after choosing the actual provider, commands and target environment. The Forge has no deployment command.
 
 Prepare a reviewed release artifact and provider-specific runbook, carry out authorized deployment, and verify the acceptance smoke tests. If release authorization or required evidence is missing, finish the concrete preparation and record the blocker. After a pilot, compare observed outcomes with the baseline and use the retrospective prompt to update requirements and the next implementation slices.

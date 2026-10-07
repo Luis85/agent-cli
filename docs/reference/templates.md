@@ -47,7 +47,7 @@ Values are substituted once; replacement values containing `{{...}}` are not eva
 
 ## Workflow template pack
 
-`setup` installs missing editable templates under workspace `bin/templates/workflow`. In an existing workspace, `templates install workflow` (or `templates install`) installs the same pack. Existing template files are preserved and reported as skipped; installation supports `--dry-run` and uses workspace write orchestration.
+`setup` installs missing editable templates under workspace `bin/templates/workflow`. In an existing workspace, `templates install workflow` (or `templates install`) installs the same pack. Existing template files are preserved and reported as skipped; installation supports `--dry-run` and uses workspace write orchestration. Repository authors maintain the bundled originals in `docs/templates/workflow`; `docs/templates/projects` holds generated-project code/assets. Those authored assets are packaged under `bin/data/docs/templates`, while commands continue to use the editable workspace `bin/templates` directory.
 
 | Template | Purpose |
 | --- | --- |

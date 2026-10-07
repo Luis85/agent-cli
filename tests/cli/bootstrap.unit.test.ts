@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBootstrap } from '../../src/presentation/arguments.ts';
+import { parseBootstrap } from '../../src/the-forge/presentation/cli/arguments.ts';
 
 describe('prefix-only command bootstrap', () => {
   it('resolves routing options before the command and preserves its complete tail', () => {

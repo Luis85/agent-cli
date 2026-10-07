@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · How-to guide
 
-Use this guide to add REST/local-JSON contracts to an existing project, generate adapters and fixtures, and update them safely. For every schema field and supported operation, see the [data-source reference](../reference/data-sources.md). The [purchase-approval workflow](../../examples/idea-to-production/README.md) supplies a filled-in REST [request view](../../examples/idea-to-production/sources/purchase-requests.md) and local JSON [approver list](../../examples/idea-to-production/sources/approvers.md).
+Use this guide to add REST/local-JSON contracts to an existing project, generate adapters and fixtures, and update them safely. For every schema field and supported operation, see the [data-source reference](../reference/data-sources.md). The [purchase-approval workflow](../examples/idea-to-production/README.md) supplies a filled-in REST [request view](../examples/idea-to-production/sources/purchase-requests.md) and local JSON [approver list](../examples/idea-to-production/sources/approvers.md).
 
 ## Add or import definitions
 
@@ -20,13 +20,13 @@ Alternatively, `data-sources init` adds examples of both kinds, or place your ow
 When working from this repository, import the worked examples into a separate shared library:
 
 ```sh
-node bin/app.js data-sources import --from examples/idea-to-production/sources --library contracts/data --dry-run
-node bin/app.js data-sources import --from examples/idea-to-production/sources --library contracts/data
+node bin/app.js data-sources import --from docs/examples/idea-to-production/sources --library contracts/data --dry-run
+node bin/app.js data-sources import --from docs/examples/idea-to-production/sources --library contracts/data
 node bin/app.js data-sources validate --library contracts/data
 node bin/app.js data-sources list --library contracts/data
 ```
 
-The following steps use those two imported definitions and an existing managed project named `portal`. Substitute your project ID. In the portable distribution, the same examples are bundled under `bin/data/examples/idea-to-production/sources`; use that path for `--from`.
+The following steps use those two imported definitions and an existing managed project named `portal`. Substitute your project ID. In the portable distribution, the same examples are bundled under `bin/data/docs/examples/idea-to-production/sources`; use that path for `--from`.
 
 Shared definitions always live at workspace scope. Generic editing commands follow the active project, so close that selection before using `read`, `properties`, `edit` or `write` on a shared definition. Use the revision returned by the read/inspection when saving changes:
 

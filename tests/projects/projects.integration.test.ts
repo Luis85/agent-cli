@@ -1,17 +1,17 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { generators } from '../../src/infrastructure/generators.ts';
-import { ProjectService } from '../../src/application/projects.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
-import { componentScaffold, projectScaffold } from '../../src/infrastructure/project-scaffolds.ts';
+import { generators } from '../../src/the-forge/infrastructure/generation/generators.ts';
+import { ProjectService } from '../../src/the-forge/application/projects/projects.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { componentScaffold, projectScaffold } from '../../src/the-forge/infrastructure/projects/scaffolds.ts';
 
 let root: string;
 let files: NodeFiles;

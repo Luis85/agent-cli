@@ -64,7 +64,7 @@ describe('portable plugin Claude lifecycle boundary', () => {
     for (const result of [schema, plugin.cli(['help', 'native-audit.run']), plugin.cli(['native-audit.run', '--help']), plugin.cli(['claude', 'capabilities'])]) {
       expect(result.status).toBe(0);
       expect(result.body.warnings).toEqual([]);
-      expect(result.body.events).toEqual([]);
+      expect(result.body.events.filter((event: { id: string }) => ['plugin.activating', 'plugin.activated', 'claude.started', 'claude.executed'].includes(event.id))).toEqual([]);
     }
     await expect(readFile(plugin.log)).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -80,7 +80,11 @@ describe('portable plugin Claude lifecycle boundary', () => {
     expect(result.body.data.plan.args.slice(0, 3)).toEqual([plugin.executableScript, 'success', '--config']);
     for (const secret of ['private-stdin', 'private-config', 'private-argument']) expect(result.stdout).not.toContain(secret);
     expect(result.body.warnings).toContain('native-audit activated');
-    expect(result.body.events).toEqual([]);
+    expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([]);
+    expect(result.body.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'claude.started', payload: expect.objectContaining({ dryRun: true }) }),
+      expect.objectContaining({ id: 'claude.succeeded', payload: expect.objectContaining({ dryRun: true }) }),
+    ]));
     await expect(readFile(plugin.log)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -95,7 +99,7 @@ describe('portable plugin Claude lifecycle boundary', () => {
     expect(result.body.context).toMatchObject({ workspaceRoot: plugin.root, root: selected });
     expect(result.body.data).toMatchObject({ dryRun: false, executed: true, cwd: selected, exitCode: 0,
       stdout: expect.stringContaining('Native diagnostic'), result: { outcome: 'complete', cwd: selected } });
-    expect(result.body.events).toEqual([{ id: 'claude.executed', payload: { executable: process.execPath, cwd: selected, exitCode: 0 } }]);
+    expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([{ id: 'claude.executed', payload: { executable: process.execPath, cwd: selected, exitCode: 0 } }]);
     expect(await plugin.launches()).toEqual([{ args: ['diagnostic'], stdin: '', cwd: selected }]);
   }, 15000);
 
@@ -119,7 +123,7 @@ describe('portable plugin Claude lifecycle boundary', () => {
       stdout: expect.stringContaining('Native acceptance required'),
       result: { outcome: 'failed', shownCommand: { sha256: commandHash } },
     } });
-    expect(result.body.events).toEqual([{ id: 'claude.executed', payload: { executable: process.execPath, cwd: plugin.root, exitCode: 2 } }]);
+    expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([{ id: 'claude.executed', payload: { executable: process.execPath, cwd: plugin.root, exitCode: 2 } }]);
     expect(await plugin.launches()).toHaveLength(1);
   });
 

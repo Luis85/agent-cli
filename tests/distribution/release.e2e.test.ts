@@ -11,28 +11,28 @@ afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(pat
 async function checkout() {
   const root = await mkdtemp(join(tmpdir(), 'forge-release-'));
   temporary.push(root);
-  await mkdir(join(root, 'src/infrastructure/scripts'), { recursive: true });
-  await cp(resolve('src/infrastructure/scripts/release.mjs'), join(root, 'src/infrastructure/scripts/release.mjs'));
-  await cp(resolve('src/infrastructure/distribution-policy.json'), join(root, 'src/infrastructure/distribution-policy.json'));
+  await mkdir(join(root, 'scripts'), { recursive: true });
+  await cp(resolve('scripts/release.mjs'), join(root, 'scripts/release.mjs'));
+  await cp(resolve('configs/distribution-policy.json'), join(root, 'configs/distribution-policy.json'));
   await cp(resolve('package.json'), join(root, 'package.json'));
   await cp(resolve('bin'), join(root, 'bin'), { recursive: true });
   return root;
 }
 
 function release(root: string) {
-  return execFileSync(process.execPath, ['src/infrastructure/scripts/release.mjs'], { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
+  return execFileSync(process.execPath, ['scripts/release.mjs'], { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
 }
 
 describe('release distribution', () => {
   it('repackages owned assets without replacing configuration, context, plugins or templates', async () => {
     const root = await checkout();
-    for (const path of ['src', 'docs', 'examples']) await cp(resolve(path), join(root, path), { recursive: true });
-    for (const path of ['src/infrastructure/scripts/package.mjs', 'tsconfig.json', 'tsconfig.sdk.json', 'package-lock.json', 'README.md', 'LICENSE']) await cp(resolve(path), join(root, path));
+    for (const path of ['src', 'docs', 'scripts/licenses']) await cp(resolve(path), join(root, path), { recursive: true });
+    for (const path of ['scripts/package.mjs', 'tsconfig.json', 'tsconfig.sdk.json', 'package-lock.json', 'README.md', 'LICENSE']) await cp(resolve(path), join(root, path));
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
     const privateFiles = ['bin/config.json', 'bin/data/context.json', 'bin/data/private.json', 'bin/plugins/private.mjs', 'bin/templates/private.md'];
     for (const path of privateFiles) await writeFile(join(root, path), `preserve ${path}\n`);
     await writeFile(join(root, 'bin/data/docs/obsolete.md'), '# Stale generated documentation');
-    execFileSync(process.execPath, ['src/infrastructure/scripts/package.mjs'], { cwd: root, stdio: 'pipe' });
+    execFileSync(process.execPath, ['scripts/package.mjs'], { cwd: root, stdio: 'pipe' });
     for (const path of privateFiles) expect(await readFile(join(root, path), 'utf8')).toBe(`preserve ${path}\n`);
     await expect(readFile(join(root, 'bin/data/docs/obsolete.md'))).rejects.toThrow();
     const manifest = JSON.parse(await readFile(join(root, 'bin/data/distribution.json'), 'utf8'));
@@ -64,7 +64,7 @@ describe('release distribution', () => {
     expect(invoke(['setup']).ok).toBe(true);
     expect(invoke(['make', 'entity', 'ReleaseTask', '--out', 'src/domain']).ok).toBe(true);
     expect(await readFile(join(project, 'src/domain/release-task.ts'), 'utf8')).toContain('class ReleaseTask');
-    for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'examples/plugins/quality/main.mjs']) {
+    for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
       expect((await readFile(join(project, 'bin/data', path))).length).toBeGreaterThan(0);
     }
     const entries = execFileSync('tar', ['-tzf', join(root, archive)], { encoding: 'utf8' }).trim().split('\n');

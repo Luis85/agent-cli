@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generationControls, generationOutputPath } from '../../src/presentation/generation-controls.ts';
-import type { FileSnapshot } from '../../src/domain/file.ts';
+import { generationControls, generationOutputPath } from '../../src/the-forge/presentation/generation/controls.ts';
+import type { FileSnapshot } from '../../src/the-forge/domain/documents/file.ts';
 
 const snapshot = (content: string): FileSnapshot => ({ path: 'review.json', bytes: new TextEncoder().encode(content), revision: 'a'.repeat(64) });
 

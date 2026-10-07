@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from '../../src/presentation/claude-runtime-commands.ts';
+import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from '../../src/the-forge/presentation/claude/runtime-commands.ts';
 
 describe('Claude runtime command plans', () => {
   it.each(['install', 'update', 'uninstall', 'enable', 'disable'])('plans plugin %s at explicit project scope by default', action => {

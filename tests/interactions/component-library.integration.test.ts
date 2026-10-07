@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { UiLibrary, type UiRenderer } from '../../src/application/ui.ts';
-import { Workspace } from '../../src/application/workspace.ts';
-import { EventBus } from '../../src/application/events.ts';
-import { NodeFiles } from '../../src/infrastructure/files.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui-definitions.ts';
-import type { UiDefinition } from '../../src/domain/ui.ts';
-import type { InteractionDefinition } from '../../src/domain/interaction.ts';
+import { UiLibrary, type UiRenderer } from '../../src/the-forge/application/ui/library.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { MarkdownUiDefinitions } from '../../src/the-forge/infrastructure/ui/definitions.ts';
+import type { UiDefinition } from '../../src/the-forge/domain/ui/definition.ts';
+import type { InteractionDefinition } from '../../src/the-forge/domain/interactions/definition.ts';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

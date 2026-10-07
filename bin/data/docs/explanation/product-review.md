@@ -23,7 +23,7 @@ The review covers the workflows present after PR #3. The subsequent Markdown UI/
 | Priority | Trigger and previous behavior | Result and acceptance evidence |
 | --- | --- | --- |
 | P1 | Open project `alpha`, change `paths.projects`, then create another `alpha`. File commands silently targeted the new directory. | Selection records its workspace-relative directory. A mismatch fails with `STALE_PROJECT_CONTEXT` before a write; explicit open/close recovers. Integration and portable workflow coverage verify both roots remain unchanged on failure. |
-| P2 | Edit `banana` using `--find ana`. Overlapping occurrences were counted as one. | `AMBIGUOUS_EDIT` preserves the file and emits no events in real and dry-run modes. Unique literal replacement still works. |
+| P2 | Edit `banana` using `--find ana`. Overlapping occurrences were counted as one. | `AMBIGUOUS_EDIT` preserves the file and emits no file-commit events in real and dry-run modes. Unique literal replacement still works. |
 | P2 | Plugin declares a string option such as `--no-label`. Commander negation handling discarded its value. | String options preserve literal values independently of positive names; boolean negation and bootstrap routing remain covered. |
 | P2 | A file node uses `subpath: "Heading"`. Canvas validation accepted it despite JSON Canvas 1.0 requiring `#`. | Validation and pointer edits reject invalid subpaths. Heading and block anchors survive edits. |
 | P2 | An extensionless file is named `md`, `canvas` or `png`. Classification treated its whole name as an extension. | Classification uses the basename's actual extension, preserving opaque attachment handling, case-insensitive extensions and existing dotfile behavior. |

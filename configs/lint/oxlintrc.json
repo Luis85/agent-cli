@@ -18,7 +18,9 @@
     {
       "files": [
         "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
-        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"
+        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
+        "**/src/the-forge/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
+        "**/src/the-forge/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"
       ],
       "rules": {
         "typescript/no-require-imports": "error",

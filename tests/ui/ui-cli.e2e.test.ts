@@ -1,3 +1,4 @@
+import { committedEvents } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,12 +14,12 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(cli(['make']).body.data.generators.map((generator: { id: string }) => generator.id)).toEqual(expect.arrayContaining(['ui', 'stories']));
     const preview = cli(['components', 'init', '--dry-run']);
     expect(preview.status, preview.stdout).toBe(0);
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     expect(preview.body.data.components).toEqual(expect.arrayContaining(['page', 'layout', 'header', 'nav-bar']));
     await expect(readFile(join(fixture.project, 'components/page.md'))).rejects.toThrow();
     const initialized = cli(['components', 'init']);
     expect(initialized.status, initialized.stdout).toBe(0);
-    expect(initialized.body.events.length).toBeGreaterThan(0);
+    expect(committedEvents(initialized.body.events).length).toBeGreaterThan(0);
     expect(cli(['components', 'init']).body.data.changes).toEqual([]);
     expect(cli(['components', 'validate']).status).toBe(0);
     expect(cli(['components', 'inspect', 'page']).body.data).toMatchObject({ id: 'page', revision: expect.stringMatching(/^[a-f0-9]{64}$/), bytes: expect.any(Number) });
@@ -49,14 +50,14 @@ describe('portable Markdown component library and deterministic UI generation', 
     const first = cli([...args, '--dry-run']), second = cli([...args, '--dry-run']);
     expect(first.status, first.stdout).toBe(0);
     expect(first.body.data).toEqual(second.body.data);
-    expect(first.body.events).toEqual([]);
+    expect(committedEvents(first.body.events)).toEqual([]);
     const paths: string[] = first.body.data.changes.map((change: { path: string }) => change.path);
     expect(paths.some(path => path.startsWith(`generated/${framework}/`))).toBe(true);
     expect(paths.some(path => path.startsWith(`catalog/${framework}/`) && path.includes('.stories.'))).toBe(true);
     await expect(readFile(join(fixture.project, paths[0]!))).rejects.toThrow();
     const generated = cli(args);
     expect(generated.status, generated.stdout).toBe(0);
-    expect(generated.body.events).toHaveLength(paths.length);
+    expect(committedEvents(generated.body.events)).toHaveLength(paths.length);
     expect(cli(args).body.error.code).toBe('CONFLICT');
   });
 
@@ -68,7 +69,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(cli(args).status).toBe(0);
     const missing = cli(['make', 'stories', 'greeting', '--library', 'custom-library', '--framework', 'react', '--out', 'missing-ui', '--stories-out', 'missing-stories']);
     expect(missing.status, missing.stdout).not.toBe(0);
-    expect(missing.body.events).toEqual([]);
+    expect(committedEvents(missing.body.events)).toEqual([]);
   });
 
   it('regenerates reviewed outputs with revision guards and rejects stale or unrelated revisions', async () => {
@@ -82,14 +83,15 @@ describe('portable Markdown component library and deterministic UI generation', 
     const guarded = [...args, '--revisions-from', 'reviewed-revisions.json'];
     const preview = cli([...guarded, '--dry-run']);
     expect(preview.status, preview.stdout).toBe(0);
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     const updated = cli(guarded);
     expect(updated.status, updated.stdout).toBe(0);
-    expect(updated.body.events.every((event: { id: string }) => event.id === 'file.updated')).toBe(true);
+    expect(committedEvents(updated.body.events).map(event => event.id)).toEqual(updated.body.data.changes.map(() => 'file.updated'));
+    expect(committedEvents(updated.body.events).length).toBeGreaterThan(0);
     expect(await readFile(join(fixture.project, 'maintained-ui/greeting.tsx'), 'utf8')).toContain('Updated');
     const stale = cli(guarded);
     expect(stale.body.error.code).toBe('CONFLICT');
-    expect(stale.body.events).toEqual([]);
+    expect(committedEvents(stale.body.events)).toEqual([]);
     await writeFile(join(fixture.project, 'unrelated-revisions.json'), JSON.stringify({ 'unrelated.txt': 'a'.repeat(64) }));
     expect(cli([...args, '--revisions-from', 'unrelated-revisions.json']).status).not.toBe(0);
     await writeFile(join(fixture.project, 'invalid-revisions.json'), JSON.stringify({ 'maintained-ui/greeting.tsx': 'invalid' }));
@@ -101,7 +103,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     const missing = cli([...args, '--plan']);
     expect(missing.status, missing.stdout).toBe(0);
     expect(missing.body.data.outputs).toEqual([expect.objectContaining({ path: 'review-ui/greeting.tsx', status: 'missing', content: expect.any(String) })]);
-    expect(missing.body.events).toEqual([]);
+    expect(committedEvents(missing.body.events)).toEqual([]);
     await expect(readFile(join(fixture.project, 'review-ui/greeting.tsx'))).rejects.toThrow();
     const drift = cli([...args, '--check']);
     expect(drift.status).toBe(5);
@@ -111,12 +113,12 @@ describe('portable Markdown component library and deterministic UI generation', 
     await writeFile(join(fixture.project, 'review-ui/greeting.tsx'), '// User customization\n');
     const preview = cli([...args, '--plan-out', 'reviews/preview.json', '--dry-run']);
     expect(preview.status, preview.stdout).toBe(0);
-    expect(preview.body.events).toEqual([]);
+    expect(committedEvents(preview.body.events)).toEqual([]);
     await expect(readFile(join(fixture.project, 'reviews/preview.json'))).rejects.toThrow();
     const planned = cli([...args, '--plan-out', 'reviews/reviewed.json']);
     expect(planned.status, planned.stdout).toBe(0);
     expect(planned.body.data.outputs[0]).toMatchObject({ status: 'changed', currentContent: '// User customization\n' });
-    expect(planned.body.events).toHaveLength(1);
+    expect(committedEvents(planned.body.events)).toHaveLength(1);
     expect(await readFile(join(fixture.project, 'review-ui/greeting.tsx'), 'utf8')).toBe('// User customization\n');
     expect(JSON.parse(await readFile(join(fixture.project, 'reviews/reviewed.json'), 'utf8'))).toEqual(planned.body.data.revisions);
     expect(cli([...args, '--plan-out', 'reviews/reviewed.json']).body.error.code).toBe('CONFLICT');
@@ -124,7 +126,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(cli([...args, '--check']).body.data.matches).toBe(true);
     for (const options of [['--check', '--plan'], ['--check', '--plan-out', 'reviews/invalid.json'], ['--plan', '--revisions-from', 'reviews/reviewed.json']]) {
       const invalid = cli([...args, ...options]);
-      expect(invalid.body.error.code).toBe('INVALID_ARGUMENT'); expect(invalid.body.events).toEqual([]);
+      expect(invalid.body.error.code).toBe('INVALID_ARGUMENT'); expect(committedEvents(invalid.body.events)).toEqual([]);
     }
   });
 
@@ -167,7 +169,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(cli(['project', 'close']).status).toBe(0);
   });
 
-  it('rejects escaping destinations and options belonging to another operation without events', () => {
+  it('rejects escaping destinations and options belonging to another operation without committed file events', () => {
     for (const args of [
       ['components', 'init', '--library', '../outside'],
       ['components', 'list', '--out', 'ignored'],
@@ -180,7 +182,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     ]) {
       const result = cli(args);
       expect(result.status, result.stdout).not.toBe(0);
-      expect(result.body.events).toEqual([]);
+      expect(committedEvents(result.body.events)).toEqual([]);
     }
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claudeHookEvents, validateClaudeHooks } from '../../src/domain/claude-hooks.ts';
+import { claudeHookEvents, validateClaudeHooks } from '../../src/the-forge/domain/claude/hooks.ts';
 
 const configuration = (handler: unknown, event = 'PreToolUse') => ({ [event]: [{ matcher: 'Bash|Edit', hooks: [handler] }] });
 

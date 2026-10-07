@@ -45,6 +45,8 @@ The shipped configuration is:
 
 Configuration is validated with Zod. Partial objects inherit defaults; unknown keys and invalid values fail before execution. `paths.projects` is relative to that workspace and defaults to `projects`; set it to `src` or another contained directory for managed projects.
 
+The Forge source checkout deliberately overrides this default: its tracked `bin/config.json` uses `paths.projects: "src"`, and tracked `bin/data/context.json` selects `the-forge` at `src/the-forge`. Generic release archives use the defaults shown above and contain no saved selection. Setup preserves existing settings and context; it does not convert a copied checkout configuration into generic defaults. Follow the [new-workspace installation steps](../tutorials/getting-started.md#1-install-the-portable-distribution) when copying the repository bundle elsewhere.
+
 The workspace layout is fixed: `bin/app.js` is the executable, `bin/config.json` holds settings, `bin/plugins` contains shared plugins, `bin/templates` contains shared Markdown templates, `bin/skills` holds authored process skills, `bin/config/default.json` holds shipped defaults, and `bin/data` holds bundled assets and `context.json`. These `bin` paths are not configurable. Keep the complete distribution together when copying it.
 
 `project open <id>` saves the active project in `bin/data/context.json`; `project current` reports it and `project close` returns to workspace scope. Document paths and generated source are relative to the active project, or the workspace when none is selected. Document generation defaults to `notes`, TypeScript generation to `src/domain`, and skill installation to `.agents/skills` within that scope. `--out` overrides a command's output directory. Templates and plugins remain shared under the workspace's `bin` folder. See [project contexts](../how-to/manage-projects.md).
@@ -69,6 +71,6 @@ UI generation adds configurable paths without changing the fixed `bin` layout:
 
 Only IDs explicitly listed in `plugins.enabled` load from `bin/plugins`. Installing a directory does not enable it. Use `node bin/app.js --no-plugins <command>` to disable plugins for one invocation, including recovery from a broken plugin.
 
-Keep workspace configuration under version control as appropriate for your repository. The persisted project selection is local operating state. For upgrades, extract separately; preserve configuration, shared plugins/templates and current context while replacing the executable and packaged assets.
+Keep workspace configuration under version control as appropriate for your repository. Persisted selection is operating state; this source checkout intentionally tracks its self-management selection. For upgrades, extract separately; preserve configuration, shared plugins/templates and current context while replacing the executable and packaged assets.
 
 Data-source definitions use workspace-relative `paths.dataSources` (default `data-sources`), `paths.dataImports` (`imports/data-sources`) and `paths.dataExports` (`exports/data-sources`). Generated adapters use `paths.dataGenerated` (`src/data-sources`) in the selected project or workspace; generated test data uses `paths.dataFixtures` (`test-data`) in that same scope. See [data-source contracts](data-sources.md) for overrides, supported adapters and exact input resolution.

@@ -15,11 +15,14 @@ async function put(root: string, file: string, content: string) {
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'forge-quality-'));
   roots.push(root);
-  await cp(resolve('src/infrastructure/scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
+  await cp(resolve('scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
   await cp(resolve('configs'), join(root, 'configs'), { recursive: true });
   await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
   const config = JSON.parse(await readFile(join(root, 'configs/quality/fallow.json'), 'utf8'));
   config.entry = ['src/index.ts'];
+  config.ignorePatterns = config.ignorePatterns.filter((pattern: string) => !['src/**', '!src/the-forge/**'].includes(pattern));
+  for (const zone of config.boundaries.zones) zone.patterns = zone.patterns.map((pattern: string) => pattern.replace('src/the-forge/', 'src/'));
+  await put(root, 'configs/quality/source.json', JSON.stringify({ sourceRoot: 'src' }));
   await put(root, 'configs/quality/fallow.json', JSON.stringify(config));
   await put(root, 'package.json', JSON.stringify({ name: 'quality-fixture', private: true, type: 'module', scripts: {
     lint: 'node scripts/quality/lint.mjs', analyze: 'node scripts/quality/analyze.mjs', 'check:structure': 'node scripts/quality/structure.mjs', typecheck: 'node scripts/quality/typecheck.mjs',
@@ -35,6 +38,25 @@ function run(root: string, task: 'lint' | 'analyze') {
 }
 
 describe('agent quality gates', () => {
+  it('keeps sibling projects out of lint and analyzer discovery for a selected source root', async () => {
+    const root = await fixture();
+    await put(root, 'configs/quality/source.json', JSON.stringify({ sourceRoot: 'src/the-forge' }));
+    const config = JSON.parse(await readFile(join(root, 'configs/quality/fallow.json'), 'utf8'));
+    config.entry = ['src/the-forge/main.ts'];
+    config.ignorePatterns.push('src/**', '!src/the-forge/**');
+    for (const zone of config.boundaries.zones) zone.patterns = zone.patterns.map((pattern: string) => pattern.replace('src/', 'src/the-forge/'));
+    await put(root, 'configs/quality/fallow.json', JSON.stringify(config));
+    await put(root, 'src/the-forge/main.ts', 'export const source = true;\n');
+    await put(root, 'src/other-project/broken.ts', 'const invalid = ;\n');
+    for (const task of ['lint', 'analyze'] as const) {
+      const result = run(root, task);
+      expect(result.status, JSON.stringify(result.output.errors)).toBe(0);
+      expect(result.output.scope).toContain('src/the-forge/main.ts');
+      expect(result.output.scope).not.toContain('src/index.ts');
+      expect(result.output.scope).not.toContain('src/other-project/broken.ts');
+    }
+  });
+
   it('accepts a clean project and writes machine-readable evidence', async () => {
     const root = await fixture();
     for (const task of ['lint', 'analyze'] as const) {
@@ -86,7 +108,7 @@ describe('agent quality gates', () => {
 
   it('allows platform imports in infrastructure adapters', async () => {
     const root = await fixture();
-    await put(root, 'src/infrastructure/files.ts', "import { readFileSync } from 'node:fs';\nexport const read = readFileSync;\nexport const filesystem = require('node:fs');\n");
+    await put(root, 'src/the-forge/infrastructure/workspace/files.ts', "import { readFileSync } from 'node:fs';\nexport const read = readFileSync;\nexport const filesystem = require('node:fs');\n");
     expect(run(root, 'lint').output).toMatchObject({ ok: true, errors: [] });
   });
 
