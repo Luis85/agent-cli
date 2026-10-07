@@ -4,6 +4,7 @@ let nextFormId = 0;
 
 interface FieldControl {
   input: HTMLInputElement | HTMLTextAreaElement;
+  label: string;
   error: HTMLElement;
   helpId?: string;
 }
@@ -79,7 +80,7 @@ export function renderForm<T extends Record<string, string>>(
     error.className = 'forge-form-error';
     error.hidden = true;
     group.append(error);
-    controls.set(field.name, { input, error, helpId });
+    controls.set(field.name, { input, label: field.label, error, helpId });
     form.append(group);
   }
   const actions = element('div');
@@ -117,7 +118,7 @@ export function renderForm<T extends Record<string, string>>(
       const control = controls.get(issue.field);
       const item = element('li');
       if (control) {
-        const link = element('a', issue.message);
+        const link = element('a', `${control.label}: ${issue.message}`);
         link.href = `#${control.input.id}`;
         item.append(link);
         control.input.setAttribute('aria-invalid', 'true');

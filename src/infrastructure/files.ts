@@ -69,7 +69,7 @@ export class NodeFiles implements FileRepository {
     try {
       if (!dryRun) {
         try { const handle = await open(lock, 'wx'); locked = true; await handle.close(); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new AppError('WORKSPACE_BUSY', 'Another writer holds .agent-cli.lock. Retry after it finishes.', 4); throw error; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new AppError('WORKSPACE_BUSY', 'Workspace lock .agent-cli.lock exists. Wait for the active writer. If a previous process was interrupted, inspect its changes and confirm no writer is running before removing the lock.', 4); throw error; }
       }
       const plans = [];
       for (const write of requests) {

@@ -104,6 +104,20 @@ describe('native form rendering', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('identifies fields in the summary when their schema messages are identical', () => {
+    const generic = {
+      ...definition,
+      schema: z.object({ name: z.string().min(1, 'Required'), email: z.string().min(1, 'Required'), description: z.string() }),
+    };
+    const { form, control, send } = mount(generic);
+    control('name').value = '';
+    send();
+    expect(Array.from(form.querySelectorAll('.forge-form-summary a'), link => link.textContent))
+      .toEqual(['Name: Required', 'Email: Required']);
+    expect(Array.from(form.querySelectorAll('.forge-form-error:not([hidden])'), error => error.textContent))
+      .toEqual(['Required', 'Required']);
+  });
+
   it('focuses the summary for form-wide schema issues', () => {
     const restricted = { ...definition, schema: definition.schema.refine(() => false, 'Service unavailable') };
     const { form, document, control, send, submit } = mount(restricted);

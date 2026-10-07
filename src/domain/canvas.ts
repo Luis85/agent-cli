@@ -15,6 +15,7 @@ export function validateCanvas(value: unknown): asserts value is Record<string, 
     const contentKey = { text: 'text', file: 'file', link: 'url' }[String(node.type)];
     ensure(!contentKey || typeof node[contentKey] === 'string', 'INVALID_CANVAS', 'Missing node content.');
     for (const key of ['subpath', 'label', 'background']) ensure(node[key] === undefined || typeof node[key] === 'string', 'INVALID_CANVAS', `Invalid ${key}.`);
+    if (node.type === 'file' && node.subpath !== undefined) ensure(typeof node.subpath === 'string' && node.subpath.startsWith('#'), 'INVALID_CANVAS', 'File node subpath must start with #.');
     ensure(node.backgroundStyle === undefined || (typeof node.backgroundStyle === 'string' && ['cover', 'ratio', 'repeat'].includes(node.backgroundStyle)), 'INVALID_CANVAS', 'Invalid background style.');
   }
   const edgeIds = new Set<string>();

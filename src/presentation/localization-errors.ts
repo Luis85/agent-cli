@@ -1,6 +1,6 @@
 /** Stable application codes select human guidance; original diagnostics remain separate. */
 export const germanErrors = {
-  AMBIGUOUS_EDIT: 'Der Suchtext muss genau einmal vorkommen.',
+  AMBIGUOUS_EDIT: 'Der Suchtext muss genau einmal vorkommen; überlappende Treffer zählen mit.',
   CONFLICT: 'Die Datei existiert bereits oder wurde geändert. Lesen Sie die aktuelle Revision erneut; prüfen Sie generierte Änderungen mit --plan, bevor Sie sie mit --revisions-from übernehmen.',
   CYCLIC_UI_COMPONENT: 'Die Komponenten enthalten einen Zyklus. Entfernen Sie die zyklische Referenz.',
   DATA_SOURCE_RENDERER_UNAVAILABLE: 'Für diese Datenquelle ist kein Generator verfügbar.',
@@ -64,7 +64,7 @@ export const germanErrors = {
   PROJECT_NOT_FOUND: 'Das Projekt wurde nicht gefunden. Prüfen Sie project list.',
   PROJECT_REQUIRED: 'Öffnen Sie zuerst mit project open <name> ein Forge-Projekt.',
   ROLLBACK_FAILED: 'Die Wiederherstellung ist fehlgeschlagen. Prüfen Sie die in der Diagnose genannten Dateien vor einem erneuten Versuch.',
-  STALE_PROJECT_CONTEXT: 'Das ausgewählte Projekt fehlt oder ist ungültig. Verwenden Sie project open <name> oder project close.',
+  STALE_PROJECT_CONTEXT: 'Das ausgewählte Projekt fehlt, ist ungültig oder sein Verzeichnis stimmt nicht mehr mit der Konfiguration überein. Verwenden Sie project open <name> oder project close.',
   UI_RENDERER_UNAVAILABLE: 'Für dieses UI-Ziel ist kein Generator verfügbar.',
   UNKNOWN_COMMAND: 'Der Befehl ist unbekannt. Verfügbare Befehle finden Sie mit help oder schema.',
   UNKNOWN_DATA_SOURCE: 'Die Datenquelle ist unbekannt. Prüfen Sie data-sources list.',

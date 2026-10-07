@@ -149,6 +149,8 @@ describe('Forge project management', () => {
   it.each([
     '{broken', '[]', '{}', '{"schemaVersion":2,"project":null}',
     '{"schemaVersion":1,"project":"../billing"}', '{"schemaVersion":1,"project":false}',
+    '{"schemaVersion":1,"project":"billing"}', '{"schemaVersion":1,"project":"billing","directory":"projects/accounts"}',
+    '{"schemaVersion":1,"project":"billing","directory":"../projects/billing"}',
     new Uint8Array([255]),
   ])('reports malformed context and permits explicit recovery: %j', async malformed => {
     await service().create('billing');
@@ -187,11 +189,26 @@ describe('Forge project management', () => {
     expect(await readFile(join(root, 'bin/data/context.json'), 'utf8')).toBe(before);
   });
 
+  it('requires explicit selection after the configured directory changes, even for matching project names', async () => {
+    await service('projects').create('billing');
+    await service('other').create('billing');
+    await service('projects').open('billing');
+    const before = await readFile(join(root, 'bin/data/context.json'), 'utf8');
+    await expect(service('other').current()).rejects.toMatchObject({ code: 'STALE_PROJECT_CONTEXT', message: expect.stringContaining('project open') });
+    expect(await readFile(join(root, 'bin/data/context.json'), 'utf8')).toBe(before);
+    expect((await service('other', true).open('billing')).changes).toMatchObject([{ operation: 'updated' }]);
+    expect(await readFile(join(root, 'bin/data/context.json'), 'utf8')).toBe(before);
+    expect((await service('other').open('billing')).changes).toMatchObject([{ operation: 'updated' }]);
+    expect(await service('other').current()).toMatchObject({ directory: 'other/billing' });
+    await service('projects').close();
+    expect(await service('projects').current()).toBeNull();
+  });
+
   it('preserves a concurrent selection instead of overwriting its newer revision', async () => {
     await service().create('billing');
     await service().create('accounts');
     await service().open('billing');
-    const newer = JSON.stringify({ schemaVersion: 1, project: 'accounts' });
+    const newer = JSON.stringify({ schemaVersion: 1, project: 'accounts', directory: 'projects/accounts' });
     const writeBatch = files.writeBatch.bind(files);
     vi.spyOn(files, 'writeBatch').mockImplementationOnce(async (writes, dryRun) => {
       await writeFile(join(root, 'bin/data/context.json'), newer);

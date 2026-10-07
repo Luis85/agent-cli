@@ -66,6 +66,18 @@ describe('Obsidian documents', () => {
     expect(() => validateCanvas({})).not.toThrow();
     validateCanvas({ nodes: [node, { ...node, id: 'b', type: 'file', file: 'note.md' }, { ...node, id: 'c', type: 'link', url: 'https://example.com' }, { ...node, id: 'd', type: 'group', label: 'Group' }], edges: [{ id: 'edge', fromNode: 'a', toNode: 'b' }], custom: true });
   });
+  it('accepts Canvas file anchors and preserves them through pointer edits', () => {
+    for (const subpath of ['#Heading', '#^block-id']) {
+      const bytes = encodeText(JSON.stringify({ nodes: [{ ...node, type: 'file', file: 'note.md', subpath }] }));
+      const result = codec.patch('map.canvas', bytes, '/nodes/0/x', 20);
+      expect(codec.inspect('map.canvas', result)).toMatchObject({ data: { nodes: [{ subpath, x: 20 }] } });
+    }
+  });
+  it.each(['Heading', '', '^block-id'])('rejects Canvas file subpaths without a # prefix: %j', subpath => {
+    const bytes = encodeText(JSON.stringify({ nodes: [{ ...node, type: 'file', file: 'note.md', subpath }] }));
+    expect(() => codec.validate('map.canvas', bytes)).toThrow(expect.objectContaining({ code: 'INVALID_CANVAS' }));
+    expect(() => codec.patch('map.canvas', encodeText(JSON.stringify({ nodes: [{ ...node, type: 'file', file: 'note.md' }] })), '/nodes/0/subpath', subpath)).toThrow(expect.objectContaining({ code: 'INVALID_CANVAS' }));
+  });
   it.each([
     { nodes: [node, node] },
     { nodes: [{ ...node, width: -1 }] },

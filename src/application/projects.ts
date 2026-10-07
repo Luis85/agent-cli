@@ -6,6 +6,7 @@ import type { Workspace } from './workspace.ts';
 export type ComponentKind = 'domain' | 'application';
 export interface ProjectMetadata { schemaVersion: 1; name: string; type: 'library' }
 export interface ProjectInfo extends ProjectMetadata { directory: string }
+interface ProjectSelection { name: string; directory: string }
 export interface ProjectScaffolder {
   project(name: string, projectsDirectory: string): readonly WriteRequest[];
   component(projectName: string, componentName: string, projectsDirectory: string, kind: ComponentKind): readonly WriteRequest[];
@@ -47,8 +48,12 @@ export class ProjectService {
 
   async current(): Promise<ProjectInfo | null> {
     const context = await this.contextSnapshot();
-    const name = context ? this.contextProject(context) : null;
-    if (name === null) return null;
+    const selection = context ? this.contextProject(context) : null;
+    if (selection === null) return null;
+    const { name, directory } = selection;
+    if (directory !== `${this.projectsDirectory}/${name}`) {
+      throw new AppError('STALE_PROJECT_CONTEXT', `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`, 3);
+    }
     try { return await this.inspect(name); }
     catch (error) {
       if (error instanceof AppError && ['PROJECT_NOT_FOUND', 'INVALID_PROJECT'].includes(error.code)) {
@@ -101,11 +106,14 @@ export class ProjectService {
     }
   }
 
-  private contextProject(snapshot: FileSnapshot): string | null {
+  private contextProject(snapshot: FileSnapshot): ProjectSelection | null {
     try {
       const context: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes));
       ensure(isRecord(context) && context.schemaVersion === 1 && (context.project === null || typeof context.project === 'string'), 'INVALID_PROJECT_CONTEXT', 'Invalid project context.');
-      return context.project === null ? null : projectName(context.project);
+      if (context.project === null) return null;
+      const name = projectName(context.project);
+      ensure(typeof context.directory === 'string' && vaultPath(context.directory).endsWith(`/${name}`), 'INVALID_PROJECT_CONTEXT', 'Project selection requires its workspace-relative directory.');
+      return { name, directory: context.directory };
     } catch {
       throw new AppError('INVALID_PROJECT_CONTEXT', 'Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.', 2);
     }
@@ -115,14 +123,17 @@ export class ProjectService {
     const current = await this.contextSnapshot();
     let unchanged = current === null && project === null;
     if (current) {
-      try { unchanged = this.contextProject(current) === (project?.name ?? null); }
+      try {
+        const selection = this.contextProject(current);
+        unchanged = project === null ? selection === null : selection?.name === project.name && selection.directory === project.directory;
+      }
       catch (error) {
         if (!(error instanceof AppError && error.code === 'INVALID_PROJECT_CONTEXT')) throw error;
       }
     }
     const plan: WriteRequest[] = unchanged ? [] : [{
       path: 'bin/data/context.json',
-      bytes: new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, project: project?.name ?? null }, null, 2) + '\n'),
+      bytes: new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, project: project?.name ?? null, ...(project ? { directory: project.directory } : {}) }, null, 2) + '\n'),
       ...(current ? { expectedRevision: current.revision } : {}),
     }];
     const result = unchanged ? { dryRun: this.workspace.dryRun, changes: [] } : await this.workspace.write(plan);

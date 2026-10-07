@@ -22,7 +22,9 @@ export const nativeFormats = {
   video: ['mkv', 'mov', 'mp4', 'ogv', 'webm'], pdf: ['pdf'],
 } as const;
 export function fileKind(path: string): string {
-  const ext = path.split('.').at(-1)?.toLowerCase() ?? '';
+  const basename = path.slice(path.lastIndexOf('/') + 1);
+  const dot = basename.lastIndexOf('.');
+  const ext = dot < 0 ? '' : basename.slice(dot + 1).toLowerCase();
   return Object.entries(nativeFormats).find(([, extensions]) => (extensions as readonly string[]).includes(ext))?.[0] ?? 'attachment';
 }
 export const isStructured = (path: string) => ['markdown', 'canvas', 'base'].includes(fileKind(path));

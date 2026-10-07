@@ -31,7 +31,11 @@ function showForm() {
   const definition = forms[Number(choice.value)];
   if (!definition) {
     container.textContent = 'No form definitions found. Add a form with The Forge to preview it here.';
+    const empty = document.createElement('option');
+    empty.textContent = 'No forms available';
+    choice.replaceChildren(empty);
     choice.disabled = true;
+    status.textContent = 'Add a form to inspect its validated values.';
     return;
   }
   mounted = renderForm(definition, container, values => {

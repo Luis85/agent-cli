@@ -57,5 +57,6 @@ For contributors and teams deciding how to use The Forge within their architectu
 
 - [Architecture and boundaries](explanation/architecture.md): domain/application ports, storage ownership, project scope and extension lifecycle.
 - [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
+- [Product review](explanation/product-review.md): existing workflow findings, polishing changes, research and verification limits.
 
 Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../bin/skills/forge-workflow.md), [development skill](../bin/skills/forge-development.md) and [file-editing skill](../bin/skills/forge-vault.md).

@@ -60,6 +60,8 @@ The first command creates `projects/knowledge-core/notes/plan.md` with the defau
 
 Selection is shared by CLI invocations using the same workspace. Coordinate agents before changing it; check each mutation's returned `context` to verify the target. `--root` chooses a workspace, not an alternative spelling for an open project.
 
+Saved selection includes the project's workspace-relative directory. Changing `paths.projects` makes the selection stale, even if the new directory contains a project with the same name. Run `project open <id>` to explicitly select the new location, or `project close` to return to workspace scope. Older selection files without a directory are invalid and can be repaired with the same commands.
+
 ## Project quality checks
 
 The distributed Forge CLI requires only Node. Building and testing a generated TypeScript project uses its own development dependencies, including Oxlint 1.86.0 and fallow 3.31.0 native binaries. The scaffold does not install packages or fabricate a lockfile. Install from the project directory, review and commit the generated `package-lock.json`, then use `npm ci` for repeat installations and CI:

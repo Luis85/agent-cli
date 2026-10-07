@@ -88,7 +88,8 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
         if (flags.append) { ensure(flags.find === undefined && flags.replace === undefined, 'INVALID_INPUT', 'Do not combine append and replace.'); return encodeText(text + value(flags, 'content', true)!); }
         ensure(flags.content === undefined, 'INVALID_INPUT', '--content requires --append.');
         const find = value(flags, 'find', true)!, replacement = value(flags, 'replace', true)!;
-        ensure(find.length > 0 && text.indexOf(find) >= 0 && text.indexOf(find, text.indexOf(find) + find.length) < 0, 'AMBIGUOUS_EDIT', 'The find text must match exactly once.');
+        const first = text.indexOf(find);
+        ensure(find.length > 0 && first >= 0 && text.indexOf(find, first + 1) < 0, 'AMBIGUOUS_EDIT', 'The find text must match exactly once, including overlapping matches.');
         return encodeText(text.replace(find, () => replacement));
       });
     } },

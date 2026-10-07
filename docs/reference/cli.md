@@ -34,7 +34,7 @@ A listener warning does not make a committed write fail. Check `events` and read
 | `validate` | `<path>` | Structural document check; attachments are marked `opaque-bytes` |
 | `create` | `<path> [--content text / --from path / --stdin] [--encoding base64]` | New file only; Markdown/Canvas/Base can use default empty documents |
 | `write` | `<path> (--content text / --from path / --stdin) [--encoding base64] [--if-match hash]` | Create or replace; existing files require exact hash |
-| `edit` | `<note.md> --if-match hash (--append --content text / --find text --replace text)` | Append or replace exactly one literal match; ambiguous matches fail |
+| `edit` | `<note.md> --if-match hash (--append --content text / --find text --replace text)` | Append or replace exactly one literal match; multiple matches, including overlapping matches, fail |
 | `properties` | `<note.md> --set JSON --if-match hash` | Merge top-level frontmatter properties; `null` stores YAML null |
 | `patch` | `<file.canvas/base> --pointer /path --value JSON --if-match hash` | Set a key or existing array element; `-` appends |
 | `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; defaults to `src/domain` in the active scope, `src/presentation/forms` for `form`, or workspace `bin/plugins` for `plugin` (`--out` is not allowed for plugins); dry-run includes generated text |
@@ -80,6 +80,8 @@ JSON Pointer uses `~0` for `~` and `~1` for `/`. Parent containers must exist. A
 ## Write contract
 
 File paths are POSIX paths relative to the active project, or the workspace when no project is selected. `--root` selects the workspace; `project open` selects a managed project within it. Shared templates/plugins and project management remain workspace-scoped. `setup` always installs into the workspace. Absolute paths, traversal, backslashes, control characters, symlink components and Git internals are rejected. The root must already exist. Existing files require a matching content hash even when the proposed bytes are identical. TypeScript scaffold names are PascalCase; UI generators select component IDs from the library. All output paths are checked through the same repository port.
+
+The host filesystem still determines which filenames work. For workspaces shared across operating systems, avoid Windows reserved names such as `CON`, trailing periods/spaces, and paths differing only in letter case. Portable execution does not make every filename portable. Automated CI currently runs on Ubuntu with Node 22.12 and 24; native Windows/macOS behavior is not covered by that matrix.
 
 A real batch acquires `.agent-cli.lock`, validates every destination, then replaces each file using a same-directory temporary file and rename. Reported runtime write failures trigger a best-effort rollback. Existing file permissions are retained. All planned writes must succeed before file events are emitted. Dry runs take no lock and create nothing; their results describe the current snapshot, not a reservation.
 

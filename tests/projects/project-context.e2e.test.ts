@@ -134,6 +134,25 @@ describe('portable selected-project workflows', () => {
     expect(run(['project', 'component', 'MissingSelection']).body.error.code).toBe('PROJECT_REQUIRED');
   }, 15000);
 
+  it('blocks redirected writes after changing the projects directory until explicitly reselected', async () => {
+    const root = join(project, 'selection-directory-workspace');
+    await mkdir(join(root, 'bin'), { recursive: true });
+    const run = (args: string[]) => cli(args, undefined, { root });
+    expect(run(['project', 'create', 'alpha']).status).toBe(0);
+    expect(run(['project', 'open', 'alpha']).status).toBe(0);
+    await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: { projects: 'other' } }));
+    expect(run(['project', 'create', 'alpha']).status).toBe(0);
+    const blocked = run(['create', 'note.md', '--content', '# Selected project']);
+    expect(blocked.body.error.code).toBe('STALE_PROJECT_CONTEXT');
+    expect(blocked.body.events).toEqual([]);
+    for (const directory of ['projects', 'other']) await expect(readFile(join(root, directory, 'alpha/note.md'))).rejects.toThrow();
+    expect(run(['project', 'open', 'alpha']).status).toBe(0);
+    const created = run(['create', 'note.md', '--content', '# Explicit selection']);
+    expect(created.status).toBe(0);
+    expect(created.body.context.root).toBe(join(root, 'other/alpha'));
+    expect(await readFile(join(root, 'other/alpha/note.md'), 'utf8')).toBe('# Explicit selection');
+  }, 15000);
+
   it('loads shared workspace plugins with the selected project as their execution root', async () => {
     const root = join(project, 'selected-plugin-workspace');
     await mkdir(join(root, 'bin/plugins/context'), { recursive: true });
