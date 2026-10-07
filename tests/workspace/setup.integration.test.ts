@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -30,7 +31,7 @@ async function fixture(dryRun = false) {
     ui: { framework: 'html' },
     settings: { json: true, dryRun: false, language: 'en' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [] },
   };
-  const files = await NodeFiles.at(root), events = new EventBus();
+  const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope());
   for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (_v): _v is unknown => true });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, dryRun);
   const artifacts = await readSetupArtifacts(bundle);

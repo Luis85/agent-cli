@@ -1,4 +1,4 @@
-import { type WriteRequest } from '../domain/file.ts';
+import { type WriteRequest, type FileChange } from '../domain/file.ts';
 import type { FileRepository, DocumentCodec } from './ports.ts';
 import type { EventBus } from './events.ts';
 export declare class Workspace {
@@ -15,10 +15,15 @@ export declare class Workspace {
     }>;
     write(writes: readonly WriteRequest[]): Promise<{
         dryRun: boolean;
-        changes: import("../sdk.ts").FileChange[];
+        changes: FileChange[];
     }>;
+    remove(path: string, expectedRevision: string): Promise<{
+        dryRun: boolean;
+        changes: FileChange[];
+    }>;
+    private committed;
     edit(path: string, revision: string, transform: (bytes: Uint8Array) => Uint8Array): Promise<{
         dryRun: boolean;
-        changes: import("../sdk.ts").FileChange[];
+        changes: FileChange[];
     }>;
 }

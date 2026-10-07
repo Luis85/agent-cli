@@ -65,6 +65,17 @@ it('validates native form value/checked sources against event, element, and stat
   expect(() => validateUiLibrary([component()], [readValue])).toThrow(expect.objectContaining({ code: 'INVALID_UI' }));
 });
 
+it('requires compatible form attachment and explicitly declared upload destinations', () => {
+  const upload = interaction({ event: 'submit', actions: [{ type: 'upload-form', url: '{{uploadUrl}}' }] });
+  const form = component({ props: { uploadUrl: { type: 'string', required: true } }, root: { tag: 'form', interactions: ['toggle-expanded'] } });
+  expect(() => validateUiLibrary([form], [upload])).not.toThrow();
+  expect(() => validateUiLibrary([{ ...form, props: {} }], [upload])).toThrow(expect.objectContaining({ code: 'INVALID_UI' }));
+  expect(() => validateUiLibrary([component()], [upload])).toThrow(expect.objectContaining({ code: 'INVALID_UI' }));
+  for (const action of [{ type: 'save-form', key: '{{state.expanded}}' }, { type: 'download-form', filename: '{{state.expanded}}' }] satisfies InteractionDefinition['actions']) {
+    expect(() => validateUiLibrary([form], [interaction({ event: 'submit', actions: [action] })])).toThrow(expect.objectContaining({ code: 'INVALID_UI' }));
+  }
+});
+
 it.each(['/settings', './next', '../back', '?tab=one', '#details', 'https://example.com/a', 'http://localhost:3000/'])('accepts safe navigation %s', url => {
   expect(isSafeNavigationUrl(url)).toBe(true);
 });

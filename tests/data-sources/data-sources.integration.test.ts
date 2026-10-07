@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,7 +12,7 @@ import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sou
 
 let root: string, files: NodeFiles;
 const codec = new MarkdownDataSourceDefinitions();
-const library = (dryRun = false, renderer?: DataSourceRenderer) => new DataSourceLibrary(new Workspace(files, new ObsidianDocuments(), new EventBus(), dryRun), codec, renderer);
+const library = (dryRun = false, renderer?: DataSourceRenderer) => new DataSourceLibrary(new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), dryRun), codec, renderer);
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-data-sources-')); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 

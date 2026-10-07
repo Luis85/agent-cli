@@ -2,6 +2,7 @@ import type { InteractionDefinition } from '../domain/interaction.ts';
 import type { UiDefinition, UiNode, UiValue } from '../domain/ui.ts';
 import { uiBindings } from '../domain/ui-syntax.ts';
 import { expression, json, ordered } from './ui-rendering.ts';
+import { formActionHelper } from './ui-form-action-rendering.ts';
 
 /** Internal Angular members must never shadow a caller-defined input. */
 export function interactionPrefix(definition: UiDefinition): string {
@@ -31,7 +32,7 @@ export function componentInteractions(definition: UiDefinition, interactions: re
 }
 
 export function interactionValues(interaction: InteractionDefinition): UiValue[] {
-  return interaction.actions.flatMap(action => action.type === 'navigate' ? [action.url] : action.type === 'emit' ? Object.values(action.detail ?? {}) : action.type === 'set-state' && 'value' in action ? [action.value] : []);
+  return interaction.actions.flatMap(action => action.type === 'navigate' || action.type === 'upload-form' ? [action.url] : action.type === 'save-form' ? [action.key] : action.type === 'download-form' ? [action.filename] : action.type === 'emit' ? Object.values(action.detail ?? {}) : action.type === 'set-state' && 'value' in action ? [action.value] : []);
 }
 
 export function interactionUsesState(interaction: InteractionDefinition): boolean {
@@ -71,36 +72,44 @@ export function renderInteractionHandlers(definition: UiDefinition, interactions
   const value = (item: UiValue) => expression(item, options.propsScope ?? 'props', next);
   const eventType = '{ currentTarget: EventTarget | null; target: EventTarget | null; key?: string; preventDefault(): void; stopPropagation(): void }';
   const functions = selected.map(interaction => {
-    const lines = [`function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ''}) {`];
+    const asynchronous = interaction.actions.some(action => ['save-form', 'upload-form', 'download-form'].includes(action.type));
+    const currentTarget = asynchronous ? `${prefix}Target` : `${event}.currentTarget`;
+    const lines = [`${asynchronous ? 'async ' : ''}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ''}) {`];
     if (interaction.keys) lines.push(`  if (!${json(interaction.keys)}.includes(${event}.key ?? '')) return;`);
     if (interaction.preventDefault) lines.push(`  ${event}.preventDefault();`);
     if (interaction.stopPropagation) lines.push(`  ${event}.stopPropagation();`);
+    if (asynchronous) lines.push(`  const ${currentTarget} = ${event}.currentTarget;`);
     if (interactionUsesState(interaction)) lines.push(`  const ${next} = { ...${options.stateScope ?? '_uiState'} };`);
     for (const [index, action] of interaction.actions.entries()) {
       if (action.type === 'toggle-state' || action.type === 'set-state') {
         let assigned = action.type === 'toggle-state' ? `!${next}[${json(action.state)}]` : 'value' in action ? value(action.value) : '';
         if (action.type === 'set-state' && 'fromEvent' in action) {
           const field = `${prefix}Value${index}`;
-          lines.push(`  const ${field} = (${event}.currentTarget${typescript ? ` as { ${action.fromEvent}?: unknown } | null` : ''})?.${action.fromEvent};`);
+          lines.push(`  const ${field} = (${currentTarget}${typescript ? ` as { ${action.fromEvent}?: unknown } | null` : ''})?.${action.fromEvent};`);
           lines.push(`  if (typeof ${field} !== ${json(action.fromEvent === 'checked' ? 'boolean' : 'string')}) throw new globalThis.TypeError(${json(`Interaction ${interaction.id} requires event.currentTarget.${action.fromEvent}.`)});`);
           assigned = field;
         }
         lines.push(`  ${next}[${json(action.state)}] = ${assigned};`, `  ${options.commit(next)}`);
       } else if (action.type === 'emit') {
         const detail = `{ ${ordered(action.detail ?? {}).map(([key, item]) => `${key === '__proto__' ? `[${json(key)}]` : json(key)}: ${value(item)}`).join(', ')} }`;
-        lines.push(`  ${options.classMembers ? 'this.' : ''}${prefix}Emit(${event}.currentTarget, ${json(action.event)}, ${detail});`);
+        lines.push(`  ${options.classMembers ? 'this.' : ''}${prefix}Emit(${currentTarget}, ${json(action.event)}, ${detail});`);
+      } else if (action.type === 'navigate') {
+        lines.push(`  ${options.classMembers ? 'this.' : ''}${prefix}Navigate(${currentTarget}, ${value(action.url)});`);
       } else {
-        lines.push(`  ${options.classMembers ? 'this.' : ''}${prefix}Navigate(${event}.currentTarget, ${value(action.url)});`);
+        const option = action.type === 'save-form' ? action.key : action.type === 'upload-form' ? action.url : action.filename;
+        lines.push(`  if (!await ${options.classMembers ? 'this.' : ''}${prefix}FormAction(${currentTarget}, ${json(action.type)}, ${value(option)})) return;`);
       }
     }
     lines.push('}');
     return lines.join('\n');
   });
-  const needsEmit = selected.some(interaction => interaction.actions.some(action => action.type === 'emit'));
+  const needsForms = selected.some(interaction => interaction.actions.some(action => ['save-form', 'upload-form', 'download-form'].includes(action.type)));
+  const needsEmit = needsForms || selected.some(interaction => interaction.actions.some(action => action.type === 'emit'));
   const needsNavigate = selected.some(interaction => interaction.actions.some(action => action.type === 'navigate'));
   const target = `target${typescript ? ': EventTarget | null' : ''}`;
   const element = `target${typescript ? ' as Element | null' : ''}`;
   const helpers: string[] = [];
+  if (needsForms) helpers.push(formActionHelper(prefix, typescript, !!options.classMembers));
   if (needsEmit) helpers.push(`function ${prefix}Emit(${target}, name${typescript ? ': string' : ''}, detail${typescript ? ': Record<string, unknown>' : ''}) {
   const element = ${element};
   const EventConstructor = element?.ownerDocument.defaultView?.CustomEvent ?? globalThis.CustomEvent;
@@ -114,5 +123,5 @@ export function renderInteractionHandlers(definition: UiDefinition, interactions
   element?.ownerDocument.defaultView?.location.assign(url.href);
 }`);
   const source = [...helpers, ...functions].join('\n');
-  return options.classMembers ? source.replace(/^function (\w+)\((.*)\) \{$/gm, '$1 = ($2) => {').replace(/^\}$/gm, '};') : source;
+  return options.classMembers ? source.replace(/^(async )?function (\w+)\((.*)\) \{$/gm, '$2 = $1($3) => {').replace(/^\}$/gm, '};') : source;
 }

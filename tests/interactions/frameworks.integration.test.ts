@@ -10,6 +10,7 @@ import { parseTemplate } from '@angular/compiler';
 import type { UiDefinition } from '../../src/domain/ui.ts';
 import type { InteractionDefinition } from '../../src/domain/interaction.ts';
 import { renderUiComponents } from '../../src/infrastructure/ui-renderers.ts';
+import { formDefinition, formInteractions, formRuntimeScenario } from '../support/interaction-form-runtime.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
@@ -18,6 +19,7 @@ const interaction = (id: string, event: InteractionDefinition['event'], actions:
   schemaVersion: 1, id, event, actions, description: id, sourcePath: `interactions/${id}.md`, ...options,
 });
 const interactions: InteractionDefinition[] = [
+  ...formInteractions,
   interaction('toggle-open', 'click', [{ type: 'toggle-state', state: 'open' }, { type: 'emit', event: 'open-changed', detail: { open: '{{state.open}}' } }]),
   interaction('edit-text', 'input', [{ type: 'set-state', state: 'text', fromEvent: 'value' }, { type: 'emit', event: 'text-changed', detail: { text: '{{state.text}}' } }]),
   interaction('edit-check', 'change', [{ type: 'set-state', state: 'checked', fromEvent: 'checked' }]),
@@ -27,6 +29,7 @@ const interactions: InteractionDefinition[] = [
   interaction('reset-text', 'keydown', [{ type: 'set-state', state: 'text', value: '{{label}}' }, { type: 'set-state', state: 'count', value: 7 }], { keys: ['Enter'], preventDefault: true, stopPropagation: true }),
 ];
 const definitions: UiDefinition[] = [
+  formDefinition,
   {
     schemaVersion: 1, id: 'state-only', description: 'State bindings without any event handlers.', sourcePath: 'components/state-only.md',
     props: {}, state: { label: { type: 'string', default: 'Read-only state' } },
@@ -58,6 +61,7 @@ const definitions: UiDefinition[] = [
       { tag: 'span', attrs: { 'data-state': 'count' }, text: '{{state.count}}' },
       { tag: 'span', attrs: { 'data-state': 'committed' }, text: '{{state.committed}}' },
       { component: 'interaction-child', props: { label: '{{state.text}}' } },
+      { component: 'form-actions' },
     ] },
   },
 ];
@@ -130,6 +134,7 @@ assert.equal(find('[data-state="count"]').textContent, '7');
 assert.equal(input.value, 'Reset label');
 assert.equal(find('[data-child-label]').textContent, 'Reset label');
 assert.equal(childButton.textContent, 'true');
+await exerciseForms(first, dom.window, change);
 for (const item of mounted) await item.dispose();
 dom.window.close();
 `;
@@ -176,7 +181,7 @@ async function mount(target) {
 `,
 };
 
-it.each(['react', 'vue', 'svelte', 'angular'] as const)('compiles and executes %s interactions with independent state and stable child identity', async framework => {
+it.each(['react', 'vue', 'svelte', 'angular'] as const)('compiles and executes %s state, form persistence, upload and download interactions', async framework => {
   const directory = await mkdtemp(join(tmpdir(), 'forge-' + framework + '-interactions-')); temporary.push(directory);
   await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'dir');
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
@@ -210,6 +215,6 @@ it.each(['react', 'vue', 'svelte', 'angular'] as const)('compiles and executes %
     expect(ts.getPreEmitDiagnostics(program).map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n'))).toEqual([]);
   }
   const entry = join(directory, 'exercise.mjs');
-  await writeFile(entry, runtimeSetup + adapters[framework] + runtimeScenario);
+  await writeFile(entry, runtimeSetup + adapters[framework] + formRuntimeScenario + runtimeScenario);
   execFileSync(process.execPath, ['--conditions=browser', entry], { cwd: directory, stdio: 'inherit', timeout: 30000 });
 }, 45000);

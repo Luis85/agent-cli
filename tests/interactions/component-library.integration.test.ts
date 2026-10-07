@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, access } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,7 +19,7 @@ const child: UiDefinition = { schemaVersion: 1, id: 'child', props: {}, state: {
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'forge-interaction-graph-')); roots.push(root);
-  const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), new EventBus(), false);
+  const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), new EventBus(new NodeEventScope()), false);
   const codec = new MarkdownUiDefinitions();
   const source = { list: vi.fn(async (_directory: string) => [toggle, { ...toggle, id: 'unused' }]) };
   const generate = vi.fn<UiRenderer['generate']>(() => [{ path: 'generated/parent.js', bytes: new TextEncoder().encode('// generated\n') }]);

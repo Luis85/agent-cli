@@ -31,4 +31,4 @@ export const isStructured = (path: string) => ['markdown', 'canvas', 'base'].inc
 
 export interface FileSnapshot { path: string; bytes: Uint8Array; revision: string }
 export interface WriteRequest { path: string; bytes: Uint8Array; expectedRevision?: string }
-export interface FileChange { path: string; revision: string; operation: 'created' | 'updated'; bytes: number }
+export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted'; bytes: number }

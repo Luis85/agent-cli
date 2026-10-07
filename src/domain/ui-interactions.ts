@@ -23,12 +23,18 @@ function validateAttachment(definition: UiDefinition, node: UiElement, interacti
         ensure(action.fromEvent === 'checked' ? node.tag === 'input' : ['input', 'select', 'textarea'].includes(node.tag), 'INVALID_UI', `Interaction ${interaction.id} cannot read ${action.fromEvent} from ${node.tag}.`);
         ensure(state.type === (action.fromEvent === 'checked' ? 'boolean' : 'string'), 'INVALID_UI', `Interaction ${interaction.id} ${action.fromEvent} does not match state ${action.state}.`);
       } else ensure(valueType(definition, action.value) === state.type, 'INVALID_UI', `Interaction ${interaction.id} value does not match state ${action.state}.`);
-    } else if (action.type === 'navigate') {
+    } else if (action.type === 'navigate' || action.type === 'upload-form') {
       ensure(valueType(definition, action.url) === 'string', 'INVALID_UI', `Interaction ${interaction.id} navigation must resolve to a string.`);
       if (!uiBindings(action.url).length) ensure(isSafeNavigationUrl(action.url), 'INVALID_UI', `Interaction ${interaction.id} has an unsafe navigation URL.`);
+    } else if (action.type === 'save-form' || action.type === 'download-form') {
+      const value = action.type === 'save-form' ? action.key : action.filename;
+      ensure(valueType(definition, value) === 'string', 'INVALID_UI', `Interaction ${interaction.id} requires a string ${action.type === 'save-form' ? 'storage key' : 'filename'}.`);
     } else {
       ensure(!interactionTriggerEvents.has(action.event), 'INVALID_UI', `Interaction ${interaction.id} must emit a custom event, not native trigger ${action.event}.`);
       for (const value of Object.values(action.detail ?? {})) valueType(definition, value);
+    }
+    if (['save-form', 'upload-form', 'download-form'].includes(action.type)) {
+      ensure((node.tag === 'form' && interaction.event === 'submit') || (['button', 'input'].includes(node.tag) && interaction.event === 'click'), 'INVALID_UI', `Interaction ${interaction.id} requires a form submit or an associated button/input click.`);
     }
   }
 }

@@ -25,6 +25,6 @@ export interface WriteRequest {
 export interface FileChange {
     path: string;
     revision: string;
-    operation: 'created' | 'updated';
+    operation: 'created' | 'updated' | 'deleted';
     bytes: number;
 }

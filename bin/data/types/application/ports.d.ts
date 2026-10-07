@@ -3,6 +3,7 @@ export interface FileRepository {
     read(path: string): Promise<FileSnapshot>;
     list(): Promise<string[]>;
     writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]>;
+    remove(path: string, expectedRevision: string, dryRun: boolean): Promise<FileChange>;
 }
 export interface DocumentCodec {
     inspect(path: string, bytes: Uint8Array): unknown;

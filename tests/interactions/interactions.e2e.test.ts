@@ -21,7 +21,7 @@ describe('portable interaction library and executable UI', () => {
     expect(await readdir(root)).toEqual([]);
     expect(cli(['interactions', 'init']).status).toBe(0);
     const initialized = cli(['interactions', 'list']);
-    expect(initialized.body.data.interactions.map((entry: { id: string }) => entry.id)).toEqual(['input-value', 'toggle-expanded']);
+    expect(initialized.body.data.interactions.map((entry: { id: string }) => entry.id)).toEqual(['download', 'input-value', 'save', 'toggle-expanded', 'upload']);
     expect(cli(['interactions', 'create', 'capture-text', '--event', 'input']).status).toBe(0);
     const inspected = cli(['interactions', 'inspect', 'capture-text']);
     expect(inspected.body.data).toMatchObject({ id: 'capture-text', event: 'input', actions: [{ type: 'set-state', state: 'value', fromEvent: 'value' }] });
@@ -34,6 +34,18 @@ describe('portable interaction library and executable UI', () => {
     expect(cli(['interactions', 'validate', '--library', 'reviewed']).body.data.valid).toBe(true);
     expect(cli(['interactions', 'init']).body.data.skipped).toContain('capture-text');
     expect(await readFile(join(root, 'interactions/capture-text.md'), 'utf8')).toBe(original);
+  });
+
+  it('creates executable form presets with inferred trigger events and explicit destinations', () => {
+    for (const [id, event, action] of [
+      ['save', 'submit', { type: 'save-form', key: 'forge-form' }],
+      ['upload', 'submit', { type: 'upload-form', url: '{{uploadUrl}}' }],
+      ['download', 'click', { type: 'download-form', filename: 'form-data.json' }],
+    ] as const) {
+      expect(cli(['interactions', 'create', id]).status).toBe(0);
+      expect(cli(['interactions', 'inspect', id]).body.data).toMatchObject({ id, event, preventDefault: true, actions: [action] });
+    }
+    expect(cli(['interactions', 'validate']).body.data.valid).toBe(true);
   });
 
   it('generates all seven targets and runs the documented form through real emitted browser code', async () => {

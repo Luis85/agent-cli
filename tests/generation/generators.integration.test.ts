@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -61,8 +62,8 @@ it('generates an installable plugin with a validated manifest and runnable lifec
     expect(manifest).toMatchObject({ id: 'http-tools', name: 'HTTPTools', version: '0.1.0', minAppVersion: '0.1.0' });
     await files.writeBatch(plan, false);
     const registry = new Registry();
-    const events = new EventBus();
-    const context = { workspace: new Workspace(files, new ObsidianDocuments(), events, false), events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array() };
+    const events = new EventBus(new NodeEventScope());
+    const context = { workspace: new Workspace(files, new ObsidianDocuments(), events, false), events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, input: async () => new Uint8Array() };
     await loadEnabledPlugins('.agent-cli/plugins', ['http-tools'], files, registry, events);
     const command = registry.commands.get('http-tools.hello')!;
     expect(command).toBeDefined();

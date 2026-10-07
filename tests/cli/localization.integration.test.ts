@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { germanCommands, germanGenerators } from '../../src/presentation/localization-catalog.ts';
 import { germanErrors } from '../../src/presentation/localization-errors.ts';
 import { commands } from '../../src/presentation/commands.ts';
+import { basesCommand } from '../../src/presentation/bases-commands.ts';
+import { claudeCommand } from '../../src/presentation/claude-commands.ts';
 import { generators } from '../../src/infrastructure/generators.ts';
 import { Registry } from '../../src/application/plugins.ts';
 import type { WorkflowServices } from '../../src/presentation/services.ts';
@@ -50,7 +52,11 @@ describe('built-in localization catalog coverage', () => {
         async setup() { throw new Error('Catalog must not run setup'); },
       };
       const registry = new Registry();
-      const ids = commands(registry, services).map(command => command.id).sort();
+      const unavailable = (): never => { throw new Error('Catalog must not invoke management services'); };
+      const management = [basesCommand(unavailable), claudeCommand({
+        agentCodec: { parse: unavailable, render: unavailable }, target: unavailable,
+      })];
+      const ids = [...commands(registry, services), ...management].map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);
       expect(Object.keys(germanGenerators).sort()).toEqual([...generators.map(generator => generator.id), 'document', 'ui', 'stories', 'data-source'].sort());
     } finally { await rm(root, { recursive: true, force: true }); }

@@ -54,9 +54,11 @@ This URL serves the latest `main` branch. For a fixed version, use a reviewed co
 - `schema`, `help`, `formats`, `events`, `plugins`: discover the installed contracts and capabilities.
 - `skills`: inspect and install agent workflows for safe file editing, feature development and verification.
 - Explicit runtime plugins: manifest discovery, `onload`/`onunload`, commands, generators, validated events and skills.
+- `claude`: maintain native Claude Code agents, hooks and plugin assets with revision guards, and manage installed plugins/marketplaces through the Claude CLI. See [Claude Code management](docs/reference/claude.md).
+- `bases`: query a native `.base` view as a repository definition and return its matching files without installing Obsidian. See [Bases queries](docs/reference/bases.md).
 - SHA-256 revision checks, dry-run previews, contained paths, collision checks and notifications after successful commits.
 
-Markdown syntax (wikilinks, embeds, callouts, code, math) remains intact. Canvas receives structural graph validation; Bases receive structural YAML validation and preserve expressions as data. Images, audio, video and PDF are read, copied, replaced and exported as bytes/base64. Rendering, media transformations, PDF text editing, Obsidian's query engine, and community-plugin semantics require extensions. See the precise [format contract](docs/reference/formats.md).
+Markdown syntax (wikilinks, embeds, callouts, code, math) remains intact and generated Markdown can be edited in Obsidian Source mode. Canvas receives structural graph validation. Bases queries evaluate saved filters, formulas and view ordering through a bundled standalone expression engine; `bases capabilities` describes its compatibility profile. Images, audio, video and PDF are read, copied, replaced and exported as bytes/base64. Rendering, media transformations, PDF text editing and community-plugin semantics require extensions. See the precise [format contract](docs/reference/formats.md).
 
 ## Edit safely
 

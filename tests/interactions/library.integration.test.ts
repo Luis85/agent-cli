@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,7 +14,7 @@ let root: string, files: NodeFiles, events: EventBus;
 const codec = new MarkdownInteractionDefinitions();
 const library = (dryRun = false) => new InteractionLibrary(new Workspace(files, new ObsidianDocuments(), events, dryRun), codec);
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'forge-interactions-')); files = await NodeFiles.at(root); events = new EventBus();
+  root = await mkdtemp(join(tmpdir(), 'forge-interactions-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());
   for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (value): value is unknown => value !== null });
 });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
@@ -21,7 +22,7 @@ afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, 
 describe('workspace interaction library lifecycle', () => {
   it('previews initialization, preserves authored definitions and emits events only after committed writes', async () => {
     const preview = await library(true).init('custom/interactions');
-    expect(preview.changes).toHaveLength(2);
+    expect(preview.changes).toHaveLength(5);
     expect(preview.preview?.map(file => file.content)).toEqual(expect.arrayContaining([expect.stringContaining('event: click'), expect.stringContaining('event: input')]));
     expect(await files.list()).toEqual([]); expect(events.history).toEqual([]);
     await library().create('custom/interactions/nested', 'toggle-expanded');
@@ -29,10 +30,10 @@ describe('workspace interaction library lifecycle', () => {
     await library().init('custom/interactions');
     expect(await files.read('custom/interactions/nested/toggle-expanded.md')).toEqual(before);
     expect((await library().init('custom/interactions')).changes).toEqual([]);
-    expect((await library().list('custom/interactions')).map(item => item.id)).toEqual(['input-value', 'toggle-expanded']);
-    expect(events.history.map(event => event.id)).toEqual(['file.created', 'file.created']);
+    expect((await library().list('custom/interactions')).map(item => item.id)).toEqual(['download', 'input-value', 'toggle-expanded', 'save', 'upload']);
+    expect(events.history.map(event => event.id)).toEqual(Array(5).fill('file.created'));
     expect(await library().inspect('custom/interactions', 'toggle-expanded')).toMatchObject({ revision: before.revision, bytes: before.bytes.length, actions: [{ type: 'toggle-state', state: 'expanded' }] });
-    expect(await library().validate('custom/interactions')).toMatchObject({ valid: true, count: 2, status: 'ready', interactions: ['input-value', 'toggle-expanded'] });
+    expect(await library().validate('custom/interactions')).toMatchObject({ valid: true, count: 5, status: 'ready', interactions: ['download', 'input-value', 'toggle-expanded', 'save', 'upload'] });
   });
   it('preserves YAML comments, line endings, Markdown and nested paths exactly during transfers', async () => {
     const original = encodeText('---\r\n# retain this comment\r\nschemaVersion: 1\r\nid: activate\r\nevent: click\r\nactions:\r\n  - type: emit\r\n    event: panel:active\r\n---\r\n# Authored **prose**\r\n');
@@ -81,5 +82,12 @@ describe('workspace interaction library lifecycle', () => {
     expect(await library().inspect('sources', 'read-input')).toMatchObject({ event: 'change', actions: [{ type: 'set-state', state: 'value', fromEvent: 'value' }] });
     expect((await library(true).export('sources', 'preview')).preview?.[0]?.path).toBe('preview/read-input.md');
     expect((await files.list()).some(path => path.startsWith('preview/'))).toBe(false);
+  });
+  it('creates functional save, upload and download presets without invented endpoints', async () => {
+    for (const id of ['save', 'upload', 'download']) await library().create('defaults', id);
+    expect(await library().inspect('defaults', 'save')).toMatchObject({ event: 'submit', preventDefault: true, actions: [{ type: 'save-form', key: 'forge-form' }] });
+    expect(await library().inspect('defaults', 'upload')).toMatchObject({ event: 'submit', preventDefault: true, actions: [{ type: 'upload-form', url: '{{uploadUrl}}' }] });
+    expect(await library().inspect('defaults', 'download')).toMatchObject({ event: 'click', actions: [{ type: 'download-form', filename: 'form-data.json' }] });
+    expect((await library().init('defaults')).skipped).toEqual(['download', 'save', 'upload']);
   });
 });

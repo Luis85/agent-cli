@@ -88,6 +88,7 @@ it('snapshots caller plans before an asynchronous repository consumes them', asy
   const deferred = new ScopedFiles({
     read: path => files.read(path),
     list: () => files.list(),
+    remove: (path, revision, dryRun) => files.remove(path, revision, dryRun),
     async writeBatch(writes, dryRun) { await Promise.resolve(); return files.writeBatch(writes, dryRun); },
   }, 'src/alpha');
   const request = write('original.md'), plan = [request];

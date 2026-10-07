@@ -28,6 +28,7 @@ For users who already know their goal. Each guide states the needed context and 
 | Define REST or local JSON sources and generate adapters | [Manage data sources](how-to/manage-data-sources.md) |
 | Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
 | Extend the CLI with trusted Node modules | [Enable or disable plugins](how-to/enable-plugins.md) |
+| Maintain native Claude agents, hooks and plugin installations | [Manage Claude Code](how-to/manage-claude.md) |
 | Diagnose checks and deliver a verified repository change | [Develop and test](how-to/develop-and-test.md) |
 | Package or upgrade the portable executable | [Build a release](how-to/release.md) |
 
@@ -48,6 +49,8 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Markdown templates](reference/templates.md) | Variables, typed substitutions and date formatting |
 | [Files and formats](reference/formats.md) | Markdown, Canvas, Bases and attachment guarantees |
 | [Plugins and events](reference/plugins.md) | Manifests, contributions, lifecycle and delivery semantics |
+| [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
+| [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
 
 Run `node bin/app.js schema --json` for the installed executable's command catalog, and `node bin/app.js config --json` for its effective settings. The installed version is the authority for available commands.
 

@@ -8,7 +8,7 @@ The native inventory follows [Obsidian accepted file formats](https://help.obsid
 | --- | --- | --- |
 | Markdown | `.md` | UTF-8 text, YAML frontmatter parsing/merge, literal edits, append, full replacement |
 | JSON Canvas | `.canvas` | JSON graph inspection, structural validation, pointer edits, full replacement |
-| Bases | `.base` | YAML parsing, structural validation, pointer edits, full replacement |
+| Bases | `.base` | YAML parsing, structural validation, pointer edits, full replacement, standalone view queries |
 | Images | `.avif .bmp .gif .jpeg .jpg .png .svg .webp` | Lossless byte/base64 read, copy, create, replace, embed as note text |
 | Audio | `.flac .m4a .mp3 .ogg .wav .webm .3gp` | Same byte operations |
 | Video | `.mkv .mov .mp4 .ogv .webm` | Same byte operations |
@@ -22,10 +22,27 @@ Markdown body content is treated as source text, preserving Obsidian wikilinks, 
 
 Frontmatter and Bases must use JSON-compatible YAML: string mapping keys, finite numbers, strings, booleans, nulls, arrays and plain mappings. Cyclic aliases, explicit binary/timestamp objects and excessive nesting are rejected rather than silently losing data in JSON responses. Bounded noncyclic aliases work. A pointer edit cannot traverse an alias; replace the alias or edit its anchor, understanding that anchor changes affect all aliases referring to it.
 
+Generated component, interaction, data-source and Claude agent definitions are ordinary Markdown with YAML frontmatter. Edit their prose, wikilinks, embeds, inline tags and declared configuration directly in Obsidian Source mode, then validate and regenerate the affected output. Generation reads these source notes without rewriting their authored bodies. Generic property edits preserve valid scalar/list types and the body; definition serializers can normalize YAML formatting.
+
+Obsidian's [Properties editor](https://help.obsidian.md/properties) does not support nested properties. Nested component trees, action lists, data-source models and agent hooks therefore require Source mode; valid YAML does not mean every field is editable through the Properties UI. Component, interaction and data-source frontmatter uses a strict schema, so additional top-level fields such as `tags` must not be added unless that schema supports them; use inline body tags for those definitions. Template notes and extensible Claude agent metadata can retain native `tags` lists and quoted property wikilinks. These source/edit/regeneration contracts are tested without claiming Obsidian rendering or plugin behavior has been verified.
+
+File location also matters: Obsidian normally excludes dot-folders such as Claude's native `.claude/agents` from its file tree, metadata index and Bases. The [Hidden Folders Access community-plugin listing](https://community.obsidian.md/plugins/hidden-folders-access) describes this separate indexing limitation. Keep a visible authoring copy when editing an agent in a standard vault, then explicitly apply the edited native source with a revision-guarded Claude agent update. A separately configured indexing integration is another option. Forge preserves Claude's native locations; it does not change Obsidian indexing or automatically synchronize authoring copies.
+
+```sh
+node bin/app.js claude agents export reviewer --out definitions/reviewer.md --dry-run
+node bin/app.js claude agents export reviewer --out definitions/reviewer.md
+node bin/app.js claude agents inspect reviewer
+# Edit definitions/reviewer.md in Obsidian Source mode.
+node bin/app.js claude agents update reviewer --from definitions/reviewer.md --if-match NATIVE_REVISION --dry-run
+node bin/app.js claude agents update reviewer --from definitions/reviewer.md --if-match NATIVE_REVISION
+```
+
+Use the native agent's inspected revision for the update. Replacing an existing visible export instead requires that destination note's current revision with `export --if-match`. The two files have independent revision guards; exporting or editing a note does not automatically apply it to Claude.
+
 ## Canvas
 
 The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. File-node subpaths must start with `#`, for example `#Heading` or `#^block-id`. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Referenced file existence and URL reachability are not checked. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
 
 ## Bases
 
-The structural contract follows [Obsidian Bases syntax](https://help.obsidian.md/bases/syntax). The file must be a mapping; views contain type/name; formula, property and summary sections are mappings; filter structures are checked. AST edits preserve YAML comments and unrelated keys. Plugin-added view types and extra view properties are retained. The CLI stores expressions as data and does not evaluate filters, formulas, summaries, backlink resolution, or the Obsidian vault query engine. Structural validation cannot establish formula correctness or guarantee rendering in every Obsidian version.
+The structural contract follows [Obsidian Bases syntax](https://help.obsidian.md/bases/syntax). The file must be a mapping; views contain type/name; formula, property and summary sections are mappings; filter structures are checked. AST edits preserve YAML comments and unrelated keys. Plugin-added view types and extra view properties are retained. Ordinary validation checks structure; `bases query` separately evaluates a native file/view as a standalone repository using filters, formulas, sorting, grouping and file/link metadata. See the [Bases query contract and compatibility profile](bases.md). Structural validation cannot establish formula correctness or guarantee rendering in every Obsidian version; standalone queries do not load Obsidian community-plugin functions or render views.

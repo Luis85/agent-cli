@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, symlink, writeFile, readdir, chmod, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -47,7 +48,7 @@ describe('guarded filesystem', () => {
     expect(await readdir(root)).toEqual(['.agent-cli.lock']);
   });
   it('retains committed evidence and notifications when removing the lock fails', async () => {
-    const events = new EventBus();
+    const events = new EventBus(new NodeEventScope());
     events.define({ id: 'file.created', validate: (_value): _value is unknown => true });
     files = await NodeFiles.at(root, message => events.warn(message));
     const adapter = files as unknown as { releaseLock(lock: string): Promise<void> };
@@ -132,7 +133,7 @@ describe('guarded filesystem', () => {
     expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('External edit');
   });
   it('publishes only committed changes, and no event on validation/write failure or dry run', async () => {
-    const events = new EventBus();
+    const events = new EventBus(new NodeEventScope());
     events.define({ id: 'file.created', validate: (v): v is object => typeof v === 'object' });
     const listener = vi.fn(async () => { expect(await readFile(join(root, 'note.md'), 'utf8')).toBe('Hello'); });
     events.on('file.created', listener);
@@ -147,7 +148,7 @@ describe('guarded filesystem', () => {
 });
 
 it.each([false, true])('rejects malformed plugin byte plans without coercing data (dry run: %s)', async dryRun => {
-  const workspace = new Workspace(files, new ObsidianDocuments(), new EventBus(), dryRun);
+  const workspace = new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), dryRun);
   for (const bytes of ['hello', [256, -1, 1.5], { length: 3 }, null]) {
     const plan = [{ path: 'asset.bin', bytes }] as unknown as WriteRequest[];
     await expect(files.writeBatch(plan, dryRun)).rejects.toMatchObject({ code: 'INVALID_PLAN' });
@@ -161,7 +162,7 @@ it.each([false, true])('rejects malformed plugin byte plans without coercing dat
   expect(await readdir(root)).toEqual([]);
 });
 it('returns committed changes when recursive file notifications exceed the delivery limit', async () => {
-  const events = new EventBus();
+  const events = new EventBus(new NodeEventScope());
   events.define({ id: 'file.created', validate: (v): v is object => typeof v === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   let count = 0;

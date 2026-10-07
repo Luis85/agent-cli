@@ -2,9 +2,11 @@ import type { Workspace } from './workspace.ts';
 import type { ProjectInfo } from './projects.ts';
 import type { EventBus, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../domain/file.ts';
+import type { ClaudeLifecycleClient } from './claude-lifecycle.ts';
 export interface CommandContext {
     workspace: Workspace;
     events: EventBus;
+    claude: ClaudeLifecycleClient;
     workspaceRoot: string;
     root: string;
     project: ProjectInfo | null;

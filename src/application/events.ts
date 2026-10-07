@@ -2,6 +2,10 @@ import { AppError, ensure, isRecord } from '../domain/errors.ts';
 
 export interface EventDefinition<T = unknown> { id: string; validate: (payload: unknown) => payload is T }
 export interface EventRecord { id: string; payload: unknown }
+export interface EventDeliveryScope {
+  depth(): number;
+  run<T>(callback: () => Promise<T>): Promise<T>;
+}
 type Listener = { active: boolean; invoke: (payload: unknown) => void | Promise<void> };
 
 /** The CLI event log must survive JSON encoding without omissions or coercion. */
@@ -23,9 +27,10 @@ export class EventBus {
   private definitions = new Map<string, EventDefinition>();
   private listeners = new Map<string, Set<Listener>>();
   private disposed = false;
-  private depth = 0;
   readonly history: EventRecord[] = [];
   readonly warnings: string[] = [];
+
+  constructor(private readonly delivery: EventDeliveryScope) {}
 
   define<T>(definition: EventDefinition<T>): void { this.defineAll([definition]); }
   /** Validate a complete contribution batch before changing the bus. */
@@ -66,16 +71,16 @@ export class EventBus {
       if (valid instanceof Promise) void valid.catch(() => {});
       ensure(valid === true, 'INVALID_EVENT_PAYLOAD', id);
     } catch { throw new AppError('INVALID_EVENT_PAYLOAD', `Invalid payload for ${id}.`, 2); }
-    ensure(this.depth < 32, 'EVENT_RECURSION', 'Event recursion exceeds 32.');
+    const depth = this.delivery.depth();
+    ensure(depth < 32, 'EVENT_RECURSION', 'Event recursion exceeds 32.');
     if (this.history.length < 1000) this.history.push({ id, payload: structuredClone(snapshot) });
-    this.depth++;
-    try {
+    await this.delivery.run(async () => {
       for (const entry of Array.from(this.listeners.get(id) ?? [])) {
         if (!entry.active || this.disposed) continue;
         try { await entry.invoke(structuredClone(snapshot)); }
         catch (error) { this.warn(`Listener ${id}: ${error instanceof Error ? error.message : String(error)}`); }
       }
-    } finally { this.depth--; }
+    });
   }
   warn(message: string): void { if (this.warnings.length < 1000) this.warnings.push(message); }
   dispose(): void { this.disposed = true; this.listeners.clear(); }

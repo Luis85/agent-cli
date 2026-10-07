@@ -2,9 +2,10 @@ import type { Workspace } from './workspace.ts';
 import type { ProjectInfo } from './projects.ts';
 import type { EventBus, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../domain/file.ts';
+import type { ClaudeLifecycleClient } from './claude-lifecycle.ts';
 import { ensure, isRecord } from '../domain/errors.ts';
 
-export interface CommandContext { workspace: Workspace; events: EventBus; workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array> }
+export interface CommandContext { workspace: Workspace; events: EventBus; claude: ClaudeLifecycleClient; workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array> }
 export interface Command {
   id: string; description: string; usage: string;
   options?: Record<string, 'string' | 'boolean'>;
@@ -82,7 +83,8 @@ export class Registry {
     this.state = 'activating';
     try {
       for (const plugin of this.plugins) {
-        if (plugin.onunload) this.cleanups.unshift(() => plugin.onunload!());
+        const onunload = plugin.onunload;
+        if (onunload) this.cleanups.unshift(() => onunload.call(plugin));
         const result = await plugin.onload?.(context);
         ensure(result === undefined, 'INVALID_PLUGIN', 'onload must return nothing; use onunload for cleanup.');
       }

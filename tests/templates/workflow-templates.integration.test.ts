@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,7 +26,7 @@ const setup = (dryRun = false) => new SetupService(workspace(dryRun), config, [
   { path: 'package.json', bytes: encodeText('{"type":"commonjs"}') },
 ], [], workflowTemplates);
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'forge-workflow-')); files = await NodeFiles.at(root); events = new EventBus();
+  root = await mkdtemp(join(tmpdir(), 'forge-workflow-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());
   for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (_value): _value is unknown => true });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
