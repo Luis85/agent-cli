@@ -1,0 +1,10 @@
+import { execFileSync } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+await mkdir('release', { recursive: true });
+const archive = `release/agent-cli-${version}.tar.gz`;
+execFileSync('tar', ['-czf', archive, 'bin/app']);
+const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
+await writeFile(`${archive}.sha256`, `${hash}  agent-cli-${version}.tar.gz\n`);
+console.log(archive);

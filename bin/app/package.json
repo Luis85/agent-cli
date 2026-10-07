@@ -1,0 +1,6 @@
+{
+  "name": "agent-cli-bundle",
+  "version": "0.1.0",
+  "private": true,
+  "main": "app.cjs"
+}
