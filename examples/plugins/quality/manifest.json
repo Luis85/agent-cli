@@ -1,0 +1,8 @@
+{
+  "id": "quality",
+  "name": "Quality checks",
+  "version": "1.0.0",
+  "minAppVersion": "0.1.0",
+  "description": "Engineering review checklists and Markdown note reporting.",
+  "author": "agent-cli contributors"
+}

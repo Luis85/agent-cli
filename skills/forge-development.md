@@ -1,0 +1,13 @@
+---
+name: forge-development
+description: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.
+---
+
+1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.
+   Run `project list` and `project inspect <id>` to select the right project. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component <id> <PascalName> --kind domain|application --dry-run`. The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.
+2. Discover available generators with `node bin/app make --json`. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.
+3. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.
+4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.
+5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. Run the project's type checker and relevant tests. Add integration tests where serialization or filesystem behavior matters.
+6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in the configured plugin directory, then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.
+7. For changes to The Forge itself, run `npm ci`, `npm run check`, update docs and skills, rebuild and commit `bin/app` with the source. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.

@@ -1,0 +1,37 @@
+{
+  "name": "@luis85/forge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Forge: portable tools for high-quality AI-assisted TypeScript engineering",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "forge": "bin/app/app.cjs"
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build && node scripts/package.mjs",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run build && npm test",
+    "release": "npm run check && node scripts/release.mjs"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "dayjs": "^1.11.23",
+    "remark-frontmatter": "^5.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.8.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}
