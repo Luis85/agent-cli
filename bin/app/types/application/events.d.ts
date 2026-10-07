@@ -15,6 +15,8 @@ export declare class EventBus {
     readonly history: EventRecord[];
     readonly warnings: string[];
     define<T>(definition: EventDefinition<T>): void;
+    /** Validate a complete contribution batch before changing the bus. */
+    defineAll(definitions: readonly EventDefinition[]): void;
     ids(): string[];
     on<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;
     once<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;

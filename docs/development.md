@@ -1,6 +1,6 @@
 # Development and distribution
 
-Use Node >=22.12 and npm. `npm ci` installs locked development dependencies. The runtime's only library dependency, YAML, is included in the Vite bundle; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because its entry point is explicitly `.cjs`.
+Use Node >=22.12, npm and GNU tar (needed by archive tests and release packaging). `npm ci` installs locked development dependencies. Runtime libraries include Commander for CLI parsing, Zod for configuration, unified/remark for Markdown structure, YAML for document codecs, and Day.js for template dates. Vite includes them in the executable; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because its entry point is explicitly `.cjs`. Packaging copies direct and transitive runtime dependency licenses and generates `THIRD-PARTY-NOTICES.md` from the lockfile.
 
 ```sh
 npm run typecheck
@@ -22,9 +22,11 @@ Generated boilerplate must be reviewed and tested in its destination project. Do
 
 ## Artifact policy
 
-`bin/app` is deliberately version controlled. Every source/skill/doc change affecting the release must rebuild it. CI runs type checking, build and tests, then rejects differences in `bin/app`, including untracked files. CI runs the suite on Node 22 and 24. The workflow creates a downloadable build artifact; it does not publish a GitHub release automatically.
+`bin/app` and the default `bin/config.json` are deliberately version controlled. Every source/skill/doc change affecting the release must rebuild the app. CI runs type checking, build and tests, then rejects differences in the distribution, including untracked files. CI runs the suite on the minimum supported Node 22.12.0 and Node 24. The workflow creates a downloadable build artifact; it does not publish a GitHub release automatically.
 
-The release script uses the maintainer's `tar` executable and creates `release/agent-cli-<version>.tar.gz` plus a SHA-256 checksum file. End users extract the archive into a project and run `node bin/app`. They do not need tar after extraction, npm packages, TypeScript, Vite or Vitest to run the app.
+The release script requires **GNU tar** on the maintainer's path as `tar` and creates `release/forge-<version>.tar.gz` plus a SHA-256 checksum file. On macOS, install GNU tar and put its `gnubin` directory on `PATH`. The script checks agreement between source, bundle manifest and executable versions, and normalizes timestamps, ownership, permissions and entry order so unchanged content produces an identical archive. Archive tests verify the checksum and reproducibility, extract into a project without `node_modules`, and execute initialization and generation from the extracted app.
+
+The archive contains `bin/app` and `bin/config.json`. End users extract it into a new project and run `node bin/app`; standard tar extractors can read the archive. They do not need tar after extraction, npm packages, TypeScript, Vite or Vitest to run the app. For an existing installation, extract separately and preserve project configuration while replacing the app. A checksum detects transfer corruption; obtain the archive and checksum from a trusted release source.
 
 ## Adding behavior
 

@@ -23,24 +23,33 @@ export interface Skill {
     id: string;
     content: string;
 }
-export interface Plugin {
-    manifest: {
-        id: string;
-        version: string;
-        apiVersion: 1;
-    };
+export interface PluginManifest {
+    id: string;
+    name: string;
+    version: string;
+    minAppVersion: string;
+    description: string;
+    author: string;
+}
+export interface PluginContributions {
     commands?: Command[];
     generators?: Generator[];
     events?: EventDefinition[];
     skills?: Skill[];
-    activate?(context: CommandContext): void | (() => void | Promise<void>) | Promise<void | (() => void | Promise<void>)>;
+    onload?(context: CommandContext): void | Promise<void>;
+    onunload?(): void | Promise<void>;
 }
+export interface Plugin extends PluginContributions {
+    manifest: PluginManifest;
+}
+export declare function validatePluginManifest(value: unknown): asserts value is PluginManifest;
 export declare class Registry {
     readonly commands: Map<string, Command>;
     readonly generators: Map<string, Generator>;
     readonly skills: Map<string, Skill>;
     readonly plugins: Plugin[];
     private cleanups;
+    private state;
     add<T extends {
         id: string;
     }>(map: Map<string, T>, item: T): void;

@@ -1,0 +1,3 @@
+bin/app/** linguist-generated=true
+# Preserve upstream license notices verbatim, including whitespace and Markdown rulers.
+bin/app/licenses/** -diff

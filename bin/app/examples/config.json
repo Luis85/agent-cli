@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "paths": {
+    "root": "..",
+    "plugins": "examples/plugins"
+  },
+  "plugins": {
+    "enabled": ["quality"]
+  }
+}

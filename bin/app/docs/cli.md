@@ -1,6 +1,8 @@
 # Command reference and agent protocol
 
-Run `node bin/app <command>`. Global options may appear before or after the command: `--root <directory>`, `--json`, `--dry-run`, `--plugins <relative-manifest.json>`, `--help`, `--version`. Use `--key=value` for values beginning with `--`. Use `--` to stop option parsing. Unknown or repeated options are errors. Short option aliases are not supported.
+Run `node bin/app [routing options] <command> [options]`. Routing options `--config <path>`, `--root <directory>` and `--no-plugins` must precede the command because they select the workspace and loaded command catalog. For example, `node bin/app --root /path/to/project --no-plugins setup --dry-run`.
+
+Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run` and `--help` (`-h`) before or after the command. Use `node bin/app --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md).
 
 ## Output and errors
 
@@ -20,6 +22,8 @@ A listener warning does not make a committed write fail. Check `events` and read
 | --- | --- | --- |
 | `help` | `[command]` | Descriptions, options, usage |
 | `schema` | none | Machine-readable catalog, generator and skill IDs |
+| `config` | none | Effective validated configuration and selected paths |
+| `templates` | `[list / inspect <template.md>]` | Discover Markdown templates and their inputs |
 | `formats` | none | Native extension inventory and processing limits |
 | `list` | `[--kind markdown]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files |
 | `read` | `<path>` | SHA-256 revision, byte count, parsed document or base64 bytes |
@@ -29,11 +33,14 @@ A listener warning does not make a committed write fail. Check `events` and read
 | `edit` | `<note.md> --if-match hash (--append --content text / --find text --replace text)` | Append or replace exactly one literal match; ambiguous matches fail |
 | `properties` | `<note.md> --set JSON --if-match hash` | Merge top-level frontmatter properties; `null` stores YAML null |
 | `patch` | `<file.canvas/base> --pointer /path --value JSON --if-match hash` | Set a key or existing array element; `-` appends |
-| `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; dry-run includes generated text |
+| `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; defaults to configured generated-code directory, or plugin directory for `plugin`; dry-run includes generated text |
+| `make document` | `<Title> --template <template.md> [--out directory] [--values JSON / --values-from path] [--date ISO]` | Render Markdown/frontmatter template to a new `<Title>.md` in configured output directory |
 | `events` | none | Registered events and delivery semantics |
-| `plugins` | none | Manifests loaded using the explicit global `--plugins` option |
-| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` |
-| `init` | none | Create empty plugin manifest and bundled process skills |
+| `plugins` | none | Manifests enabled in configuration from the configured plugin directory |
+| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default configured skills directory |
+| `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
+| `project` | `list / inspect <id> / create <kebab-name>` | Discover or scaffold TypeScript library projects beneath configured projects directory |
+| `project component` | `<id> <PascalName> [--kind domain / application]` | Add a component within the selected project's domain/application boundaries |
 
 `--from` reads a file within the selected root and copies bytes by default. `--stdin` reads bytes until EOF; an interactive TTY fails immediately. `--content` treats input as UTF-8. `--encoding base64` decodes the chosen input before writing. These three sources are mutually exclusive. The CLI retains files in memory, so use plugins for streaming very large media.
 

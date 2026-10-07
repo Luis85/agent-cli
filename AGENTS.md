@@ -1,5 +1,7 @@
-# Working on agent-cli
+# Working on The Forge
 
-Read README.md and docs/architecture.md before making changes. Keep domain/application imports independent of Node and infrastructure. Inject ports; compose at src/main.ts. Commands must return JSON-serializable results and never prompt or print progress to stdout. New mutations must use workspace write orchestration, support dry-run, guard replacement with a revision, and emit events only after successful persistence.
+Read README.md and docs/architecture.md. Keep domain/application independent of Node and infrastructure; inject ports and compose at src/main.ts. Commands return JSON without prompts or stdout logs. Route writes through workspace orchestration with dry-run, revision guards and post-commit events.
 
-Keep docs, help and bundled agent skills consistent with behavior. Run npm run check for implementation changes. bin/app is an intentional tracked distribution: rebuild and commit it with source. Tests must cover meaningful acceptance and failure behavior, especially plugin lifecycle, file integrity and portable execution. Do not claim Obsidian rendering or expression evaluation from structural format checks.
+Use established libraries and test observable behavior, especially file integrity, plugin lifecycle and portable execution. Keep help, docs and skills accurate. Run npm run check, then commit source with rebuilt bin/app and bin/config.json. Structural validation does not imply Obsidian rendering or expression evaluation.
+
+Before the first release, change contracts directly; do not add backward-compatibility layers.

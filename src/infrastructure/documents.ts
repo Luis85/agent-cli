@@ -1,5 +1,8 @@
-import { parseDocument, stringify, isMap, type Document } from 'yaml';
-import { ensure, isRecord } from '../domain/errors.ts';
+import { parseDocument, stringify, isMap, isScalar, isAlias, visit, type Document } from 'yaml';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkFrontmatter from 'remark-frontmatter';
+import { AppError, ensure, isRecord } from '../domain/errors.ts';
 import { fileKind } from '../domain/file.ts';
 import { validateCanvas } from '../domain/canvas.ts';
 import type { DocumentCodec } from '../application/ports.ts';
@@ -7,20 +10,60 @@ import type { DocumentCodec } from '../application/ports.ts';
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new Error('Structured documents must be valid UTF-8.'); }
+  catch { throw new AppError('INVALID_ENCODING', 'Structured documents must be valid UTF-8.', 2); }
 }
 function yamlDocument(text: string): Document {
   const document = parseDocument(text, { uniqueKeys: true });
   ensure(!document.errors.length, 'INVALID_YAML', document.errors.map(e => e.message).join('; '));
+  visit(document, (key, node, path) => {
+    ensure(path.length < 200, 'INVALID_YAML', 'YAML nesting is too deep.');
+    if (key === 'key') ensure(isScalar(node) && typeof node.value === 'string', 'INVALID_YAML', 'YAML mapping keys must be strings.');
+  });
   return document;
 }
-function frontmatter(text: string) {
+function jsonValue(value: unknown, code: string, ancestors = new Set<object>(), depth = 0): void {
+  ensure(depth < 100, code, 'Document nesting is too deep.');
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number') { ensure(Number.isFinite(value), code, 'Document numbers must be finite.'); return; }
+  ensure(typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), code, 'Document values must be JSON-compatible.');
+  ensure(!ancestors.has(value), code, 'Cyclic YAML aliases are not supported.');
+  ancestors.add(value);
+  for (const child of Object.values(value)) jsonValue(child, code, ancestors, depth + 1);
+  ancestors.delete(value);
+}
+function yamlValue(document: Document): unknown {
+  let value: unknown;
+  try { value = document.toJS({ maxAliasCount: 100 }); }
+  catch (error) { throw new AppError('INVALID_YAML', error instanceof Error ? error.message : 'Invalid YAML aliases.', 2); }
+  jsonValue(value, 'INVALID_YAML');
+  return value;
+}
+function textStyle(text: string) {
+  return { prefix: text.startsWith('\uFEFF') ? '\uFEFF' : '', newline: text.match(/\r\n|\n|\r/)?.[0] ?? '\n' };
+}
+function styledText(text: string, original: string): Uint8Array {
+  const { prefix, newline } = textStyle(original);
+  return encode(prefix + text.replace(/^\uFEFF/, '').replace(/\r?\n/g, newline));
+}
+const markdownParser = unified().use(remarkParse).use(remarkFrontmatter, ['yaml']);
+export function parseMarkdownParts(text: string) {
   const prefix = text.startsWith('\uFEFF') ? '\uFEFF' : '';
   text = text.slice(prefix.length);
-  if (!/^---\r?\n/.test(text)) return { yaml: '', body: text, newline: '\n', exists: false, prefix };
-  const match = /^---\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|$)/m.exec(text);
-  ensure(match?.index === 0, 'INVALID_FRONTMATTER', 'Unclosed YAML frontmatter.');
-  return { yaml: match[1]!, body: text.slice(match[0].length), newline: text.startsWith('---\r\n') ? '\r\n' : '\n', exists: true, prefix };
+  const firstNode = markdownParser.parse(text).children[0];
+  const firstNewline = /\r\n|\n|\r/.exec(text);
+  const opensFrontmatter = firstNewline !== null && text.slice(0, firstNewline.index).trimEnd() === '---';
+  const newline = textStyle(text).newline;
+  if (firstNode?.type !== 'yaml') {
+    ensure(!opensFrontmatter, 'INVALID_FRONTMATTER', 'Unclosed YAML frontmatter.');
+    return { yaml: '', body: text, newline, exists: false, prefix };
+  }
+  const end = firstNode.position?.end.offset;
+  ensure(end !== undefined && firstNewline !== null, 'INVALID_FRONTMATTER', 'Missing frontmatter source position.');
+  // Slice the original source using parser offsets; serializing Markdown would
+  // rewrite wikilinks, line endings, whitespace and other Obsidian body syntax.
+  const closingLineStart = Math.max(text.lastIndexOf('\n', end - 1), text.lastIndexOf('\r', end - 1)) + 1;
+  const separatorLength = text.startsWith('\r\n', end) ? 2 : text.startsWith('\n', end) || text.startsWith('\r', end) ? 1 : 0;
+  return { yaml: text.slice(firstNewline.index + firstNewline[0].length, closingLineStart), body: text.slice(end + separatorLength), newline, exists: true, prefix };
 }
 function validateBase(value: unknown) {
   ensure(isRecord(value), 'INVALID_BASE', 'A Base must contain a YAML mapping.');
@@ -41,18 +84,25 @@ export class ObsidianDocuments implements DocumentCodec {
     if (!['markdown', 'canvas', 'base'].includes(kind)) return { kind, encoding: 'base64', content: Buffer.from(bytes).toString('base64') };
     const text = textOf(bytes);
     if (kind === 'markdown') {
-      const parts = frontmatter(text), properties: unknown = yamlDocument(parts.yaml).toJS({ maxAliasCount: 100 });
+      const parts = parseMarkdownParts(text), properties = yamlValue(yamlDocument(parts.yaml));
       ensure(properties === null || isRecord(properties), 'INVALID_FRONTMATTER', 'Frontmatter must be a mapping.');
       return { kind, content: text, properties: properties ?? {}, body: parts.body };
     }
-    const data: unknown = kind === 'canvas' ? JSON.parse(text.replace(/^\uFEFF/, '')) : yamlDocument(text).toJS({ maxAliasCount: 100 });
+    let data: unknown;
+    if (kind === 'canvas') {
+      try { data = JSON.parse(text.replace(/^\uFEFF/, '')); }
+      catch { throw new AppError('INVALID_CANVAS', 'Canvas must contain valid JSON.', 2); }
+      jsonValue(data, 'INVALID_CANVAS');
+    } else data = yamlValue(yamlDocument(text));
     if (kind === 'canvas') validateCanvas(data); else validateBase(data);
     return { kind, data };
   }
   validate(path: string, bytes: Uint8Array): void { this.inspect(path, bytes); }
   properties(bytes: Uint8Array, changes: Record<string, unknown>): Uint8Array {
-    const parts = frontmatter(textOf(bytes));
+    const parts = parseMarkdownParts(textOf(bytes));
     const doc = yamlDocument(parts.yaml || '{}');
+    yamlValue(doc);
+    jsonValue(changes, 'INVALID_FRONTMATTER');
     if (doc.contents === null) doc.contents = doc.createNode({});
     ensure(isMap(doc.contents), 'INVALID_FRONTMATTER', 'Frontmatter must be a mapping.');
     for (const [key, value] of Object.entries(changes)) {
@@ -60,12 +110,15 @@ export class ObsidianDocuments implements DocumentCodec {
       doc.set(key, value);
     }
     const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
-    return encode(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
+    const result = encode(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
+    this.validate('note.md', result);
+    return result;
   }
   patch(path: string, bytes: Uint8Array, pointer: string, value: unknown): Uint8Array {
     const kind = fileKind(path);
     ensure(kind === 'canvas' || kind === 'base', 'UNSUPPORTED_EDIT', 'Pointer edits support Canvas and Bases.');
     const parsed = this.inspect(path, bytes) as { data: Record<string, unknown> };
+    jsonValue(value, kind === 'canvas' ? 'INVALID_CANVAS' : 'INVALID_BASE');
     ensure(pointer.startsWith('/') && !/~(?![01])/g.test(pointer), 'INVALID_POINTER', 'Use a JSON Pointer such as /views/0/name.');
     const keys = pointer.slice(1).split('/').map(k => k.replace(/~1/g, '/').replace(/~0/g, '~'));
     ensure(keys.every(k => !['__proto__', 'constructor', 'prototype'].includes(k)), 'INVALID_POINTER', 'Unsafe pointer segment.');
@@ -87,11 +140,12 @@ export class ObsidianDocuments implements DocumentCodec {
       const pathKeys: (string | number)[] = [];
       let cursor: unknown = (this.inspect(path, bytes) as { data: unknown }).data;
       for (const segment of keys) {
+        ensure(!isAlias(doc.getIn(pathKeys, true)), 'INVALID_POINTER', 'Cannot edit through a YAML alias; replace the alias value or edit its anchor.');
         const part = Array.isArray(cursor) ? (segment === '-' ? cursor.length : Number(segment)) : segment;
         pathKeys.push(part); cursor = cursor && typeof cursor === 'object' ? (cursor as Record<string, unknown>)[String(part)] : undefined;
       }
-      doc.setIn(pathKeys, value); result = encode(doc.toString());
-    } else result = encode(JSON.stringify(parsed.data, null, 2) + '\n');
+      doc.setIn(pathKeys, value); result = styledText(doc.toString(), textOf(bytes));
+    } else result = styledText(JSON.stringify(parsed.data, null, 2) + '\n', textOf(bytes));
     this.validate(path, result); return result;
   }
 }

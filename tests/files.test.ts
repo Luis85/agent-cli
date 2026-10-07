@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, symlink, writeFile, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile, readdir, chmod, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { NodeFiles } from '../src/infrastructure/files.ts';
+import type { WriteRequest } from '../src/domain/file.ts';
+import { NodeFiles, revisionOf } from '../src/infrastructure/files.ts';
 import { ObsidianDocuments, encodeText } from '../src/infrastructure/documents.ts';
 import { EventBus } from '../src/application/events.ts';
 import { Workspace } from '../src/application/workspace.ts';
 let root: string, files: NodeFiles;
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'agent-files-')); files = await NodeFiles.at(root); });
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 const write = (path: string, text = 'Hello') => ({ path, bytes: encodeText(text) });
 
 describe('guarded filesystem', () => {
@@ -44,6 +45,68 @@ describe('guarded filesystem', () => {
     await writeFile(join(root, '.agent-cli.lock'), '');
     await expect(files.writeBatch([write('a.md')], false)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY' });
     expect(await readdir(root)).toEqual(['.agent-cli.lock']);
+  });
+  it('snapshots mutable plugin plans before asynchronous filesystem work', async () => {
+    const request = write('original.md', 'Original');
+    const requests: WriteRequest[] = [request];
+    const operation = files.writeBatch(requests, false);
+    request.path = 'changed.md';
+    request.bytes.fill(0);
+    requests.push(write('extra.md'));
+    expect(await operation).toEqual([{ path: 'original.md', revision: revisionOf(encodeText('Original')), operation: 'created', bytes: 8 }]);
+    expect(await files.list()).toEqual(['original.md']);
+    expect(await readFile(join(root, 'original.md'), 'utf8')).toBe('Original');
+  });
+  it('preserves existing permissions when replacing files', async () => {
+    await writeFile(join(root, 'script.sh'), 'old');
+    await chmod(join(root, 'script.sh'), 0o777);
+    const before = await files.read('script.sh');
+    await files.writeBatch([{ ...write('script.sh', 'new'), expectedRevision: before.revision }], false);
+    expect((await stat(join(root, 'script.sh'))).mode & 0o777).toBe(0o777);
+  });
+  it('rolls back creations and replacements including modes after a later write fails', async () => {
+    await writeFile(join(root, 'existing.md'), 'Original');
+    await chmod(join(root, 'existing.md'), 0o777);
+    const before = await files.read('existing.md');
+    const adapter = files as unknown as { replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> };
+    const replace = adapter.replace.bind(files);
+    vi.spyOn(adapter, 'replace').mockImplementation(async (target, ...args) => {
+      if (target.endsWith('/failure.md')) throw new Error('Injected write failure');
+      await replace(target, ...args);
+    });
+    await expect(files.writeBatch([write('new/deep/a.md'), { ...write('existing.md', 'Changed'), expectedRevision: before.revision }, write('failure.md')], false)).rejects.toThrow('Injected write failure');
+    expect(await readdir(root)).toEqual(['existing.md']);
+    expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('Original');
+    expect((await stat(join(root, 'existing.md'))).mode & 0o777).toBe(0o777);
+  });
+  it('rechecks revisions after preflight and rolls back prior writes on conflict', async () => {
+    await writeFile(join(root, 'existing.md'), 'Original');
+    const before = await files.read('existing.md');
+    const adapter = files as unknown as { replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> };
+    const replace = adapter.replace.bind(files);
+    vi.spyOn(adapter, 'replace').mockImplementation(async (target, ...args) => {
+      if (target.endsWith('/existing.md')) await writeFile(target, 'External edit');
+      await replace(target, ...args);
+    });
+    await expect(files.writeBatch([write('created.md'), { ...write('existing.md', 'Changed'), expectedRevision: before.revision }], false)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(await readdir(root)).toEqual(['existing.md']);
+    expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('External edit');
+  });
+  it('keeps external edits if rollback can no longer safely restore a committed file', async () => {
+    await writeFile(join(root, 'existing.md'), 'Original');
+    const before = await files.read('existing.md');
+    const adapter = files as unknown as { replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> };
+    const replace = adapter.replace.bind(files);
+    vi.spyOn(adapter, 'replace').mockImplementation(async (target, ...args) => {
+      if (target.endsWith('/failure.md')) {
+        await writeFile(join(root, 'existing.md'), 'External edit');
+        throw new Error('Injected write failure');
+      }
+      await replace(target, ...args);
+    });
+    await expect(files.writeBatch([{ ...write('existing.md', 'Changed'), expectedRevision: before.revision }, write('failure.md')], false)).rejects.toMatchObject({ code: 'ROLLBACK_FAILED' });
+    expect(await readdir(root)).toEqual(['existing.md']);
+    expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('External edit');
   });
   it('publishes only committed changes, and no event on validation/write failure or dry run', async () => {
     const events = new EventBus();

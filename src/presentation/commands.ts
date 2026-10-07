@@ -1,12 +1,11 @@
+import metadata from '../../package.json';
 import { ensure, isRecord } from '../domain/errors.ts';
 import { nativeFormats, fileKind } from '../domain/file.ts';
 import { encodeText, encodeYaml } from '../infrastructure/documents.ts';
 import type { Command, CommandContext, Registry } from '../application/plugins.ts';
 import { arity, globalOptions, value } from './arguments.ts';
+import { workflowCommands, makeDocument, parseJson, type WorkflowServices } from './workflow-commands.ts';
 
-function json(text: string): unknown {
-  try { return JSON.parse(text) as unknown; } catch { throw new Error('Expected valid JSON.'); }
-}
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const inline = value(flags, 'content'), from = value(flags, 'from');
   ensure([inline !== undefined, from !== undefined, flags.stdin === true].filter(Boolean).length === 1, 'INVALID_INPUT', 'Choose exactly one of --content, --from, or --stdin.');
@@ -22,15 +21,17 @@ async function content(flags: Record<string, string | boolean>, context: Command
 }
 const contentOptions = { content: 'string', from: 'string', stdin: 'boolean', encoding: 'string' } as const;
 
-export function commands(registry: Registry): Command[] {
+export function commands(registry: Registry, services: WorkflowServices): Command[] {
+  const generatorCatalog = () => [...registry.generators.values()].map(({ id, description }) => ({ id, description })).concat({ id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.' });
   const catalog = () => ({
-    name: 'agent-cli', version: '0.1.0', apiVersion: 1, node: '>=22.12.0',
+    name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node,
     globalOptions, output: '{ ok, data?, error?: {code,message}, events, warnings }',
     commands: [...registry.commands.values()].map(({ id, description, usage, options }) => ({ id, description, usage, options: options ?? {} })),
-    generators: [...registry.generators.values()].map(({ id, description }) => ({ id, description })),
+    generators: generatorCatalog(),
     skills: [...registry.skills.keys()],
   });
   return [
+    ...workflowCommands(services),
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
@@ -53,6 +54,7 @@ export function commands(registry: Registry): Command[] {
       arity(args, 1); const path = args[0]!;
       const hasInput = flags.content !== undefined || flags.from !== undefined || flags.stdin === true;
       const kind = fileKind(path);
+      ensure(hasInput || flags.encoding === undefined, 'INVALID_INPUT', '--encoding requires an input source.');
       ensure(hasInput || ['markdown', 'canvas', 'base'].includes(kind), 'INVALID_INPUT', 'Attachments require content, from, or stdin.');
       const bytes = hasInput ? await content(flags, context) : kind === 'canvas' ? encodeText('{"nodes":[],"edges":[]}\n') : kind === 'base' ? encodeYaml({ views: [{ type: 'table', name: 'Table' }] }) : encodeText('');
       return context.workspace.write([{ path, bytes }]);
@@ -75,36 +77,33 @@ export function commands(registry: Registry): Command[] {
     } },
     { id: 'properties', description: 'Merge YAML frontmatter properties while preserving the Markdown body.', usage: 'properties <note.md> --set JSON --if-match sha256', options: { set: 'string', 'if-match': 'string' }, async run(args, flags, { workspace }) {
       arity(args, 1); ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
-      const changes = json(value(flags, 'set', true)!); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');
+      const changes = parseJson(value(flags, 'set', true)!); ensure(isRecord(changes), 'INVALID_INPUT', '--set must be a JSON object.');
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.properties(bytes, changes));
     } },
     { id: 'patch', description: 'Set a Canvas/Base JSON Pointer; - appends to an existing array.', usage: 'patch <path> --pointer /nodes/- --value JSON --if-match sha256', options: { pointer: 'string', value: 'string', 'if-match': 'string' }, async run(args, flags, { workspace }) {
-      arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = json(value(flags, 'value', true)!);
+      arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
     } },
-    { id: 'make', description: 'Run a boilerplate generator through validated, collision-checked writes.', usage: 'make [generator Name] [--out src/domain] [--dry-run]', options: { out: 'string' }, async run(args, flags, { workspace }) {
-      if (args.length === 0) return { generators: [...registry.generators.values()].map(({ id, description }) => ({ id, description })) };
-      arity(args, 2); const generator = registry.generators.get(args[0]!); ensure(generator, 'UNKNOWN_GENERATOR', args[0]!);
-      const writes = await generator.generate(args[1]!, value(flags, 'out') ?? 'src/domain');
-      const result = await workspace.write(writes);
-      return { generator: generator.id, ...result, ...(workspace.dryRun ? { preview: writes.map(w => ({ path: w.path, content: Buffer.from(w.bytes).toString('utf8') })) } : {}) };
+    { id: 'make', description: 'Generate TypeScript, plugins, or documents from Obsidian templates.', usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO]', options: { out: 'string', template: 'string', values: 'string', 'values-from': 'string', date: 'string' }, async run(args, flags, context) {
+      if (args.length === 0) return { generators: generatorCatalog() };
+      arity(args, 2);
+      if (args[0] === 'document') return makeDocument(args[1]!, flags, context, services);
+      ensure(['template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Template options require make document.');
+      const generator = registry.generators.get(args[0]!); ensure(generator, 'UNKNOWN_GENERATOR', args[0]!);
+      const directory = value(flags, 'out') ?? (generator.id === 'plugin' ? services.loaded.config.paths.plugins : services.loaded.config.paths.generated);
+      const writes = await generator.generate(args[1]!, directory);
+      const result = await context.workspace.write(writes);
+      return { generator: generator.id, ...result, ...(context.workspace.dryRun ? { preview: writes.map(w => ({ path: w.path, content: Buffer.from(w.bytes).toString('utf8') })) } : {}) };
     } },
     { id: 'events', description: 'List invocation event contracts.', usage: 'events', run(args, _, { events }) { arity(args, 0); return { events: events.ids(), delivery: 'Ordered, awaited, per-listener snapshots; failures become warnings. File events follow successful commits. No persistent replay.' }; } },
-    { id: 'plugins', description: 'List explicitly loaded plugin manifests.', usage: 'plugins [--plugins agent-cli.plugins.json]', run(args) { arity(args, 0); return { plugins: registry.plugins.map(p => p.manifest) }; } },
+    { id: 'plugins', description: 'List explicitly loaded plugin manifests.', usage: '[--config bin/config.json] plugins', run(args) { arity(args, 0); return { plugins: registry.plugins.map(p => p.manifest) }; } },
     { id: 'skills', description: 'List, read or install bundled and plugin agent skills.', usage: 'skills [list | show <id> | install] [--out .agents/skills]', options: { out: 'string' }, async run(args, flags, { workspace }) {
       const action = args[0] ?? 'list';
       if (action === 'list') { arity(args, 0, 1); return { skills: [...registry.skills.keys()] }; }
       if (action === 'show') { arity(args, 2); const skill = registry.skills.get(args[1]!); ensure(skill, 'UNKNOWN_SKILL', args[1]!); return skill; }
       ensure(action === 'install', 'INVALID_ARGUMENT', 'Use skills list, show, or install.'); arity(args, 1);
-      const directory = value(flags, 'out') ?? '.agents/skills';
+      const directory = value(flags, 'out') ?? services.loaded.config.paths.skills;
       return workspace.write([...registry.skills.values()].map(skill => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
-    } },
-    { id: 'init', description: 'Create an empty plugin manifest and install bundled process skills.', usage: 'init [--dry-run]', async run(args, _, { workspace }) {
-      arity(args, 0);
-      return workspace.write([
-        { path: 'agent-cli.plugins.json', bytes: encodeText('{"apiVersion":1,"plugins":[]}\n') },
-        ...[...registry.skills.values()].map(skill => ({ path: `.agents/skills/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })),
-      ]);
     } },
   ];
 }

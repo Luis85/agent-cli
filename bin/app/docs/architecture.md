@@ -6,7 +6,7 @@ The domain uses the terms **workspace**, **file snapshot**, **revision**, **writ
 
 - `src/domain`: path rules, file kinds, value contracts, Canvas invariants, and application errors. No Node imports or infrastructure dependencies.
 - `src/application`: injected repository/codec ports, write orchestration, invocation event bus, plugin contracts and registry. No Node imports.
-- `src/infrastructure`: Node repository, YAML/document codecs, runtime module loader, generator implementations, embedded skills.
+- `src/infrastructure`: Node repository, Zod configuration adapter, unified/remark Markdown parser, YAML/document codecs, Day.js template rendering, runtime module loader, generator implementations, embedded skills.
 - `src/presentation`: argument parsing, discoverable command definitions, input/output translation.
 - `src/main.ts`: composition root. It creates services, registers capabilities, loads explicitly enabled plugins, runs a command, cleans up and serializes the result.
 
@@ -19,11 +19,11 @@ The reference was inspected on 2026-10-07. This implementation adapts ideas rath
 | Reference | Adaptation |
 | --- | --- |
 | [Plugin API](https://github.com/Luis85/obsidian-plugin-shell/blob/main/plugins/api.ts) | Explicit versioned manifest, command definitions, event descriptors and lifecycle context |
-| [Plugin runtime](https://github.com/Luis85/obsidian-plugin-shell/blob/main/plugins/runtime.ts) | Contribution validation, duplicate rejection, owned namespaces, activation and reverse cleanup |
+| [Plugin runtime](https://github.com/Luis85/obsidian-plugin-shell/blob/main/plugins/runtime.ts) | Atomic contribution validation, duplicate rejection, owned namespaces, `onload` and reverse `onunload` cleanup |
 | [Event bus design](https://github.com/Luis85/obsidian-plugin-shell/blob/main/docs/architecture/EVENT-BUS.md) | Runtime payload checks, notification isolation, scoped subscriptions and events after committed changes |
 | [Document generation](https://github.com/Luis85/obsidian-plugin-shell/blob/main/docs/development/GENERATOR-DECLARATIVE-ACTIONS.md) | Validated inputs, explicit plans and stale-write guards through a single storage owner |
 
-The standalone environment changes several choices: dynamic ESM/CommonJS plugins need no core rebuild; Node implements storage; no GUI, host bridge, Vue or Obsidian API is needed; listener delivery is explicitly awaited and ordered for one CLI invocation. DDD is applied to meaningful invariants and vocabulary rather than introducing aggregate/repository layers with no behavior.
+The standalone environment changes several choices: configured plugin directories use Obsidian-inspired manifests and ESM/CommonJS entry points without a core rebuild; Node implements storage; no GUI, host bridge, Vue or Obsidian API is needed; listener delivery is explicitly awaited and ordered for one CLI invocation. Established libraries own CLI grammar, configuration validation, Markdown parsing, YAML and date formatting. DDD is applied to meaningful invariants and vocabulary rather than introducing aggregate/repository layers with no behavior.
 
 ## Intentional limits
 

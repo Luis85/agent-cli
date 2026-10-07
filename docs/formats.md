@@ -16,7 +16,9 @@ The native inventory follows [Obsidian accepted file formats](https://help.obsid
 
 ## Markdown
 
-Markdown body content is treated as source text, preserving Obsidian wikilinks, embeds, tags, block references, callouts, tasks, math and fenced code without needing a renderer. Frontmatter must be a YAML mapping with unique keys and a closing `---` delimiter. YAML aliases are expansion-limited. Property edits retain the body and YAML comments; edited frontmatter formatting may normalize. CRLF body text is retained. A frontmatter edit merges keys; use a guarded complete write to remove keys. YAML expressions are never executed.
+Markdown body content is treated as source text, preserving Obsidian wikilinks, embeds, tags, block references, callouts, tasks, math and fenced code without needing a renderer. Frontmatter must be a YAML mapping with unique keys and a closing `---` delimiter. Markdown structure is parsed with unified/remark and YAML with the YAML library. Property edits retain the body and YAML comments; edited frontmatter formatting may normalize. BOM and CRLF body text are retained. A frontmatter edit merges keys; use a guarded complete write to remove keys. YAML expressions are never executed.
+
+Frontmatter and Bases must use JSON-compatible YAML: string mapping keys, finite numbers, strings, booleans, nulls, arrays and plain mappings. Cyclic aliases, explicit binary/timestamp objects and excessive nesting are rejected rather than silently losing data in JSON responses. Bounded noncyclic aliases work. A pointer edit cannot traverse an alias; replace the alias or edit its anchor, understanding that anchor changes affect all aliases referring to it.
 
 ## Canvas
 

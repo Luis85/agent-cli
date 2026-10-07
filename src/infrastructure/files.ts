@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, writeFile, open } from 'node:fs/promises';
+import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { AppError, ensure } from '../domain/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../domain/file.ts';
@@ -7,6 +7,7 @@ import type { FileRepository } from '../application/ports.ts';
 
 export const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
+interface StoredFile { bytes: Buffer; mode: number; revision: string }
 
 export class NodeFiles implements FileRepository {
   private constructor(readonly root: string) {}
@@ -45,27 +46,38 @@ export class NodeFiles implements FileRepository {
     };
     await walk(this.root, ''); return result.sort();
   }
+  private async stored(path: string): Promise<StoredFile | undefined> {
+    const target = await this.resolvePath(path);
+    try {
+      const mode = (await lstat(target)).mode & 0o7777;
+      const bytes = await readFile(target);
+      return { bytes, mode, revision: revisionOf(bytes) };
+    } catch (error) { if (!missing(error)) throw error; return undefined; }
+  }
+  private async assertRevision(path: string, expected: string | undefined): Promise<void> {
+    ensure((await this.stored(path))?.revision === expected, 'CONFLICT', `File changed; read again before writing: ${path}`);
+  }
   async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
-    ensure(writes.length > 0 && new Set(writes.map(w => vaultPath(w.path))).size === writes.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
+    // Plugins retain their input objects: freeze the plan's values before the first await.
+    const requests = writes.map(write => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
+    ensure(requests.length > 0 && new Set(requests.map(w => w.path)).size === requests.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
+    ensure(!requests.some(a => requests.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
     const lock = join(this.root, '.agent-cli.lock');
     let locked = false;
     const createdDirectories: string[] = [];
-    const committed: Array<{ target: string; before?: Buffer }> = [];
+    const committed: Array<{ write: WriteRequest; target: string; before?: StoredFile }> = [];
     try {
       if (!dryRun) {
         try { const handle = await open(lock, 'wx'); locked = true; await handle.close(); }
         catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new AppError('WORKSPACE_BUSY', 'Another writer holds .agent-cli.lock. Retry after it finishes.', 4); throw error; }
       }
       const plans = [];
-      for (const write of writes) {
+      for (const write of requests) {
         const target = await this.resolvePath(write.path);
-        let before: Buffer | undefined;
-        try { before = await readFile(target); } catch (error) { if (!missing(error)) throw error; }
-        ensure(before === undefined ? write.expectedRevision === undefined : write.expectedRevision === revisionOf(before), 'CONFLICT', `Existing files require their current --if-match revision: ${write.path}`);
+        const before = await this.stored(write.path);
+        ensure(before === undefined ? write.expectedRevision === undefined : write.expectedRevision === before.revision, 'CONFLICT', `Existing files require their current --if-match revision: ${write.path}`);
         plans.push({ write, target, before });
       }
-      // Reject file/parent collisions before creating anything.
-      ensure(!writes.some(a => writes.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
       if (!dryRun) for (const plan of plans) {
         const parts = plan.write.path.split('/').slice(0, -1);
         let directory = this.root;
@@ -75,26 +87,43 @@ export class NodeFiles implements FileRepository {
           catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
         }
         await this.resolvePath(plan.write.path);
-        await this.replace(plan.target, plan.write.bytes);
+        await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision));
         committed.push(plan);
       }
       return plans.map(({ write, before }) => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === undefined ? 'created' : 'updated', bytes: write.bytes.length }));
     } catch (error) {
       const failures: string[] = [];
       for (const entry of committed.reverse()) {
-        try { if (entry.before) await this.replace(entry.target, entry.before); else await rm(entry.target); }
-        catch { failures.push(entry.target); }
+        try {
+          // Never silently roll back over a newer edit from an external writer.
+          const verify = () => this.assertRevision(entry.write.path, revisionOf(entry.write.bytes));
+          if (entry.before) await this.replace(entry.target, entry.before.bytes, entry.before.mode, verify);
+          else { await verify(); await rm(entry.target); }
+        } catch { failures.push(entry.target); }
       }
       for (const directory of createdDirectories.reverse()) await rmdir(directory).catch(() => {});
       if (failures.length) throw new AppError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
       throw error;
     } finally { if (locked) await rm(lock, { force: true }); }
   }
-  private async replace(target: string, bytes: Uint8Array): Promise<void> {
+  private async replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> {
     const temp = join(resolve(target, '..'), `.agent-cli-tmp-${randomUUID()}`);
-    let mode = 0o666;
-    try { mode = (await lstat(target)).mode; } catch (error) { if (!missing(error)) throw error; }
-    try { await writeFile(temp, bytes, { flag: 'wx', mode }); await rename(temp, target); }
-    finally { await rm(temp, { force: true }); }
+    let created = false;
+    let renamed = false;
+    try {
+      const handle = await open(temp, 'wx', mode ?? 0o666);
+      created = true;
+      try {
+        await handle.writeFile(bytes);
+        // Creation modes are filtered by umask; existing files must retain their exact mode.
+        if (mode !== undefined) await handle.chmod(mode);
+      } finally { await handle.close(); }
+      await verify?.();
+      await rename(temp, target);
+      renamed = true;
+    } finally {
+      // Cleanup errors must not turn a successful rename into an untracked commit.
+      if (created && !renamed) await rm(temp, { force: true }).catch(() => {});
+    }
   }
 }
