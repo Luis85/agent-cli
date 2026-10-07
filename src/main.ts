@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import metadata from '../package.json';
 import { AppError, ensure, isRecord } from './domain/errors.ts';
 import { EventBus } from './application/events.ts';
+import { NodeEventScope } from './infrastructure/event-scope.ts';
+import { ClaudeLifecycle } from './application/claude-lifecycle.ts';
 import { Workspace } from './application/workspace.ts';
 import { ScopedFiles } from './application/scoped-files.ts';
 import { Registry, type CommandContext } from './application/plugins.ts';
@@ -41,7 +43,7 @@ import { language, Localizer } from './presentation/localization.ts';
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
-  const registry = new Registry(), events = new EventBus();
+  const registry = new Registry(), events = new EventBus(new NodeEventScope());
   let result: Record<string, unknown>;
   let activeContext: Pick<CommandContext, 'workspaceRoot' | 'root' | 'project'> | undefined;
   let localizer = new Localizer();
@@ -65,6 +67,7 @@ async function run(): Promise<void> {
       const files = await NodeFiles.at(loaded.root, message => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       for (const id of ['file.created', 'file.updated', 'file.deleted']) events.define({ id, validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.path === 'string' && typeof v.revision === 'string' && typeof v.bytes === 'number' && v.operation === id.slice(5) });
+      events.define({ id: 'claude.executed', validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.executable === 'string' && typeof v.cwd === 'string' && Number.isInteger(v.exitCode) });
       let environment: Workspace;
       for (const generator of generators) registry.add(registry.generators, generator);
       for (const skill of builtinSkills) registry.add(registry.skills, skill);
@@ -83,7 +86,7 @@ async function run(): Promise<void> {
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
       })) registry.add(registry.commands, command);
-      registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget, runtime: executable => new NodeClaudeRuntime({ executable }) }));
+      registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec))));
       if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       const id = bootstrap.args[0] ?? 'help';
@@ -108,14 +111,15 @@ async function run(): Promise<void> {
       const project = environmentCommand || claudeWorkspaceCommand ? null : requestedProject !== undefined ? await projects.inspect(requestedProject) : await projects.current();
       const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
-      const context: CommandContext = { workspace, events, ...activeContext, input: async () => {
+      const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
+      const context: CommandContext = { workspace, events, claude, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
         return Buffer.concat(chunks);
       } };
       // Discovery and setup do not need plugin activation or its side effects.
-      if (!parsed.flags.help && !['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup'].includes(id)) await registry.activate(context);
+      if (!parsed.flags.help && !claudeWorkspaceCommand && !['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup'].includes(id)) await registry.activate(context);
       const data = parsed.flags.help
         ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
         : await command.run(parsed.args.slice(1), parsed.flags, context);

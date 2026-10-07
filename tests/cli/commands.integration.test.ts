@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,10 +17,10 @@ import { commands } from '../../src/presentation/commands.ts';
 let root: string, registry: Registry, context: CommandContext;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-commands-'));
-  const files = await NodeFiles.at(root), events = new EventBus();
+  const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope());
   events.define({ id: 'file.updated', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
-  context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array() };
+  context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, input: async () => new Uint8Array() };
   registry = new Registry();
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {

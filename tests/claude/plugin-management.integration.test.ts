@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,7 +19,7 @@ const service = (dryRun = false) => new ClaudePluginService(new Workspace(files,
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-plugin-'));
   files = await NodeFiles.at(root);
-  events = new EventBus();
+  events = new EventBus(new NodeEventScope());
   for (const id of ['file.created', 'file.updated', 'file.deleted']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });

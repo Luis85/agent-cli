@@ -6,14 +6,19 @@ export interface EventRecord {
     id: string;
     payload: unknown;
 }
+export interface EventDeliveryScope {
+    depth(): number;
+    run<T>(callback: () => Promise<T>): Promise<T>;
+}
 /** Invocation-scoped notifications. Listener errors cannot undo committed work. */
 export declare class EventBus {
+    private readonly delivery;
     private definitions;
     private listeners;
     private disposed;
-    private depth;
     readonly history: EventRecord[];
     readonly warnings: string[];
+    constructor(delivery: EventDeliveryScope);
     define<T>(definition: EventDefinition<T>): void;
     /** Validate a complete contribution batch before changing the bus. */
     defineAll(definitions: readonly EventDefinition[]): void;

@@ -45,32 +45,52 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
       const stderr: Buffer[] = [];
       let outputBytes = 0;
       let settled = false;
+      let inputError: Error | undefined;
+      let timer: ReturnType<typeof setTimeout>;
       const output = () => ({ stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
-      const fail = (code: string, message: string, details: Record<string, unknown> = {}) => {
+      const stop = (): boolean => {
+        // POSIX groups also stop git/install descendants. Windows stops the direct process only.
+        if (!child.pid) return false;
+        return grouped ? process.kill(-child.pid, 'SIGKILL') : child.kill('SIGKILL');
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        process.removeListener('SIGINT', interrupt);
+        process.removeListener('SIGTERM', terminate);
+        process.removeListener('exit', exit);
+      };
+      const fail = (code: string, message: string, details: Record<string, unknown> = {}, exitCode = 1) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
-        try {
-          // POSIX groups also stop git/install descendants. Windows stops the direct process only.
-          if (grouped && child.pid) process.kill(-child.pid, 'SIGKILL');
-          else child.kill('SIGKILL');
-        } catch (error) {
+        cleanup();
+        let terminationRequested = false;
+        try { terminationRequested = stop(); } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ESRCH') details.terminationError = error instanceof Error ? error.message : String(error);
         }
         child.stdout!.destroy();
         child.stderr!.destroy();
         child.stdin?.destroy();
-        reject(new AppError(code, message, 1, { executable: this.executable, ...details, ...output() }));
+        if (['CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_OUTPUT_LIMIT', 'CLAUDE_COMMAND_INTERRUPTED'].includes(code)) {
+          message += ` ${terminationRequested ? 'Termination requested.' : 'Termination could not be requested.'} Inspect its state before retrying.`;
+        }
+        reject(new AppError(code, message, exitCode, { executable: this.executable, ...details,
+          terminationScope: grouped ? 'process-group' : 'direct-process', terminationRequested, ...output() }));
       };
-      const timer = setTimeout(() => fail('CLAUDE_COMMAND_TIMEOUT',
-        `Claude command exceeded ${timeoutMs} milliseconds and was stopped. Inspect its state before retrying.`, { timeoutMs }), timeoutMs);
+      const interrupt = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGINT while running Claude.', { signal: 'SIGINT' }, 130);
+      const terminate = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGTERM while running Claude.', { signal: 'SIGTERM' }, 143);
+      const exit = () => { try { stop(); } catch { /* The host is already exiting; cleanup cannot be reported asynchronously. */ } };
+      process.once('SIGINT', interrupt);
+      process.once('SIGTERM', terminate);
+      process.once('exit', exit);
+      timer = setTimeout(() => fail('CLAUDE_COMMAND_TIMEOUT',
+        `Claude command exceeded ${timeoutMs} milliseconds.`, { timeoutMs }), timeoutMs);
       const collect = (chunks: Buffer[], chunk: Buffer) => {
         if (settled) return;
         const remaining = this.maxOutputBytes - outputBytes;
         chunks.push(chunk.subarray(0, remaining));
         outputBytes += Math.min(chunk.length, remaining);
         if (chunk.length > remaining) fail('CLAUDE_OUTPUT_LIMIT',
-          `Claude command exceeded ${this.maxOutputBytes} bytes of output and was stopped. Inspect its state before retrying.`,
+          `Claude command exceeded ${this.maxOutputBytes} bytes of output.`,
           { maxOutputBytes: this.maxOutputBytes });
       };
       child.stdout!.on('data', (chunk: Buffer) => collect(stdout, chunk));
@@ -86,12 +106,17 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
           fail('CLAUDE_COMMAND_FAILED', `Claude command stopped unexpectedly${signal ? ` (${signal})` : ''}.`, { signal });
           return;
         }
+        if (exitCode === 0 && inputError) {
+          fail('CLAUDE_COMMAND_FAILED', 'Claude closed its input before the configuration was fully sent. Inspect its state before retrying.', { cause: inputError.message });
+          return;
+        }
         settled = true;
-        clearTimeout(timer);
+        cleanup();
         resolve({ exitCode, ...output() });
       });
       child.stdin?.on('error', error => {
         // An early native rejection may close stdin; retain its exit code and diagnostics.
+        inputError = error;
         if ((error as NodeJS.ErrnoException).code !== 'EPIPE') fail('CLAUDE_COMMAND_FAILED', `Cannot send input to Claude: ${error.message}`);
       });
       child.stdin?.end(options.stdin);

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 const minpath = require("node:path");
+const node_async_hooks = require("node:async_hooks");
 const node_crypto = require("node:crypto");
 const promises = require("node:fs/promises");
 const require$$0 = require("process");
@@ -65,10 +66,13 @@ function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
   return valid2;
 }
 class EventBus {
+  constructor(delivery) {
+    this.delivery = delivery;
+  }
+  delivery;
   definitions = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Map();
   disposed = false;
-  depth = 0;
   history = [];
   warnings = [];
   define(definition2) {
@@ -122,10 +126,10 @@ class EventBus {
     } catch {
       throw new AppError("INVALID_EVENT_PAYLOAD", `Invalid payload for ${id2}.`, 2);
     }
-    ensure(this.depth < 32, "EVENT_RECURSION", "Event recursion exceeds 32.");
+    const depth = this.delivery.depth();
+    ensure(depth < 32, "EVENT_RECURSION", "Event recursion exceeds 32.");
     if (this.history.length < 1e3) this.history.push({ id: id2, payload: structuredClone(snapshot) });
-    this.depth++;
-    try {
+    await this.delivery.run(async () => {
       for (const entry of Array.from(this.listeners.get(id2) ?? [])) {
         if (!entry.active || this.disposed) continue;
         try {
@@ -134,9 +138,7 @@ class EventBus {
           this.warn(`Listener ${id2}: ${error2 instanceof Error ? error2.message : String(error2)}`);
         }
       }
-    } finally {
-      this.depth--;
-    }
+    });
   }
   warn(message) {
     if (this.warnings.length < 1e3) this.warnings.push(message);
@@ -144,6 +146,82 @@ class EventBus {
   dispose() {
     this.disposed = true;
     this.listeners.clear();
+  }
+}
+class NodeEventScope {
+  storage = new node_async_hooks.AsyncLocalStorage();
+  depth() {
+    let depth = 0;
+    for (let current = this.storage.getStore(); current; current = current.parent) if (current.active) depth++;
+    return depth;
+  }
+  async run(callback) {
+    let parent = this.storage.getStore();
+    while (parent && !parent.active) parent = parent.parent;
+    const delivery = { active: true, parent };
+    try {
+      return await this.storage.run(delivery, callback);
+    } finally {
+      delivery.active = false;
+    }
+  }
+}
+function nativeResult(stdout, output) {
+  if (output === "text") return void 0;
+  const text2 = stdout.trim();
+  return JSON.parse(output === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
+}
+class ClaudeLifecycle {
+  constructor(runtime, scope, events) {
+    this.runtime = runtime;
+    this.scope = scope;
+    this.events = events;
+  }
+  runtime;
+  scope;
+  events;
+  async execute(request) {
+    ensure(isRecord(request), "INVALID_CLAUDE_ARGUMENT", "Claude execution requires an invocation object.");
+    const executable = request.executable ?? "claude";
+    ensure(typeof executable === "string" && executable.trim().length > 0 && !executable.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
+    ensure(Array.isArray(request.args) && request.args.every((argument) => typeof argument === "string" && !argument.includes("\0")), "INVALID_CLAUDE_ARGUMENT", "Claude arguments must be strings without null bytes.");
+    const args = [...request.args], timeoutMs = request.timeoutMs, input = request.stdin;
+    ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_CLAUDE_TIMEOUT", "Claude timeout must be milliseconds from 1 to 3600000.");
+    ensure(input === void 0 || typeof input === "string", "INVALID_CLAUDE_INPUT", "Claude standard input must be UTF-8 text.");
+    const inputBytes = input === void 0 ? void 0 : new TextEncoder().encode(input).length;
+    ensure(inputBytes === void 0 || inputBytes <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude standard input must not exceed 1 MiB.");
+    const output = request.output ?? "text";
+    ensure(["text", "json", "json-last-line"].includes(output), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
+    const sensitive = request.sensitiveArgs ?? [];
+    ensure(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
+    const redact = new Set(sensitive);
+    for (const [index2, argument] of args.entries()) if (argument === "--config" && index2 + 1 < args.length) redact.add(index2 + 1);
+    else if (argument.startsWith("--config=")) redact.add(index2);
+    const plan = {
+      executable,
+      args: args.map((argument, index2) => redact.has(index2) ? "<redacted>" : argument),
+      cwd: this.scope.cwd,
+      ...timeoutMs === void 0 ? {} : { timeoutMs },
+      ...inputBytes === void 0 ? {} : { inputBytes }
+    };
+    if (this.scope.dryRun) return { dryRun: true, executed: false, plan };
+    const result = await this.runtime(executable).run(args, { cwd: this.scope.cwd, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input === void 0 ? {} : { stdin: input } });
+    ensure(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
+    try {
+      await this.events.emit("claude.executed", { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
+    } catch (error2) {
+      this.events.warn(`Claude exited with status ${result.exitCode}; notification failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    }
+    let data, malformed = false;
+    try {
+      data = nativeResult(result.stdout, output);
+    } catch {
+      malformed = true;
+    }
+    const details = { ...plan, ...result, ...data === void 0 ? {} : { result: data } };
+    if (result.exitCode !== 0) throw new AppError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, 1, details);
+    if (malformed) throw new AppError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", 1, details);
+    return { dryRun: false, executed: true, ...details };
   }
 }
 function vaultPath(input) {
@@ -309,7 +387,8 @@ class Registry {
     this.state = "activating";
     try {
       for (const plugin of this.plugins) {
-        if (plugin.onunload) this.cleanups.unshift(() => plugin.onunload());
+        const onunload = plugin.onunload;
+        if (onunload) this.cleanups.unshift(() => onunload.call(plugin));
         const result = await plugin.onload?.(context);
         ensure(result === void 0, "INVALID_PLUGIN", "onload must return nothing; use onunload for cleanup.");
       }
@@ -26232,25 +26311,57 @@ class NodeClaudeRuntime {
       const stderr = [];
       let outputBytes = 0;
       let settled = false;
+      let inputError;
+      let timer;
       const output = () => ({ stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
-      const fail = (code2, message, details = {}) => {
+      const stop = () => {
+        if (!child.pid) return false;
+        return grouped ? process.kill(-child.pid, "SIGKILL") : child.kill("SIGKILL");
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        process.removeListener("SIGINT", interrupt);
+        process.removeListener("SIGTERM", terminate);
+        process.removeListener("exit", exit2);
+      };
+      const fail = (code2, message, details = {}, exitCode = 1) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        cleanup();
+        let terminationRequested = false;
         try {
-          if (grouped && child.pid) process.kill(-child.pid, "SIGKILL");
-          else child.kill("SIGKILL");
+          terminationRequested = stop();
         } catch (error2) {
           if (error2.code !== "ESRCH") details.terminationError = error2 instanceof Error ? error2.message : String(error2);
         }
         child.stdout.destroy();
         child.stderr.destroy();
         child.stdin?.destroy();
-        reject(new AppError(code2, message, 1, { executable: this.executable, ...details, ...output() }));
+        if (["CLAUDE_COMMAND_TIMEOUT", "CLAUDE_OUTPUT_LIMIT", "CLAUDE_COMMAND_INTERRUPTED"].includes(code2)) {
+          message += ` ${terminationRequested ? "Termination requested." : "Termination could not be requested."} Inspect its state before retrying.`;
+        }
+        reject(new AppError(code2, message, exitCode, {
+          executable: this.executable,
+          ...details,
+          terminationScope: grouped ? "process-group" : "direct-process",
+          terminationRequested,
+          ...output()
+        }));
       };
-      const timer = setTimeout(() => fail(
+      const interrupt = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" }, 130);
+      const terminate = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGTERM while running Claude.", { signal: "SIGTERM" }, 143);
+      const exit2 = () => {
+        try {
+          stop();
+        } catch {
+        }
+      };
+      process.once("SIGINT", interrupt);
+      process.once("SIGTERM", terminate);
+      process.once("exit", exit2);
+      timer = setTimeout(() => fail(
         "CLAUDE_COMMAND_TIMEOUT",
-        `Claude command exceeded ${timeoutMs} milliseconds and was stopped. Inspect its state before retrying.`,
+        `Claude command exceeded ${timeoutMs} milliseconds.`,
         { timeoutMs }
       ), timeoutMs);
       const collect = (chunks, chunk) => {
@@ -26260,7 +26371,7 @@ class NodeClaudeRuntime {
         outputBytes += Math.min(chunk.length, remaining);
         if (chunk.length > remaining) fail(
           "CLAUDE_OUTPUT_LIMIT",
-          `Claude command exceeded ${this.maxOutputBytes} bytes of output and was stopped. Inspect its state before retrying.`,
+          `Claude command exceeded ${this.maxOutputBytes} bytes of output.`,
           { maxOutputBytes: this.maxOutputBytes }
         );
       };
@@ -26277,11 +26388,16 @@ class NodeClaudeRuntime {
           fail("CLAUDE_COMMAND_FAILED", `Claude command stopped unexpectedly${signal ? ` (${signal})` : ""}.`, { signal });
           return;
         }
+        if (exitCode === 0 && inputError) {
+          fail("CLAUDE_COMMAND_FAILED", "Claude closed its input before the configuration was fully sent. Inspect its state before retrying.", { cause: inputError.message });
+          return;
+        }
         settled = true;
-        clearTimeout(timer);
+        cleanup();
         resolve({ exitCode, ...output() });
       });
       child.stdin?.on("error", (error2) => {
+        inputError = error2;
         if (error2.code !== "EPIPE") fail("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
       });
       child.stdin?.end(options.stdin);
@@ -30362,15 +30478,15 @@ const claudeScopeOptions = ["scope", "directory", "claude-dir"];
 const acceptance = { yes: "boolean", "accept-command": "hash" };
 const commands$1 = {
   plugins: {
-    list: { min: 0, json: true, options: { available: "boolean", "data-size": "optional-string" } },
+    list: { min: 0, output: "json", options: { available: "boolean", "data-size": "optional-string" } },
     details: { min: 1 },
-    install: { min: 1, scope: true, options: { ...acceptance, config: "repeat" } },
-    update: { min: 1, scope: true, managed: true, options: acceptance },
-    uninstall: { min: 1, scope: true, options: { "keep-data": "boolean", prune: "boolean", yes: "boolean" } },
-    enable: { min: 1, scope: true },
-    disable: { min: 0, max: 1, scope: true, options: { all: "boolean" } },
-    validate: { min: 1, json: true, options: { strict: "boolean" } },
-    configure: { min: 1, json: true, options: { "values-stdin": "boolean" } },
+    install: { min: 1, scope: true, output: "json-last-line", options: { ...acceptance, config: "repeat" } },
+    update: { min: 1, scope: true, managed: true, output: "json-last-line", options: acceptance },
+    uninstall: { min: 1, scope: true, output: "json-last-line", options: { "keep-data": "boolean", prune: "boolean", yes: "boolean" } },
+    enable: { min: 1, scope: true, output: "json-last-line" },
+    disable: { min: 0, max: 1, scope: true, output: "json-last-line", options: { all: "boolean" } },
+    validate: { min: 1, output: "json", options: { strict: "boolean" } },
+    configure: { min: 1, output: "json", options: { "values-stdin": "boolean" } },
     prune: { min: 0, scope: true, options: { yes: "boolean" } },
     init: { min: 1, options: { description: "string", author: "string", "author-email": "string", with: "list", force: "boolean" } },
     tag: { min: 0, max: 1, options: { push: "boolean", force: "boolean", message: "string", remote: "string" } },
@@ -30396,13 +30512,15 @@ const commands$1 = {
       "keep-temp": "boolean",
       verbose: "boolean",
       "no-publish": "boolean",
-      "publish-report": "boolean"
+      "publish-report": "boolean",
+      "native-json": "boolean",
+      "native-json-output": "string"
     } },
     "eval init": { min: 1, options: { bare: "boolean", interactive: "boolean", "eval-dir": "string" } }
   },
   marketplaces: {
     add: { min: 1, scope: true, options: { sparse: "list", claudeai: "boolean" } },
-    list: { min: 0, json: true },
+    list: { min: 0, output: "json" },
     remove: { min: 1, scope: true },
     update: { min: 0, max: 1 }
   },
@@ -30419,6 +30537,21 @@ const claudeRuntimeOptions = Object.fromEntries(
 function actionArgs(section, args) {
   const nested = section === "plugins" && args[0] === "eval" && args[1] === "init";
   return { action: nested ? "eval init" : args[0] ?? "", operands: args.slice(nested ? 2 : 1) };
+}
+function commandDefinition(section, action2) {
+  ensure(
+    Object.hasOwn(commands$1, section) && Object.hasOwn(commands$1[section], action2),
+    "INVALID_CLAUDE_COMMAND",
+    `Unknown Claude ${section} command: ${action2 || "(missing)"}. See help claude.`
+  );
+  return commands$1[section][action2];
+}
+function claudeRuntimeOutput(section, args, flags) {
+  const { action: action2 } = actionArgs(section, args);
+  const command = commandDefinition(section, action2);
+  if (section === "plugins" && action2 === "uninstall" && flags.prune === true) return "text";
+  if (section === "plugins" && action2 === "eval") return flags["native-json"] === true && flags["native-json-output"] === void 0 ? "json" : "text";
+  return command.output ?? "text";
 }
 function claudeRuntimeNeedsInput(section, args, flags) {
   return section === "plugins" && args[0] === "configure" && flags["values-stdin"] === true;
@@ -30460,6 +30593,7 @@ function optionArgs(flag, kind, value2) {
   if (flag === "threshold") ensure(Number(value2) <= 1, "INVALID_CLAUDE_OPTION", "--threshold must be between 0 and 1.");
   if (flag === "ablation") ensure(["none", "with-without"].includes(value2), "INVALID_CLAUDE_OPTION", "--ablation must be none or with-without.");
   if (flag === "mocks") ensure(["record", "off"].includes(value2), "INVALID_CLAUDE_OPTION", "--mocks must be record or off.");
+  if (flag === "native-json-output") ensure(value2.endsWith(".json"), "INVALID_CLAUDE_OPTION", "--native-json-output must name a .json file.");
   return value2.startsWith("-") ? [`--${flag}=${value2}`] : [`--${flag}`, value2];
 }
 function commandRules(section, action2, operands, flags) {
@@ -30470,17 +30604,12 @@ function commandRules(section, action2, operands, flags) {
     ensure(flags.all === true ? operands.length === 0 && flags.scope === void 0 : operands.length === 1, "INVALID_CLAUDE_ARGUMENT", "Disable one plugin, or use --all without a plugin name or scope.");
   }
   if (section === "plugins" && action2 === "configure") ensure(/^[^@\s]+@[^@\s]+$/.test(operands[0]), "INVALID_CLAUDE_ARGUMENT", "Plugin configure requires the full name@marketplace identifier from plugin list.");
-  if (section === "plugins" && action2 === "eval init") ensure(!(flags.bare === true && flags.interactive === true), "INVALID_CLAUDE_OPTION", "--bare and --interactive cannot be combined.");
+  if (section === "plugins" && action2 === "eval init") ensure(flags.interactive !== true, "INVALID_CLAUDE_OPTION", "--interactive requires a terminal. Use --bare with a case name, or invoke claude plugin eval init directly in your terminal.");
   if (section === "marketplaces" && action2 === "add" && flags.claudeai === true) ensure(flags.scope === void 0 && flags.sparse === void 0, "INVALID_CLAUDE_OPTION", "--claudeai cannot be combined with --scope or --sparse.");
 }
 function buildClaudeRuntimeArgs(section, args, flags) {
   const { action: action2, operands } = actionArgs(section, args);
-  ensure(
-    Object.hasOwn(commands$1, section) && Object.hasOwn(commands$1[section], action2),
-    "INVALID_CLAUDE_COMMAND",
-    `Unknown Claude ${section} command: ${action2 || "(missing)"}. See help claude.`
-  );
-  const command = commands$1[section][action2];
+  const command = commandDefinition(section, action2);
   arity(operands, command.min, command.max ?? command.min);
   for (const operand of operands) {
     ensure(
@@ -30503,14 +30632,17 @@ function buildClaudeRuntimeArgs(section, args, flags) {
     }
     const kind = command.options && Object.hasOwn(command.options, flag) ? command.options[flag] : void 0;
     ensure(kind, "INVALID_CLAUDE_OPTION", `--${flag} is not supported by Claude ${section} ${action2}.`);
-    options.push(...optionArgs(flag, kind, value2));
+    const translated2 = optionArgs(flag, kind, value2);
+    if (!["native-json", "native-json-output"].includes(flag)) options.push(...translated2);
   }
   commandRules(section, action2, operands, flags);
   if (section === "runtime") return [action2 === "version" ? "--version" : action2, ...operands];
   const native = section === "plugins" ? ["plugin", ...action2.split(" "), ...operands] : ["plugin", "marketplace", action2, ...operands];
   const unscoped = section === "plugins" && action2 === "disable" && flags.all === true || section === "marketplaces" && action2 === "add" && flags.claudeai === true;
   if (command.scope && !unscoped) native.push("--scope", typeof flags.scope === "string" ? flags.scope : "project");
-  if (command.json) native.push("--json");
+  const outputPath = flags["native-json-output"];
+  if (typeof outputPath === "string") native.push(...outputPath.startsWith("-") ? [`--json=${outputPath}`] : ["--json", outputPath]);
+  else if (claudeRuntimeOutput(section, args, flags) !== "text") native.push("--json");
   native.push(...options);
   return native;
 }
@@ -30552,21 +30684,7 @@ function claudeCommand(services) {
         input = JSON.stringify(values2) + "\n";
         ensure(new TextEncoder().encode(input).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
       }
-      const plan = { executable: executable ?? "claude", args: command, cwd: context.root, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input === void 0 ? {} : { inputBytes: new TextEncoder().encode(input).length } };
-      if (context.workspace.dryRun) return { dryRun: true, plan, executed: false };
-      const result = await services.runtime(executable).run(command, { cwd: context.root, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input === void 0 ? {} : { stdin: input } });
-      ensure(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
-      if (result.exitCode !== 0) throw new AppError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect its output before retrying; lifecycle operations may already have changed installation state.`, 1, { ...plan, ...result });
-      let data;
-      try {
-        data = JSON.parse(result.stdout.trim());
-      } catch {
-        try {
-          data = JSON.parse(result.stdout.trim().split("\n").at(-1) ?? "");
-        } catch {
-        }
-      }
-      return { dryRun: false, executed: true, ...plan, ...result, ...data === void 0 ? {} : { result: data } };
+      return context.claude.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     }
   };
 }
@@ -45508,6 +45626,9 @@ const germanGuidance = {
   }
 };
 const germanErrors = {
+  INVALID_CLAUDE_OUTPUT: "Das Ausgabeformat für Claude Code muss text, json oder json-last-line sein.",
+  CLAUDE_INVALID_OUTPUT: "Claude Code wurde beendet, lieferte aber nicht das angeforderte JSON. Prüfen Sie Ausgabe und externen Zustand vor einer Wiederholung.",
+  CLAUDE_COMMAND_INTERRUPTED: "Der Claude-Code-Befehl wurde unterbrochen. Prüfen Sie den externen Zustand vor einer Wiederholung.",
   AMBIGUOUS_BASE_LINK: "Ein interner Link verweist auf mehrere mögliche Dateien. Prüfen Sie Quellpfad und Linkziel.",
   BASE_CONTEXT_NOT_FOUND: "Die Kontextdatei ist nicht im Tresorindex enthalten. Prüfen Sie --context.",
   BASE_EVALUATION_ERROR: "Ein Bases-Ausdruck konnte nicht ausgewertet werden. Prüfen Sie Ansicht, Datei und Diagnose.",
@@ -45670,7 +45791,7 @@ class Localizer {
 }
 async function run() {
   const tokens = process.argv.slice(2);
-  const registry2 = new Registry(), events = new EventBus();
+  const registry2 = new Registry(), events = new EventBus(new NodeEventScope());
   let result;
   let activeContext;
   let localizer = new Localizer();
@@ -45694,6 +45815,7 @@ async function run() {
       const files = await NodeFiles.at(loaded.root, (message) => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       for (const id22 of ["file.created", "file.updated", "file.deleted"]) events.define({ id: id22, validate: (v) => isRecord(v) && typeof v.path === "string" && typeof v.revision === "string" && typeof v.bytes === "number" && v.operation === id22.slice(5) });
+      events.define({ id: "claude.executed", validate: (v) => isRecord(v) && typeof v.executable === "string" && typeof v.cwd === "string" && Number.isInteger(v.exitCode) });
       let environment;
       for (const generator of generators) registry2.add(registry2.generators, generator);
       for (const skill of builtinSkills) registry2.add(registry2.skills, skill);
@@ -45722,7 +45844,7 @@ async function run() {
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run()
       })) registry2.add(registry2.commands, command2);
-      registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget, runtime: (executable) => new NodeClaudeRuntime({ executable }) }));
+      registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       registry2.add(registry2.commands, basesCommand(async (context2) => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context2.root), context2.workspace.codec))));
       if (!bootstrap.flags["no-plugins"]) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events);
       const id2 = bootstrap.args[0] ?? "help";
@@ -45746,13 +45868,14 @@ async function run() {
       const project = environmentCommand || claudeWorkspaceCommand ? null : requestedProject !== void 0 ? await projects.inspect(requestedProject) : await projects.current();
       const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config2.settings.dryRun) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? minpath.resolve(files.root, project.directory) : files.root, project };
-      const context = { workspace, events, ...activeContext, input: async () => {
+      const claude = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
+      const context = { workspace, events, claude, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
         return Buffer.concat(chunks);
       } };
-      if (!parsed.flags.help && !["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id2)) await registry2.activate(context);
+      if (!parsed.flags.help && !claudeWorkspaceCommand && !["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id2)) await registry2.activate(context);
       const data = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command.run(parsed.args.slice(1), parsed.flags, context);
       result = { ok: true, data: localizer.result(parsed.flags.help ? "help" : id2, data) };
     }

@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ let root: string, files: NodeFiles, workspace: Workspace;
 const write = (path: string, content: string) => ({ path, bytes: encodeText(content) });
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-generation-')); files = await NodeFiles.at(root);
-  workspace = new Workspace(files, new ObsidianDocuments(), new EventBus(), false);
+  workspace = new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), false);
 });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 

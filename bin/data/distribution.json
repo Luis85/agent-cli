@@ -123,6 +123,8 @@
     "data/licenses/node_modules__yaml-LICENSE",
     "data/licenses/node_modules__zod-LICENSE",
     "data/licenses/node_modules__zwitch-license",
+    "data/types/application/claude-lifecycle.d.ts",
+    "data/types/application/claude-runtime.d.ts",
     "data/types/application/events.d.ts",
     "data/types/application/plugins.d.ts",
     "data/types/application/ports.d.ts",

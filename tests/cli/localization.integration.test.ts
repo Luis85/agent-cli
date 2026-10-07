@@ -54,7 +54,7 @@ describe('built-in localization catalog coverage', () => {
       const registry = new Registry();
       const unavailable = (): never => { throw new Error('Catalog must not invoke management services'); };
       const management = [basesCommand(unavailable), claudeCommand({
-        agentCodec: { parse: unavailable, render: unavailable }, target: unavailable, runtime: unavailable,
+        agentCodec: { parse: unavailable, render: unavailable }, target: unavailable,
       })];
       const ids = [...commands(registry, services), ...management].map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);

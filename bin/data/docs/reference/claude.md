@@ -122,11 +122,11 @@ These commands launch the executable named `claude`, or `--claude-bin <executabl
 | --- | --- | --- |
 | `claude plugins list` | `claude plugin list --json` | `--available`, `--data-size <id>` or `--data-size ''` for all |
 | `claude plugins details <id>` | `claude plugin details <id>` | — |
-| `claude plugins install <id>` | `claude plugin install <id>` | `--scope user\|project\|local`, `--yes` or `--accept-command <sha256>`, `--config <key=value or JSON array>` |
-| `claude plugins update <id>` | `claude plugin update <id>` | `--scope user\|project\|local\|managed`, `--yes` or `--accept-command <sha256>` |
-| `claude plugins uninstall <id>` | `claude plugin uninstall <id>` | `--scope user\|project\|local`, `--keep-data`, `--prune`, `--yes` |
-| `claude plugins enable <id>` | `claude plugin enable <id>` | `--scope user\|project\|local` |
-| `claude plugins disable <id>` | `claude plugin disable <id>` | `--scope user\|project\|local`; alternatively `disable --all` without an ID or scope |
+| `claude plugins install <id>` | `claude plugin install <id> --json` | `--scope user\|project\|local`, `--yes` or `--accept-command <sha256>`, `--config <key=value or JSON array>` |
+| `claude plugins update <id>` | `claude plugin update <id> --json` | `--scope user\|project\|local\|managed`, `--yes` or `--accept-command <sha256>` |
+| `claude plugins uninstall <id>` | `claude plugin uninstall <id> --json` | `--scope user\|project\|local`, `--keep-data`, `--prune`, `--yes`; `--prune` omits native `--json` |
+| `claude plugins enable <id>` | `claude plugin enable <id> --json` | `--scope user\|project\|local` |
+| `claude plugins disable <id>` | `claude plugin disable <id> --json` | `--scope user\|project\|local`; alternatively `disable --all` without an ID or scope |
 | `claude plugins validate <path>` | `claude plugin validate <path> --json` | `--strict` |
 | `claude plugins configure <name@marketplace>` | `claude plugin configure <name@marketplace> --json` | `--values-stdin` with a Forge text input source |
 | `claude plugins prune` | `claude plugin prune` | `--scope user\|project\|local`, `--yes` |
@@ -134,7 +134,7 @@ These commands launch the executable named `claude`, or `--claude-bin <executabl
 | `claude plugins tag [path]` | `claude plugin tag [path]` | `--message`, `--remote`, `--push`, `--force` |
 | `claude plugins test [directory]` | `claude plugin test [directory]` | — |
 | `claude plugins eval [target]` | `claude plugin eval [target]` | See evaluation options below |
-| `claude plugins eval init <case-name>` | `claude plugin eval init <case-name>` | `--bare` or `--interactive`, `--eval-dir` |
+| `claude plugins eval init <case-name>` | `claude plugin eval init <case-name>` | `--bare`, `--eval-dir`; interactive authoring requires invoking Claude directly |
 | `claude marketplaces add <source>` | `claude plugin marketplace add <source>` | `--scope user\|project\|local`, `--sparse <path or JSON array>`; alternatively `--claudeai` without scope or sparse |
 | `claude marketplaces list` | `claude plugin marketplace list --json` | — |
 | `claude marketplaces remove <name>` | `claude plugin marketplace remove <name>` | `--scope user\|project\|local` |
@@ -161,13 +161,24 @@ Evaluation options follow the [native eval contract](https://code.claude.com/doc
 | `--allow-tools`, `--allow-real-servers`, `--trust-plugin` | Tool string/JSON array and explicit native execution permissions |
 | `--mocks`, `--scaffold`, `--no-scaffold` | Mocks `record` or `off`; scaffold switches are mutually exclusive |
 | `--output-dir`, `--keep-temp`, `--verbose` | Report directory and native diagnostic options |
+| `--native-json`, `--native-json-output <path.json>` | Emit native JSON on stdout, or write it to the named `.json` file; either option enables native JSON mode |
 | `--no-publish`, `--publish-report` | Mutually exclusive report publication controls |
 
-An executed eval makes model calls, may run plugin code, and incurs native account usage. Depending on the native environment, it may publish a private report to Claude; use `--no-publish` to keep reports local. Native `test` executes authored mod tests, and `tag --push` can publish a Git tag. Forge forwards execution, acceptance, force and publication switches only when explicitly supplied. `prune` can require `--yes` to remove anything without a terminal. `eval init` requires a case name in Forge; `--interactive` still requires native interaction that this wrapper cannot provide.
+For a plugin-directory target, `--eval-dir` is relative to that plugin. For `eval init`, it is relative to the current Forge root. Native Claude requires relative directory names without `..`. For example, eval of `plugins/team-tools` uses `--eval-dir evals`, while init from the project root can use `--eval-dir plugins/team-tools/evals`. A native JSON output path resolves from the native working directory and is written by Claude, outside Forge's revision guards. `--native-json-output` takes precedence if both native JSON options are supplied; Forge does not read that result file back into its response.
 
-`--dry-run` validates inputs and returns the executable, argument array and working directory without starting a process. Forge uses no shell or interactive terminal. It closes subprocess stdin except for `configure --values-stdin`. A command that needs interactive input may fail or time out. Runtime `--timeout` is milliseconds, from 1 to 3,600,000; the default is 120,000. This differs from hook-handler `timeout`, which is seconds. Configuration input and captured output are each limited to 1 MiB. Success includes `exitCode`, `stdout` and `stderr`; a JSON stdout document, or JSON on its final line, is additionally exposed as `result`. Original output remains available.
+An executed eval makes model calls, may run plugin code, and incurs native account usage. Depending on the native environment, it may publish a private report to Claude; use `--no-publish` to keep reports local. Native `test` executes authored mod tests, and `tag --push` can publish a Git tag. Forge forwards execution, acceptance, force and publication switches only when explicitly supplied. `prune` can require `--yes` to remove anything without a terminal. `eval init` requires a case name in Forge and rejects `--interactive` before starting Claude because Forge provides no terminal.
 
-Forge supports the explicitly listed options from the [official plugin CLI reference](https://code.claude.com/docs/en/plugins/cli-reference). Native version-specific flags outside this list are rejected. In particular, eval's `--report` is not exposed because the upstream reference does not specify its argument contract; use the installed `claude plugin eval --help` and native CLI for it. Forge's `--json` controls its response envelope; it does not enable native eval `--json [path]`. Installed releases may support fewer documented commands or flags.
+`--dry-run` validates inputs and returns the executable, argument array and working directory without starting a process. Forge uses no shell or interactive terminal. It closes subprocess stdin except for `configure --values-stdin`. A command that needs interactive input may fail or time out. Runtime `--timeout` is milliseconds, from 1 to 3,600,000; the default is 120,000. This differs from hook-handler `timeout`, which is seconds. Configuration input and captured output are each limited to 1 MiB. Responses retain native `exitCode`, `stdout` and `stderr`.
+
+Cancellation, timeout and output-limit failures request termination of the native process group on POSIX. Windows cleanup targets the direct process; descendants may survive. Error details report `terminationScope`, `terminationRequested` and any `terminationError`. SIGINT/SIGTERM cancellation preserves status 130/143. Inspect external state before retrying; termination cannot undo completed work. A child that closes configuration input early cannot be reported as a successful configuration write merely because it exits zero.
+
+The output protocol follows the selected command. Lists, configuration and validation use a complete JSON document. Install/update/enable/disable/uninstall use JSON on the last stdout line, retaining any preceding native messages; uninstall with `--prune` uses text because Claude disallows that combination with JSON. Eval uses a complete JSON document only with `--native-json` and no output file. Other text output is retained without treating JSON-looking messages as structured results. Parsed output is exposed as `result`, including in error details for nonzero exits. Validation failures therefore retain per-file diagnostics, and a refused install/update can expose `shownCommand.sha256` for an explicit `--accept-command` retry.
+
+Native status remains significant: enable/disable can exit 1 with `alreadyInGoalState: true`; eval exits 2 for partial runs and 130/143 for interruption/termination. A nonzero status remains a Forge error with the native status and any parsed result, rather than becoming an automatic success or retry. `--yes` and `--accept-command` have no effect when Claude itself invokes these operations inside a Claude Code session; use your own terminal for native acceptance.
+
+Forge supports the explicitly listed options from the [official plugin CLI reference](https://code.claude.com/docs/en/plugins/cli-reference). Mutation JSON requires Claude Code v2.1.268 or later; native validation JSON requires v2.1.259, eval v2.1.269, hash acceptance v2.1.271, and configuration v2.1.285. Forge does not silently retry with older output formats or upgrade the installed CLI. Check `claude runtime version` when a command is unsupported.
+
+Native version-specific flags outside this list are rejected. In particular, eval's `--report` is not exposed because the upstream reference does not specify its argument contract; use the installed `claude plugin eval --help` and native CLI for it. Forge's `--json` controls its response envelope; eval's `--native-json` and `--native-json-output` select Claude's own JSON output. Installed releases may support fewer documented commands or flags.
 
 A missing installation reports `CLAUDE_NOT_INSTALLED`. Failed or interrupted native operations may already have changed Claude's installation state; inspect the captured output and installed state before retrying. Forge revision guards and `file.*` events cover its own file mutations, not changes made by the native executable. The repository verifies this integration using fixture executables; it does not claim end-to-end verification against an installed Claude Code release.
 

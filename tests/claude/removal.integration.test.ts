@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,7 +14,7 @@ const asset = '.claude/agents/reviewer.md';
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-removal-'));
   files = await NodeFiles.at(root);
-  events = new EventBus();
+  events = new EventBus(new NodeEventScope());
   events.define({ id: 'file.deleted', validate: (value): value is object => typeof value === 'object' });
   await mkdir(join(root, '.claude/agents'), { recursive: true });
   // Removing a damaged definition must not require parsing that definition first.

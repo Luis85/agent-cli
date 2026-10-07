@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { globalOptions } from '../../src/presentation/arguments.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -9,14 +10,14 @@ import { EventBus } from '../../src/application/events.ts';
 import { Registry, type CommandContext, type Plugin } from '../../src/application/plugins.ts';
 const plugin = (id: string): Plugin => ({ manifest: { id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Test plugin', author: 'Test' } });
 it('rejects namespace theft, duplicate plugins and reserved global options', () => {
-  const registry = new Registry(), events = new EventBus();
+  const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registry.register(plugin('one'), events);
   expect(() => registry.register(plugin('one'), events)).toThrow();
   expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'one.skill', content: 'bad' }] }, events)).toThrow();
   expect(() => registry.register({ ...plugin('two'), commands: [{ id: 'two.run', description: 'Run', usage: 'two.run', options: { root: 'string' }, run() {} }] }, events)).toThrow();
 });
 it('disposes successful activations in reverse order after a later activation fails', async () => {
-  const registry = new Registry(), events = new EventBus(), calls: string[] = [];
+  const registry = new Registry(), events = new EventBus(new NodeEventScope()), calls: string[] = [];
   registry.register({ ...plugin('one'), onload() { calls.push('one'); }, async onunload() { await Promise.resolve(); calls.push('dispose-one'); } }, events);
   registry.register({ ...plugin('two'), onload() { calls.push('two'); }, onunload() { calls.push('dispose-two'); throw new Error('cleanup failed'); } }, events);
   registry.register({ ...plugin('three'), onload() { throw new Error('activation failed'); } }, events);
@@ -28,7 +29,7 @@ it('disposes successful activations in reverse order after a later activation fa
   expect(calls).toHaveLength(4);
 });
 it('publishes no contributions when any registration fails', () => {
-  const registry = new Registry(), events = new EventBus();
+  const registry = new Registry(), events = new EventBus(new NodeEventScope());
   const candidate: Plugin = { ...plugin('atomic'),
     commands: [{ id: 'atomic.run', description: 'Run', usage: 'atomic.run', run() {} }],
     events: [{ id: 'atomic.changed', validate: (_v): _v is unknown => true }],
@@ -51,10 +52,10 @@ it.each([
   { ...plugin('bad'), commands: [{ id: 'bad.run', description: '', usage: '', run() {}, options: [] }] },
   { ...plugin('bad'), generators: [{ id: 'bad.generator', generate() { return []; } }] },
 ])('reports invalid JavaScript plugin shapes with a structured error (%j)', candidate => {
-  expect(() => new Registry().register(candidate as Plugin, new EventBus())).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
+  expect(() => new Registry().register(candidate as Plugin, new EventBus(new NodeEventScope()))).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
 });
 it('rejects repeated activation and registration after activation/disposal', async () => {
-  const registry = new Registry(), events = new EventBus(); let activations = 0;
+  const registry = new Registry(), events = new EventBus(new NodeEventScope()); let activations = 0;
   registry.register({ ...plugin('one'), onload() { activations++; } }, events);
   await registry.activate({ events } as CommandContext);
   await expect(registry.activate({ events } as CommandContext)).rejects.toThrowError(expect.objectContaining({ code: 'PLUGIN_LIFECYCLE' }));
@@ -65,7 +66,7 @@ it('rejects repeated activation and registration after activation/disposal', asy
 });
 
 it('unloads a partially loaded plugin before earlier plugins', async () => {
-  const registry = new Registry(), events = new EventBus(), calls: string[] = [];
+  const registry = new Registry(), events = new EventBus(new NodeEventScope()), calls: string[] = [];
   registry.register({ ...plugin('first'), onunload() { calls.push('first'); } }, events);
   registry.register({ ...plugin('broken'), onload() { throw new Error('partial load'); }, onunload() { calls.push('broken'); } }, events);
   await expect(registry.activate({ events } as CommandContext)).rejects.toThrow('partial load');
@@ -73,12 +74,27 @@ it('unloads a partially loaded plugin before earlier plugins', async () => {
   expect(calls).toEqual(['broken', 'first']);
 });
 
+it('retains the original unload hook and its receiver when activation replaces the hook', async () => {
+  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const calls: string[] = [];
+  const candidate: Plugin = {
+    ...plugin('mutable'),
+    onload() { this.onunload = () => { calls.push('replacement'); }; },
+    onunload() { calls.push(this.manifest.id); },
+  };
+  registry.register(candidate, events);
+  await registry.activate({ events } as CommandContext);
+  await registry.dispose(events);
+  expect(calls).toEqual(['mutable']);
+  expect(events.warnings).toEqual([]);
+});
+
 const temporaryRoots: string[] = [];
 afterEach(async () => { await Promise.all(temporaryRoots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'agent-plugin-')); temporaryRoots.push(root);
   await writeFile(join(root, 'package.json'), '{"type":"module"}');
-  return { root, files: await NodeFiles.at(root), registry: new Registry(), events: new EventBus() };
+  return { root, files: await NodeFiles.at(root), registry: new Registry(), events: new EventBus(new NodeEventScope()) };
 }
 async function packagePlugin(root: string, id: string, source: string, entry = 'main.mjs', overrides: Record<string, unknown> = {}) {
   const directory = join(root, 'plugins', id);
@@ -128,6 +144,6 @@ it('does not fall back to CommonJS when an ESM entry fails during evaluation', a
   await expect(loadEnabledPlugins('plugins', ['broken'], files, registry, events)).rejects.toThrow('ESM broken');
 });
 it.each(Object.keys(globalOptions))('reserves the global --%s option for the host', option => {
-  const registry = new Registry(), events = new EventBus();
+  const registry = new Registry(), events = new EventBus(new NodeEventScope());
   expect(() => registry.register({ ...plugin('quality'), commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', options: { [option]: 'boolean' }, run() {} }] }, events)).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
 });

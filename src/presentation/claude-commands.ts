@@ -1,4 +1,4 @@
-import { AppError, ensure, isRecord } from '../domain/errors.ts';
+import { ensure, isRecord } from '../domain/errors.ts';
 import { claudeHookEvents } from '../domain/claude-hooks.ts';
 import { claudePluginCapabilities } from '../domain/claude-plugins.ts';
 import { ClaudeAgents } from '../application/claude-agents.ts';
@@ -9,7 +9,7 @@ import type { ClaudeServices } from './claude-services.ts';
 import { arity, value } from './arguments.ts';
 import { parseJson } from './input.ts';
 import { claudeBytes, claudeInput, claudeInputOptions, claudeOptions, claudeScopeOptions } from './claude-input.ts';
-import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions } from './claude-runtime-commands.ts';
+import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from './claude-runtime-commands.ts';
 
 type Flags = Record<string, string | boolean>;
 const nativePluginActions = ['create', 'inspect', 'manifest', 'check', 'asset', 'write-asset', 'remove-asset'];
@@ -45,18 +45,7 @@ export function claudeCommand(services: ClaudeServices): Command {
         input = JSON.stringify(values) + '\n';
         ensure(new TextEncoder().encode(input).length <= 1024 * 1024, 'INVALID_CLAUDE_INPUT', 'Claude configuration input must not exceed 1 MiB.');
       }
-      const plan = { executable: executable ?? 'claude', args: command, cwd: context.root, ...(timeoutMs === undefined ? {} : { timeoutMs }), ...(input === undefined ? {} : { inputBytes: new TextEncoder().encode(input).length }) };
-      if (context.workspace.dryRun) return { dryRun: true, plan, executed: false };
-      const result = await services.runtime(executable).run(command, { cwd: context.root, ...(timeoutMs === undefined ? {} : { timeoutMs }), ...(input === undefined ? {} : { stdin: input }) });
-      ensure(Number.isInteger(result.exitCode), 'CLAUDE_RUNTIME_FAILED', 'Claude Code returned no exit status.');
-      if (result.exitCode !== 0) throw new AppError('CLAUDE_RUNTIME_FAILED', `Claude Code exited with status ${result.exitCode}. Inspect its output before retrying; lifecycle operations may already have changed installation state.`, 1, { ...plan, ...result });
-      let data: unknown;
-      try { data = JSON.parse(result.stdout.trim()); }
-      catch {
-        try { data = JSON.parse(result.stdout.trim().split('\n').at(-1) ?? ''); }
-        catch { /* Native diagnostics are retained as text. */ }
-      }
-      return { dryRun: false, executed: true, ...plan, ...result, ...(data === undefined ? {} : { result: data }) };
+      return context.claude.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     },
   };
 }

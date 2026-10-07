@@ -1,5 +1,8 @@
 /** Stable application codes select human guidance; original diagnostics remain separate. */
 export const germanErrors = {
+  INVALID_CLAUDE_OUTPUT: 'Das Ausgabeformat für Claude Code muss text, json oder json-last-line sein.',
+  CLAUDE_INVALID_OUTPUT: 'Claude Code wurde beendet, lieferte aber nicht das angeforderte JSON. Prüfen Sie Ausgabe und externen Zustand vor einer Wiederholung.',
+  CLAUDE_COMMAND_INTERRUPTED: 'Der Claude-Code-Befehl wurde unterbrochen. Prüfen Sie den externen Zustand vor einer Wiederholung.',
   AMBIGUOUS_BASE_LINK: 'Ein interner Link verweist auf mehrere mögliche Dateien. Prüfen Sie Quellpfad und Linkziel.',
   BASE_CONTEXT_NOT_FOUND: 'Die Kontextdatei ist nicht im Tresorindex enthalten. Prüfen Sie --context.',
   BASE_EVALUATION_ERROR: 'Ein Bases-Ausdruck konnte nicht ausgewertet werden. Prüfen Sie Ansicht, Datei und Diagnose.',

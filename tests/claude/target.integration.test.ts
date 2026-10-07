@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,10 +15,10 @@ import { NodeFiles } from '../../src/infrastructure/files.ts';
 let root: string, context: CommandContext;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-target-'));
-  const events = new EventBus();
+  const events = new EventBus(new NodeEventScope());
   events.define({ id: 'file.created', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
-  context = { root, workspaceRoot: root, workspace, events, project: null, input: async () => new Uint8Array() };
+  context = { root, workspaceRoot: root, workspace, events, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, input: async () => new Uint8Array() };
 });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 

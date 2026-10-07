@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,7 +15,7 @@ import { standardUiCatalog } from '../../src/infrastructure/ui-catalog.ts';
 let root: string, files: NodeFiles;
 const codec = new MarkdownUiDefinitions();
 const source = (id: string, fields: Record<string, unknown> = {}, body = '# Description\n\nKeep **Markdown** and {{prose}} intact.\n') => encodeText(`---\n${stringify({ schemaVersion: 1, id, root: { tag: 'div', children: [{ slot: 'children' }] }, ...fields })}---\n${body}`);
-const library = (dryRun = false, renderer?: UiRenderer) => new UiLibrary(new Workspace(files, new ObsidianDocuments(), new EventBus(), dryRun), codec, standardUiCatalog, renderer);
+const library = (dryRun = false, renderer?: UiRenderer) => new UiLibrary(new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), dryRun), codec, standardUiCatalog, renderer);
 const put = async (path: string, id: string, fields: Record<string, unknown> = {}) => files.writeBatch([{ path, bytes: source(id, fields) }], false);
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-ui-')); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });

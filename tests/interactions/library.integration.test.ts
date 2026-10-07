@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,7 +14,7 @@ let root: string, files: NodeFiles, events: EventBus;
 const codec = new MarkdownInteractionDefinitions();
 const library = (dryRun = false) => new InteractionLibrary(new Workspace(files, new ObsidianDocuments(), events, dryRun), codec);
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'forge-interactions-')); files = await NodeFiles.at(root); events = new EventBus();
+  root = await mkdtemp(join(tmpdir(), 'forge-interactions-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());
   for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (value): value is unknown => value !== null });
 });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });

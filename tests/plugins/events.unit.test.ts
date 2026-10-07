@@ -1,7 +1,8 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/application/events.ts';
 const create = () => {
-  const bus = new EventBus(); bus.define({ id: 'task.changed', validate: (v): v is { id: string } => !!v && typeof v === 'object' && 'id' in v && typeof v.id === 'string' }); return bus;
+  const bus = new EventBus(new NodeEventScope()); bus.define({ id: 'task.changed', validate: (v): v is { id: string } => !!v && typeof v === 'object' && 'id' in v && typeof v.id === 'string' }); return bus;
 };
 describe('invocation event bus', () => {
   it('awaits ordered listeners, isolates mutations and catches synchronous/asynchronous failures', async () => {
@@ -37,7 +38,7 @@ describe('invocation event bus', () => {
   });
 });
 it('rejects non-JSON payloads before recording or notifying', async () => {
-  const bus = new EventBus(); let delivered = 0;
+  const bus = new EventBus(new NodeEventScope()); let delivered = 0;
   bus.define({ id: 'anything.changed', validate: (_v): _v is unknown => true });
   bus.on('anything.changed', () => { delivered++; });
   const cycle: Record<string, unknown> = {}; cycle.self = cycle;
@@ -49,12 +50,12 @@ it('rejects non-JSON payloads before recording or notifying', async () => {
   expect(JSON.parse(JSON.stringify(bus.history))[0].payload).toEqual({ nested: [null, true, 1, 'ok'] });
 });
 it('isolates validator mutation and rejects asynchronous or throwing guards', async () => {
-  const bus = new EventBus();
+  const bus = new EventBus(new NodeEventScope());
   bus.define({ id: 'task.changed', validate: (value): value is unknown => { (value as { id: string }).id = 'mutated'; return true; } });
   await bus.emit('task.changed', { id: 'original' });
   expect(bus.history[0]?.payload).toEqual({ id: 'original' });
   for (const validate of [() => { throw new Error('guard failed'); }, async () => { throw new Error('async guard failed'); }]) {
-    const other = new EventBus();
+    const other = new EventBus(new NodeEventScope());
     other.define({ id: 'task.changed', validate: validate as unknown as (value: unknown) => value is unknown });
     await expect(other.emit('task.changed', {})).rejects.toThrowError(expect.objectContaining({ code: 'INVALID_EVENT_PAYLOAD' }));
     expect(other.history).toEqual([]);

@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawn } from 'node:child_process';
 import { NodeClaudeRuntime } from '../../src/infrastructure/claude-runtime.ts';
 
 const directories: string[] = [];
@@ -97,6 +98,66 @@ describe('installed Claude CLI adapter', () => {
     });
   });
 
+  it('does not report success when the child closes stdin before the full payload was sent', async () => {
+    const { runtime, script, cwd } = await fixture(`process.stdout.write('finished early', () => process.exit(0));`);
+    await expect(runtime.run([script], { cwd, stdin: 'x'.repeat(512 * 1024) })).rejects.toMatchObject({
+      code: 'CLAUDE_COMMAND_FAILED', details: { stdout: 'finished early' },
+    });
+  });
+
+  it('removes host lifecycle listeners after success and failure', async () => {
+    const signals = ['SIGINT', 'SIGTERM', 'exit'] as const;
+    const before = signals.map(signal => process.listenerCount(signal));
+    const { runtime, script, cwd } = await fixture('process.exitCode = 0;');
+    await runtime.run([script], { cwd });
+    expect(signals.map(signal => process.listenerCount(signal))).toEqual(before);
+    const missing = new NodeClaudeRuntime({ executable: join(cwd, 'missing') });
+    await expect(missing.run([], { cwd })).rejects.toMatchObject({ code: 'CLAUDE_NOT_INSTALLED' });
+    expect(signals.map(signal => process.listenerCount(signal))).toEqual(before);
+  });
+
+  it.skipIf(process.platform === 'win32').each(['SIGINT', 'SIGTERM'] as const)('stops native work when the host receives %s', async signal => {
+    const adapter = new URL('../../src/infrastructure/claude-runtime.ts', import.meta.url).href;
+    const { script, cwd } = await fixture(`
+      import { NodeClaudeRuntime } from ${JSON.stringify(adapter)};
+      try {
+        await new NodeClaudeRuntime({ executable: process.execPath }).run(['worker.mjs'], { cwd: process.cwd() });
+      } catch (error) {
+        process.stdout.write(JSON.stringify({ code: error.code, details: error.details }));
+        process.exitCode = error.exitCode;
+      }
+    `);
+    await writeFile(join(cwd, 'worker.mjs'), `
+      import { writeFileSync } from 'node:fs';
+      writeFileSync('worker.pid', String(process.pid));
+      setInterval(() => {}, 1000);
+    `);
+    const host = spawn(process.execPath, ['--experimental-transform-types', script], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '', pid: number | undefined;
+    host.stdout.on('data', chunk => { stdout += String(chunk); });
+    host.stderr.on('data', chunk => { stderr += String(chunk); });
+    const complete = new Promise<number | null>((resolve, reject) => {
+      host.once('error', reject);
+      host.once('close', code => resolve(code));
+    });
+    try {
+      await expect.poll(async () => {
+        try { pid = Number(await readFile(join(cwd, 'worker.pid'), 'utf8')); return Number.isInteger(pid); }
+        catch { return false; }
+      }, { timeout: 3000, message: `Host failed to start: ${stderr}` }).toBe(true);
+      host.kill(signal);
+      expect(await complete).toBe(signal === 'SIGINT' ? 130 : 143);
+      expect(JSON.parse(stdout)).toMatchObject({ code: 'CLAUDE_COMMAND_INTERRUPTED', details: { signal, terminationScope: 'process-group', terminationRequested: true } });
+      await expect.poll(() => {
+        try { process.kill(pid!, 0); return true; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
+      }).toBe(false);
+    } finally {
+      host.kill('SIGKILL');
+      if (pid) { try { process.kill(-pid, 'SIGKILL'); } catch { /* Already stopped. */ } }
+    }
+  });
+
   it('terminates a timed-out process and retains diagnostics', async () => {
     const { runtime, script, cwd } = await fixture(`
       import { writeFileSync } from 'node:fs';
@@ -106,13 +167,37 @@ describe('installed Claude CLI adapter', () => {
       setInterval(() => {}, 1000);
     `);
     await expect(runtime.run([script], { cwd, timeoutMs: 500 })).rejects.toMatchObject({
-      code: 'CLAUDE_COMMAND_TIMEOUT', details: { timeoutMs: 500, stdout: 'started', stderr: 'waiting' },
+      code: 'CLAUDE_COMMAND_TIMEOUT', message: expect.stringContaining('Termination requested.'),
+      details: { timeoutMs: 500, stdout: 'started', stderr: 'waiting', terminationScope: process.platform === 'win32' ? 'direct-process' : 'process-group', terminationRequested: true },
     });
     const pid = Number(await readFile(join(cwd, 'child.pid'), 'utf8'));
     await expect.poll(() => {
       try { process.kill(pid, 0); return true; }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
     }).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32')('reports unsuccessful termination requests without claiming the process stopped', async () => {
+    const { runtime, script, cwd } = await fixture(`
+      import { writeFileSync } from 'node:fs';
+      writeFileSync('child.pid', String(process.pid));
+      setInterval(() => {}, 1000);
+    `);
+    const kill = process.kill.bind(process);
+    const spy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid < 0 && signal === 'SIGKILL') throw Object.assign(new Error('Permission denied'), { code: 'EPERM' });
+      return kill(pid, signal);
+    });
+    try {
+      await expect(runtime.run([script], { cwd, timeoutMs: 500 })).rejects.toMatchObject({
+        code: 'CLAUDE_COMMAND_TIMEOUT', message: expect.stringContaining('Termination could not be requested.'),
+        details: { terminationScope: 'process-group', terminationRequested: false, terminationError: 'Permission denied' },
+      });
+    } finally {
+      spy.mockRestore();
+      const pid = Number(await readFile(join(cwd, 'child.pid'), 'utf8'));
+      try { kill(-pid, 'SIGKILL'); } catch { /* Already exited. */ }
+    }
   });
 
   it('reports a signal termination with diagnostics instead of calling it a successful exit', async () => {
@@ -145,7 +230,8 @@ describe('installed Claude CLI adapter', () => {
     `);
     const runtime = new NodeClaudeRuntime({ executable: process.execPath, maxOutputBytes: 1024 });
     await expect(runtime.run([script], { cwd })).rejects.toMatchObject({
-      code: 'CLAUDE_OUTPUT_LIMIT', details: { maxOutputBytes: 1024, stdout: 'a'.repeat(700), stderr: 'b'.repeat(324) },
+      code: 'CLAUDE_OUTPUT_LIMIT', message: expect.stringContaining('Termination requested.'),
+      details: { maxOutputBytes: 1024, stdout: 'a'.repeat(700), stderr: 'b'.repeat(324), terminationRequested: true },
     });
   });
 

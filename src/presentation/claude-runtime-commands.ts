@@ -4,27 +4,28 @@ import { arity, globalOptions } from './arguments.ts';
 type RuntimeSection = 'plugins' | 'marketplaces' | 'runtime';
 type Flags = Record<string, string | boolean>;
 type OptionKind = 'boolean' | 'string' | 'list' | 'repeat' | 'hash' | 'integer' | 'number' | 'optional-string';
+type RuntimeOutput = 'text' | 'json' | 'json-last-line';
 interface RuntimeCommand {
   min: number;
   max?: number;
   scope?: boolean;
   managed?: boolean;
-  json?: boolean;
+  output?: RuntimeOutput;
   options?: Record<string, OptionKind>;
 }
 
 const acceptance = { yes: 'boolean', 'accept-command': 'hash' } as const;
 const commands: Record<RuntimeSection, Record<string, RuntimeCommand>> = {
   plugins: {
-    list: { min: 0, json: true, options: { available: 'boolean', 'data-size': 'optional-string' } },
+    list: { min: 0, output: 'json', options: { available: 'boolean', 'data-size': 'optional-string' } },
     details: { min: 1 },
-    install: { min: 1, scope: true, options: { ...acceptance, config: 'repeat' } },
-    update: { min: 1, scope: true, managed: true, options: acceptance },
-    uninstall: { min: 1, scope: true, options: { 'keep-data': 'boolean', prune: 'boolean', yes: 'boolean' } },
-    enable: { min: 1, scope: true },
-    disable: { min: 0, max: 1, scope: true, options: { all: 'boolean' } },
-    validate: { min: 1, json: true, options: { strict: 'boolean' } },
-    configure: { min: 1, json: true, options: { 'values-stdin': 'boolean' } },
+    install: { min: 1, scope: true, output: 'json-last-line', options: { ...acceptance, config: 'repeat' } },
+    update: { min: 1, scope: true, managed: true, output: 'json-last-line', options: acceptance },
+    uninstall: { min: 1, scope: true, output: 'json-last-line', options: { 'keep-data': 'boolean', prune: 'boolean', yes: 'boolean' } },
+    enable: { min: 1, scope: true, output: 'json-last-line' },
+    disable: { min: 0, max: 1, scope: true, output: 'json-last-line', options: { all: 'boolean' } },
+    validate: { min: 1, output: 'json', options: { strict: 'boolean' } },
+    configure: { min: 1, output: 'json', options: { 'values-stdin': 'boolean' } },
     prune: { min: 0, scope: true, options: { yes: 'boolean' } },
     init: { min: 1, options: { description: 'string', author: 'string', 'author-email': 'string', with: 'list', force: 'boolean' } },
     tag: { min: 0, max: 1, options: { push: 'boolean', force: 'boolean', message: 'string', remote: 'string' } },
@@ -35,12 +36,13 @@ const commands: Record<RuntimeSection, Record<string, RuntimeCommand>> = {
       'trust-plugin': 'boolean', mocks: 'string', 'eval-dir': 'string', case: 'string', tag: 'list',
       'output-dir': 'string', 'allow-real-servers': 'boolean', 'keep-temp': 'boolean', verbose: 'boolean',
       'no-publish': 'boolean', 'publish-report': 'boolean',
+      'native-json': 'boolean', 'native-json-output': 'string',
     } },
     'eval init': { min: 1, options: { bare: 'boolean', interactive: 'boolean', 'eval-dir': 'string' } },
   },
   marketplaces: {
     add: { min: 1, scope: true, options: { sparse: 'list', claudeai: 'boolean' } },
-    list: { min: 0, json: true },
+    list: { min: 0, output: 'json' },
     remove: { min: 1, scope: true },
     update: { min: 0, max: 1 },
   },
@@ -61,6 +63,21 @@ export const claudeRuntimeOptions: Record<string, 'string' | 'boolean'> = Object
 function actionArgs(section: RuntimeSection, args: string[]): { action: string; operands: string[] } {
   const nested = section === 'plugins' && args[0] === 'eval' && args[1] === 'init';
   return { action: nested ? 'eval init' : args[0] ?? '', operands: args.slice(nested ? 2 : 1) };
+}
+
+function commandDefinition(section: RuntimeSection, action: string): RuntimeCommand {
+  ensure(Object.hasOwn(commands, section) && Object.hasOwn(commands[section], action), 'INVALID_CLAUDE_COMMAND',
+    `Unknown Claude ${section} command: ${action || '(missing)'}. See help claude.`);
+  return commands[section][action]!;
+}
+
+/** Native stdout protocol; a requested eval JSON file is not stdout JSON. */
+export function claudeRuntimeOutput(section: RuntimeSection, args: string[], flags: Flags): RuntimeOutput {
+  const { action } = actionArgs(section, args);
+  const command = commandDefinition(section, action);
+  if (section === 'plugins' && action === 'uninstall' && flags.prune === true) return 'text';
+  if (section === 'plugins' && action === 'eval') return flags['native-json'] === true && flags['native-json-output'] === undefined ? 'json' : 'text';
+  return command.output ?? 'text';
 }
 
 /** Only plugin option configuration consumes input; input data never becomes process arguments. */
@@ -102,6 +119,7 @@ function optionArgs(flag: string, kind: OptionKind, value: string | boolean): st
   if (flag === 'threshold') ensure(Number(value) <= 1, 'INVALID_CLAUDE_OPTION', '--threshold must be between 0 and 1.');
   if (flag === 'ablation') ensure(['none', 'with-without'].includes(value), 'INVALID_CLAUDE_OPTION', '--ablation must be none or with-without.');
   if (flag === 'mocks') ensure(['record', 'off'].includes(value), 'INVALID_CLAUDE_OPTION', '--mocks must be record or off.');
+  if (flag === 'native-json-output') ensure(value.endsWith('.json'), 'INVALID_CLAUDE_OPTION', '--native-json-output must name a .json file.');
   // An equals form keeps a dash-leading literal value from becoming another native option.
   return value.startsWith('-') ? [`--${flag}=${value}`] : [`--${flag}`, value];
 }
@@ -114,16 +132,14 @@ function commandRules(section: RuntimeSection, action: string, operands: string[
     ensure(flags.all === true ? operands.length === 0 && flags.scope === undefined : operands.length === 1, 'INVALID_CLAUDE_ARGUMENT', 'Disable one plugin, or use --all without a plugin name or scope.');
   }
   if (section === 'plugins' && action === 'configure') ensure(/^[^@\s]+@[^@\s]+$/.test(operands[0]!), 'INVALID_CLAUDE_ARGUMENT', 'Plugin configure requires the full name@marketplace identifier from plugin list.');
-  if (section === 'plugins' && action === 'eval init') ensure(!(flags.bare === true && flags.interactive === true), 'INVALID_CLAUDE_OPTION', '--bare and --interactive cannot be combined.');
+  if (section === 'plugins' && action === 'eval init') ensure(flags.interactive !== true, 'INVALID_CLAUDE_OPTION', '--interactive requires a terminal. Use --bare with a case name, or invoke claude plugin eval init directly in your terminal.');
   if (section === 'marketplaces' && action === 'add' && flags.claudeai === true) ensure(flags.scope === undefined && flags.sparse === undefined, 'INVALID_CLAUDE_OPTION', '--claudeai cannot be combined with --scope or --sparse.');
 }
 
 /** Build an inspectable native invocation without executing a process or changing files. */
 export function buildClaudeRuntimeArgs(section: RuntimeSection, args: string[], flags: Flags): string[] {
   const { action, operands } = actionArgs(section, args);
-  ensure(Object.hasOwn(commands, section) && Object.hasOwn(commands[section], action), 'INVALID_CLAUDE_COMMAND',
-    `Unknown Claude ${section} command: ${action || '(missing)'}. See help claude.`);
-  const command = commands[section][action]!;
+  const command = commandDefinition(section, action);
   arity(operands, command.min, command.max ?? command.min);
   for (const operand of operands) {
     ensure(operand.trim().length > 0 && !operand.startsWith('-') && !operand.includes('\0'), 'INVALID_CLAUDE_ARGUMENT',
@@ -140,14 +156,17 @@ export function buildClaudeRuntimeArgs(section: RuntimeSection, args: string[], 
     }
     const kind = command.options && Object.hasOwn(command.options, flag) ? command.options[flag] : undefined;
     ensure(kind, 'INVALID_CLAUDE_OPTION', `--${flag} is not supported by Claude ${section} ${action}.`);
-    options.push(...optionArgs(flag, kind, value));
+    const translated = optionArgs(flag, kind, value);
+    if (!['native-json', 'native-json-output'].includes(flag)) options.push(...translated);
   }
   commandRules(section, action, operands, flags);
   if (section === 'runtime') return [action === 'version' ? '--version' : action, ...operands];
   const native = section === 'plugins' ? ['plugin', ...action.split(' '), ...operands] : ['plugin', 'marketplace', action, ...operands];
   const unscoped = (section === 'plugins' && action === 'disable' && flags.all === true) || (section === 'marketplaces' && action === 'add' && flags.claudeai === true);
   if (command.scope && !unscoped) native.push('--scope', typeof flags.scope === 'string' ? flags.scope : 'project');
-  if (command.json) native.push('--json');
+  const outputPath = flags['native-json-output'];
+  if (typeof outputPath === 'string') native.push(...(outputPath.startsWith('-') ? [`--json=${outputPath}`] : ['--json', outputPath]));
+  else if (claudeRuntimeOutput(section, args, flags) !== 'text') native.push('--json');
   native.push(...options);
   return native;
 }

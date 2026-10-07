@@ -1,3 +1,4 @@
+import { NodeEventScope } from '../../src/infrastructure/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,7 +18,7 @@ let files: NodeFiles;
 const execute = promisify(execFile);
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-projects-')); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
-function service(directory = 'projects', dryRun = false, events = new EventBus()) {
+function service(directory = 'projects', dryRun = false, events = new EventBus(new NodeEventScope())) {
   events.defineAll(['file.created', 'file.updated'].map(id => ({ id, validate: (value): value is object => typeof value === 'object' })));
   return new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, dryRun), directory, { project: projectScaffold, component: componentScaffold });
 }
@@ -104,7 +105,7 @@ describe('Forge project management', () => {
   it('persists project selection across invocations and emits only committed changes', async () => {
     await service('src').create('billing');
     await service('src').create('accounts');
-    const events = new EventBus();
+    const events = new EventBus(new NodeEventScope());
     const projects = service('src', false, events);
     const opened = await projects.open('billing');
     expect(opened.project).toEqual(await projects.inspect('billing'));
@@ -129,7 +130,7 @@ describe('Forge project management', () => {
   it('previews opening and closing without changing the persisted selection or emitting events', async () => {
     await service().create('billing');
     await service().create('accounts');
-    const events = new EventBus();
+    const events = new EventBus(new NodeEventScope());
     const preview = service('projects', true, events);
     expect(await preview.open('billing')).toMatchObject({
       project: { name: 'billing' }, dryRun: true,

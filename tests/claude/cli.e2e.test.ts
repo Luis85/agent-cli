@@ -174,7 +174,6 @@ if (args.includes('--values-stdin')) {
   process.stdin.on('data', chunk => chunks.push(chunk));
   process.stdin.on('end', () => {
     writeFileSync('received-config.json', Buffer.concat(chunks));
-    console.log('Configuration saved');
     console.log(JSON.stringify({ args }));
   });
 } else if (args.includes('list')) console.log(JSON.stringify({ args }, null, 2));
@@ -187,7 +186,7 @@ else {
     await chmod(executable, 0o755);
     const preview = cli(['plugins', 'install', 'formatter@team', '--claude-bin', executable, '--dry-run']);
     expect(preview.status).toBe(0);
-    expect(preview.body.data).toEqual({ dryRun: true, executed: false, plan: { executable, args: ['plugin', 'install', 'formatter@team', '--scope', 'project'], cwd: root } });
+    expect(preview.body.data).toEqual({ dryRun: true, executed: false, plan: { executable, args: ['plugin', 'install', 'formatter@team', '--scope', 'project', '--json'], cwd: root } });
     await expect(readFile(join(root, 'spawned.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     const result = cli(['plugins', 'list', '--claude-bin', executable]);
     expect(result.status).toBe(0);
