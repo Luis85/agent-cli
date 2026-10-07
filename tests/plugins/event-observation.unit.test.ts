@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EventBus, type EventRecord } from '../../src/application/plugins/events.ts';
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { EventBus, type EventRecord } from '../../src/the-forge/application/plugins/events.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 
 const create = () => {
   const bus = new EventBus(new NodeEventScope());

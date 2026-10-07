@@ -1,20 +1,20 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
-import { ProjectService } from '../../src/application/projects/projects.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
-import { commands } from '../../src/presentation/cli/commands.ts';
-import { claudeBytes, claudeInput } from '../../src/presentation/claude/input.ts';
-import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { Registry, type CommandContext } from '../../src/the-forge/application/plugins/registry.ts';
+import { ProjectService } from '../../src/the-forge/application/projects/projects.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { loadConfig } from '../../src/the-forge/infrastructure/workspace/config.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { componentScaffold, projectScaffold } from '../../src/the-forge/infrastructure/projects/scaffolds.ts';
+import { MarkdownTemplates } from '../../src/the-forge/infrastructure/templates/markdown.ts';
+import { commands } from '../../src/the-forge/presentation/cli/commands.ts';
+import { claudeBytes, claudeInput } from '../../src/the-forge/presentation/claude/input.ts';
+import { ScopedFiles } from '../../src/the-forge/application/workspace/scoped-files.ts';
 
 let root: string, registry: Registry, context: CommandContext;
 beforeEach(async () => {

@@ -13,7 +13,7 @@ For first-time users and agents learning the workflow. Follow each tutorial in o
 | [An interactive form](tutorials/interactive-form.md) | Component state, reusable event/action definitions and browser behavior |
 | [From idea to production](tutorials/idea-to-production.md) | A worked path through discovery, requirements, design, implementation, testing and production readiness |
 
-The [idea-to-production example pack](../examples/idea-to-production/README.md) supplies editable stage artifacts, prompts and component definitions used by the longer tutorial.
+The [idea-to-production example pack](examples/idea-to-production/README.md) supplies editable stage artifacts, prompts and component definitions used by the longer tutorial.
 
 ## How-to guides — complete a task
 

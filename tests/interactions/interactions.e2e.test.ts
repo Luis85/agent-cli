@@ -11,8 +11,8 @@ let root: string;
 beforeEach(async () => { root = await mkdtemp(join(fixture.project, 'interactions-')); });
 const cli = (args: string[]) => fixture.cli(args, undefined, { root });
 async function seed() {
-  await cp('examples/interactions/definitions', join(root, 'interactions'), { recursive: true });
-  await cp('examples/interactions/components', join(root, 'components'), { recursive: true });
+  await cp('docs/examples/interactions/definitions', join(root, 'interactions'), { recursive: true });
+  await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });
 }
 
 describe('portable interaction library and executable UI', () => {
@@ -103,9 +103,9 @@ describe('portable interaction library and executable UI', () => {
   it('honors configured and overridden shared paths while generated output follows the project', async () => {
     await mkdir(join(root, 'bin'));
     await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: { projects: 'apps', interactions: 'shared/actions', interactionImports: 'incoming', interactionExports: 'outgoing' } }));
-    await cp('examples/interactions/definitions', join(root, 'incoming'), { recursive: true });
+    await cp('docs/examples/interactions/definitions', join(root, 'incoming'), { recursive: true });
     expect(cli(['interactions', 'import']).status).toBe(0);
-    await cp('examples/interactions/components', join(root, 'components'), { recursive: true });
+    await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });
     expect(cli(['project', 'create', 'portal']).status).toBe(0);
     expect(cli(['project', 'open', 'portal']).status).toBe(0);
     expect(cli(['interactions', 'list']).body.context.project).toBeNull();
@@ -120,7 +120,7 @@ describe('portable interaction library and executable UI', () => {
   });
 
   it('rejects unresolved behavior and inapplicable options before creating output', async () => {
-    await cp('examples/interactions/components', join(root, 'components'), { recursive: true });
+    await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });
     expect(cli(['make', 'ui', 'contact-request', '--framework', 'html']).body.error.code).toBe('UNKNOWN_INTERACTION');
     for (const args of [
       ['interactions', 'list', '--event', 'click'],

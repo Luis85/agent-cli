@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents/codec.ts';
-import { validateCanvas } from '../../src/domain/documents/canvas.ts';
+import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { validateCanvas } from '../../src/the-forge/domain/documents/canvas.ts';
 const codec = new ObsidianDocuments();
 const decode = (bytes: Uint8Array) => Buffer.from(bytes).toString('utf8');
 const node = { id: 'a', type: 'text', x: 0, y: 0, width: 100, height: 100, text: 'Hello' };

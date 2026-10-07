@@ -3,4 +3,3 @@ coverage/
 release/
 *.tsbuildinfo
 .quality-reports/
-bin/data/context.json

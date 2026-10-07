@@ -16,13 +16,28 @@ npm run release
 
 `npm test` expects `bin/app.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
 
+## Develop the selected source project
+
+Run the commands above from the repository root. Runtime source lives in `src/the-forge`; package/build configuration, tests, `scripts/` and `configs/` remain at the root. The checkout's tracked `bin/config.json` uses `paths.projects: "src"`, its `src/the-forge/.forge/project.json` marker registers the source project, and tracked `bin/data/context.json` selects `the-forge`. Confirm scope before using the bundled CLI:
+
+```sh
+node bin/app.js project current --json
+node bin/app.js project open the-forge
+node bin/app.js read README.md --json
+node bin/app.js make entity SourceProbe --out domain/example --dry-run
+```
+
+These file paths resolve under `src/the-forge`. Specify a layer/concern output for self-generation: the normal `src/domain` generator default would create `src/the-forge/src/domain`. `project close` explicitly returns file commands to the repository root; reopen `the-forge` to resume source work. Setup and builds preserve the saved selection, including an intentional closed selection. Release packaging restores generic configuration and omits the checkout selection in the archive.
+
+The repository's `configs/quality/source.json` declares `sourceRoot: "src/the-forge"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source and authored asset code rather than all sibling managed projects in `src`. This quality policy is independent of the CLI's selected project. Run another project's own checks from its directory. Portable generated projects without this policy continue to use their ordinary `src` source root.
+
 ## Agent feedback loop
 
 Read `AGENTS.md`, establish acceptance examples and inspect the affected boundary. After a focused edit, run the relevant behavioral test and `npm run check:fast`. This gate runs structure validation first, then Oxlint, fallow and the TypeScript compiler without rebuilding the distribution. Static analysis complements tests; a clean report does not prove business behavior or filesystem integrity. Analysis includes test entry points, so code referenced only by tests counts as used; this is not proof of production reachability.
 
 | Stage | Purpose | Focused command |
 | --- | --- | --- |
-| Structure | Test-pyramid labels and locations | `npm run check:structure` |
+| Structure | Test-pyramid labels/locations and Forge source layout | `npm run check:structure` |
 | Lint | Correctness, source conventions and code-line limits | `npm run lint` |
 | Analyze | Unused code/dependencies and architecture boundaries | `npm run analyze` |
 | Typecheck | Strict TypeScript contracts in source and tests | `npm run typecheck` |
@@ -49,9 +64,9 @@ Every test has an explicit pyramid rank in its filename and runs in the matching
 
 Put most behavioral cases in focused unit tests, test real boundaries with integration tests, and keep end-to-end cases for complete workflows. Choose the layer by what a test exercises, including when splitting pure parser/graph assertions away from filesystem or lifecycle integration tests. A concern folder can contain multiple ranks. Run `npm run build` before tests that execute the bundle; the full `check` does this automatically.
 
-`npm run lint` uses Oxlint's `max-lines` rule with `skipBlankLines` and `skipComments` to enforce **400 code-bearing lines per authored source file** and **450 per test file or test-support file under `tests/`**. Blank and comment-only lines are excluded; lines containing both code and comments count. The inventory covers authored JavaScript/TypeScript in `src` and `scripts`, `tests`, `examples` and root configuration files. Generated `bin` artifacts are excluded. When approaching a limit, extract a cohesive responsibility or split tests by behavior; do not compress statements, remove useful comments or rename files just to evade a limit. Line-limit findings appear in `.quality-reports/oxlint.json`.
+`npm run lint` uses Oxlint's `max-lines` rule with `skipBlankLines` and `skipComments` to enforce **400 code-bearing lines per authored source file** and **450 per test file or test-support file under `tests/`**. Blank and comment-only lines are excluded; lines containing both code and comments count. The inventory covers authored JavaScript/TypeScript in configured `src/the-forge`, `docs/examples` and `docs/templates`, plus `scripts`, `tests` and root configuration files. Generated `bin` artifacts are excluded. When approaching a limit, extract a cohesive responsibility or split tests by behavior; do not compress statements, remove useful comments or rename files just to evade a limit. Line-limit findings appear in `.quality-reports/oxlint.json`.
 
-`npm run check:structure` checks test-pyramid suffixes, requires tests under `tests/`, and enforces Forge's `src/<layer>/<concern>/` layout. It saves `.quality-reports/structure.json` using the same diagnostic envelope as lint/analysis. Use `node scripts/quality/structure.mjs --source-layout forge` for JSON stdout without npm's banner. The generated-project copy runs without that switch and keeps its own scaffold layout. See the source repository’s `src/README.md` for placement rules. The TypeScript gate uses the official `tsc` compiler for application source and an explicit inventory of all test/support files, including hidden paths and JavaScript with `allowJs`/`checkJs`. This avoids files being silently omitted by compiler globs. Passing Vitest execution alone does not replace type checking.
+`npm run check:structure` checks test-pyramid suffixes, requires tests under `tests/`, and enforces Forge's `src/the-forge/<layer>/<concern>/` layout. It saves `.quality-reports/structure.json` using the same diagnostic envelope as lint/analysis. Use `node scripts/quality/structure.mjs --source-layout forge` for JSON stdout without npm's banner. The generated-project copy runs without that switch and keeps its own scaffold layout. See the source repository’s `src/the-forge/README.md` for placement rules. The TypeScript gate uses the official `tsc` compiler for application source and an explicit inventory of all test/support files, including hidden paths and JavaScript with `allowJs`/`checkJs`. This avoids files being silently omitted by compiler globs. Passing Vitest execution alone does not replace type checking.
 
 Vitest exercises Canvas invariants, YAML/frontmatter preservation, optimistic revisions, no-write previews, path and symlink rejection, batch collision preflight, event delivery/lifecycle, and the standalone JSON protocol. End-to-end tests copy the bundle to a temporary directory without `node_modules` and invoke it through Node. Every accepted attachment extension gets a binary round-trip test; these tests establish byte fidelity, not media codec validity. Tests also load an external runtime plugin from the copied bundle. An architecture test rejects infrastructure or Node imports in domain/application code.
 

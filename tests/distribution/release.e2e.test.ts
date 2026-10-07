@@ -26,7 +26,7 @@ function release(root: string) {
 describe('release distribution', () => {
   it('repackages owned assets without replacing configuration, context, plugins or templates', async () => {
     const root = await checkout();
-    for (const path of ['src', 'docs', 'examples', 'scripts/licenses']) await cp(resolve(path), join(root, path), { recursive: true });
+    for (const path of ['src', 'docs', 'scripts/licenses']) await cp(resolve(path), join(root, path), { recursive: true });
     for (const path of ['scripts/package.mjs', 'tsconfig.json', 'tsconfig.sdk.json', 'package-lock.json', 'README.md', 'LICENSE']) await cp(resolve(path), join(root, path));
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
     const privateFiles = ['bin/config.json', 'bin/data/context.json', 'bin/data/private.json', 'bin/plugins/private.mjs', 'bin/templates/private.md'];
@@ -64,7 +64,7 @@ describe('release distribution', () => {
     expect(invoke(['setup']).ok).toBe(true);
     expect(invoke(['make', 'entity', 'ReleaseTask', '--out', 'src/domain']).ok).toBe(true);
     expect(await readFile(join(project, 'src/domain/release-task.ts'), 'utf8')).toContain('class ReleaseTask');
-    for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'examples/plugins/quality/main.mjs']) {
+    for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
       expect((await readFile(join(project, 'bin/data', path))).length).toBeGreaterThan(0);
     }
     const entries = execFileSync('tar', ['-tzf', join(root, archive)], { encoding: 'utf8' }).trim().split('\n');

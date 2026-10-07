@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { validateForm, type FormDefinition } from '../../src/infrastructure/projects/templates/form-model.js';
+import { validateForm, type FormDefinition } from '../../docs/templates/projects/form-model.js';
 
 const definition: FormDefinition<{ name: string; email: string }> = {
   id: 'contact', title: 'Contact', submitLabel: 'Send',

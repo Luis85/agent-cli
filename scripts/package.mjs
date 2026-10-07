@@ -16,11 +16,11 @@ await chmod('bin/app.js', 0o755);
 await copyFile('LICENSE', 'bin/data/LICENSE');
 const readme = await readFile('README.md', 'utf8');
 await writeFile('bin/data/README.md', readme.replaceAll('(bin/skills/', '(../skills/'));
-const ownedDirectories = ['docs', 'examples', 'licenses', 'types'];
+const ownedDirectories = ['docs', 'licenses', 'types'];
 // Replace only generated assets. User data (especially context.json), plugins,
 // templates and configuration survive rebuilds.
-for (const directory of [...ownedDirectories, 'skills']) await rm(`bin/data/${directory}`, { recursive: true, force: true });
-for (const directory of ['docs', 'examples']) await cp(directory, `bin/data/${directory}`, { recursive: true });
+for (const directory of [...ownedDirectories, 'skills', 'examples']) await rm(`bin/data/${directory}`, { recursive: true, force: true });
+await cp('docs', 'bin/data/docs', { recursive: true });
 const docsIndex = await readFile('bin/data/docs/index.md', 'utf8');
 await writeFile('bin/data/docs/index.md', docsIndex.replaceAll('(../bin/skills/', '(../../skills/'));
 await mkdir('bin/data/licenses', { recursive: true });

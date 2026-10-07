@@ -1,14 +1,14 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { InteractionLibrary } from '../../src/application/interactions/library.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { InteractionLibrary } from '../../src/the-forge/application/interactions/library.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { ObsidianDocuments, encodeText } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { MarkdownInteractionDefinitions } from '../../src/the-forge/infrastructure/interactions/definitions.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const codec = new MarkdownInteractionDefinitions();

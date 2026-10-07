@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import ts from 'typescript';
-import { reactStyleHelper } from '../../src/infrastructure/ui/renderers/react-style.ts';
+import { reactStyleHelper } from '../../src/the-forge/infrastructure/ui/renderers/react-style.ts';
 
 const source = ts.transpileModule(reactStyleHelper, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 const css = new Function(`${source}\nreturn css;`)() as (value: unknown) => Record<string, string>;

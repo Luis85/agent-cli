@@ -2,9 +2,9 @@ import { afterEach, expect, it } from 'vitest';
 import assert from 'node:assert/strict';
 import ts from 'typescript';
 import { JSDOM } from 'jsdom';
-import type { UiDefinition } from '../../src/domain/ui/definition.ts';
-import type { InteractionDefinition } from '../../src/domain/interactions/definition.ts';
-import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
+import type { UiDefinition } from '../../src/the-forge/domain/ui/definition.ts';
+import type { InteractionDefinition } from '../../src/the-forge/domain/interactions/definition.ts';
+import { renderUiComponents } from '../../src/the-forge/infrastructure/ui/renderers.ts';
 import { formDefinition, formInteractions, formRuntimeScenario } from '../support/interaction-form-runtime.ts';
 
 const windows: JSDOM[] = [];

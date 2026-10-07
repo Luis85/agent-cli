@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
-import { generators } from '../../src/infrastructure/generation/generators.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { loadEnabledPlugins } from '../../src/infrastructure/plugins/loader.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { Registry, validatePluginManifest } from '../../src/application/plugins/registry.ts';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { generators } from '../../src/the-forge/infrastructure/generation/generators.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { loadEnabledPlugins } from '../../src/the-forge/infrastructure/plugins/loader.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { Registry, validatePluginManifest } from '../../src/the-forge/application/plugins/registry.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
 
 it('standalone entity, value-object, use-case and event scaffolds compile without runtime dependencies', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agent-generators-'));

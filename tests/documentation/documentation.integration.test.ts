@@ -3,13 +3,13 @@ import { access, readFile, readdir } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import { validateUiLibrary } from '../../src/domain/ui/library.ts';
-import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
-import { renderUiStories } from '../../src/infrastructure/ui/stories.ts';
-import { uiFrameworks } from '../../src/domain/ui/definition.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import { MarkdownUiDefinitions } from '../../src/the-forge/infrastructure/ui/definitions.ts';
+import { validateUiLibrary } from '../../src/the-forge/domain/ui/library.ts';
+import { renderUiComponents } from '../../src/the-forge/infrastructure/ui/renderers.ts';
+import { renderUiStories } from '../../src/the-forge/infrastructure/ui/stories.ts';
+import { uiFrameworks } from '../../src/the-forge/domain/ui/definition.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/the-forge/infrastructure/data-sources/definitions.ts';
+import { TypeScriptDataSourceRenderer } from '../../src/the-forge/infrastructure/data-sources/generator.ts';
 
 async function markdownFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
@@ -22,7 +22,7 @@ async function markdownFiles(directory: string): Promise<string[]> {
 }
 
 it('keeps Diátaxis, distributed skills, and worked-example navigation connected after packaging moves', async () => {
-  const files = ['README.md', 'AGENTS.md', 'bin/data/README.md', ...await markdownFiles('bin/data/docs'), ...await markdownFiles('bin/data/examples'), ...await markdownFiles('docs'), ...await markdownFiles('bin/skills'), ...await markdownFiles('examples')];
+  const files = ['README.md', 'AGENTS.md', 'src/the-forge/README.md', 'bin/data/README.md', ...await markdownFiles('bin/data/docs'), ...await markdownFiles('docs'), ...await markdownFiles('bin/skills')];
   const failures: string[] = [];
   for (const path of files) {
     const tree = unified().use(remarkParse).parse(await readFile(path, 'utf8'));
@@ -49,7 +49,7 @@ it('keeps Diátaxis, distributed skills, and worked-example navigation connected
 
 it('keeps the worked UI and data-source documents valid and deterministically generatable', async () => {
   const codec = new MarkdownUiDefinitions();
-  const definitions = await Promise.all((await markdownFiles('examples/idea-to-production/components')).map(async path => codec.parse(await readFile(path), path)));
+  const definitions = await Promise.all((await markdownFiles('docs/examples/idea-to-production/components')).map(async path => codec.parse(await readFile(path), path)));
   validateUiLibrary(definitions);
   for (const framework of uiFrameworks) {
     const components = renderUiComponents(definitions, framework, `generated/${framework}`);
@@ -58,7 +58,7 @@ it('keeps the worked UI and data-source documents valid and deterministically ge
     expect(renderUiStories(definitions, framework, `generated/${framework}`, `stories/${framework}`)).toHaveLength(definitions.length);
   }
   const dataCodec = new MarkdownDataSourceDefinitions();
-  const sources = await Promise.all((await markdownFiles('examples/idea-to-production/sources')).map(async path => dataCodec.parse(await readFile(path), path)));
+  const sources = await Promise.all((await markdownFiles('docs/examples/idea-to-production/sources')).map(async path => dataCodec.parse(await readFile(path), path)));
   const renderer = new TypeScriptDataSourceRenderer();
   const options = { outputDirectory: 'generated/data', testDataDirectory: 'test-data' };
   const writes = renderer.generate(sources, options);

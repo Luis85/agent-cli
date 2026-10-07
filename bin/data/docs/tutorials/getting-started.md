@@ -6,7 +6,14 @@ By the end of this exercise you will have a managed TypeScript project, a planni
 
 ## 1. Install the portable distribution
 
-Create an empty workspace directory and copy the complete `bin` folder from a reviewed Forge checkout or extracted release into it. Keep `bin/app.js` and `bin/package.json` together. Run the remaining commands from that workspace:
+Create an empty workspace directory and extract a reviewed release into it. Keep `bin/app.js` and `bin/package.json` together. If you copy the complete `bin` folder from a source checkout instead, reset its checkout-specific settings only in this new destination:
+
+```sh
+cp bin/config/default.json bin/config.json
+rm -f bin/data/context.json
+```
+
+The checkout selects its own `src/the-forge` project; a release already has generic settings and no selection. Setup preserves existing configuration, so it does not perform this reset for you. Run the remaining commands from the new workspace:
 
 ```sh
 node bin/app.js --version

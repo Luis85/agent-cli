@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { EventRecord } from '../../src/application/plugins/events.ts';
+import type { EventRecord } from '../../src/the-forge/application/plugins/events.ts';
 import { portableCli } from '../support/portable-cli.ts';
 
 const fixture = portableCli();

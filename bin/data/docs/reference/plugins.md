@@ -52,7 +52,7 @@ Contributions must be namespaced with the manifest ID, such as `quality.status`,
 
 Help, schema, configuration, formats, events, plugin listing, Claude capability discovery and setup register contributions without calling `onload`. Their module imports still execute top-level code, so entry points must avoid top-level side effects. Other commands run the lifecycle; respect dry-run and avoid unrelated writes. `--no-plugins` skips plugin loading entirely.
 
-The [quality example](../../examples/plugins/quality/main.mjs) includes a command, generator, event listener and skill. Copy its `quality` directory to workspace `bin/plugins/quality`, review it, and enable `quality` in `bin/config.json`. Then run `node bin/app.js quality.check`. The distribution also includes the example under `bin/data/examples/plugins/quality`.
+The [quality example](../examples/plugins/quality/main.mjs) includes a command, generator, event listener and skill. Copy its `quality` directory to workspace `bin/plugins/quality`, review it, and enable `quality` in `bin/config.json`. Then run `node bin/app.js quality.check`. The distribution also includes the example under `bin/data/docs/examples/plugins/quality`.
 
 ## Reuse Claude lifecycle execution
 

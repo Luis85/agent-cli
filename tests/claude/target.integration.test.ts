@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CommandContext } from '../../src/application/plugins/registry.ts';
-import { ClaudeSettings } from '../../src/application/claude/settings.ts';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { claudeTarget } from '../../src/infrastructure/claude/target.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import type { CommandContext } from '../../src/the-forge/application/plugins/registry.ts';
+import { ClaudeSettings } from '../../src/the-forge/application/claude/settings.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { ScopedFiles } from '../../src/the-forge/application/workspace/scoped-files.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { claudeTarget } from '../../src/the-forge/infrastructure/claude/target.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
 
 let root: string, context: CommandContext;
 beforeEach(async () => {

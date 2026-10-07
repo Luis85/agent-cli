@@ -16,7 +16,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
 it('keeps concern folders within their layer boundaries and separates adapters', async () => {
   const violations: string[] = [];
   for (const layer of ['domain', 'application', 'infrastructure', 'presentation']) {
-    for (const file of await sourceFiles(resolve('src', layer))) {
+    for (const file of await sourceFiles(resolve('src/the-forge', layer))) {
       violations.push(...boundaryViolations(file, await readFile(file, 'utf8')));
     }
   }
@@ -24,6 +24,6 @@ it('keeps concern folders within their layer boundaries and separates adapters',
 });
 
 it('keeps the packaged SDK type-only and inward-facing', async () => {
-  const file = resolve('src/sdk.ts');
+  const file = resolve('src/the-forge/sdk.ts');
   expect(sdkViolations(file, await readFile(file, 'utf8'))).toEqual([]);
 });

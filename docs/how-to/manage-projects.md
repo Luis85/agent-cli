@@ -27,7 +27,9 @@ To initialize another existing directory, run `node /absolute/path/to/bin/app.js
 
 ## Independent library projects
 
-Each managed project is a TypeScript library under `paths.projects`, default `projects`. Set that configuration value to `src` or another workspace-relative directory when preferred. Projects have their own build/test setup and a marker used for discovery; unrelated directories are not assumed to be managed projects.
+Newly generated projects are TypeScript libraries under `paths.projects`, default `projects`. Set that configuration value to `src` or another workspace-relative directory when preferred. Generated projects have their own build/test setup and a marker used for discovery; unrelated directories are not assumed to be managed projects.
+
+The Forge checkout selects its existing source as `the-forge` under configured `src`, using `src/the-forge/.forge/project.json`. Its build/test toolchain remains at the repository root. With that selection, file commands address `src/the-forge`; use explicit generation destinations such as `--out domain/example` to avoid nesting the generic `src/domain` default. Run `project open the-forge` to restore this source scope after working with another project. Released bundles start with generic defaults and no source-checkout selection.
 
 ```sh
 node bin/app.js project list --json

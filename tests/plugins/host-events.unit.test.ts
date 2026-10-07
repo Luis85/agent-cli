@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
-import { publishHostEvent, registerHostEvents, type HostEventMap } from '../../src/application/plugins/host-events.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
+import { publishHostEvent, registerHostEvents, type HostEventMap } from '../../src/the-forge/application/plugins/host-events.ts';
 
 const command = { operationId: 1, command: 'write', root: '/vault', workspaceRoot: '/workspace', dryRun: false };
 const workspace = { operationId: 2, operation: 'write' as const, root: '/vault', paths: ['note.md'], dryRun: false };

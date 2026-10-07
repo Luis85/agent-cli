@@ -106,9 +106,9 @@ describe('structure quality gate', () => {
     const root = await fixture();
     await rm(join(root, 'src/index.ts'));
     for (const path of [
-      'src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts',
-      'src/domain/documents/file.ts', 'src/application/new-concern/deep/service.ts',
-      'src/infrastructure/workspace/files.ts', 'src/presentation/cli/commands.ts',
+      'src/the-forge/main.ts', 'src/the-forge/sdk.ts', 'src/the-forge/vite-env.d.ts',
+      'src/the-forge/domain/documents/file.ts', 'src/the-forge/application/new-concern/deep/service.ts',
+      'src/the-forge/infrastructure/workspace/files.ts', 'src/the-forge/presentation/cli/commands.ts',
       'scripts/release.mjs',
     ]) {
       await mkdir(join(root, path, '..'), { recursive: true });
@@ -120,9 +120,9 @@ describe('structure quality gate', () => {
   });
 
   it.each([
-    'src/index.ts', 'src/domain/file.ts', 'src/application/ports.ts',
-    'src/infrastructure/codec.ts', 'src/presentation/commands.ts',
-    'src/utils/shared/errors.ts', 'src/scripts/quality/lint.mjs',
+    'src/the-forge/index.ts', 'src/the-forge/domain/file.ts', 'src/the-forge/application/ports.ts',
+    'src/the-forge/infrastructure/codec.ts', 'src/the-forge/presentation/commands.ts',
+    'src/the-forge/utils/shared/errors.ts', 'src/the-forge/scripts/quality/lint.mjs',
   ])('rejects misplaced Forge source %s', async path => {
     const root = await fixture();
     await rm(join(root, 'src/index.ts'));

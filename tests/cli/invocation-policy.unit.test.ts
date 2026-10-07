@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { invocationPolicy } from '../../src/presentation/cli/invocation-policy.ts';
+import { invocationPolicy } from '../../src/the-forge/presentation/cli/invocation-policy.ts';
 
 describe('invocation scope and plugin activation policy', () => {
   it('keeps discovery and recovery independent of selected projects and plugin activation', () => {

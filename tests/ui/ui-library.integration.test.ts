@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { UiLibrary, type UiRenderer } from '../../src/application/ui/library.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import { standardUiCatalog } from '../../src/infrastructure/ui/catalog.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { UiLibrary, type UiRenderer } from '../../src/the-forge/application/ui/library.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { ObsidianDocuments, encodeText } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { MarkdownUiDefinitions } from '../../src/the-forge/infrastructure/ui/definitions.ts';
+import { standardUiCatalog } from '../../src/the-forge/infrastructure/ui/catalog.ts';
 
 let root: string, files: NodeFiles;
 const codec = new MarkdownUiDefinitions();

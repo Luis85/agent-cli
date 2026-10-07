@@ -1,14 +1,14 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudePluginService } from '../../src/application/claude/plugins.ts';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { ClaudePluginService } from '../../src/the-forge/application/claude/plugins.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { parseClaudeAgent, renderClaudeAgent } from '../../src/the-forge/infrastructure/claude/agents.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const directory = 'claude-plugins/review-kit';

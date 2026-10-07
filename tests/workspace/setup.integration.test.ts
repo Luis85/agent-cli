@@ -1,16 +1,16 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { SetupService } from '../../src/application/workspace/setup.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import type { AppConfig } from '../../src/application/workspace/config.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
-import { readSetupArtifacts } from '../../src/infrastructure/workspace/setup-artifacts.ts';
+import { SetupService } from '../../src/the-forge/application/workspace/setup.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import type { AppConfig } from '../../src/the-forge/application/workspace/config.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { ObsidianDocuments } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { MarkdownTemplates } from '../../src/the-forge/infrastructure/templates/markdown.ts';
+import { readSetupArtifacts } from '../../src/the-forge/infrastructure/workspace/setup-artifacts.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))); });

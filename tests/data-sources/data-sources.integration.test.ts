@@ -1,14 +1,14 @@
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { DataSourceLibrary, type DataSourceRenderer } from '../../src/application/data-sources/library.ts';
-import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { DataSourceLibrary, type DataSourceRenderer } from '../../src/the-forge/application/data-sources/library.ts';
+import { Workspace } from '../../src/the-forge/application/workspace/workspace.ts';
+import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
+import { ObsidianDocuments, encodeText } from '../../src/the-forge/infrastructure/documents/codec.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/the-forge/infrastructure/data-sources/definitions.ts';
 
 let root: string, files: NodeFiles;
 const codec = new MarkdownDataSourceDefinitions();

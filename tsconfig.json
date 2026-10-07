@@ -19,10 +19,11 @@
     "jsx": "preserve"
   },
   "include": [
-    "src",
+    "src/the-forge",
     "tests",
     "vite.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "docs/templates"
   ],
   "exclude": [
     "scripts"

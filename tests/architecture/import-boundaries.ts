@@ -4,8 +4,8 @@ import ts from 'typescript';
 /** Inspect syntax rather than matching text, so every module dependency is checked. */
 export function boundaryViolations(file: string, source: string): string[] {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-  const domain = resolve('src/domain'), application = resolve('src/application');
-  const infrastructure = resolve('src/infrastructure'), presentation = resolve('src/presentation');
+  const domain = resolve('src/the-forge/domain'), application = resolve('src/the-forge/application');
+  const infrastructure = resolve('src/the-forge/infrastructure'), presentation = resolve('src/the-forge/presentation');
   const within = (directory: string, target: string) => target.startsWith(directory + sep);
   const isInfrastructure = within(infrastructure, file), isPresentation = within(presentation, file);
   const allowed = within(domain, file) ? [domain] : [domain, application, ...(isInfrastructure ? [infrastructure] : isPresentation ? [presentation] : [])];

@@ -3,9 +3,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import ts from 'typescript';
-import type { DataSourceDefinition, DataSourceRecord } from '../../src/domain/data-sources/definition.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import type { DataSourceDefinition, DataSourceRecord } from '../../src/the-forge/domain/data-sources/definition.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/the-forge/infrastructure/data-sources/definitions.ts';
+import { TypeScriptDataSourceRenderer } from '../../src/the-forge/infrastructure/data-sources/generator.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))); });

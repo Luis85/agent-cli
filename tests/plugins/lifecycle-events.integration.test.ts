@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../../src/domain/shared/errors.ts';
-import { EventBus, type EventRecord } from '../../src/application/plugins/events.ts';
-import { Registry, type CommandContext, type Plugin } from '../../src/application/plugins/registry.ts';
-import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { AppError } from '../../src/the-forge/domain/shared/errors.ts';
+import { EventBus, type EventRecord } from '../../src/the-forge/application/plugins/events.ts';
+import { Registry, type CommandContext, type Plugin } from '../../src/the-forge/application/plugins/registry.ts';
+import { registerHostEvents } from '../../src/the-forge/application/plugins/host-events.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 
 const plugin = (id: string): Plugin => ({ manifest: { id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Lifecycle test', author: 'Test' } });
 const create = () => {

@@ -9,13 +9,13 @@ send an email or contact a server.
 
 Start with the complete `bin` distribution, Node >=22.12, and a workspace where
 `interaction-demo` is not already a project. The examples ship in
-`bin/data/examples/interactions`. Run the commands from the workspace root.
+`bin/data/docs/examples/interactions`. Run the commands from the workspace root.
 
 ## Import the definitions
 
 ```sh
-node bin/app.js interactions import --from bin/data/examples/interactions/definitions
-node bin/app.js components import --from bin/data/examples/interactions/components
+node bin/app.js interactions import --from bin/data/docs/examples/interactions/definitions
+node bin/app.js components import --from bin/data/docs/examples/interactions/components
 node bin/app.js interactions validate
 node bin/app.js components validate
 node bin/app.js components inspect contact-request
@@ -26,15 +26,15 @@ Use a fresh library for this exercise: imports refuse duplicate IDs and existing
 files. If these examples were already imported, inspect and validate them instead
 of importing again.
 
-The [component](../../examples/interactions/components/contact-request.md)
+The [component](../examples/interactions/components/contact-request.md)
 declares three state fields: `email`, `consent` and `status`. Its text input
-attaches [capture-email](../../examples/interactions/definitions/capture-email.md),
+attaches [capture-email](../examples/interactions/definitions/capture-email.md),
 which copies `event.currentTarget.value` into `email`. Its checkbox attaches
-[capture-consent](../../examples/interactions/definitions/capture-consent.md),
+[capture-consent](../examples/interactions/definitions/capture-consent.md),
 which copies the boolean `checked` value.
 
 The form attaches
-[prepare-request](../../examples/interactions/definitions/prepare-request.md):
+[prepare-request](../examples/interactions/definitions/prepare-request.md):
 it prevents default navigation, sets `status` to `Request prepared`, then emits
 `contact:requested` with the current email, consent and status. These actions run
 in order. Binding the paragraph text to `{{state.status}}` updates the visible

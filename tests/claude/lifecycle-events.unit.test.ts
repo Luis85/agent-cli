@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/application/claude/lifecycle.ts';
-import type { ClaudeRuntimeResult } from '../../src/application/claude/runtime.ts';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
-import { AppError } from '../../src/domain/shared/errors.ts';
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/the-forge/application/claude/lifecycle.ts';
+import type { ClaudeRuntimeResult } from '../../src/the-forge/application/claude/runtime.ts';
+import { EventBus } from '../../src/the-forge/application/plugins/events.ts';
+import { registerHostEvents } from '../../src/the-forge/application/plugins/host-events.ts';
+import { AppError } from '../../src/the-forge/domain/shared/errors.ts';
+import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 
 const scope = { cwd: '/vault/selected', dryRun: false };
 const successful = { exitCode: 0, stdout: '{"outcome":"ok"}', stderr: '' };
