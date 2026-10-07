@@ -10,7 +10,7 @@ node bin/app make document 'Feature proposal' --template feature.md --values '{"
 node bin/app make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}'
 ```
 
-`--template` is relative to `paths.templates`; `--out` overrides `paths.output`. The title becomes the output filename, so path separators and unsafe names are rejected. New documents never overwrite existing files. Dry-run validates the rendered document and returns the complete text plus planned revision without writing or emitting file events.
+`templates inspect` and `make document` both require a `.md` template (case insensitive); other extensions fail with `INVALID_TEMPLATE` before parsing. `--template` is relative to `paths.templates`; `--out` overrides `paths.output`. The title becomes the output filename, so path separators and unsafe names are rejected. New documents never overwrite existing files. Dry-run validates the rendered document and returns the complete text plus planned revision without writing or emitting file events.
 
 Use `--values-from inputs/feature.json` instead of `--values` for large or shell-sensitive JSON input; the input path is relative to the project root. The two options are mutually exclusive. `--date <ISO timestamp>` supplies a reproducible clock for date/time substitutions. Configuration controls default date and time formats.
 

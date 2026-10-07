@@ -42,8 +42,11 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
     { id: 'formats', description: 'Native Obsidian formats and supported operations.', usage: 'formats', run(args) {
       arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
     } },
-    { id: 'list', description: 'List regular files in stable path order; skip symlinks, Git and node_modules.', usage: 'list [--kind markdown]', options: { kind: 'string' }, async run(args, flags, { workspace }) {
-      arity(args, 0); const kind = value(flags, 'kind'); return { files: (await workspace.files.list()).filter(p => !kind || fileKind(p) === kind).map(path => ({ path, kind: fileKind(path) })) };
+    { id: 'list', description: 'List regular files in stable path order; skip symlinks, Git and node_modules.', usage: 'list [--kind markdown|canvas|base|image|audio|video|pdf|attachment]', options: { kind: 'string' }, async run(args, flags, { workspace }) {
+      arity(args, 0); const kind = value(flags, 'kind');
+      const kinds = [...Object.keys(nativeFormats), 'attachment'];
+      ensure(kind === undefined || kinds.includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${kinds.join(', ')}.`);
+      return { files: (await workspace.files.list()).filter(p => !kind || fileKind(p) === kind).map(path => ({ path, kind: fileKind(path) })) };
     } },
     { id: 'read', description: 'Read a document or base64 attachment with its SHA-256 revision.', usage: 'read <path>', async run(args, _, { workspace }) { arity(args, 1); return workspace.read(args[0]!); } },
     { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, or Base structure.', usage: 'validate <path>', async run(args, _, { workspace }) {
@@ -85,7 +88,10 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
     } },
     { id: 'make', description: 'Generate TypeScript, plugins, or documents from Obsidian templates.', usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO]', options: { out: 'string', template: 'string', values: 'string', 'values-from': 'string', date: 'string' }, async run(args, flags, context) {
-      if (args.length === 0) return { generators: generatorCatalog() };
+      if (args.length === 0) {
+        ensure(['out', 'template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.');
+        return { generators: generatorCatalog() };
+      }
       arity(args, 2);
       if (args[0] === 'document') return makeDocument(args[1]!, flags, context, services);
       ensure(['template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Template options require make document.');
@@ -99,6 +105,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
     { id: 'plugins', description: 'List explicitly loaded plugin manifests.', usage: '[--config bin/config.json] plugins', run(args) { arity(args, 0); return { plugins: registry.plugins.map(p => p.manifest) }; } },
     { id: 'skills', description: 'List, read or install bundled and plugin agent skills.', usage: 'skills [list | show <id> | install] [--out .agents/skills]', options: { out: 'string' }, async run(args, flags, { workspace }) {
       const action = args[0] ?? 'list';
+      if (action !== 'install') ensure(flags.out === undefined, 'INVALID_ARGUMENT', '--out is only valid with skills install.');
       if (action === 'list') { arity(args, 0, 1); return { skills: [...registry.skills.keys()] }; }
       if (action === 'show') { arity(args, 2); const skill = registry.skills.get(args[1]!); ensure(skill, 'UNKNOWN_SKILL', args[1]!); return skill; }
       ensure(action === 'install', 'INVALID_ARGUMENT', 'Use skills list, show, or install.'); arity(args, 1);

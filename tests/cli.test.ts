@@ -33,6 +33,47 @@ describe('portable CLI without installed dependencies', () => {
     }
     expect(cli(['read', 'missing.md']).status).toBe(3);
   });
+  it('rejects unsupported file kinds instead of reporting an empty workspace', async () => {
+    await writeFile(join(project, 'kind-filter.md'), '# Discoverable note\n');
+    const invalid = cli(['list', '--kind', 'markdon']);
+    expect(invalid.status).toBe(2);
+    expect(invalid.body.error).toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('markdown') });
+    const valid = cli(['list', '--kind', 'markdown']);
+    expect(valid.status).toBe(0);
+    expect(valid.body.data.files).toContainEqual({ path: 'kind-filter.md', kind: 'markdown' });
+  });
+  it.each([
+    ['make', '--out', 'ignored'],
+    ['make', '--template', 'entity.md'],
+    ['make', '--values', '{}'],
+    ['make', '--values-from', 'inputs.json'],
+    ['make', '--date', '2026-10-07'],
+    ['skills', '--out', 'ignored'],
+    ['skills', 'list', '--out', 'ignored'],
+    ['skills', 'show', 'forge-workflow', '--out', 'ignored'],
+  ])('rejects inapplicable generation or installation options: %j', (...args) => {
+    const result = cli(args);
+    expect(result.status).toBe(2);
+    expect(result.body.error.code).toBe('INVALID_ARGUMENT');
+    expect(result.body.events).toEqual([]);
+  });
+  it('uses the same Markdown-only contract when inspecting and rendering templates', async () => {
+    const config = join(project, 'template-extension-config.json');
+    await mkdir(join(project, 'extension-templates'));
+    await writeFile(config, JSON.stringify({ paths: { root: project, templates: 'extension-templates' } }));
+    await writeFile(join(project, 'extension-templates/example.txt'), '# {{title}}\n');
+    await writeFile(join(project, 'extension-templates/example.MD'), '# {{title}}\n');
+    for (const template of ['example.txt', 'missing.txt']) {
+      for (const args of [['templates', 'inspect', template], ['make', 'document', 'Example', '--template', template]]) {
+        const result = cli(['--config', config, ...args]);
+        expect(result.status).toBe(2);
+        expect(result.body.error.code).toBe('INVALID_TEMPLATE');
+        expect(result.body.events).toEqual([]);
+      }
+    }
+    expect(cli(['--config', config, 'templates', 'inspect', 'example.MD']).body.data.variables).toEqual(['title']);
+    expect(cli(['--config', config, 'make', 'document', 'Example', '--template', 'example.MD', '--dry-run']).status).toBe(0);
+  });
   it('previews generation without side effects and refuses generator overwrite', async () => {
     const preview = cli(['make', 'entity', 'Task', '--out', 'domain', '--dry-run']);
     expect(preview.body.data.preview[0].content).toContain('class Task'); expect(preview.body.events).toEqual([]);
@@ -188,7 +229,11 @@ describe('portable CLI without installed dependencies', () => {
     await expect(readFile(join(project, 'src/task-lib/package.json'))).rejects.toThrow();
     expect(cli([...args, 'project', 'create', 'task-lib']).status).toBe(0);
     const manifest = JSON.parse(await readFile(join(project, 'src/task-lib/package.json'), 'utf8'));
-    expect(manifest).toMatchObject({ name: 'task-lib', scripts: { check: 'npm run typecheck && npm run build && npm test' }, devDependencies: { vite: expect.any(String), vitest: expect.any(String), typescript: expect.any(String) } });
+    expect(manifest).toMatchObject({
+      name: 'task-lib',
+      scripts: { 'check:fast': 'npm run lint && npm run analyze && npm run typecheck', check: 'npm run check:fast && npm run build && npm test' },
+      devDependencies: { fallow: expect.any(String), oxlint: expect.any(String), vite: expect.any(String), vitest: expect.any(String), typescript: expect.any(String) },
+    });
     expect(cli([...args, 'project', 'list']).body.data.projects).toEqual([{ schemaVersion: 1, name: 'task-lib', type: 'library', directory: 'src/task-lib' }]);
     expect(cli([...args, 'project', 'inspect', 'task-lib']).body.data.directory).toBe('src/task-lib');
     expect(cli([...args, 'project', 'component', 'task-lib', 'WorkItem', '--dry-run']).body.events).toEqual([]);

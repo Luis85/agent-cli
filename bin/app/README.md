@@ -34,7 +34,7 @@ cp agent-cli-main/bin/config.json bin/config.json
 node bin/app --version
 ```
 
-This URL serves the remote `main` branch after the implementation is pushed there. For a fixed version, use a reviewed commit archive instead. Maintainers can produce a smaller `release/forge-0.1.0.tar.gz` with `npm run release`; extracting that archive in a project places the app at `bin/app` and defaults at `bin/config.json`. Releases are not automatically published. For an upgrade, extract into a temporary directory, replace the app directory, and review configuration changes before replacing your existing settings.
+This URL serves the latest `main` branch. For a fixed version, use a reviewed commit archive instead. Maintainers can produce a smaller `release/forge-0.1.0.tar.gz` with `npm run release`; extracting that archive in a project places the app at `bin/app` and defaults at `bin/config.json`. Releases are not automatically published. For an upgrade, extract into a temporary directory, replace the app directory, and review configuration changes before replacing your existing settings.
 
 ## Capabilities
 
@@ -85,10 +85,11 @@ Existing files cannot be overwritten without their current revision. A conflict 
 
 ```sh
 npm ci
+npm run check:fast
 npm run check
 npm run release
 ```
 
-`check` type-checks, rebuilds `bin/app`, and runs unit, architecture, filesystem and standalone CLI tests. Commit source and the rebuilt `bin/app` together. Dependencies are needed only to develop the CLI; generated TypeScript belongs to the target project's toolchain.
+`check:fast` runs Oxlint, fallow and TypeScript checks during development. `check` adds a fresh build and the unit, architecture, filesystem and standalone CLI tests. Fix the cause of a failing stage, rerun it, then finish with `check`; see the [development feedback loop](docs/development.md#agent-feedback-loop). Commit source and the rebuilt `bin/app` together. The CLI bundle needs only Node; developing The Forge or a generated project requires its development dependencies, including native Oxlint/fallow binaries.
 
 MIT licensed. This is an independent tool, not an official Obsidian CLI.

@@ -122,3 +122,34 @@ describe('guarded filesystem', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each([false, true])('rejects malformed plugin byte plans without coercing data (dry run: %s)', async dryRun => {
+  const workspace = new Workspace(files, new ObsidianDocuments(), new EventBus(), dryRun);
+  for (const bytes of ['hello', [256, -1, 1.5], { length: 3 }, null]) {
+    const plan = [{ path: 'asset.bin', bytes }] as unknown as WriteRequest[];
+    await expect(files.writeBatch(plan, dryRun)).rejects.toMatchObject({ code: 'INVALID_PLAN' });
+    await expect(workspace.write(plan)).rejects.toMatchObject({ code: 'INVALID_PLAN' });
+  }
+  for (const malformed of [null, {}, [null], Array(1), [{ bytes: encodeText('Hello') }], [{ ...write('note.md'), expectedRevision: 42 }]]) {
+    const plan = malformed as unknown as WriteRequest[];
+    await expect(files.writeBatch(plan, dryRun)).rejects.toMatchObject({ code: 'INVALID_PLAN' });
+    await expect(workspace.write(plan)).rejects.toMatchObject({ code: 'INVALID_PLAN' });
+  }
+  expect(await readdir(root)).toEqual([]);
+});
+it('returns committed changes when recursive file notifications exceed the delivery limit', async () => {
+  const events = new EventBus();
+  events.define({ id: 'file.created', validate: (v): v is object => typeof v === 'object' });
+  const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
+  let count = 0;
+  const failedWrites: unknown[] = [];
+  events.on('file.created', async () => {
+    try { await workspace.write([write(`derived-${++count}.md`)]); }
+    catch (error) { failedWrites.push(error); }
+  });
+  const result = await workspace.write([write('original.md')]);
+  expect(result.changes).toMatchObject([{ path: 'original.md', operation: 'created' }]);
+  expect(await files.list()).toHaveLength(33);
+  expect(failedWrites).toEqual([]);
+  expect(events.warnings).toEqual([expect.stringContaining('recursion')]);
+});

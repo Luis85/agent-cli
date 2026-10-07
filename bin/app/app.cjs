@@ -20,9 +20,9 @@ const type = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const bin = { "forge": "bin/app/app.cjs" };
-const scripts = { "dev": "vite build --watch", "typecheck": "tsc --noEmit", "build": "vite build && node scripts/package.mjs", "test": "vitest run", "check": "npm run typecheck && npm run build && npm test", "release": "npm run check && node scripts/release.mjs" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "tsc --noEmit", "build": "vite build && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run lint && npm run analyze && npm run typecheck" };
 const dependencies = { "commander": "^15.0.0", "dayjs": "^1.11.23", "remark-frontmatter": "^5.0.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@types/node": "^22.18.0", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4" };
+const devDependencies = { "@types/node": "^22.18.0", "fallow": "3.31.0", "oxlint": "1.86.0", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4" };
 const metadata = {
   name,
   version: version$1,
@@ -123,7 +123,7 @@ class EventBus {
     if (this.history.length < 1e3) this.history.push({ id, payload: structuredClone(snapshot) });
     this.depth++;
     try {
-      for (const entry of [...this.listeners.get(id) ?? []]) {
+      for (const entry of Array.from(this.listeners.get(id) ?? [])) {
         if (!entry.active || this.disposed) continue;
         try {
           await entry.invoke(structuredClone(snapshot));
@@ -175,16 +175,27 @@ class Workspace {
   codec;
   events;
   dryRun;
+  // CLI handlers and external plugins call this through the typed CommandContext workspace.
+  // fallow-ignore-next-line unused-class-member
   async read(path) {
     const file = await this.files.read(path);
     return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
   }
   async write(writes) {
+    ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
     for (const write of writes) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
     const changes = await this.files.writeBatch(writes, this.dryRun);
-    if (!this.dryRun) for (const change of changes) await this.events.emit(`file.${change.operation}`, change);
+    if (!this.dryRun) for (const change of changes) {
+      try {
+        await this.events.emit(`file.${change.operation}`, change);
+      } catch (error2) {
+        this.events.warn(`Committed ${change.path}; file notification failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
+      }
+    }
     return { dryRun: this.dryRun, changes };
   }
+  // CLI handlers and external plugins use this guarded editing API through CommandContext.
+  // fallow-ignore-next-line unused-class-member
   async edit(path, revision, transform2) {
     const file = await this.files.read(path);
     ensure(file.revision === revision, "CONFLICT", "File changed; read again before editing.");
@@ -469,6 +480,7 @@ class NodeFiles {
     ensure((await this.stored(path))?.revision === expected, "CONFLICT", `File changed; read again before writing: ${path}`);
   }
   async writeBatch(writes, dryRun) {
+    ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
     const requests = writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
     ensure(requests.length > 0 && new Set(requests.map((w) => w.path)).size === requests.length, "INVALID_PLAN", "Plan must contain unique file paths.");
     ensure(!requests.some((a) => requests.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
@@ -22821,6 +22833,10 @@ class MarkdownTemplates {
     return new TextEncoder().encode(parts.prefix + frontmatter2 + body);
   }
 }
+const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
+const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  const discovered = new Set(discovery.report.files);\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
+const qualityShared = "import { readdirSync, mkdirSync, writeFileSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  const files = [];\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  if (!entries.some(entry => entry.name === 'src' && entry.isDirectory())) throw new Error('Required source directory src is missing');\n  for (const entry of entries) {\n    if (['src', 'tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith('src/'))) throw new Error('Source inventory is empty');\n  return files.sort();\n}\n\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
+const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error"\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    }\n  ]\n}\n';
 const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
 const json = (value2) => JSON.stringify(value2, null, 2) + "\n";
 const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
@@ -22891,8 +22907,43 @@ function projectScaffold(name2, projectsDirectory) {
       engines: { node: ">=22.12.0" },
       types: "./dist/index.d.ts",
       exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
-      scripts: { typecheck: "tsc --noEmit", build: "vite build && tsc -p tsconfig.build.json", test: "vitest run", check: "npm run typecheck && npm run build && npm test" },
-      devDependencies: { "@types/node": "22.20.5", typescript: "5.9.3", vite: "7.3.7", vitest: "3.2.7" }
+      scripts: {
+        lint: "node scripts/quality/lint.mjs",
+        analyze: "node scripts/quality/analyze.mjs",
+        typecheck: "tsc --noEmit",
+        build: "vite build && tsc -p tsconfig.build.json",
+        test: "vitest run",
+        "check:fast": "npm run lint && npm run analyze && npm run typecheck",
+        check: "npm run check:fast && npm run build && npm test"
+      },
+      devDependencies: { "@types/node": "22.20.5", fallow: "3.31.0", oxlint: "1.86.0", typescript: "5.9.3", vite: "7.3.7", vitest: "3.2.7" }
+    }),
+    "scripts/quality/lint.mjs": lintScript,
+    "scripts/quality/analyze.mjs": analyzeScript,
+    "scripts/quality/shared.mjs": qualityShared,
+    "configs/lint/oxlintrc.json": lintConfig,
+    "configs/quality/fallow.json": json({
+      $schema: "../../node_modules/fallow/schema.json",
+      minimumVersion: "3.31.0",
+      entry: ["src/index.ts", "tests/**/*.test.ts", "vite.config.ts"],
+      failOnParseError: true,
+      rules: { "unused-dev-dependencies": "error", "unused-optional-dependencies": "error", "boundary-violation": "error" },
+      boundaries: {
+        zones: [
+          { name: "domain", patterns: ["src/domain/**"] },
+          { name: "application", patterns: ["src/application/**"] },
+          { name: "infrastructure", patterns: ["src/infrastructure/**"] },
+          { name: "presentation", patterns: ["src/presentation/**"] },
+          { name: "public-api", patterns: ["src/index.ts"] }
+        ],
+        rules: [
+          { from: "domain", allow: ["domain"] },
+          { from: "application", allow: ["domain", "application"] },
+          { from: "infrastructure", allow: ["domain", "application", "infrastructure"] },
+          { from: "presentation", allow: ["domain", "application", "infrastructure", "presentation"] }
+        ],
+        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts"] }
+      }
     }),
     "tsconfig.json": json({
       compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, noEmit: true, types: ["node"], skipLibCheck: true },
@@ -22912,28 +22963,36 @@ export default defineConfig({
   },
 });
 `,
-    ".gitignore": "node_modules/\ndist/\ncoverage/\n",
+    ".gitignore": "node_modules/\ndist/\ncoverage/\n.fallow/\n.quality-reports/\n",
     "src/index.ts": "export { ProjectIdentity } from './domain/project-identity.js';\n",
     "src/application/.gitkeep": "",
     "src/infrastructure/.gitkeep": "",
     "src/presentation/.gitkeep": "",
     "README.md": `# ${name2}
 
-TypeScript library scaffolded by The Forge.
+TypeScript library scaffolded by The Forge. Requires Node 22.12 or newer.
 
-Run \`npm install\` once, commit the resulting lockfile, then use \`npm ci\` for reproducible installs. Run \`npm run check\` to type-check, build with Vite, and test with Vitest. The scaffold does not install or execute dependencies.
+Run \`npm install\` once, commit the resulting lockfile, then use \`npm ci\` for reproducible installs. The scaffold does not install or execute dependencies.
 
-Keep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and entry points in \`src/presentation\`. Export the intended public API from \`src/index.ts\`. New components start internal; explicitly export them when needed.
+## Development feedback loop
 
-The sample \`ProjectIdentity\` demonstrates identity validation. Replace examples with the project's business vocabulary and acceptance criteria.
+1. Define acceptance criteria and inspect the affected code and tests.
+2. Make a focused change; use \`npm test -- tests/example.test.ts\` to check its behavior.
+3. Run \`npm run check:fast\` for Oxlint, fallow-rs unused-code/import-boundary analysis, and strict TypeScript checks. Each command exits nonzero on failure.
+4. Repair the first reported failure and rerun its command. Lint and analysis emit structured JSON and save diagnostics to \`.quality-reports/oxlint.json\` and \`.quality-reports/fallow.json\`. Do not hide findings by broadening analysis entries, adding suppressions, or disabling checks.
+5. Run \`npm run check\` before handoff; it adds the Vite build, declaration generation, and all Vitest tests. Report the commands and results.
+
+Keep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and composition in \`src/presentation\`. Core layers use only relative imports and cannot depend on outer layers; keep platform libraries behind injected ports. These boundaries are enforced by the lint and analysis configurations under \`configs/\`. Export the intended public API from \`src/index.ts\`. New components start internal and are exercised by their generated tests; explicitly export them when they become part of the library contract.
+
+The sample \`ProjectIdentity\` demonstrates identity validation. Replace examples with the project's business vocabulary and acceptance criteria. Static checks enforce specific rules; focused behavior tests remain necessary.
 `,
     "AGENTS.md": `# Working on ${name2}
 
-Read README.md and package.json first. Establish acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application code depends on domain and injected ports. Put adapters in infrastructure and composition in presentation.
+Read README.md and package.json first. Define acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application depends on domain and injected ports. Put adapters in infrastructure and composition in presentation. Respect the enforced import boundaries in configs/.
 
-Use The Forge from the containing workspace for project/component scaffolds; preview writes with --dry-run. Treat generated examples as a starting point and choose names from the domain. Add focused tests for invariants and failure behavior. Export only intentional public API from src/index.ts.
+Use The Forge from the containing workspace for project/component scaffolds; preview writes with --dry-run. Choose names from the domain, replace example behavior, and add focused tests for invariants and failures. Export only intentional public API from src/index.ts.
 
-Run npm run check after changes. Report validation and any limitations. Do not introduce dependencies or unrelated changes without a concrete need.
+Install with npm ci after a lockfile exists (npm install once for a fresh scaffold, then commit the lockfile). Run focused tests while editing and npm run check:fast after changes. Repair diagnostics at their source; do not weaken checks, widen entry globs, or add suppressions to obtain a pass. Run npm run check before handoff and report commands, results, and limitations. Introduce dependencies only for a concrete need.
 `,
     "tests/public-api.test.ts": "import { expect, it } from 'vitest';\nimport { ProjectIdentity } from '../src/index.ts';\n\nit('exposes identity validation through the public API', () => {\n  expect(() => ProjectIdentity.create('   ')).toThrow('Identity is required');\n  expect(ProjectIdentity.create('project-1').id).toBe('project-1');\n});\n"
   };
@@ -23043,9 +23102,9 @@ export default {
     ];
   } }
 ];
-const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate `bin/app/app.cjs` and `bin/config.json`. Run `node bin/app config --json` to confirm paths, defaults and enabled plugins, then `node bin/app schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app --root <project> --config <path> schema --json`. The same rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read the project's AGENTS.md and acceptance criteria. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A CONFLICT means reread and reconcile; never blindly retry with a new revision.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. File events report committed changes; dry runs emit none. Warnings may report failed notification listeners after a successful write.\n6. Read back the result, validate documents, and run the target project's relevant type checks and tests. Summarize changed files, evidence, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, initializes missing app/config, skills, an example template and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component <id> <PascalName> --kind domain`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n";
+const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate `bin/app/app.cjs` and `bin/config.json`. Run `node bin/app config --json` to confirm paths, defaults and enabled plugins, then `node bin/app schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app --root <project> --config <path> schema --json`. The same rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read the project's AGENTS.md and acceptance criteria. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A CONFLICT means reread and reconcile; never blindly retry with a new revision.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. File events report committed changes; dry runs emit none. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, initializes missing app/config, skills, an example template and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component <id> <PascalName> --kind domain`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n";
 const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/app formats --json` for the format inventory. All paths are relative to `--root`, with `/` separators. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for template/output paths. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Formulas and filters are stored as data; this CLI does not execute the Obsidian query engine.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nAlways preview edits with `--dry-run`, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>` to select the right project. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component <id> <PascalName> --kind domain|application --dry-run`. The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/app make --json`. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. Run the project's type checker and relevant tests. Add integration tests where serialization or filesystem behavior matters.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in the configured plugin directory, then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. For changes to The Forge itself, run `npm ci`, `npm run check`, update docs and skills, rebuild and commit `bin/app` with the source. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n";
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>` to select the right project. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component <id> <PascalName> --kind domain|application --dry-run`. The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/app make --json`. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in the configured plugin directory, then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. For changes to The Forge itself, run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit its rebuilt `bin/app` with the source. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n";
 const builtinSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -26471,10 +26530,10 @@ function parseJson(text2) {
   }
 }
 async function makeDocument(title, flags, context, services) {
-  ensure(title.trim() === title && title.length > 0 && !/[\/\\:]/.test(title), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
+  ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
   const template = value(flags, "template", true);
-  const source = await context.workspace.files.read(`${services.loaded.config.paths.templates}/${template}`);
   ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+  const source = await context.workspace.files.read(`${services.loaded.config.paths.templates}/${template}`);
   const inline = value(flags, "values"), from = value(flags, "values-from");
   ensure(inline === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
   const data = from === void 0 ? parseJson(inline ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
@@ -26504,6 +26563,7 @@ function workflowCommands(services) {
       }
       ensure(action === "inspect", "INVALID_ARGUMENT", "Use templates list or templates inspect <template.md>.");
       arity(args, 2);
+      ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const path = `${config2.paths.templates}/${args[1]}`;
       return { path, ...services.templates.inspect((await workspace.files.read(path)).bytes) };
     } },
@@ -26575,9 +26635,11 @@ function commands(registry2, services) {
       arity(args, 0);
       return { nativeFormats, structured: ["md", "canvas", "base"], attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } },
-    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown]", options: { kind: "string" }, async run(args, flags, { workspace }) {
+    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|attachment]", options: { kind: "string" }, async run(args, flags, { workspace }) {
       arity(args, 0);
       const kind = value(flags, "kind");
+      const kinds = [...Object.keys(nativeFormats), "attachment"];
+      ensure(kind === void 0 || kinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${kinds.join(", ")}.`);
       return { files: (await workspace.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
     } },
     { id: "read", description: "Read a document or base64 attachment with its SHA-256 revision.", usage: "read <path>", async run(args, _, { workspace }) {
@@ -26634,7 +26696,10 @@ function commands(registry2, services) {
       return workspace.edit(args[0], value(flags, "if-match", true), (bytes) => workspace.codec.patch(args[0], bytes, pointer, data));
     } },
     { id: "make", description: "Generate TypeScript, plugins, or documents from Obsidian templates.", usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO]", options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string" }, async run(args, flags, context) {
-      if (args.length === 0) return { generators: generatorCatalog() };
+      if (args.length === 0) {
+        ensure(["out", "template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
+        return { generators: generatorCatalog() };
+      }
       arity(args, 2);
       if (args[0] === "document") return makeDocument(args[1], flags, context, services);
       ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
@@ -26655,6 +26720,7 @@ function commands(registry2, services) {
     } },
     { id: "skills", description: "List, read or install bundled and plugin agent skills.", usage: "skills [list | show <id> | install] [--out .agents/skills]", options: { out: "string" }, async run(args, flags, { workspace }) {
       const action = args[0] ?? "list";
+      if (action !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
       if (action === "list") {
         arity(args, 0, 1);
         return { skills: [...registry2.skills.keys()] };

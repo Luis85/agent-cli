@@ -70,7 +70,7 @@ export class EventBus {
     if (this.history.length < 1000) this.history.push({ id, payload: structuredClone(snapshot) });
     this.depth++;
     try {
-      for (const entry of [...(this.listeners.get(id) ?? [])]) {
+      for (const entry of Array.from(this.listeners.get(id) ?? [])) {
         if (!entry.active || this.disposed) continue;
         try { await entry.invoke(structuredClone(snapshot)); }
         catch (error) { this.warn(`Listener ${id}: ${error instanceof Error ? error.message : String(error)}`); }

@@ -1,3 +1,7 @@
+import lintScript from '../../scripts/quality/lint.mjs?raw';
+import analyzeScript from '../../scripts/quality/analyze.mjs?raw';
+import qualityShared from '../../scripts/quality/shared.mjs?raw';
+import lintConfig from '../../configs/lint/oxlintrc.json?raw';
 import { ensure } from '../domain/errors.ts';
 import { vaultPath, type WriteRequest } from '../domain/file.ts';
 import { projectName, type ComponentKind } from '../application/projects.ts';
@@ -27,8 +31,39 @@ export function projectScaffold(name: string, projectsDirectory: string): WriteR
     'package.json': json({
       name, version: '0.1.0', private: true, type: 'module', engines: { node: '>=22.12.0' },
       types: './dist/index.d.ts', exports: { '.': { types: './dist/index.d.ts', import: './dist/index.js' } },
-      scripts: { typecheck: 'tsc --noEmit', build: 'vite build && tsc -p tsconfig.build.json', test: 'vitest run', check: 'npm run typecheck && npm run build && npm test' },
-      devDependencies: { '@types/node': '22.20.5', typescript: '5.9.3', vite: '7.3.7', vitest: '3.2.7' },
+      scripts: {
+        lint: 'node scripts/quality/lint.mjs', analyze: 'node scripts/quality/analyze.mjs',
+        typecheck: 'tsc --noEmit', build: 'vite build && tsc -p tsconfig.build.json', test: 'vitest run',
+        'check:fast': 'npm run lint && npm run analyze && npm run typecheck',
+        check: 'npm run check:fast && npm run build && npm test',
+      },
+      devDependencies: { '@types/node': '22.20.5', fallow: '3.31.0', oxlint: '1.86.0', typescript: '5.9.3', vite: '7.3.7', vitest: '3.2.7' },
+    }),
+    'scripts/quality/lint.mjs': lintScript,
+    'scripts/quality/analyze.mjs': analyzeScript,
+    'scripts/quality/shared.mjs': qualityShared,
+    'configs/lint/oxlintrc.json': lintConfig,
+    'configs/quality/fallow.json': json({
+      $schema: '../../node_modules/fallow/schema.json', minimumVersion: '3.31.0',
+      entry: ['src/index.ts', 'tests/**/*.test.ts', 'vite.config.ts'],
+      failOnParseError: true,
+      rules: { 'unused-dev-dependencies': 'error', 'unused-optional-dependencies': 'error', 'boundary-violation': 'error' },
+      boundaries: {
+        zones: [
+          { name: 'domain', patterns: ['src/domain/**'] },
+          { name: 'application', patterns: ['src/application/**'] },
+          { name: 'infrastructure', patterns: ['src/infrastructure/**'] },
+          { name: 'presentation', patterns: ['src/presentation/**'] },
+          { name: 'public-api', patterns: ['src/index.ts'] },
+        ],
+        rules: [
+          { from: 'domain', allow: ['domain'] },
+          { from: 'application', allow: ['domain', 'application'] },
+          { from: 'infrastructure', allow: ['domain', 'application', 'infrastructure'] },
+          { from: 'presentation', allow: ['domain', 'application', 'infrastructure', 'presentation'] },
+        ],
+        coverage: { requireAllFiles: true, allowUnmatched: ['tests/**', 'scripts/**', 'vite.config.ts'] },
+      },
     }),
     'tsconfig.json': json({
       compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, noEmit: true, types: ['node'], skipLibCheck: true },
@@ -40,13 +75,13 @@ export function projectScaffold(name: string, projectsDirectory: string): WriteR
       include: ['src'],
     }),
     'vite.config.ts': `import { defineConfig } from 'vite';\n\nexport default defineConfig({\n  build: {\n    target: 'es2022',\n    lib: { entry: 'src/index.ts', formats: ['es'], fileName: () => 'index.js' },\n  },\n});\n`,
-    '.gitignore': 'node_modules/\ndist/\ncoverage/\n',
+    '.gitignore': 'node_modules/\ndist/\ncoverage/\n.fallow/\n.quality-reports/\n',
     'src/index.ts': "export { ProjectIdentity } from './domain/project-identity.js';\n",
     'src/application/.gitkeep': '',
     'src/infrastructure/.gitkeep': '',
     'src/presentation/.gitkeep': '',
-    'README.md': `# ${name}\n\nTypeScript library scaffolded by The Forge.\n\nRun \`npm install\` once, commit the resulting lockfile, then use \`npm ci\` for reproducible installs. Run \`npm run check\` to type-check, build with Vite, and test with Vitest. The scaffold does not install or execute dependencies.\n\nKeep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and entry points in \`src/presentation\`. Export the intended public API from \`src/index.ts\`. New components start internal; explicitly export them when needed.\n\nThe sample \`ProjectIdentity\` demonstrates identity validation. Replace examples with the project's business vocabulary and acceptance criteria.\n`,
-    'AGENTS.md': `# Working on ${name}\n\nRead README.md and package.json first. Establish acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application code depends on domain and injected ports. Put adapters in infrastructure and composition in presentation.\n\nUse The Forge from the containing workspace for project/component scaffolds; preview writes with --dry-run. Treat generated examples as a starting point and choose names from the domain. Add focused tests for invariants and failure behavior. Export only intentional public API from src/index.ts.\n\nRun npm run check after changes. Report validation and any limitations. Do not introduce dependencies or unrelated changes without a concrete need.\n`,
+    'README.md': `# ${name}\n\nTypeScript library scaffolded by The Forge. Requires Node 22.12 or newer.\n\nRun \`npm install\` once, commit the resulting lockfile, then use \`npm ci\` for reproducible installs. The scaffold does not install or execute dependencies.\n\n## Development feedback loop\n\n1. Define acceptance criteria and inspect the affected code and tests.\n2. Make a focused change; use \`npm test -- tests/example.test.ts\` to check its behavior.\n3. Run \`npm run check:fast\` for Oxlint, fallow-rs unused-code/import-boundary analysis, and strict TypeScript checks. Each command exits nonzero on failure.\n4. Repair the first reported failure and rerun its command. Lint and analysis emit structured JSON and save diagnostics to \`.quality-reports/oxlint.json\` and \`.quality-reports/fallow.json\`. Do not hide findings by broadening analysis entries, adding suppressions, or disabling checks.\n5. Run \`npm run check\` before handoff; it adds the Vite build, declaration generation, and all Vitest tests. Report the commands and results.\n\nKeep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and composition in \`src/presentation\`. Core layers use only relative imports and cannot depend on outer layers; keep platform libraries behind injected ports. These boundaries are enforced by the lint and analysis configurations under \`configs/\`. Export the intended public API from \`src/index.ts\`. New components start internal and are exercised by their generated tests; explicitly export them when they become part of the library contract.\n\nThe sample \`ProjectIdentity\` demonstrates identity validation. Replace examples with the project's business vocabulary and acceptance criteria. Static checks enforce specific rules; focused behavior tests remain necessary.\n`,
+    'AGENTS.md': `# Working on ${name}\n\nRead README.md and package.json first. Define acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application depends on domain and injected ports. Put adapters in infrastructure and composition in presentation. Respect the enforced import boundaries in configs/.\n\nUse The Forge from the containing workspace for project/component scaffolds; preview writes with --dry-run. Choose names from the domain, replace example behavior, and add focused tests for invariants and failures. Export only intentional public API from src/index.ts.\n\nInstall with npm ci after a lockfile exists (npm install once for a fresh scaffold, then commit the lockfile). Run focused tests while editing and npm run check:fast after changes. Repair diagnostics at their source; do not weaken checks, widen entry globs, or add suppressions to obtain a pass. Run npm run check before handoff and report commands, results, and limitations. Introduce dependencies only for a concrete need.\n`,
     'tests/public-api.test.ts': "import { expect, it } from 'vitest';\nimport { ProjectIdentity } from '../src/index.ts';\n\nit('exposes identity validation through the public API', () => {\n  expect(() => ProjectIdentity.create('   ')).toThrow('Identity is required');\n  expect(ProjectIdentity.create('project-1').id).toBe('project-1');\n});\n",
   };
   return [

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../node_modules/fallow/schema.json",
+  "minimumVersion": "3.31.0",
+  "entry": ["src/main.ts", "src/sdk.ts", "tests/**/*.test.ts", "vite.config.ts", "examples/plugins/*/main.mjs"],
+  "ignorePatterns": ["bin/**", "release/**"],
+  "failOnParseError": true,
+  "rules": {
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "boundary-violation": "error"
+  },
+  "boundaries": {
+    "zones": [
+      { "name": "domain", "patterns": ["src/domain/**"] },
+      { "name": "application", "patterns": ["src/application/**"] },
+      { "name": "infrastructure", "patterns": ["src/infrastructure/**"] },
+      { "name": "presentation", "patterns": ["src/presentation/**"] }
+    ],
+    "rules": [
+      { "from": "domain", "allow": ["domain"] },
+      { "from": "application", "allow": ["domain", "application"] }
+    ]
+  }
+}
