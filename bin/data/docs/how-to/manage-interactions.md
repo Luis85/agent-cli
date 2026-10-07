@@ -28,6 +28,64 @@ To edit a shared definition with guarded generic file commands, close an active
 project first. Use `read` to obtain its revision, then `write`, `edit` or
 `properties` with `--if-match`. Opening a project does not move shared libraries.
 
+## Use the save, upload and download defaults
+
+After initialization, inspect the shipped definitions before attaching them:
+
+```sh
+node bin/app.js interactions inspect save
+node bin/app.js interactions inspect upload
+node bin/app.js interactions inspect download
+```
+
+Attach `save` to a form to store its named fields under `forge-form` in browser
+local storage. Use `upload` on a form when you have a working endpoint, and
+declare an `uploadUrl` string prop in the component. Attach `download` to a
+`type: button` inside the form to export its current fields as `form-data.json`:
+
+```yaml
+props:
+  uploadUrl:
+    type: string
+    required: true
+root:
+  tag: form
+  interactions: [upload]
+  children:
+    - tag: input
+      attrs:
+        name: email
+        type: email
+        aria-label: Email
+        required: true
+    - tag: input
+      attrs:
+        name: attachment
+        type: file
+        aria-label: Attachment
+    - tag: button
+      attrs:
+        type: submit
+      text: Upload
+    - tag: button
+      attrs:
+        type: button
+      interactions: [download]
+      text: Download JSON
+```
+
+Provide `uploadUrl` when composing or mounting this component, for example
+`/api/contact`. Replace `[upload]` with `[save]` for local draft storage. Save and
+download include file metadata; upload sends actual file contents as multipart
+form data. Neither saved JSON nor a download restores selected files. Give
+separate forms distinct storage keys by copying and editing the save definition.
+
+In the consuming application, listen for `forge:save`, `forge:upload` and
+`forge:download` to confirm completion, and `forge:interaction-error` to show
+failure feedback. Test denied storage, failed requests and server validation as
+well as the success path. See the [form action contract](../reference/interactions.md#reusable-form-actions)
+for exact payloads and browser limits.
+
 ## Transfer and select libraries
 
 ```sh

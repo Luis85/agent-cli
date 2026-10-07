@@ -26,6 +26,11 @@ export class ScopedFiles implements FileRepository {
     return changes.map(change => ({ ...change, path: this.relative(change.path) }));
   }
 
+  async remove(path: string, expectedRevision: string, dryRun: boolean): Promise<FileChange> {
+    const change = await this.files.remove(this.prefix + vaultPath(path), expectedRevision, dryRun);
+    return { ...change, path: this.relative(change.path) };
+  }
+
   private relative(path: string): string {
     ensure(path.startsWith(this.prefix), 'INVALID_PATH', 'Repository returned a path outside the selected project.');
     return vaultPath(path.slice(this.prefix.length));

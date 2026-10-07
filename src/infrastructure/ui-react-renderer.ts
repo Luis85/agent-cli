@@ -2,7 +2,7 @@ import type { InteractionDefinition } from '../domain/interaction.ts';
 import { componentInteractions, interactionUsesState, interactionValues, groupElementInteractions, interactionPrefix, renderInteractionHandlers, stateDefaults, stateType } from './ui-interaction-rendering.ts';
 import { componentDependencies } from '../domain/ui-library.ts';
 import type { UiDefinition, UiNode, UiValue } from '../domain/ui.ts';
-import { uiBooleanAttributes as booleanAttrs, uiBindings } from '../domain/ui-syntax.ts';
+import { uiBooleanAttributes as booleanAttrs, uiBindings, uiWholeBinding } from '../domain/ui-syntax.ts';
 import { ordered, textExpression, json, expression, defaults, defaultAssignments, className } from './ui-rendering.ts';
 import { reactStyleHelper } from './ui-react-style.ts';
 
@@ -38,7 +38,8 @@ export function reactModule(definition: UiDefinition, definitions: Map<string, U
         usesControls = true;
         const rendered = expression(value, 'props', state);
         const property = `(element as HTMLInputElement).${key}`;
-        const converted = key === 'checked' ? `(${rendered} != null && (${rendered} as unknown) !== false)` : `globalThis.String(${rendered} ?? '')`;
+        const controlValue = value === null ? "''" : uiWholeBinding(value) ? `(${rendered} ?? '')` : rendered;
+        const converted = key === 'checked' ? `(${rendered} != null && (${rendered} as unknown) !== false)` : `globalThis.String(${controlValue})`;
         controls.push(`if (!globalThis.Object.hasOwn(previous, ${json(key)}) || previous[${json(key)}] !== ${converted}) ${property} = ${converted}; previous[${json(key)}] = ${converted};`);
         return [`${key === 'checked' ? 'defaultChecked' : 'defaultValue'}: ${converted}`];
       }

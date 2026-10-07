@@ -1,9 +1,11 @@
 import { afterEach, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
 import ts from 'typescript';
 import { JSDOM } from 'jsdom';
 import type { UiDefinition } from '../../src/domain/ui.ts';
 import type { InteractionDefinition } from '../../src/domain/interaction.ts';
 import { renderUiComponents } from '../../src/infrastructure/ui-renderers.ts';
+import { formDefinition, formInteractions, formRuntimeScenario } from '../support/interaction-form-runtime.ts';
 
 const windows: JSDOM[] = [];
 afterEach(() => { for (const dom of windows.splice(0)) dom.window.close(); });
@@ -62,6 +64,43 @@ function factory(framework: 'html' | 'htmx' | 'vanilla', input = definitions, ha
   }
   return { dom, create: load(id).default!, files };
 }
+
+it.each(['html', 'htmx', 'vanilla'] as const)('executes %s form saves, file uploads, downloads and browser failures', async framework => {
+  const { dom, create } = factory(framework, [formDefinition], formInteractions, formDefinition.id);
+  const root = create(); dom.window.document.body.append(root);
+  const exercise = new Function('assert', `${formRuntimeScenario}\nreturn exerciseForms;`)(assert) as (root: Node, browser: JSDOM['window'], flush: (action: () => void) => Promise<void>) => Promise<void>;
+  await exercise(root, dom.window, async action => { action(); });
+});
+
+it.each(['html', 'htmx', 'vanilla'] as const)('rejects %s unsafe upload prop values without making requests', async framework => {
+  for (const uploadUrl of ['javascript:alert(1)', '//other.example/upload', 'https://user:password@example.test/upload', ' /upload']) {
+    const { dom, create } = factory(framework, [formDefinition], formInteractions, formDefinition.id);
+    const root = create({ uploadUrl }) as HTMLElement; dom.window.document.body.append(root);
+    const errors: unknown[] = [];
+    let requests = 0;
+    dom.window.fetch = async () => { requests++; return new Response(); };
+    root.addEventListener('forge:interaction-error', event => errors.push((event as CustomEvent).detail));
+    root.querySelector('[data-form="upload"]')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+    expect(errors).toEqual([{ action: 'upload-form', message: 'Unsafe interaction upload URL.' }]);
+    expect(requests).toBe(0);
+  }
+});
+
+it.each(['html', 'htmx', 'vanilla'] as const)('resolves %s external buttons through their native form association', async framework => {
+  const save = interaction('external-save', 'click', [{ type: 'save-form', key: 'external-draft' }]);
+  const page: UiDefinition = {
+    schemaVersion: 1, id: 'associated-form', description: 'An external form control.', sourcePath: 'associated-form.md', props: {},
+    root: { tag: 'section', children: [
+      { tag: 'form', attrs: { id: 'external-form' }, children: [{ tag: 'input', attrs: { name: 'title', value: 'Associated' } }] },
+      { tag: 'button', attrs: { type: 'button', form: 'external-form' }, interactions: ['external-save'], text: 'Save' },
+    ] },
+  };
+  const { dom, create } = factory(framework, [page], [save], page.id);
+  const root = create() as HTMLElement; dom.window.document.body.append(root);
+  root.querySelector('button')!.click(); await Promise.resolve();
+  expect(JSON.parse(dom.window.localStorage.getItem('external-draft')!)).toEqual({ title: 'Associated' });
+});
 
 it.each(['html', 'htmx', 'vanilla'] as const)('updates %s state while retaining roots, focused inputs, child state and projected nodes', framework => {
   const { dom, create, files } = factory(framework);

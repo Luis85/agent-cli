@@ -5,7 +5,9 @@ Tests live under the concern they verify. Every executable test file declares it
 | Concern | Coverage |
 | --- | --- |
 | [architecture](architecture/) | Domain and application import boundaries |
+| [bases](bases/) | Standalone native Bases filters, formulas, file metadata and portable repository queries |
 | [cli](cli/) | Argument parsing, discovery, errors, and input routing |
+| [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
 | [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |

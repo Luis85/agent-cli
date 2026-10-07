@@ -48,6 +48,8 @@ A listener warning does not make a committed write fail. Check `events` and read
 | `make data-source` | `<id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from file.json / --plan / --plan-out file.json / --check]` | Generate TypeScript adapters and deterministic test data with guarded regeneration and drift checks; see [data-source reference](data-sources.md) |
 | `events` | none | Registered events and delivery semantics |
 | `plugins` | none | Enabled manifests loaded from shared workspace `bin/plugins` |
+| `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
+| `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md) |
 | `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope |
 | `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
 | `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |
@@ -73,9 +75,10 @@ node bin/app.js patch architecture.canvas --pointer /nodes/- --value '{"id":"dom
 node bin/app.js create tasks.base
 node bin/app.js read tasks.base --json
 node bin/app.js patch tasks.base --pointer /views/0/name --value '"Engineering tasks"' --if-match YOUR_REVISION
+node bin/app.js bases query tasks.base --view 'Engineering tasks'
 ```
 
-JSON Pointer uses `~0` for `~` and `~1` for `/`. Parent containers must exist. Array indices must exist except `-` append. Prototype keys are forbidden. To remove a key/node/edge, or make a coordinated graph change, read the document, modify it, and use `write --stdin --if-match <revision>` with the complete result. There is no filesystem delete or rename command in version 0.1.
+JSON Pointer uses `~0` for `~` and `~1` for `/`. Parent containers must exist. Array indices must exist except `-` append. Prototype keys are forbidden. To remove a key/node/edge, or make a coordinated graph change, read the document, modify it, and use `write --stdin --if-match <revision>` with the complete result. Native Claude agents and plugin assets have guarded removal commands; there is no general filesystem delete or rename command.
 
 ## Write contract
 

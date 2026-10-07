@@ -28,6 +28,13 @@ import { MarkdownDataSourceDefinitions } from './infrastructure/data-source-defi
 import { TypeScriptDataSourceRenderer } from './infrastructure/data-source-generator.ts';
 import { MarkdownInteractionDefinitions } from './infrastructure/interaction-definitions.ts';
 import { builtinSkills } from './infrastructure/skills.ts';
+import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude-agents.ts';
+import { claudeTarget } from './infrastructure/claude-target.ts';
+import { NodeClaudeRuntime } from './infrastructure/claude-runtime.ts';
+import { claudeCommand } from './presentation/claude-commands.ts';
+import { Bases } from './application/bases.ts';
+import { NodeBasesQueryEngine } from './infrastructure/bases.ts';
+import { basesCommand } from './presentation/bases-commands.ts';
 import { commands } from './presentation/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/arguments.ts';
 import { language, Localizer } from './presentation/localization.ts';
@@ -57,7 +64,7 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       const files = await NodeFiles.at(loaded.root, message => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
-      for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.path === 'string' && typeof v.revision === 'string' && typeof v.bytes === 'number' && v.operation === id.slice(5) });
+      for (const id of ['file.created', 'file.updated', 'file.deleted']) events.define({ id, validate: (v): v is Record<string, unknown> => isRecord(v) && typeof v.path === 'string' && typeof v.revision === 'string' && typeof v.bytes === 'number' && v.operation === id.slice(5) });
       let environment: Workspace;
       for (const generator of generators) registry.add(registry.generators, generator);
       for (const skill of builtinSkills) registry.add(registry.skills, skill);
@@ -76,6 +83,8 @@ async function run(): Promise<void> {
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
       })) registry.add(registry.commands, command);
+      registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget, runtime: executable => new NodeClaudeRuntime({ executable }) }));
+      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec))));
       if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.commands.get(id);
@@ -95,7 +104,8 @@ async function run(): Promise<void> {
       const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates', 'components', 'data-sources', 'interactions'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
       const requestedProject = id === 'make' && ['ui', 'stories', 'data-source'].includes(parsed.args[1] ?? '') ? value(parsed.flags, 'project') : undefined;
-      const project = environmentCommand ? null : requestedProject !== undefined ? await projects.inspect(requestedProject) : await projects.current();
+      const claudeWorkspaceCommand = id === 'claude' && (parsed.args.length === 1 || parsed.args[1] === 'capabilities');
+      const project = environmentCommand || claudeWorkspaceCommand ? null : requestedProject !== undefined ? await projects.inspect(requestedProject) : await projects.current();
       const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const context: CommandContext = { workspace, events, ...activeContext, input: async () => {

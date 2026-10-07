@@ -25,6 +25,11 @@ describe('Markdown interaction contract', () => {
     const definition = parse({ event, actions: [{ type: 'set-state', state: 'value', fromEvent: 'value' }, { type: 'set-state', state: 'selected', fromEvent: 'checked' }] });
     expect(definition.actions).toHaveLength(2);
   });
+  it('round trips bounded form workflows with configurable destinations', () => {
+    const actions = [{ type: 'save-form', key: '{{draftKey}}' }, { type: 'upload-form', url: '{{uploadUrl}}' }, { type: 'download-form', filename: 'draft.json' }];
+    const definition = parse({ event: 'submit', preventDefault: true, actions });
+    expect(codec.parse(codec.serialize(definition), definition.sourcePath).actions).toEqual(actions);
+  });
   it.each(['https://example.test/path', 'http://localhost:8080/', '/items/{{id}}', '?q={{state.search}}', '#details', 'relative/page', '{{destination}}'])('accepts safe navigation %s', url => {
     expect(parse({ actions: [{ type: 'navigate', url }] }).actions).toEqual([{ type: 'navigate', url }]);
   });
@@ -44,6 +49,15 @@ describe('Markdown interaction contract', () => {
     { actions: [{ type: 'emit', event: '', detail: {} }] },
     { actions: [{ type: 'emit', event: 'custom', detail: { nested: { value: true } } }] },
     { actions: [{ type: 'emit', event: 'custom', detail: { constructor: true } }] },
+    { actions: [{ type: 'save-form', key: '' }] },
+    { actions: [{ type: 'save-form', key: '   ' }] },
+    { actions: [{ type: 'save-form', key: '{{broken' }] },
+    { actions: [{ type: 'upload-form', url: 'javascript:alert(1)' }] },
+    { actions: [{ type: 'upload-form', url: '/upload', method: 'DELETE' }] },
+    { actions: [{ type: 'download-form', filename: '../draft.json' }] },
+    { actions: [{ type: 'download-form', filename: '' }] },
+    { actions: [{ type: 'download-form', filename: 'draft\n.json' }] },
+    { event: 'input', actions: [{ type: 'save-form', key: 'draft' }] },
   ] as Record<string, unknown>[])('rejects invalid interaction contracts %#', patch => {
     expect(() => parse(patch)).toThrow(expect.objectContaining({ code: 'INVALID_INTERACTION' }));
   });

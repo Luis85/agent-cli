@@ -2,19 +2,11 @@ import { ensure } from '../domain/errors.ts';
 import { ensureSeparateDirectories, vaultPath, type WriteRequest } from '../domain/file.ts';
 import { validateInteractionLibrary, type InteractionDefinition, type InteractionEvent } from '../domain/interaction.ts';
 import type { Workspace } from './workspace.ts';
+import { defaultInteractionIds, starterInteraction } from './interaction-defaults.ts';
 
 export interface InteractionDefinitionCodec {
   parse(bytes: Uint8Array, path: string): InteractionDefinition;
   serialize(definition: InteractionDefinition): Uint8Array;
-}
-
-function starter(directory: string, id: string, event: InteractionEvent = 'click'): InteractionDefinition {
-  const input = event === 'input' || event === 'change';
-  return {
-    schemaVersion: 1, id, event, sourcePath: `${directory}/${id}.md`,
-    description: `# ${id}\n\n${input ? 'Copies the input value into string state named value.' : 'Toggles boolean state named expanded.'} Declare that state on each consuming component.\n`,
-    actions: input ? [{ type: 'set-state', state: 'value', fromEvent: 'value' }] : [{ type: 'toggle-state', state: 'expanded' }],
-  };
 }
 
 /** Interaction definitions remain shared workspace assets; UI generation consumes them through a port. */
@@ -38,16 +30,16 @@ export class InteractionLibrary {
       ...(!definitions.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {}),
     };
   }
-  async create(directory: string, id: string, event: InteractionEvent = 'click') {
+  async create(directory: string, id: string, event?: InteractionEvent) {
     vaultPath(directory);
-    const definition = starter(directory, id, event), bytes = this.codec.serialize(definition);
+    const definition = starterInteraction(directory, id, event), bytes = this.codec.serialize(definition);
     validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes, definition.sourcePath)]);
     return { interaction: id, ...await this.commit([{ path: definition.sourcePath, bytes }]) };
   }
   async init(directory: string) {
     vaultPath(directory);
     const existing = await this.list(directory), ids = new Set(existing.map(definition => definition.id));
-    const additions = [starter(directory, 'toggle-expanded'), starter(directory, 'input-value', 'input')].filter(definition => !ids.has(definition.id));
+    const additions = defaultInteractionIds.map(id => starterInteraction(directory, id)).filter(definition => !ids.has(definition.id));
     const plan = additions.map(definition => ({ path: definition.sourcePath, bytes: this.codec.serialize(definition) }));
     return { interactions: additions.map(definition => definition.id), skipped: [...ids].sort(), ...await this.commit(plan) };
   }

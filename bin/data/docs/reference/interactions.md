@@ -50,6 +50,9 @@ attached to an element handle their declared events in definition-list order.
 | `toggle-state` | `state` | Invert a declared boolean state field |
 | `navigate` | `url` | Navigate to a relative destination or an HTTP(S) URL |
 | `emit` | `event`, optional scalar-valued `detail` map | Dispatch a bubbling, composed native `CustomEvent` from the attached element |
+| `save-form` | `key` | Store named form fields as JSON in browser `localStorage` under the given key |
+| `upload-form` | `url` | POST the form's `FormData`, including selected file bytes, to an explicit relative or HTTP(S) URL |
+| `download-form` | `filename` | Download named form fields as a JSON file |
 
 `set-state.value` accepts the same scalar values and bindings as component values.
 `fromEvent: value` reads a string from an input/select/textarea on `input` or
@@ -70,9 +73,55 @@ all seven generated targets; they are not framework-specific callback props or
 Angular output declarations.
 
 Navigation rejects executable schemes, protocol-relative URLs, credentials and
-unsafe URL syntax. The definition does not permit arbitrary JavaScript, dynamic
-code evaluation, API calls, persistence, timers or conditional expressions.
-Implement application-specific side effects in ordinary consuming code.
+unsafe URL syntax. Upload destinations follow the same URL restrictions. The
+definition does not permit arbitrary JavaScript, dynamic code evaluation, timers
+or conditional expressions. General API workflows, authentication, response
+processing and application-specific side effects belong in consuming code.
+
+## Reusable form actions
+
+`interactions init` includes `save`, `upload` and `download`. `save` handles
+`submit`, prevents native submission and stores data under `forge-form`.
+`upload` handles `submit`, prevents native submission and uses `{{uploadUrl}}`;
+the attaching component must declare that prop and provide an explicit endpoint.
+`download` handles `click`, prevents its default behavior and downloads
+`form-data.json`. Edit or copy these definitions to change their key, URL or
+filename; action fields support component bindings.
+
+Attach submit interactions to a `form`, and the download interaction to a
+button associated with a form. Form actions read the current browser controls
+using `FormData`. Fields need a `name`; disabled controls and unchecked
+checkboxes are omitted. Repeated names become ordered arrays in JSON; other
+values remain strings. A selected file becomes `{name, size, type, lastModified}`
+in saved or downloaded JSON. Only upload transmits file contents. Save replaces
+the existing value under its key and does not restore controls automatically.
+Storage belongs to the consuming site's origin and can be unavailable or full.
+
+Upload uses `POST` and lets the browser set the multipart content type and
+boundary. It uses the browser's `same-origin` credentials policy. Relative URLs
+resolve against the document URL. The action provides
+no custom headers, response parsing, retries or upload progress; server behavior,
+authorization, CORS and validation remain application responsibilities. Download
+creates an `application/json` Blob and a temporary download link, then releases
+its object URL. Browser download settings still apply.
+
+Listen for these bubbling, composed native events on the attached element or
+an ancestor. Success events fire after the action completes:
+
+| Event | `event.detail` |
+| --- | --- |
+| `forge:save` | `{key, data}` |
+| `forge:upload` | `{url, status, ok: true}`; `url` is the resolved absolute URL |
+| `forge:download` | `{filename, data}` |
+| `forge:interaction-error` | `{action, message}`; `action` is `save-form`, `upload-form` or `download-form` |
+
+Form actions check native form validity before their side effect. Invalid forms,
+storage/download failures, rejected requests and non-success HTTP responses emit
+`forge:interaction-error` and stop that interaction's remaining actions. Handle
+the event in the consuming app to show useful feedback. Form actions complete
+in order within an interaction; separate user events can
+start concurrent requests. A download success means the browser download was
+initiated, not that the user retained the file.
 
 ## Component state and attachment
 

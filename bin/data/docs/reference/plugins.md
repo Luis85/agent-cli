@@ -56,7 +56,7 @@ The [quality example](../../examples/plugins/quality/main.mjs) includes a comman
 
 ## Event delivery
 
-Built-in `file.created` and `file.updated` payloads contain `path`, SHA-256 `revision`, byte count `bytes`, and `operation` (`created` or `updated`). Paths are relative to the command root reported in the response context: the environment for project management, or the selected project for file commands. They are emitted only after the entire batch completes. Dry runs and failed writes emit no file events.
+Built-in `file.created`, `file.updated`, and `file.deleted` payloads contain `path`, SHA-256 `revision`, byte count `bytes`, and `operation` (`created`, `updated`, or `deleted`). For deletion, revision and bytes identify the removed content. Paths are relative to the command root reported in the response context: the environment for project management, or the selected project for file commands. Claude user-scope commands report their configuration root separately in `data.target.directory`. Events follow successful persistence; batch write events wait until the entire batch completes. Dry runs and failed writes emit no file events.
 
 Each invocation owns one bus. Payloads must be finite JSON data: primitives, arrays and plain objects; undefined, BigInt, nonfinite numbers, Dates, Maps and cycles are rejected. Definitions validate isolated snapshots before delivery, so a validator cannot mutate the recorded payload. Listeners run in registration order and are awaited. Each receives a cloned snapshot so mutation cannot affect other listeners or event history.
 

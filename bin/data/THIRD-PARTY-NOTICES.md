@@ -74,6 +74,12 @@ License: MIT.
 
 - [license](licenses/node_modules__devlop-license)
 
+## entities 6.0.1
+
+License: BSD-2-Clause.
+
+- [LICENSE](licenses/node_modules__entities-LICENSE)
+
 ## escape-string-regexp 5.0.0
 
 License: MIT.
@@ -276,11 +282,29 @@ License: MIT.
 
 - [license](licenses/node_modules__micromark-util-types-license)
 
+## moment 2.31.0
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__moment-LICENSE)
+
 ## ms 2.1.3
 
 License: MIT.
 
 - [license.md](licenses/node_modules__ms-license.md)
+
+## obsidian-bases-expression 0.2.0
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__obsidian-bases-expression-LICENSE)
+
+## parse5 7.3.0
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__parse5-LICENSE)
 
 ## remark-frontmatter 5.0.0
 

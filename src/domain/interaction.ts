@@ -10,6 +10,9 @@ export type InteractionAction =
   | { type: 'set-state'; state: string; fromEvent: 'value' | 'checked' }
   | { type: 'toggle-state'; state: string }
   | { type: 'navigate'; url: string }
+  | { type: 'save-form'; key: string }
+  | { type: 'upload-form'; url: string }
+  | { type: 'download-form'; filename: string }
   | { type: 'emit'; event: string; detail?: Record<string, UiValue> };
 export interface InteractionDefinition {
   schemaVersion: 1;

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open } from 'node:fs/promises';
+import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open, unlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { AppError, ensure } from '../domain/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../domain/file.ts';
@@ -56,7 +56,29 @@ export class NodeFiles implements FileRepository {
     } catch (error) { if (!missing(error)) throw error; return undefined; }
   }
   private async assertRevision(path: string, expected: string | undefined): Promise<void> {
-    ensure((await this.stored(path))?.revision === expected, 'CONFLICT', `File changed; read again before writing: ${path}`);
+    ensure((await this.stored(path))?.revision === expected, 'CONFLICT', `File changed; read again before modifying: ${path}`);
+  }
+  async remove(path: string, expectedRevision: string, dryRun: boolean): Promise<FileChange> {
+    path = vaultPath(path);
+    ensure(typeof expectedRevision === 'string' && expectedRevision.length > 0, 'CONFLICT', `Removing a file requires its current --if-match revision: ${path}`);
+    const lock = join(this.root, '.agent-cli.lock');
+    let locked = false;
+    try {
+      if (!dryRun) {
+        try { const handle = await open(lock, 'wx'); locked = true; await handle.close(); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw this.busy(); throw error; }
+      }
+      const target = await this.resolvePath(path);
+      const before = await this.stored(path);
+      if (before === undefined) throw new AppError('NOT_FOUND', `File not found: ${path}`, 3);
+      ensure(before.revision === expectedRevision, 'CONFLICT', `File changed; read again before removing: ${path}`);
+      if (!dryRun) {
+        await this.assertRevision(path, expectedRevision);
+        // unlink cannot remove a directory, even if an external writer replaces the file.
+        await unlink(target);
+      }
+      return { path, revision: before.revision, operation: 'deleted', bytes: before.bytes.length };
+    } finally { if (locked) await this.cleanupLock(lock); }
   }
   async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
     const requests = snapshotWriteRequests(writes);
@@ -69,7 +91,7 @@ export class NodeFiles implements FileRepository {
     try {
       if (!dryRun) {
         try { const handle = await open(lock, 'wx'); locked = true; await handle.close(); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new AppError('WORKSPACE_BUSY', 'Workspace lock .agent-cli.lock exists. Wait for the active writer. If a previous process was interrupted, inspect its changes and confirm no writer is running before removing the lock.', 4); throw error; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw this.busy(); throw error; }
       }
       const plans = [];
       for (const write of requests) {
@@ -104,13 +126,17 @@ export class NodeFiles implements FileRepository {
       for (const directory of createdDirectories.reverse()) await rmdir(directory).catch(() => {});
       if (failures.length) throw new AppError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
       throw error;
-    } finally {
-      if (locked) try { await this.releaseLock(lock); }
-      catch (error) {
-        // A cleanup failure cannot erase committed changes or the primary error.
-        try { this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${error instanceof Error ? error.message : String(error)}`); }
-        catch { /* Diagnostics must not change the write outcome. */ }
-      }
+    } finally { if (locked) await this.cleanupLock(lock); }
+  }
+  private busy(): AppError {
+    return new AppError('WORKSPACE_BUSY', 'Workspace lock .agent-cli.lock exists. Wait for the active writer. If a previous process was interrupted, inspect its changes and confirm no writer is running before removing the lock.', 4);
+  }
+  private async cleanupLock(lock: string): Promise<void> {
+    try { await this.releaseLock(lock); }
+    catch (error) {
+      // A cleanup failure cannot erase committed changes or the primary error.
+      try { this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${error instanceof Error ? error.message : String(error)}`); }
+      catch { /* Diagnostics must not change the write outcome. */ }
     }
   }
   private async releaseLock(lock: string): Promise<void> { await rm(lock, { force: true }); }

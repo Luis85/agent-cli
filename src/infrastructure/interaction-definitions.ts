@@ -21,6 +21,9 @@ const action = z.union([
   z.strictObject({ type: z.literal('set-state'), state: identifier, fromEvent: z.enum(['value', 'checked']) }),
   z.strictObject({ type: z.literal('toggle-state'), state: identifier }),
   z.strictObject({ type: z.literal('navigate'), url }),
+  z.strictObject({ type: z.literal('save-form'), key: z.string().min(1).refine(value => value.trim().length > 0 && !uiHasMalformedBinding(value), 'Use a nonempty storage key with valid bindings.') }),
+  z.strictObject({ type: z.literal('upload-form'), url }),
+  z.strictObject({ type: z.literal('download-form'), filename: z.string().min(1).refine(value => value.trim().length > 0 && !uiHasMalformedBinding(value) && !/[/\\]/.test(value) && [...value].every(character => character.charCodeAt(0) >= 32), 'Use a filename without path separators or control characters and with valid bindings.') }),
   z.strictObject({ type: z.literal('emit'), event: z.string().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine(value => !interactionTriggerEvents.has(value), 'Emit a custom event name; native interaction events would recursively trigger handlers.'), detail: z.record(safeKey, scalar).optional() }),
 ]);
 const schema = z.strictObject({
@@ -33,6 +36,9 @@ const schema = z.strictObject({
   for (const [index, entry] of definition.actions.entries()) {
     if (entry.type === 'set-state' && 'fromEvent' in entry && !['input', 'change'].includes(definition.event)) {
       context.addIssue({ code: 'custom', path: ['actions', index, 'fromEvent'], message: 'Event value and checked sources require input or change.' });
+    }
+    if (['save-form', 'upload-form', 'download-form'].includes(entry.type) && !['submit', 'click'].includes(definition.event)) {
+      context.addIssue({ code: 'custom', path: ['actions', index], message: 'Form actions require submit or click.' });
     }
   }
 });
