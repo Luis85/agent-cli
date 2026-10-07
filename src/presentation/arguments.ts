@@ -34,6 +34,9 @@ export function parseArguments(tokens: string[], options: Record<string, 'string
   for (const [key, type] of Object.entries(options)) {
     const short = key === 'help' ? '-h, ' : key === 'version' ? '-V, ' : '';
     const option = new Option(`${short}--${key}${type === 'string' ? ' <value>' : ''}`);
+    // A plugin string option such as --no-label takes a literal value; only
+    // boolean options use Commander's negation and shared positive attribute.
+    if (type === 'string') option.negate = false;
     descriptors.push({ key, option }); command.addOption(option);
     command.on(`option:${option.name()}`, () => {
       const attribute = option.attributeName();
@@ -52,7 +55,7 @@ export function parseArguments(tokens: string[], options: Record<string, 'string
     if (!seen.has(option.attributeName())) continue;
     const parsed: unknown = command.getOptionValue(option.attributeName());
     // Positive and negative forms share a Commander attribute; report only the selected form.
-    if (key.startsWith('no-')) { if (parsed === false) flags[key] = true; }
+    if (option.negate) { if (parsed === false) flags[key] = true; }
     else if (typeof parsed === 'string' || parsed === true) flags[key] = parsed;
   }
   return { args: command.args, flags };

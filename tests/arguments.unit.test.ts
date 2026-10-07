@@ -20,4 +20,12 @@ describe('Commander integration', () => {
     expect(() => parseArguments(['--json', '--no-json'], globalOptions)).toThrow(/contradictory/);
     expect(() => parseArguments(['--root'], globalOptions)).toThrow(/argument missing/);
   });
+  it('preserves string options beginning with no- independently of their positive names', () => {
+    const options = { label: 'string', 'no-label': 'string', 'no-cache': 'boolean' } as const;
+    expect(parseArguments(['--label', 'included', '--no-label', '--literal', '--no-cache'], options)).toEqual({
+      args: [], flags: { label: 'included', 'no-label': '--literal', 'no-cache': true },
+    });
+    expect(() => parseArguments(['--no-label', 'first', '--no-label', 'second'], options)).toThrow(/Repeated/);
+    expect(() => parseArguments(['--no-label'], options)).toThrow(/argument missing/);
+  });
 });

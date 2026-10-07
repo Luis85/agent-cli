@@ -22,7 +22,7 @@ Frontmatter and Bases must use JSON-compatible YAML: string mapping keys, finite
 
 ## Canvas
 
-The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Referenced file existence and URL reachability are not checked. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
+The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. File-node subpaths must start with `#`, for example `#Heading` or `#^block-id`. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Referenced file existence and URL reachability are not checked. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
 
 ## Bases
 
