@@ -20,10 +20,10 @@ const type = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const bin = { "forge": "bin/app.js" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node src/infrastructure/scripts/quality/typecheck.mjs", "build": "vite build && node src/infrastructure/scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node src/infrastructure/scripts/release.mjs", "lint": "node src/infrastructure/scripts/quality/lint.mjs", "analyze": "node src/infrastructure/scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node src/infrastructure/scripts/quality/structure.mjs" };
 const dependencies = { "commander": "^15.0.0", "dayjs": "^1.11.23", "remark-frontmatter": "^5.0.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4" };
-const metadata = {
+const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4", "vue": "3.5.43" };
+const metadata$1 = {
   name,
   version: version$1,
   "private": true,
@@ -37,13 +37,15 @@ const metadata = {
   devDependencies
 };
 class AppError extends Error {
-  constructor(code, message, exitCode = 1) {
+  constructor(code, message, exitCode = 1, details) {
     super(message);
     this.code = code;
     this.exitCode = exitCode;
+    this.details = details;
   }
   code;
   exitCode;
+  details;
 }
 function ensure(condition, code, message) {
   if (!condition) throw new AppError(code, message, 2);
@@ -85,50 +87,50 @@ class EventBus {
   ids() {
     return [...this.definitions.keys()].sort();
   }
-  on(id, listener) {
-    ensure(!this.disposed && this.definitions.has(id), "UNKNOWN_EVENT", id);
+  on(id2, listener) {
+    ensure(!this.disposed && this.definitions.has(id2), "UNKNOWN_EVENT", id2);
     ensure(typeof listener === "function", "INVALID_EVENT_LISTENER", "Event listeners must be functions.");
     const entry = { active: true, invoke: listener };
-    const entries = this.listeners.get(id) ?? /* @__PURE__ */ new Set();
+    const entries = this.listeners.get(id2) ?? /* @__PURE__ */ new Set();
     entries.add(entry);
-    this.listeners.set(id, entries);
+    this.listeners.set(id2, entries);
     return () => {
       entry.active = false;
       entries.delete(entry);
     };
   }
-  once(id, listener) {
+  once(id2, listener) {
     ensure(typeof listener === "function", "INVALID_EVENT_LISTENER", "Event listeners must be functions.");
-    const off = this.on(id, async (payload) => {
+    const off = this.on(id2, async (payload) => {
       off();
       await listener(payload);
     });
     return off;
   }
-  async emit(id, payload) {
-    ensure(!this.disposed && this.definitions.has(id), "UNKNOWN_EVENT", id);
+  async emit(id2, payload) {
+    ensure(!this.disposed && this.definitions.has(id2), "UNKNOWN_EVENT", id2);
     let snapshot;
     try {
-      ensure(isJsonValue(payload), "INVALID_EVENT_PAYLOAD", id);
+      ensure(isJsonValue(payload), "INVALID_EVENT_PAYLOAD", id2);
       snapshot = structuredClone(payload);
-      ensure(isJsonValue(snapshot), "INVALID_EVENT_PAYLOAD", id);
-      const valid = this.definitions.get(id).validate(structuredClone(snapshot));
+      ensure(isJsonValue(snapshot), "INVALID_EVENT_PAYLOAD", id2);
+      const valid = this.definitions.get(id2).validate(structuredClone(snapshot));
       if (valid instanceof Promise) void valid.catch(() => {
       });
-      ensure(valid === true, "INVALID_EVENT_PAYLOAD", id);
+      ensure(valid === true, "INVALID_EVENT_PAYLOAD", id2);
     } catch {
-      throw new AppError("INVALID_EVENT_PAYLOAD", `Invalid payload for ${id}.`, 2);
+      throw new AppError("INVALID_EVENT_PAYLOAD", `Invalid payload for ${id2}.`, 2);
     }
     ensure(this.depth < 32, "EVENT_RECURSION", "Event recursion exceeds 32.");
-    if (this.history.length < 1e3) this.history.push({ id, payload: structuredClone(snapshot) });
+    if (this.history.length < 1e3) this.history.push({ id: id2, payload: structuredClone(snapshot) });
     this.depth++;
     try {
-      for (const entry of Array.from(this.listeners.get(id) ?? [])) {
+      for (const entry of Array.from(this.listeners.get(id2) ?? [])) {
         if (!entry.active || this.disposed) continue;
         try {
           await entry.invoke(structuredClone(snapshot));
         } catch (error2) {
-          this.warn(`Listener ${id}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+          this.warn(`Listener ${id2}: ${error2 instanceof Error ? error2.message : String(error2)}`);
         }
       }
     } finally {
@@ -150,6 +152,11 @@ function vaultPath(input) {
   ensure(!parts.some((p) => [".git", ".agent-cli.lock"].includes(p) || p.startsWith(".agent-cli-tmp-")), "INVALID_PATH", "Reserved workspace path.");
   return input;
 }
+function ensureSeparateDirectories(source, destination) {
+  vaultPath(source);
+  vaultPath(destination);
+  ensure(source !== destination && !source.startsWith(`${destination}/`) && !destination.startsWith(`${source}/`), "INVALID_PATH", "Import and export directories must be separate; neither may contain the other.");
+}
 const nativeFormats = {
   markdown: ["md"],
   canvas: ["canvas"],
@@ -164,6 +171,10 @@ function fileKind(path) {
   return Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0] ?? "attachment";
 }
 const isStructured = (path) => ["markdown", "canvas", "base"].includes(fileKind(path));
+function snapshotWriteRequests(writes) {
+  ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
+  return writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
+}
 class Workspace {
   constructor(files, codec, events, dryRun) {
     this.files = files;
@@ -182,9 +193,9 @@ class Workspace {
     return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
   }
   async write(writes) {
-    ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
-    for (const write of writes) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-    const changes = await this.files.writeBatch(writes, this.dryRun);
+    const requests = snapshotWriteRequests(writes);
+    for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
+    const changes = await this.files.writeBatch(requests, this.dryRun);
     if (!this.dryRun) for (const change of changes) {
       try {
         await this.events.emit(`file.${change.operation}`, change);
@@ -217,8 +228,7 @@ class ScopedFiles {
     return (await this.files.list()).filter((path) => path.startsWith(this.prefix)).map((path) => this.relative(path));
   }
   async writeBatch(writes, dryRun) {
-    ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
-    const requests = writes.map((write) => ({ path: this.prefix + vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
+    const requests = snapshotWriteRequests(writes).map((write) => ({ ...write, path: this.prefix + write.path }));
     const changes = await this.files.writeBatch(requests, dryRun);
     return changes.map((change) => ({ ...change, path: this.relative(change.path) }));
   }
@@ -264,7 +274,7 @@ class Registry {
     for (const command of plugin.commands ?? []) {
       ensure(typeof command.run === "function" && typeof command.description === "string" && typeof command.usage === "string", "INVALID_PLUGIN", "Invalid command.");
       ensure(command.options === void 0 || isRecord(command.options), "INVALID_PLUGIN", "Command options must be an object.");
-      for (const [key, type2] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
+      for (const [key, type2] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "lang", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
       this.add(commands2, command);
     }
     for (const generator of plugin.generators ?? []) {
@@ -376,7 +386,12 @@ class ProjectService {
     ensure(!(await this.files.list()).some((path) => path === directory || path.startsWith(directory + "/")), "PROJECT_EXISTS", `Project directory already contains files: ${directory}`);
     const plan = this.scaffolder.project(name2, this.projectsDirectory);
     const result = await this.workspace.write(plan);
-    return { project: { schemaVersion: 1, name: name2, type: "library", directory }, ...result, ...this.preview(plan) };
+    return { project: { schemaVersion: 1, name: name2, type: "library", directory }, ...result, ...this.preview(plan), nextSteps: [
+      { scope: "workspace", command: `node bin/app.js project open ${name2}` },
+      { scope: "project", directory, command: "npm install" },
+      { scope: "project", directory, command: "npm run check" },
+      { scope: "project", directory, command: "npm run dev" }
+    ] };
   }
   async component(name2, componentName, kind = "domain") {
     ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
@@ -427,7 +442,7 @@ class ProjectService {
 const encode$2 = (value2) => new TextEncoder().encode(value2);
 const instructions = `# The Forge workflow
 
-Read bin/data/README.md and bin/data/docs/cli.md before using the CLI.
+Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
 Run \`node bin/app.js help\` or \`node bin/app.js schema --json\` to discover commands.
 Environment settings and enabled plugins live in bin/config.json.
 Shared templates live in bin/templates and plugins live in bin/plugins.
@@ -467,16 +482,18 @@ Describe the entity's responsibility and identity.
 - Describe observable behavior and verification.
 `;
 class SetupService {
-  constructor(workspace, config2, artifacts, skills) {
+  constructor(workspace, config2, artifacts, skills, templates = []) {
     this.workspace = workspace;
     this.config = config2;
     this.artifacts = artifacts;
     this.skills = skills;
+    this.templates = templates;
   }
   workspace;
   config;
   artifacts;
   skills;
+  templates;
   async run() {
     ensure(this.artifacts.some((artifact) => artifact.path === "app.js") && this.artifacts.some((artifact) => artifact.path === "package.json"), "INVALID_SETUP", "Setup requires the complete built bin distribution. Run the bundled CLI or build it first.");
     const candidates = [
@@ -484,6 +501,7 @@ class SetupService {
       { path: "bin/config.json", bytes: encode$2(JSON.stringify(this.config, null, 2) + "\n") },
       ...this.skills.map((skill) => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode$2(skill.content) })),
       { path: "bin/templates/entity.md", bytes: encode$2(entityTemplate) },
+      ...this.templates.map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$2(template.content) })),
       { path: "bin/plugins/.gitkeep", bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
       { path: "AGENTS.md", bytes: encode$2(instructions) }
@@ -505,18 +523,636 @@ class SetupService {
       }
     }
     const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
-    return { ...result, skipped };
+    return { ...result, skipped, nextSteps: [
+      { scope: "workspace", command: "node bin/app.js templates list", purpose: "Discover the installed editable planning templates." },
+      { scope: "workspace", command: "node bin/app.js templates inspect workflow/prd.md", purpose: "Inspect planning inputs before generating a requirements document." },
+      { scope: "workspace", command: "node bin/app.js project list", purpose: "Find a project, then explicitly open it before generating project files." }
+    ] };
+  }
+}
+const uiFrameworks = ["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"];
+const interactionEvents = ["click", "dblclick", "input", "change", "submit", "keydown", "keyup", "focus", "blur"];
+const interactionTriggerEvents = /* @__PURE__ */ new Set([...interactionEvents, "focusin", "focusout"]);
+function validateInteractionLibrary(definitions) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const definition2 of definitions) {
+    ensure(!ids.has(definition2.id), "DUPLICATE_INTERACTION", `Duplicate interaction ${definition2.id}.`);
+    ids.add(definition2.id);
+  }
+}
+function isSafeNavigationUrl(value2) {
+  if (!value2 || value2 !== value2.trim() || [...value2].some((character) => character.charCodeAt(0) < 32 || character === "\\") || value2.startsWith("//")) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value2) && !/^https?:\/\//i.test(value2)) return false;
+  try {
+    const url2 = new URL(value2, "https://forge.invalid/");
+    return ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password;
+  } catch {
+    return false;
+  }
+}
+const uiVoidTags = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
+const uiBooleanAttributes = new Set("allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected".split(" "));
+function uiBindingParts(value2) {
+  const parts = [];
+  let last = 0;
+  for (const match of value2.matchAll(/\{\{\s*((?:state\.)?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
+    if (match.index > last) parts.push({ literal: value2.slice(last, match.index) });
+    parts.push({ prop: match[1] });
+    last = match.index + match[0].length;
+  }
+  if (last < value2.length || !parts.length) parts.push({ literal: value2.slice(last) });
+  return parts;
+}
+function uiBindings(value2) {
+  return typeof value2 === "string" ? uiBindingParts(value2).flatMap((part) => "prop" in part ? [part.prop] : []) : [];
+}
+function uiWholeBinding(value2) {
+  if (typeof value2 !== "string") return void 0;
+  const parts = uiBindingParts(value2);
+  return parts.length === 1 && "prop" in parts[0] ? parts[0].prop : void 0;
+}
+function uiHasMalformedBinding(value2) {
+  return typeof value2 === "string" && uiBindingParts(value2).some((part) => "literal" in part && /\{\{|\}\}/.test(part.literal));
+}
+function uiBindingSource(definition2, name2) {
+  const fields = name2.startsWith("state.") ? definition2.state ?? {} : definition2.props;
+  const key = name2.startsWith("state.") ? name2.slice(6) : name2;
+  return Object.hasOwn(fields, key) ? fields[key] : void 0;
+}
+function validateUiBindings(definition2, value2) {
+  for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
+  ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
+}
+function valueType(definition2, value2) {
+  validateUiBindings(definition2, value2);
+  const binding = uiWholeBinding(value2);
+  if (!binding) return typeof value2;
+  const source = uiBindingSource(definition2, binding);
+  ensure(source.default !== void 0 || "required" in source && source.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
+  return source.type;
+}
+function validateAttachment(definition2, node2, interaction) {
+  for (const action2 of interaction.actions) {
+    if (action2.type === "set-state" || action2.type === "toggle-state") {
+      const state2 = definition2.state?.[action2.state];
+      ensure(state2, "INVALID_UI", `${definition2.id} interaction ${interaction.id} requires state ${action2.state}.`);
+      if (action2.type === "toggle-state") ensure(state2.type === "boolean", "INVALID_UI", `Interaction ${interaction.id} can toggle only boolean state ${action2.state}.`);
+      else if ("fromEvent" in action2) {
+        ensure(["input", "change"].includes(interaction.event), "INVALID_UI", `Interaction ${interaction.id} reads form values only from input/change events.`);
+        ensure(action2.fromEvent === "checked" ? node2.tag === "input" : ["input", "select", "textarea"].includes(node2.tag), "INVALID_UI", `Interaction ${interaction.id} cannot read ${action2.fromEvent} from ${node2.tag}.`);
+        ensure(state2.type === (action2.fromEvent === "checked" ? "boolean" : "string"), "INVALID_UI", `Interaction ${interaction.id} ${action2.fromEvent} does not match state ${action2.state}.`);
+      } else ensure(valueType(definition2, action2.value) === state2.type, "INVALID_UI", `Interaction ${interaction.id} value does not match state ${action2.state}.`);
+    } else if (action2.type === "navigate") {
+      ensure(valueType(definition2, action2.url) === "string", "INVALID_UI", `Interaction ${interaction.id} navigation must resolve to a string.`);
+      if (!uiBindings(action2.url).length) ensure(isSafeNavigationUrl(action2.url), "INVALID_UI", `Interaction ${interaction.id} has an unsafe navigation URL.`);
+    } else {
+      ensure(!interactionTriggerEvents.has(action2.event), "INVALID_UI", `Interaction ${interaction.id} must emit a custom event, not native trigger ${action2.event}.`);
+      for (const value2 of Object.values(action2.detail ?? {})) valueType(definition2, value2);
+    }
+  }
+}
+function validateUiInteractions(definitions, interactions) {
+  validateInteractionLibrary(interactions);
+  const byId = new Map(interactions.map((interaction) => [interaction.id, interaction]));
+  for (const definition2 of definitions) {
+    const walk = (node2) => {
+      if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
+        const interaction = byId.get(id2);
+        ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
+        validateAttachment(definition2, node2, interaction);
+      }
+      if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+    };
+    walk(definition2.root);
+  }
+}
+function componentInteractionIds(definition2) {
+  const ids = /* @__PURE__ */ new Set();
+  const walk = (node2) => {
+    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
+    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+  };
+  walk(definition2.root);
+  return [...ids].sort();
+}
+function checkValue(value2, type2, label) {
+  ensure(typeof value2 === type2, "INVALID_UI", `${label} must be ${type2}.`);
+}
+function validateUiLibrary(definitions, interactions = []) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const definition2 of definitions) {
+    ensure(!byId.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
+    byId.set(definition2.id, definition2);
+  }
+  const edges = /* @__PURE__ */ new Map();
+  for (const definition2 of definitions) {
+    const references = /* @__PURE__ */ new Set();
+    edges.set(definition2.id, references);
+    let slots = 0;
+    const checkBinding = (value2) => validateUiBindings(definition2, value2);
+    const walk = (node2) => {
+      if ("slot" in node2) {
+        slots++;
+        ensure(slots <= 1, "INVALID_UI", `${definition2.id} may project its default child slot only once.`);
+        return;
+      }
+      if ("tag" in node2) {
+        if (node2.text !== void 0) checkBinding(node2.text);
+        for (const value2 of Object.values(node2.attrs ?? {})) checkBinding(value2);
+      } else {
+        const target = byId.get(node2.component);
+        ensure(target, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
+        references.add(node2.component);
+        for (const [name2, value2] of Object.entries(node2.props ?? {})) {
+          const targetProp = target.props[name2];
+          ensure(targetProp, "INVALID_UI", `${definition2.id} supplies unknown prop ${node2.component}.${name2}.`);
+          checkBinding(value2);
+          const binding = uiWholeBinding(value2);
+          if (binding) {
+            const source = uiBindingSource(definition2, binding);
+            ensure(source.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
+            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source && source.required || source.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
+          } else if (!uiBindings(value2).length) checkValue(value2, targetProp.type, `${node2.component}.${name2}`);
+          else ensure(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
+        }
+        for (const [name2, prop2] of Object.entries(target.props)) ensure(!prop2.required || prop2.default !== void 0 || Object.hasOwn(node2.props ?? {}, name2), "INVALID_UI", `${definition2.id} must supply required prop ${node2.component}.${name2}.`);
+      }
+      for (const child of node2.children ?? []) walk(child);
+    };
+    walk(definition2.root);
+    for (const args of [definition2.storybook?.args, ...(definition2.storybook?.stories ?? []).map((story2) => story2.args)]) {
+      for (const [name2, value2] of Object.entries(args ?? {})) {
+        ensure(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} story has unknown prop ${name2}.`);
+        checkValue(value2, definition2.props[name2].type, `${definition2.id} story prop ${name2}`);
+      }
+    }
+  }
+  const visited = /* @__PURE__ */ new Set(), active = /* @__PURE__ */ new Set();
+  const visit2 = (id2) => {
+    ensure(!active.has(id2), "CYCLIC_UI_COMPONENT", `Cyclic component reference involving ${id2}.`);
+    if (visited.has(id2)) return;
+    active.add(id2);
+    for (const child of edges.get(id2) ?? []) visit2(child);
+    active.delete(id2);
+    visited.add(id2);
+  };
+  for (const id2 of byId.keys()) visit2(id2);
+  validateUiInteractions(definitions, interactions);
+}
+function componentDependencies(root) {
+  const dependencies2 = /* @__PURE__ */ new Set();
+  const visit2 = (node2) => {
+    if ("component" in node2) dependencies2.add(node2.component);
+    if ("children" in node2) for (const child of node2.children ?? []) visit2(child);
+  };
+  visit2(root);
+  return [...dependencies2].sort();
+}
+function selectUiComponents(definitions, id2) {
+  const byId = new Map(definitions.map((definition2) => [definition2.id, definition2]));
+  const selected = /* @__PURE__ */ new Set();
+  const select = (component) => {
+    if (selected.has(component)) return;
+    const definition2 = byId.get(component);
+    ensure(definition2, "UNKNOWN_UI_COMPONENT", `Missing component ${component}.`);
+    selected.add(component);
+    for (const dependency of componentDependencies(definition2.root)) select(dependency);
+  };
+  select(id2);
+  return definitions.filter((definition2) => selected.has(definition2.id));
+}
+class GenerationService {
+  constructor(workspace) {
+    this.workspace = workspace;
+  }
+  workspace;
+  async commit(writes, revisions) {
+    const paths = this.validate(writes);
+    for (const [path, revision] of Object.entries(revisions ?? {})) {
+      vaultPath(path);
+      ensure(paths.has(path), "INVALID_GENERATION_REVISIONS", `Revision path is outside this generation plan: ${path}.`);
+      ensure(typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision), "INVALID_GENERATION_REVISIONS", `Revision must be a SHA-256 hash: ${path}.`);
+    }
+    const plan = writes.map((write) => ({ ...write, ...revisions && Object.hasOwn(revisions, write.path) ? { expectedRevision: revisions[write.path] } : {} }));
+    try {
+      return await this.write(plan);
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "CONFLICT") throw new AppError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.exitCode);
+      throw error2;
+    }
+  }
+  /** Snapshot revisions independently from the later explicit write authorization. */
+  async plan(writes, manifestPath) {
+    const paths = this.validate(writes);
+    const revisions = /* @__PURE__ */ Object.create(null);
+    const outputs = await Promise.all(writes.map(async (write) => {
+      const content2 = new TextDecoder().decode(write.bytes);
+      try {
+        const current = await this.workspace.files.read(write.path);
+        revisions[write.path] = current.revision;
+        const unchanged = current.bytes.length === write.bytes.length && current.bytes.every((byte, index2) => byte === write.bytes[index2]);
+        return { path: write.path, status: unchanged ? "unchanged" : "changed", revision: current.revision, content: content2, ...!unchanged ? { currentContent: new TextDecoder().decode(current.bytes) } : {} };
+      } catch (error2) {
+        if (error2 instanceof AppError && error2.code === "NOT_FOUND") return { path: write.path, status: "missing", content: content2 };
+        throw error2;
+      }
+    }));
+    const orderedRevisions = Object.fromEntries(Object.entries(revisions).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+    let manifest;
+    if (manifestPath !== void 0) {
+      vaultPath(manifestPath);
+      ensure(![...paths].some((path) => this.overlaps(path, manifestPath)), "INVALID_GENERATION_PLAN", "The revision manifest must be separate from generated outputs and their parent directories.");
+      manifest = { path: manifestPath, ...await this.write([{ path: manifestPath, bytes: new TextEncoder().encode(JSON.stringify(orderedRevisions, null, 2) + "\n") }]) };
+    }
+    return { matches: outputs.every((output) => output.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
+  }
+  async check(writes, errorCode = "GENERATION_DRIFT") {
+    const plan = await this.plan(writes);
+    if (!plan.matches) throw new AppError(errorCode, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", 5, { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
+    return plan;
+  }
+  validate(writes) {
+    const paths = /* @__PURE__ */ new Set();
+    for (const write of writes) {
+      vaultPath(write.path);
+      ensure(![...paths].some((path) => this.overlaps(path, write.path)), "INVALID_GENERATION_PLAN", `Generated outputs overlap at ${write.path}.`);
+      paths.add(write.path);
+    }
+    return paths;
+  }
+  overlaps(left, right) {
+    return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  }
+  async write(plan) {
+    const result = await this.workspace.write(plan);
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+class UiLibrary {
+  constructor(workspace, codec, catalog, renderer, interactionSource, interactionDirectory = "interactions") {
+    this.workspace = workspace;
+    this.codec = codec;
+    this.catalog = catalog;
+    this.renderer = renderer;
+    this.interactionSource = interactionSource;
+    this.interactionDirectory = interactionDirectory;
+  }
+  workspace;
+  codec;
+  catalog;
+  renderer;
+  interactionSource;
+  interactionDirectory;
+  async list(directory, interactionDirectory) {
+    const definitions = await this.discover(directory);
+    await this.validateDefinitions(definitions, interactionDirectory);
+    return definitions;
+  }
+  async inspect(directory, id2, interactionDirectory) {
+    const sources = await this.sources(directory);
+    await this.validateDefinitions(sources.map((source2) => source2.definition), interactionDirectory);
+    const source = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
+  }
+  async validate(directory, interactionDirectory) {
+    const definitions = await this.list(directory, interactionDirectory);
+    return { directory, valid: true, status: definitions.length ? "ready" : "empty", count: definitions.length, components: definitions.map((definition2) => definition2.id), ...!definitions.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {} };
+  }
+  async create(directory, id2, tag = "div", interactionDirectory) {
+    vaultPath(directory);
+    const voidElement = uiVoidTags.has(tag);
+    const definition2 = { schemaVersion: 1, id: id2, sourcePath: `${directory}/${id2}.md`, description: `# ${id2}
+
+Describe this component.
+`, props: {}, root: { tag, ...!voidElement ? { children: [{ slot: "children" }] } : {} } };
+    const bytes = this.codec.serialize(definition2);
+    await this.validateDefinitions([...await this.discover(directory), this.codec.parse(bytes, definition2.sourcePath)], interactionDirectory);
+    return { component: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory, interactionDirectory) {
+    vaultPath(directory);
+    const existing = await this.discover(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = this.catalog.filter((definition2) => !ids.has(definition2.id));
+    await this.validateDefinitions([...existing, ...additions], interactionDirectory);
+    const plan = additions.map((definition2) => ({ path: `${directory}/${definition2.id}.md`, bytes: this.codec.serialize(definition2) }));
+    return { components: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory, interactionDirectory) {
+    vaultPath(sourceDirectory);
+    vaultPath(directory);
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory), imported = sources.map((source) => source.definition), existing = await this.discover(directory);
+    ensure(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
+    await this.validateDefinitions([...existing, ...imported], interactionDirectory);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { components: imported.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory, interactionDirectory) {
+    vaultPath(directory);
+    vaultPath(outputDirectory);
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions = sources.map((source) => source.definition);
+    const interactions = await this.interactions(interactionDirectory);
+    validateUiLibrary(definitions, interactions);
+    validateUiLibrary([...await this.discover(outputDirectory), ...definitions], interactions);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { components: definitions.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async generate(directory, options) {
+    return { framework: options.framework, ...await new GenerationService(this.workspace).commit(await this.render(directory, options), options.revisions) };
+  }
+  async plan(directory, options, manifestPath) {
+    ensure(options.revisions === void 0, "INVALID_GENERATION_PLAN", "Planning does not accept regeneration revisions.");
+    return { framework: options.framework, ...await new GenerationService(this.workspace).plan(await this.render(directory, options), manifestPath) };
+  }
+  async check(directory, options) {
+    ensure(options.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
+    return { framework: options.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options), "UI_DRIFT") };
+  }
+  async render(directory, options) {
+    ensure(this.renderer, "UI_RENDERER_UNAVAILABLE", "No UI renderer is configured.");
+    ensure(uiFrameworks.includes(options.framework), "INVALID_UI_FRAMEWORK", `Unknown framework ${options.framework}.`);
+    vaultPath(options.outputDirectory);
+    if (options.storiesDirectory) vaultPath(options.storiesDirectory);
+    ensure(!(options.storybook || options.storiesOnly) || options.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
+    const interactions = await this.interactions(options.interactionDirectory);
+    let definitions = await this.discover(directory);
+    validateUiLibrary(definitions, interactions);
+    ensure(definitions.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
+    if (options.component) ensure(definitions.some((definition2) => definition2.id === options.component), "UNKNOWN_UI_COMPONENT", `No component ${options.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    if (options.component) definitions = selectUiComponents(definitions, options.component);
+    for (const definition2 of definitions) if ((options.storybook || options.storiesOnly) && definition2.storybook?.extension) {
+      try {
+        await this.workspace.files.read(definition2.storybook.extension);
+      } catch (error2) {
+        if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw new AppError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`, 2);
+        throw error2;
+      }
+    }
+    const ids = new Set(definitions.flatMap(componentInteractionIds));
+    const renderOptions = { ...options, interactions: interactions.filter((interaction) => ids.has(interaction.id)) };
+    if (options.storiesOnly) {
+      ensure(this.renderer.componentPaths, "UI_RENDERER_UNAVAILABLE", "Standalone stories require a renderer with component artifact paths.");
+      for (const path of this.renderer.componentPaths(definitions, renderOptions)) await this.workspace.files.read(path);
+    }
+    return this.renderer.generate(definitions, renderOptions);
+  }
+  async interactions(directory = this.interactionDirectory) {
+    vaultPath(directory);
+    return this.interactionSource ? this.interactionSource.list(directory) : [];
+  }
+  async validateDefinitions(definitions, interactionDirectory) {
+    validateUiLibrary(definitions, await this.interactions(interactionDirectory));
+  }
+  async discover(directory) {
+    return (await this.sources(directory)).map((source) => source.definition);
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+function validateLibrary(definitions) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const definition2 of definitions) {
+    ensure(!ids.has(definition2.id), "DUPLICATE_DATA_SOURCE", `Duplicate data source ${definition2.id}.`);
+    ids.add(definition2.id);
+  }
+}
+function starter$1(directory, id2, kind) {
+  return {
+    schemaVersion: 1,
+    id: id2,
+    kind,
+    sourcePath: `${directory}/${id2}.md`,
+    description: `# ${id2}
+
+Describe this data source, its ownership and error behavior.
+`,
+    model: { name: "Item", idField: "id", fields: { id: { type: "string" }, title: { type: "string", example: "Example item" } } },
+    ...kind === "rest" ? { rest: { baseUrl: "https://api.example.com", operations: { list: { method: "GET", path: "/items" }, get: { method: "GET", path: "/items/{id}" } } } } : { json: { path: "data/items.json" } },
+    testData: { count: 3 }
+  };
+}
+class DataSourceLibrary {
+  constructor(workspace, codec, renderer) {
+    this.workspace = workspace;
+    this.codec = codec;
+    this.renderer = renderer;
+  }
+  workspace;
+  codec;
+  renderer;
+  async list(directory) {
+    const definitions = (await this.sources(directory)).map((source) => source.definition);
+    validateLibrary(definitions);
+    return definitions;
+  }
+  async inspect(directory, id2) {
+    const sources = await this.sources(directory);
+    validateLibrary(sources.map((source2) => source2.definition));
+    const source = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
+    return { ...source.definition, revision: source.revision };
+  }
+  async validate(directory) {
+    return { valid: true, sources: (await this.list(directory)).map((definition2) => definition2.id) };
+  }
+  async create(directory, id2, kind = "rest") {
+    vaultPath(directory);
+    const definition2 = starter$1(directory, id2, kind), bytes = this.codec.serialize(definition2);
+    validateLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
+    return { source: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory) {
+    vaultPath(directory);
+    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = [starter$1(directory, "example-rest", "rest"), starter$1(directory, "example-json", "json")].filter((definition2) => !ids.has(definition2.id));
+    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
+    return { sources: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory) {
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory);
+    ensure(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
+    validateLibrary([...await this.list(directory), ...sources.map((source) => source.definition)]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { sources: sources.map((source) => source.definition.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory) {
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions = sources.map((source) => source.definition);
+    validateLibrary([...await this.list(outputDirectory), ...definitions]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { sources: definitions.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async generate(directory, options) {
+    const { definitions, writes } = await this.prepare(directory, options);
+    return { sources: definitions.map((definition2) => definition2.id), ...await new GenerationService(this.workspace).commit(writes, options.revisions) };
+  }
+  async plan(directory, options, manifestPath) {
+    ensure(options.revisions === void 0, "INVALID_GENERATION_PLAN", "Planning does not accept regeneration revisions.");
+    return new GenerationService(this.workspace).plan((await this.prepare(directory, options)).writes, manifestPath);
+  }
+  async check(directory, options) {
+    ensure(options.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
+    return new GenerationService(this.workspace).check((await this.prepare(directory, options)).writes, "DATA_SOURCE_DRIFT");
+  }
+  async prepare(directory, options) {
+    ensure(this.renderer, "DATA_SOURCE_RENDERER_UNAVAILABLE", "No data-source renderer is configured.");
+    vaultPath(options.outputDirectory);
+    vaultPath(options.testDataDirectory);
+    let definitions = await this.list(directory);
+    ensure(definitions.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${directory}.`);
+    if (options.source) {
+      definitions = definitions.filter((definition2) => definition2.id === options.source);
+      ensure(definitions.length, "UNKNOWN_DATA_SOURCE", `No data source ${options.source} in ${directory}.`);
+    }
+    return { definitions, writes: this.renderer.generate(definitions, options) };
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+function starter(directory, id2, event = "click") {
+  const input = event === "input" || event === "change";
+  return {
+    schemaVersion: 1,
+    id: id2,
+    event,
+    sourcePath: `${directory}/${id2}.md`,
+    description: `# ${id2}
+
+${input ? "Copies the input value into string state named value." : "Toggles boolean state named expanded."} Declare that state on each consuming component.
+`,
+    actions: input ? [{ type: "set-state", state: "value", fromEvent: "value" }] : [{ type: "toggle-state", state: "expanded" }]
+  };
+}
+class InteractionLibrary {
+  constructor(workspace, codec) {
+    this.workspace = workspace;
+    this.codec = codec;
+  }
+  workspace;
+  codec;
+  async list(directory) {
+    const definitions = (await this.sources(directory)).map((source) => source.definition);
+    validateInteractionLibrary(definitions);
+    return definitions;
+  }
+  async inspect(directory, id2) {
+    const sources = await this.sources(directory);
+    validateInteractionLibrary(sources.map((source2) => source2.definition));
+    const source = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
+    return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
+  }
+  async validate(directory) {
+    const definitions = await this.list(directory);
+    return {
+      directory,
+      valid: true,
+      status: definitions.length ? "ready" : "empty",
+      count: definitions.length,
+      interactions: definitions.map((definition2) => definition2.id),
+      ...!definitions.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {}
+    };
+  }
+  async create(directory, id2, event = "click") {
+    vaultPath(directory);
+    const definition2 = starter(directory, id2, event), bytes = this.codec.serialize(definition2);
+    validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
+    return { interaction: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory) {
+    vaultPath(directory);
+    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = [starter(directory, "toggle-expanded"), starter(directory, "input-value", "input")].filter((definition2) => !ids.has(definition2.id));
+    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
+    return { interactions: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory) {
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory);
+    ensure(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
+    validateInteractionLibrary([...await this.list(directory), ...sources.map((source) => source.definition)]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { interactions: sources.map((source) => source.definition.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory) {
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions = sources.map((source) => source.definition);
+    validateInteractionLibrary([...await this.list(outputDirectory), ...definitions]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { interactions: definitions.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+class TemplateInstaller {
+  constructor(workspace, artifacts) {
+    this.workspace = workspace;
+    this.artifacts = artifacts;
+  }
+  workspace;
+  artifacts;
+  async install() {
+    const candidates = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
+    ensure(new Set(candidates.map((candidate) => candidate.path)).size === candidates.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
+    const writes = [], skipped = [];
+    for (const candidate of candidates) {
+      try {
+        await this.workspace.files.read(candidate.path);
+        skipped.push(candidate.path);
+      } catch (error2) {
+        if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
+        writes.push(candidate);
+      }
+    }
+    const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { directory: "bin/templates", ...result, skipped, ...this.workspace.dryRun ? { preview: writes.map((write) => ({ path: write.path, content: new TextDecoder().decode(write.bytes) })) } : {} };
   }
 }
 const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
 const missing = (error2) => error2.code === "ENOENT";
 class NodeFiles {
-  constructor(root) {
+  constructor(root, warn) {
     this.root = root;
+    this.warn = warn;
   }
   root;
-  static async at(root) {
-    return new NodeFiles(await promises.realpath(minpath.resolve(root)));
+  warn;
+  static async at(root, warn = () => {
+  }) {
+    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn);
   }
   async resolvePath(path) {
     const parts = vaultPath(path).split("/");
@@ -570,8 +1206,7 @@ class NodeFiles {
     ensure((await this.stored(path))?.revision === expected, "CONFLICT", `File changed; read again before writing: ${path}`);
   }
   async writeBatch(writes, dryRun) {
-    ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
-    const requests = writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
+    const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0 && new Set(requests.map((w) => w.path)).size === requests.length, "INVALID_PLAN", "Plan must contain unique file paths.");
     ensure(!requests.some((a) => requests.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
     const lock = minpath.join(this.root, ".agent-cli.lock");
@@ -632,8 +1267,18 @@ class NodeFiles {
       if (failures.length) throw new AppError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
       throw error2;
     } finally {
-      if (locked) await promises.rm(lock, { force: true });
+      if (locked) try {
+        await this.releaseLock(lock);
+      } catch (error2) {
+        try {
+          this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${error2 instanceof Error ? error2.message : String(error2)}`);
+        } catch {
+        }
+      }
     }
+  }
+  async releaseLock(lock) {
+    await promises.rm(lock, { force: true });
   }
   async replace(target, bytes, mode, verify) {
     const temp = minpath.join(minpath.resolve(target, ".."), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
@@ -2941,10 +3586,10 @@ function requireSeq() {
   seq.seq = seq$1;
   return seq;
 }
-var string$3 = {};
+var string$4 = {};
 var hasRequiredString;
 function requireString() {
-  if (hasRequiredString) return string$3;
+  if (hasRequiredString) return string$4;
   hasRequiredString = 1;
   var stringifyString2 = requireStringifyString();
   const string2 = {
@@ -2957,14 +3602,14 @@ function requireString() {
       return stringifyString2.stringifyString(item, ctx, onComment, onChompKeep);
     }
   };
-  string$3.string = string2;
-  return string$3;
+  string$4.string = string2;
+  return string$4;
 }
 var tags = {};
-var _null = {};
+var _null$3 = {};
 var hasRequired_null;
 function require_null() {
-  if (hasRequired_null) return _null;
+  if (hasRequired_null) return _null$3;
   hasRequired_null = 1;
   var Scalar2 = requireScalar();
   const nullTag = {
@@ -2976,8 +3621,8 @@ function require_null() {
     resolve: () => new Scalar2.Scalar(null),
     stringify: ({ source }, ctx) => typeof source === "string" && nullTag.test.test(source) ? source : ctx.options.nullStr
   };
-  _null.nullTag = nullTag;
-  return _null;
+  _null$3.nullTag = nullTag;
+  return _null$3;
 }
 var bool$1 = {};
 var hasRequiredBool$1;
@@ -3076,10 +3721,10 @@ function requireFloat$1() {
   float$1.floatNaN = floatNaN;
   return float$1;
 }
-var int$1 = {};
+var int$2 = {};
 var hasRequiredInt$1;
 function requireInt$1() {
-  if (hasRequiredInt$1) return int$1;
+  if (hasRequiredInt$1) return int$2;
   hasRequiredInt$1 = 1;
   var stringifyNumber2 = requireStringifyNumber();
   const intIdentify = (value2) => typeof value2 === "bigint" || Number.isInteger(value2);
@@ -3116,15 +3761,15 @@ function requireInt$1() {
     resolve: (str, _onError, opt) => intResolve(str, 2, 16, opt),
     stringify: (node2) => intStringify(node2, 16, "0x")
   };
-  int$1.int = int2;
-  int$1.intHex = intHex;
-  int$1.intOct = intOct;
-  return int$1;
+  int$2.int = int2;
+  int$2.intHex = intHex;
+  int$2.intOct = intOct;
+  return int$2;
 }
-var schema$2 = {};
+var schema$5 = {};
 var hasRequiredSchema$3;
 function requireSchema$3() {
-  if (hasRequiredSchema$3) return schema$2;
+  if (hasRequiredSchema$3) return schema$5;
   hasRequiredSchema$3 = 1;
   var map2 = requireMap();
   var _null2 = require_null();
@@ -3146,13 +3791,13 @@ function requireSchema$3() {
     float2.floatExp,
     float2.float
   ];
-  schema$2.schema = schema2;
-  return schema$2;
+  schema$5.schema = schema2;
+  return schema$5;
 }
-var schema$1 = {};
+var schema$4 = {};
 var hasRequiredSchema$2;
 function requireSchema$2() {
-  if (hasRequiredSchema$2) return schema$1;
+  if (hasRequiredSchema$2) return schema$4;
   hasRequiredSchema$2 = 1;
   var Scalar2 = requireScalar();
   var map2 = requireMap();
@@ -3213,8 +3858,8 @@ function requireSchema$2() {
     }
   };
   const schema2 = [map2.map, seq2.seq].concat(jsonScalars, jsonError);
-  schema$1.schema = schema2;
-  return schema$1;
+  schema$4.schema = schema2;
+  return schema$4;
 }
 var binary = {};
 var hasRequiredBinary;
@@ -3438,7 +4083,7 @@ function requireOmap() {
   omap.omap = omap$1;
   return omap;
 }
-var schema = {};
+var schema$3 = {};
 var bool = {};
 var hasRequiredBool;
 function requireBool() {
@@ -3520,10 +4165,10 @@ function requireFloat() {
   float.floatNaN = floatNaN;
   return float;
 }
-var int = {};
+var int$1 = {};
 var hasRequiredInt;
 function requireInt() {
-  if (hasRequiredInt) return int;
+  if (hasRequiredInt) return int$1;
   hasRequiredInt = 1;
   var stringifyNumber2 = requireStringifyNumber();
   const intIdentify = (value2) => typeof value2 === "bigint" || Number.isInteger(value2);
@@ -3576,7 +4221,7 @@ function requireInt() {
     resolve: (str, _onError, opt) => intResolve(str, 1, 8, opt),
     stringify: (node2) => intStringify(node2, 8, "0")
   };
-  const int$12 = {
+  const int2 = {
     identify: intIdentify,
     default: true,
     tag: "tag:yaml.org,2002:int",
@@ -3593,11 +4238,11 @@ function requireInt() {
     resolve: (str, _onError, opt) => intResolve(str, 2, 16, opt),
     stringify: (node2) => intStringify(node2, 16, "0x")
   };
-  int.int = int$12;
-  int.intBin = intBin;
-  int.intHex = intHex;
-  int.intOct = intOct;
-  return int;
+  int$1.int = int2;
+  int$1.intBin = intBin;
+  int$1.intHex = intHex;
+  int$1.intOct = intOct;
+  return int$1;
 }
 var set = {};
 var hasRequiredSet;
@@ -3778,7 +4423,7 @@ function requireTimestamp() {
 }
 var hasRequiredSchema$1;
 function requireSchema$1() {
-  if (hasRequiredSchema$1) return schema;
+  if (hasRequiredSchema$1) return schema$3;
   hasRequiredSchema$1 = 1;
   var map2 = requireMap();
   var _null2 = require_null();
@@ -3793,7 +4438,7 @@ function requireSchema$1() {
   var pairs2 = requirePairs();
   var set2 = requireSet();
   var timestamp2 = requireTimestamp();
-  const schema$12 = [
+  const schema2 = [
     map2.map,
     seq2.seq,
     string2.string,
@@ -3816,8 +4461,8 @@ function requireSchema$1() {
     timestamp2.floatTime,
     timestamp2.timestamp
   ];
-  schema.schema = schema$12;
-  return schema;
+  schema$3.schema = schema2;
+  return schema$3;
 }
 var hasRequiredTags;
 function requireTags() {
@@ -5076,13 +5721,13 @@ function requireResolveBlockScalar() {
   if (hasRequiredResolveBlockScalar) return resolveBlockScalar;
   hasRequiredResolveBlockScalar = 1;
   var Scalar2 = requireScalar();
-  function resolveBlockScalar$1(ctx, scalar, onError) {
-    const start = scalar.offset;
-    const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+  function resolveBlockScalar$1(ctx, scalar2, onError) {
+    const start = scalar2.offset;
+    const header = parseBlockScalarHeader(scalar2, ctx.options.strict, onError);
     if (!header)
       return { value: "", type: null, comment: "", range: [start, start, start] };
     const type2 = header.mode === ">" ? Scalar2.Scalar.BLOCK_FOLDED : Scalar2.Scalar.BLOCK_LITERAL;
-    const lines = scalar.source ? splitLines(scalar.source) : [];
+    const lines = scalar2.source ? splitLines(scalar2.source) : [];
     let chompStart = lines.length;
     for (let i = lines.length - 1; i >= 0; --i) {
       const content2 = lines[i][1];
@@ -5094,12 +5739,12 @@ function requireResolveBlockScalar() {
     if (chompStart === 0) {
       const value3 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
       let end2 = start + header.length;
-      if (scalar.source)
-        end2 += scalar.source.length;
+      if (scalar2.source)
+        end2 += scalar2.source.length;
       return { value: value3, type: type2, comment: header.comment, range: [start, end2, end2] };
     }
-    let trimIndent = scalar.indent + header.indent;
-    let offset = scalar.offset + header.length;
+    let trimIndent = scalar2.indent + header.indent;
+    let offset = scalar2.offset + header.length;
     let contentStart = 0;
     for (let i = 0; i < chompStart; ++i) {
       const [indent, content2] = lines[i];
@@ -5177,7 +5822,7 @@ function requireResolveBlockScalar() {
       default:
         value2 += "\n";
     }
-    const end = start + header.length + scalar.source.length;
+    const end = start + header.length + scalar2.source.length;
     return { value: value2, type: type2, comment: header.comment, range: [start, end, end] };
   }
   function parseBlockScalarHeader({ offset, props }, strict, onError) {
@@ -5260,8 +5905,8 @@ function requireResolveFlowScalar() {
   hasRequiredResolveFlowScalar = 1;
   var Scalar2 = requireScalar();
   var resolveEnd2 = requireResolveEnd();
-  function resolveFlowScalar$1(scalar, strict, onError) {
-    const { offset, type: type2, source, end } = scalar;
+  function resolveFlowScalar$1(scalar2, strict, onError) {
+    const { offset, type: type2, source, end } = scalar2;
     let _type;
     let value2;
     const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
@@ -5280,7 +5925,7 @@ function requireResolveFlowScalar() {
         break;
       /* istanbul ignore next should not happen */
       default:
-        onError(scalar, "UNEXPECTED_TOKEN", `Expected a flow scalar value, but found: ${type2}`);
+        onError(scalar2, "UNEXPECTED_TOKEN", `Expected a flow scalar value, but found: ${type2}`);
         return {
           value: "",
           type: null,
@@ -5494,26 +6139,26 @@ function requireComposeScalar() {
       tag = findScalarTagByTest(ctx, value2, token, onError);
     else
       tag = ctx.schema[identity2.SCALAR];
-    let scalar;
+    let scalar2;
     try {
       const res = tag.resolve(value2, (msg) => onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg), ctx.options);
-      scalar = identity2.isScalar(res) ? res : new Scalar2.Scalar(res);
+      scalar2 = identity2.isScalar(res) ? res : new Scalar2.Scalar(res);
     } catch (error2) {
       const msg = error2 instanceof Error ? error2.message : String(error2);
       onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg);
-      scalar = new Scalar2.Scalar(value2);
+      scalar2 = new Scalar2.Scalar(value2);
     }
-    scalar.range = range;
-    scalar.source = value2;
+    scalar2.range = range;
+    scalar2.source = value2;
     if (type2)
-      scalar.type = type2;
+      scalar2.type = type2;
     if (tagName)
-      scalar.tag = tagName;
+      scalar2.tag = tagName;
     if (tag.format)
-      scalar.format = tag.format;
+      scalar2.format = tag.format;
     if (comment)
-      scalar.comment = comment;
-    return scalar;
+      scalar2.comment = comment;
+    return scalar2;
   }
   function findScalarTagByName(schema2, value2, tagName, tagToken, onError) {
     if (tagName === "!")
@@ -6203,8 +6848,8 @@ function requireCstVisit() {
   visit2.REMOVE = REMOVE;
   visit2.itemAtPath = (cst2, path) => {
     let item = cst2;
-    for (const [field, index2] of path) {
-      const tok = item?.[field];
+    for (const [field2, index2] of path) {
+      const tok = item?.[field2];
       if (tok && "items" in tok) {
         item = tok.items[index2];
       } else
@@ -6214,8 +6859,8 @@ function requireCstVisit() {
   };
   visit2.parentCollection = (cst2, path) => {
     const parent = visit2.itemAtPath(cst2, path.slice(0, -1));
-    const field = path[path.length - 1][0];
-    const coll = parent?.[field];
+    const field2 = path[path.length - 1][0];
+    const coll = parent?.[field2];
     if (coll && "items" in coll)
       return coll;
     throw new Error("Parent collection not found");
@@ -6224,11 +6869,11 @@ function requireCstVisit() {
     let ctrl = visitor(item, path);
     if (typeof ctrl === "symbol")
       return ctrl;
-    for (const field of ["key", "value"]) {
-      const token = item[field];
+    for (const field2 of ["key", "value"]) {
+      const token = item[field2];
       if (token && "items" in token) {
         for (let i = 0; i < token.items.length; ++i) {
-          const ci = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
+          const ci = _visit(Object.freeze(path.concat([[field2, i]])), token.items[i], visitor);
           if (typeof ci === "number")
             i = ci - 1;
           else if (ci === BREAK)
@@ -6238,7 +6883,7 @@ function requireCstVisit() {
             i -= 1;
           }
         }
-        if (typeof ctrl === "function" && field === "key")
+        if (typeof ctrl === "function" && field2 === "key")
           ctrl = ctrl(item, path);
       }
     }
@@ -6452,11 +7097,11 @@ function requireLexer() {
     hasChars(n) {
       return this.pos + n <= this.buffer.length;
     }
-    setNext(state) {
+    setNext(state2) {
       this.buffer = this.buffer.substring(this.pos);
       this.pos = 0;
       this.lineEndPos = null;
-      this.next = state;
+      this.next = state2;
       return null;
     }
     peek(n) {
@@ -7338,37 +7983,37 @@ function requireParser() {
         };
       }
     }
-    *scalar(scalar) {
+    *scalar(scalar2) {
       if (this.type === "map-value-ind") {
         const prev = getPrevProps(this.peek(2));
         const start = getFirstKeyStartProps(prev);
         let sep;
-        if (scalar.end) {
-          sep = scalar.end;
+        if (scalar2.end) {
+          sep = scalar2.end;
           sep.push(this.sourceToken);
-          delete scalar.end;
+          delete scalar2.end;
         } else
           sep = [this.sourceToken];
         const map2 = {
           type: "block-map",
-          offset: scalar.offset,
-          indent: scalar.indent,
-          items: [{ start, key: scalar, sep }]
+          offset: scalar2.offset,
+          indent: scalar2.indent,
+          items: [{ start, key: scalar2, sep }]
         };
         this.onKeyLine = true;
         this.stack[this.stack.length - 1] = map2;
       } else
-        yield* this.lineEnd(scalar);
+        yield* this.lineEnd(scalar2);
     }
-    *blockScalar(scalar) {
+    *blockScalar(scalar2) {
       switch (this.type) {
         case "space":
         case "comment":
         case "newline":
-          scalar.props.push(this.sourceToken);
+          scalar2.props.push(this.sourceToken);
           return;
         case "scalar":
-          scalar.source = this.source;
+          scalar2.source = this.source;
           this.atNewLine = true;
           this.indent = 0;
           if (this.onNewLine) {
@@ -8100,13 +8745,13 @@ function trough() {
   const fns = [];
   const pipeline = { run: run2, use };
   return pipeline;
-  function run2(...values) {
+  function run2(...values2) {
     let middlewareIndex = -1;
-    const callback = values.pop();
+    const callback = values2.pop();
     if (typeof callback !== "function") {
       throw new TypeError("Expected function as last argument, not " + callback);
     }
-    next(null, ...values);
+    next(null, ...values2);
     function next(error2, ...output) {
       const fn = fns[++middlewareIndex];
       let index2 = -1;
@@ -8114,12 +8759,12 @@ function trough() {
         callback(error2);
         return;
       }
-      while (++index2 < values.length) {
+      while (++index2 < values2.length) {
         if (output[index2] === null || output[index2] === void 0) {
-          output[index2] = values[index2];
+          output[index2] = values2[index2];
         }
       }
-      values = output;
+      values2 = output;
       if (fn) {
         wrap(fn, next)(...output);
       } else {
@@ -8397,15 +9042,15 @@ class VFile {
     this.stored;
     let index2 = -1;
     while (++index2 < order.length) {
-      const field2 = order[index2];
-      if (field2 in options && options[field2] !== void 0 && options[field2] !== null) {
-        this[field2] = field2 === "history" ? [...options[field2]] : options[field2];
+      const field3 = order[index2];
+      if (field3 in options && options[field3] !== void 0 && options[field3] !== null) {
+        this[field3] = field3 === "history" ? [...options[field3]] : options[field3];
       }
     }
-    let field;
-    for (field in options) {
-      if (!order.includes(field)) {
-        this[field] = options[field];
+    let field2;
+    for (field2 in options) {
+      if (!order.includes(field2)) {
+        this[field2] = options[field2];
       }
     }
   }
@@ -9457,7 +10102,7 @@ function toString(value2, options) {
   return one(value2, includeImageAlt, includeHtml);
 }
 function one(value2, includeImageAlt, includeHtml) {
-  if (node$1(value2)) {
+  if (node$2(value2)) {
     if ("value" in value2) {
       return value2.type === "html" && !includeHtml ? "" : value2.value;
     }
@@ -9473,15 +10118,15 @@ function one(value2, includeImageAlt, includeHtml) {
   }
   return "";
 }
-function all(values, includeImageAlt, includeHtml) {
+function all(values2, includeImageAlt, includeHtml) {
   const result = [];
   let index2 = -1;
-  while (++index2 < values.length) {
-    result[index2] = one(values[index2], includeImageAlt, includeHtml);
+  while (++index2 < values2.length) {
+    result[index2] = one(values2[index2], includeImageAlt, includeHtml);
   }
   return result.join("");
 }
-function node$1(value2) {
+function node$2(value2) {
   return Boolean(value2 && typeof value2 === "object");
 }
 const characterEntities = {
@@ -11892,8 +12537,8 @@ class EditMap {
     events.length = 0;
     let slice = vecs.pop();
     while (slice) {
-      for (const element of slice) {
-        events.push(element);
+      for (const element2 of slice) {
+        events.push(element2);
       }
       slice = vecs.pop();
     }
@@ -12378,12 +13023,12 @@ function tokenizeBlockQuoteStart(effects, ok, nok) {
   return start;
   function start(code) {
     if (code === 62) {
-      const state = self.containerState;
-      if (!state.open) {
+      const state2 = self.containerState;
+      if (!state2.open) {
         effects.enter("blockQuote", {
           _container: true
         });
-        state.open = true;
+        state2.open = true;
       }
       effects.enter("blockQuotePrefix");
       effects.enter("blockQuoteMarker");
@@ -13504,7 +14149,7 @@ const titleBefore = {
 };
 function tokenizeDefinition(effects, ok, nok) {
   const self = this;
-  let identifier;
+  let identifier2;
   return start;
   function start(code) {
     effects.enter("definition");
@@ -13523,7 +14168,7 @@ function tokenizeDefinition(effects, ok, nok) {
     )(code);
   }
   function labelAfter(code) {
-    identifier = normalizeIdentifier(self.sliceSerialize(self.events[self.events.length - 1][1]).slice(1, -1));
+    identifier2 = normalizeIdentifier(self.sliceSerialize(self.events[self.events.length - 1][1]).slice(1, -1));
     if (code === 58) {
       effects.enter("definitionMarker");
       effects.consume(code);
@@ -13557,7 +14202,7 @@ function tokenizeDefinition(effects, ok, nok) {
   function afterWhitespace(code) {
     if (code === null || markdownLineEnding(code)) {
       effects.exit("definition");
-      self.parser.defined.push(identifier);
+      self.parser.defined.push(identifier2);
       return ok(code);
     }
     return nok(code);
@@ -15004,16 +15649,16 @@ function initializeFlow(effects) {
 const resolver = {
   resolveAll: createResolver()
 };
-const string$2 = initializeFactory("string");
+const string$3 = initializeFactory("string");
 const text$1 = initializeFactory("text");
-function initializeFactory(field) {
+function initializeFactory(field2) {
   return {
-    resolveAll: createResolver(field === "text" ? resolveAllLineSuffixes : void 0),
+    resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
     tokenize: initializeText
   };
   function initializeText(effects) {
     const self = this;
-    const constructs2 = this.parser.constructs[field];
+    const constructs2 = this.parser.constructs[field2];
     const text2 = effects.attempt(constructs2, start, notText);
     return start;
     function start(code) {
@@ -15175,7 +15820,7 @@ const flow = {
   [96]: codeFenced,
   [126]: codeFenced
 };
-const string$1 = {
+const string$2 = {
   [38]: characterReference,
   [92]: characterEscape
 };
@@ -15211,7 +15856,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flow,
   flowInitial,
   insideSpan,
-  string: string$1,
+  string: string$2,
   text
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
@@ -15248,7 +15893,7 @@ function createTokenizer(parser2, initialize, from) {
     sliceStream,
     write
   };
-  let state = initialize.tokenize.call(context, effects);
+  let state2 = initialize.tokenize.call(context, effects);
   if (initialize.resolveAll) {
     resolveAllConstructs.push(initialize);
   }
@@ -15306,7 +15951,7 @@ function createTokenizer(parser2, initialize, from) {
     }
   }
   function go(code) {
-    state = state(code);
+    state2 = state2(code);
   }
   function consume(code) {
     if (markdownLineEnding(code)) {
@@ -15544,7 +16189,7 @@ function parse$1(options) {
     document: create2(document$1),
     flow: create2(flow$1),
     lazy: {},
-    string: create2(string$2),
+    string: create2(string$3),
     text: create2(text$1)
   };
   return parser2;
@@ -15691,9 +16336,9 @@ function compiler(options) {
       emphasis: opener2(emphasis),
       hardBreakEscape: opener2(hardBreak),
       hardBreakTrailing: opener2(hardBreak),
-      htmlFlow: opener2(html, buffer),
+      htmlFlow: opener2(html2, buffer),
       htmlFlowData: onenterdata,
-      htmlText: opener2(html, buffer),
+      htmlText: opener2(html2, buffer),
       htmlTextData: onenterdata,
       image: opener2(image),
       label: buffer,
@@ -16278,7 +16923,7 @@ function compiler(options) {
       position: void 0
     };
   }
-  function html() {
+  function html2() {
     return {
       type: "html",
       value: "",
@@ -16547,8 +17192,8 @@ const fault = Object.assign(create(Error), {
 function create(Constructor) {
   FormattedError.displayName = Constructor.displayName || Constructor.name;
   return FormattedError;
-  function FormattedError(format2, ...values) {
-    const reason = format2 ? formatter(format2, ...values) : format2;
+  function FormattedError(format2, ...values2) {
+    const reason = format2 ? formatter(format2, ...values2) : format2;
     return new Constructor(reason);
   }
 }
@@ -16620,7 +17265,7 @@ function createConstruct(matter2) {
     /** @type {TokenType} */
     fenceType + "Sequence"
   );
-  const valueType = (
+  const valueType2 = (
     /** @type {TokenType} */
     frontmatterType + "Value"
   );
@@ -16694,12 +17339,12 @@ function createConstruct(matter2) {
       if (code === null || markdownLineEnding(code)) {
         return contentEnd(code);
       }
-      effects.enter(valueType);
+      effects.enter(valueType2);
       return contentInside(code);
     }
     function contentInside(code) {
       if (code === null || markdownLineEnding(code)) {
-        effects.exit(valueType);
+        effects.exit(valueType2);
         return contentEnd(code);
       }
       effects.consume(code);
@@ -16762,14 +17407,14 @@ function createConstruct(matter2) {
     }
   }
 }
-function fence$1(matter2, prop) {
-  return matter2.marker ? pick$2(matter2.marker, prop).repeat(3) : (
+function fence$1(matter2, prop2) {
+  return matter2.marker ? pick$2(matter2.marker, prop2).repeat(3) : (
     // @ts-expect-error: They’re mutually exclusive.
-    pick$2(matter2.fence, prop)
+    pick$2(matter2.fence, prop2)
   );
 }
-function pick$2(schema2, prop) {
-  return typeof schema2 === "string" ? schema2 : schema2[prop];
+function pick$2(schema2, prop2) {
+  return typeof schema2 === "string" ? schema2 : schema2[prop2];
 }
 function escapeStringRegexp(string2) {
   if (typeof string2 !== "string") {
@@ -16786,7 +17431,7 @@ function frontmatterFromMarkdown(options) {
     const matter2 = matters[index2];
     enter[matter2.type] = opener(matter2);
     exit2[matter2.type] = close;
-    exit2[matter2.type + "Value"] = value$1;
+    exit2[matter2.type + "Value"] = value$3;
   }
   return { enter, exit: exit2 };
 }
@@ -16803,7 +17448,7 @@ function close(token) {
   this.exit(token);
   node2.value = data.replace(/^(\r?\n|\r)|(\r?\n|\r)$/g, "");
 }
-function value$1(token) {
+function value$3(token) {
   this.config.enter.data.call(this, token);
   this.config.exit.data.call(this, token);
 }
@@ -16832,14 +17477,14 @@ function handler(matter2) {
     return open2 + (node2.value ? "\n" + node2.value : "") + "\n" + close2;
   }
 }
-function fence(matter2, prop) {
-  return matter2.marker ? pick$1(matter2.marker, prop).repeat(3) : (
+function fence(matter2, prop2) {
+  return matter2.marker ? pick$1(matter2.marker, prop2).repeat(3) : (
     // @ts-expect-error: They’re mutually exclusive.
-    pick$1(matter2.fence, prop)
+    pick$1(matter2.fence, prop2)
   );
 }
-function pick$1(schema2, prop) {
-  return typeof schema2 === "string" ? schema2 : schema2[prop];
+function pick$1(schema2, prop2) {
+  return typeof schema2 === "string" ? schema2 : schema2[prop2];
 }
 const emptyOptions = "yaml";
 function remarkFrontmatter(options) {
@@ -17075,11 +17720,11 @@ async function loadModule(directory, files) {
   return loaded.default;
 }
 async function loadEnabledPlugins(directory, ids, files, registry2, events) {
-  ensure(Array.isArray(ids) && ids.every((id) => typeof id === "string" && /^[a-z][a-z0-9-]*$/.test(id)) && new Set(ids).size === ids.length, "INVALID_PLUGIN_CONFIG", "Enabled plugins must contain unique lowercase kebab-case IDs.");
+  ensure(Array.isArray(ids) && ids.every((id2) => typeof id2 === "string" && /^[a-z][a-z0-9-]*$/.test(id2)) && new Set(ids).size === ids.length, "INVALID_PLUGIN_CONFIG", "Enabled plugins must contain unique lowercase kebab-case IDs.");
   const manifests = [];
-  for (const id of ids) {
-    const manifest = await readManifest(`${directory}/${id}/manifest.json`, files);
-    ensure(manifest.id === id, "INVALID_PLUGIN", `Manifest id must match plugin directory ${id}.`);
+  for (const id2 of ids) {
+    const manifest = await readManifest(`${directory}/${id2}/manifest.json`, files);
+    ensure(manifest.id === id2, "INVALID_PLUGIN", `Manifest id must match plugin directory ${id2}.`);
     manifests.push(manifest);
   }
   for (const manifest of manifests) {
@@ -17091,8 +17736,8 @@ async function loadEnabledPlugins(directory, ids, files, registry2, events) {
 }
 function getEnumValues(entries) {
   const numericValues = Object.values(entries).filter((v) => typeof v === "number");
-  const values = Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
-  return values;
+  const values2 = Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
+  return values2;
 }
 function joinValues(array2, separator = "|") {
   return array2.map((val) => stringifyPrimitive(val)).join(separator);
@@ -17127,8 +17772,39 @@ function cleanRegex(source) {
   const end = source.endsWith("$") ? source.length - 1 : source.length;
   return source.slice(start, end);
 }
-function assignProp(target, prop, value2) {
-  Object.defineProperty(target, prop, {
+function floatSafeRemainder(val, step) {
+  const ratio = val / step;
+  const roundedRatio = Math.round(ratio);
+  const tolerance = 4 * Number.EPSILON * Math.max(Math.abs(ratio), 1);
+  if (Math.abs(ratio - roundedRatio) < tolerance)
+    return 0;
+  return ratio - roundedRatio;
+}
+const EVALUATING = /* @__PURE__ */ Symbol("evaluating");
+function defineLazy(object, key, getter) {
+  let value2 = void 0;
+  Object.defineProperty(object, key, {
+    get() {
+      if (value2 === EVALUATING) {
+        return void 0;
+      }
+      if (value2 === void 0) {
+        value2 = EVALUATING;
+        value2 = getter();
+      }
+      return value2;
+    },
+    set(v) {
+      Object.defineProperty(object, key, {
+        value: v
+        // configurable: true,
+      });
+    },
+    configurable: true
+  });
+}
+function assignProp(target, prop2, value2) {
+  Object.defineProperty(target, prop2, {
     value: value2,
     writable: true,
     enumerable: true,
@@ -17780,7 +18456,7 @@ const initializer$1 = (inst, def) => {
   }
 };
 const $ZodError = $constructor("$ZodError", initializer$1);
-function node(obj, key, make) {
+function node$1(obj, key, make) {
   if (!Object.prototype.hasOwnProperty.call(obj, key)) {
     if (key === "__proto__") {
       Object.defineProperty(obj, key, { value: make(), writable: true, enumerable: true, configurable: true });
@@ -17795,7 +18471,7 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
   const formErrors = [];
   for (const sub of error2.issues) {
     if (sub.path.length > 0) {
-      node(fieldErrors, sub.path[0], () => []).push(mapper(sub));
+      node$1(fieldErrors, sub.path[0], () => []).push(mapper(sub));
     } else {
       formErrors.push(mapper(sub));
     }
@@ -18047,7 +18723,10 @@ function datetime(args) {
   return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
 }
 const anyString = /^[\s\S]{0,}$/;
+const integer = /^-?\d+$/;
+const number$1 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
+const _null$2 = /^null$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
 const $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
@@ -18060,6 +18739,139 @@ const _whenHasLength = (payload) => {
   const val = payload.value;
   return !nullish(val) && val.length !== void 0;
 };
+const numericOriginMap = {
+  number: "number",
+  bigint: "bigint",
+  object: "date"
+};
+const $ZodCheckLessThan = /* @__PURE__ */ $constructor("$ZodCheckLessThan", (inst, def) => {
+  $ZodCheck.init(inst, def);
+  const origin = numericOriginMap[typeof def.value];
+  inst._zod.check = (payload) => {
+    if (def.inclusive ? payload.value <= def.value : payload.value < def.value) {
+      return;
+    }
+    payload.issues.push({
+      origin: numericOriginMap[typeof payload.value] ?? origin,
+      code: "too_big",
+      maximum: typeof def.value === "object" ? def.value.getTime() : def.value,
+      input: payload.value,
+      inclusive: def.inclusive,
+      inst,
+      continue: !def.abort
+    });
+  };
+});
+const $ZodCheckGreaterThan = /* @__PURE__ */ $constructor("$ZodCheckGreaterThan", (inst, def) => {
+  $ZodCheck.init(inst, def);
+  const origin = numericOriginMap[typeof def.value];
+  inst._zod.check = (payload) => {
+    if (def.inclusive ? payload.value >= def.value : payload.value > def.value) {
+      return;
+    }
+    payload.issues.push({
+      origin: numericOriginMap[typeof payload.value] ?? origin,
+      code: "too_small",
+      minimum: typeof def.value === "object" ? def.value.getTime() : def.value,
+      input: payload.value,
+      inclusive: def.inclusive,
+      inst,
+      continue: !def.abort
+    });
+  };
+});
+const $ZodCheckMultipleOf = /* @__PURE__ */ $constructor("$ZodCheckMultipleOf", (inst, def) => {
+  $ZodCheck.init(inst, def);
+  inst._zod.check = (payload) => {
+    if (typeof payload.value !== typeof def.value)
+      throw new Error("Cannot mix number and bigint in multiple_of check.");
+    const isMultiple = typeof payload.value === "bigint" ? (
+      // `value % 0n` throws, and nothing is a multiple of zero — the number branch already fails this way via NaN
+      def.value !== BigInt(0) && payload.value % def.value === BigInt(0)
+    ) : floatSafeRemainder(payload.value, def.value) === 0;
+    if (isMultiple)
+      return;
+    payload.issues.push({
+      origin: typeof payload.value,
+      code: "not_multiple_of",
+      divisor: def.value,
+      input: payload.value,
+      inst,
+      continue: !def.abort
+    });
+  };
+});
+const $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat", (inst, def) => {
+  $ZodCheck.init(inst, def);
+  def.format = def.format || "float64";
+  const isInt = def.format?.includes("int");
+  const origin = isInt ? "int" : "number";
+  const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
+  inst._zod.check = (payload) => {
+    const input = payload.value;
+    if (isInt) {
+      if (!Number.isInteger(input)) {
+        payload.issues.push({
+          expected: origin,
+          format: def.format,
+          code: "invalid_type",
+          continue: false,
+          input,
+          inst
+        });
+        return;
+      }
+      if (!Number.isSafeInteger(input)) {
+        if (input > 0) {
+          payload.issues.push({
+            input,
+            code: "too_big",
+            maximum: Number.MAX_SAFE_INTEGER,
+            note: "Integers must be within the safe integer range.",
+            inst,
+            origin,
+            inclusive: true,
+            continue: !def.abort
+          });
+        } else {
+          payload.issues.push({
+            input,
+            code: "too_small",
+            minimum: Number.MIN_SAFE_INTEGER,
+            note: "Integers must be within the safe integer range.",
+            inst,
+            origin,
+            inclusive: true,
+            continue: !def.abort
+          });
+        }
+        return;
+      }
+    }
+    if (input < minimum) {
+      payload.issues.push({
+        origin: "number",
+        input,
+        code: "too_small",
+        minimum,
+        inclusive: true,
+        inst,
+        continue: !def.abort
+      });
+    }
+    if (input > maximum) {
+      payload.issues.push({
+        origin: "number",
+        input,
+        code: "too_big",
+        maximum,
+        inclusive: true,
+        inst,
+        continue: !def.abort
+      });
+    }
+  };
+});
 const $ZodCheckMaxLength = /* @__PURE__ */ $constructor("$ZodCheckMaxLength", (inst, def) => {
   var _a2;
   $ZodCheck.init(inst, def);
@@ -18498,21 +19310,21 @@ const asciiTabOrNewline = /[\t\n\r]/g;
 function stripTabAndNewline(value2) {
   return value2.replace(asciiTabOrNewline, "");
 }
-function urlHostnameOk(url, hostname) {
+function urlHostnameOk(url2, hostname) {
   hostname.lastIndex = 0;
-  return hostname.test(url.hostname);
+  return hostname.test(url2.hostname);
 }
-function urlProtocolOk(url, protocol) {
+function urlProtocolOk(url2, protocol) {
   protocol.lastIndex = 0;
-  return protocol.test(url.protocol.endsWith(":") ? url.protocol.slice(0, -1) : url.protocol);
+  return protocol.test(url2.protocol.endsWith(":") ? url2.protocol.slice(0, -1) : url2.protocol);
 }
 const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
   $ZodStringFormat.init(inst, def);
   inst._zod.check = (payload) => {
     try {
       const trimmed = payload.value.trim();
-      const url = validateURL(trimmed, def);
-      if (url === URL_BAD_FORMAT) {
+      const url2 = validateURL(trimmed, def);
+      if (url2 === URL_BAD_FORMAT) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -18523,7 +19335,7 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
         });
         return;
       }
-      if (url === URL_UNPARSEABLE) {
+      if (url2 === URL_UNPARSEABLE) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -18533,11 +19345,11 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
         });
         return;
       }
-      if (url === true) {
+      if (url2 === true) {
         payload.value = stripTabAndNewline(trimmed);
         return;
       }
-      if (def.hostname && !urlHostnameOk(url, def.hostname)) {
+      if (def.hostname && !urlHostnameOk(url2, def.hostname)) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -18548,7 +19360,7 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
           continue: !def.abort
         });
       }
-      if (def.protocol && !urlProtocolOk(url, def.protocol)) {
+      if (def.protocol && !urlProtocolOk(url2, def.protocol)) {
         payload.issues.push({
           code: "invalid_format",
           format: "url",
@@ -18559,7 +19371,7 @@ const $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
           continue: !def.abort
         });
       }
-      payload.value = def.normalize ? url.href : stripTabAndNewline(trimmed);
+      payload.value = def.normalize ? url2.href : stripTabAndNewline(trimmed);
       return;
     } catch (_) {
       payload.issues.push({
@@ -18767,6 +19579,34 @@ const $ZodJWT = /* @__PURE__ */ $constructor("$ZodJWT", (inst, def) => {
     });
   };
 });
+const $ZodNumber = /* @__PURE__ */ $constructor("$ZodNumber", (inst, def) => {
+  $ZodType.init(inst, def);
+  inst._zod.pattern = number$1;
+  inst._zod.parse = (payload, _ctx) => {
+    if (def.coerce)
+      try {
+        payload.value = Number(payload.value);
+      } catch (_) {
+      }
+    const input = payload.value;
+    if (typeof input === "number" && !Number.isNaN(input) && Number.isFinite(input)) {
+      return payload;
+    }
+    const received = typeof input === "number" ? Number.isNaN(input) ? "NaN" : !Number.isFinite(input) ? String(input) : void 0 : void 0;
+    payload.issues.push({
+      expected: "number",
+      code: "invalid_type",
+      input,
+      inst,
+      ...received ? { received } : {}
+    });
+    return payload;
+  };
+});
+const $ZodNumberFormat = /* @__PURE__ */ $constructor("$ZodNumberFormat", (inst, def) => {
+  $ZodCheckNumberFormat.init(inst, def);
+  $ZodNumber.init(inst, def);
+});
 const $ZodBoolean = /* @__PURE__ */ $constructor("$ZodBoolean", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.pattern = boolean$1;
@@ -18781,6 +19621,23 @@ const $ZodBoolean = /* @__PURE__ */ $constructor("$ZodBoolean", (inst, def) => {
       return payload;
     payload.issues.push({
       expected: "boolean",
+      code: "invalid_type",
+      input,
+      inst
+    });
+    return payload;
+  };
+});
+const $ZodNull = /* @__PURE__ */ $constructor("$ZodNull", (inst, def) => {
+  $ZodType.init(inst, def);
+  inst._zod.pattern = _null$2;
+  inst._zod.values = /* @__PURE__ */ new Set([null]);
+  inst._zod.parse = (payload, _ctx) => {
+    const input = payload.value;
+    if (input === null)
+      return payload;
+    payload.issues.push({
+      expected: "null",
       code: "invalid_type",
       input,
       inst
@@ -18968,14 +19825,14 @@ const $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     const shape = zod.def.shape;
     const propValues = {};
     for (const key in shape) {
-      const field = shape[key]._zod;
-      if (field.values) {
+      const field2 = shape[key]._zod;
+      if (field2.values) {
         if (!Object.prototype.hasOwnProperty.call(propValues, key)) {
           assignProp(propValues, key, /* @__PURE__ */ new Set());
         }
-        for (const v of field.values)
+        for (const v of field2.values)
           propValues[key].add(v);
-        if (field.optin !== void 0)
+        if (field2.optin !== void 0)
           propValues[key].add(void 0);
       }
     }
@@ -19037,15 +19894,15 @@ const $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) 
     const syms = normalized.symbolKeys;
     const doc = new Doc(["payload", "ctx"], { shape, inst, memo: memo2, syms });
     const parseStr = (k) => `shape[${k}]._zod.run({ value: input[${k}], issues: [] }, ctx)`;
-    const prefixStr = (id, k) => `
-          let ${id}_ab = false;
-          for (let i = 0; i < ${id}.issues.length; i++) {
-            const iss = ${id}.issues[i];
+    const prefixStr = (id2, k) => `
+          let ${id2}_ab = false;
+          for (let i = 0; i < ${id2}.issues.length; i++) {
+            const iss = ${id2}.issues[i];
             iss.path = iss.path ? [${k}, ...iss.path] : [${k}];
             payload.issues.push(iss);
-            if (iss.continue !== true) ${id}_ab = true;
+            if (iss.continue !== true) ${id2}_ab = true;
           }
-          if (${id}_ab && ctx && ctx.abortEarly) {
+          if (${id2}_ab && ctx && ctx.abortEarly) {
             payload.value = newResult;
             return payload;
           }`;
@@ -19059,34 +19916,34 @@ const $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) 
     for (const key of normalized.allKeys) {
       if (key === "__proto__")
         continue;
-      const id = ids[key];
+      const id2 = ids[key];
       const k = typeof key === "symbol" ? `syms[${syms.indexOf(key)}]` : esc(key);
       const isPresent = `${k} in input`;
       const schema2 = shape[key];
       const optin = schema2?._zod?.optin;
       const isOptionalIn = optin !== void 0;
       const isOptionalOut = schema2?._zod?.optout === "optional";
-      doc.write(`const ${id} = ${parseStr(k)};`);
+      doc.write(`const ${id2} = ${parseStr(k)};`);
       if (isOptionalIn && isOptionalOut) {
-        const assign = optin === "optional" ? `${id}_present` : `${id}.value !== undefined || ${id}_present`;
+        const assign = optin === "optional" ? `${id2}_present` : `${id2}.value !== undefined || ${id2}_present`;
         doc.write(`
-        const ${id}_present = ${isPresent};
-        if (!${id}.issues.length || ${id}_present) {
-          if (${id}.issues.length) {${prefixStr(id, k)}
+        const ${id2}_present = ${isPresent};
+        if (!${id2}.issues.length || ${id2}_present) {
+          if (${id2}.issues.length) {${prefixStr(id2, k)}
           }
 
           if (${assign}) {
-            newResult[${k}] = ${id}.value;
+            newResult[${k}] = ${id2}.value;
           }
         }
 
       `);
       } else if (!isOptionalIn) {
         doc.write(`
-        const ${id}_present = ${isPresent};
-        if (${id}.issues.length) {${prefixStr(id, k)}
+        const ${id2}_present = ${isPresent};
+        if (${id2}.issues.length) {${prefixStr(id2, k)}
         }
-        if (!${id}_present && !${id}.issues.length) {
+        if (!${id2}_present && !${id2}.issues.length) {
           payload.issues.push({
             code: "invalid_type",
             expected: "nonoptional",
@@ -19099,22 +19956,22 @@ const $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) 
           }
         }
 
-        if (${id}_present) {
-          newResult[${k}] = ${id}.value;
+        if (${id2}_present) {
+          newResult[${k}] = ${id2}.value;
         }
 
       `);
       } else {
         doc.write(`
-        if (${id}.issues.length) {${prefixStr(id, k)}
+        if (${id2}.issues.length) {${prefixStr(id2, k)}
         }
       `);
         if (optin === "defaulted") {
-          doc.write(`newResult[${k}] = ${id}.value;`);
+          doc.write(`newResult[${k}] = ${id2}.value;`);
         } else {
           doc.write(`
-        if (${id}.value !== undefined || ${isPresent}) {
-          newResult[${k}] = ${id}.value;
+        if (${id2}.value !== undefined || ${isPresent}) {
+          newResult[${k}] = ${id2}.value;
         }
       `);
         }
@@ -19333,10 +20190,165 @@ function handleIntersectionResults(result, left, right) {
   result.value = merged.data;
   return result;
 }
+const $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
+  $ZodType.init(inst, def);
+  const memo2 = globalConfig.memoizer;
+  memo2?.attach(inst);
+  inst._zod.parse = (payload, ctx) => {
+    const input = payload.value;
+    if (!isPlainObject(input)) {
+      payload.issues.push({
+        expected: "record",
+        code: "invalid_type",
+        input,
+        inst
+      });
+      return payload;
+    }
+    const proms = [];
+    const values2 = def.keyType._zod.values;
+    if (values2 && !def.partial) {
+      payload.value = memo2 ? memo2.alloc(inst, payload, {}, ctx) : {};
+      const recordKeys = /* @__PURE__ */ new Set();
+      for (const key of values2) {
+        if (typeof key === "string" || typeof key === "number" || typeof key === "symbol") {
+          recordKeys.add(typeof key === "number" ? key.toString() : key);
+          if (key === "__proto__")
+            continue;
+          const keyResult = def.keyType._zod.run({ value: key, issues: [] }, ctx);
+          if (keyResult instanceof Promise) {
+            throw new Error("Async schemas not supported in object keys currently");
+          }
+          if (keyResult.issues.length) {
+            payload.issues.push({
+              code: "invalid_key",
+              origin: "record",
+              issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+              input: key,
+              path: [key],
+              inst
+            });
+            continue;
+          }
+          const outKey = keyResult.value;
+          if (outKey === "__proto__")
+            continue;
+          const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx);
+          if (result instanceof Promise) {
+            proms.push(result.then((result2) => {
+              if (result2.issues.length) {
+                payload.issues.push(...prefixIssues(key, result2.issues));
+              }
+              payload.value[outKey] = result2.value;
+            }));
+          } else {
+            if (result.issues.length) {
+              payload.issues.push(...prefixIssues(key, result.issues));
+            }
+            payload.value[outKey] = result.value;
+          }
+        }
+      }
+      let unrecognized;
+      for (const key in input) {
+        if (!recordKeys.has(key)) {
+          if (def.mode === "loose") {
+            if (key === "__proto__")
+              continue;
+            payload.value[key] = input[key];
+          } else {
+            unrecognized = unrecognized ?? [];
+            unrecognized.push(key);
+          }
+        }
+      }
+      if (unrecognized && unrecognized.length > 0) {
+        payload.issues.push({
+          code: "unrecognized_keys",
+          input,
+          inst,
+          keys: unrecognized,
+          continue: true
+        });
+      }
+    } else {
+      payload.value = memo2 ? memo2.alloc(inst, payload, {}, ctx) : {};
+      let unrecognized;
+      for (const key of Reflect.ownKeys(input)) {
+        if (key === "__proto__")
+          continue;
+        if (!Object.prototype.propertyIsEnumerable.call(input, key))
+          continue;
+        let keyResult = def.keyType._zod.run({ value: key, issues: [] }, ctx);
+        if (keyResult instanceof Promise) {
+          throw new Error("Async schemas not supported in object keys currently");
+        }
+        const checkNumericKey = typeof key === "string" && number$1.test(key) && keyResult.issues.length;
+        if (checkNumericKey) {
+          const retryResult = def.keyType._zod.run({ value: Number(key), issues: [] }, ctx);
+          if (retryResult instanceof Promise) {
+            throw new Error("Async schemas not supported in object keys currently");
+          }
+          if (retryResult.issues.length === 0) {
+            keyResult = retryResult;
+          }
+        }
+        if (keyResult.issues.length) {
+          if (def.mode === "loose") {
+            payload.value[key] = input[key];
+          } else if (values2) {
+            unrecognized = unrecognized ?? [];
+            unrecognized.push(key);
+          } else {
+            payload.issues.push({
+              code: "invalid_key",
+              origin: "record",
+              issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+              input: key,
+              path: [key],
+              inst
+            });
+          }
+          continue;
+        }
+        const outKey = keyResult.value;
+        if (outKey === "__proto__")
+          continue;
+        const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx);
+        if (result instanceof Promise) {
+          proms.push(result.then((result2) => {
+            if (result2.issues.length) {
+              payload.issues.push(...prefixIssues(key, result2.issues));
+            }
+            payload.value[outKey] = result2.value;
+          }));
+        } else {
+          if (result.issues.length) {
+            payload.issues.push(...prefixIssues(key, result.issues));
+          }
+          payload.value[outKey] = result.value;
+        }
+      }
+      if (unrecognized && unrecognized.length > 0) {
+        payload.issues.push({
+          code: "unrecognized_keys",
+          input,
+          inst,
+          keys: unrecognized,
+          continue: true
+        });
+      }
+    }
+    if (proms.length) {
+      return Promise.all(proms).then(() => payload);
+    }
+    return payload;
+  };
+});
 const $ZodEnum = /* @__PURE__ */ $constructor("$ZodEnum", (inst, def) => {
   $ZodType.init(inst, def);
-  const values = getEnumValues(def.entries);
-  const valuesSet = new Set(values);
+  const values2 = getEnumValues(def.entries);
+  const valuesSet = new Set(values2);
   inst._zod.values = valuesSet;
   defineLazyInternal(inst, "pattern", (zod) => {
     const patternValues = getEnumValues(zod.def.entries).filter((k) => propertyKeyTypes.has(typeof k));
@@ -19349,7 +20361,7 @@ const $ZodEnum = /* @__PURE__ */ $constructor("$ZodEnum", (inst, def) => {
     }
     payload.issues.push({
       code: "invalid_value",
-      values,
+      values: values2,
       input,
       inst
     });
@@ -19358,15 +20370,15 @@ const $ZodEnum = /* @__PURE__ */ $constructor("$ZodEnum", (inst, def) => {
 });
 const $ZodLiteral = /* @__PURE__ */ $constructor("$ZodLiteral", (inst, def) => {
   $ZodType.init(inst, def);
-  const values = new Set(def.values);
-  inst._zod.values = values;
+  const values2 = new Set(def.values);
+  inst._zod.values = values2;
   defineLazyInternal(inst, "pattern", (zod) => {
     const vals = zod.def.values;
     return new RegExp(vals.length ? `^(${vals.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$` : "^[^\\s\\S]$");
   });
   inst._zod.parse = (payload, _ctx) => {
     const input = payload.value;
-    if (values.has(input)) {
+    if (values2.has(input)) {
       return payload;
     }
     payload.issues.push({
@@ -19410,8 +20422,8 @@ const $ZodOptional = /* @__PURE__ */ $constructor("$ZodOptional", (inst, def) =>
   defineLazyInternal(inst, "optin", (zod) => zod.def.innerType._zod.optin === "defaulted" ? "defaulted" : "optional");
   inst._zod.optout = "optional";
   defineLazyInternal(inst, "values", (zod) => {
-    const values = zod.def.innerType._zod.values;
-    return values ? /* @__PURE__ */ new Set([...values, void 0]) : void 0;
+    const values2 = zod.def.innerType._zod.values;
+    return values2 ? /* @__PURE__ */ new Set([...values2, void 0]) : void 0;
   });
   defineLazyInternal(inst, "pattern", (zod) => {
     const pattern = zod.def.innerType._zod.pattern;
@@ -19601,6 +20613,23 @@ function handleReadonlyResult(payload) {
     payload.value = Object.freeze(payload.value);
   return payload;
 }
+const $ZodLazy = /* @__PURE__ */ $constructor("$ZodLazy", (inst, def) => {
+  $ZodType.init(inst, def);
+  defineLazy(inst._zod, "innerType", () => {
+    const d = def;
+    if (!d._cachedInner)
+      d._cachedInner = def.getter();
+    return d._cachedInner;
+  });
+  defineLazyInternal(inst, "pattern", (zod) => zod.innerType?._zod?.pattern);
+  defineLazyInternal(inst, "propValues", (zod) => zod.innerType?._zod?.propValues);
+  defineLazyInternal(inst, "optin", (zod) => zod.innerType?._zod?.optin ?? void 0);
+  defineLazyInternal(inst, "optout", (zod) => zod.innerType?._zod?.optout ?? void 0);
+  inst._zod.parse = (payload, ctx) => {
+    const inner = inst._zod.innerType;
+    return inner._zod.run(payload, ctx);
+  };
+});
 const $ZodCustom = /* @__PURE__ */ $constructor("$ZodCustom", (inst, def) => {
   $ZodCheck.init(inst, def);
   $ZodType.init(inst, def);
@@ -19788,11 +20817,11 @@ function settle(inst, answer) {
     recursive.set(inst, answer === PROVEN);
   return answer;
 }
-function bucketFor(state, inst) {
-  let bucket = state.buckets.get(inst);
+function bucketFor(state2, inst) {
+  let bucket = state2.buckets.get(inst);
   if (!bucket) {
     bucket = /* @__PURE__ */ new WeakMap();
-    state.buckets.set(inst, bucket);
+    state2.buckets.set(inst, bucket);
   }
   return bucket;
 }
@@ -19850,16 +20879,16 @@ const memo = {
         const input = payload.value;
         if (!isRef(input))
           return base(payload, ctx);
-        let state = ctx[STATE];
-        if (!state) {
-          state = { buckets: /* @__PURE__ */ new WeakMap(), backEdges: void 0 };
-          ctx[STATE] = state;
+        let state2 = ctx[STATE];
+        if (!state2) {
+          state2 = { buckets: /* @__PURE__ */ new WeakMap(), backEdges: void 0 };
+          ctx[STATE] = state2;
         }
         let bucket;
         if (lastCtx === ctx) {
           bucket = lastBucket;
         } else {
-          bucket = bucketFor(state, inst);
+          bucket = bucketFor(state2, inst);
           lastCtx = ctx;
           lastBucket = bucket;
         }
@@ -19871,8 +20900,8 @@ const memo = {
               payload.issues.push(...cloneIssues(hit.issues));
           } else {
             payload.memo = true;
-            state.backEdges ?? (state.backEdges = /* @__PURE__ */ new WeakSet());
-            state.backEdges.add(hit.value);
+            state2.backEdges ?? (state2.backEdges = /* @__PURE__ */ new WeakSet());
+            state2.backEdges.add(hit.value);
           }
           return payload;
         }
@@ -20347,9 +21376,30 @@ function _isoDuration(Class, params) {
   });
 }
 // @__NO_SIDE_EFFECTS__
+function _number(Class, params) {
+  return new Class(snapshotChecks({ type: "number", checks: [], ...normalizeParams(params) }));
+}
+// @__NO_SIDE_EFFECTS__
+function _int(Class, params) {
+  return new Class({
+    type: "number",
+    check: "number_format",
+    abort: false,
+    format: "safeint",
+    ...normalizeParams(params)
+  });
+}
+// @__NO_SIDE_EFFECTS__
 function _boolean(Class, params) {
   return new Class({
     type: "boolean",
+    ...normalizeParams(params)
+  });
+}
+// @__NO_SIDE_EFFECTS__
+function _null$1(Class, params) {
+  return new Class({
+    type: "null",
     ...normalizeParams(params)
   });
 }
@@ -20364,6 +21414,50 @@ function _never(Class, params) {
   return new Class({
     type: "never",
     ...normalizeParams(params)
+  });
+}
+// @__NO_SIDE_EFFECTS__
+function _lt(value2, params) {
+  return new $ZodCheckLessThan({
+    check: "less_than",
+    ...normalizeParams(params),
+    value: value2,
+    inclusive: false
+  });
+}
+// @__NO_SIDE_EFFECTS__
+function _lte(value2, params) {
+  return new $ZodCheckLessThan({
+    check: "less_than",
+    ...normalizeParams(params),
+    value: value2,
+    inclusive: true
+  });
+}
+// @__NO_SIDE_EFFECTS__
+function _gt(value2, params) {
+  return new $ZodCheckGreaterThan({
+    check: "greater_than",
+    ...normalizeParams(params),
+    value: value2,
+    inclusive: false
+  });
+}
+// @__NO_SIDE_EFFECTS__
+function _gte(value2, params) {
+  return new $ZodCheckGreaterThan({
+    check: "greater_than",
+    ...normalizeParams(params),
+    value: value2,
+    inclusive: true
+  });
+}
+// @__NO_SIDE_EFFECTS__
+function _multipleOf(value2, params) {
+  return new $ZodCheckMultipleOf({
+    check: "multiple_of",
+    ...normalizeParams(params),
+    value: value2
   });
 }
 // @__NO_SIDE_EFFECTS__
@@ -20471,10 +21565,10 @@ function _slugify() {
   return /* @__PURE__ */ _overwrite((input) => slugify(input));
 }
 // @__NO_SIDE_EFFECTS__
-function _array(Class, element, params) {
+function _array(Class, element2, params) {
   return new Class({
     type: "array",
-    element,
+    element: element2,
     // get element() {
     //   return element;
     // },
@@ -20633,26 +21727,26 @@ function extractDefs(ctx, schema2) {
     return;
   const idToSchema = /* @__PURE__ */ new Map();
   for (const entry of ctx.seen.entries()) {
-    const id = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id) {
-      const existing = idToSchema.get(id);
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
+      const existing = idToSchema.get(id2);
       if (existing && existing !== entry[0]) {
-        throw new Error(`Duplicate schema id "${id}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
+        throw new Error(`Duplicate schema id "${id2}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
       }
-      idToSchema.set(id, entry[0]);
+      idToSchema.set(id2, entry[0]);
     }
   }
   const makeURI = (entry) => {
     const defsSegment = ctx.target === "draft-2020-12" ? "$defs" : "definitions";
     if (ctx.external) {
       const externalId = ctx.external.registry.get(entry[0])?.id;
-      const uriGenerator = ctx.external.uri ?? ((id2) => id2);
+      const uriGenerator = ctx.external.uri ?? ((id3) => id3);
       if (externalId) {
         return { ref: uriGenerator(externalId) };
       }
-      const id = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
-      entry[1].defId = id;
-      return { defId: id, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id)}` };
+      const id2 = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
+      entry[1].defId = id2;
+      return { defId: id2, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id2)}` };
     }
     const uriPrefix = `#`;
     const defUriPrefix = `${uriPrefix}/${defsSegment}/`;
@@ -20700,8 +21794,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         continue;
       }
     }
-    const id = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id) {
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
       extractToDef(entry);
       continue;
     }
@@ -20933,10 +22027,10 @@ function finalize(ctx, schema2) {
   } else if (ctx.target === "openapi-3.0") ;
   else ;
   if (ctx.external?.uri) {
-    const id = ctx.external.registry.get(schema2)?.id;
-    if (!id)
+    const id2 = ctx.external.registry.get(schema2)?.id;
+    if (!id2)
       throw new Error("Schema is missing an `id` property");
-    result.$id = ctx.external.uri(id);
+    result.$id = ctx.external.uri(id2);
   }
   assignProps(result, root.defId ? root.schema : root.def ?? root.schema);
   const rootMetaId = ctx.metadataRegistry.get(schema2)?.id;
@@ -21182,8 +22276,59 @@ const stringProcessor = (schema2, ctx, _json, _params) => {
     }
   }
 };
+const numberProcessor = (schema2, ctx, _json, params) => {
+  const json2 = _json;
+  const { minimum, maximum, multipleOf, exclusiveMaximum, exclusiveMinimum, isInt } = aggregateChecks(schema2);
+  json2.type = isInt ? "integer" : "number";
+  const exMin = typeof exclusiveMinimum === "number" && exclusiveMinimum >= (minimum ?? Number.NEGATIVE_INFINITY);
+  const exMax = typeof exclusiveMaximum === "number" && exclusiveMaximum <= (maximum ?? Number.POSITIVE_INFINITY);
+  const legacy = ctx.target === "draft-04" || ctx.target === "openapi-3.0";
+  if (exMin) {
+    if (legacy) {
+      json2.minimum = exclusiveMinimum;
+      json2.exclusiveMinimum = true;
+    } else {
+      json2.exclusiveMinimum = exclusiveMinimum;
+    }
+  } else if (typeof minimum === "number") {
+    json2.minimum = minimum;
+  }
+  if (exMax) {
+    if (legacy) {
+      json2.maximum = exclusiveMaximum;
+      json2.exclusiveMaximum = true;
+    } else {
+      json2.exclusiveMaximum = exclusiveMaximum;
+    }
+  } else if (typeof maximum === "number") {
+    json2.maximum = maximum;
+  }
+  if (multipleOf) {
+    const divisors = /* @__PURE__ */ new Set();
+    for (const divisor of multipleOf) {
+      if (Number.isFinite(divisor) && divisor !== 0)
+        divisors.add(Math.abs(divisor));
+      else
+        handleUnrepresentable(schema2, ctx, json2, params, `A multipleOf divisor of ${divisor} cannot be represented in JSON Schema`);
+    }
+    const [first, ...rest] = divisors;
+    if (first !== void 0)
+      json2.multipleOf = first;
+    if (rest.length)
+      json2.allOf = [...json2.allOf ?? [], ...rest.map((m) => ({ multipleOf: m }))];
+  }
+};
 const booleanProcessor = (_schema, _ctx, json2, _params) => {
   json2.type = "boolean";
+};
+const nullProcessor = (_schema, ctx, json2, _params) => {
+  if (ctx.target === "openapi-3.0") {
+    json2.type = "string";
+    json2.nullable = true;
+    json2.enum = [null];
+  } else {
+    json2.type = "null";
+  }
 };
 const neverProcessor = (_schema, _ctx, json2, _params) => {
   json2.not = {};
@@ -21192,16 +22337,16 @@ const unknownProcessor = (_schema, _ctx, _json, _params) => {
 };
 const enumProcessor = (schema2, _ctx, json2, _params) => {
   const def = schema2._zod.def;
-  const values = getEnumValues(def.entries);
-  if (values.length === 0) {
+  const values2 = getEnumValues(def.entries);
+  if (values2.length === 0) {
     json2.not = {};
     return;
   }
-  if (values.every((v) => typeof v === "number"))
+  if (values2.every((v) => typeof v === "number"))
     json2.type = "number";
-  if (values.every((v) => typeof v === "string"))
+  if (values2.every((v) => typeof v === "string"))
     json2.type = "string";
-  json2.enum = values;
+  json2.enum = values2;
 };
 const literalProcessor = (schema2, ctx, json2, params) => {
   const def = schema2._zod.def;
@@ -21291,8 +22436,8 @@ const objectProcessor = (schema2, ctx, _json, params) => {
   }
   const requiredKeys = [];
   for (const key of Object.keys(shape)) {
-    const field = def.shape[key];
-    if (ctx.io === "input" ? inputOptin(field) === void 0 : field._zod.optout === void 0) {
+    const field2 = def.shape[key];
+    if (ctx.io === "input" ? inputOptin(field2) === void 0 : field2._zod.optout === void 0) {
       requiredKeys.push(key);
     }
   }
@@ -21341,6 +22486,112 @@ const intersectionProcessor = (schema2, ctx, json2, params) => {
   ];
   json2.allOf = allOf;
   ctx.intersections.push(allOf);
+};
+function stringifyKeyNames(bySchema, json2, visited) {
+  if (json2.$ref) {
+    if (visited.has(json2))
+      return json2;
+    visited.add(json2);
+    const def = bySchema.get(json2)?.def;
+    if (!def)
+      return json2;
+    const inlined = stringifyKeyNames(bySchema, def, visited);
+    return inlined === def ? json2 : inlined;
+  }
+  for (const keyword of ["anyOf", "oneOf"]) {
+    const branches = json2[keyword];
+    if (!Array.isArray(branches))
+      continue;
+    const mapped = branches.map((branch) => stringifyKeyNames(bySchema, branch, visited));
+    if (mapped.some((branch, i) => branch !== branches[i]))
+      json2 = { ...json2, [keyword]: mapped };
+  }
+  const types = Array.isArray(json2.type) ? json2.type : [json2.type];
+  const numericType = !types.includes("string") && types.some((t) => t === "number" || t === "integer");
+  const values2 = json2.enum ?? (json2.const !== void 0 ? [json2.const] : void 0);
+  if (!numericType && !values2?.some((v) => typeof v === "number"))
+    return json2;
+  const { minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, format: format2, id: id2, ...rest } = json2;
+  if (rest.enum)
+    rest.enum = rest.enum.map((v) => typeof v === "number" ? String(v) : v);
+  else if (typeof rest.const === "number")
+    rest.const = String(rest.const);
+  if (!numericType)
+    return rest;
+  rest.type = "string";
+  if (!values2)
+    rest.pattern = (types.includes("number") ? number$1 : integer).source;
+  return rest;
+}
+const pendingRecords = /* @__PURE__ */ new WeakMap();
+function rewriteKeyNames(ctx) {
+  const bySchema = /* @__PURE__ */ new Map();
+  for (const entry of ctx.seen.values()) {
+    if (entry.def && !bySchema.has(entry.schema))
+      bySchema.set(entry.schema, entry);
+  }
+  const rewrites = /* @__PURE__ */ new Map();
+  for (const record2 of pendingRecords.get(ctx) ?? []) {
+    const seen = ctx.seen.get(record2);
+    const names2 = (seen?.def ?? seen?.schema)?.propertyNames;
+    if (!names2 || names2 === true || rewrites.has(names2))
+      continue;
+    const rewritten = stringifyKeyNames(bySchema, names2, /* @__PURE__ */ new Set());
+    if (rewritten !== names2)
+      rewrites.set(names2, rewritten);
+  }
+  if (!rewrites.size)
+    return;
+  for (const entry of ctx.seen.values()) {
+    for (const carrier of [entry.schema, entry.def]) {
+      const rewritten = carrier && rewrites.get(carrier.propertyNames);
+      if (rewritten)
+        carrier.propertyNames = rewritten;
+    }
+  }
+}
+const recordProcessor = (schema2, ctx, _json, params) => {
+  const json2 = _json;
+  const def = schema2._zod.def;
+  json2.type = "object";
+  const keyType = def.keyType;
+  const patterns = aggregateChecks(keyType).patterns;
+  if (def.mode === "loose" && patterns && patterns.size > 0) {
+    const valueSchema = processSchema(def.valueType, ctx, {
+      ...params,
+      path: [...params.path, "patternProperties", "*"]
+    });
+    json2.patternProperties = {};
+    for (const pattern of patterns) {
+      assignProp(json2.patternProperties, exactPattern(pattern).source, valueSchema);
+    }
+  } else {
+    if (ctx.target === "draft-07" || ctx.target === "draft-2020-12") {
+      json2.propertyNames = processSchema(def.keyType, ctx, {
+        ...params,
+        path: [...params.path, "propertyNames"]
+      });
+      let pending = pendingRecords.get(ctx);
+      if (!pending) {
+        pending = [];
+        pendingRecords.set(ctx, pending);
+        ctx.deferred.push(() => rewriteKeyNames(ctx));
+      }
+      pending.push(schema2);
+    }
+    json2.additionalProperties = processSchema(def.valueType, ctx, {
+      ...params,
+      path: [...params.path, "additionalProperties"]
+    });
+  }
+  const keyValues = keyType._zod.values;
+  const omittableOnInput = ctx.io === "input" && inputOptin(def.valueType) !== void 0;
+  if (keyValues && !def.partial && !omittableOnInput) {
+    const validKeyValues = [...keyValues].filter((v) => typeof v === "string" || typeof v === "number");
+    if (validKeyValues.length > 0) {
+      json2.required = validKeyValues.map(String);
+    }
+  }
 };
 const nullableProcessor = (schema2, ctx, json2, params) => {
   const def = schema2._zod.def;
@@ -21427,6 +22678,12 @@ const optionalProcessor = (schema2, ctx, _json, params) => {
   processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema2);
   seen.ref = def.innerType;
+};
+const lazyProcessor = (schema2, ctx, _json, params) => {
+  const innerType = schema2._zod.innerType;
+  processSchema(innerType, ctx, params);
+  const seen = ctx.seen.get(schema2);
+  seen.ref = innerType;
 };
 const _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
@@ -21808,7 +23065,7 @@ const ZodString = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
     return this.check(/* @__PURE__ */ _isoDuration(ZodISODuration, params));
   }
 });
-function string(params) {
+function string$1(params) {
   return /* @__PURE__ */ _string(ZodString, params);
 }
 const ZodStringFormat = /* @__PURE__ */ $constructor("ZodStringFormat", (inst, def) => {
@@ -21907,6 +23164,86 @@ const ZodJWT = /* @__PURE__ */ $constructor("ZodJWT", (inst, def) => {
   $ZodJWT.init(inst, def);
   ZodStringFormat.init(inst, def);
 });
+const ZodNumber = /* @__PURE__ */ $constructor(
+  "ZodNumber",
+  (inst, def) => {
+    $ZodNumber.init(inst, def);
+    ZodType.init(inst, def);
+    inst._zod.processJSONSchema = (ctx, json2, params) => numberProcessor(inst, ctx, json2, params);
+    inst.isFinite = true;
+  },
+  /* @__PURE__ */ derived({
+    minValue: (inst) => {
+      const { minimum, exclusiveMinimum } = aggregateChecks(inst);
+      return Math.max(minimum ?? Number.NEGATIVE_INFINITY, exclusiveMinimum ?? Number.NEGATIVE_INFINITY);
+    },
+    maxValue: (inst) => {
+      const { maximum, exclusiveMaximum } = aggregateChecks(inst);
+      return Math.min(maximum ?? Number.POSITIVE_INFINITY, exclusiveMaximum ?? Number.POSITIVE_INFINITY);
+    },
+    isInt: (inst) => {
+      const { isInt, multipleOf } = aggregateChecks(inst);
+      return !!isInt || !!multipleOf?.some(Number.isSafeInteger);
+    },
+    format: (inst) => aggregateChecks(inst).format ?? null
+  }, {
+    gt(value2, params) {
+      return this.check(/* @__PURE__ */ _gt(value2, params));
+    },
+    gte(value2, params) {
+      return this.check(/* @__PURE__ */ _gte(value2, params));
+    },
+    min(value2, params) {
+      return this.check(/* @__PURE__ */ _gte(value2, params));
+    },
+    lt(value2, params) {
+      return this.check(/* @__PURE__ */ _lt(value2, params));
+    },
+    lte(value2, params) {
+      return this.check(/* @__PURE__ */ _lte(value2, params));
+    },
+    max(value2, params) {
+      return this.check(/* @__PURE__ */ _lte(value2, params));
+    },
+    int(params) {
+      return this.check(int(params));
+    },
+    safe(params) {
+      return this.check(int(params));
+    },
+    positive(params) {
+      return this.check(/* @__PURE__ */ _gt(0, params));
+    },
+    nonnegative(params) {
+      return this.check(/* @__PURE__ */ _gte(0, params));
+    },
+    negative(params) {
+      return this.check(/* @__PURE__ */ _lt(0, params));
+    },
+    nonpositive(params) {
+      return this.check(/* @__PURE__ */ _lte(0, params));
+    },
+    multipleOf(value2, params) {
+      return this.check(/* @__PURE__ */ _multipleOf(value2, params));
+    },
+    step(value2, params) {
+      return this.check(/* @__PURE__ */ _multipleOf(value2, params));
+    },
+    finite() {
+      return this;
+    }
+  })
+);
+function number(params) {
+  return /* @__PURE__ */ _number(ZodNumber, params);
+}
+const ZodNumberFormat = /* @__PURE__ */ $constructor("ZodNumberFormat", (inst, def) => {
+  $ZodNumberFormat.init(inst, def);
+  ZodNumber.init(inst, def);
+});
+function int(params) {
+  return /* @__PURE__ */ _int(ZodNumberFormat, params);
+}
 const ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
   $ZodBoolean.init(inst, def);
   ZodType.init(inst, def);
@@ -21914,6 +23251,14 @@ const ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
 });
 function boolean(params) {
   return /* @__PURE__ */ _boolean(ZodBoolean, params);
+}
+const ZodNull = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
+  $ZodNull.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json2, params) => nullProcessor(inst, ctx, json2);
+});
+function _null(params) {
+  return /* @__PURE__ */ _null$1(ZodNull, params);
 }
 const ZodUnknown = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
   $ZodUnknown.init(inst, def);
@@ -21954,8 +23299,8 @@ const ZodArray = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
     return this.element;
   }
 });
-function array(element, params) {
-  return /* @__PURE__ */ _array(ZodArray, element, params);
+function array(element2, params) {
+  return /* @__PURE__ */ _array(ZodArray, element2, params);
 }
 const ZodObject = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
   _ensureDefaultMemoizer();
@@ -22040,6 +23385,30 @@ function intersection(left, right) {
     right
   });
 }
+const ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
+  _ensureDefaultMemoizer();
+  $ZodRecord.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json2, params) => recordProcessor(inst, ctx, json2, params);
+  inst.keyType = def.keyType;
+  inst.valueType = def.valueType;
+});
+function record(keyType, valueType2, params) {
+  if (!valueType2 || !valueType2._zod) {
+    return new ZodRecord({
+      type: "record",
+      keyType: string$1(),
+      valueType: keyType,
+      ...normalizeParams(valueType2)
+    });
+  }
+  return new ZodRecord({
+    type: "record",
+    keyType,
+    valueType: valueType2,
+    ...normalizeParams(params)
+  });
+}
 const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   $ZodEnum.init(inst, def);
   ZodType.init(inst, def);
@@ -22047,9 +23416,9 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   inst.enum = def.entries;
   inst.options = [...inst._zod.values];
   const keys = new Set(Object.keys(def.entries));
-  inst.extract = (values, params) => {
+  inst.extract = (values2, params) => {
     const newEntries = {};
-    for (const value2 of values) {
+    for (const value2 of values2) {
       if (keys.has(value2)) {
         newEntries[value2] = def.entries[value2];
       } else
@@ -22062,9 +23431,9 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
       entries: newEntries
     });
   };
-  inst.exclude = (values, params) => {
+  inst.exclude = (values2, params) => {
     const newEntries = { ...def.entries };
-    for (const value2 of values) {
+    for (const value2 of values2) {
       if (keys.has(value2)) {
         delete newEntries[value2];
       } else
@@ -22078,8 +23447,8 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
     });
   };
 });
-function _enum(values, params) {
-  const entries = Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values;
+function _enum(values2, params) {
+  const entries = Array.isArray(values2) ? Object.fromEntries(values2.map((v) => [v, v])) : values2;
   return new ZodEnum({
     type: "enum",
     entries,
@@ -22100,7 +23469,7 @@ const ZodLiteral = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
     }
   });
 });
-function literal(value2, params) {
+function literal$1(value2, params) {
   return new ZodLiteral({
     type: "literal",
     values: Array.isArray(value2) ? value2 : [value2],
@@ -22268,6 +23637,18 @@ function readonly(innerType) {
     innerType
   });
 }
+const ZodLazy = /* @__PURE__ */ $constructor("ZodLazy", (inst, def) => {
+  $ZodLazy.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json2, params) => lazyProcessor(inst, ctx, json2, params);
+  inst.unwrap = () => inst._zod.def.getter();
+});
+function lazy(getter) {
+  return new ZodLazy({
+    type: "lazy",
+    getter
+  });
+}
 const ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
   $ZodCustom.init(inst, def);
   ZodType.init(inst, def);
@@ -22279,7 +23660,7 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
   return /* @__PURE__ */ _superRefine(fn, params);
 }
-const relativePath = string().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
+const relativePath = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
   try {
     vaultPath(value2);
     return true;
@@ -22288,13 +23669,27 @@ const relativePath = string().min(1).transform((value2) => value2.replace(/\/+$/
   }
 }, "Must be a contained workspace-relative path.");
 const configSchema = strictObject({
-  schemaVersion: literal(1).default(1),
+  schemaVersion: literal$1(1).default(1),
   paths: strictObject({
-    projects: relativePath.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects")
+    projects: relativePath.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
+    components: relativePath.default("components"),
+    ui: relativePath.default("src/ui"),
+    stories: relativePath.default("stories"),
+    componentImports: relativePath.default("imports/components"),
+    componentExports: relativePath.default("exports/components"),
+    interactions: relativePath.default("interactions"),
+    interactionImports: relativePath.default("imports/interactions"),
+    interactionExports: relativePath.default("exports/interactions"),
+    dataSources: relativePath.default("data-sources"),
+    dataGenerated: relativePath.default("src/data-sources"),
+    dataFixtures: relativePath.default("test-data"),
+    dataImports: relativePath.default("imports/data-sources"),
+    dataExports: relativePath.default("exports/data-sources")
   }).prefault({}),
-  settings: strictObject({ json: boolean().default(false), dryRun: boolean().default(false) }).prefault({}),
-  templates: strictObject({ dateFormat: string().min(1).default("YYYY-MM-DD"), timeFormat: string().min(1).default("HH:mm") }).prefault({}),
-  plugins: strictObject({ enabled: array(string().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]) }).prefault({})
+  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false) }).prefault({}),
+  templates: strictObject({ dateFormat: string$1().min(1).default("YYYY-MM-DD"), timeFormat: string$1().min(1).default("HH:mm") }).prefault({}),
+  plugins: strictObject({ enabled: array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]) }).prefault({}),
+  ui: strictObject({ framework: _enum(["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"]).default("html") }).prefault({})
 });
 async function loadConfig(options) {
   const root = options.root !== void 0 ? minpath.resolve(options.cwd, options.root) : minpath.resolve(minpath.dirname(options.defaultPath), "..");
@@ -22787,12 +24182,12 @@ function placeholders(text2) {
     ensure(match[0] === "{{", "INVALID_TEMPLATE", "Unexpected closing template braces.");
     const close2 = text2.indexOf("}}", braces.lastIndex);
     ensure(close2 >= 0, "INVALID_TEMPLATE", "Unclosed template placeholder.");
-    const expression = text2.slice(braces.lastIndex, close2).trim();
-    const parsed = /^([A-Za-z_][\w.-]*)(?::([^{}\r\n]+))?$/.exec(expression);
-    ensure(parsed, "INVALID_TEMPLATE", `Invalid template placeholder: {{${expression}}}.`);
+    const expression2 = text2.slice(braces.lastIndex, close2).trim();
+    const parsed = /^([A-Za-z_][\w.-]*)(?::([^{}\r\n]+))?$/.exec(expression2);
+    ensure(parsed, "INVALID_TEMPLATE", `Invalid template placeholder: {{${expression2}}}.`);
     const key = parsed[1], format2 = parsed[2];
     ensure(format2 === void 0 || key === "date" || key === "time", "INVALID_TEMPLATE", "Only date and time placeholders accept a format.");
-    result.push({ expression, key, ...format2 === void 0 ? {} : { format: format2 }, start: match.index, end: close2 + 2 });
+    result.push({ expression: expression2, key, ...format2 === void 0 ? {} : { format: format2 }, start: match.index, end: close2 + 2 });
     braces.lastIndex = close2 + 2;
   }
   return result;
@@ -22840,8 +24235,8 @@ function renderYaml(source, resolve) {
       ensure(!node2.value.includes(prefix), "INVALID_TEMPLATE", "Template placeholders cannot be used in YAML keys.");
     }
     if (!distExports.isScalar(node2) || typeof node2.value !== "string" || key === "key") return;
-    const scalar = node2.value;
-    const exact = sentinels.indexOf(scalar);
+    const scalar2 = node2.value;
+    const exact = sentinels.indexOf(scalar2);
     if (exact >= 0) {
       consumed.add(exact);
       const replacement = document2.createNode(resolved[exact]);
@@ -22851,7 +24246,7 @@ function renderYaml(source, resolve) {
       replacement.anchor = node2.anchor;
       return replacement;
     }
-    node2.value = scalar.replace(sentinelPattern, (_, index2) => {
+    node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
       const position2 = Number(index2);
       consumed.add(position2);
       return asText(resolved[position2]);
@@ -22888,14 +24283,19 @@ class MarkdownTemplates {
     const parts = parseMarkdownParts(textOf(bytes));
     const tokens = [...placeholders(parts.yaml), ...placeholders(parts.body)];
     if (parts.exists) renderYaml(parts.yaml, (token) => `{{${token.expression}}}`);
-    return { variables: [...new Set(tokens.map((token) => token.expression))].sort() };
+    const builtin = (token) => ["title", "date", "time"].includes(token.key);
+    return {
+      variables: [...new Set(tokens.map((token) => token.expression))].sort(),
+      requiredVariables: [...new Set(tokens.filter((token) => !builtin(token)).map((token) => token.key))].sort(),
+      builtins: [...new Set(tokens.filter(builtin).map((token) => token.expression))].sort()
+    };
   }
   render(bytes, options) {
     ensure(typeof options.title === "string" && options.title.trim().length > 0, "INVALID_TEMPLATE_VALUES", "A nonempty template title is required.");
-    const values = options.values ?? {};
-    ensure(isRecord(values), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
-    jsonValue(values);
-    for (const key of ["title", "date", "time"]) ensure(!Object.hasOwn(values, key), "INVALID_TEMPLATE_VALUES", `${key} is reserved; use the corresponding template option.`);
+    const values2 = options.values ?? {};
+    ensure(isRecord(values2), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
+    jsonValue(values2);
+    for (const key of ["title", "date", "time"]) ensure(!Object.hasOwn(values2, key), "INVALID_TEMPLATE_VALUES", `${key} is reserved; use the corresponding template option.`);
     const date2 = instant(options.date);
     for (const format2 of [options.dateFormat, options.timeFormat]) ensure(format2 === void 0 || typeof format2 === "string" && format2.length > 0, "INVALID_TEMPLATE_DATE", "Date and time formats must be nonempty strings.");
     const resolve = (token) => {
@@ -22908,8 +24308,8 @@ class MarkdownTemplates {
           throw new AppError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`, 2);
         }
       }
-      ensure(Object.hasOwn(values, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
-      return values[token.key];
+      ensure(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
+      return values2[token.key];
     };
     const parts = parseMarkdownParts(textOf(bytes));
     const body = replaceTokens(parts.body, placeholders(parts.body), (token) => asText(resolve(token)));
@@ -22917,6 +24317,22 @@ class MarkdownTemplates {
     return new TextEncoder().encode(parts.prefix + frontmatter2 + body);
   }
 }
+const prd = "---\nschemaVersion: 1\ntype: prd\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft; this document records intent, not completed delivery.\n\n## Problem and evidence\n\nDescribe the user's current difficulty, who experiences it, and the evidence that it matters.\nLink interviews, issues, measurements, or existing behavior. Mark assumptions as unverified.\n\n## Users and desired outcome\n\nIdentify primary users, context, and an observable improvement. Define the baseline,\ntarget, measurement method, and evaluation period; use TBD where evidence is missing.\n\n## Scope and exclusions\n\nList included capabilities and explicit exclusions. Identify dependencies and boundaries\nwith existing systems; do not turn unspecified integrations into commitments.\n\n## Requirements\n\n| ID | User need and expected behavior | Acceptance example | Priority | Owner |\n| --- | --- | --- | --- | --- |\n| REQ-001 | TBD | Given / When / Then: TBD | TBD | {{owner}} |\n\nKeep IDs stable as requirements change. Link each requirement to a use case and later\nto implementation and test evidence. Include failure, accessibility, privacy, and data needs.\n\n## Success measures and constraints\n\nDescribe performance, compatibility, accessibility, operating cost, and delivery constraints\nthat affect this scope. State a measurable threshold or record an open question.\n\n## Uncertainties and decisions\n\n| ID | Question or assumption | Evidence needed | Owner | Status |\n| --- | --- | --- | --- | --- |\n| Q-001 | TBD | TBD | {{owner}} | open |\n\n## Review and evidence\n\nRecord reviewer, date, reviewed version, decisions, and links to evidence when available.\nReadiness: not assessed. Do not mark requirements accepted without a recorded review.\n\n## Next artifact\n\nCreate linked use cases for REQ IDs; resolve scope uncertainties before committing a build spec.\n";
+const useCase = "---\nschemaVersion: 1\ntype: use-case\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Use case ID: UC-001. Status: draft.\n\n## Requirement links and goal\n\nLink the source PRD and REQ IDs. State the actor's goal and what observable outcome\ncounts as success. Keep the UC ID stable and replace example IDs when needed.\n\n## Actors, trigger and preconditions\n\nDescribe primary/supporting actors, permissions, starting data, triggering action,\nand assumptions about dependencies. Separate requirements from unverified conditions.\n\n## Main flow\n\n| Step | Actor action | System response | Requirement |\n| --- | --- | --- | --- |\n| 1 | TBD | TBD | REQ-001 |\n\nDescribe each response visibly enough that another person can verify the flow.\n\n## Alternate and failure flows\n\nCover empty data, invalid input, missing permission, unavailable services, retries,\nduplicate actions, and cancellation where relevant. Specify the recovery path.\n\n## Postconditions and invariants\n\nState what changes on success, what remains true on failure, and who owns persisted data.\nIdentify business invariants, external side effects, and any compensation needed.\n\n## Acceptance examples\n\n| ID | Given | When | Then | Requirement |\n| --- | --- | --- | --- | --- |\n| UC-001-A | TBD | TBD | TBD | REQ-001 |\n\n## Uncertainties and decisions\n\nRecord unresolved business rules, edge cases, owner, and decision evidence. Status: open\nuntil the uncertainty is resolved explicitly.\n\n## Review and evidence\n\nLink walkthrough notes and review decisions. Execution evidence: not collected.\nCarry these example IDs into the build spec and test plan.\n";
+const buildSpec = "---\nschemaVersion: 1\ntype: build-spec\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Implementation readiness: not assessed.\n\n## Source requirements and use cases\n\nLink the PRD, REQ IDs, use cases, and acceptance examples. Define the bounded feature\nand retain a trace from each proposed change to a user outcome.\n\n## Domain and architecture\n\nDescribe entities, value objects, invariants, use cases, and dependency direction.\nSeparate domain rules from application orchestration, infrastructure adapters, and presentation.\nRecord existing conventions and boundaries before proposing new abstractions.\n\n## Contracts and data flow\n\nSpecify inputs, outputs, errors, validation, authorization, and state transitions.\nIdentify datasource ownership, query/mutation contracts, and injected ports. Keep secrets\nout of specifications and generated artifacts; reference configuration keys only.\n\n## UI and integration scope\n\nLink UI Markdown definitions, selected framework, component children/props, Storybook\nrequirements, and native extension needs. Describe real external integration contracts\nand distinguish a scaffold from a working connection.\n\n## Configurable paths and generated artifacts\n\n| Artifact | Source path | Destination path | Scope | Requirement |\n| --- | --- | --- | --- | --- |\n| TBD | TBD | TBD | workspace or project | REQ-001 |\n\nState generation/import/export paths, overwrite guards, deterministic inputs, and which\noutputs are application-owned after generation. Preview changes before writing.\n\n## Acceptance and verification\n\nMap requirements to concrete checks, fixtures, and expected failure behavior. Define\ncompatibility and performance thresholds where required, and explain how they will be measured.\n\n## Uncertainties and decisions\n\nList unresolved contracts, dependencies, tradeoffs, and decision owners. Mark assumptions\nunverified and record evidence when a decision changes the specification.\n\n## Review and evidence\n\nRecord architecture review and links to actual experiments. No build or integration result\nis implied by this draft. Next: design decisions and ordered implementation tasks.\n";
+const design = "---\nschemaVersion: 1\ntype: design\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Design decision ID: DSN-001. Status: draft.\n\n## Context and traceability\n\nLink REQ IDs, UC acceptance examples, and the build spec. Describe the user context,\ntechnical constraints, and the specific decision this design resolves.\n\n## User journey and information structure\n\nDescribe entry points, sequence, navigation, terminology, and exit/recovery paths.\nIdentify what users need to understand or decide at each stage.\n\n## Component composition and states\n\nMap page/layout/header/navigation and feature components to library IDs, props, children,\nand data contracts. Cover loading, empty, populated, invalid, error, and success states.\nIdentify native code needed for interactions beyond generated semantic boilerplate.\n\n## Accessibility and responsive behavior\n\nSpecify semantic structure, accessible names, keyboard/focus behavior, error announcements,\ncontrast requirements, motion preferences, and small/large viewport behavior.\nState planned verification methods; a specification alone is not an accessibility result.\n\n## Alternatives and decision\n\n| Option | User impact | Technical cost | Evidence or uncertainty |\n| --- | --- | --- | --- |\n| TBD | TBD | TBD | unverified |\n\nRecord the selected option, rationale, and tradeoffs after review. Decision: pending.\n\n## Storybook and examples\n\nList representative named stories, args, controls, documentation, and interaction tests.\nLink native Storybook extensions where lifecycle hooks are needed. Do not claim stories\nor tests exist before generating, building, and checking them.\n\n## Uncertainties and decisions\n\nRecord open usability questions, unknown device constraints, dependencies, and owners.\n\n## Review and evidence\n\nLink sketches, prototypes, screenshots, usability observations, and decisions with dates.\nValidation status: not assessed. Carry DSN-001 into implementation and tests.\n";
+const implementationPlan = "---\nschemaVersion: 1\ntype: implementation-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft; all work below is planned until evidence is recorded.\n\n## Inputs and acceptance boundary\n\nLink the PRD, use cases, build spec, and DSN decisions. Identify the smallest complete\ndelivery slice, its acceptance examples, and excluded work.\n\n## Ordered implementation tasks\n\n| ID | Change and observable outcome | Depends on | REQ / UC / DSN | Owner | Status |\n| --- | --- | --- | --- | --- | --- |\n| IMP-001 | TBD | none or task ID | TBD | {{owner}} | planned |\n\nKeep task IDs stable. Sequence contracts/invariants, adapters, UI composition, and end-to-end\nwiring so each step can be reviewed. Delegate independent ownership explicitly when useful.\n\n## Files, generation and ownership\n\nList authored files and generated artifacts, scope (workspace/project), configured paths,\nand generators to invoke. Capture dry-run previews and current revisions before replacing\noutputs. State which generated code will receive project-specific behavior.\n\n## Dependencies and integration\n\nIdentify packages, external services, datasource configuration, migrations, and environment\nrequirements. Record exact install/build commands and working directories before running\nthem. Planning does not authorize deployment or imply dependencies are installed.\n\n## Verification per task\n\nMap each task to the smallest useful checks, then the complete project gate. Include\nfailure/recovery cases and a test-plan link. Report actual command outcomes and artifacts.\n\n## Review and completion criteria\n\nDefine code review, documentation updates, generated bundle updates, and release handoff.\nA task is complete only when its agreed behavior is implemented and relevant checks pass.\n\n## Uncertainties and decisions\n\nRecord blockers, owners, decision deadlines, and evidence needed to unblock work.\n\n## Progress and evidence\n\n| Task | Commit or change | Verification evidence | Review | Status |\n| --- | --- | --- | --- | --- |\n| IMP-001 | not implemented | not run | pending | planned |\n";
+const testPlan = "---\nschemaVersion: 1\ntype: test-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Overall result: not run.\n\n## Coverage and traceability\n\nLink source requirements, UC examples, DSN decisions, and implementation tasks.\nDefine risks and observables; avoid tests that merely restate implementation details.\n\n| ID | REQ / UC / IMP | Scenario and expected outcome | Layer | Owner |\n| --- | --- | --- | --- | --- |\n| TEST-001 | TBD | TBD | unit / integration / end-to-end | {{owner}} |\n\n## Test pyramid\n\nUse unit tests for domain invariants and deterministic transforms, integration tests for\ncollaborating boundaries, and a focused end-to-end set for complete user workflows.\nInclude malformed inputs, stale revisions, path boundaries, and partial-write prevention\nwhere generated/imported/exported artifacts are involved.\n\n## Fixtures and environments\n\nDescribe representative data, empty/error states, external service substitutes, supported\nframework/compiler versions, and reproducible setup. Keep credentials out of fixtures.\nState which real integrations need separately authorized environments.\n\n## UI, accessibility and compatibility\n\nSpecify Storybook builds, native interaction checks, keyboard/focus checks, responsive\ncoverage, and supported browsers/frameworks. Record remaining manual checks explicitly.\nStructural validation alone does not establish runtime behavior or accessibility.\n\n## Commands and expected results\n\n| Check | Working directory | Command | Expected result | Evidence path |\n| --- | --- | --- | --- | --- |\n| TBD | TBD | TBD | TBD | TBD |\n\n## Execution evidence\n\n| Test or gate | Version / environment | Actual result | Evidence | Follow-up |\n| --- | --- | --- | --- | --- |\n| TEST-001 | TBD | not run | none yet | pending |\n\n## Uncertainties and decisions\n\nRecord coverage gaps, flaky behavior, unknown requirements, owners, and disposition.\n\n## Exit criteria and review\n\nDefine required passing checks and acceptable explicitly reviewed limitations. Record\nreview decisions and residual risks before handing evidence to the release plan.\n";
+const releasePlan = "---\nschemaVersion: 1\ntype: release-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Release readiness: not assessed. Deployment: not performed.\n\n## Scope and release identity\n\nLink approved requirements, completed implementation tasks, reviewed change/PR, and target\nversion or commit. State included changes and explicit exclusions.\n\n## Readiness evidence\n\n| Gate | Required evidence | Actual evidence | Owner | Status |\n| --- | --- | --- | --- | --- |\n| Requirements acceptance | linked REQ / UC decisions | not collected | {{owner}} | pending |\n| Test and compatibility gates | linked TEST outcomes | not run | {{owner}} | pending |\n| Review and documentation | recorded review and current docs | pending | {{owner}} | pending |\n\nDo not infer readiness from generated files, a test plan, or a successful dry run.\n\n## Release procedure\n\n| ID | Action | Working directory / environment | Command or owner | Verification |\n| --- | --- | --- | --- | --- |\n| REL-001 | TBD | TBD | TBD | TBD |\n\nState artifact paths, build inputs, configuration keys, migration ordering, target\nenvironment, and authorization needed before publishing or deployment. Keep secrets out.\n\n## Rollback and recovery\n\nDefine rollback trigger, last known good artifact, restoration steps, data compatibility,\nresponsible person, and a verification method. Mark untested recovery procedures as untested.\n\n## Observability and post-release checks\n\nList meaningful health/user checks, expected signals, monitoring period, and incident owner.\nRecord actual observations after release; do not pre-fill successful outcomes.\n\n## Communication and handoff\n\nDraft release notes, user-visible changes, operating guidance, and ownership handoff.\nIdentify intended recipients; this document does not send messages or publish announcements.\n\n## Uncertainties and decisions\n\nRecord unresolved operational risks, decisions, owners, and evidence needed for readiness.\n\n## Execution evidence and review\n\nRecord authorization, artifact/commit, timestamps, observed results, and rollback decisions\nonly after they occur. Final status: pending.\n";
+const workflowTemplates = [
+  { path: "workflow/prd.md", content: prd },
+  { path: "workflow/use-case.md", content: useCase },
+  { path: "workflow/build-spec.md", content: buildSpec },
+  { path: "workflow/design.md", content: design },
+  { path: "workflow/implementation-plan.md", content: implementationPlan },
+  { path: "workflow/test-plan.md", content: testPlan },
+  { path: "workflow/release-plan.md", content: releasePlan }
+];
 const typecheckScript = "import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\nimport { sourceFiles } from './shared.mjs';\n\nlet directory;\ntry {\n  // TypeScript globs omit hidden directories and prefer .ts over same-named .js.\n  // Explicit files keep every accepted test and test helper in the compiler program.\n  const files = sourceFiles().filter(file => file.startsWith('tests/')).map(file => resolve(file));\n  // Keep the generated config beneath the project so normal @types resolution is unchanged.\n  mkdirSync('.quality-reports', { recursive: true });\n  directory = mkdtempSync(resolve('.quality-reports', 'typecheck-'));\n  const config = join(directory, 'tsconfig.json');\n  writeFileSync(config, JSON.stringify({ extends: resolve('tsconfig.json'), files }));\n  const result = spawnSync(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '--noEmit', '--project', config, ...process.argv.slice(2)], { stdio: 'inherit' });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error('TypeScript did not finish normally');\n  process.exitCode = result.status;\n} catch (error) {\n  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\\n`);\n  process.exitCode = 1;\n} finally {\n  if (directory) rmSync(directory, { recursive: true, force: true });\n}\n";
 const formModel = "import type { z } from 'zod';\n\nexport interface FormField<T extends Record<string, string>> {\n  name: Extract<keyof T, string>;\n  label: string;\n  type: 'text' | 'email' | 'textarea';\n  required?: boolean;\n  help?: string;\n  placeholder?: string;\n}\n\nexport interface FormDefinition<T extends Record<string, string>> {\n  id: string;\n  title: string;\n  description?: string;\n  submitLabel: string;\n  fields: FormField<T>[];\n  initialValues: T;\n  schema: z.ZodType<T>;\n}\n\nexport type FormValidation<T> =\n  | { success: true; data: T }\n  | { success: false; errors: { field: string; message: string }[] };\n\n/** The schema is authoritative; HTML hints do not replace validation. */\nexport function validateForm<T extends Record<string, string>>(\n  definition: FormDefinition<T>,\n  input: unknown,\n): FormValidation<T> {\n  const result = definition.schema.safeParse(input);\n  if (result.success) return { success: true, data: result.data };\n  return {\n    success: false,\n    errors: result.error.issues.map(issue => ({\n      field: issue.path.map(String).join('.'),\n      message: issue.message,\n    })),\n  };\n}\n";
 const formView = "import { validateForm, type FormDefinition } from './form-model.js';\n\nlet nextFormId = 0;\n\ninterface FieldControl {\n  input: HTMLInputElement | HTMLTextAreaElement;\n  error: HTMLElement;\n  helpId?: string;\n}\n\n/** Mount an accessible native form without interpreting any definition text as HTML. */\nexport function renderForm<T extends Record<string, string>>(\n  definition: FormDefinition<T>,\n  container: HTMLElement,\n  onSubmit: (data: T) => void,\n): { form: HTMLFormElement; destroy(): void } {\n  const fieldNames = new Set<string>();\n  for (const field of definition.fields) {\n    if (fieldNames.has(field.name)) throw new Error(`Duplicate form field name: ${field.name}`);\n    fieldNames.add(field.name);\n  }\n  const document = container.ownerDocument;\n  let prefix: string;\n  do { prefix = `forge-form-${++nextFormId}`; } while (document.getElementById(prefix));\n  const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => {\n    const node = document.createElement(tag);\n    if (text !== undefined) node.textContent = text;\n    return node;\n  };\n  const form = element('form');\n  form.id = prefix;\n  form.className = 'forge-form';\n  form.dataset.formId = definition.id;\n  // Use one schema-driven error path even when browser constraint validation differs.\n  form.noValidate = true;\n  const title = element('h2', definition.title);\n  title.id = `${prefix}-title`;\n  form.setAttribute('aria-labelledby', title.id);\n  form.append(title);\n  if (definition.description) {\n    const description = element('p', definition.description);\n    description.id = `${prefix}-description`;\n    form.setAttribute('aria-describedby', description.id);\n    form.append(description);\n  }\n  const summary = element('div');\n  summary.className = 'forge-form-summary';\n  summary.setAttribute('role', 'alert');\n  summary.tabIndex = -1;\n  summary.hidden = true;\n  form.append(summary);\n  const controls = new Map<string, FieldControl>();\n  const defaults = { ...definition.initialValues };\n  for (const [index, field] of definition.fields.entries()) {\n    const group = element('div');\n    group.className = 'forge-form-field';\n    const input = field.type === 'textarea' ? element('textarea') : element('input');\n    if (input.tagName === 'INPUT') (input as HTMLInputElement).type = field.type;\n    input.name = field.name;\n    input.id = `${prefix}-field-${index}`;\n    input.required = field.required ?? false;\n    input.value = defaults[field.name] ?? '';\n    input.defaultValue = input.value;\n    if (field.placeholder) input.placeholder = field.placeholder;\n    const label = element('label', `${field.label}${field.required ? ' (required)' : ''}`);\n    label.htmlFor = input.id;\n    group.append(label, input);\n    let helpId: string | undefined;\n    if (field.help) {\n      const help = element('p', field.help);\n      help.className = 'forge-form-help';\n      help.id = `${input.id}-help`;\n      helpId = help.id;\n      input.setAttribute('aria-describedby', helpId);\n      group.append(help);\n    }\n    const error = element('p');\n    error.id = `${input.id}-error`;\n    error.className = 'forge-form-error';\n    error.hidden = true;\n    group.append(error);\n    controls.set(field.name, { input, error, helpId });\n    form.append(group);\n  }\n  const actions = element('div');\n  actions.className = 'forge-form-actions';\n  const submit = element('button', definition.submitLabel);\n  submit.type = 'submit';\n  const reset = element('button', 'Reset');\n  reset.type = 'reset';\n  actions.append(submit, reset);\n  form.append(actions);\n\n  const clearErrors = () => {\n    summary.replaceChildren();\n    summary.hidden = true;\n    for (const { input, error, helpId } of controls.values()) {\n      input.removeAttribute('aria-invalid');\n      error.textContent = '';\n      error.hidden = true;\n      if (helpId) input.setAttribute('aria-describedby', helpId);\n      else input.removeAttribute('aria-describedby');\n    }\n  };\n  const handleSubmit = (event: Event) => {\n    event.preventDefault();\n    clearErrors();\n    const values = Object.fromEntries(Array.from(controls, ([name, { input }]) => [name, input.value]));\n    const result = validateForm(definition, values);\n    if (result.success) {\n      onSubmit(result.data);\n      return;\n    }\n    summary.append(element('p', 'Please correct the following errors:'));\n    const list = element('ul');\n    for (const issue of result.errors) {\n      const control = controls.get(issue.field);\n      const item = element('li');\n      if (control) {\n        const link = element('a', issue.message);\n        link.href = `#${control.input.id}`;\n        item.append(link);\n        control.input.setAttribute('aria-invalid', 'true');\n        control.error.textContent = [control.error.textContent, issue.message].filter(Boolean).join(' ');\n        control.error.hidden = false;\n        control.input.setAttribute('aria-describedby', [control.helpId, control.error.id].filter(Boolean).join(' '));\n      } else item.textContent = issue.message;\n      list.append(item);\n    }\n    summary.append(list);\n    summary.hidden = false;\n    const invalid = Array.from(controls.values()).find(({ input }) => input.getAttribute('aria-invalid') === 'true');\n    (invalid?.input ?? summary).focus();\n  };\n  const handleReset = (event: Event) => {\n    event.preventDefault();\n    for (const [name, { input }] of controls) input.value = defaults[name] ?? '';\n    clearErrors();\n  };\n  form.addEventListener('submit', handleSubmit);\n  form.addEventListener('reset', handleReset);\n  container.append(form);\n  return {\n    form,\n    destroy() {\n      form.removeEventListener('submit', handleSubmit);\n      form.removeEventListener('reset', handleReset);\n      form.remove();\n    },\n  };\n}\n";
@@ -22976,7 +24392,7 @@ const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mj
 const qualityShared = "import { readdirSync, mkdirSync, writeFileSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  const files = [];\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  if (!entries.some(entry => entry.name === 'src' && entry.isDirectory())) throw new Error('Required source directory src is missing');\n  for (const entry of entries) {\n    if (['src', 'tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith('src/'))) throw new Error('Source inventory is empty');\n  return files.sort();\n}\n\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
 const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
 const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
-const json = (value2) => JSON.stringify(value2, null, 2) + "\n";
+const json$2 = (value2) => JSON.stringify(value2, null, 2) + "\n";
 const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 function componentScaffold(project, name2, projectsDirectory, kind = "domain") {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(project)}`;
@@ -23036,8 +24452,8 @@ describe('${name2}', () => {
 function projectScaffold(name2, projectsDirectory) {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
   const files = {
-    ".forge/project.json": json({ schemaVersion: 1, name: name2, type: "library" }),
-    "package.json": json({
+    ".forge/project.json": json$2({ schemaVersion: 1, name: name2, type: "library" }),
+    "package.json": json$2({
       name: name2,
       version: "0.1.0",
       private: true,
@@ -23067,7 +24483,7 @@ function projectScaffold(name2, projectsDirectory) {
     "scripts/quality/analyze.mjs": analyzeScript,
     "scripts/quality/shared.mjs": qualityShared,
     "configs/lint/oxlintrc.json": lintConfig,
-    "configs/quality/fallow.json": json({
+    "configs/quality/fallow.json": json$2({
       $schema: "../../node_modules/fallow/schema.json",
       minimumVersion: "3.31.0",
       entry: ["src/index.ts", "src/presentation/demo.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "vitest.config.ts"],
@@ -23091,11 +24507,11 @@ function projectScaffold(name2, projectsDirectory) {
         coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
       }
     }),
-    "tsconfig.json": json({
+    "tsconfig.json": json$2({
       compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, allowJs: true, checkJs: true, jsx: "preserve", noEmit: true, types: ["node"], skipLibCheck: true },
       include: ["src", "tests", "vite.config.ts", "vitest.config.ts"]
     }),
-    "tsconfig.build.json": json({
+    "tsconfig.build.json": json$2({
       extends: "./tsconfig.json",
       compilerOptions: { noEmit: false, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist" },
       include: ["src"]
@@ -23172,7 +24588,15 @@ Run npm commands from this project directory. Install with npm ci after a lockfi
     ...componentScaffold(name2, "ProjectIdentity", projectsDirectory)
   ];
 }
-const ownedAsset = /^(?:app\.js|package\.json|data\/(?:LICENSE|README\.md|THIRD-PARTY-NOTICES\.md|distribution\.json|(?:docs|skills|examples|types|licenses)\/.+))$/;
+const schemaVersion = 1;
+const requiredAssets = ["app.js", "package.json", "config/default.json", "data/distribution.json"];
+const ownedAssetPattern = "^(?:app\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|examples|types|licenses)/.+))$";
+const distributionPolicy = {
+  schemaVersion,
+  requiredAssets,
+  ownedAssetPattern
+};
+const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
   const root = await promises.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
@@ -23189,10 +24613,10 @@ async function readSetupArtifacts(bundleDir) {
     return promises.readFile(current);
   };
   const manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
-  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === 1 && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
+  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
   const files = manifest.files;
   ensure(files.every((path) => typeof path === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
-  ensure(["app.js", "package.json", "data/distribution.json"].every((path) => files.includes(path)), "INVALID_SETUP", "The distribution manifest is incomplete.");
+  ensure(distributionPolicy.requiredAssets.every((path) => files.includes(path)), "INVALID_SETUP", "The distribution manifest is incomplete.");
   const artifacts = [];
   for (const path of files) artifacts.push({ path, bytes: await readAsset(path) });
   return artifacts;
@@ -23293,9 +24717,1081 @@ export default {
     ];
   } }
 ];
-const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `app.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/app.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/app.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A CONFLICT means reread and reconcile; never blindly retry with a new revision.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. File events report committed changes; dry runs emit none. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n";
+const reserved$1 = new Set("arguments await break case catch children class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
+const identifier$2 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
+const id = string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
+const value$2 = union([string$1(), number().finite(), boolean(), _null()]);
+const json$1 = lazy(() => union([value$2, array(json$1), record(string$1(), json$1)]));
+const values = record(identifier$2, value$2);
+const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
+  if (property.default !== void 0 && typeof property.default !== property.type) context.addIssue({ code: "custom", message: "Prop default must match its declared type." });
+});
+const state = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2 }).superRefine((field2, context) => {
+  if (typeof field2.default !== field2.type) context.addIssue({ code: "custom", message: "State default must match its declared type." });
+});
+const attribute = string$1().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/).refine((name2) => !/^on|^v-/i.test(name2) && !["innerHTML", "dangerouslySetInnerHTML", "ref", "key"].includes(name2), "Event handlers and framework runtime attributes belong in native code");
+const node = lazy(() => union([
+  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record(attribute, value$2).optional(), text: string$1().optional(), children: array(node).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
+    if (element2.tag === "svg" || element2.tag === "math") context.addIssue({ code: "custom", message: "SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets." });
+    if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
+  }),
+  strictObject({ component: id, props: values.optional(), children: array(node).optional() }),
+  strictObject({ slot: literal$1("children") })
+]));
+const metadata = record(string$1(), json$1);
+const story = strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), args: values.optional(), parameters: metadata.optional(), tags: array(string$1()).optional() });
+const storybook = strictObject({
+  title: string$1().min(1).optional(),
+  tags: array(string$1()).optional(),
+  args: values.optional(),
+  argTypes: metadata.optional(),
+  parameters: metadata.optional(),
+  stories: array(story).optional(),
+  extension: string$1().optional()
+}).superRefine((settings, context) => {
+  const names2 = settings.stories?.map((entry) => entry.name) ?? [];
+  if (new Set(names2).size !== names2.length) context.addIssue({ code: "custom", message: "Story names must be unique." });
+});
+const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record(identifier$2, prop).default({}), state: record(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
+class MarkdownUiDefinitions {
+  documents = new ObsidianDocuments();
+  parse(bytes, path) {
+    vaultPath(path);
+    try {
+      const document2 = this.documents.inspect("definition.md", bytes);
+      const result = schema$2.safeParse(document2.properties);
+      ensure(result.success, "INVALID_UI", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      const extension2 = result.data.storybook?.extension;
+      if (extension2 !== void 0) {
+        vaultPath(extension2);
+        ensure(/\.(?:[cm]?js|tsx?)$/.test(extension2), "INVALID_UI", `${path}: Storybook extension must be a JS or TS module.`);
+      }
+      return { ...result.data, description: document2.body, sourcePath: path };
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "INVALID_UI") throw error2;
+      throw new AppError("INVALID_UI", `${path}: ${error2 instanceof Error ? error2.message : "Invalid component definition."}`, 2);
+    }
+  }
+  serialize(definition2) {
+    const { description: description2, sourcePath, ...frontmatter2 } = definition2;
+    const bytes = new TextEncoder().encode(`---
+${distExports.stringify(frontmatter2)}---
+${description2}`);
+    this.parse(bytes, sourcePath || `${definition2.id}.md`);
+    return bytes;
+  }
+}
+const slot = { slot: "children" };
+const container = (id2, tag = id2, attrs) => ({ schemaVersion: 1, id: id2, sourcePath: `${id2}.md`, description: `# ${id2}
+
+Semantic ${tag} boilerplate. Supply child content and application behavior in your project.
+`, props: {}, root: { tag, ...attrs ? { attrs } : {}, children: [slot] } });
+const element = (id2, tag, props, attrs, text2) => ({ ...container(id2, tag), props, root: { tag, attrs, ...text2 !== void 0 ? { text: text2 } : {} } });
+const string = (value2) => ({ type: "string", default: value2 });
+const standardUiCatalog = [
+  ...["header", "footer", "main", "section", "article", "aside", "form", "fieldset", "legend", "label", "select", "option", "figure", "figcaption", "dialog", "details", "summary", "table", "caption", "pre", "code", "strong", "em", "small", "blockquote", "address", "video", "audio"].map((tag) => container(tag)),
+  container("page", "div", { class: "page" }),
+  container("layout", "div", { class: "layout" }),
+  container("container", "div", { class: "container" }),
+  container("stack", "div", { class: "stack" }),
+  container("grid", "div", { class: "grid" }),
+  container("card", "article", { class: "card" }),
+  container("breadcrumbs", "nav", { "aria-label": "Breadcrumb" }),
+  container("pagination", "nav", { "aria-label": "Pagination" }),
+  container("alert", "div", { role: "alert" }),
+  container("status", "div", { role: "status" }),
+  container("badge", "span", { class: "badge" }),
+  container("modal", "dialog", { "aria-label": "Dialog" }),
+  container("accordion", "details"),
+  container("toolbar", "div", { role: "toolbar", "aria-label": "Actions" }),
+  container("search", "form", { role: "search", "aria-label": "Site search" }),
+  element("avatar", "img", { src: string("avatar.png"), alt: string("Profile picture") }, { src: "{{src}}", alt: "{{alt}}", class: "avatar" }),
+  container("nav-bar", "nav", { "aria-label": "Main navigation" }),
+  container("list", "ul"),
+  container("ordered-list", "ol"),
+  container("list-item", "li"),
+  container("table-head", "thead"),
+  container("table-body", "tbody"),
+  container("table-foot", "tfoot"),
+  container("table-row", "tr"),
+  container("table-cell", "td"),
+  container("table-header", "th", { scope: "col" }),
+  container("description-list", "dl"),
+  container("description-term", "dt"),
+  container("description-details", "dd"),
+  element("heading", "h2", { text: string("Heading") }, {}, "{{text}}"),
+  element("paragraph", "p", { text: string("Paragraph") }, {}, "{{text}}"),
+  element("button", "button", { label: string("Button"), disabled: { type: "boolean", default: false } }, { type: "button", disabled: "{{disabled}}" }, "{{label}}"),
+  element("link", "a", { href: string("#"), label: string("Link") }, { href: "{{href}}" }, "{{label}}"),
+  element("input", "input", { name: string("field"), value: string("") }, { type: "text", name: "{{name}}", value: "{{value}}" }),
+  element("textarea", "textarea", { name: string("message") }, { name: "{{name}}" }),
+  element("checkbox", "input", { name: string("choice"), checked: { type: "boolean", default: false } }, { type: "checkbox", name: "{{name}}", checked: "{{checked}}" }),
+  element("radio", "input", { name: string("choice"), value: string("option"), checked: { type: "boolean", default: false } }, { type: "radio", name: "{{name}}", value: "{{value}}", checked: "{{checked}}" }),
+  element("image", "img", { src: string("image.png"), alt: string("") }, { src: "{{src}}", alt: "{{alt}}" }),
+  element("progress", "progress", { value: { type: "number", default: 0 }, max: { type: "number", default: 100 } }, { value: "{{value}}", max: "{{max}}", "aria-label": "Progress" }),
+  element("meter", "meter", { value: { type: "number", default: 0 }, max: { type: "number", default: 100 } }, { value: "{{value}}", max: "{{max}}", "aria-label": "Measurement" }),
+  element("separator", "hr", {}, {}),
+  element("line-break", "br", {}, {}),
+  element("output", "output", { text: string("Result") }, {}, "{{text}}"),
+  element("time", "time", { datetime: string("2026-01-01"), label: string("Date") }, { datetime: "{{datetime}}" }, "{{label}}")
+].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+const ordered = (object) => Object.entries(object).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+const json = (value2) => JSON.stringify(value2).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+const html = (value2) => String(value2 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const className = (definition2) => definition2.name ?? definition2.id.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("");
+const defaults = (definition2) => Object.fromEntries(ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => [key, prop2.default]));
+function componentArtifact(definition2, framework) {
+  const extension2 = { html: "js", htmx: "js", vanilla: "js", react: "tsx", vue: "vue", svelte: "svelte", angular: "ts" }[framework];
+  return { fileName: `${definition2.id}.${extension2}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
+}
+function expression(value2, scope = "props", stateScope = "_uiState") {
+  if (typeof value2 !== "string") return json(value2);
+  const parts = uiBindingParts(value2);
+  const binding = (name2) => name2.startsWith("state.") ? `${stateScope}[${json(name2.slice(6))}]` : `${scope}[${json(name2)}]`;
+  if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
+  return parts.map((part) => "literal" in part ? json(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
+}
+function evaluate(value2, props, state2 = {}) {
+  if (typeof value2 !== "string") return value2;
+  const parts = uiBindingParts(value2);
+  const binding = (name2) => name2.startsWith("state.") ? state2[name2.slice(6)] : props[name2];
+  if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
+  return parts.map((part) => "literal" in part ? part.literal : String(binding(part.prop) ?? "")).join("");
+}
+function textExpression(value2, scope = "props", stateScope = "_uiState") {
+  const parts = uiBindingParts(value2);
+  const result = expression(value2, scope, stateScope);
+  return parts.length === 1 && "prop" in parts[0] ? `(${result} ?? '')` : result;
+}
+function defaultAssignments(definition2) {
+  return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json(key)}] === undefined) props[${json(key)}] = ${json(prop2.default)};`).join("\n");
+}
+function interactionPrefix(definition2) {
+  let prefix = "_ui";
+  while (Object.keys(definition2.props).some((name2) => name2.startsWith(prefix))) prefix += "_";
+  return prefix;
+}
+function stateDefaults(definition2) {
+  return Object.fromEntries(ordered(definition2.state ?? {}).map(([name2, state2]) => [name2, state2.default]));
+}
+function stateType(definition2) {
+  return `{ ${ordered(definition2.state ?? {}).map(([name2, state2]) => `${json(name2)}: ${state2.type}`).join("; ")} }`;
+}
+const handlerName = (id2, prefix) => `${prefix}Interaction_${id2.replace(/-/g, "_")}`;
+function componentInteractions(definition2, interactions) {
+  const ids = /* @__PURE__ */ new Set();
+  const walk = (node2) => {
+    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
+    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+  };
+  walk(definition2.root);
+  return interactions.filter((interaction) => ids.has(interaction.id)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+function interactionValues(interaction) {
+  return interaction.actions.flatMap((action2) => action2.type === "navigate" ? [action2.url] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
+}
+function interactionUsesState(interaction) {
+  return interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state") || interactionValues(interaction).some((value2) => uiBindings(value2).some((name2) => name2.startsWith("state.")));
+}
+function groupElementInteractions(node2, interactions, prefix = "_ui") {
+  const groups = /* @__PURE__ */ new Map();
+  if (!("tag" in node2)) return [];
+  for (const id2 of node2.interactions ?? []) {
+    const interaction = interactions.find((candidate) => candidate.id === id2);
+    const handlers = groups.get(interaction.event) ?? [];
+    handlers.push(handlerName(id2, prefix));
+    groups.set(interaction.event, handlers);
+  }
+  return [...groups].map(([event, handlers]) => ({ event, handlers }));
+}
+function renderInteractionHandlers(definition2, interactions, options) {
+  const selected = componentInteractions(definition2, interactions);
+  if (!selected.length) return "";
+  const { typescript } = options;
+  const prefix = options.prefix ?? "_ui";
+  const next = `${prefix}Next`, event = `${prefix}Event`;
+  const value2 = (item) => expression(item, options.propsScope ?? "props", next);
+  const eventType = "{ currentTarget: EventTarget | null; target: EventTarget | null; key?: string; preventDefault(): void; stopPropagation(): void }";
+  const functions = selected.map((interaction) => {
+    const lines = [`function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
+    if (interaction.keys) lines.push(`  if (!${json(interaction.keys)}.includes(${event}.key ?? '')) return;`);
+    if (interaction.preventDefault) lines.push(`  ${event}.preventDefault();`);
+    if (interaction.stopPropagation) lines.push(`  ${event}.stopPropagation();`);
+    if (interactionUsesState(interaction)) lines.push(`  const ${next} = { ...${options.stateScope ?? "_uiState"} };`);
+    for (const [index2, action2] of interaction.actions.entries()) {
+      if (action2.type === "toggle-state" || action2.type === "set-state") {
+        let assigned = action2.type === "toggle-state" ? `!${next}[${json(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
+        if (action2.type === "set-state" && "fromEvent" in action2) {
+          const field2 = `${prefix}Value${index2}`;
+          lines.push(`  const ${field2} = (${event}.currentTarget${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
+          lines.push(`  if (typeof ${field2} !== ${json(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
+          assigned = field2;
+        }
+        lines.push(`  ${next}[${json(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
+      } else if (action2.type === "emit") {
+        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json(key)}]` : json(key)}: ${value2(item)}`).join(", ")} }`;
+        lines.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${event}.currentTarget, ${json(action2.event)}, ${detail});`);
+      } else {
+        lines.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${event}.currentTarget, ${value2(action2.url)});`);
+      }
+    }
+    lines.push("}");
+    return lines.join("\n");
+  });
+  const needsEmit = selected.some((interaction) => interaction.actions.some((action2) => action2.type === "emit"));
+  const needsNavigate = selected.some((interaction) => interaction.actions.some((action2) => action2.type === "navigate"));
+  const target = `target${typescript ? ": EventTarget | null" : ""}`;
+  const element2 = `target${typescript ? " as Element | null" : ""}`;
+  const helpers = [];
+  if (needsEmit) helpers.push(`function ${prefix}Emit(${target}, name${typescript ? ": string" : ""}, detail${typescript ? ": Record<string, unknown>" : ""}) {
+  const element = ${element2};
+  const EventConstructor = element?.ownerDocument.defaultView?.CustomEvent ?? globalThis.CustomEvent;
+  element?.dispatchEvent(new EventConstructor(name, { detail, bubbles: true, composed: true }));
+}`);
+  if (needsNavigate) helpers.push(`function ${prefix}Navigate(${target}, value${typescript ? ": unknown" : ""}) {
+  const element = ${element2};
+  if (typeof value !== 'string' || !value || value !== value.trim() || /[\\u0000-\\u001f\\\\]/.test(value) || value.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\\/\\//i.test(value))) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
+  const url = new globalThis.URL(value, element?.ownerDocument.baseURI);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
+  element?.ownerDocument.defaultView?.location.assign(url.href);
+}`);
+  const source = [...helpers, ...functions].join("\n");
+  return options.classMembers ? source.replace(/^function (\w+)\((.*)\) \{$/gm, "$1 = ($2) => {").replace(/^\}$/gm, "};") : source;
+}
+function reactiveDomModule(definition2, interactions) {
+  const references = componentDependencies(definition2.root);
+  const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json(`./${id2}.js`)};`).join("\n");
+  const prefix = interactionPrefix(definition2);
+  function nodeCode(node2) {
+    if ("slot" in node2) return "slot(children)";
+    const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
+    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
+    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json(event)}: [${handlers.join(", ")}]`).join(", ");
+    return `element(${json(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
+  }
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json([...uiBooleanAttributes].sort())});
+const updateProps = Symbol.for('forge.ui.updateProps');
+
+/** Create a live component; mounting and removal remain owned by the caller. */
+export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
+  const props = { ...${json(defaults(definition2))}, ...input };
+${defaultAssignments(definition2)}
+  const _uiState = ${json(stateDefaults(definition2))};
+  const updates = [];
+  const refresh = () => { for (const update of updates) update(); };
+${renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` })}
+  function slot(content) {
+    const fragment = document.createDocumentFragment();
+    for (const child of content) if (child != null) fragment.append(child);
+    return fragment;
+  }
+  function component(factory, values, content) {
+    const result = factory(values(), content);
+    // Capture before a parent sharing this root attaches its own callback.
+    const update = result[updateProps];
+    if (update) updates.push(() => update(values()));
+    return result;
+  }
+  function element(tag, attributes, text, content, listeners) {
+    const result = document.createElement(tag);
+    const previous = Object.create(null);
+    const textNode = text ? document.createTextNode('') : null;
+    if (textNode) result.append(textNode);
+    const update = () => {
+      const values = attributes();
+      for (const [key, value] of Object.entries(values)) {
+        const boolean = booleanAttributes.has(key.toLowerCase());
+        const normalized = value == null || (boolean && value === false) ? null : boolean && value === true ? '' : String(value);
+        if (Object.hasOwn(previous, key) && previous[key] === normalized) continue;
+        if (normalized === null) result.removeAttribute(key); else result.setAttribute(key, normalized);
+        if (key === 'value' && 'value' in result && result.value !== (normalized ?? '')) result.value = normalized ?? '';
+        if (key === 'checked' && 'checked' in result) result.checked = normalized !== null;
+        previous[key] = normalized;
+      }
+      if (textNode) {
+        const value = String(text() ?? '');
+        if (textNode.data !== value) textNode.data = value;
+      }
+    };
+    result.append(...content);
+    update(); updates.push(update);
+    for (const [event, handlers] of Object.entries(listeners)) result.addEventListener(event, value => { for (const handler of handlers) handler(value); });
+    return result;
+  }
+  const result = ${nodeCode(definition2.root)};
+  Object.defineProperty(result, updateProps, { configurable: true, value: input => {
+    for (const key of Object.keys(props)) delete props[key];
+    Object.assign(props, ${json(defaults(definition2))}, input);
+${defaultAssignments(definition2)}
+    refresh();
+  } });
+  return result;
+}
+`;
+}
+function hasReactiveDom(definitions) {
+  function interactive(node2) {
+    return "tag" in node2 && !!node2.interactions?.length || "children" in node2 && !!node2.children?.some(interactive);
+  }
+  return [...definitions.values()].some((definition2) => Object.keys(definition2.state ?? {}).length > 0 || interactive(definition2.root));
+}
+function staticMarkup(node2, props, definitions, children = "", state2 = {}) {
+  if ("slot" in node2) return children;
+  const childMarkup = (node2.children ?? []).map((child) => staticMarkup(child, props, definitions, children, state2)).join("");
+  if ("component" in node2) {
+    const definition2 = definitions.get(node2.component);
+    const passed = Object.fromEntries(ordered(node2.props ?? {}).flatMap(([key, value2]) => {
+      const evaluated = evaluate(value2, props, state2);
+      return evaluated === void 0 ? [] : [[key, evaluated]];
+    }));
+    return staticMarkup(definition2.root, { ...defaults(definition2), ...passed }, definitions, childMarkup, stateDefaults(definition2));
+  }
+  const attrs = ordered(node2.attrs ?? {}).map(([key, original]) => {
+    const value2 = evaluate(original, props, state2);
+    if (value2 == null || uiBooleanAttributes.has(key.toLowerCase()) && value2 === false) return "";
+    return uiBooleanAttributes.has(key.toLowerCase()) && value2 === true ? ` ${key}` : ` ${key}="${html(value2)}"`;
+  }).join("");
+  return `<${node2.tag}${attrs}>${uiVoidTags.has(node2.tag) ? "" : `${node2.text === void 0 ? "" : html(evaluate(node2.text, props, state2))}${childMarkup}</${node2.tag}>`}`;
+}
+function domModule(definition2, definitions, interactions = []) {
+  if (hasReactiveDom(definitions)) return reactiveDomModule(definition2, interactions);
+  const refs = componentDependencies(definition2.root);
+  const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}.js`)};`).join("\n");
+  function nodeCode(node2) {
+    if ("slot" in node2) return "slot(children)";
+    const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
+    if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
+    return `element(${json(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
+  }
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json([...uiBooleanAttributes].sort())});
+function slot(children) {
+  const fragment = document.createDocumentFragment();
+  for (const child of children) if (child != null) fragment.append(child);
+  return fragment;
+}
+function element(tag, attributes, text, children) {
+  const result = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value == null || (booleanAttributes.has(key.toLowerCase()) && value === false)) continue;
+    result.setAttribute(key, booleanAttributes.has(key.toLowerCase()) && value === true ? '' : String(value));
+  }
+  if (text != null) result.append(document.createTextNode(String(text)));
+  result.append(...children);
+  return result;
+}
+
+/** Create DOM using text nodes and attributes; caller owns mounting and event listeners. */
+export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
+  const props = { ...${json(defaults(definition2))}, ...input };
+${defaultAssignments(definition2)}
+  return ${nodeCode(definition2.root)};
+}
+`;
+}
+function domDeclaration(definition2) {
+  const required2 = Object.values(definition2.props).some((prop2) => prop2.required && prop2.default === void 0);
+  return `export interface ${className(definition2)}Props {
+${ordered(definition2.props).map(([key, prop2]) => `  ${json(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n")}
+}
+
+export default function ${componentArtifact(definition2, "html").exportName}(input${required2 ? "" : "?"}: ${className(definition2)}Props, children?: readonly (Node | string | null | undefined)[]): HTMLElement | DocumentFragment;
+`;
+}
+const reactStyleHelper = `function css(value: unknown): _UiCSSProperties {
+  const declarations: string[] = [];
+  let part = '';
+  let quote = '';
+  let depth = 0;
+  let escaped = false;
+  let comment = false;
+  const source = globalThis.String(value ?? '');
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index]!;
+    const next = source[index + 1];
+    if (comment) {
+      if (character === '*' && next === '/') { comment = false; index++; }
+      continue;
+    }
+    if (escaped) { part += character; escaped = false; continue; }
+    if (character === '\\\\') { part += character; escaped = true; continue; }
+    if (quote) {
+      part += character;
+      if (character === quote) quote = '';
+      continue;
+    }
+    if (character === '/' && next === '*') { comment = true; index++; continue; }
+    if (character === '"' || character === "'") quote = character;
+    if (character === '(' || character === '[') depth++;
+    if (character === ')' || character === ']') depth = globalThis.Math.max(0, depth - 1);
+    if (character === ';' && depth === 0) { declarations.push(part); part = ''; }
+    else part += character;
+  }
+  declarations.push(part);
+  return globalThis.Object.fromEntries(declarations.flatMap(declaration => {
+    const colon = declaration.indexOf(':');
+    if (colon < 1) return [];
+    const key = declaration.slice(0, colon).trim();
+    const content = declaration.slice(colon + 1).trim();
+    if (!key || !content) return [];
+    const property = key.startsWith('--') ? key : key.replace(/^-ms-/, 'ms-').replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+    return [[property, content]];
+  })) as _UiCSSProperties;
+}
+`;
+const reactNames = { class: "className", for: "htmlFor", tabindex: "tabIndex", readonly: "readOnly", autofocus: "autoFocus", autocomplete: "autoComplete", colspan: "colSpan", rowspan: "rowSpan", maxlength: "maxLength", minlength: "minLength", contenteditable: "contentEditable", spellcheck: "spellCheck", srcset: "srcSet", usemap: "useMap", datetime: "dateTime", crossorigin: "crossOrigin", novalidate: "noValidate", formnovalidate: "formNoValidate", acceptcharset: "acceptCharset", httpequiv: "httpEquiv" };
+function reactModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const selectedInteractions = componentInteractions(definition2, interactions);
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || selectedInteractions.length > 0;
+  const mutatesState = selectedInteractions.some((interaction) => interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state"));
+  let usesProps = Object.values(definition2.props).some((prop2) => prop2.default !== void 0);
+  let usesState = selectedInteractions.some(interactionUsesState);
+  const trackBindings = (value2) => {
+    for (const binding of uiBindings(value2)) {
+      if (binding.startsWith("state.")) usesState = true;
+      else usesProps = true;
+    }
+  };
+  for (const interaction of selectedInteractions) for (const value2 of interactionValues(interaction)) trackBindings(value2);
+  const refs = componentDependencies(definition2.root);
+  const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  let usesStyle = false;
+  let usesAttributes = false;
+  let usesControls = false;
+  function nodeCode(node2) {
+    if ("slot" in node2) {
+      usesProps = true;
+      return "props.children";
+    }
+    const children = (node2.children ?? []).map(nodeCode);
+    if ("tag" in node2 && node2.text !== void 0) {
+      trackBindings(node2.text);
+      children.unshift(`globalThis.String(${textExpression(node2.text, "props", state2)})`);
+    }
+    const controls = [];
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).flatMap(([key, value2]) => {
+      trackBindings(value2);
+      if (interactive && "tag" in node2 && (key === "value" && ["input", "textarea", "select"].includes(node2.tag) || key === "checked" && node2.tag === "input")) {
+        usesControls = true;
+        const rendered2 = expression(value2, "props", state2);
+        const property = `(element as HTMLInputElement).${key}`;
+        const converted = key === "checked" ? `(${rendered2} != null && (${rendered2} as unknown) !== false)` : `globalThis.String(${rendered2} ?? '')`;
+        controls.push(`if (!globalThis.Object.hasOwn(previous, ${json(key)}) || previous[${json(key)}] !== ${converted}) ${property} = ${converted}; previous[${json(key)}] = ${converted};`);
+        return [`${key === "checked" ? "defaultChecked" : "defaultValue"}: ${converted}`];
+      }
+      const isStyle = "tag" in node2 && key === "style";
+      if (isStyle) usesStyle = true;
+      const isAttribute = "tag" in node2 && !isStyle && !uiBooleanAttributes.has(key.toLowerCase());
+      if (isAttribute) usesAttributes = true;
+      const rendered = isStyle ? `css(${expression(value2, "props", state2)})` : isAttribute ? `attribute(${expression(value2, "props", state2)})` : expression(value2, "props", state2);
+      return [`${json("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
+    });
+    const events = groupElementInteractions(node2, interactions, prefix);
+    if (events.length || controls.length) {
+      const listeners = events.map(({ event, handlers }, index2) => ({ event, name: `${prefix}Listener${index2}`, body: handlers.map((handler2) => `${handler2}(event);`).join(" ") }));
+      const syncControls = controls.length ? `const previous = ${prefix}ControlValues.get(element) ?? {}; ${controls.join(" ")} ${prefix}ControlValues.set(element, previous);` : "";
+      attrs.push(`ref: (() => { let cleanup: (() => void) | undefined; return (element: HTMLElement | null): void => { cleanup?.(); cleanup = undefined; if (!element) return; ${syncControls} ${listeners.map((listener) => `const ${listener.name} = (event: Event) => { ${listener.body} }; element.addEventListener(${json(listener.event)}, ${listener.name});`).join(" ")} cleanup = () => { ${listeners.map((listener) => `element.removeEventListener(${json(listener.event)}, ${listener.name});`).join(" ")} }; }; })()`);
+    }
+    return `_uiCreateElement(${"tag" in node2 ? json(node2.tag) : aliases.get(node2.component)}, {${attrs.join(", ")}}${children.length ? `, ${children.join(", ")}` : ""})`;
+  }
+  const body = nodeCode(definition2.root);
+  const propTypes = ordered(definition2.props).map(([key, prop2]) => `  ${json(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n");
+  return `import { createElement as _uiCreateElement, type ReactNode as _UiReactNode${usesStyle ? ", type CSSProperties as _UiCSSProperties" : ""}${mutatesState ? ", useState as _uiUseState, useRef as _uiUseRef" : ""} } from 'react';
+${refs.map((id2) => `import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}`)};`).join("\n")}
+export interface ${className(definition2)}Props {
+${propTypes}${propTypes ? "\n" : ""}  children?: _UiReactNode;
+}
+${usesStyle ? reactStyleHelper : ""}
+${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElement, Record<string, unknown>>();
+` : ""}${usesAttributes ? `function attribute(value: unknown): string | undefined {
+  return value == null ? undefined : globalThis.String(value);
+}
+` : ""}
+export default function ${className(definition2)}(${usesProps ? "input" : "_input"}: ${className(definition2)}Props) {
+${usesProps ? `  const props = { ...${json(defaults(definition2))}, ...input };
+${defaultAssignments(definition2)}` : ""}${mutatesState ? `
+  const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json(stateDefaults(definition2))}));
+  const ${prefix}StateRef = _uiUseRef(${state2});
+` : usesState ? `
+  const ${state2}: ${stateType(definition2)} = ${json(stateDefaults(definition2))};
+` : ""}${selectedInteractions.length ? `
+${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: mutatesState ? `${prefix}StateRef.current` : state2, commit: (next) => `${prefix}StateRef.current = { ...${next} }; ${prefix}SetState(${prefix}StateRef.current);` })}
+` : ""}
+  return ${body};
+}
+`;
+}
+function vueModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
+  const refs = componentDependencies(definition2.root);
+  const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  function nodeCode(node2) {
+    if ("slot" in node2) return "<slot />";
+    const tag = "tag" in node2 ? node2.tag : aliases.get(node2.component);
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` :${key}="${html(expression(value2, "props", state2))}"`).join("");
+    const events = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` @${event}="${html(handlers.map((handler2) => `${handler2}($event)`).join("; "))}"`).join("");
+    const text2 = "tag" in node2 && node2.text !== void 0 ? `{{ ${html(expression(node2.text, "props", state2))} }}` : "";
+    return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
+  }
+  return `<script setup lang="ts">${interactive ? `
+import { reactive as _uiReactive } from 'vue';` : ""}
+${refs.map((id2) => `import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}.vue`)};`).join("\n")}
+const props = defineProps({
+${ordered(definition2.props).map(([key, prop2]) => `  ${json(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
+});${interactive ? `
+const ${state2} = _uiReactive<${stateType(definition2)}>(${json(stateDefaults(definition2))});
+${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: state2, commit: (next) => `globalThis.Object.assign(${state2}, ${next});` })}
+` : ""}
+<\/script>
+
+<template>
+  ${nodeCode(definition2.root)}
+</template>
+`;
+}
+function svelteModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
+  const refs = componentDependencies(definition2.root);
+  const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  function svelteExpression(value2) {
+    return expression(value2, "_uiProps", state2);
+  }
+  function nodeCode(node2) {
+    if ("slot" in node2) return "<slot />";
+    const tag = "tag" in node2 ? node2.tag : aliases.get(node2.component);
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => ` ${key}={${svelteExpression(value2)}}`).join("");
+    const events = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` on:${event}={(event) => { ${handlers.map((handler2) => `${handler2}(event);`).join(" ")} }}`).join("");
+    const text2 = "tag" in node2 && node2.text !== void 0 ? `{${textExpression(node2.text, "_uiProps", state2)}}` : "";
+    return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
+  }
+  return `<script lang="ts">
+${refs.map((id2) => `  import ${aliases.get(id2)} from ${json(`./${definitions.get(id2).id}.svelte`)};`).join("\n")}
+${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json(prop2.default)}` : prop2.required ? "" : " = undefined"};
+  export { _uiProp${index2} as ${key} };`).join("\n")}
+  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
+  let ${state2}: ${stateType(definition2)} = ${json(stateDefaults(definition2))};
+${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, propsScope: "_uiProps", stateScope: state2, commit: (next) => `${state2} = { ...${next} };` })}
+` : ""}
+<\/script>
+
+${nodeCode(definition2.root)}
+`;
+}
+function angularModule(definition2, definitions, interactions = []) {
+  const prefix = interactionPrefix(definition2);
+  const state2 = `${prefix}State`;
+  const interactive = Object.keys(definition2.state ?? {}).length > 0 || componentInteractions(definition2, interactions).length > 0;
+  const refs = componentDependencies(definition2.root);
+  const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
+  function angularExpression(value2) {
+    if (typeof value2 !== "string") return json(value2);
+    const parts = uiBindingParts(value2);
+    const binding = (name2) => name2.startsWith("state.") ? `${state2}[${json(name2.slice(6))}]` : name2;
+    if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
+    return parts.map((part) => "literal" in part ? json(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
+  }
+  function nodeCode(node2) {
+    if ("slot" in node2) return "<ng-content></ng-content>";
+    const tag = "tag" in node2 ? node2.tag : `ui-${node2.component}`;
+    const attrs = ordered("tag" in node2 ? node2.attrs ?? {} : node2.props ?? {}).map(([key, value2]) => {
+      const expr = angularExpression(value2);
+      const property = interactive && "tag" in node2 && (key === "value" && ["input", "textarea", "select", "option"].includes(node2.tag) || key === "checked" && node2.tag === "input" || key === "selected" && node2.tag === "option");
+      const propertyValue = property ? key === "value" ? `$any(${expr}) ?? ''` : `$any(${expr}) != null && $any(${expr}) !== false` : expr;
+      return ` [${"tag" in node2 && !property ? `attr.${key}` : key}]="${html("tag" in node2 && !property && uiBooleanAttributes.has(key.toLowerCase()) ? `$any(${expr}) === true ? '' : ($any(${expr}) === false ? null : (${expr}))` : propertyValue)}"`;
+    }).join("");
+    const events = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => ` (${event})="${html(handlers.map((handler2) => `${handler2}($event)`).join("; "))}"`).join("");
+    const text2 = "tag" in node2 && node2.text !== void 0 ? `{{ ${html(angularExpression(node2.text))} }}` : "";
+    return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
+  }
+  return `import { Component${Object.keys(definition2.props).length ? ", Input" : ""} } from '@angular/core';
+${refs.map((id2) => `import { ${componentArtifact(definitions.get(id2), "angular").exportName} as ${aliases.get(id2)} } from ${json(`./${definitions.get(id2).id}`)};`).join("\n")}
+
+@Component({
+  selector: ${json(`ui-${definition2.id}`)},
+  standalone: true,
+  imports: [${refs.map((id2) => aliases.get(id2)).join(", ")}],
+  template: ${json(nodeCode(definition2.root))},
+})
+export class ${componentArtifact(definition2, "angular").exportName} {
+${ordered(definition2.props).map(([key, prop2]) => {
+    const options = prop2.default !== void 0 ? `{ transform: (value: ${prop2.type} | undefined) => value === undefined ? ${json(prop2.default)} : value }` : prop2.required ? "{ required: true }" : "";
+    return `  @Input(${options}) ${key}${prop2.required && prop2.default === void 0 ? "!" : ""}: ${prop2.type}${!prop2.required && prop2.default === void 0 ? " | undefined" : ""}${prop2.default === void 0 ? "" : ` = ${json(prop2.default)}`};`;
+  }).join("\n")}${interactive ? `
+  ${state2}: ${stateType(definition2)} = ${json(stateDefaults(definition2))};
+${renderInteractionHandlers(definition2, interactions, { typescript: true, classMembers: true, prefix, propsScope: "this", stateScope: `this.${state2}`, commit: (next) => `this.${state2} = { ...${next} };` })}
+` : ""}
+}
+`;
+}
+const renderers = {
+  html: domModule,
+  htmx: domModule,
+  vanilla: domModule,
+  react: reactModule,
+  vue: vueModule,
+  svelte: svelteModule,
+  angular: angularModule
+};
+function renderUiComponents(input, framework, outputDirectory, interactions = []) {
+  vaultPath(outputDirectory);
+  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `Unknown UI framework: ${framework}`);
+  const definitions = new Map(input.map((definition2) => [definition2.id, definition2]));
+  ensure(definitions.size === input.length, "INVALID_UI_LIBRARY", "Duplicate UI component IDs.");
+  const visited = /* @__PURE__ */ new Set();
+  function visit2(id2, stack) {
+    ensure(!stack.includes(id2), "INVALID_UI_LIBRARY", `Cyclic component reference: ${[...stack, id2].join(" -> ")}`);
+    if (visited.has(id2)) return;
+    const definition2 = definitions.get(id2);
+    ensure(definition2, "INVALID_UI_LIBRARY", `Unknown UI component: ${id2}`);
+    for (const child of componentDependencies(definition2.root)) visit2(child, [...stack, id2]);
+    visited.add(id2);
+  }
+  for (const id2 of definitions.keys()) visit2(id2, []);
+  const writes = [];
+  for (const definition2 of [...input].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+    const artifact = componentArtifact(definition2, framework);
+    const source = renderers[framework](definition2, definitions, interactions);
+    writes.push({ path: `${outputDirectory}/${artifact.fileName}`, bytes: new TextEncoder().encode(source) });
+    if (["html", "htmx", "vanilla"].includes(framework)) {
+      writes.push({ path: `${outputDirectory}/${definition2.id}.html`, bytes: new TextEncoder().encode(staticMarkup(definition2.root, defaults(definition2), definitions, "", stateDefaults(definition2)) + "\n") });
+      writes.push({ path: `${outputDirectory}/${definition2.id}.d.ts`, bytes: new TextEncoder().encode(domDeclaration(definition2)) });
+    }
+  }
+  return writes.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+}
+function modulePath(directory, target) {
+  const relative = minpath.posix.relative(directory, target).replace(/\.tsx?$/, "");
+  return relative.startsWith(".") ? relative : `./${relative}`;
+}
+function literal(value2, indent = 0) {
+  if (Array.isArray(value2)) return `[${value2.map((item) => literal(item, indent)).join(", ")}]`;
+  if (value2 !== null && typeof value2 === "object") {
+    const entries = Object.entries(value2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    if (!entries.length) return "{}";
+    return `{
+${entries.map(([key, item]) => `${" ".repeat(indent + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item, indent + 2)}`).join(",\n")}
+${" ".repeat(indent)}}`;
+  }
+  return JSON.stringify(value2) ?? "undefined";
+}
+const storybookPackages = {
+  html: "@storybook/html",
+  htmx: "@storybook/html",
+  vanilla: "@storybook/html",
+  react: "@storybook/react",
+  vue: "@storybook/vue3",
+  svelte: "@storybook/svelte",
+  angular: "@storybook/angular"
+};
+function renderUiStories(definitions, framework, componentDirectory, storiesDirectory) {
+  vaultPath(componentDirectory);
+  vaultPath(storiesDirectory);
+  return [...definitions].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map((definition2) => {
+    const settings = definition2.storybook;
+    const artifact = componentArtifact(definition2, framework);
+    const componentImport = modulePath(storiesDirectory, `${componentDirectory}/${artifact.fileName}`);
+    const html2 = ["html", "htmx", "vanilla"].includes(framework);
+    const htmlPropsType = "NonNullable<Parameters<typeof component>[0]>";
+    const nativeType = html2 ? `_Meta<${htmlPropsType}>` : framework === "angular" ? "_Meta<InstanceType<typeof component>>" : "_Meta<typeof component>";
+    const props = Object.entries(definition2.props);
+    const defaults2 = Object.fromEntries(props.flatMap(([key, prop2]) => {
+      if (prop2.default !== void 0) return [[key, prop2.default]];
+      if (prop2.required) return [[key, prop2.type === "number" ? 0 : prop2.type === "boolean" ? false : ""]];
+      return [];
+    }));
+    const controls = Object.fromEntries(props.map(([key, prop2]) => [key, {
+      control: prop2.type === "string" ? "text" : prop2.type,
+      type: { name: prop2.type, required: prop2.required ?? false },
+      ...prop2.description ? { description: prop2.description } : {}
+    }]));
+    const parameters = settings?.parameters ?? {};
+    const docs = parameters.docs !== null && typeof parameters.docs === "object" && !Array.isArray(parameters.docs) ? parameters.docs : {};
+    const descriptions = "description" in docs && docs.description !== null && typeof docs.description === "object" && !Array.isArray(docs.description) ? docs.description : {};
+    const meta = {
+      title: settings?.title ?? `Components/${definition2.name ?? definition2.id}`,
+      tags: settings?.tags ?? ["autodocs"],
+      args: { ...defaults2, ...settings?.args },
+      argTypes: { ...controls, ...settings?.argTypes },
+      parameters: { ...parameters, docs: { ...docs, description: { component: definition2.description, ...descriptions } } }
+    };
+    const extension2 = settings?.extension;
+    if (extension2) vaultPath(extension2);
+    const lines = [
+      "// Generated by Forge from Markdown. Edit the definition or its Storybook extension module.",
+      `import type { Meta as _Meta, StoryObj as _StoryObj } from ${JSON.stringify(storybookPackages[framework])};`,
+      `import ${artifact.namedExport ? `{ ${artifact.exportName} as component }` : "component"} from ${JSON.stringify(componentImport)};`,
+      ...extension2 ? [
+        `import * as storyExtensions from ${JSON.stringify(modulePath(storiesDirectory, extension2))};`,
+        "",
+        `const extensions = storyExtensions as { meta?: Partial<${nativeType}>; stories?: Record<string, _StoryObj> };`
+      ] : [],
+      "",
+      "const meta = {",
+      `${literal(meta).slice(2, -2)},`,
+      ...html2 ? ["  render: (args) => component(args),"] : ["  component,"],
+      ...extension2 ? ["  ...extensions.meta,"] : [],
+      `} satisfies ${nativeType};`,
+      "",
+      "export default meta;",
+      `type _Story = ${html2 ? `_StoryObj<${htmlPropsType}>` : framework === "angular" ? "_StoryObj<InstanceType<typeof component>>" : "_StoryObj<typeof meta>"};`
+    ];
+    for (const story2 of settings?.stories?.length ? settings.stories : [{ name: "Default" }]) {
+      const { name: name2, ...fields } = story2;
+      lines.push(
+        "",
+        `export const ${name2}: _Story = {`,
+        ...Object.keys(fields).length ? [`${literal(fields).slice(2, -2)},`] : [],
+        ...extension2 ? [`  ...extensions.stories?.[${JSON.stringify(name2)}],`] : [],
+        "} satisfies _Story;"
+      );
+    }
+    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: encodeText(lines.join("\n") + "\n") };
+  });
+}
+const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
+const identifier$1 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
+const value$1 = union([string$1(), number().finite(), boolean(), _null()]);
+function matches(field2, item) {
+  return item === null ? field2.nullable === true : typeof item === field2.type;
+}
+const field = strictObject({
+  type: _enum(["string", "number", "boolean"]),
+  optional: boolean().optional(),
+  nullable: boolean().optional(),
+  enum: array(value$1).min(1).max(100).optional(),
+  example: value$1.optional()
+}).superRefine((property, context) => {
+  if (property.enum?.some((item) => !matches(property, item))) context.addIssue({ code: "custom", message: "Enum values must match the field type and nullability." });
+  if (property.enum && new Set(property.enum).size !== property.enum.length) context.addIssue({ code: "custom", message: "Enum values must be unique." });
+  if (property.example !== void 0 && (!matches(property, property.example) || property.enum && !property.enum.includes(property.example))) context.addIssue({ code: "custom", message: "Example must match the field type, nullability and enum." });
+});
+const operation = strictObject({
+  method: _enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+  path: string$1().min(1).max(2048),
+  responsePath: string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/).optional()
+});
+const operations = strictObject({ list: operation.optional(), get: operation.optional(), create: operation.optional(), update: operation.optional(), delete: operation.optional() });
+const schema$1 = strictObject({
+  schemaVersion: literal$1(1),
+  id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  kind: _enum(["rest", "json"]),
+  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record(identifier$1, field) }),
+  rest: strictObject({ baseUrl: string$1().url(), operations }).optional(),
+  json: strictObject({ path: string$1().min(1) }).optional(),
+  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record(identifier$1, value$1)).min(1).max(100).optional() }).optional()
+}).superRefine((definition2, context) => {
+  const issue2 = (message) => context.addIssue({ code: "custom", message });
+  const fields = definition2.model.fields, primary = fields[definition2.model.idField];
+  if (!Object.keys(fields).length) issue2("Model must define at least one field.");
+  if (!primary || !["string", "number"].includes(primary.type) || primary.optional || primary.nullable) issue2("idField must name a required, non-nullable string or number field.");
+  const invalidId = (item) => item === "" || item === "." || item === "..";
+  if (invalidId(primary?.example) || primary?.enum?.some(invalidId)) issue2("ID examples and enum values cannot be empty or dot path segments.");
+  if (definition2.kind === "rest" ? !definition2.rest || !!definition2.json : !definition2.json || !!definition2.rest) issue2("Supply only the configuration matching the source kind.");
+  if (definition2.rest) {
+    const url2 = new URL(definition2.rest.baseUrl);
+    if (!["http:", "https:"].includes(url2.protocol) || url2.username || url2.password || url2.search || url2.hash) issue2("REST baseUrl must be HTTP(S) without credentials, query or fragment.");
+    const entries = Object.entries(definition2.rest.operations);
+    if (!entries.length) issue2("REST must define at least one operation.");
+    for (const [name2, config2] of entries) {
+      const methods = name2 === "list" || name2 === "get" ? ["GET"] : name2 === "create" ? ["POST"] : name2 === "update" ? ["PUT", "PATCH"] : ["DELETE"];
+      if (!methods.includes(config2.method)) issue2(`Invalid HTTP method for ${name2}.`);
+      if (!config2.path.startsWith("/") || config2.path.startsWith("//") || /[?#\\\s]/.test(config2.path) || config2.path.split("/").some((part) => part === "." || part === "..")) issue2(`Operation ${name2} requires an absolute URL pathname without traversal, query or fragment.`);
+      try {
+        const decoded = decodeURIComponent(config2.path);
+        if (decoded.split("/").some((part) => part === "." || part === "..") || /[?#\\]/.test(decoded)) issue2(`Operation ${name2} cannot contain encoded traversal or URL delimiters.`);
+      } catch {
+        issue2(`Operation ${name2} contains malformed URL encoding.`);
+      }
+      const placeholders2 = config2.path.match(/\{[^}]*\}/g) ?? [];
+      if (placeholders2.some((item) => item !== "{id}") || /[{}]/.test(config2.path.replace(/\{id\}/g, ""))) issue2(`Operation ${name2} only supports the {id} parameter.`);
+      const needsId = ["get", "update", "delete"].includes(name2);
+      if (needsId ? placeholders2.length !== 1 : placeholders2.length !== 0) issue2(`Operation ${name2} ${needsId ? "requires exactly one" : "cannot use an"} {id} parameter.`);
+      if (name2 === "delete" && config2.responsePath !== void 0) issue2("Delete operations do not have a responsePath.");
+      if (config2.responsePath?.split(".").some((part) => reserved.has(part))) issue2("responsePath cannot use reserved property names.");
+    }
+  }
+  if (definition2.testData?.records && definition2.testData.count !== void 0) issue2("Use either explicit testData.records or generated testData.count.");
+  const ids = /* @__PURE__ */ new Set();
+  for (const [index2, record2] of (definition2.testData?.records ?? []).entries()) {
+    for (const key of Object.keys(record2)) if (!Object.hasOwn(fields, key)) issue2(`Test record ${index2} has unknown field ${key}.`);
+    for (const [key, property] of Object.entries(fields)) {
+      const item = record2[key];
+      if (item === void 0 ? !property.optional : !matches(property, item) || property.enum && !property.enum.includes(item)) issue2(`Test record ${index2}.${key} must match its declared field.`);
+    }
+    const recordId = record2[definition2.model.idField];
+    if (recordId !== void 0) {
+      if (invalidId(recordId)) issue2("Test record IDs cannot be empty or dot path segments.");
+      if (ids.has(recordId)) issue2("Test records must have unique IDs.");
+      ids.add(recordId);
+    }
+  }
+  const count = definition2.testData?.count ?? 3;
+  if (!definition2.testData?.records && primary?.enum && primary.enum.length < count) issue2("ID enum must have enough values for the requested test-data count.");
+});
+class MarkdownDataSourceDefinitions {
+  documents = new ObsidianDocuments();
+  parse(bytes, path) {
+    vaultPath(path);
+    try {
+      const document2 = this.documents.inspect("definition.md", bytes);
+      const result = schema$1.safeParse(document2.properties);
+      ensure(result.success, "INVALID_DATA_SOURCE", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      if (result.data.json) {
+        vaultPath(result.data.json.path);
+        ensure(result.data.json.path.endsWith(".json"), "INVALID_DATA_SOURCE", `${path}: JSON source path must end in .json.`);
+      }
+      return { ...result.data, description: document2.body, sourcePath: path };
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "INVALID_DATA_SOURCE") throw error2;
+      throw new AppError("INVALID_DATA_SOURCE", `${path}: ${error2 instanceof Error ? error2.message : "Invalid data-source definition."}`, 2);
+    }
+  }
+  serialize(definition2) {
+    const { description: description2, sourcePath, ...frontmatter2 } = definition2;
+    const bytes = new TextEncoder().encode(`---
+${distExports.stringify(frontmatter2)}---
+${description2}`);
+    this.parse(bytes, sourcePath || `${definition2.id}.md`);
+    return bytes;
+  }
+}
+const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+function canonicalJson(value2, spaces) {
+  const normalize = (item) => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (item !== null && typeof item === "object") return Object.fromEntries(Object.entries(item).sort(([left], [right]) => compare(left, right)).map(([key, child]) => [key, normalize(child)]));
+    return item;
+  };
+  return JSON.stringify(normalize(value2), null, spaces);
+}
+function fieldType(field2) {
+  if (field2.enum) return field2.enum.map((value2) => JSON.stringify(value2)).join(" | ");
+  return `${field2.type}${field2.nullable ? " | null" : ""}`;
+}
+function fixtureRecords(definition2) {
+  if (definition2.testData?.records) return definition2.testData.records;
+  const ids = /* @__PURE__ */ new Set();
+  return Array.from({ length: definition2.testData?.count ?? 3 }, (_, index2) => {
+    const entries = Object.entries(definition2.model.fields).sort(([left], [right]) => compare(left, right));
+    return Object.fromEntries(entries.map(([name2, field2]) => {
+      const primary = name2 === definition2.model.idField;
+      let value2 = field2.example !== void 0 ? field2.example : field2.enum ? field2.enum[index2 % field2.enum.length] : field2.type === "string" ? `${name2}-${index2 + 1}` : field2.type === "number" ? index2 + 1 : index2 % 2 === 0;
+      if (primary) {
+        if (field2.enum) value2 = field2.enum[index2];
+        else if (ids.has(value2) && typeof value2 === "string") value2 = `${value2}-${index2 + 1}`;
+        else if (ids.has(value2)) {
+          let candidate = index2 + 1;
+          while (ids.has(candidate)) candidate++;
+          value2 = candidate;
+        }
+        ids.add(value2);
+      }
+      return [name2, value2];
+    }));
+  });
+}
+function modelSource(definition2) {
+  const { name: name2, fields, idField } = definition2.model;
+  const declarations = Object.entries(fields).sort(([left], [right]) => compare(left, right)).map(([key, field2]) => `  ${JSON.stringify(key)}${field2.optional ? "?" : ""}: ${fieldType(field2)};`).join("\n");
+  return `// Generated deterministically from ${definition2.id}.md. No runtime dependencies.
+export interface ${name2} {
+${declarations}
+}
+export type ${name2}Id = ${name2}[${JSON.stringify(idField)}];
+export class ${name2}DataSourceError extends globalThis.Error {
+  constructor(message: string, readonly status?: number) { super(message); this.name = ${JSON.stringify(`${name2}DataSourceError`)}; }
+}
+const fields: { [key: string]: { type: string; optional?: boolean; nullable?: boolean; enum?: readonly unknown[] } } = ${canonicalJson(Object.fromEntries(Object.entries(fields).map(([key, { example: _example, ...field2 }]) => [key, field2])), 2)};
+function validateField(key: string, value: unknown): void {
+  const field = fields[key];
+  if (!field) throw new ${name2}DataSourceError('Unknown field: ' + key);
+  if (value === undefined && field.optional) return;
+  if (value === null ? !field.nullable : typeof value !== field.type || (typeof value === 'number' && !globalThis.Number.isFinite(value))) {
+    throw new ${name2}DataSourceError('Invalid field: ' + key);
+  }
+  if (field.enum && !field.enum.includes(value)) throw new ${name2}DataSourceError('Invalid enum field: ' + key);
+}
+function validateRecord(value: unknown, partial: boolean, strict = partial): void {
+  if (value === null || typeof value !== 'object' || globalThis.Array.isArray(value)) throw new ${name2}DataSourceError('Expected an object');
+  const record = value as { [key: string]: unknown };
+  if (strict) for (const key of globalThis.Object.keys(record)) if (!globalThis.Object.hasOwn(fields, key)) throw new ${name2}DataSourceError('Unknown field: ' + key);
+  for (const key of globalThis.Object.keys(fields)) {
+    if (!partial || globalThis.Object.hasOwn(record, key)) validateField(key, globalThis.Object.hasOwn(record, key) ? record[key] : undefined);
+  }
+  if (!partial || globalThis.Object.hasOwn(record, ${JSON.stringify(idField)})) validate${name2}Id(record[${JSON.stringify(idField)}] as ${name2}Id);
+}
+export function validate${name2}(value: unknown): ${name2} { validateRecord(value, false); return value as ${name2}; }
+export function validate${name2}Id(id: ${name2}Id): void {
+  validateField(${JSON.stringify(idField)}, id);
+  if (typeof id === 'string' && ['', '.', '..'].includes(id)) throw new ${name2}DataSourceError('ID cannot be empty or a dot path segment');
+}
+export function validate${name2}List(value: unknown): ${name2}[] {
+  if (!globalThis.Array.isArray(value)) throw new ${name2}DataSourceError('Expected an array of records');
+  const records = value.map(item => validate${name2}(item));
+  const ids = new globalThis.Set(records.map(record => record[${JSON.stringify(idField)}]));
+  if (ids.size !== records.length) throw new ${name2}DataSourceError('Duplicate record IDs');
+  return records;
+}
+`;
+}
+function restSource(definition2) {
+  const { name: name2 } = definition2.model;
+  const rest = definition2.rest;
+  const methods = [];
+  for (const [operation2, config2] of Object.entries(rest.operations).sort(([left], [right]) => compare(left, right))) {
+    const serialized = canonicalJson(config2);
+    const requestOptions = `requestOptions: { signal?: globalThis.AbortSignal } = {}`;
+    if (operation2 === "list") methods.push(`    async list(query: ${name2}Query = {}, ${requestOptions}): globalThis.Promise<${name2}[]> {
+      return validate${name2}List(await request(${serialized}, undefined, undefined, query, requestOptions.signal));
+    }`);
+    if (operation2 === "get") methods.push(`    async get(id: ${name2}Id, ${requestOptions}): globalThis.Promise<${name2}> {
+      validate${name2}Id(id); return validate${name2}(await request(${serialized}, id, undefined, undefined, requestOptions.signal));
+    }`);
+    if (operation2 === "create") methods.push(`    async create(record: ${name2}, ${requestOptions}): globalThis.Promise<${name2}> {
+      validateRecord(record, false, true); return validate${name2}(await request(${serialized}, undefined, { ...record }, undefined, requestOptions.signal));
+    }`);
+    if (operation2 === "update") methods.push(`    async update(id: ${name2}Id, patch: ${config2.method === "PUT" ? name2 : `{ [Key in keyof ${name2}]?: ${name2}[Key] }`}, ${requestOptions}): globalThis.Promise<${name2}> {
+      validate${name2}Id(id); validateRecord(patch, ${config2.method !== "PUT"}, true); return validate${name2}(await request(${serialized}, id, { ...patch }, undefined, requestOptions.signal));
+    }`);
+    if (operation2 === "delete") methods.push(`    async delete(id: ${name2}Id, ${requestOptions}): globalThis.Promise<void> {
+      validate${name2}Id(id); await request(${serialized}, id, undefined, undefined, requestOptions.signal);
+    }`);
+  }
+  return `export interface ${name2}Query { [key: string]: string | number | boolean | readonly (string | number | boolean)[] | undefined }
+export interface ${name2}DataSourceOptions {
+  baseUrl?: string;
+  fetch?: typeof globalThis.fetch;
+  headers?: globalThis.HeadersInit;
+}
+export function create${name2}DataSource(options: ${name2}DataSourceOptions = {}) {
+  const base = new globalThis.URL(options.baseUrl ?? ${JSON.stringify(rest.baseUrl)});
+  if (!['https:', 'http:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new ${name2}DataSourceError('Expected an HTTP(S) base URL without credentials, query or fragment');
+  const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+  async function request(operation: { method: string; path: string; responsePath?: string }, id?: ${name2}Id, body?: unknown, query?: ${name2}Query, signal?: globalThis.AbortSignal): globalThis.Promise<unknown> {
+    const path = operation.path.replace('{id}', globalThis.encodeURIComponent(globalThis.String(id)));
+    const url = new globalThis.URL(base.href);
+    url.pathname = base.pathname.replace(/\\/$/, '') + path;
+    for (const key of globalThis.Object.keys(query ?? {}).sort()) {
+      const item = query![key];
+      if (item !== undefined) for (const value of globalThis.Array.isArray(item) ? item : [item]) url.searchParams.append(key, globalThis.String(value));
+    }
+    const headers = new globalThis.Headers(options.headers);
+    if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+    if (body !== undefined) headers.set('Content-Type', 'application/json');
+    const response = await fetcher(url, { method: operation.method, headers, signal, ...(body === undefined ? {} : { body: globalThis.JSON.stringify(body) }) });
+    if (!response.ok) throw new ${name2}DataSourceError('HTTP ' + response.status + ' ' + response.statusText, response.status);
+    if (operation.method === 'DELETE') return undefined;
+    let value: unknown;
+    try { value = await response.json(); } catch { throw new ${name2}DataSourceError('Expected a JSON response', response.status); }
+    for (const key of operation.responsePath?.split('.') ?? []) {
+      if (value === null || typeof value !== 'object' || !globalThis.Object.hasOwn(value, key)) throw new ${name2}DataSourceError('Missing response path: ' + operation.responsePath, response.status);
+      value = (value as { [key: string]: unknown })[key];
+    }
+    return value;
+  }
+  return {
+${methods.join(",\n")}
+  };
+}
+`;
+}
+function jsonSource(definition2) {
+  const { name: name2, idField } = definition2.model;
+  return `export interface ${name2}DataSourceOptions {
+  /** Read and parse the configured local JSON file using your runtime's filesystem or asset loader. */
+  loadJson(path: string): globalThis.Promise<unknown>;
+  path?: string;
+}
+export function create${name2}DataSource(options: ${name2}DataSourceOptions) {
+  const path = options.path ?? ${JSON.stringify(definition2.json.path)};
+  return {
+    async list(): globalThis.Promise<${name2}[]> { return validate${name2}List(await options.loadJson(path)); },
+    async get(id: ${name2}Id): globalThis.Promise<${name2}> {
+      validate${name2}Id(id);
+      const record = validate${name2}List(await options.loadJson(path)).find(item => item[${JSON.stringify(idField)}] === id);
+      if (!record) throw new ${name2}DataSourceError('Record not found: ' + id, 404);
+      return record;
+    },
+  };
+}
+`;
+}
+class TypeScriptDataSourceRenderer {
+  generate(definitions, options) {
+    vaultPath(options.outputDirectory);
+    vaultPath(options.testDataDirectory);
+    return [...definitions].sort((left, right) => compare(left.id, right.id)).flatMap((definition2) => [
+      { path: `${options.outputDirectory}/${definition2.id}.ts`, bytes: encodeText(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
+      { path: `${options.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: encodeText(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
+    ]);
+  }
+}
+const identifier = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved state name.");
+const scalar = union([string$1(), number().finite(), boolean(), _null()]).refine((value2) => !uiHasMalformedBinding(value2), "Invalid scalar binding syntax.");
+const safeKey = string$1().min(1).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved detail key.");
+const url = string$1().min(1).refine((value2) => {
+  if (uiHasMalformedBinding(value2)) return false;
+  if (uiWholeBinding(value2)) return true;
+  const example = uiBindingParts(value2).map((part) => "literal" in part ? part.literal : "value").join("");
+  return isSafeNavigationUrl(example);
+}, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
+const action = union([
+  strictObject({ type: literal$1("set-state"), state: identifier, value: scalar }),
+  strictObject({ type: literal$1("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
+  strictObject({ type: literal$1("toggle-state"), state: identifier }),
+  strictObject({ type: literal$1("navigate"), url }),
+  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record(safeKey, scalar).optional() })
+]);
+const schema = strictObject({
+  schemaVersion: literal$1(1),
+  id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  event: _enum(interactionEvents),
+  keys: array(string$1().min(1)).min(1).optional(),
+  preventDefault: boolean().optional(),
+  stopPropagation: boolean().optional(),
+  actions: array(action).min(1)
+}).superRefine((definition2, context) => {
+  if (definition2.keys && !["keydown", "keyup"].includes(definition2.event)) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters require keydown or keyup." });
+  if (definition2.keys && new Set(definition2.keys).size !== definition2.keys.length) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters must be unique." });
+  for (const [index2, entry] of definition2.actions.entries()) {
+    if (entry.type === "set-state" && "fromEvent" in entry && !["input", "change"].includes(definition2.event)) {
+      context.addIssue({ code: "custom", path: ["actions", index2, "fromEvent"], message: "Event value and checked sources require input or change." });
+    }
+  }
+});
+class MarkdownInteractionDefinitions {
+  documents = new ObsidianDocuments();
+  parse(bytes, path) {
+    vaultPath(path);
+    try {
+      const document2 = this.documents.inspect("interaction.md", bytes);
+      const result = schema.safeParse(document2.properties);
+      ensure(result.success, "INVALID_INTERACTION", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      return { ...result.data, description: document2.body, sourcePath: path };
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "INVALID_INTERACTION") throw error2;
+      throw new AppError("INVALID_INTERACTION", `${path}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`, 2);
+    }
+  }
+  serialize(definition2) {
+    const { sourcePath, description: description2, ...frontmatter2 } = definition2;
+    const bytes = new TextEncoder().encode(`---
+${distExports.stringify(frontmatter2)}---
+${description2}`);
+    this.parse(bytes, sourcePath || `${definition2.id}.md`);
+    return bytes;
+  }
+}
+const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `app.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/app.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/app.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A CONFLICT means reread and reconcile; never blindly retry with a new revision.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. File events report committed changes; dry runs emit none. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
 const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/app.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Formulas and filters are stored as data; this CLI does not execute the Obsidian query engine.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nAlways preview edits with `--dry-run`, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/app.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled docs/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. For changes to The Forge itself, run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit its rebuilt executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/app.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. For changes to The Forge itself, run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit its rebuilt executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const builtinSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -23409,8 +25905,8 @@ class Argument {
    * @param {string[]} values
    * @return {Argument}
    */
-  choices(values) {
-    this.argChoices = values.slice();
+  choices(values2) {
+    this.argChoices = values2.slice();
     this.parseArg = (arg, previous2) => {
       if (!this.argChoices.includes(arg)) {
         throw new InvalidArgumentError(
@@ -24190,8 +26686,8 @@ class Option {
    * @param {string[]} values
    * @return {Option}
    */
-  choices(values) {
-    this.argChoices = values.slice();
+  choices(values2) {
+    this.argChoices = values2.slice();
     this.parseArg = (arg, previous2) => {
       if (!this.argChoices.includes(arg)) {
         throw new InvalidArgumentError(
@@ -26647,6 +29143,7 @@ function useColor() {
 new Command();
 const globalOptions = {
   root: "string",
+  lang: "string",
   json: "boolean",
   "no-json": "boolean",
   "dry-run": "boolean",
@@ -26682,9 +29179,9 @@ function parseArguments(tokens, options, allowUnknown = false) {
     descriptors.push({ key, option });
     command.addOption(option);
     command.on(`option:${option.name()}`, () => {
-      const attribute = option.attributeName();
-      ensure(!seen.has(attribute), "DUPLICATE_OPTION", `Repeated or contradictory option --${key}.`);
-      seen.add(attribute);
+      const attribute2 = option.attributeName();
+      ensure(!seen.has(attribute2), "DUPLICATE_OPTION", `Repeated or contradictory option --${key}.`);
+      seen.add(attribute2);
     });
   }
   try {
@@ -26744,47 +29241,52 @@ function workflowCommands(services) {
       arity(args, 0);
       return services.setup();
     } },
-    { id: "templates", description: "Discover Markdown templates and required placeholders.", usage: "templates [list | inspect <template.md>]", async run(args) {
-      const action = args[0] ?? "list";
-      if (action === "list") {
+    { id: "templates", description: "Discover Markdown templates, required placeholders, and install the planning workflow pack.", usage: "templates [list | inspect <template.md> | install [workflow]]", async run(args) {
+      const action2 = args[0] ?? "list";
+      if (action2 === "install") {
+        arity(args, 1, 2);
+        ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
+        return services.installTemplates();
+      }
+      if (action2 === "list") {
         arity(args, 0, 1);
         const prefix = "bin/templates/";
         return { directory: "bin/templates", templates: (await services.files.list()).filter((path2) => path2.startsWith(prefix) && path2.toLowerCase().endsWith(".md")).map((path2) => path2.slice(prefix.length)) };
       }
-      ensure(action === "inspect", "INVALID_ARGUMENT", "Use templates list or templates inspect <template.md>.");
+      ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
       arity(args, 2);
       ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const path = `bin/templates/${vaultPath(args[1])}`;
       return { path, ...services.templates.inspect((await services.files.read(path)).bytes) };
     } },
     { id: "project", description: "Manage TypeScript library projects and add tested domain/application components.", usage: "project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]", options: { kind: "string" }, async run(args, flags) {
-      const action = args[0] ?? "list";
-      if (action !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
-      if (action === "list") {
+      const action2 = args[0] ?? "list";
+      if (action2 !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
+      if (action2 === "list") {
         arity(args, 0, 1);
         return { directory: config2.paths.projects, projects: await services.projects.list() };
       }
-      if (action === "current") {
+      if (action2 === "current") {
         arity(args, 1);
         return { project: await services.projects.current() };
       }
-      if (action === "open") {
+      if (action2 === "open") {
         arity(args, 2);
         return services.projects.open(args[1]);
       }
-      if (action === "close") {
+      if (action2 === "close") {
         arity(args, 1);
         return services.projects.close();
       }
-      if (action === "inspect") {
+      if (action2 === "inspect") {
         arity(args, 1, 2);
         return args[1] ? services.projects.inspect(args[1]) : services.projects.requireCurrent();
       }
-      if (action === "create") {
+      if (action2 === "create") {
         arity(args, 2);
         return services.projects.create(args[1]);
       }
-      ensure(action === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
+      ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
       arity(args, 2, 3);
       const kind = value(flags, "kind") ?? "domain";
       ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
@@ -26792,6 +29294,239 @@ function workflowCommands(services) {
       return services.projects.component(name2, args.length === 3 ? args[2] : args[1], kind);
     } }
   ];
+}
+const libraryGenerationOptions = {
+  project: "string",
+  library: "string",
+  "revisions-from": "string",
+  plan: "boolean",
+  "plan-out": "string",
+  check: "boolean"
+};
+function generationOutputPath(path, project) {
+  const relative = vaultPath(path);
+  return project ? `${project.directory}/${relative}` : relative;
+}
+async function generationControls(flags, files) {
+  const revisionsPath = value(flags, "revisions-from"), manifestPath = value(flags, "plan-out");
+  const planning = flags.plan === true || manifestPath !== void 0;
+  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
+  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
+  let revisions;
+  if (revisionsPath !== void 0) {
+    const parsed = parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes));
+    ensure(isRecord(parsed) && Object.values(parsed).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
+    revisions = parsed;
+  }
+  const mode = flags.check ? "check" : planning ? "plan" : "generate";
+  return { mode, manifestPath, revisions };
+}
+const uiGenerationOptions = { framework: "string", stories: "boolean", "stories-out": "string", "interactions-library": "string" };
+async function makeUi(kind, id2, flags, context, services) {
+  const config2 = services.loaded.config;
+  const framework = value(flags, "framework") ?? config2.ui.framework;
+  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `--framework must be one of: ${uiFrameworks.join(", ")}.`);
+  const storybook2 = kind === "stories" || flags.stories === true;
+  ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
+  ensure(kind !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
+  const scoped = (path) => generationOutputPath(path, context.project);
+  const directory = value(flags, "library") ?? config2.paths.components;
+  const { mode, manifestPath, revisions } = await generationControls(flags, context.workspace.files);
+  const options = {
+    component: id2,
+    framework,
+    interactionDirectory: value(flags, "interactions-library") ?? config2.paths.interactions,
+    outputDirectory: scoped(value(flags, "out") ?? config2.paths.ui),
+    ...storybook2 ? { storiesDirectory: scoped(value(flags, "stories-out") ?? config2.paths.stories) } : {},
+    storybook: storybook2,
+    storiesOnly: kind === "stories",
+    ...revisions ? { revisions } : {}
+  };
+  if (mode !== "generate") {
+    const result = mode === "check" ? await services.uiLibrary.check(directory, options) : await services.uiLibrary.plan(directory, options, manifestPath === void 0 ? void 0 : scoped(manifestPath));
+    return { generator: kind, library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+  }
+  return { generator: kind, library: directory, ...await services.uiLibrary.generate(directory, options) };
+}
+function uiCommands(services) {
+  const config2 = services.loaded.config;
+  return [{
+    id: "components",
+    description: "Manage and validate a shared Markdown UI component library.",
+    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
+    options: { library: "string", from: "string", out: "string", tag: "string", "interactions-library": "string" },
+    async run(args, flags) {
+      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.components;
+      const interactionDirectory = value(flags, "interactions-library") ?? config2.paths.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
+      ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
+      const library = services.uiLibrary;
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions = await library.list(directory, interactionDirectory);
+        return { directory, count: definitions.length, status: definitions.length ? "ready" : "empty", ...!definitions.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions.map((definition2) => ({
+          id: definition2.id,
+          name: definition2.name,
+          sourcePath: definition2.sourcePath,
+          descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? "",
+          propNames: Object.keys(definition2.props).sort(),
+          dependencies: componentDependencies(definition2.root)
+        })) };
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory, interactionDirectory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1], interactionDirectory);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return library.validate(directory, interactionDirectory);
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        return library.create(directory, args[1], value(flags, "tag") ?? "div", interactionDirectory);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value(flags, "from") ?? config2.paths.componentImports, directory, interactionDirectory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value(flags, "out") ?? config2.paths.componentExports, interactionDirectory);
+    }
+  }];
+}
+const dataSourceGenerationOptions = { "test-data-out": "string" };
+async function makeDataSource(id2, flags, context, services) {
+  const config2 = services.loaded.config;
+  const scoped = (path) => generationOutputPath(path, context.project);
+  const directory = value(flags, "library") ?? config2.paths.dataSources;
+  const { mode, manifestPath, revisions } = await generationControls(flags, context.workspace.files);
+  const options = {
+    source: id2,
+    outputDirectory: scoped(value(flags, "out") ?? config2.paths.dataGenerated),
+    testDataDirectory: scoped(value(flags, "test-data-out") ?? config2.paths.dataFixtures),
+    ...revisions ? { revisions } : {}
+  };
+  if (mode !== "generate") {
+    const result = mode === "check" ? await services.dataSources.check(directory, options) : await services.dataSources.plan(directory, options, manifestPath === void 0 ? void 0 : scoped(manifestPath));
+    return { generator: "data-source", library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+  }
+  return { generator: "data-source", library: directory, ...await services.dataSources.generate(directory, options) };
+}
+function dataSourceCommands(services) {
+  const config2 = services.loaded.config;
+  return [{
+    id: "data-sources",
+    description: "Manage Markdown REST/local-JSON definitions for typed adapters and deterministic test data.",
+    usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
+    options: { library: "string", from: "string", out: "string", kind: "string" },
+    async run(args, flags) {
+      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.dataSources;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
+      ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
+      const library = services.dataSources;
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions = await library.list(directory);
+        return {
+          directory,
+          count: definitions.length,
+          status: definitions.length ? "ready" : "empty",
+          ...!definitions.length ? { nextStep: `Run data-sources init --library ${directory}, or add a Markdown data-source definition.` } : {},
+          sources: definitions.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
+        };
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1]);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return library.validate(directory);
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        const kind = value(flags, "kind") ?? "rest";
+        ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
+        return library.create(directory, args[1], kind);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value(flags, "from") ?? config2.paths.dataImports, directory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value(flags, "out") ?? config2.paths.dataExports);
+    }
+  }];
+}
+function interactionCommands(services) {
+  const config2 = services.loaded.config;
+  return [{
+    id: "interactions",
+    description: "Manage reusable Markdown interaction definitions for executable UI behavior.",
+    usage: "interactions [list | init | inspect <id> | validate | create <id> [--event click] | import [--from directory] | export [--out directory]] [--library directory]",
+    options: { library: "string", from: "string", out: "string", event: "string" },
+    async run(args, flags) {
+      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires interactions import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires interactions export.");
+      ensure(flags.event === void 0 || action2 === "create", "INVALID_ARGUMENT", "--event requires interactions create.");
+      const library = services.interactions;
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions = await library.list(directory);
+        return {
+          directory,
+          count: definitions.length,
+          status: definitions.length ? "ready" : "empty",
+          ...!definitions.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {},
+          interactions: definitions.map((definition2) => ({
+            id: definition2.id,
+            event: definition2.event,
+            sourcePath: definition2.sourcePath,
+            actions: definition2.actions.map((action22) => action22.type),
+            descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? ""
+          }))
+        };
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1]);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return library.validate(directory);
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        const event = value(flags, "event") ?? "click";
+        ensure(interactionEvents.includes(event), "INVALID_ARGUMENT", `--event must be one of: ${interactionEvents.join(", ")}.`);
+        return library.create(directory, args[1], event);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value(flags, "from") ?? config2.paths.interactionImports, directory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value(flags, "out") ?? config2.paths.interactionExports);
+    }
+  }];
 }
 async function content(flags, context) {
   const inline = value(flags, "content"), from = value(flags, "from");
@@ -26808,27 +29543,35 @@ async function content(flags, context) {
 }
 const contentOptions = { content: "string", from: "string", stdin: "boolean", encoding: "string" };
 function commands(registry2, services) {
-  const generatorCatalog = () => [...registry2.generators.values()].map(({ id, description: description2 }) => ({ id, description: description2 })).concat({ id: "document", description: "Render an Obsidian Markdown/frontmatter template with typed values." });
+  const generatorCatalog = () => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 })).concat([
+    { id: "document", description: "Render an Obsidian Markdown/frontmatter template with typed values." },
+    { id: "ui", description: "Generate deterministic UI code from Markdown component definitions." },
+    { id: "stories", description: "Generate native Storybook CSF stories for existing UI components." },
+    { id: "data-source", description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown." }
+  ]);
   const catalog = () => ({
     name: "The Forge",
-    version: metadata.version,
+    version: metadata$1.version,
     apiVersion: 1,
-    node: metadata.engines.node,
+    node: metadata$1.engines.node,
     globalOptions,
-    output: "{ ok, data?, error?: {code,message}, context?: {workspaceRoot,root,project}, events, warnings }",
-    commands: [...registry2.commands.values()].map(({ id, description: description2, usage, options }) => ({ id, description: description2, usage, options: options ?? {} })),
+    output: "{ ok, data?, error?: {code,message,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
+    commands: [...registry2.commands.values()].map(({ id: id2, description: description2, usage, options }) => ({ id: id2, description: description2, usage, options: options ?? {} })),
     generators: generatorCatalog(),
     skills: [...registry2.skills.keys()]
   });
   return [
     ...workflowCommands(services),
+    ...uiCommands(services),
+    ...dataSourceCommands(services),
+    ...interactionCommands(services),
     { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
       const command = registry2.commands.get(args[0]);
       ensure(command, "UNKNOWN_COMMAND", args[0]);
-      const { id, description: description2, usage, options } = command;
-      return { id, description: description2, usage, options: options ?? {}, globalOptions };
+      const { id: id2, description: description2, usage, options } = command;
+      return { id: id2, description: description2, usage, options: options ?? {}, globalOptions };
     } },
     { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", run(args) {
       arity(args, 0);
@@ -26898,12 +29641,22 @@ function commands(registry2, services) {
       const pointer = value(flags, "pointer", true), data = parseJson(value(flags, "value", true));
       return workspace.edit(args[0], value(flags, "if-match", true), (bytes) => workspace.codec.patch(args[0], bytes, pointer, data));
     } },
-    { id: "make", description: "Generate TypeScript, plugins, or documents from Obsidian templates.", usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO]", options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string" }, async run(args, flags, context) {
+    { id: "make", description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.", usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]", options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string", ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
       if (args.length === 0) {
-        ensure(["out", "template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
+        ensure(["out", "template", "values", "values-from", "date", ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
         return { generators: generatorCatalog() };
       }
       arity(args, 2);
+      if (args[0] === "data-source") {
+        ensure(["template", "values", "values-from", "date", ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Data-source generation accepts library/project/output/test-data/plan/revision options.");
+        return makeDataSource(args[1], flags, context, services);
+      }
+      ensure(flags["test-data-out"] === void 0, "INVALID_ARGUMENT", "--test-data-out requires make data-source.");
+      if (args[0] === "ui" || args[0] === "stories") {
+        ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
+        return makeUi(args[0], args[1], flags, context, services);
+      }
+      ensure([...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Library generation options require make ui, make stories, or make data-source.");
       if (args[0] === "document") return makeDocument(args[1], flags, context, services);
       ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
       const generator = registry2.generators.get(args[0]);
@@ -26927,46 +29680,231 @@ function commands(registry2, services) {
       return { plugins: registry2.plugins.map((p) => p.manifest) };
     } },
     { id: "skills", description: "List, read or install bundled and plugin agent skills.", usage: "skills [list | show <id> | install] [--out .agents/skills]", options: { out: "string" }, async run(args, flags, { workspace }) {
-      const action = args[0] ?? "list";
-      if (action !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
-      if (action === "list") {
+      const action2 = args[0] ?? "list";
+      if (action2 !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
+      if (action2 === "list") {
         arity(args, 0, 1);
         return { skills: [...registry2.skills.keys()] };
       }
-      if (action === "show") {
+      if (action2 === "show") {
         arity(args, 2);
         const skill = registry2.skills.get(args[1]);
         ensure(skill, "UNKNOWN_SKILL", args[1]);
         return skill;
       }
-      ensure(action === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
+      ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
       arity(args, 1);
       const directory = value(flags, "out") ?? ".agents/skills";
       return workspace.write([...registry2.skills.values()].map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
     } }
   ];
 }
+const germanCommands = {
+  help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
+  schema: "Maschinenlesbarer Katalog der verfügbaren Funktionen.",
+  config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
+  setup: "The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.",
+  templates: "Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.",
+  project: "TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.",
+  components: "Markdown-Komponenten verwalten, prüfen, importieren und exportieren.",
+  "data-sources": "Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.",
+  interactions: "Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.",
+  formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
+  list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
+  read: "Ein Dokument oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
+  validate: "Markdown-Frontmatter, Canvas-Graphen oder Base-Strukturen prüfen.",
+  create: "Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.",
+  write: "Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.",
+  edit: "Markdown ergänzen oder genau einen wörtlichen Treffer ersetzen.",
+  properties: "YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.",
+  patch: "Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.",
+  make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
+  events: "Ereignisverträge des Aufrufs auflisten.",
+  plugins: "Explizit geladene Plugin-Manifeste auflisten.",
+  skills: "Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren."
+};
+const germanGenerators = {
+  form: "Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.",
+  entity: "Domain-Entität mit Identität und Prüfung von Invarianten.",
+  "value-object": "Unveränderliches Wertobjekt mit Gleichheitsprüfung und Validierung.",
+  "use-case": "Anwendungsfall mit injiziertem Repository-Port.",
+  event: "Typisierte Ereignisdaten mit Laufzeitbeschreibung.",
+  plugin: "Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.",
+  document: "Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.",
+  ui: "Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.",
+  stories: "Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren.",
+  "data-source": "Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren."
+};
+const germanGuidance = {
+  attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
+  otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
+  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. Keine dauerhafte Wiederholung.",
+  setup: {
+    "node bin/app.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
+    "node bin/app.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
+    "node bin/app.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
+  }
+};
+const germanErrors = {
+  AMBIGUOUS_EDIT: "Der Suchtext muss genau einmal vorkommen.",
+  CONFLICT: "Die Datei existiert bereits oder wurde geändert. Lesen Sie die aktuelle Revision erneut; prüfen Sie generierte Änderungen mit --plan, bevor Sie sie mit --revisions-from übernehmen.",
+  CYCLIC_UI_COMPONENT: "Die Komponenten enthalten einen Zyklus. Entfernen Sie die zyklische Referenz.",
+  DATA_SOURCE_RENDERER_UNAVAILABLE: "Für diese Datenquelle ist kein Generator verfügbar.",
+  DUPLICATE_DATA_SOURCE: "Die Datenquellen-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
+  DUPLICATE_INTERACTION: "Die Interaktions-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
+  DUPLICATE_EVENT: "Die Ereignis-ID ist bereits registriert.",
+  DUPLICATE_OPTION: "Eine Option wurde mehrfach oder widersprüchlich angegeben.",
+  DUPLICATE_OR_INVALID_ID: "Eine ID ist ungültig oder bereits vergeben.",
+  DUPLICATE_PLUGIN: "Das Plugin ist bereits registriert.",
+  DUPLICATE_UI_COMPONENT: "Die Komponenten-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
+  EMPTY_DATA_SOURCE_LIBRARY: "Die Datenquellenbibliothek ist leer. Führen Sie data-sources init aus oder fügen Sie eine Definition hinzu.",
+  EMPTY_INTERACTION_LIBRARY: "Die Interaktionsbibliothek ist leer. Führen Sie interactions init aus oder fügen Sie eine Definition hinzu.",
+  EMPTY_UI_LIBRARY: "Die Komponentenbibliothek ist leer. Führen Sie components init aus oder fügen Sie eine Definition hinzu.",
+  EVENT_RECURSION: "Die maximale Ereignistiefe wurde überschritten. Prüfen Sie rekursive Ereignisbehandler.",
+  INCOMPATIBLE_PLUGIN: "Das Plugin unterstützt diese API-Version nicht.",
+  INPUT_REQUIRED: "Leiten Sie die erforderliche Eingabe über stdin weiter.",
+  INVALID_ARGUMENT: "Die Argumente sind ungültig. Prüfen Sie die Diagnose und die Hilfe mit help <command>.",
+  INVALID_BASE: "Die Base-Struktur ist ungültig. Prüfen Sie die Definition.",
+  INVALID_CANVAS: "Die Canvas-Struktur ist ungültig. Prüfen Sie Knoten, Kanten und IDs.",
+  INVALID_COMPONENT_KIND: "Der Komponententyp ist ungültig. Verwenden Sie domain oder application.",
+  INVALID_CONFIG: "Die Konfiguration ist ungültig oder nicht lesbar. Prüfen Sie bin/config.json und die Diagnose.",
+  INVALID_DATA_SOURCE: "Die Datenquellendefinition ist ungültig. Prüfen Sie die angegebenen Felder.",
+  INVALID_INTERACTION: "Die Interaktionsdefinition ist ungültig. Prüfen Sie Ereignis, Aktionen und Bindungen.",
+  INVALID_INTERACTION_STATE: "Der Interaktionszustand ist ungültig. Prüfen Sie Zustandstypen, Anfangswerte und Aktionsziele.",
+  INVALID_ENCODING: "Die Eingabekodierung ist ungültig. Verwenden Sie gültiges UTF-8 oder Base64.",
+  INVALID_EVENT: "Die Ereignisdefinition oder der Ereigniszustand ist ungültig.",
+  INVALID_EVENT_LISTENER: "Ein Ereignisbehandler muss eine Funktion sein.",
+  INVALID_EVENT_PAYLOAD: "Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.",
+  INVALID_FRONTMATTER: "Das YAML-Frontmatter ist ungültig. Prüfen Sie die Dokumenteigenschaften.",
+  INVALID_GENERATION_PLAN: "Der Generierungsplan ist ungültig. Prüfen Sie die Ausgabepfade.",
+  INVALID_GENERATION_REVISIONS: "Die Revisionsfreigabe ist ungültig. Verwenden Sie die geprüften SHA-256-Revisionen aus dem Plan.",
+  INVALID_INPUT: "Die Eingabe ist ungültig. Prüfen Sie die Diagnose und die zulässigen Eingabeoptionen.",
+  INVALID_JSON: "Die Eingabe muss gültiges JSON enthalten.",
+  INVALID_KEY: "Der Eigenschaftsschlüssel ist ungültig.",
+  INVALID_LANGUAGE: "Die Sprache wird nicht unterstützt. Verwenden Sie --lang en oder --lang de.",
+  INVALID_NAME: "Der Name ist ungültig. Prüfen Sie die erlaubten Zeichen.",
+  INVALID_PATH: "Der Pfad ist ungültig. Verwenden Sie einen relativen Pfad innerhalb des Arbeitsbereichs.",
+  INVALID_PLAN: "Der Schreibplan ist ungültig. Prüfen Sie doppelte und überlappende Pfade.",
+  INVALID_PLUGIN: "Das Plugin ist ungültig. Prüfen Sie Manifest und Implementierung.",
+  INVALID_PLUGIN_CONFIG: "Die Plugin-Konfiguration ist ungültig. Prüfen Sie die aktivierten Plugin-IDs.",
+  INVALID_POINTER: "Der JSON Pointer ist ungültig oder verweist auf keine passende Position.",
+  INVALID_PROJECT: "Die Projektmetadaten sind ungültig. Prüfen Sie .forge/project.json.",
+  INVALID_PROJECT_CONTEXT: "Die gespeicherte Projektauswahl ist ungültig. Verwenden Sie project open <name> oder project close.",
+  INVALID_PROJECT_NAME: "Der Projektname ist ungültig. Verwenden Sie einen gültigen Projektnamen.",
+  INVALID_RESULT: "Der Befehl lieferte nicht serialisierbare Daten. Prüfen Sie vor einem erneuten Versuch die bereits bestätigten Ereignisse.",
+  INVALID_SETUP: "Die Installation kann nicht abgeschlossen werden. Prüfen Sie die Diagnose.",
+  INVALID_TEMPLATE: "Die Markdown-Vorlage ist ungültig. Prüfen Sie Frontmatter und Platzhalter.",
+  INVALID_TEMPLATE_DATE: "Das Datum oder Datumsformat der Vorlage ist ungültig.",
+  INVALID_TEMPLATE_PACK: "Das Vorlagenpaket ist ungültig. Prüfen Sie IDs und Pfade.",
+  INVALID_TEMPLATE_VALUES: "Die Vorlagenwerte sind ungültig. Prüfen Sie Pflichtfelder und Datentypen.",
+  INVALID_UI: "Die UI-Definition ist ungültig. Prüfen Sie Eigenschaften und Komponentenreferenzen.",
+  INVALID_UI_FRAMEWORK: "Das UI-Ziel ist ungültig. Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular.",
+  INVALID_UI_LIBRARY: "Die Komponentenbibliothek ist ungültig. Prüfen Sie die Definitionen.",
+  INVALID_YAML: "Das YAML-Dokument ist ungültig. Prüfen Sie die Syntax und Aliase.",
+  MISSING_ARGUMENT: "Ein erforderliches Argument fehlt. Prüfen Sie help <command>.",
+  NOT_FOUND: "Die angegebene Datei wurde nicht gefunden. Prüfen Sie Pfad und Projektkontext.",
+  OPERATION_FAILED: "Der Vorgang ist fehlgeschlagen. Prüfen Sie die ursprüngliche Diagnose.",
+  PLUGIN_LIFECYCLE: "Der Plugin-Lebenszyklus ist ungültig. Prüfen Sie die Plugin-Implementierung.",
+  PLUGIN_NAMESPACE: "Der Plugin-Beitrag liegt außerhalb seines erlaubten Namensraums.",
+  PROJECT_EXISTS: "Das Projekt existiert bereits. Verwenden Sie einen anderen Namen oder öffnen Sie das vorhandene Projekt.",
+  PROJECT_NOT_FOUND: "Das Projekt wurde nicht gefunden. Prüfen Sie project list.",
+  PROJECT_REQUIRED: "Öffnen Sie zuerst mit project open <name> ein Forge-Projekt.",
+  ROLLBACK_FAILED: "Die Wiederherstellung ist fehlgeschlagen. Prüfen Sie die in der Diagnose genannten Dateien vor einem erneuten Versuch.",
+  STALE_PROJECT_CONTEXT: "Das ausgewählte Projekt fehlt oder ist ungültig. Verwenden Sie project open <name> oder project close.",
+  UI_RENDERER_UNAVAILABLE: "Für dieses UI-Ziel ist kein Generator verfügbar.",
+  UNKNOWN_COMMAND: "Der Befehl ist unbekannt. Verfügbare Befehle finden Sie mit help oder schema.",
+  UNKNOWN_DATA_SOURCE: "Die Datenquelle ist unbekannt. Prüfen Sie data-sources list.",
+  UNKNOWN_INTERACTION: "Die Interaktion ist unbekannt. Prüfen Sie interactions list und die zugeordnete Interaktionsbibliothek.",
+  UNKNOWN_EVENT: "Das Ereignis ist nicht registriert.",
+  UNKNOWN_GENERATOR: "Der Generator ist unbekannt. Verfügbare Generatoren finden Sie mit make.",
+  UNKNOWN_OPTION: "Die Option ist unbekannt. Prüfen Sie help <command>.",
+  UNKNOWN_SKILL: "Der Skill ist unbekannt. Prüfen Sie skills list.",
+  UNKNOWN_TEMPLATE_VARIABLE: "Die Vorlage enthält eine unbekannte Variable. Prüfen Sie templates inspect <template.md>.",
+  UNKNOWN_UI_COMPONENT: "Die Komponente ist unbekannt. Prüfen Sie components list.",
+  UNSAFE_PATH: "Der Pfad ist nicht sicher. Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen.",
+  UNSUPPORTED_EDIT: "Diese Bearbeitung wird für den Dateityp nicht unterstützt. Prüfen Sie help edit, help patch oder help write.",
+  WORKSPACE_BUSY: "Ein anderer Schreibvorgang sperrt den Arbeitsbereich. Versuchen Sie es nach dessen Abschluss erneut.",
+  GENERATION_DRIFT: "Generierte Dateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.",
+  UI_DRIFT: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.",
+  DATA_SOURCE_DRIFT: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan."
+};
+function language(value2) {
+  ensure(value2 === "en" || value2 === "de", "INVALID_LANGUAGE", "Unsupported language. Use --lang en or --lang de.");
+  return value2;
+}
+function translated(catalog, id2) {
+  return Object.hasOwn(catalog, id2) ? catalog[id2] : void 0;
+}
+class Localizer {
+  constructor(language2 = "en") {
+    this.language = language2;
+  }
+  language;
+  command(command) {
+    const description2 = this.language === "de" ? translated(germanCommands, command.id) : void 0;
+    return description2 ? { ...command, description: description2 } : command;
+  }
+  generators(items) {
+    if (!Array.isArray(items)) return items;
+    return items.map((item) => {
+      if (!isRecord(item) || typeof item.id !== "string") return item;
+      const description2 = translated(germanGenerators, item.id);
+      return description2 ? { ...item, description: description2 } : item;
+    });
+  }
+  result(command, data) {
+    if (this.language === "en" || !isRecord(data)) return data;
+    if (["help", "schema", "make"].includes(command) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
+    if (["components", "data-sources", "interactions"].includes(command) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
+      return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
+    }
+    if (command === "formats") return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
+    if (command === "events") return { ...data, delivery: germanGuidance.delivery };
+    if (command === "setup" && Array.isArray(data.nextSteps)) return {
+      ...data,
+      nextSteps: data.nextSteps.map((step) => {
+        if (!isRecord(step) || typeof step.command !== "string") return step;
+        const purpose = translated(germanGuidance.setup, step.command);
+        return purpose ? { ...step, purpose } : step;
+      })
+    };
+    return data;
+  }
+  error(error2) {
+    const code = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
+    const diagnostic = error2 instanceof Error ? error2.message : String(error2);
+    const details = error2 instanceof AppError ? error2.details : void 0;
+    const message = this.language === "de" ? translated(germanErrors, code) : void 0;
+    if (!message) return { code, message: diagnostic, ...details ? { details } : {} };
+    return { code, message, details: { ...details, localization: { originalMessage: diagnostic, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
+  }
+}
 async function run() {
   const tokens = process.argv.slice(2);
   const registry2 = new Registry(), events = new EventBus();
   let result;
   let activeContext;
+  let localizer = new Localizer();
   let compact = tokens.includes("--json");
   try {
     const bootstrap = parseBootstrap(tokens);
+    const requestedLanguage = value(bootstrap.flags, "lang");
+    if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
     if (bootstrap.flags.version) {
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
-      result = { ok: true, data: { name: "The Forge", version: metadata.version, apiVersion: 1 } };
+      result = { ok: true, data: { name: "The Forge", version: metadata$1.version, apiVersion: 1 } };
     } else {
       const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value(bootstrap.flags, "root") });
       const config2 = loaded.config;
+      localizer = new Localizer(requestedLanguage !== void 0 ? language(requestedLanguage) : config2.settings.language);
+      config2.settings.language = localizer.language;
       config2.settings.json = bootstrap.flags["no-json"] ? false : bootstrap.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = bootstrap.flags["no-dry-run"] ? false : bootstrap.flags["dry-run"] ? true : config2.settings.dryRun;
       compact = config2.settings.json;
-      const files = await NodeFiles.at(loaded.root);
+      const files = await NodeFiles.at(loaded.root, (message) => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
-      for (const id2 of ["file.created", "file.updated"]) events.define({ id: id2, validate: (v) => isRecord(v) && typeof v.path === "string" && typeof v.revision === "string" && typeof v.bytes === "number" && v.operation === id2.slice(5) });
+      for (const id22 of ["file.created", "file.updated"]) events.define({ id: id22, validate: (v) => isRecord(v) && typeof v.path === "string" && typeof v.revision === "string" && typeof v.bytes === "number" && v.operation === id22.slice(5) });
       let environment;
       for (const generator of generators) registry2.add(registry2.generators, generator);
       for (const skill of builtinSkills) registry2.add(registry2.skills, skill);
@@ -26977,22 +29915,43 @@ async function run() {
         get projects() {
           return new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold });
         },
-        setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()]).run()
+        get dataSources() {
+          return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer());
+        },
+        get interactions() {
+          return new InteractionLibrary(environment, new MarkdownInteractionDefinitions());
+        },
+        get uiLibrary() {
+          return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
+            componentPaths: (definitions, options) => definitions.map((definition2) => `${options.outputDirectory}/${componentArtifact(definition2, options.framework).fileName}`),
+            generate: (definitions, options) => [
+              ...options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory, options.interactions),
+              ...options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory) : []
+            ]
+          }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config2.paths.interactions);
+        },
+        installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
+        setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run()
       })) registry2.add(registry2.commands, command2);
       if (!bootstrap.flags["no-plugins"]) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events);
-      const id = bootstrap.args[0] ?? "help";
-      const command = registry2.commands.get(id);
-      ensure(command, "UNKNOWN_COMMAND", `Unknown command ${id}. Run help or schema.`);
+      const id2 = bootstrap.args[0] ?? "help";
+      const command = registry2.commands.get(id2);
+      ensure(command, "UNKNOWN_COMMAND", `Unknown command ${id2}. Run help or schema.`);
       const parsed = parseArguments(tokens, { ...globalOptions, ...command.options });
+      const parsedLanguage = value(parsed.flags, "lang");
+      if (parsedLanguage !== void 0) localizer = new Localizer(language(parsedLanguage));
+      config2.settings.language = localizer.language;
+      for (const [commandId, registered] of registry2.commands) registry2.commands.set(commandId, localizer.command(registered));
       ensure(!parsed.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
       for (const option of ["root", "no-plugins"]) ensure(parsed.flags[option] === bootstrap.flags[option], "INVALID_ARGUMENT", `--${option} must precede the command.`);
       config2.settings.json = parsed.flags["no-json"] ? false : parsed.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = parsed.flags["no-dry-run"] ? false : parsed.flags["dry-run"] ? true : config2.settings.dryRun;
       compact = config2.settings.json;
       environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun);
-      const environmentCommand = parsed.flags.help || ["help", "schema", "config", "formats", "events", "plugins", "setup", "project", "templates"].includes(id) || id === "make" && (parsed.args.length === 1 || parsed.args[1] === "plugin") || id === "skills" && parsed.args[1] !== "install";
+      const environmentCommand = parsed.flags.help || ["help", "schema", "config", "formats", "events", "plugins", "setup", "project", "templates", "components", "data-sources", "interactions"].includes(id2) || id2 === "make" && (parsed.args.length === 1 || parsed.args[1] === "plugin") || id2 === "skills" && parsed.args[1] !== "install";
       const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold });
-      const project = environmentCommand ? null : await projects.current();
+      const requestedProject = id2 === "make" && ["ui", "stories", "data-source"].includes(parsed.args[1] ?? "") ? value(parsed.flags, "project") : void 0;
+      const project = environmentCommand ? null : requestedProject !== void 0 ? await projects.inspect(requestedProject) : await projects.current();
       const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config2.settings.dryRun) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? minpath.resolve(files.root, project.directory) : files.root, project };
       const context = { workspace, events, ...activeContext, input: async () => {
@@ -27001,13 +29960,13 @@ async function run() {
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
         return Buffer.concat(chunks);
       } };
-      if (!parsed.flags.help && !["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id)) await registry2.activate(context);
-      const data = parsed.flags.help ? await registry2.commands.get("help").run(id === "help" ? [] : [id], {}, context) : await command.run(parsed.args.slice(1), parsed.flags, context);
-      result = { ok: true, data };
+      if (!parsed.flags.help && !["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id2)) await registry2.activate(context);
+      const data = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command.run(parsed.args.slice(1), parsed.flags, context);
+      result = { ok: true, data: localizer.result(parsed.flags.help ? "help" : id2, data) };
     }
   } catch (error2) {
     process.exitCode = error2 instanceof AppError ? error2.exitCode : 1;
-    result = { ok: false, error: { code: error2 instanceof AppError ? error2.code : "OPERATION_FAILED", message: error2 instanceof Error ? error2.message : String(error2) } };
+    result = { ok: false, error: localizer.error(error2) };
   } finally {
     await registry2.dispose(events);
   }
@@ -27015,7 +29974,7 @@ async function run() {
     process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: events.history, warnings: events.warnings }, null, compact ? void 0 : 2) + "\n");
   } catch {
     process.exitCode = 1;
-    process.stdout.write(JSON.stringify({ ok: false, error: { code: "INVALID_RESULT", message: "Command returned non-serializable data. Inspect committed events before retrying." }, ...activeContext ? { context: activeContext } : {}, events: events.history, warnings: events.warnings }) + "\n");
+    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(new AppError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: events.history, warnings: events.warnings }) + "\n");
   }
 }
 void run();

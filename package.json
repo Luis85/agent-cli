@@ -13,15 +13,15 @@
   },
   "scripts": {
     "dev": "vite build --watch --emptyOutDir=false",
-    "typecheck": "node scripts/quality/typecheck.mjs",
-    "build": "vite build && node scripts/package.mjs",
+    "typecheck": "node src/infrastructure/scripts/quality/typecheck.mjs",
+    "build": "vite build && node src/infrastructure/scripts/package.mjs",
     "test": "vitest run",
     "check": "npm run check:fast && npm run build && npm test",
-    "release": "npm run check && node scripts/release.mjs",
-    "lint": "node scripts/quality/lint.mjs",
-    "analyze": "node scripts/quality/analyze.mjs",
+    "release": "npm run check && node src/infrastructure/scripts/release.mjs",
+    "lint": "node src/infrastructure/scripts/quality/lint.mjs",
+    "analyze": "node src/infrastructure/scripts/quality/analyze.mjs",
     "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
-    "check:structure": "node scripts/quality/structure.mjs"
+    "check:structure": "node src/infrastructure/scripts/quality/structure.mjs"
   },
   "dependencies": {
     "commander": "^15.0.0",
@@ -33,13 +33,24 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@angular/common": "21.2.25",
+    "@angular/compiler": "21.2.25",
+    "@angular/core": "21.2.25",
+    "@angular/platform-browser": "21.2.25",
     "@types/jsdom": "27.0.0",
     "@types/node": "^22.18.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vue/compiler-sfc": "3.5.43",
     "fallow": "3.31.0",
     "jsdom": "27.4.0",
     "oxlint": "1.86.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "svelte": "5.57.2",
     "typescript": "~5.9.3",
     "vite": "^7.1.9",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "vue": "3.5.43"
   }
 }

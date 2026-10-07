@@ -1,4 +1,6 @@
 export declare function vaultPath(input: string): string;
+/** Recursive libraries must not copy definitions into their own discovery scope. */
+export declare function ensureSeparateDirectories(source: string, destination: string): void;
 export declare const nativeFormats: {
     readonly markdown: readonly ["md"];
     readonly canvas: readonly ["canvas"];

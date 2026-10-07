@@ -4,7 +4,13 @@ import { nativeFormats, fileKind } from '../domain/file.ts';
 import { encodeText, encodeYaml } from '../infrastructure/documents.ts';
 import type { Command, CommandContext, Registry } from '../application/plugins.ts';
 import { arity, globalOptions, value } from './arguments.ts';
-import { workflowCommands, makeDocument, parseJson, type WorkflowServices } from './workflow-commands.ts';
+import { workflowCommands, makeDocument } from './workflow-commands.ts';
+import { parseJson } from './input.ts';
+import type { WorkflowServices } from './services.ts';
+import { libraryGenerationOptions } from './generation-controls.ts';
+import { uiCommands, makeUi, uiGenerationOptions } from './ui-commands.ts';
+import { dataSourceCommands, makeDataSource, dataSourceGenerationOptions } from './data-source-commands.ts';
+import { interactionCommands } from './interaction-commands.ts';
 
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const inline = value(flags, 'content'), from = value(flags, 'from');
@@ -22,16 +28,24 @@ async function content(flags: Record<string, string | boolean>, context: Command
 const contentOptions = { content: 'string', from: 'string', stdin: 'boolean', encoding: 'string' } as const;
 
 export function commands(registry: Registry, services: WorkflowServices): Command[] {
-  const generatorCatalog = () => [...registry.generators.values()].map(({ id, description }) => ({ id, description })).concat({ id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.' });
+  const generatorCatalog = () => [...registry.generators.values()].map(({ id, description }) => ({ id, description })).concat([
+    { id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.' },
+    { id: 'ui', description: 'Generate deterministic UI code from Markdown component definitions.' },
+    { id: 'stories', description: 'Generate native Storybook CSF stories for existing UI components.' },
+    { id: 'data-source', description: 'Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.' },
+  ]);
   const catalog = () => ({
     name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node,
-    globalOptions, output: '{ ok, data?, error?: {code,message}, context?: {workspaceRoot,root,project}, events, warnings }',
+    globalOptions, output: '{ ok, data?, error?: {code,message,details?}, context?: {workspaceRoot,root,project}, events, warnings }',
     commands: [...registry.commands.values()].map(({ id, description, usage, options }) => ({ id, description, usage, options: options ?? {} })),
     generators: generatorCatalog(),
     skills: [...registry.skills.keys()],
   });
   return [
     ...workflowCommands(services),
+    ...uiCommands(services),
+    ...dataSourceCommands(services),
+    ...interactionCommands(services),
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
@@ -87,12 +101,22 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
       arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
     } },
-    { id: 'make', description: 'Generate TypeScript, plugins, or documents from Obsidian templates.', usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO]', options: { out: 'string', template: 'string', values: 'string', 'values-from': 'string', date: 'string' }, async run(args, flags, context) {
+    { id: 'make', description: 'Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.', usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]', options: { out: 'string', template: 'string', values: 'string', 'values-from': 'string', date: 'string', ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions }, async run(args, flags, context) {
       if (args.length === 0) {
-        ensure(['out', 'template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.');
+        ensure(['out', 'template', 'values', 'values-from', 'date', ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.');
         return { generators: generatorCatalog() };
       }
       arity(args, 2);
+      if (args[0] === 'data-source') {
+        ensure(['template', 'values', 'values-from', 'date', ...Object.keys(uiGenerationOptions)].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Data-source generation accepts library/project/output/test-data/plan/revision options.');
+        return makeDataSource(args[1]!, flags, context, services);
+      }
+      ensure(flags['test-data-out'] === undefined, 'INVALID_ARGUMENT', '--test-data-out requires make data-source.');
+      if (args[0] === 'ui' || args[0] === 'stories') {
+        ensure(['template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Template options require make document.');
+        return makeUi(args[0], args[1]!, flags, context, services);
+      }
+      ensure([...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions)].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Library generation options require make ui, make stories, or make data-source.');
       if (args[0] === 'document') return makeDocument(args[1]!, flags, context, services);
       ensure(['template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Template options require make document.');
       const generator = registry.generators.get(args[0]!); ensure(generator, 'UNKNOWN_GENERATOR', args[0]!);

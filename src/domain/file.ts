@@ -9,6 +9,12 @@ export function vaultPath(input: string): string {
   return input;
 }
 
+/** Recursive libraries must not copy definitions into their own discovery scope. */
+export function ensureSeparateDirectories(source: string, destination: string): void {
+  vaultPath(source); vaultPath(destination);
+  ensure(source !== destination && !source.startsWith(`${destination}/`) && !destination.startsWith(`${source}/`), 'INVALID_PATH', 'Import and export directories must be separate; neither may contain the other.');
+}
+
 export const nativeFormats = {
   markdown: ['md'], canvas: ['canvas'], base: ['base'],
   image: ['avif', 'bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'],

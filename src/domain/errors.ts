@@ -1,5 +1,5 @@
 export class AppError extends Error {
-  constructor(public readonly code: string, message: string, public readonly exitCode = 1) {
+  constructor(public readonly code: string, message: string, public readonly exitCode = 1, public readonly details?: Record<string, unknown>) {
     super(message);
   }
 }

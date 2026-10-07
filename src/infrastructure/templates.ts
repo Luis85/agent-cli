@@ -122,7 +122,12 @@ export class MarkdownTemplates implements DocumentTemplates {
     const parts = parseMarkdownParts(textOf(bytes));
     const tokens = [...placeholders(parts.yaml), ...placeholders(parts.body)];
     if (parts.exists) renderYaml(parts.yaml, token => `{{${token.expression}}}`);
-    return { variables: [...new Set(tokens.map(token => token.expression))].sort() };
+    const builtin = (token: Placeholder) => ['title', 'date', 'time'].includes(token.key);
+    return {
+      variables: [...new Set(tokens.map(token => token.expression))].sort(),
+      requiredVariables: [...new Set(tokens.filter(token => !builtin(token)).map(token => token.key))].sort(),
+      builtins: [...new Set(tokens.filter(builtin).map(token => token.expression))].sort(),
+    };
   }
 
   render(bytes: Uint8Array, options: TemplateOptions): Uint8Array {

@@ -1,23 +1,10 @@
-import { AppError, ensure, isRecord } from '../domain/errors.ts';
-import type { FileRepository } from '../application/ports.ts';
+import { ensure, isRecord } from '../domain/errors.ts';
 import { vaultPath } from '../domain/file.ts';
-import type { LoadedConfig } from '../application/config.ts';
-import type { DocumentTemplates } from '../application/templates.ts';
-import type { ProjectService } from '../application/projects.ts';
 import type { Command, CommandContext } from '../application/plugins.ts';
 import { arity, value } from './arguments.ts';
+import { parseJson } from './input.ts';
+import type { WorkflowServices } from './services.ts';
 
-export interface WorkflowServices {
-  loaded: LoadedConfig;
-  files: FileRepository;
-  templates: DocumentTemplates;
-  projects: ProjectService;
-  setup(): Promise<unknown>;
-}
-export function parseJson(text: string): unknown {
-  try { return JSON.parse(text) as unknown; }
-  catch { throw new AppError('INVALID_JSON', 'Expected valid JSON input.', 2); }
-}
 export async function makeDocument(title: string, flags: Record<string, string | boolean>, context: CommandContext, services: WorkflowServices) {
   ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), 'INVALID_NAME', 'Document title must be a nonempty filename without path separators.');
   const template = value(flags, 'template', true)!;
@@ -37,13 +24,18 @@ export function workflowCommands(services: WorkflowServices): Command[] {
   return [
     { id: 'config', description: 'Inspect the validated effective configuration and its source path.', usage: 'config', run(args) { arity(args, 0); return services.loaded; } },
     { id: 'setup', description: 'Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.', usage: '[--root project] setup [--dry-run]', run(args) { arity(args, 0); return services.setup(); } },
-    { id: 'templates', description: 'Discover Markdown templates and required placeholders.', usage: 'templates [list | inspect <template.md>]', async run(args) {
+    { id: 'templates', description: 'Discover Markdown templates, required placeholders, and install the planning workflow pack.', usage: 'templates [list | inspect <template.md> | install [workflow]]', async run(args) {
       const action = args[0] ?? 'list';
+      if (action === 'install') {
+        arity(args, 1, 2);
+        ensure(args[1] === undefined || args[1] === 'workflow', 'INVALID_ARGUMENT', 'The available template pack is workflow. Run templates install workflow.');
+        return services.installTemplates();
+      }
       if (action === 'list') {
         arity(args, 0, 1); const prefix = 'bin/templates/';
         return { directory: 'bin/templates', templates: (await services.files.list()).filter(path => path.startsWith(prefix) && path.toLowerCase().endsWith('.md')).map(path => path.slice(prefix.length)) };
       }
-      ensure(action === 'inspect', 'INVALID_ARGUMENT', 'Use templates list or templates inspect <template.md>.'); arity(args, 2);
+      ensure(action === 'inspect', 'INVALID_ARGUMENT', 'Use templates list, templates inspect <template.md>, or templates install workflow.'); arity(args, 2);
       ensure(args[1]!.toLowerCase().endsWith('.md'), 'INVALID_TEMPLATE', 'Use a Markdown template.');
       const path = `bin/templates/${vaultPath(args[1]!)}`;
       return { path, ...services.templates.inspect((await services.files.read(path)).bytes) };

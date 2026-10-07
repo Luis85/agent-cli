@@ -1,5 +1,6 @@
-import { ensure, isRecord } from '../domain/errors.ts';
+import { ensure } from '../domain/errors.ts';
 import { vaultPath, type FileChange, type FileSnapshot, type WriteRequest } from '../domain/file.ts';
+import { snapshotWriteRequests } from '../domain/write-plan.ts';
 import type { FileRepository } from './ports.ts';
 
 /** Project-relative paths with the parent repository's lock and filesystem guards. */
@@ -20,9 +21,7 @@ export class ScopedFiles implements FileRepository {
   }
 
   async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
-    ensure(Array.isArray(writes) && Array.from(writes).every(write => isRecord(write) && typeof write.path === 'string' && write.bytes instanceof Uint8Array && (write.expectedRevision === undefined || typeof write.expectedRevision === 'string')), 'INVALID_PLAN', 'Write plans must contain file requests with Uint8Array bytes.');
-    // The caller can retain and mutate a plan while the underlying port awaits I/O.
-    const requests = writes.map(write => ({ path: this.prefix + vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
+    const requests = snapshotWriteRequests(writes).map(write => ({ ...write, path: this.prefix + write.path }));
     const changes = await this.files.writeBatch(requests, dryRun);
     return changes.map(change => ({ ...change, path: this.relative(change.path) }));
   }
