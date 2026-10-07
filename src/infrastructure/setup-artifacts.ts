@@ -4,7 +4,7 @@ import { ensure } from '../domain/errors.ts';
 import { vaultPath } from '../domain/file.ts';
 import type { SetupArtifact } from '../application/setup.ts';
 
-const ownedAsset = /^(?:app\.js|package\.json|data\/(?:LICENSE|README\.md|THIRD-PARTY-NOTICES\.md|distribution\.json|(?:docs|skills|examples|types|licenses)\/.+))$/;
+const ownedAsset = /^(?:app\.js|package\.json|config\/default\.json|skills\/.+|data\/(?:LICENSE|README\.md|THIRD-PARTY-NOTICES\.md|distribution\.json|(?:docs|examples|types|licenses)\/.+))$/;
 
 /** Copy only declared distribution assets, never workspace state or user extensions. */
 export async function readSetupArtifacts(bundleDir: string): Promise<SetupArtifact[]> {

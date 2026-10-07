@@ -55,6 +55,15 @@ export declare class ProjectService {
         project: ProjectInfo | null;
     }>;
     create(name: string): Promise<{
+        nextSteps: ({
+            scope: string;
+            command: string;
+            directory?: undefined;
+        } | {
+            scope: string;
+            directory: string;
+            command: string;
+        })[];
         preview: {
             path: string;
             content: string;
@@ -68,6 +77,15 @@ export declare class ProjectService {
             directory: string;
         };
     } | {
+        nextSteps: ({
+            scope: string;
+            command: string;
+            directory?: undefined;
+        } | {
+            scope: string;
+            directory: string;
+            command: string;
+        })[];
         preview?: undefined;
         dryRun: boolean;
         changes: import("../sdk.ts").FileChange[];

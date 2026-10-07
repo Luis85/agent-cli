@@ -1,0 +1,57 @@
+# The Forge documentation
+
+The Forge is a portable CLI for maintaining engineering workspaces, safely editing files and generating project/UI boilerplate. Start with the task you need to complete. These docs follow [Diátaxis](https://diataxis.fr/): tutorials teach through a concrete exercise, how-to guides solve a task, references define exact contracts, and explanations describe the reasoning behind the design.
+
+## Tutorials — learn by doing
+
+For first-time users and agents learning the workflow. Follow each tutorial in order; each has a concrete outcome.
+
+| Tutorial | What you will build |
+| --- | --- |
+| [Getting started](tutorials/getting-started.md) | A workspace, managed project and safely created planning note |
+| [Your first Markdown-defined UI](tutorials/first-ui.md) | A reusable surface component and composed dashboard generated from Markdown |
+| [From idea to production](tutorials/idea-to-production.md) | A worked path through discovery, requirements, design, implementation, testing and production readiness |
+
+The [idea-to-production example pack](../examples/idea-to-production/README.md) supplies editable stage artifacts, prompts and component definitions used by the longer tutorial.
+
+## How-to guides — complete a task
+
+For users who already know their goal. Each guide states the needed context and gives the relevant commands.
+
+| Goal | Guide |
+| --- | --- |
+| Select a project and control file scope | [Set up and manage projects](how-to/manage-projects.md) |
+| Change paths, transfer definitions or update generated UI | [Maintain and regenerate components](how-to/manage-components.md) |
+| Generate editable discovery and delivery documents | [Use workflow templates](how-to/use-workflow-templates.md) |
+| Define REST or local JSON sources and generate adapters | [Manage data sources](how-to/manage-data-sources.md) |
+| Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
+| Extend the CLI with trusted Node modules | [Enable or disable plugins](how-to/enable-plugins.md) |
+| Diagnose checks and deliver a verified repository change | [Develop and test](how-to/develop-and-test.md) |
+| Package or upgrade the portable executable | [Build a release](how-to/release.md) |
+
+## Reference — look up the contract
+
+For developers integrating the CLI, agents checking an option, and authors writing definitions or plugins. These pages specify formats, API behavior and supported boundaries.
+
+| Reference | Contents |
+| --- | --- |
+| [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
+| [Configuration](reference/configuration.md) | Defaults, precedence, paths and workspace/project scope |
+| [Component definitions and targets](reference/ui-components.md) | YAML fields, composition, bindings, output artifacts and target dependencies |
+| [Storybook](reference/storybook.md) | CSF generation, metadata and native extension modules |
+| [Data sources](reference/data-sources.md) | Declarative source schemas, generated adapters and configuration |
+| [Forms](reference/forms.md) | Typed form model, validation and HTML renderer APIs |
+| [Markdown templates](reference/templates.md) | Variables, typed substitutions and date formatting |
+| [Files and formats](reference/formats.md) | Markdown, Canvas, Bases and attachment guarantees |
+| [Plugins and events](reference/plugins.md) | Manifests, contributions, lifecycle and delivery semantics |
+
+Run `node bin/app.js schema --json` for the installed executable's command catalog, and `node bin/app.js config --json` for its effective settings. The installed version is the authority for available commands.
+
+## Explanation — understand the design
+
+For contributors and teams deciding how to use The Forge within their architecture.
+
+- [Architecture and boundaries](explanation/architecture.md): domain/application ports, storage ownership, project scope and extension lifecycle.
+- [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
+
+Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../../skills/forge-workflow.md), [development skill](../../skills/forge-development.md) and [file-editing skill](../../skills/forge-vault.md).

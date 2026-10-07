@@ -1,11 +1,24 @@
 {
   "schemaVersion": 1,
   "paths": {
-    "projects": "projects"
+    "projects": "projects",
+    "components": "components",
+    "ui": "src/ui",
+    "stories": "stories",
+    "componentImports": "imports/components",
+    "componentExports": "exports/components",
+    "dataSources": "data-sources",
+    "dataGenerated": "src/data-sources",
+    "dataFixtures": "test-data",
+    "dataImports": "imports/data-sources",
+    "dataExports": "exports/data-sources"
   },
   "plugins": {
     "enabled": [
       "quality"
     ]
+  },
+  "ui": {
+    "framework": "html"
   }
 }

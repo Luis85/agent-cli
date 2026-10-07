@@ -7,14 +7,24 @@ import { ScopedFiles } from './application/scoped-files.ts';
 import { Registry, type CommandContext } from './application/plugins.ts';
 import { ProjectService } from './application/projects.ts';
 import { SetupService } from './application/setup.ts';
+import { UiLibrary } from './application/ui.ts';
+import { DataSourceLibrary } from './application/data-sources.ts';
+import { TemplateInstaller } from './application/templates.ts';
 import { NodeFiles } from './infrastructure/files.ts';
 import { ObsidianDocuments } from './infrastructure/documents.ts';
 import { loadEnabledPlugins } from './infrastructure/plugins.ts';
 import { loadConfig } from './infrastructure/config.ts';
 import { MarkdownTemplates } from './infrastructure/templates.ts';
+import { workflowTemplates } from './infrastructure/workflow-templates.ts';
 import { projectScaffold, componentScaffold } from './infrastructure/project-scaffolds.ts';
 import { readSetupArtifacts } from './infrastructure/setup-artifacts.ts';
 import { generators } from './infrastructure/generators.ts';
+import { MarkdownUiDefinitions } from './infrastructure/ui-definitions.ts';
+import { standardUiCatalog } from './infrastructure/ui-catalog.ts';
+import { componentArtifact, renderUiComponents } from './infrastructure/ui-renderers.ts';
+import { renderUiStories } from './infrastructure/ui-stories.ts';
+import { MarkdownDataSourceDefinitions } from './infrastructure/data-source-definitions.ts';
+import { TypeScriptDataSourceRenderer } from './infrastructure/data-source-generator.ts';
 import { builtinSkills } from './infrastructure/skills.ts';
 import { commands } from './presentation/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/arguments.ts';
@@ -46,7 +56,16 @@ async function run(): Promise<void> {
       for (const command of commands(registry, {
         loaded, files, templates: new MarkdownTemplates(),
         get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
-        setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()]).run(),
+        get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
+        get uiLibrary() { return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
+          componentPaths: (definitions, options) => definitions.map(definition => `${options.outputDirectory}/${componentArtifact(definition, options.framework).fileName}`),
+          generate: (definitions, options) => [
+            ...(options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory)),
+            ...(options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory!) : []),
+          ],
+        }); },
+        installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
+        setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
       })) registry.add(registry.commands, command);
       if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       const id = bootstrap.args[0] ?? 'help';
@@ -60,9 +79,10 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun);
       // Management and recovery remain available even if saved project context is stale.
-      const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
+      const environmentCommand = parsed.flags.help || ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup', 'project', 'templates', 'components', 'data-sources'].includes(id) || (id === 'make' && (parsed.args.length === 1 || parsed.args[1] === 'plugin')) || (id === 'skills' && parsed.args[1] !== 'install');
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
-      const project = environmentCommand ? null : await projects.current();
+      const requestedProject = id === 'make' && ['ui', 'stories', 'data-source'].includes(parsed.args[1] ?? '') ? value(parsed.flags, 'project') : undefined;
+      const project = environmentCommand ? null : requestedProject !== undefined ? await projects.inspect(requestedProject) : await projects.current();
       const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const context: CommandContext = { workspace, events, ...activeContext, input: async () => {
@@ -80,7 +100,7 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
-    result = { ok: false, error: { code: error instanceof AppError ? error.code : 'OPERATION_FAILED', message: error instanceof Error ? error.message : String(error) } };
+    result = { ok: false, error: { code: error instanceof AppError ? error.code : 'OPERATION_FAILED', message: error instanceof Error ? error.message : String(error), ...(error instanceof AppError && error.details ? { details: error.details } : {}) } };
   } finally { await registry.dispose(events); }
   try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: events.history, warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
   catch {
