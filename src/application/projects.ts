@@ -1,5 +1,5 @@
 import { AppError, ensure, isRecord } from '../domain/errors.ts';
-import { vaultPath, type WriteRequest } from '../domain/file.ts';
+import { vaultPath, type FileSnapshot, type WriteRequest } from '../domain/file.ts';
 import type { FileRepository } from './ports.ts';
 import type { Workspace } from './workspace.ts';
 
@@ -45,6 +45,33 @@ export class ProjectService {
     return { schemaVersion: 1, name, type: 'library', directory };
   }
 
+  async current(): Promise<ProjectInfo | null> {
+    const context = await this.contextSnapshot();
+    const name = context ? this.contextProject(context) : null;
+    if (name === null) return null;
+    try { return await this.inspect(name); }
+    catch (error) {
+      if (error instanceof AppError && ['PROJECT_NOT_FOUND', 'INVALID_PROJECT'].includes(error.code)) {
+        throw new AppError('STALE_PROJECT_CONTEXT', `Selected project ${name} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`, 3);
+      }
+      throw error;
+    }
+  }
+
+  async requireCurrent(): Promise<ProjectInfo> {
+    const project = await this.current();
+    ensure(project !== null, 'PROJECT_REQUIRED', 'No project is selected. Run project list, then project open <name> before using this command.');
+    return project;
+  }
+
+  async open(name: string) {
+    return this.select(await this.inspect(name));
+  }
+
+  async close() {
+    return this.select(null);
+  }
+
   async create(name: string) {
     const directory = `${this.projectsDirectory}/${projectName(name)}`;
     ensure(!(await this.files.list()).some(path => path === directory || path.startsWith(directory + '/')), 'PROJECT_EXISTS', `Project directory already contains files: ${directory}`);
@@ -59,6 +86,42 @@ export class ProjectService {
     const plan = this.scaffolder.component(name, componentName, this.projectsDirectory, kind);
     const result = await this.workspace.write(plan);
     return { project, component: { name: componentName, kind }, ...result, ...this.preview(plan) };
+  }
+
+  private async contextSnapshot(): Promise<FileSnapshot | null> {
+    try { return await this.files.read('bin/data/context.json'); }
+    catch (error) {
+      if (error instanceof AppError && error.code === 'NOT_FOUND') return null;
+      throw error;
+    }
+  }
+
+  private contextProject(snapshot: FileSnapshot): string | null {
+    try {
+      const context: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(snapshot.bytes));
+      ensure(isRecord(context) && context.schemaVersion === 1 && (context.project === null || typeof context.project === 'string'), 'INVALID_PROJECT_CONTEXT', 'Invalid project context.');
+      return context.project === null ? null : projectName(context.project);
+    } catch {
+      throw new AppError('INVALID_PROJECT_CONTEXT', 'Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.', 2);
+    }
+  }
+
+  private async select(project: ProjectInfo | null) {
+    const current = await this.contextSnapshot();
+    let unchanged = current === null && project === null;
+    if (current) {
+      try { unchanged = this.contextProject(current) === (project?.name ?? null); }
+      catch (error) {
+        if (!(error instanceof AppError && error.code === 'INVALID_PROJECT_CONTEXT')) throw error;
+      }
+    }
+    const plan: WriteRequest[] = unchanged ? [] : [{
+      path: 'bin/data/context.json',
+      bytes: new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, project: project?.name ?? null }, null, 2) + '\n'),
+      ...(current ? { expectedRevision: current.revision } : {}),
+    }];
+    const result = unchanged ? { dryRun: this.workspace.dryRun, changes: [] } : await this.workspace.write(plan);
+    return { project, ...result, ...this.preview(plan) };
   }
 
   private preview(plan: readonly WriteRequest[]) {

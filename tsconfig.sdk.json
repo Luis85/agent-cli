@@ -1,5 +1,5 @@
 {
  "extends": "./tsconfig.json",
- "compilerOptions": { "noEmit": false, "declaration": true, "emitDeclarationOnly": true, "outDir": "bin/app/types", "rootDir": "src" },
+ "compilerOptions": { "noEmit": false, "declaration": true, "emitDeclarationOnly": true, "outDir": "bin/data/types", "rootDir": "src" },
  "include": ["src/sdk.ts"], "exclude": ["tests"]
 }

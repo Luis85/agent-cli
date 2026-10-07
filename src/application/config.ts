@@ -1,9 +1,9 @@
-/** Effective invocation configuration. All non-root paths are workspace-relative. */
+/** Effective environment configuration. The projects directory is workspace-relative; bin locations are fixed. */
 export interface AppConfig {
   schemaVersion: 1;
-  paths: { root: string; projects: string; templates: string; output: string; generated: string; plugins: string; skills: string };
+  paths: { projects: string };
   settings: { json: boolean; dryRun: boolean };
   templates: { dateFormat: string; timeFormat: string };
   plugins: { enabled: string[] };
 }
-export interface LoadedConfig { path: string | null; config: AppConfig }
+export interface LoadedConfig { path: string | null; root: string; config: AppConfig }

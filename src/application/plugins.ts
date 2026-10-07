@@ -1,9 +1,10 @@
 import type { Workspace } from './workspace.ts';
+import type { ProjectInfo } from './projects.ts';
 import type { EventBus, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../domain/file.ts';
 import { ensure, isRecord } from '../domain/errors.ts';
 
-export interface CommandContext { workspace: Workspace; events: EventBus; root: string; input: () => Promise<Uint8Array> }
+export interface CommandContext { workspace: Workspace; events: EventBus; workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array> }
 export interface Command {
   id: string; description: string; usage: string;
   options?: Record<string, 'string' | 'boolean'>;
@@ -59,7 +60,7 @@ export class Registry {
     for (const command of plugin.commands ?? []) {
       ensure(typeof command.run === 'function' && typeof command.description === 'string' && typeof command.usage === 'string', 'INVALID_PLUGIN', 'Invalid command.');
       ensure(command.options === undefined || isRecord(command.options), 'INVALID_PLUGIN', 'Command options must be an object.');
-      for (const [key, type] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !['root', 'config', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'].includes(key) && ['boolean', 'string'].includes(type), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
+      for (const [key, type] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !['root', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'].includes(key) && ['boolean', 'string'].includes(type), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
       this.add(commands, command);
     }
     for (const generator of plugin.generators ?? []) {

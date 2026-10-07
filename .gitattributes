@@ -1,3 +1,4 @@
-bin/app/** linguist-generated=true
+bin/app.js linguist-generated=true
+bin/data/** linguist-generated=true
 # Preserve upstream license notices verbatim, including whitespace and Markdown rulers.
-bin/app/licenses/** -diff
+bin/data/licenses/** -diff

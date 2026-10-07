@@ -1,3 +1,5 @@
+import { posix } from 'node:path';
+import { formDefinitionSource, formDefinitionTestSource } from './form-definition.ts';
 import type { Generator } from '../application/plugins.ts';
 import { ensure } from '../domain/errors.ts';
 import { vaultPath } from '../domain/file.ts';
@@ -9,6 +11,17 @@ function names(name: string, directory: string) {
   return { name, directory, file: name.replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() };
 }
 export const generators: Generator[] = [
+  { id: 'form', description: 'Typed form definition with Zod validation and HTML preview in a Forge project.', generate(input, dir) {
+    const { name, directory, file } = names(input, dir);
+    const relative = posix.relative(directory, 'src/presentation/forms/form-model.js');
+    const runtimeImport = relative.startsWith('.') ? relative : `./${relative}`;
+    const definition = `${directory}/${file}.form.ts`;
+    const testImport = posix.relative('tests', definition).replace(/\.ts$/, '.js');
+    return [
+      { path: definition, bytes: encodeText(formDefinitionSource(name, runtimeImport)) },
+      { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText(formDefinitionTestSource(name, testImport.startsWith('.') ? testImport : `./${testImport}`, '../src/presentation/forms/form-model.js')) },
+    ];
+  } },
   { id: 'entity', description: 'Domain entity with identity and invariant enforcement.', generate(input, dir) {
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export class ${name} {\n  private constructor(readonly id: string) {}\n\n  static create(id: string): ${name} {\n    if (!id.trim()) throw new globalThis.Error('${name} requires an identity');\n    return new ${name}(id);\n  }\n}\n`) }];

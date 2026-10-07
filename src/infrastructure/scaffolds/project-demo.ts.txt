@@ -1,0 +1,47 @@
+import type { FormDefinition } from './forms/form-model.js';
+import { renderForm } from './forms/form-view.js';
+import './demo.css';
+
+// Eager discovery makes new `make form` definitions visible on the next reload.
+const modules = import.meta.glob<Record<string, unknown>>('./forms/**/*.form.ts', { eager: true });
+const forms = Object.values(modules).flatMap(module => Object.entries(module)
+  .filter(([name]) => name.endsWith('Form'))
+  .map(([, value]) => value as FormDefinition<Record<string, string>>));
+const container = document.querySelector<HTMLElement>('#form-preview')!;
+const choice = document.querySelector<HTMLSelectElement>('#form-choice')!;
+const output = document.querySelector<HTMLElement>('#form-result')!;
+const status = document.querySelector<HTMLElement>('#result-status')!;
+let mounted: ReturnType<typeof renderForm> | undefined;
+
+for (const [index, definition] of forms.entries()) {
+  const option = document.createElement('option');
+  option.value = String(index);
+  option.textContent = definition.title;
+  choice.append(option);
+}
+function clearResult() {
+  output.hidden = true;
+  output.textContent = '';
+  status.textContent = 'Complete the form to see its validated values.';
+}
+function showForm() {
+  mounted?.destroy();
+  container.replaceChildren();
+  clearResult();
+  const definition = forms[Number(choice.value)];
+  if (!definition) {
+    container.textContent = 'No form definitions found. Add a form with The Forge to preview it here.';
+    choice.disabled = true;
+    return;
+  }
+  mounted = renderForm(definition, container, values => {
+    output.textContent = JSON.stringify(values, null, 2);
+    output.hidden = false;
+    status.textContent = 'Validation passed. These values are ready to use in your application.';
+  });
+  mounted.form.addEventListener('input', clearResult);
+  mounted.form.addEventListener('reset', clearResult);
+  mounted.form.addEventListener('submit', clearResult, { capture: true });
+}
+choice.addEventListener('change', showForm);
+showForm();

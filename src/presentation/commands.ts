@@ -25,7 +25,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
   const generatorCatalog = () => [...registry.generators.values()].map(({ id, description }) => ({ id, description })).concat({ id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.' });
   const catalog = () => ({
     name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node,
-    globalOptions, output: '{ ok, data?, error?: {code,message}, events, warnings }',
+    globalOptions, output: '{ ok, data?, error?: {code,message}, context?: {workspaceRoot,root,project}, events, warnings }',
     commands: [...registry.commands.values()].map(({ id, description, usage, options }) => ({ id, description, usage, options: options ?? {} })),
     generators: generatorCatalog(),
     skills: [...registry.skills.keys()],
@@ -96,20 +96,25 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
       if (args[0] === 'document') return makeDocument(args[1]!, flags, context, services);
       ensure(['template', 'values', 'values-from', 'date'].every(key => flags[key] === undefined), 'INVALID_ARGUMENT', 'Template options require make document.');
       const generator = registry.generators.get(args[0]!); ensure(generator, 'UNKNOWN_GENERATOR', args[0]!);
-      const directory = value(flags, 'out') ?? (generator.id === 'plugin' ? services.loaded.config.paths.plugins : services.loaded.config.paths.generated);
+      ensure(generator.id !== 'plugin' || flags.out === undefined, 'INVALID_ARGUMENT', 'Plugins are generated in the fixed bin/plugins directory; --out is not supported.');
+      if (generator.id === 'form') {
+        ensure(context.project, 'PROJECT_REQUIRED', 'Open a Forge project with project open <name> before making a form.');
+        await context.workspace.files.read('src/presentation/forms/form-model.ts');
+      }
+      const directory = generator.id === 'plugin' ? 'bin/plugins' : value(flags, 'out') ?? (generator.id === 'form' ? 'src/presentation/forms' : 'src/domain');
       const writes = await generator.generate(args[1]!, directory);
       const result = await context.workspace.write(writes);
       return { generator: generator.id, ...result, ...(context.workspace.dryRun ? { preview: writes.map(w => ({ path: w.path, content: Buffer.from(w.bytes).toString('utf8') })) } : {}) };
     } },
     { id: 'events', description: 'List invocation event contracts.', usage: 'events', run(args, _, { events }) { arity(args, 0); return { events: events.ids(), delivery: 'Ordered, awaited, per-listener snapshots; failures become warnings. File events follow successful commits. No persistent replay.' }; } },
-    { id: 'plugins', description: 'List explicitly loaded plugin manifests.', usage: '[--config bin/config.json] plugins', run(args) { arity(args, 0); return { plugins: registry.plugins.map(p => p.manifest) }; } },
+    { id: 'plugins', description: 'List explicitly loaded plugin manifests.', usage: 'plugins', run(args) { arity(args, 0); return { plugins: registry.plugins.map(p => p.manifest) }; } },
     { id: 'skills', description: 'List, read or install bundled and plugin agent skills.', usage: 'skills [list | show <id> | install] [--out .agents/skills]', options: { out: 'string' }, async run(args, flags, { workspace }) {
       const action = args[0] ?? 'list';
       if (action !== 'install') ensure(flags.out === undefined, 'INVALID_ARGUMENT', '--out is only valid with skills install.');
       if (action === 'list') { arity(args, 0, 1); return { skills: [...registry.skills.keys()] }; }
       if (action === 'show') { arity(args, 2); const skill = registry.skills.get(args[1]!); ensure(skill, 'UNKNOWN_SKILL', args[1]!); return skill; }
       ensure(action === 'install', 'INVALID_ARGUMENT', 'Use skills list, show, or install.'); arity(args, 1);
-      const directory = value(flags, 'out') ?? services.loaded.config.paths.skills;
+      const directory = value(flags, 'out') ?? '.agents/skills';
       return workspace.write([...registry.skills.values()].map(skill => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
     } },
   ];
