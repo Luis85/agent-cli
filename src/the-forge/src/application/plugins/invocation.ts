@@ -23,3 +23,17 @@ export async function invokeCommand(events: EventBus, metadata: Omit<HostEventMa
     throw error;
   }
 }
+
+/** Plugins are active: queued `onLayoutReady` callbacks run in order, then `workspace.layout-ready` is published. */
+export async function announceLayoutReady(events: EventBus): Promise<void> {
+  await events.markLayoutReady();
+  await publishHostEvent(events, 'workspace.layout-ready', {});
+}
+
+/** Invocation end, before plugins unload: publish `workspace.quit`, then run best-effort quit tasks. Never throws. */
+export async function quitInvocation(events: EventBus): Promise<void> {
+  try {
+    await publishHostEvent(events, 'workspace.quit', {});
+    await events.runQuitTasks();
+  } catch { /* Quit is best effort and cannot replace the command result. */ }
+}

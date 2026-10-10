@@ -4,6 +4,7 @@ import {
 } from 'obsidian-bases-expression';
 import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../../application/bases/query.ts';
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
+import type { MetadataCache } from '../../application/metadata/ports.ts';
 import { forgeError, errorMessage, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { NodeFiles } from '../workspace/files.ts';
 import { BaseRowContexts } from './contexts.ts';
@@ -50,7 +51,8 @@ function positions(groupOrder: readonly unknown[]): Map<string, number> {
 }
 
 export class NodeBasesQueryEngine implements BasesQueryEngine {
-  constructor(private readonly files: NodeFiles, private readonly codec: DocumentCodec) {}
+  /** `metadata` supplies the invocation's kernel metadata cache, built from the same root as `files`. */
+  constructor(private readonly files: NodeFiles, private readonly codec: DocumentCodec, private readonly metadata: () => Promise<MetadataCache>) {}
   capabilities(): Record<string, unknown> {
     return {
       engine: 'obsidian-bases-expression', version: '0.2.0', standalone: true,
@@ -61,7 +63,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
         'Community-plugin functions and view-specific query behavior are not loaded.',
         'Display columns, summaries and presentation settings do not change the returned file list.',
         'Dot-prefixed paths, node_modules, symlinks and Forge temporary/lock files are excluded.',
-        'Ambiguous unresolved basename links fail explicitly; no Obsidian metadata cache is available.',
+        'Links resolve by path through the kernel metadata cache; ambiguous basename links fail explicitly and alias-only links stay unresolved.',
         'Rows sort by typed values with host-locale natural string collation; equal keys use file path.',
         'The filesystem is indexed once per invocation, without a transactional snapshot or live refresh.',
       ],
@@ -84,7 +86,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
     const grouping = view.groupBy === undefined ? undefined : ordering(view.groupBy);
     ensure(view.groupOrder === undefined || (grouping !== undefined && Array.isArray(view.groupOrder)), 'INVALID_BASE_QUERY', 'groupOrder requires groupBy and a list of visible group values.');
     const groupOrder = view.groupOrder as unknown[] | undefined;
-    const indexed = await indexBaseFiles(this.files, this.codec);
+    const indexed = await indexBaseFiles(this.files, await this.metadata());
     const contextPath = options.context ?? path;
     const thisFile = indexed.find(file => file.path === contextPath);
     ensure(thisFile, 'BASE_CONTEXT_NOT_FOUND', `Base context is not an indexed vault file: ${contextPath}`);

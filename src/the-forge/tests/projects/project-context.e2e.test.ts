@@ -203,7 +203,7 @@ describe('portable selected-project workflows', () => {
     await writeFile(join(root, 'bin/plugins/observer/manifest.json'), JSON.stringify({ id: 'observer', name: 'Observer', version: '1.0.0', minAppVersion: '0.1.0', description: 'Lifecycle scope fixture', author: 'Tests' }));
     await writeFile(join(root, 'bin/plugins/observer/main.mjs'), `export default {
       onload(ctx) {
-        for (const id of ['file.created', 'file.updated']) ctx.events.on(id, file => {
+        for (const id of ['vault.create', 'vault.modify']) ctx.events.on(id, file => {
           ctx.events.warn(JSON.stringify({ id, root: ctx.root, path: file.path }));
         });
       }
@@ -212,25 +212,25 @@ describe('portable selected-project workflows', () => {
     const observations = (result: ReturnType<typeof run>) => result.body.warnings.map((warning: string) => JSON.parse(warning));
     const created = run(['project', 'create', 'alpha']);
     expect(created.status).toBe(0);
-    expect(observations(created)).toContainEqual({ id: 'file.created', root, path: 'projects/alpha/.forge/project.json' });
+    expect(observations(created)).toContainEqual({ id: 'vault.create', root, path: 'projects/alpha/.forge/project.json' });
     expect(run(['project', 'open', 'alpha']).status).toBe(0);
     const component = run(['project', 'component', 'ObservedItem']);
     expect(component.status).toBe(0);
-    expect(observations(component)).toContainEqual({ id: 'file.created', root, path: 'projects/alpha/src/domain/observed-item.ts' });
+    expect(observations(component)).toContainEqual({ id: 'vault.create', root, path: 'projects/alpha/src/domain/observed-item.ts' });
     const plugin = run(['make', 'plugin', 'ObservedTools']);
     expect(plugin.status).toBe(0);
-    expect(observations(plugin)).toContainEqual({ id: 'file.created', root, path: 'bin/plugins/observed-tools/manifest.json' });
+    expect(observations(plugin)).toContainEqual({ id: 'vault.create', root, path: 'bin/plugins/observed-tools/manifest.json' });
     const note = run(['create', 'observed.md', '--content', '# Observed']);
     expect(note.status).toBe(0);
-    expect(observations(note)).toContainEqual({ id: 'file.created', root: join(root, 'projects/alpha'), path: 'observed.md' });
+    expect(observations(note)).toContainEqual({ id: 'vault.create', root: join(root, 'projects/alpha'), path: 'observed.md' });
     const revision = run(['read', 'observed.md']).body.data.revision;
     const edit = run(['edit', 'observed.md', '--append', '--content', '\nUpdated', '--if-match', revision]);
     expect(edit.status).toBe(0);
-    expect(observations(edit)).toContainEqual({ id: 'file.updated', root: join(root, 'projects/alpha'), path: 'observed.md' });
+    expect(observations(edit)).toContainEqual({ id: 'vault.modify', root: join(root, 'projects/alpha'), path: 'observed.md' });
     await writeFile(join(root, 'bin/data/context.json'), '{broken');
     const recovered = run(['project', 'close']);
     expect(recovered.status).toBe(0);
-    expect(observations(recovered)).toContainEqual({ id: 'file.updated', root, path: 'bin/data/context.json' });
+    expect(observations(recovered)).toContainEqual({ id: 'vault.modify', root, path: 'bin/data/context.json' });
   }, 60_000);
 
   it('makes guarded forms and unit tests inside the persisted project selection', async () => {

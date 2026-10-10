@@ -4,9 +4,19 @@ export default {
     id: 'quality.check', description: 'Report the number of Markdown notes', usage: 'quality.check',
     async run(args, flags, context) {
       if (args.length) throw new Error('quality.check takes no arguments');
-      const paths = (await context.workspace.files.list()).filter(path => path.endsWith('.md'));
+      const paths = await context.app.vault.getMarkdownFiles();
       await context.events.emit('quality.checked', { count: paths.length });
       return { notes: paths.length };
+    },
+  }, {
+    id: 'quality.mark-reviewed', description: 'Mark a note as reviewed in its frontmatter', usage: 'quality.mark-reviewed <note.md>',
+    async run(args, flags, context) {
+      if (args.length !== 1) throw new Error('quality.mark-reviewed takes one note path');
+      // An atomic, revision-guarded frontmatter edit that keeps the body and honours --dry-run.
+      return context.app.fileManager.processFrontMatter(args[0], frontmatter => {
+        frontmatter.reviewed = true;
+        delete frontmatter.draft;
+      });
     },
   }],
   generators: [{
@@ -21,7 +31,7 @@ export default {
   async onload(context) {
     // Replay is an explicit snapshot of this invocation, not persistent history.
     const observe = record => {
-      if (record.id === 'workspace.failed' || record.id === 'claude.failed') {
+      if (record.id === 'operation.failed' || record.id === 'claude.failed') {
         context.events.warn(`Quality observed ${record.id}: ${record.payload.error.code}. Inspect the original error and committed state before retrying.`);
       }
     };
@@ -30,6 +40,10 @@ export default {
     this.unsubscribe = context.events.on('quality.checked', payload => {
       if (payload.count === 0) context.events.warn('No Markdown notes found.');
     });
+    // Obsidian-style vault listener: `move` and `rename` report each moved file with its old path.
+    this.unsubscribeRename = context.app.vault.on('rename', ({ path, oldPath, kind }) => {
+      if (kind === 'file') context.events.warn(`Quality noticed ${oldPath} moved to ${path}; review notes that describe it.`);
+    });
   },
-  onunload() { this.unsubscribe?.(); this.unsubscribeAll?.(); },
+  onunload() { this.unsubscribe?.(); this.unsubscribeAll?.(); this.unsubscribeRename?.(); },
 };

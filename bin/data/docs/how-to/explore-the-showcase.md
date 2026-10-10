@@ -8,7 +8,7 @@ The showcase is available in a source checkout of the repository. Release bundle
 
 ## Browse it in Obsidian
 
-Open `src/forge-showcase` as an Obsidian vault and start at `docs/Trailhead.md`. Wikilinks and frontmatter links connect the PRD, use cases, design, delivery plans, component and interaction definitions and data sources. `docs/maps/Trailhead map.canvas` shows the architecture, and `docs/bases` holds native Bases views for documents by stage, requirement traceability and library backlinks.
+Open `src/forge-showcase` as an Obsidian vault and start at `docs/Trailhead.md`. Wikilinks and frontmatter links connect the PRD, use cases, design, delivery plans, component and interaction definitions and data sources. `docs/maps/Trailhead map.canvas` shows the architecture, and `docs/bases` holds native Bases views for documents by stage, requirement traceability and library backlinks. The verification plan was generated as "Trip planner test plan" and then renamed with `rename`, which rewrote every wikilink, frontmatter link and the Canvas card that named it, and a scratch note was deleted into `.trash/`; the build log lists both steps.
 
 You can also open the whole repository as a vault. Wikilinks still resolve by unique note name, but Canvas file nodes use paths relative to the showcase folder, so the map's file cards only resolve in the showcase vault.
 

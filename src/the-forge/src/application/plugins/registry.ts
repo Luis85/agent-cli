@@ -1,12 +1,23 @@
 import type { Workspace } from '../workspace/workspace.ts';
 import type { ProjectInfo } from '../projects/projects.ts';
-import type { EventBus, EventDefinition } from './events.ts';
+import type { EventBus, EventChannel, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
 import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
+import type { MetadataIndex } from '../metadata/ports.ts';
+import type { App } from '../vault/app.ts';
 import { ensure, isRecord, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
 import { publishHostEvent } from './host-events.ts';
+import { ensurePluginNamespace, pluginEvents } from './ownership.ts';
+import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
 
-export interface CommandContext { workspace: Workspace; events: EventBus; claude: ClaudeLifecycleClient; workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array> }
+/**
+ * `metadata` is the lazily built metadata index of the same root as `workspace`; `app` is the Obsidian-shaped
+ * facade (vault, metadataCache, fileManager, workspace) over the same scope.
+ */
+export interface CommandContext {
+  workspace: Workspace; events: EventChannel; claude: ClaudeLifecycleClient; metadata: MetadataIndex; app: App;
+  workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array>;
+}
 export interface Command {
   id: string; description: string; usage: string;
   options?: Record<string, 'string' | 'boolean'>;
@@ -20,12 +31,18 @@ export interface PluginManifest {
 export interface PluginContributions {
   commands?: Command[]; generators?: Generator[]; events?: EventDefinition[]; skills?: Skill[];
   onload?(context: CommandContext): void | Promise<void>;
+  /** Once, on the first activation after the plugin id is added to `plugins.enabled`. Runs after `onload`. */
+  onUserEnable?(context: CommandContext): void | Promise<void>;
+  /** On activation, when the plugin's settings changed since its previous activation. Runs after `onload`. */
+  onExternalSettingsChange?(context: CommandContext): void | Promise<void>;
   onunload?(): void | Promise<void>;
 }
+const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload'] as const;
 export interface Plugin extends PluginContributions { manifest: PluginManifest }
 const appVersion = [0, 1, 0];
 export function validatePluginManifest(value: unknown): asserts value is PluginManifest {
   ensure(isRecord(value) && typeof value.id === 'string' && /^[a-z][a-z0-9-]*$/.test(value.id), 'INVALID_PLUGIN', 'Plugin manifest requires a lowercase kebab-case id.');
+  ensurePluginNamespace(value.id);
   for (const key of ['name', 'description', 'author']) ensure(typeof value[key] === 'string' && value[key].trim().length > 0, 'INVALID_PLUGIN', `Plugin manifest requires ${key}.`);
   for (const key of ['version', 'minAppVersion']) ensure(typeof value[key] === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value[key]), 'INVALID_PLUGIN', `Plugin manifest requires a numeric ${key}.`);
   const minimum = (value.minAppVersion as string).split('.').map(Number);
@@ -49,7 +66,7 @@ export class Registry {
     ensure(isRecord(plugin), 'INVALID_PLUGIN', 'Plugin must export an object or class.');
     validatePluginManifest(plugin.manifest);
     ensure(!this.plugins.some(p => p.manifest.id === plugin.manifest.id), 'DUPLICATE_PLUGIN', plugin.manifest.id);
-    for (const hook of ['onload', 'onunload'] as const) ensure(plugin[hook] === undefined || typeof plugin[hook] === 'function', 'INVALID_PLUGIN', `${hook} must be a function.`);
+    for (const hook of hooks) ensure(plugin[hook] === undefined || typeof plugin[hook] === 'function', 'INVALID_PLUGIN', `${hook} must be a function.`);
     for (const key of ['commands', 'generators', 'events', 'skills'] as const) {
       ensure(plugin[key] === undefined || Array.isArray(plugin[key]), 'INVALID_PLUGIN', `${key} must be an array.`);
       for (const contribution of plugin[key] ?? []) {
@@ -75,7 +92,8 @@ export class Registry {
       this.add(skills, skill);
     }
     events.defineAll(plugin.events ?? []);
-    for (const command of plugin.commands ?? []) this.commands.set(command.id, command);
+    const channel = pluginEvents(events, plugin.manifest.id);
+    for (const command of plugin.commands ?? []) this.commands.set(command.id, ownedCommand(command, channel));
     for (const generator of plugin.generators ?? []) this.generators.set(generator.id, generator);
     for (const skill of plugin.skills ?? []) this.skills.set(skill.id, skill);
     this.plugins.push(plugin);
@@ -89,26 +107,32 @@ export class Registry {
       await publishHostEvent(events, 'plugin.registered', { pluginId });
     }
   }
-  async activate(context: CommandContext): Promise<void> {
+  /** Each plugin's hooks receive `context` with its own event channel. `state` enables onUserEnable/onExternalSettingsChange. */
+  async activate(events: EventBus, context: CommandContext, state?: PluginStateStore): Promise<void> {
     ensure(this.state === 'registering', 'PLUGIN_LIFECYCLE', 'Plugins can activate only once per invocation.');
     this.state = 'activating';
+    let tracker: ActivationTracker | undefined;
     try {
-      await this.publishRegistered(context.events);
+      await this.publishRegistered(events);
+      if (state && this.plugins.length > 0) tracker = await ActivationTracker.load(state);
       for (const plugin of this.plugins) {
         const pluginId = plugin.manifest.id, onunload = plugin.onunload;
+        const pluginContext = { ...context, events: pluginEvents(events, pluginId) };
         this.cleanups.unshift({ pluginId, run: () => onunload?.call(plugin) });
-        await publishHostEvent(context.events, 'plugin.activating', { pluginId });
+        await publishHostEvent(events, 'plugin.activating', { pluginId });
         try {
-          const result = await plugin.onload?.(context);
+          const result = await plugin.onload?.(pluginContext);
           ensure(result === undefined, 'INVALID_PLUGIN', 'onload must return nothing; use onunload for cleanup.');
-          await publishHostEvent(context.events, 'plugin.activated', { pluginId });
+          await tracker?.activated(plugin, pluginContext);
+          await publishHostEvent(events, 'plugin.activated', { pluginId });
         } catch (error) {
-          await publishHostEvent(context.events, 'plugin.activation-failed', { pluginId, error: summarizeError(error) });
+          await publishHostEvent(events, 'plugin.activation-failed', { pluginId, error: summarizeError(error) });
           throw error;
         }
       }
       this.state = 'active';
     } catch (error) { this.state = 'failed'; throw error; }
+    finally { await tracker?.save(this.plugins, message => events.warn(message)); }
   }
   async dispose(events: EventBus): Promise<void> {
     this.state = 'disposed';
@@ -125,4 +149,13 @@ export class Registry {
     }
     events.dispose();
   }
+}
+
+/** Plugin commands run with their plugin's event channel, so they can emit only their own events. */
+function ownedCommand(command: Command, events: EventChannel): Command {
+  return {
+    id: command.id, description: command.description, usage: command.usage,
+    ...(command.options === undefined ? {} : { options: command.options }),
+    run: (args, flags, context) => command.run(args, flags, { ...context, events }),
+  };
 }

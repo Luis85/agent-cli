@@ -27,6 +27,14 @@ describe('Obsidian documents', () => {
     expect(output.endsWith(body)).toBe(true);
     expect(codec.inspect('note.md', encodeText(output))).toMatchObject({ properties: { status: 'done', checked: false, count: 0, tags: ['one', 'two'] } });
   });
+  it('never folds long values when it edits properties or Base pointers', () => {
+    const long = Array.from({ length: 20 }, (_, index) => `word${index}`).join(' ');
+    expect(long.length).toBeGreaterThan(100);
+    const note = `---\nsummary: ${long}\nstatus: draft\n---\nBody\n`;
+    expect(decode(codec.properties(encodeText(note), { status: 'done', note: long }))).toBe(`---\nsummary: ${long}\nstatus: done\nnote: ${long}\n---\nBody\n`);
+    const base = `filters: file.hasTag("${long}")\nviews:\n  - type: table\n    name: All\n`;
+    expect(decode(codec.patch('view.base', encodeText(base), '/views/0/name', 'Every'))).toBe(base.replace('name: All', 'name: Every'));
+  });
   it('creates frontmatter without disturbing a plain note', () => {
     expect(decode(codec.properties(encodeText('# Hello\n'), { tags: ['project'] }))).toMatch(/---\n[\s\S]*---\n# Hello\n$/);
   });

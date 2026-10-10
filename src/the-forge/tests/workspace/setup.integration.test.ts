@@ -32,7 +32,7 @@ async function fixture(dryRun = false) {
     settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [] },
   };
   const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (_v): _v is unknown => true });
+  for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (_v): _v is unknown => true });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, dryRun);
   const artifacts = await readSetupArtifacts(bundle);
   const skills = [{ id: 'forge-workflow', content: '---\nname: forge-workflow\ndescription: Safe workflow\n---\nRead first.\n' }];
@@ -53,7 +53,8 @@ it('installs fixed environment directories and configured projects through works
   for (const command of ['--if-match', 'node bin/forge.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
   expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge.js', 'package.json', 'plugins', 'templates']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
-  expect(events.history).toHaveLength(11);
+  expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(11);
+  expect(events.history).toHaveLength(23);
 });
 it('preserves existing configuration, bundle, template, skill and agent instructions on repeated setup', async () => {
   const { root, setup, events } = await fixture();

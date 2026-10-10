@@ -4,18 +4,22 @@ import { AppError } from '../../src/domain/shared/errors.ts';
 
 const history = [
   { id: 'command.started', payload: {} },
-  { id: 'workspace.started', payload: {} },
-  { id: 'file.created', payload: { path: 'a.md' } },
-  { id: 'file.updated', payload: { path: 'b.md' } },
-  { id: 'file.deleted', payload: { path: 'c.md' } },
+  { id: 'operation.started', payload: {} },
+  { id: 'vault.create', payload: { path: 'a.md' } },
+  { id: 'vault.modify', payload: { path: 'b.md' } },
+  { id: 'vault.delete', payload: { path: 'c.md' } },
+  { id: 'vault.rename', payload: { path: 'e.md', oldPath: 'd.md' } },
+  { id: 'metadataCache.changed', payload: { path: 'e.md', cache: {} } },
+  { id: 'workspace.quick-preview', payload: { path: 'f.md' } },
+  { id: 'workspace.file-open', payload: { path: 'g.md' } },
   { id: 'quality.checked', payload: {} },
-  { id: 'workspace.succeeded', payload: {} },
+  { id: 'operation.succeeded', payload: {} },
 ];
 
 describe('response event output', () => {
-  it('returns only committed file changes by default level changes', () => {
-    expect(selectEventOutput(history, 'changes').map(record => record.id)).toEqual(['file.created', 'file.updated', 'file.deleted']);
-    expect(history.filter(isChangeRecord)).toHaveLength(3);
+  it('returns only committed vault.* changes by default level changes', () => {
+    expect(selectEventOutput(history, 'changes').map(record => record.id)).toEqual(['vault.create', 'vault.modify', 'vault.delete', 'vault.rename']);
+    expect(history.filter(isChangeRecord)).toHaveLength(4);
   });
 
   it('returns the full history for all and nothing for none without mutating the history', () => {
@@ -23,7 +27,7 @@ describe('response event output', () => {
     expect(all).toEqual(history);
     expect(all).not.toBe(history);
     expect(selectEventOutput(history, 'none')).toEqual([]);
-    expect(history).toHaveLength(7);
+    expect(history).toHaveLength(11);
   });
 
   it('accepts only documented levels', () => {

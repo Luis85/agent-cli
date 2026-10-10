@@ -25,7 +25,7 @@ it('creates and edits notes with guarded revisions, shell-safe stdin and literal
     const before = cli(['read', 'notes/task.md']).body.data;
     expect(committedEvents(cli(['properties', 'notes/task.md', '--set', '{"status":"done"}', '--if-match', before.revision, '--dry-run']).body.events)).toEqual([]);
     const update = cli(['properties', 'notes/task.md', '--set', '{"status":"done"}', '--if-match', before.revision]);
-    expect(update.status).toBe(0); expect(committedEvents(update.body.events)[0]?.id).toBe('file.updated');
+    expect(update.status).toBe(0); expect(committedEvents(update.body.events)[0]?.id).toBe('vault.modify');
     expect(cli(['edit', 'notes/task.md', '--append', '--content', 'stale', '--if-match', before.revision]).body.error.code).toBe('CONFLICT');
     const current = cli(['read', 'notes/task.md']).body.data;
     expect(cli(['edit', 'notes/task.md', '--find', 'Body', '--replace', '$& literal', '--if-match', current.revision]).status).toBe(0);

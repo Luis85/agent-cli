@@ -75,4 +75,4 @@ Create linked use cases for REQ IDs; resolve scope uncertainties before committi
 
 ## Knowledge graph
 
-Trailhead helps small hiking groups plan multi-day trips. Use cases: [[UC-001 Plan a trip]], [[UC-002 Share an itinerary]], [[UC-003 Browse trail guides]]. Design: [[Trip planner design]]. Delivery: [[Trip planner build spec]], [[Trip planner implementation plan]], [[Trip planner test plan]] and [[Trailhead 1.0 release plan]]. Start from the [[Trailhead]] hub.
+Trailhead helps small hiking groups plan multi-day trips. Use cases: [[UC-001 Plan a trip]], [[UC-002 Share an itinerary]], [[UC-003 Browse trail guides]]. Design: [[Trip planner design]]. Delivery: [[Trip planner build spec]], [[Trip planner implementation plan]], [[Trip planner verification plan]] and [[Trailhead 1.0 release plan]]. Start from the [[Trailhead]] hub.

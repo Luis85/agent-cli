@@ -48,6 +48,10 @@ export const errorCatalog = {
   UNSUPPORTED_EDIT: entry('input', 'This edit is not supported for the file kind.', 'Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments.'),
   INVALID_PLAN: entry('input', 'The write batch contains duplicate or overlapping paths.', 'Write each path once and do not write a file where another write needs a directory.'),
   WORKSPACE_BUSY: entry('busy', 'Another Forge writer holds the workspace lock.', 'Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder\'s changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.', true),
+  DESTINATION_EXISTS: entry('conflict', 'The move or rename destination already exists.', 'Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination.'),
+  PROTECTED_PATH: entry('input', 'The path is protected from moves and deletion.', 'Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH.'),
+  INVALID_MOVE: entry('input', 'The move or rename is not possible.', 'Use a destination that differs from the source and is not inside it; rename takes a new name without slashes.'),
+  HAS_BACKLINKS: entry('conflict', 'Other notes still link to the file or folder.', 'Update or remove the links in error.details.backlinks first, move the file instead, or pass --allow-broken-links to delete anyway.'),
   ROLLBACK_FAILED: entry('runtime', 'A failed write could not restore every file.', 'Inspect the files named in the message and repair them before retrying.'),
   // Documents
   INVALID_FRONTMATTER: entry('input', 'The YAML frontmatter is invalid.', 'Fix the frontmatter so it is a YAML mapping, then validate the note.'),
@@ -113,7 +117,7 @@ export const errorCatalog = {
   INVALID_PLUGIN_CONFIG: entry('input', 'The enabled plugin list is invalid.', 'List unique lowercase kebab-case plugin ids in plugins.enabled in bin/config.json.'),
   INCOMPATIBLE_PLUGIN: entry('input', 'The plugin requires a newer Forge version.', 'Update The Forge or disable the plugin.'),
   DUPLICATE_PLUGIN: entry('input', 'The plugin is registered twice.', 'Enable each plugin once.'),
-  PLUGIN_NAMESPACE: entry('input', 'A plugin contribution is outside its namespace.', 'Prefix plugin command, generator, skill and event ids with the plugin id and a dot.'),
+  PLUGIN_NAMESPACE: entry('input', 'A plugin id or contribution is outside its namespace.', 'Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id.'),
   PLUGIN_LIFECYCLE: entry('input', 'A plugin used the host outside its lifecycle.', 'Register contributions before activation and stop using the host after disposal.'),
   DUPLICATE_OR_INVALID_ID: entry('input', 'A contribution id is invalid or already registered.', 'Use a unique lowercase dotted id.'),
   UNKNOWN_SKILL: entry('input', 'The skill is not registered.', 'Run skills list.'),
@@ -123,6 +127,7 @@ export const errorCatalog = {
   DUPLICATE_EVENT: entry('input', 'The event id is already registered.', 'Use a unique event id.'),
   UNKNOWN_EVENT: entry('input', 'The event is not registered.', 'Run events to list registered event ids.'),
   EVENT_RECURSION: entry('input', 'Event handlers recursed too deeply.', 'Stop handlers from emitting the events that trigger them.'),
+  EVENT_OWNERSHIP: entry('input', 'A plugin tried to emit an event it does not own.', 'Emit only events in your plugin\'s own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) are emitted by the host.'),
   // Claude Code definitions
   INVALID_CLAUDE_AGENT: entry('input', 'The Claude agent definition is invalid.', claudeDefinitionHint),
   INVALID_CLAUDE_HOOKS: entry('input', 'The Claude hook configuration is invalid.', claudeDefinitionHint),

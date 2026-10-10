@@ -5,10 +5,10 @@ const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
 const node_crypto = require("node:crypto");
-const promises = require("node:fs/promises");
+const promises$1 = require("node:fs/promises");
 const fs = require("node:fs");
 const node_os = require("node:os");
-const promises$1 = require("node:timers/promises");
+const promises = require("node:timers/promises");
 const process$1 = require("node:process");
 const node_url = require("node:url");
 const node_module = require("node:module");
@@ -78,6 +78,10 @@ const errorCatalog = {
   UNSUPPORTED_EDIT: entry("input", "This edit is not supported for the file kind.", "Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments."),
   INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
   WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
+  DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
+  PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
+  INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
+  HAS_BACKLINKS: entry("conflict", "Other notes still link to the file or folder.", "Update or remove the links in error.details.backlinks first, move the file instead, or pass --allow-broken-links to delete anyway."),
   ROLLBACK_FAILED: entry("runtime", "A failed write could not restore every file.", "Inspect the files named in the message and repair them before retrying."),
   // Documents
   INVALID_FRONTMATTER: entry("input", "The YAML frontmatter is invalid.", "Fix the frontmatter so it is a YAML mapping, then validate the note."),
@@ -143,7 +147,7 @@ const errorCatalog = {
   INVALID_PLUGIN_CONFIG: entry("input", "The enabled plugin list is invalid.", "List unique lowercase kebab-case plugin ids in plugins.enabled in bin/config.json."),
   INCOMPATIBLE_PLUGIN: entry("input", "The plugin requires a newer Forge version.", "Update The Forge or disable the plugin."),
   DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
-  PLUGIN_NAMESPACE: entry("input", "A plugin contribution is outside its namespace.", "Prefix plugin command, generator, skill and event ids with the plugin id and a dot."),
+  PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
   UNKNOWN_SKILL: entry("input", "The skill is not registered.", "Run skills list."),
@@ -153,6 +157,7 @@ const errorCatalog = {
   DUPLICATE_EVENT: entry("input", "The event id is already registered.", "Use a unique event id."),
   UNKNOWN_EVENT: entry("input", "The event is not registered.", "Run events to list registered event ids."),
   EVENT_RECURSION: entry("input", "Event handlers recursed too deeply.", "Stop handlers from emitting the events that trigger them."),
+  EVENT_OWNERSHIP: entry("input", "A plugin tried to emit an event it does not own.", "Emit only events in your plugin's own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) are emitted by the host."),
   // Claude Code definitions
   INVALID_CLAUDE_AGENT: entry("input", "The Claude agent definition is invalid.", claudeDefinitionHint$1),
   INVALID_CLAUDE_HOOKS: entry("input", "The Claude hook configuration is invalid.", claudeDefinitionHint$1),
@@ -231,6 +236,10 @@ class EventBus {
   disposed = false;
   historyTruncated = false;
   operationId = 0;
+  layoutReady = false;
+  layoutCallbacks = [];
+  quitTasks = [];
+  settling = /* @__PURE__ */ new Set();
   history = [];
   warnings = [];
   nextOperationId() {
@@ -244,7 +253,7 @@ class EventBus {
     ensure(!this.disposed, "INVALID_EVENT", "Cannot define events after disposal.");
     const staged = new Map(this.definitions);
     for (const definition2 of definitions) {
-      ensure(isRecord(definition2) && typeof definition2.id === "string" && /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/.test(definition2.id) && typeof definition2.validate === "function", "INVALID_EVENT", "Invalid event definition.");
+      ensure(isRecord(definition2) && typeof definition2.id === "string" && /^[a-z][a-zA-Z0-9-]*(\.[a-z][a-zA-Z0-9-]*)+$/.test(definition2.id) && typeof definition2.validate === "function", "INVALID_EVENT", "Invalid event definition.");
       ensure(definition2.description === void 0 || typeof definition2.description === "string" && definition2.description.trim().length > 0, "INVALID_EVENT", "Event descriptions must be nonempty strings.");
       ensure(!staged.has(definition2.id), "DUPLICATE_EVENT", definition2.id);
       staged.set(definition2.id, definition2);
@@ -336,22 +345,70 @@ class EventBus {
   warn(message) {
     if (this.warnings.length < 1e3) this.warnings.push(message);
   }
+  onLayoutReady(callback) {
+    this.ensureCallback(callback);
+    if (!this.layoutReady) {
+      this.layoutCallbacks.push(callback);
+      return;
+    }
+    const running = this.settle("Layout ready", callback);
+    this.settling.add(running);
+    void running.then(() => this.settling.delete(running));
+  }
+  onQuit(task2) {
+    this.ensureCallback(task2);
+    this.quitTasks.push(task2);
+  }
+  /** Host: plugins are active. Queued layout callbacks run in registration order; failures become warnings. */
+  async markLayoutReady() {
+    if (this.layoutReady) return;
+    this.layoutReady = true;
+    for (const callback of this.layoutCallbacks.splice(0)) await this.settle("Layout ready", callback);
+  }
+  /** Host: settle immediate layout callbacks, then run quit tasks in order, including tasks added meanwhile. */
+  async runQuitTasks() {
+    await Promise.allSettled(this.settling);
+    for (let task2 = this.quitTasks.shift(); task2; task2 = this.quitTasks.shift()) await this.settle("Quit task", task2);
+  }
+  ensureCallback(callback) {
+    ensure(!this.disposed, "INVALID_EVENT", "Cannot schedule callbacks after disposal.");
+    ensure(typeof callback === "function", "INVALID_EVENT_LISTENER", "Lifecycle callbacks must be functions.");
+  }
+  async settle(label, callback) {
+    try {
+      await this.delivery.run(async () => {
+        await callback();
+      });
+    } catch (error2) {
+      try {
+        this.warn(`${label}: ${errorMessage(error2)}`);
+      } catch {
+      }
+    }
+  }
   dispose() {
     this.disposed = true;
     this.listeners.clear();
   }
 }
+const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
 const text$5 = (value2) => typeof value2 === "string" && value2.length > 0;
 const count = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
+const empty = (value2) => Object.keys(value2).length === 0;
 const operation$1 = (value2) => count(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
 const error$1 = (value2) => isRecord(value2) && text$5(value2.code) && status(value2.exitCode);
 const command = (value2) => operation$1(value2) && text$5(value2.command) && text$5(value2.root) && text$5(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove"].includes(String(value2.operation)) && (value2.root === null || text$5(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$5);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$5(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$5);
 const claude = (value2) => operation$1(value2) && text$5(value2.executable) && text$5(value2.cwd);
 const plugin = (value2) => text$5(value2.pluginId);
-const change = (value2) => isRecord(value2) && text$5(value2.path) && text$5(value2.revision) && count(value2.bytes) && ["created", "updated", "deleted"].includes(String(value2.operation));
+const changeOperations = ["created", "updated", "deleted"];
+const change = (value2) => isRecord(value2) && text$5(value2.path) && text$5(value2.revision) && count(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$5(value2.from) && text$5(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
+const project = (value2) => value2 === null || text$5(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$5(value2.path) && Object.keys(value2).length === 3);
+const rename = (value2) => text$5(value2.path) && text$5(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$5(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$1(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
 }
@@ -359,16 +416,26 @@ const hostEventDefinitions = [
   definition$1("command.started", "A routed command is about to activate plugins and run.", command),
   definition$1("command.succeeded", "A routed command returned successfully.", command),
   definition$1("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$1(value2.error)),
-  definition$1("workspace.started", "A guarded workspace operation started, including previews.", workspace),
-  definition$1("workspace.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change))),
-  definition$1("workspace.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$1(value2.error)),
+  definition$1("operation.started", "A guarded workspace operation started, including previews.", workspace),
+  definition$1("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
+  definition$1("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$1(value2.error)),
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$1(value2.error) && optionalStatus(value2)),
   definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$5(value2.executable) && text$5(value2.cwd) && status(value2.exitCode)),
-  definition$1("file.created", "A file was committed after successful persistence.", (value2) => change(value2) && value2.operation === "created"),
-  definition$1("file.updated", "An existing file was committed after successful persistence.", (value2) => change(value2) && value2.operation === "updated"),
-  definition$1("file.deleted", "A file was removed; revision and bytes describe its prior content.", (value2) => change(value2) && value2.operation === "deleted"),
+  definition$1("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
+  definition$1("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
+  definition$1("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
+  definition$1("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
+  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$5(value2.path) && isRecord(value2.cache)),
+  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$5(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
+  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$5(value2.path) && Object.keys(value2).length === 1),
+  definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty),
+  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$5(value2.path) && Object.keys(value2).length === 1),
+  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$5(value2.path) && changeOperations.includes(String(value2.operation)) && count(value2.bytes) && Object.keys(value2).length === 3),
+  definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty),
+  definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty),
+  definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
   definition$1("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
   definition$1("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
   definition$1("plugin.activated", "A plugin activation hook completed successfully.", plugin),
@@ -411,13 +478,124 @@ async function invokeCommand(events, metadata2, activate, run2) {
     throw error2;
   }
 }
+async function announceLayoutReady(events) {
+  await events.markLayoutReady();
+  await publishHostEvent(events, "workspace.layout-ready", {});
+}
+async function quitInvocation(events) {
+  try {
+    await publishHostEvent(events, "workspace.quit", {});
+    await events.runQuitTasks();
+  } catch {
+  }
+}
+const pluginStatePath = "bin/data/plugins-state.json";
+const tracked = (plugin2) => typeof plugin2.onUserEnable === "function" || typeof plugin2.onExternalSettingsChange === "function";
+class WorkspacePluginState {
+  constructor(workspace2, warn, settings2 = async () => null) {
+    this.workspace = workspace2;
+    this.warn = warn;
+    this.settings = settings2;
+  }
+  workspace;
+  warn;
+  settings;
+  revision;
+  stored = "";
+  settingsRevision(pluginId) {
+    return this.settings(pluginId);
+  }
+  async load() {
+    let text2;
+    try {
+      const snapshot = await this.workspace.files.read(pluginStatePath);
+      this.revision = snapshot.revision;
+      text2 = new TextDecoder("utf-8").decode(snapshot.bytes);
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "NOT_FOUND") return {};
+      throw error2;
+    }
+    try {
+      const value2 = JSON.parse(text2);
+      ensure(isRecord(value2) && value2.schemaVersion === 1 && isRecord(value2.plugins), "INVALID_PLUGIN", "Unexpected plugin state shape.");
+      const states = {};
+      for (const [id2, entry2] of Object.entries(value2.plugins)) {
+        ensure(isRecord(entry2) && (entry2.settings === null || typeof entry2.settings === "string"), "INVALID_PLUGIN", `Unexpected state for plugin ${id2}.`);
+        states[id2] = { settings: entry2.settings };
+      }
+      this.stored = serialize(states);
+      return states;
+    } catch {
+      this.warn(`Ignored invalid ${pluginStatePath}; plugins with activation hooks are treated as newly enabled.`);
+      return {};
+    }
+  }
+  async save(states) {
+    const content2 = serialize(states);
+    if (this.workspace.dryRun || content2 === this.stored || this.revision === void 0 && Object.keys(states).length === 0) return;
+    await this.workspace.write([{ path: pluginStatePath, bytes: new TextEncoder().encode(content2), ...this.revision === void 0 ? {} : { expectedRevision: this.revision } }]);
+    this.stored = content2;
+  }
+}
+function serialize(states) {
+  const plugins = Object.fromEntries(Object.keys(states).sort().map((id2) => [id2, states[id2]]));
+  return JSON.stringify({ schemaVersion: 1, plugins }, null, 2) + "\n";
+}
+class ActivationTracker {
+  constructor(store, previous2) {
+    this.store = store;
+    this.previous = previous2;
+  }
+  store;
+  previous;
+  next = {};
+  static async load(store) {
+    return new ActivationTracker(store, await store.load());
+  }
+  async activated(plugin2, context) {
+    if (!tracked(plugin2)) return;
+    const id2 = plugin2.manifest.id, settings2 = await this.store.settingsRevision(id2), entry2 = this.previous[id2];
+    const hook = entry2 === void 0 ? "onUserEnable" : entry2.settings !== settings2 ? "onExternalSettingsChange" : void 0;
+    const result = hook ? await plugin2[hook]?.(context) : void 0;
+    ensure(result === void 0, "INVALID_PLUGIN", `${hook} must return nothing.`);
+    this.next[id2] = { settings: settings2 };
+  }
+  /**
+   * Keeps unreached enabled plugins' entries and forgets disabled plugins. When another invocation changed the
+   * state since it was loaded, the save rereads it, keeps that invocation's entries for enabled plugins this one
+   * did not activate, and retries once. A failed save is a warning.
+   */
+  async save(plugins, warn) {
+    const states = (current) => {
+      const result = {};
+      for (const plugin2 of plugins.filter(tracked)) {
+        const id2 = plugin2.manifest.id, entry2 = this.next[id2] ?? current[id2] ?? this.previous[id2];
+        if (entry2) result[id2] = entry2;
+      }
+      return result;
+    };
+    try {
+      try {
+        await this.store.save(states({}));
+      } catch (error2) {
+        if (!(error2 instanceof AppError && error2.code === "CONFLICT")) throw error2;
+        await this.store.save(states(await this.store.load()));
+      }
+    } catch (error2) {
+      try {
+        warn(`Could not record plugin activation state in ${pluginStatePath}: ${errorMessage(error2)}`);
+      } catch {
+      }
+    }
+  }
+}
 const eventOutputLevels = ["none", "changes", "all"];
 function eventOutput(value2) {
   ensure(eventOutputLevels.includes(value2), "INVALID_ARGUMENT", `--events must be one of: ${eventOutputLevels.join(", ")}.`);
   return value2;
 }
 function isChangeRecord(record2) {
-  return record2.id === "file.created" || record2.id === "file.updated" || record2.id === "file.deleted";
+  return record2.id.startsWith("vault.");
 }
 function selectEventOutput(history, level) {
   if (level === "all") return [...history];
@@ -532,6 +710,8 @@ function vaultPath(input) {
   ensure(!parts.some((p) => [".git", ".agent-cli.lock"].includes(p) || p.startsWith(".agent-cli-tmp-")), "INVALID_PATH", "Reserved workspace path.");
   return input;
 }
+const trashFolder = ".trash";
+const isInTrash = (path) => path.toLowerCase() === trashFolder || path.toLowerCase().startsWith(`${trashFolder}/`);
 function ensureSeparateDirectories(source, destination) {
   vaultPath(source);
   vaultPath(destination);
@@ -640,18 +820,18 @@ function backtrack(trace, before, after) {
   return operations2.reverse();
 }
 function editScript(before, after) {
-  let start = 0, endBefore = before.length, endAfter = after.length;
-  while (start < endBefore && start < endAfter && before[start] === after[start]) start++;
-  while (endBefore > start && endAfter > start && before[endBefore - 1] === after[endAfter - 1]) {
+  let start2 = 0, endBefore = before.length, endAfter = after.length;
+  while (start2 < endBefore && start2 < endAfter && before[start2] === after[start2]) start2++;
+  while (endBefore > start2 && endAfter > start2 && before[endBefore - 1] === after[endAfter - 1]) {
     endBefore--;
     endAfter--;
   }
   const keep = (line) => ({ type: " ", line });
-  return [...before.slice(0, start).map(keep), ...shortestEdit(before.slice(start, endBefore), after.slice(start, endAfter)), ...before.slice(endBefore).map(keep)];
+  return [...before.slice(0, start2).map(keep), ...shortestEdit(before.slice(start2, endBefore), after.slice(start2, endAfter)), ...before.slice(endBefore).map(keep)];
 }
-function range(start, count2) {
-  if (count2 === 0) return `${start - 1},0`;
-  return count2 === 1 ? `${start}` : `${start},${count2}`;
+function range(start2, count2) {
+  if (count2 === 0) return `${start2 - 1},0`;
+  return count2 === 1 ? `${start2}` : `${start2},${count2}`;
 }
 function formatLine({ type: type2, line }) {
   return line.endsWith("\n") ? `${type2}${line}` : `${type2}${line}
@@ -664,33 +844,35 @@ function unifiedDiff({ path, before, after, created = false, context = 3 }) {
   if (changed.length === 0) return "";
   const groups = [];
   for (const index2 of changed) {
-    const start = Math.max(0, index2 - context), end = Math.min(operations2.length, index2 + context + 1);
+    const start2 = Math.max(0, index2 - context), end2 = Math.min(operations2.length, index2 + context + 1);
     const last = groups.at(-1);
-    if (last && start <= last[1]) last[1] = end;
-    else groups.push([start, end]);
+    if (last && start2 <= last[1]) last[1] = end2;
+    else groups.push([start2, end2]);
   }
   let output = `--- ${created ? "/dev/null" : `a/${path}`}
 +++ b/${path}
 `;
   let cursor = 0, oldLine = 1, newLine = 1;
-  for (const [start, end] of groups) {
-    for (; cursor < start; cursor++) {
+  for (const [start2, end2] of groups) {
+    for (; cursor < start2; cursor++) {
       if (operations2[cursor].type !== "+") oldLine++;
       if (operations2[cursor].type !== "-") newLine++;
     }
-    const hunk = operations2.slice(start, end);
+    const hunk = operations2.slice(start2, end2);
     const oldCount = hunk.filter((operation2) => operation2.type !== "+").length, newCount = hunk.filter((operation2) => operation2.type !== "-").length;
     output += `@@ -${range(oldLine, oldCount)} +${range(newLine, newCount)} @@
 ${hunk.map(formatLine).join("")}`;
     oldLine += oldCount;
     newLine += newCount;
-    cursor = end;
+    cursor = end2;
   }
   return output;
 }
+const vaultEvents = { created: "vault.create", updated: "vault.modify", deleted: "vault.delete" };
 const changeSummary = (result) => ({
   changes: result.changes.map(({ path, revision, operation: operation2, bytes }) => ({ path, revision, operation: operation2, bytes })),
-  bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0)
+  bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0),
+  ...result.renames ? { renames: result.renames.map(({ from, to, kind }) => ({ from, to, kind })) } : {}
 });
 const utf8 = (bytes) => {
   try {
@@ -700,24 +882,36 @@ const utf8 = (bytes) => {
   }
 };
 class Workspace {
-  constructor(files, codec, events, dryRun, root = null) {
+  /** `observer` follows each committed batch of this scope, such as the metadata cache of the same root. */
+  constructor(files, codec, events, dryRun, root = null, observer) {
     this.files = files;
     this.codec = codec;
     this.events = events;
     this.dryRun = dryRun;
     this.root = root;
+    this.observer = observer;
   }
   files;
   codec;
   events;
   dryRun;
   root;
+  observer;
+  /**
+   * The same invocation (events, codec, dry run) over another repository scope, such as a selected project.
+   * Commit observers are bound to one scope, so the new scope has only the `observer` given here.
+   */
+  within(files, root, observer) {
+    return new Workspace(files, this.codec, this.events, this.dryRun, root, observer);
+  }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
-  // fallow-ignore-next-line unused-class-member
+  // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
   async read(path) {
     return this.observe("read", [path], async () => {
       const file = await this.files.read(path);
-      return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+      const result = { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+      await publishHostEvent(this.events, "workspace.file-open", { path });
+      return result;
     }, (result) => ({ bytes: result.bytes }));
   }
   async write(writes, options = {}) {
@@ -735,9 +929,9 @@ class Workspace {
     }
     return this.observe("write", requests.map((request) => request.path), async () => {
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-      const changes = await this.files.writeBatch(requests, this.dryRun);
-      const result = await this.committed(changes);
-      return this.dryRun && previous2 ? { ...result, changes: await this.preview(changes, requests, previous2) } : result;
+      const { changes, folders: folders2 } = await this.files.writeBatch(requests, this.dryRun);
+      await this.committed({ renames: [], changes, folders: folders2, removedFolders: [] });
+      return { dryRun: this.dryRun, changes: this.dryRun && previous2 ? await this.preview(changes, requests, previous2) : changes };
     }, changeSummary);
   }
   /** Diff each planned file against the revision that the dry run checked; binary content has no diff. */
@@ -745,7 +939,7 @@ class Workspace {
     return Promise.all(changes.map(async (change2) => {
       const request = requests.find((candidate) => candidate.path === change2.path);
       const after = request && isTextLike(change2.path) ? utf8(request.bytes) : void 0;
-      if (after === void 0) return { ...change2, diff: null };
+      if (after === void 0 || change2.operation === "deleted") return { ...change2, diff: null };
       if (change2.operation === "created") return { ...change2, diff: unifiedDiff({ path: change2.path, before: "", after, created: true }) };
       const snapshot = previous2.get(change2.path) ?? await this.files.read(change2.path);
       const before = snapshot.revision === request.expectedRevision ? utf8(snapshot.bytes) : void 0;
@@ -755,21 +949,67 @@ class Workspace {
   async remove(path, expectedRevision) {
     return this.observe("remove", [path], async () => {
       const change2 = await this.files.remove(path, expectedRevision, this.dryRun);
-      return this.committed([change2]);
+      await this.committed({ renames: [], changes: [change2], folders: [], removedFolders: [] });
+      return { dryRun: this.dryRun, changes: [change2] };
     }, changeSummary);
   }
-  async committed(changes) {
-    if (!this.dryRun) for (const change2 of changes) {
+  /**
+   * One guarded batch of renames, writes and removals (see `FileRepository.commit`). Structured writes are
+   * validated first; dry runs return each write's diff when `options.previous` is given.
+   */
+  async commit(batch, options) {
+    const paths2 = [...(batch.renames ?? []).flatMap((rename2) => [rename2.from, rename2.to]), ...(batch.writes ?? []).map((write) => write.path), ...(batch.removes ?? []).map((remove) => remove.path)];
+    return this.observe(options.operation, paths2, async () => {
+      const requests = snapshotWriteRequests(batch.writes ?? []);
+      for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
+      const result = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
+      await this.committed(result, options.trash === true);
+      const changes = this.dryRun && options.previous ? await this.preview(result.changes, requests, options.previous) : result.changes;
+      return { dryRun: this.dryRun, renames: result.renames, changes, folders: result.folders, removedFolders: result.removedFolders };
+    }, changeSummary);
+  }
+  /**
+   * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
+   * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
+   * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
+   * observer. A trash batch reports each moved file, then each moved folder (child before parent), as `vault.delete`.
+   */
+  async committed(result, trash = false) {
+    const { renames, changes, folders: folders2, removedFolders } = result;
+    if (this.dryRun) {
+      for (const { path, operation: operation2, bytes } of changes) await publishHostEvent(this.events, "workspace.quick-preview", { path, operation: operation2, bytes });
+      return;
+    }
+    for (const path of folders2) if (!(trash && isInTrash(path))) await this.notify(path, "vault.create", { path, kind: "folder", operation: "created" });
+    if (trash) {
+      for (const rename2 of renames) if (rename2.kind === "file") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "file", revision: rename2.revision, bytes: rename2.bytes, operation: "deleted" });
+      for (const rename2 of [...renames].reverse()) if (rename2.kind === "folder") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "folder", operation: "deleted" });
+    } else {
+      for (const rename2 of renames) await this.notify(rename2.to, "vault.rename", { path: rename2.to, oldPath: rename2.from, kind: rename2.kind, ...rename2.kind === "file" ? { revision: rename2.revision } : {} });
+    }
+    for (const { path, revision, operation: operation2, bytes } of changes) await this.notify(path, vaultEvents[operation2], { path, kind: "file", revision, bytes, operation: operation2 });
+    for (const path of removedFolders) await this.notify(path, "vault.delete", { path, kind: "folder", operation: "deleted" });
+    const moved2 = renames.filter((rename2) => rename2.kind === "file");
+    if (this.observer && moved2.length + changes.length > 0) {
       try {
-        await this.events.emit(`file.${change2.operation}`, change2);
+        await this.observer.committed({ renames: moved2, changes });
       } catch (error2) {
-        try {
-          this.events.warn(`Committed ${change2.path}; file notification failed: ${errorMessage(error2)}`);
-        } catch {
-        }
+        this.warn(`Committed ${moved2.length + changes.length} file(s); post-commit update failed: ${errorMessage(error2)}`);
       }
     }
-    return { dryRun: this.dryRun, changes };
+  }
+  async notify(path, id2, payload) {
+    try {
+      await this.events.emit(id2, payload);
+    } catch (error2) {
+      this.warn(`Committed ${path}; vault notification failed: ${errorMessage(error2)}`);
+    }
+  }
+  warn(message) {
+    try {
+      this.events.warn(message);
+    } catch {
+    }
   }
   // CLI handlers and external plugins use this guarded editing API through CommandContext.
   // Dry-run edits always include a unified diff of the transformed file.
@@ -782,13 +1022,13 @@ class Workspace {
   }
   async observe(operation2, paths2, action2, summarize) {
     const payload = { operationId: this.events.nextOperationId(), operation: operation2, root: this.root, paths: paths2.filter((path) => typeof path === "string" && path.length > 0), dryRun: this.dryRun };
-    await publishHostEvent(this.events, "workspace.started", payload);
+    await publishHostEvent(this.events, "operation.started", payload);
     try {
       const result = await action2();
-      await publishHostEvent(this.events, "workspace.succeeded", { ...payload, ...summarize(result) });
+      await publishHostEvent(this.events, "operation.succeeded", { ...payload, ...summarize(result) });
       return result;
     } catch (error2) {
-      await publishHostEvent(this.events, "workspace.failed", { ...payload, error: summarizeError(error2) });
+      await publishHostEvent(this.events, "operation.failed", { ...payload, error: summarizeError(error2) });
       throw error2;
     }
   }
@@ -807,23 +1047,86 @@ class ScopedFiles {
   async list() {
     return (await this.files.list()).filter((path) => path.startsWith(this.prefix)).map((path) => this.relative(path));
   }
+  /** Folders created above the project directory are outside this scope and are not reported. */
   async writeBatch(writes, dryRun) {
     const requests = snapshotWriteRequests(writes).map((write) => ({ ...write, path: this.prefix + write.path }));
-    const changes = await this.files.writeBatch(requests, dryRun);
-    return changes.map((change2) => ({ ...change2, path: this.relative(change2.path) }));
+    const { changes, folders: folders2 } = await this.files.writeBatch(requests, dryRun);
+    return {
+      changes: changes.map((change2) => ({ ...change2, path: this.relative(change2.path) })),
+      folders: folders2.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder))
+    };
   }
   async remove(path, expectedRevision, dryRun) {
     const change2 = await this.files.remove(this.prefix + vaultPath(path), expectedRevision, dryRun);
     return { ...change2, path: this.relative(change2.path) };
+  }
+  async stat(path) {
+    return { ...await this.files.stat(this.prefix + vaultPath(path)), path: vaultPath(path) };
+  }
+  /** Folders created or removed above the project directory are outside this scope and are not reported. */
+  async commit(batch, dryRun) {
+    const result = await this.files.commit({
+      renames: (batch.renames ?? []).map((rename2) => ({ ...rename2, from: this.prefix + vaultPath(rename2.from), to: this.prefix + vaultPath(rename2.to) })),
+      writes: snapshotWriteRequests(batch.writes ?? []).map((write) => ({ ...write, path: this.prefix + write.path })),
+      removes: (batch.removes ?? []).map((remove) => ({ ...remove, path: this.prefix + vaultPath(remove.path) }))
+    }, dryRun);
+    const inScope = (folders2) => folders2.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder));
+    return {
+      renames: result.renames.map((rename2) => ({ ...rename2, from: this.relative(rename2.from), to: this.relative(rename2.to) })),
+      changes: result.changes.map((change2) => ({ ...change2, path: this.relative(change2.path) })),
+      folders: inScope(result.folders),
+      removedFolders: inScope(result.removedFolders)
+    };
   }
   relative(path) {
     ensure(path.startsWith(this.prefix), "INVALID_PATH", "Repository returned a path outside the selected project.");
     return vaultPath(path.slice(this.prefix.length));
   }
 }
+function scopedCommitObserver(observer, directory) {
+  const prefix = `${vaultPath(directory)}/`;
+  const within = (path) => path.startsWith(prefix);
+  return {
+    async committed({ renames, changes }) {
+      const moved2 = [], crossed = [];
+      for (const rename2 of renames) {
+        if (within(rename2.from) && within(rename2.to)) moved2.push({ ...rename2, from: rename2.from.slice(prefix.length), to: rename2.to.slice(prefix.length) });
+        else if (within(rename2.from)) crossed.push({ path: rename2.from.slice(prefix.length), revision: rename2.revision, operation: "deleted", bytes: rename2.bytes });
+        else if (within(rename2.to)) crossed.push({ path: rename2.to.slice(prefix.length), revision: rename2.revision, operation: "created", bytes: rename2.bytes });
+      }
+      const inside2 = [...crossed, ...changes.filter((change2) => within(change2.path)).map((change2) => ({ ...change2, path: change2.path.slice(prefix.length) }))];
+      if (moved2.length + inside2.length > 0) await observer.committed({ renames: moved2, changes: inside2 });
+    }
+  };
+}
+const isHostNamespace = (namespace) => hostEventNamespaces.includes(namespace);
+function ensurePluginNamespace(pluginId) {
+  ensure(!isHostNamespace(pluginId), "PLUGIN_NAMESPACE", `Plugin id ${pluginId} is reserved for host events (${hostEventNamespaces.join(", ")}).`);
+}
+function pluginEvents(bus, pluginId) {
+  return {
+    ids: () => bus.ids(),
+    catalog: () => bus.catalog(),
+    on: (id2, listener) => bus.on(id2, listener),
+    once: (id2, listener) => bus.once(id2, listener),
+    onAny: (listener) => bus.onAny(listener),
+    replay: (listener) => bus.replay(listener),
+    warn: (message) => bus.warn(message),
+    onLayoutReady: (callback) => bus.onLayoutReady(callback),
+    onQuit: (task2) => bus.onQuit(task2),
+    async emit(id2, payload) {
+      const namespace = typeof id2 === "string" ? id2.split(".")[0] : "";
+      const owner = isHostNamespace(namespace) ? "the host" : `plugin ${namespace}`;
+      ensure(namespace === pluginId, "EVENT_OWNERSHIP", `Plugin ${pluginId} may emit only ${pluginId}.* events; ${String(id2)} belongs to ${owner}.`);
+      await bus.emit(id2, payload);
+    }
+  };
+}
+const hooks$1 = ["onload", "onUserEnable", "onExternalSettingsChange", "onunload"];
 const appVersion = [0, 1, 0];
 function validatePluginManifest(value2) {
   ensure(isRecord(value2) && typeof value2.id === "string" && /^[a-z][a-z0-9-]*$/.test(value2.id), "INVALID_PLUGIN", "Plugin manifest requires a lowercase kebab-case id.");
+  ensurePluginNamespace(value2.id);
   for (const key of ["name", "description", "author"]) ensure(typeof value2[key] === "string" && value2[key].trim().length > 0, "INVALID_PLUGIN", `Plugin manifest requires ${key}.`);
   for (const key of ["version", "minAppVersion"]) ensure(typeof value2[key] === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value2[key]), "INVALID_PLUGIN", `Plugin manifest requires a numeric ${key}.`);
   const minimum = value2.minAppVersion.split(".").map(Number);
@@ -847,7 +1150,7 @@ class Registry {
     ensure(isRecord(plugin2), "INVALID_PLUGIN", "Plugin must export an object or class.");
     validatePluginManifest(plugin2.manifest);
     ensure(!this.plugins.some((p) => p.manifest.id === plugin2.manifest.id), "DUPLICATE_PLUGIN", plugin2.manifest.id);
-    for (const hook of ["onload", "onunload"]) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
+    for (const hook of hooks$1) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
     for (const key of ["commands", "generators", "events", "skills"]) {
       ensure(plugin2[key] === void 0 || Array.isArray(plugin2[key]), "INVALID_PLUGIN", `${key} must be an array.`);
       for (const contribution of plugin2[key] ?? []) {
@@ -871,7 +1174,8 @@ class Registry {
       this.add(skills, skill);
     }
     events.defineAll(plugin2.events ?? []);
-    for (const command2 of plugin2.commands ?? []) this.commands.set(command2.id, command2);
+    const channel = pluginEvents(events, plugin2.manifest.id);
+    for (const command2 of plugin2.commands ?? []) this.commands.set(command2.id, ownedCommand(command2, channel));
     for (const generator of plugin2.generators ?? []) this.generators.set(generator.id, generator);
     for (const skill of plugin2.skills ?? []) this.skills.set(skill.id, skill);
     this.plugins.push(plugin2);
@@ -885,21 +1189,26 @@ class Registry {
       await publishHostEvent(events, "plugin.registered", { pluginId });
     }
   }
-  async activate(context) {
+  /** Each plugin's hooks receive `context` with its own event channel. `state` enables onUserEnable/onExternalSettingsChange. */
+  async activate(events, context, state2) {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins can activate only once per invocation.");
     this.state = "activating";
+    let tracker;
     try {
-      await this.publishRegistered(context.events);
+      await this.publishRegistered(events);
+      if (state2 && this.plugins.length > 0) tracker = await ActivationTracker.load(state2);
       for (const plugin2 of this.plugins) {
         const pluginId = plugin2.manifest.id, onunload = plugin2.onunload;
+        const pluginContext = { ...context, events: pluginEvents(events, pluginId) };
         this.cleanups.unshift({ pluginId, run: () => onunload?.call(plugin2) });
-        await publishHostEvent(context.events, "plugin.activating", { pluginId });
+        await publishHostEvent(events, "plugin.activating", { pluginId });
         try {
-          const result = await plugin2.onload?.(context);
+          const result = await plugin2.onload?.(pluginContext);
           ensure(result === void 0, "INVALID_PLUGIN", "onload must return nothing; use onunload for cleanup.");
-          await publishHostEvent(context.events, "plugin.activated", { pluginId });
+          await tracker?.activated(plugin2, pluginContext);
+          await publishHostEvent(events, "plugin.activated", { pluginId });
         } catch (error2) {
-          await publishHostEvent(context.events, "plugin.activation-failed", { pluginId, error: summarizeError(error2) });
+          await publishHostEvent(events, "plugin.activation-failed", { pluginId, error: summarizeError(error2) });
           throw error2;
         }
       }
@@ -907,6 +1216,8 @@ class Registry {
     } catch (error2) {
       this.state = "failed";
       throw error2;
+    } finally {
+      await tracker?.save(this.plugins, (message) => events.warn(message));
     }
   }
   async dispose(events) {
@@ -927,22 +1238,33 @@ class Registry {
     events.dispose();
   }
 }
+function ownedCommand(command2, events) {
+  return {
+    id: command2.id,
+    description: command2.description,
+    usage: command2.usage,
+    ...command2.options === void 0 ? {} : { options: command2.options },
+    run: (args, flags, context) => command2.run(args, flags, { ...context, events })
+  };
+}
 function projectName(name2) {
   ensure(typeof name2 === "string" && name2.length <= 214 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name2), "INVALID_PROJECT_NAME", "Use a lowercase kebab-case project name, for example billing-service.");
   return name2;
 }
 class ProjectService {
-  constructor(files, workspace2, projectsDirectory, scaffolder) {
+  constructor(files, workspace2, projectsDirectory, scaffolder, events) {
     this.files = files;
     this.workspace = workspace2;
     this.projectsDirectory = projectsDirectory;
     this.scaffolder = scaffolder;
+    this.events = events;
     vaultPath(projectsDirectory);
   }
   files;
   workspace;
   projectsDirectory;
   scaffolder;
+  events;
   async list() {
     const prefix = `${this.projectsDirectory}/`;
     const names2 = (await this.files.list()).filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length)).filter((path) => /^[^/]+\/\.forge\/project\.json$/.test(path)).map((path) => path.split("/")[0]).sort();
@@ -984,9 +1306,9 @@ class ProjectService {
     }
   }
   async requireCurrent() {
-    const project = await this.current();
-    ensure(project !== null, "PROJECT_REQUIRED", "No project is selected. Run project list, then project open <name> before using this command.");
-    return project;
+    const project2 = await this.current();
+    ensure(project2 !== null, "PROJECT_REQUIRED", "No project is selected. Run project list, then project open <name> before using this command.");
+    return project2;
   }
   async open(name2) {
     return this.select(await this.inspect(name2));
@@ -1008,10 +1330,10 @@ class ProjectService {
   }
   async component(name2, componentName, kind = "domain") {
     ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
-    const project = await this.inspect(name2);
+    const project2 = await this.inspect(name2);
     const plan = this.scaffolder.component(name2, componentName, this.projectsDirectory, kind);
     const result = await this.workspace.write(plan);
-    return { project, component: { name: componentName, kind }, ...result, ...this.preview(plan) };
+    return { project: project2, component: { name: componentName, kind }, ...result, ...this.preview(plan) };
   }
   async contextSnapshot() {
     try {
@@ -1033,30 +1355,34 @@ class ProjectService {
       throw forgeError("INVALID_PROJECT_CONTEXT", "Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.");
     }
   }
-  async select(project) {
+  /** A committed selection change emits `workspace.project-change` with the previous and new project names. */
+  async select(project2) {
     const current = await this.contextSnapshot();
-    let unchanged = current === null && project === null;
+    let unchanged = current === null && project2 === null, from = null;
     if (current) {
       try {
         const selection = this.contextProject(current);
-        unchanged = project === null ? selection === null : selection?.name === project.name && selection.directory === project.directory;
+        from = selection?.name ?? null;
+        unchanged = project2 === null ? selection === null : selection?.name === project2.name && selection.directory === project2.directory;
       } catch (error2) {
         if (!(error2 instanceof AppError && error2.code === "INVALID_PROJECT_CONTEXT")) throw error2;
       }
     }
     const plan = unchanged ? [] : [{
       path: "bin/data/context.json",
-      bytes: new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, project: project?.name ?? null, ...project ? { directory: project.directory } : {} }, null, 2) + "\n"),
+      bytes: new TextEncoder().encode(JSON.stringify({ schemaVersion: 1, project: project2?.name ?? null, ...project2 ? { directory: project2.directory } : {} }, null, 2) + "\n"),
       ...current ? { expectedRevision: current.revision } : {}
     }];
     const result = unchanged ? { dryRun: this.workspace.dryRun, changes: [] } : await this.workspace.write(plan);
-    return { project, ...result, ...this.preview(plan) };
+    const to = project2?.name ?? null;
+    if (!unchanged && !this.workspace.dryRun && from !== to) await publishHostEvent(this.events, "workspace.project-change", { from, to });
+    return { project: project2, ...result, ...this.preview(plan) };
   }
   preview(plan) {
     return this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {};
   }
 }
-const encode$2 = (value2) => new TextEncoder().encode(value2);
+const encode$3 = (value2) => new TextEncoder().encode(value2);
 const instructions = `# The Forge workflow
 
 Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
@@ -1113,24 +1439,24 @@ class SetupService {
   templates;
   async run() {
     ensure(this.artifacts.some((artifact) => artifact.path === "forge.js") && this.artifacts.some((artifact) => artifact.path === "package.json"), "INVALID_SETUP", "Setup requires the complete built bin distribution. Run the bundled CLI or build it first.");
-    const candidates = [
+    const candidates2 = [
       ...this.artifacts.map((artifact) => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
-      { path: "bin/config.json", bytes: encode$2(JSON.stringify(this.config, null, 2) + "\n") },
-      ...this.skills.map((skill) => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode$2(skill.content) })),
-      { path: "bin/templates/entity.md", bytes: encode$2(entityTemplate) },
-      ...this.templates.map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$2(template.content) })),
+      { path: "bin/config.json", bytes: encode$3(JSON.stringify(this.config, null, 2) + "\n") },
+      ...this.skills.map((skill) => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode$3(skill.content) })),
+      { path: "bin/templates/entity.md", bytes: encode$3(entityTemplate) },
+      ...this.templates.map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$3(template.content) })),
       { path: "bin/plugins/.gitkeep", bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
-      { path: "AGENTS.md", bytes: encode$2(instructions) }
+      { path: "AGENTS.md", bytes: encode$3(instructions) }
     ];
     const seen = /* @__PURE__ */ new Set();
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       vaultPath(candidate.path);
       ensure(!seen.has(candidate.path), "INVALID_SETUP", `Setup destinations overlap: ${candidate.path}`);
       seen.add(candidate.path);
     }
     const writes = [], skipped = [];
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       try {
         await this.workspace.files.read(candidate.path);
         skipped.push(candidate.path);
@@ -1776,10 +2102,10 @@ class TemplateInstaller {
   workspace;
   artifacts;
   async install() {
-    const candidates = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
-    ensure(new Set(candidates.map((candidate) => candidate.path)).size === candidates.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
+    const candidates2 = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
+    ensure(new Set(candidates2.map((candidate) => candidate.path)).size === candidates2.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
     const writes = [], skipped = [];
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       try {
         await this.workspace.files.read(candidate.path);
         skipped.push(candidate.path);
@@ -1797,7 +2123,7 @@ const generatedWorkflowDirectory = ".github/workflows";
 const generatedMarker = "# Generated by forge workflows sync from ";
 const projectPathVariable = "FORGE_PROJECT_PATH";
 const segment = /^[a-z0-9][a-z0-9._-]*$/;
-function workflowSource(project, projectDirectory, path) {
+function workflowSource(project2, projectDirectory, path) {
   const prefix = `${projectDirectory}/${workflowSourceDirectory}/`;
   if (!path.startsWith(prefix)) return void 0;
   const parts = path.slice(prefix.length).split("/");
@@ -1807,10 +2133,10 @@ function workflowSource(project, projectDirectory, path) {
   if (!match) return void 0;
   const stem = match[1];
   ensure(segment.test(concern) && segment.test(stem), "INVALID_WORKFLOW", `Workflow concern and file names must be lowercase kebab-case: ${path}.`);
-  return { project, projectDirectory, concern, source: path, target: generatedWorkflowPath(project, concern, stem) };
+  return { project: project2, projectDirectory, concern, source: path, target: generatedWorkflowPath(project2, concern, stem) };
 }
-function generatedWorkflowPath(project, concern, stem) {
-  return `${generatedWorkflowDirectory}/${project}--${concern}${stem === concern ? "" : `--${stem}`}.yml`;
+function generatedWorkflowPath(project2, concern, stem) {
+  return `${generatedWorkflowDirectory}/${project2}--${concern}${stem === concern ? "" : `--${stem}`}.yml`;
 }
 function generatedHeader(source) {
   return `${generatedMarker}${source}.
@@ -1854,7 +2180,7 @@ function ensureDistinctTargets(sources) {
   }
 }
 const equalBytes = (left, right) => left.length === right.length && left.every((byte, index2) => byte === right[index2]);
-const decode$3 = (bytes) => new TextDecoder().decode(bytes);
+const decode$5 = (bytes) => new TextDecoder().decode(bytes);
 const byTarget = (left, right) => left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
 class WorkflowSync {
   constructor(workspace2, projects, renderer) {
@@ -1886,15 +2212,15 @@ class WorkflowSync {
     }
     return { dryRun: this.workspace.dryRun, workflows: plan.map((entry2) => this.entry(entry2)), changes };
   }
-  entry({ project, concern, source, target, status: status2 }) {
-    return { project, concern, source, target, status: status2 };
+  entry({ project: project2, concern, source, target, status: status2 }) {
+    return { project: project2, concern, source, target, status: status2 };
   }
   async plan() {
     const paths2 = await this.workspace.files.list();
     const sources = [];
-    for (const project of await this.projects.list()) {
+    for (const project2 of await this.projects.list()) {
       for (const path of paths2) {
-        const source = workflowSource(project.name, project.directory, path);
+        const source = workflowSource(project2.name, project2.directory, path);
         if (source) sources.push(source);
       }
     }
@@ -1903,14 +2229,14 @@ class WorkflowSync {
     const planned = await Promise.all(sources.map(async (source) => {
       const bytes = this.renderer.render((await this.workspace.files.read(source.source)).bytes, source);
       const current = await this.current(source.target);
-      ensure(current === void 0 || isGeneratedWorkflow(decode$3(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
+      ensure(current === void 0 || isGeneratedWorkflow(decode$5(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
       const status2 = current === void 0 ? "missing" : equalBytes(current.bytes, bytes) ? "unchanged" : "changed";
       return { project: source.project, concern: source.concern, source: source.source, target: source.target, status: status2, bytes, ...current ? { revision: current.revision } : {} };
     }));
     const prefix = `${generatedWorkflowDirectory}/`;
     const stale = await Promise.all(paths2.filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && !desired.has(path)).map(async (path) => {
       const current = await this.workspace.files.read(path);
-      return isGeneratedWorkflow(decode$3(current.bytes)) ? [{ project: null, concern: null, source: null, target: path, status: "stale", revision: current.revision }] : [];
+      return isGeneratedWorkflow(decode$5(current.bytes)) ? [{ project: null, concern: null, source: null, target: path, status: "stale", revision: current.revision }] : [];
     }));
     return [...planned, ...stale.flat()].sort(byTarget);
   }
@@ -2167,9 +2493,9 @@ function requireDirectives() {
       this.tags = Object.assign({}, Directives.defaultTags, tags2);
     }
     clone() {
-      const copy = new Directives(this.yaml, this.tags);
-      copy.docStart = this.docStart;
-      return copy;
+      const copy2 = new Directives(this.yaml, this.tags);
+      copy2.docStart = this.docStart;
+      return copy2;
     }
     /**
      * During parsing, get a Directives instance for the current document and
@@ -2480,10 +2806,10 @@ function requireNode() {
     }
     /** Create a copy of this node.  */
     clone() {
-      const copy = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
+      const copy2 = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
       if (this.range)
-        copy.range = this.range.slice();
-      return copy;
+        copy2.range = this.range.slice();
+      return copy2;
     }
     /** A plain JavaScript representation of this node. */
     toJS(doc, { mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
@@ -2776,13 +3102,13 @@ function requireCollection() {
      * @param schema - If defined, overwrites the original's schema
      */
     clone(schema2) {
-      const copy = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
+      const copy2 = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
       if (schema2)
-        copy.schema = schema2;
-      copy.items = copy.items.map((it) => identity2.isNode(it) || identity2.isPair(it) ? it.clone(schema2) : it);
+        copy2.schema = schema2;
+      copy2.items = copy2.items.map((it) => identity2.isNode(it) || identity2.isPair(it) ? it.clone(schema2) : it);
       if (this.range)
-        copy.range = this.range.slice();
-      return copy;
+        copy2.range = this.range.slice();
+      return copy2;
     }
     /**
      * Adds a value to the collection. For `!!map` and `!!omap` the value must
@@ -2911,12 +3237,12 @@ function requireFoldFlowLines() {
       return text2;
     const folds = [];
     const escapedFolds = {};
-    let end = lineWidth - indent.length;
+    let end2 = lineWidth - indent.length;
     if (typeof indentAtStart === "number") {
       if (indentAtStart > lineWidth - Math.max(2, minContentWidth))
         folds.push(0);
       else
-        end = lineWidth - indentAtStart;
+        end2 = lineWidth - indentAtStart;
     }
     let split = void 0;
     let prev = void 0;
@@ -2927,7 +3253,7 @@ function requireFoldFlowLines() {
     if (mode === FOLD_BLOCK) {
       i = consumeMoreIndentedLines(text2, i, indent.length);
       if (i !== -1)
-        end = i + endStep;
+        end2 = i + endStep;
     }
     for (let ch; ch = text2[i += 1]; ) {
       if (mode === FOLD_QUOTED && ch === "\\") {
@@ -2950,7 +3276,7 @@ function requireFoldFlowLines() {
       if (ch === "\n") {
         if (mode === FOLD_BLOCK)
           i = consumeMoreIndentedLines(text2, i, indent.length);
-        end = i + indent.length + endStep;
+        end2 = i + indent.length + endStep;
         split = void 0;
       } else {
         if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
@@ -2958,10 +3284,10 @@ function requireFoldFlowLines() {
           if (next && next !== " " && next !== "\n" && next !== "	")
             split = i;
         }
-        if (i >= end) {
+        if (i >= end2) {
           if (split) {
             folds.push(split);
-            end = split + endStep;
+            end2 = split + endStep;
             split = void 0;
           } else if (mode === FOLD_QUOTED) {
             while (prev === " " || prev === "	") {
@@ -2974,7 +3300,7 @@ function requireFoldFlowLines() {
               return text2;
             folds.push(j);
             escapedFolds[j] = true;
-            end = j + endStep;
+            end2 = j + endStep;
             split = void 0;
           } else {
             overflow = true;
@@ -2992,36 +3318,36 @@ function requireFoldFlowLines() {
     let res = text2.slice(0, folds[0]);
     for (let i2 = 0; i2 < folds.length; ++i2) {
       const fold = folds[i2];
-      const end2 = folds[i2 + 1] || text2.length;
+      const end3 = folds[i2 + 1] || text2.length;
       if (fold === 0)
         res = `
-${indent}${text2.slice(0, end2)}`;
+${indent}${text2.slice(0, end3)}`;
       else {
         if (mode === FOLD_QUOTED && escapedFolds[fold])
           res += `${text2[fold]}\\`;
         res += `
-${indent}${text2.slice(fold + 1, end2)}`;
+${indent}${text2.slice(fold + 1, end3)}`;
       }
     }
     return res;
   }
   function consumeMoreIndentedLines(text2, i, indent) {
-    let end = i;
-    let start = i + 1;
-    let ch = text2[start];
+    let end2 = i;
+    let start2 = i + 1;
+    let ch = text2[start2];
     while (ch === " " || ch === "	") {
-      if (i < start + indent) {
+      if (i < start2 + indent) {
         ch = text2[++i];
       } else {
         do {
           ch = text2[++i];
         } while (ch && ch !== "\n");
-        end = i;
-        start = i + 1;
-        ch = text2[start];
+        end2 = i;
+        start2 = i + 1;
+        ch = text2[start2];
       }
     }
-    return end;
+    return end2;
   }
   foldFlowLines.FOLD_BLOCK = FOLD_BLOCK;
   foldFlowLines.FOLD_FLOW = FOLD_FLOW;
@@ -3048,12 +3374,12 @@ function requireStringifyString() {
     const strLen = str.length;
     if (strLen <= limit)
       return false;
-    for (let i = 0, start = 0; i < strLen; ++i) {
+    for (let i = 0, start2 = 0; i < strLen; ++i) {
       if (str[i] === "\n") {
-        if (i - start > limit)
+        if (i - start2 > limit)
           return true;
-        start = i + 1;
-        if (strLen - start <= limit)
+        start2 = i + 1;
+        if (strLen - start2 <= limit)
           return false;
       }
     }
@@ -3067,19 +3393,19 @@ function requireStringifyString() {
     const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
     const indent = ctx.indent || (containsDocumentMarker(value2) ? "  " : "");
     let str = "";
-    let start = 0;
+    let start2 = 0;
     for (let i = 0, ch = json2[i]; ch; ch = json2[++i]) {
       if (ch === " " && json2[i + 1] === "\\" && json2[i + 2] === "n") {
-        str += json2.slice(start, i) + "\\ ";
+        str += json2.slice(start2, i) + "\\ ";
         i += 1;
-        start = i;
+        start2 = i;
         ch = "\\";
       }
       if (ch === "\\")
         switch (json2[i + 1]) {
           case "u":
             {
-              str += json2.slice(start, i);
+              str += json2.slice(start2, i);
               const code2 = json2.substr(i + 2, 4);
               switch (code2) {
                 case "0000":
@@ -3113,14 +3439,14 @@ function requireStringifyString() {
                     str += json2.substr(i, 6);
               }
               i += 5;
-              start = i + 1;
+              start2 = i + 1;
             }
             break;
           case "n":
             if (implicitKey || json2[i + 2] === '"' || json2.length < minMultiLineLength) {
               i += 1;
             } else {
-              str += json2.slice(start, i) + "\n\n";
+              str += json2.slice(start2, i) + "\n\n";
               while (json2[i + 2] === "\\" && json2[i + 3] === "n" && json2[i + 4] !== '"') {
                 str += "\n";
                 i += 2;
@@ -3129,14 +3455,14 @@ function requireStringifyString() {
               if (json2[i + 2] === " ")
                 str += "\\";
               i += 1;
-              start = i + 1;
+              start2 = i + 1;
             }
             break;
           default:
             i += 1;
         }
     }
-    str = start ? str + json2.slice(start) : json2;
+    str = start2 ? str + json2.slice(start2) : json2;
     return implicitKey ? str : foldFlowLines2.foldFlowLines(str, indent, foldFlowLines2.FOLD_QUOTED, getFoldOptions(ctx, false));
   }
   function singleQuotedString(value2, ctx) {
@@ -3186,22 +3512,22 @@ ${indent}`) + "'";
       if (ch !== "\n" && ch !== "	" && ch !== " ")
         break;
     }
-    let end = value2.substring(endStart);
-    const endNlPos = end.indexOf("\n");
+    let end2 = value2.substring(endStart);
+    const endNlPos = end2.indexOf("\n");
     if (endNlPos === -1) {
       chomp = "-";
-    } else if (value2 === end || endNlPos !== end.length - 1) {
+    } else if (value2 === end2 || endNlPos !== end2.length - 1) {
       chomp = "+";
       if (onChompKeep)
         onChompKeep();
     } else {
       chomp = "";
     }
-    if (end) {
-      value2 = value2.slice(0, -end.length);
-      if (end[end.length - 1] === "\n")
-        end = end.slice(0, -1);
-      end = end.replace(blockEndNewlines, `$&${indent}`);
+    if (end2) {
+      value2 = value2.slice(0, -end2.length);
+      if (end2[end2.length - 1] === "\n")
+        end2 = end2.slice(0, -1);
+      end2 = end2.replace(blockEndNewlines, `$&${indent}`);
     }
     let startWithSpace = false;
     let startEnd;
@@ -3215,10 +3541,10 @@ ${indent}`) + "'";
       else
         break;
     }
-    let start = value2.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
-    if (start) {
-      value2 = value2.substring(start.length);
-      start = start.replace(/\n+/g, `$&${indent}`);
+    let start2 = value2.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
+    if (start2) {
+      value2 = value2.substring(start2.length);
+      start2 = start2.replace(/\n+/g, `$&${indent}`);
     }
     const indentSize = indent ? "2" : "1";
     let header = (startWithSpace ? indentSize : "") + chomp;
@@ -3236,14 +3562,14 @@ ${indent}`) + "'";
           literalFallback = true;
         };
       }
-      const body = foldFlowLines2.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines2.FOLD_BLOCK, foldOptions);
+      const body = foldFlowLines2.foldFlowLines(`${start2}${foldedValue}${end2}`, indent, foldFlowLines2.FOLD_BLOCK, foldOptions);
       if (!literalFallback)
         return `>${header}
 ${indent}${body}`;
     }
     value2 = value2.replace(/\n+/g, `$&${indent}`);
     return `|${header}
-${indent}${start}${value2}${end}`;
+${indent}${start2}${value2}${end2}`;
   }
   function plainString(item, ctx, onComment, onChompKeep) {
     const { type: type2, value: value2 } = item;
@@ -3874,23 +4200,23 @@ ${indent}${line}` : "\n";
       lines2.push(str);
       linesAtValue = lines2.length;
     }
-    const { start, end } = flowChars;
+    const { start: start2, end: end2 } = flowChars;
     if (lines2.length === 0) {
-      return start + end;
+      return start2 + end2;
     } else {
       if (!reqNewline) {
         const len = lines2.reduce((sum, line) => sum + line.length + 2, 2);
         reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
       }
       if (reqNewline) {
-        let str = start;
+        let str = start2;
         for (const line of lines2)
           str += line ? `
 ${indentStep}${indent}${line}` : "\n";
         return `${str}
-${indent}${end}`;
+${indent}${end2}`;
       } else {
-        return `${start}${fcPadding}${lines2.join(" ")}${fcPadding}${end}`;
+        return `${start2}${fcPadding}${lines2.join(" ")}${fcPadding}${end2}`;
       }
     }
   }
@@ -5201,9 +5527,9 @@ function requireSchema() {
       this.sortMapEntries = typeof sortMapEntries === "function" ? sortMapEntries : sortMapEntries === true ? sortMapEntriesByKey : null;
     }
     clone() {
-      const copy = Object.create(Schema2.prototype, Object.getOwnPropertyDescriptors(this));
-      copy.tags = this.tags.slice();
-      return copy;
+      const copy2 = Object.create(Schema2.prototype, Object.getOwnPropertyDescriptors(this));
+      copy2.tags = this.tags.slice();
+      return copy2;
     }
   };
   Schema.Schema = Schema$1;
@@ -5345,21 +5671,21 @@ function requireDocument() {
      * Custom Node values that inherit from `Object` still refer to their original instances.
      */
     clone() {
-      const copy = Object.create(Document2.prototype, {
+      const copy2 = Object.create(Document2.prototype, {
         [identity2.NODE_TYPE]: { value: identity2.DOC }
       });
-      copy.commentBefore = this.commentBefore;
-      copy.comment = this.comment;
-      copy.errors = this.errors.slice();
-      copy.warnings = this.warnings.slice();
-      copy.options = Object.assign({}, this.options);
+      copy2.commentBefore = this.commentBefore;
+      copy2.comment = this.comment;
+      copy2.errors = this.errors.slice();
+      copy2.warnings = this.warnings.slice();
+      copy2.options = Object.assign({}, this.options);
       if (this.directives)
-        copy.directives = this.directives.clone();
-      copy.schema = this.schema.clone();
-      copy.contents = identity2.isNode(this.contents) ? this.contents.clone(copy.schema) : this.contents;
+        copy2.directives = this.directives.clone();
+      copy2.schema = this.schema.clone();
+      copy2.contents = identity2.isNode(this.contents) ? this.contents.clone(copy2.schema) : this.contents;
       if (this.range)
-        copy.range = this.range.slice();
-      return copy;
+        copy2.range = this.range.slice();
+      return copy2;
     }
     /** Adds a value to the document. */
     add(value2) {
@@ -5644,9 +5970,9 @@ function requireErrors() {
     }
     if (/[^ ]/.test(lineStr)) {
       let count2 = 1;
-      const end = error2.linePos[1];
-      if (end?.line === line && end.col > col) {
-        count2 = Math.max(1, Math.min(end.col - col, 80 - ci));
+      const end2 = error2.linePos[1];
+      if (end2?.line === line && end2.col > col) {
+        count2 = Math.max(1, Math.min(end2.col - col, 80 - ci));
       }
       const pointer = " ".repeat(ci) + "^".repeat(count2);
       error2.message += `:
@@ -5685,7 +6011,7 @@ function requireResolveProps() {
     let newlineAfterProp = null;
     let comma = null;
     let found = null;
-    let start = null;
+    let start2 = null;
     for (const token of tokens) {
       if (reqSpace) {
         if (token.type !== "space" && token.type !== "newline" && token.type !== "comma")
@@ -5737,7 +6063,7 @@ function requireResolveProps() {
           if (token.source.endsWith(":"))
             onError(token.offset + token.source.length - 1, "BAD_ALIAS", "Anchor ending in : is ambiguous", true);
           anchor2 = token;
-          start ?? (start = token.offset);
+          start2 ?? (start2 = token.offset);
           atNewline = false;
           hasSpace = false;
           reqSpace = true;
@@ -5746,7 +6072,7 @@ function requireResolveProps() {
           if (tag)
             onError(token, "MULTIPLE_TAGS", "A node can have at most one tag");
           tag = token;
-          start ?? (start = token.offset);
+          start2 ?? (start2 = token.offset);
           atNewline = false;
           hasSpace = false;
           reqSpace = true;
@@ -5778,7 +6104,7 @@ function requireResolveProps() {
       }
     }
     const last = tokens[tokens.length - 1];
-    const end = last ? last.offset + last.source.length : offset;
+    const end2 = last ? last.offset + last.source.length : offset;
     if (reqSpace && next && next.type !== "space" && next.type !== "newline" && next.type !== "comma" && (next.type !== "scalar" || next.source !== "")) {
       onError(next.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
     }
@@ -5793,8 +6119,8 @@ function requireResolveProps() {
       anchor: anchor2,
       tag,
       newlineAfterProp,
-      end,
-      start: start ?? end
+      end: end2,
+      start: start2 ?? end2
     };
   }
   resolveProps.resolveProps = resolveProps$1;
@@ -5850,10 +6176,10 @@ function requireUtilFlowIndentCheck() {
   var utilContainsNewline2 = requireUtilContainsNewline();
   function flowIndentCheck(indent, fc, onError) {
     if (fc?.type === "flow-collection") {
-      const end = fc.end[0];
-      if (end.indent === indent && (end.source === "]" || end.source === "}") && utilContainsNewline2.containsNewline(fc)) {
+      const end2 = fc.end[0];
+      if (end2.indent === indent && (end2.source === "]" || end2.source === "}") && utilContainsNewline2.containsNewline(fc)) {
         const msg = "Flow end indicator should be more indented than parent";
-        onError(end, "BAD_INDENT", msg, true);
+        onError(end2, "BAD_INDENT", msg, true);
       }
     }
   }
@@ -5895,8 +6221,8 @@ function requireResolveBlockMap() {
     let offset = bm.offset;
     let commentEnd = null;
     for (const collItem of bm.items) {
-      const { start, key, sep, value: value2 } = collItem;
-      const keyProps = resolveProps2.resolveProps(start, {
+      const { start: start2, key, sep, value: value2 } = collItem;
+      const keyProps = resolveProps2.resolveProps(start2, {
         indicator: "explicit-key-ind",
         next: key ?? sep?.[0],
         offset,
@@ -5923,14 +6249,14 @@ function requireResolveBlockMap() {
           continue;
         }
         if (keyProps.newlineAfterProp || utilContainsNewline2.containsNewline(key)) {
-          onError(key ?? start[start.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
+          onError(key ?? start2[start2.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
         }
       } else if (keyProps.found?.indent !== bm.indent) {
         onError(offset, "BAD_INDENT", startColMsg);
       }
       ctx.atKey = true;
       const keyStart = keyProps.end;
-      const keyNode = key ? composeNode2(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start, null, keyProps, onError);
+      const keyNode = key ? composeNode2(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start2, null, keyProps, onError);
       if (ctx.schema.compat)
         utilFlowIndentCheck2.flowIndentCheck(bm.indent, key, onError);
       ctx.atKey = false;
@@ -6000,8 +6326,8 @@ function requireResolveBlockSeq() {
       ctx.atKey = false;
     let offset = bs.offset;
     let commentEnd = null;
-    for (const { start, value: value2 } of bs.items) {
-      const props = resolveProps2.resolveProps(start, {
+    for (const { start: start2, value: value2 } of bs.items) {
+      const props = resolveProps2.resolveProps(start2, {
         indicator: "seq-item-ind",
         next: value2,
         offset,
@@ -6022,7 +6348,7 @@ function requireResolveBlockSeq() {
           continue;
         }
       }
-      const node2 = value2 ? composeNode2(ctx, value2, props, onError) : composeEmptyNode(ctx, props.end, start, null, props, onError);
+      const node2 = value2 ? composeNode2(ctx, value2, props, onError) : composeEmptyNode(ctx, props.end, start2, null, props, onError);
       if (ctx.schema.compat)
         utilFlowIndentCheck2.flowIndentCheck(bs.indent, value2, onError);
       offset = node2.range[2];
@@ -6040,12 +6366,12 @@ var hasRequiredResolveEnd;
 function requireResolveEnd() {
   if (hasRequiredResolveEnd) return resolveEnd;
   hasRequiredResolveEnd = 1;
-  function resolveEnd$1(end, offset, reqSpace, onError) {
+  function resolveEnd$1(end2, offset, reqSpace, onError) {
     let comment = "";
-    if (end) {
+    if (end2) {
       let hasSpace = false;
       let sep = "";
-      for (const token of end) {
+      for (const token of end2) {
         const { source, type: type2 } = token;
         switch (type2) {
           case "space":
@@ -6106,8 +6432,8 @@ function requireResolveFlowCollection() {
     let offset = fc.offset + fc.start.source.length;
     for (let i = 0; i < fc.items.length; ++i) {
       const collItem = fc.items[i];
-      const { start, key, sep, value: value2 } = collItem;
-      const props = resolveProps2.resolveProps(start, {
+      const { start: start2, key, sep, value: value2 } = collItem;
+      const props = resolveProps2.resolveProps(start2, {
         flow: fcName,
         indicator: "explicit-key-ind",
         next: key ?? sep?.[0],
@@ -6147,7 +6473,7 @@ function requireResolveFlowCollection() {
           onError(props.start, "MISSING_CHAR", `Missing , between ${fcName} items`);
         if (props.comment) {
           let prevItemComment = "";
-          loop: for (const st of start) {
+          loop: for (const st of start2) {
             switch (st.type) {
               case "comma":
               case "space":
@@ -6180,7 +6506,7 @@ function requireResolveFlowCollection() {
       } else {
         ctx.atKey = true;
         const keyStart = props.end;
-        const keyNode = key ? composeNode2(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start, null, props, onError);
+        const keyNode = key ? composeNode2(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start2, null, props, onError);
         if (isBlock(key))
           onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
         ctx.atKey = false;
@@ -6255,14 +6581,14 @@ function requireResolveFlowCollection() {
         ee.unshift(ce);
     }
     if (ee.length > 0) {
-      const end = resolveEnd2.resolveEnd(ee, cePos, ctx.options.strict, onError);
-      if (end.comment) {
+      const end2 = resolveEnd2.resolveEnd(ee, cePos, ctx.options.strict, onError);
+      if (end2.comment) {
         if (coll.comment)
-          coll.comment += "\n" + end.comment;
+          coll.comment += "\n" + end2.comment;
         else
-          coll.comment = end.comment;
+          coll.comment = end2.comment;
       }
-      coll.range = [fc.offset, cePos, end.offset];
+      coll.range = [fc.offset, cePos, end2.offset];
     } else {
       coll.range = [fc.offset, cePos, cePos];
     }
@@ -6343,10 +6669,10 @@ function requireResolveBlockScalar() {
   hasRequiredResolveBlockScalar = 1;
   var Scalar2 = requireScalar();
   function resolveBlockScalar$1(ctx, scalar2, onError) {
-    const start = scalar2.offset;
+    const start2 = scalar2.offset;
     const header = parseBlockScalarHeader(scalar2, ctx.options.strict, onError);
     if (!header)
-      return { value: "", type: null, comment: "", range: [start, start, start] };
+      return { value: "", type: null, comment: "", range: [start2, start2, start2] };
     const type2 = header.mode === ">" ? Scalar2.Scalar.BLOCK_FOLDED : Scalar2.Scalar.BLOCK_LITERAL;
     const lines2 = scalar2.source ? splitLines(scalar2.source) : [];
     let chompStart = lines2.length;
@@ -6359,10 +6685,10 @@ function requireResolveBlockScalar() {
     }
     if (chompStart === 0) {
       const value3 = header.chomp === "+" && lines2.length > 0 ? "\n".repeat(Math.max(1, lines2.length - 1)) : "";
-      let end2 = start + header.length;
+      let end3 = start2 + header.length;
       if (scalar2.source)
-        end2 += scalar2.source.length;
-      return { value: value3, type: type2, comment: header.comment, range: [start, end2, end2] };
+        end3 += scalar2.source.length;
+      return { value: value3, type: type2, comment: header.comment, range: [start2, end3, end3] };
     }
     let trimIndent = scalar2.indent + header.indent;
     let offset = scalar2.offset + header.length;
@@ -6443,8 +6769,8 @@ function requireResolveBlockScalar() {
       default:
         value2 += "\n";
     }
-    const end = start + header.length + scalar2.source.length;
-    return { value: value2, type: type2, comment: header.comment, range: [start, end, end] };
+    const end2 = start2 + header.length + scalar2.source.length;
+    return { value: value2, type: type2, comment: header.comment, range: [start2, end2, end2] };
   }
   function parseBlockScalarHeader({ offset, props }, strict2, onError) {
     if (props[0].type !== "block-scalar-header") {
@@ -6527,7 +6853,7 @@ function requireResolveFlowScalar() {
   var Scalar2 = requireScalar();
   var resolveEnd2 = requireResolveEnd();
   function resolveFlowScalar$1(scalar2, strict2, onError) {
-    const { offset, type: type2, source, end } = scalar2;
+    const { offset, type: type2, source, end: end2 } = scalar2;
     let _type;
     let value2;
     const _onError = (rel, code2, msg) => onError(offset + rel, code2, msg);
@@ -6555,7 +6881,7 @@ function requireResolveFlowScalar() {
         };
     }
     const valueEnd = offset + source.length;
-    const re = resolveEnd2.resolveEnd(end, valueEnd, strict2, onError);
+    const re = resolveEnd2.resolveEnd(end2, valueEnd, strict2, onError);
     return {
       value: value2,
       type: _type,
@@ -6917,7 +7243,7 @@ function requireComposeNode() {
       node2.srcToken = token;
     return node2;
   }
-  function composeEmptyNode(ctx, offset, before, pos, { spaceBefore, comment, anchor: anchor2, tag, end }, onError) {
+  function composeEmptyNode(ctx, offset, before, pos, { spaceBefore, comment, anchor: anchor2, tag, end: end2 }, onError) {
     const token = {
       type: "scalar",
       offset: utilEmptyScalarPosition2.emptyScalarPosition(offset, before, pos),
@@ -6934,18 +7260,18 @@ function requireComposeNode() {
       node2.spaceBefore = true;
     if (comment) {
       node2.comment = comment;
-      node2.range[2] = end;
+      node2.range[2] = end2;
     }
     return node2;
   }
-  function composeAlias({ options }, { offset, source, end }, onError) {
+  function composeAlias({ options }, { offset, source, end: end2 }, onError) {
     const alias = new Alias2.Alias(source.substring(1));
     if (alias.source === "")
       onError(offset, "BAD_ALIAS", "Alias cannot be an empty string");
     if (alias.source.endsWith(":"))
       onError(offset + source.length - 1, "BAD_ALIAS", "Alias ending in : is ambiguous", true);
     const valueEnd = offset + source.length;
-    const re = resolveEnd2.resolveEnd(end, valueEnd, options.strict, onError);
+    const re = resolveEnd2.resolveEnd(end2, valueEnd, options.strict, onError);
     alias.range = [offset, valueEnd, re.offset];
     if (re.comment)
       alias.comment = re.comment;
@@ -6963,7 +7289,7 @@ function requireComposeDoc() {
   var composeNode2 = requireComposeNode();
   var resolveEnd2 = requireResolveEnd();
   var resolveProps2 = requireResolveProps();
-  function composeDoc$1(options, directives2, { offset, start, value: value2, end }, onError) {
+  function composeDoc$1(options, directives2, { offset, start: start2, value: value2, end: end2 }, onError) {
     const opts = Object.assign({ _directives: directives2 }, options);
     const doc = new Document2.Document(void 0, opts);
     const ctx = {
@@ -6973,9 +7299,9 @@ function requireComposeDoc() {
       options: doc.options,
       schema: doc.schema
     };
-    const props = resolveProps2.resolveProps(start, {
+    const props = resolveProps2.resolveProps(start2, {
       indicator: "doc-start",
-      next: value2 ?? end?.[0],
+      next: value2 ?? end2?.[0],
       offset,
       onError,
       parentIndent: 0,
@@ -6986,9 +7312,9 @@ function requireComposeDoc() {
       if (value2 && (value2.type === "block-map" || value2.type === "block-seq") && !props.hasNewline)
         onError(props.end, "MISSING_CHAR", "Block collection cannot start on same line with directives-end marker");
     }
-    doc.contents = value2 ? composeNode2.composeNode(ctx, value2, props, onError) : composeNode2.composeEmptyNode(ctx, props.end, start, null, props, onError);
+    doc.contents = value2 ? composeNode2.composeNode(ctx, value2, props, onError) : composeNode2.composeEmptyNode(ctx, props.end, start2, null, props, onError);
     const contentEnd = doc.contents.range[2];
-    const re = resolveEnd2.resolveEnd(end, contentEnd, false, onError);
+    const re = resolveEnd2.resolveEnd(end2, contentEnd, false, onError);
     if (re.comment)
       doc.comment = re.comment;
     doc.range = [offset, contentEnd, re.offset];
@@ -7165,14 +7491,14 @@ ${cb}` : comment;
             break;
           }
           this.doc.directives.docEnd = true;
-          const end = resolveEnd2.resolveEnd(token.end, token.offset + token.source.length, this.doc.options.strict, this.onError);
+          const end2 = resolveEnd2.resolveEnd(token.end, token.offset + token.source.length, this.doc.options.strict, this.onError);
           this.decorate(this.doc, true);
-          if (end.comment) {
+          if (end2.comment) {
             const dc = this.doc.comment;
             this.doc.comment = dc ? `${dc}
-${end.comment}` : end.comment;
+${end2.comment}` : end2.comment;
           }
-          this.doc.range[2] = end.offset;
+          this.doc.range[2] = end2.offset;
           break;
         }
         default:
@@ -7242,7 +7568,7 @@ function requireCstScalar() {
       inFlow,
       options: { blockQuote: true, lineWidth: -1 }
     });
-    const end = context.end ?? [
+    const end2 = context.end ?? [
       { type: "newline", offset: -1, indent, source: "\n" }
     ];
     switch (source[0]) {
@@ -7254,16 +7580,16 @@ function requireCstScalar() {
         const props = [
           { type: "block-scalar-header", offset, indent, source: head }
         ];
-        if (!addEndtoBlockProps(props, end))
+        if (!addEndtoBlockProps(props, end2))
           props.push({ type: "newline", offset: -1, indent, source: "\n" });
         return { type: "block-scalar", offset, indent, props, source: body };
       }
       case '"':
-        return { type: "double-quoted-scalar", offset, indent, source, end };
+        return { type: "double-quoted-scalar", offset, indent, source, end: end2 };
       case "'":
-        return { type: "single-quoted-scalar", offset, indent, source, end };
+        return { type: "single-quoted-scalar", offset, indent, source, end: end2 };
       default:
-        return { type: "scalar", offset, indent, source, end };
+        return { type: "scalar", offset, indent, source, end: end2 };
     }
   }
   function setScalarValue(token, value2, context = {}) {
@@ -7334,9 +7660,9 @@ function requireCstScalar() {
       Object.assign(token, { type: "block-scalar", indent, props, source: body });
     }
   }
-  function addEndtoBlockProps(props, end) {
-    if (end)
-      for (const st of end)
+  function addEndtoBlockProps(props, end2) {
+    if (end2)
+      for (const st of end2)
         switch (st.type) {
           case "space":
           case "comment":
@@ -7357,14 +7683,14 @@ function requireCstScalar() {
         token.source = source;
         break;
       case "block-scalar": {
-        const end = token.props.slice(1);
+        const end2 = token.props.slice(1);
         let oa = source.length;
         if (token.props[0].type === "block-scalar-header")
           oa -= token.props[0].source.length;
-        for (const tok of end)
+        for (const tok of end2)
           tok.offset += oa;
         delete token.props;
-        Object.assign(token, { type: type2, source, end });
+        Object.assign(token, { type: type2, source, end: end2 });
         break;
       }
       case "block-map":
@@ -7377,11 +7703,11 @@ function requireCstScalar() {
       }
       default: {
         const indent = "indent" in token ? token.indent : -1;
-        const end = "end" in token && Array.isArray(token.end) ? token.end.filter((st) => st.type === "space" || st.type === "comment" || st.type === "newline") : [];
+        const end2 = "end" in token && Array.isArray(token.end) ? token.end.filter((st) => st.type === "space" || st.type === "comment" || st.type === "newline") : [];
         for (const key of Object.keys(token))
           if (key !== "type" && key !== "offset")
             delete token[key];
-        Object.assign(token, { type: type2, indent, source, end });
+        Object.assign(token, { type: type2, indent, source, end: end2 });
       }
     }
   }
@@ -7435,9 +7761,9 @@ function requireCstStringify() {
       }
     }
   }
-  function stringifyItem({ start, key, sep, value: value2 }) {
+  function stringifyItem({ start: start2, key, sep, value: value2 }) {
     let res = "";
-    for (const st of start)
+    for (const st of start2)
       res += st.source;
     if (key)
       res += stringifyToken(key);
@@ -7704,16 +8030,16 @@ function requireLexer() {
       return offset;
     }
     getLine() {
-      let end = this.lineEndPos;
-      if (typeof end !== "number" || end !== -1 && end < this.pos) {
-        end = this.buffer.indexOf("\n", this.pos);
-        this.lineEndPos = end;
+      let end2 = this.lineEndPos;
+      if (typeof end2 !== "number" || end2 !== -1 && end2 < this.pos) {
+        end2 = this.buffer.indexOf("\n", this.pos);
+        this.lineEndPos = end2;
       }
-      if (end === -1)
+      if (end2 === -1)
         return this.atEnd ? this.buffer.substring(this.pos) : null;
-      if (this.buffer[end - 1] === "\r")
-        end -= 1;
-      return this.buffer.substring(this.pos, end);
+      if (this.buffer[end2 - 1] === "\r")
+        end2 -= 1;
+      return this.buffer.substring(this.pos, end2);
     }
     hasChars(n) {
       return this.pos + n <= this.buffer.length;
@@ -7934,21 +8260,21 @@ function requireLexer() {
     }
     *parseQuotedScalar() {
       const quote = this.charAt(0);
-      let end = this.buffer.indexOf(quote, this.pos + 1);
+      let end2 = this.buffer.indexOf(quote, this.pos + 1);
       if (quote === "'") {
-        while (end !== -1 && this.buffer[end + 1] === "'")
-          end = this.buffer.indexOf("'", end + 2);
+        while (end2 !== -1 && this.buffer[end2 + 1] === "'")
+          end2 = this.buffer.indexOf("'", end2 + 2);
       } else {
-        while (end !== -1) {
+        while (end2 !== -1) {
           let n = 0;
-          while (this.buffer[end - 1 - n] === "\\")
+          while (this.buffer[end2 - 1 - n] === "\\")
             n += 1;
           if (n % 2 === 0)
             break;
-          end = this.buffer.indexOf('"', end + 1);
+          end2 = this.buffer.indexOf('"', end2 + 1);
         }
       }
-      const qb = this.buffer.substring(0, end);
+      const qb = this.buffer.substring(0, end2);
       let nl = qb.indexOf("\n", this.pos);
       if (nl !== -1) {
         while (nl !== -1) {
@@ -7958,15 +8284,15 @@ function requireLexer() {
           nl = qb.indexOf("\n", cs);
         }
         if (nl !== -1) {
-          end = nl - (qb[nl - 1] === "\r" ? 2 : 1);
+          end2 = nl - (qb[nl - 1] === "\r" ? 2 : 1);
         }
       }
-      if (end === -1) {
+      if (end2 === -1) {
         if (!this.atEnd)
           return this.setNext("quoted-scalar");
-        end = this.buffer.length;
+        end2 = this.buffer.length;
       }
-      yield* this.pushToIndex(end + 1, false);
+      yield* this.pushToIndex(end2 + 1, false);
       return this.flowLevel ? "flow" : "doc";
     }
     *parseBlockScalarHeader() {
@@ -8058,7 +8384,7 @@ function requireLexer() {
     }
     *parsePlainScalar() {
       const inFlow = this.flowLevel > 0;
-      let end = this.pos - 1;
+      let end2 = this.pos - 1;
       let i = this.pos - 1;
       let ch;
       while (ch = this.buffer[++i]) {
@@ -8066,7 +8392,7 @@ function requireLexer() {
           const next = this.buffer[i + 1];
           if (isEmpty2(next) || inFlow && flowIndicatorChars.has(next))
             break;
-          end = i;
+          end2 = i;
         } else if (isEmpty2(ch)) {
           let next = this.buffer[i + 1];
           if (ch === "\r") {
@@ -8075,7 +8401,7 @@ function requireLexer() {
               ch = "\n";
               next = this.buffer[i + 1];
             } else
-              end = i;
+              end2 = i;
           }
           if (next === "#" || inFlow && flowIndicatorChars.has(next))
             break;
@@ -8088,13 +8414,13 @@ function requireLexer() {
         } else {
           if (inFlow && flowIndicatorChars.has(ch))
             break;
-          end = i;
+          end2 = i;
         }
       }
       if (!ch && !this.atEnd)
         return this.setNext("plain-scalar");
       yield cst2.SCALAR;
-      yield* this.pushToIndex(end + 1, true);
+      yield* this.pushToIndex(end2 + 1, true);
       return inFlow ? "flow" : "doc";
     }
     *pushCount(n) {
@@ -8226,8 +8552,8 @@ function requireLineCounter() {
           return { line: low + 1, col: 1 };
         if (low === 0)
           return { line: 0, col: offset };
-        const start = this.lineStarts[low - 1];
-        return { line: low, col: offset - start + 1 };
+        const start2 = this.lineStarts[low - 1];
+        return { line: low, col: offset - start2 + 1 };
       };
     }
   }
@@ -8607,7 +8933,7 @@ function requireParser() {
     *scalar(scalar2) {
       if (this.type === "map-value-ind") {
         const prev = getPrevProps(this.peek(2));
-        const start = getFirstKeyStartProps(prev);
+        const start2 = getFirstKeyStartProps(prev);
         let sep;
         if (scalar2.end) {
           sep = scalar2.end;
@@ -8619,7 +8945,7 @@ function requireParser() {
           type: "block-map",
           offset: scalar2.offset,
           indent: scalar2.indent,
-          items: [{ start, key: scalar2, sep }]
+          items: [{ start: start2, key: scalar2, sep }]
         };
         this.onKeyLine = true;
         this.stack[this.stack.length - 1] = map2;
@@ -8658,10 +8984,10 @@ function requireParser() {
         case "newline":
           this.onKeyLine = false;
           if (it.value) {
-            const end = "end" in it.value ? it.value.end : void 0;
-            const last = Array.isArray(end) ? end[end.length - 1] : void 0;
+            const end2 = "end" in it.value ? it.value.end : void 0;
+            const last = Array.isArray(end2) ? end2[end2.length - 1] : void 0;
             if (last?.type === "comment")
-              end?.push(this.sourceToken);
+              end2?.push(this.sourceToken);
             else
               map2.items.push({ start: [this.sourceToken] });
           } else if (it.sep) {
@@ -8679,10 +9005,10 @@ function requireParser() {
           } else {
             if (this.atIndentedComment(it.start, map2.indent)) {
               const prev = map2.items[map2.items.length - 2];
-              const end = prev?.value?.end;
-              if (Array.isArray(end)) {
-                arrayPushArray(end, it.start);
-                end.push(this.sourceToken);
+              const end2 = prev?.value?.end;
+              if (Array.isArray(end2)) {
+                arrayPushArray(end2, it.start);
+                end2.push(this.sourceToken);
                 map2.items.pop();
                 return;
               }
@@ -8694,7 +9020,7 @@ function requireParser() {
       if (this.indent >= map2.indent) {
         const atMapIndent = !this.onKeyLine && this.indent === map2.indent;
         const atNextItem = atMapIndent && (it.sep || it.explicitKey) && this.type !== "seq-item-ind";
-        let start = [];
+        let start2 = [];
         if (atNextItem && it.sep && !it.value) {
           const nl = [];
           for (let i = 0; i < it.sep.length; ++i) {
@@ -8714,14 +9040,14 @@ function requireParser() {
             }
           }
           if (nl.length >= 2)
-            start = it.sep.splice(nl[1]);
+            start2 = it.sep.splice(nl[1]);
         }
         switch (this.type) {
           case "anchor":
           case "tag":
             if (atNextItem || it.value) {
-              start.push(this.sourceToken);
-              map2.items.push({ start });
+              start2.push(this.sourceToken);
+              map2.items.push({ start: start2 });
               this.onKeyLine = true;
             } else if (it.sep) {
               it.sep.push(this.sourceToken);
@@ -8734,8 +9060,8 @@ function requireParser() {
               it.start.push(this.sourceToken);
               it.explicitKey = true;
             } else if (atNextItem || it.value) {
-              start.push(this.sourceToken);
-              map2.items.push({ start, explicitKey: true });
+              start2.push(this.sourceToken);
+              map2.items.push({ start: start2, explicitKey: true });
             } else {
               this.stack.push({
                 type: "block-map",
@@ -8752,12 +9078,12 @@ function requireParser() {
                 if (includesToken(it.start, "newline")) {
                   Object.assign(it, { key: null, sep: [this.sourceToken] });
                 } else {
-                  const start2 = getFirstKeyStartProps(it.start);
+                  const start3 = getFirstKeyStartProps(it.start);
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key: null, sep: [this.sourceToken] }]
+                    items: [{ start: start3, key: null, sep: [this.sourceToken] }]
                   });
                 }
               } else if (it.value) {
@@ -8767,10 +9093,10 @@ function requireParser() {
                   type: "block-map",
                   offset: this.offset,
                   indent: this.indent,
-                  items: [{ start, key: null, sep: [this.sourceToken] }]
+                  items: [{ start: start2, key: null, sep: [this.sourceToken] }]
                 });
               } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
-                const start2 = getFirstKeyStartProps(it.start);
+                const start3 = getFirstKeyStartProps(it.start);
                 const key = it.key;
                 const sep = it.sep;
                 sep.push(this.sourceToken);
@@ -8780,10 +9106,10 @@ function requireParser() {
                   type: "block-map",
                   offset: this.offset,
                   indent: this.indent,
-                  items: [{ start: start2, key, sep }]
+                  items: [{ start: start3, key, sep }]
                 });
-              } else if (start.length > 0) {
-                it.sep = it.sep.concat(start, this.sourceToken);
+              } else if (start2.length > 0) {
+                it.sep = it.sep.concat(start2, this.sourceToken);
               } else {
                 it.sep.push(this.sourceToken);
               }
@@ -8791,7 +9117,7 @@ function requireParser() {
               if (!it.sep) {
                 Object.assign(it, { key: null, sep: [this.sourceToken] });
               } else if (it.value || atNextItem) {
-                map2.items.push({ start, key: null, sep: [this.sourceToken] });
+                map2.items.push({ start: start2, key: null, sep: [this.sourceToken] });
               } else if (includesToken(it.sep, "map-value-ind")) {
                 this.stack.push({
                   type: "block-map",
@@ -8811,7 +9137,7 @@ function requireParser() {
           case "double-quoted-scalar": {
             const fs2 = this.flowScalar(this.type);
             if (atNextItem || it.value) {
-              map2.items.push({ start, key: fs2, sep: [] });
+              map2.items.push({ start: start2, key: fs2, sep: [] });
               this.onKeyLine = true;
             } else if (it.sep) {
               this.stack.push(fs2);
@@ -8835,7 +9161,7 @@ function requireParser() {
                   return;
                 }
               } else if (atMapIndent) {
-                map2.items.push({ start });
+                map2.items.push({ start: start2 });
               }
               this.stack.push(bv);
               return;
@@ -8851,10 +9177,10 @@ function requireParser() {
       switch (this.type) {
         case "newline":
           if (it.value) {
-            const end = "end" in it.value ? it.value.end : void 0;
-            const last = Array.isArray(end) ? end[end.length - 1] : void 0;
+            const end2 = "end" in it.value ? it.value.end : void 0;
+            const last = Array.isArray(end2) ? end2[end2.length - 1] : void 0;
             if (last?.type === "comment")
-              end?.push(this.sourceToken);
+              end2?.push(this.sourceToken);
             else
               seq2.items.push({ start: [this.sourceToken] });
           } else
@@ -8867,10 +9193,10 @@ function requireParser() {
           else {
             if (this.atIndentedComment(it.start, seq2.indent)) {
               const prev = seq2.items[seq2.items.length - 2];
-              const end = prev?.value?.end;
-              if (Array.isArray(end)) {
-                arrayPushArray(end, it.start);
-                end.push(this.sourceToken);
+              const end2 = prev?.value?.end;
+              if (Array.isArray(end2)) {
+                arrayPushArray(end2, it.start);
+                end2.push(this.sourceToken);
                 seq2.items.pop();
                 return;
               }
@@ -8972,7 +9298,7 @@ function requireParser() {
           yield* this.step();
         } else if (this.type === "map-value-ind" && parent.type !== "flow-collection") {
           const prev = getPrevProps(parent);
-          const start = getFirstKeyStartProps(prev);
+          const start2 = getFirstKeyStartProps(prev);
           fixFlowSeqItems(fc);
           const sep = fc.end.splice(1, fc.end.length);
           sep.push(this.sourceToken);
@@ -8980,7 +9306,7 @@ function requireParser() {
             type: "block-map",
             offset: fc.offset,
             indent: fc.indent,
-            items: [{ start, key: fc, sep }]
+            items: [{ start: start2, key: fc, sep }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map2;
@@ -9039,35 +9365,35 @@ function requireParser() {
         case "explicit-key-ind": {
           this.onKeyLine = true;
           const prev = getPrevProps(parent);
-          const start = getFirstKeyStartProps(prev);
-          start.push(this.sourceToken);
+          const start2 = getFirstKeyStartProps(prev);
+          start2.push(this.sourceToken);
           return {
             type: "block-map",
             offset: this.offset,
             indent: this.indent,
-            items: [{ start, explicitKey: true }]
+            items: [{ start: start2, explicitKey: true }]
           };
         }
         case "map-value-ind": {
           this.onKeyLine = true;
           const prev = getPrevProps(parent);
-          const start = getFirstKeyStartProps(prev);
+          const start2 = getFirstKeyStartProps(prev);
           return {
             type: "block-map",
             offset: this.offset,
             indent: this.indent,
-            items: [{ start, key: null, sep: [this.sourceToken] }]
+            items: [{ start: start2, key: null, sep: [this.sourceToken] }]
           };
         }
       }
       return null;
     }
-    atIndentedComment(start, indent) {
+    atIndentedComment(start2, indent) {
       if (this.type !== "comment")
         return false;
       if (this.indent <= indent)
         return false;
-      return start.every((st) => st.type === "newline" || st.type === "space");
+      return start2.every((st) => st.type === "newline" || st.type === "space");
     }
     *documentEnd(docEnd) {
       if (this.type !== "doc-mode") {
@@ -9358,29 +9684,11 @@ const yamlWorkflowRenderer = {
 ${document2.toString({ lineWidth: 0 })}`);
   }
 };
-const unsupported = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
-const isUnsupported = (error2) => unsupported.has(String(error2?.code));
-async function syncDirectory(path, openDirectory = (directory) => promises.open(directory, "r")) {
-  let handle;
-  try {
-    handle = await openDirectory(path);
-  } catch (error2) {
-    if (isUnsupported(error2)) return;
-    throw error2;
-  }
-  try {
-    await handle.sync();
-  } catch (error2) {
-    if (!isUnsupported(error2)) throw error2;
-  } finally {
-    await handle.close();
-  }
-}
 const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
 const lockedFileDelays = [10, 20, 40, 80, 160, 320];
 const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
 async function retryTransient(operation2, options = {}) {
-  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options;
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options;
   for (let attempt = 0; ; attempt++) {
     try {
       return await operation2();
@@ -9410,8 +9718,8 @@ function ownerDetails(owner) {
 let identity;
 function hostIdentity() {
   identity ??= (async () => {
-    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
-    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
     return { ...text$4(pidNamespace) ? { pidNamespace } : {}, ...text$4(bootId) ? { bootId } : {} };
   })();
   return identity;
@@ -9428,24 +9736,24 @@ async function acquireLock(path, owner) {
     token
   };
   const content2 = JSON.stringify(record2) + "\n";
-  const temporary = minpath.join(minpath.dirname(path), `.agent-cli-tmp-lock-${token}`);
+  const temporary2 = minpath.join(minpath.dirname(path), `.agent-cli-tmp-lock-${token}`);
   let linked = false;
   try {
-    await writeDurably(temporary, content2);
-    await retryTransient(() => promises.link(temporary, path), { codes: ["EBUSY"] });
+    await writeDurably(temporary2, content2);
+    await retryTransient(() => promises$1.link(temporary2, path), { codes: ["EBUSY"] });
     linked = true;
   } catch (error2) {
     if (errorCode(error2) === "EEXIST") throw await busy(path);
     if (!linkUnsupported.has(errorCode(error2))) throw error2;
   } finally {
-    await retryTransient(() => promises.rm(temporary, { force: true })).catch(() => {
+    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
     });
   }
   if (!linked) await createExclusively(path, content2);
   heldTokens.add(token);
   return token;
 }
-async function record$1(handle, content2) {
+async function record$2(handle, content2) {
   try {
     await handle.writeFile(content2);
     await handle.sync();
@@ -9454,20 +9762,20 @@ async function record$1(handle, content2) {
   }
 }
 async function writeDurably(path, content2) {
-  await record$1(await retryTransient(() => promises.open(path, "wx")), content2);
+  await record$2(await retryTransient(() => promises$1.open(path, "wx")), content2);
 }
 async function createExclusively(path, content2) {
   let handle;
   try {
-    handle = await retryTransient(() => promises.open(path, "wx"));
+    handle = await retryTransient(() => promises$1.open(path, "wx"));
   } catch (error2) {
     if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path);
     throw error2;
   }
   try {
-    await record$1(handle, content2);
+    await record$2(handle, content2);
   } catch (error2) {
-    await retryTransient(() => promises.rm(path, { force: true })).catch(() => {
+    await retryTransient(() => promises$1.rm(path, { force: true })).catch(() => {
     });
     throw error2;
   }
@@ -9476,7 +9784,7 @@ async function releaseLock(path, token) {
   heldTokens.delete(token);
   let content2;
   try {
-    content2 = await retryTransient(() => promises.readFile(path, "utf8"));
+    content2 = await retryTransient(() => promises$1.readFile(path, "utf8"));
   } catch (error2) {
     if (errorCode(error2) === "ENOENT") return "missing";
     throw error2;
@@ -9488,7 +9796,7 @@ async function releaseLock(path, token) {
     return "foreign";
   }
   if (recorded !== token) return "foreign";
-  await retryTransient(() => promises.unlink(path));
+  await retryTransient(() => promises$1.unlink(path));
   return "released";
 }
 function parseMetadata(content2) {
@@ -9513,10 +9821,10 @@ function parseMetadata(content2) {
 }
 async function readLock(path) {
   try {
-    const entry2 = await promises.lstat(path);
+    const entry2 = await promises$1.lstat(path);
     if (!entry2.isFile()) return { lock: null, young: false };
     const young = Date.now() - entry2.mtimeMs < writingWindowMs;
-    const handle = await promises.open(path, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    const handle = await promises$1.open(path, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
     try {
       const buffer = Buffer.alloc(4096);
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
@@ -9557,51 +9865,407 @@ async function busy(path) {
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
   return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
 }
+const missing$2 = (error2) => error2.code === "ENOENT";
+const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+const inside = (path, folder) => path === folder || path.startsWith(`${folder}/`);
+const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
+async function exists(target) {
+  try {
+    return await promises$1.lstat(target);
+  } catch (error2) {
+    if (missing$2(error2)) return void 0;
+    throw error2;
+  }
+}
+function checkOverlap(outer, inner) {
+  if (outer.role === "write" && inner.role === "write") {
+    ensure(outer.path === inner.path, "INVALID_PLAN", "A generated file cannot also be a directory.");
+    return;
+  }
+  const write = outer.role === "write" ? outer : inner, other = write === outer ? inner : outer;
+  const allowed = write.role === "write" && other.role === "destination" && inside(write.path, other.path);
+  ensure(allowed, "INVALID_PLAN", `Batch steps overlap at ${outer.path} and ${inner.path}.`);
+}
+function validatePlan(renames, writes, removes) {
+  ensure(renames.length + writes.length + removes.length > 0, "INVALID_PLAN", "Plan must contain at least one change.");
+  ensure(new Set(writes.map((w) => w.path)).size === writes.length, "INVALID_PLAN", "Plan must contain unique file paths.");
+  for (const rename2 of renames) ensure(!inside(rename2.to, rename2.from) && !inside(rename2.from, rename2.to), "INVALID_PLAN", `Cannot move ${rename2.from} into itself or its parent path ${rename2.to}.`);
+  const claims = [
+    ...renames.flatMap((rename2) => [{ path: rename2.from, role: "source" }, { path: rename2.to, role: "destination" }]),
+    ...removes.map((remove) => ({ path: remove.path, role: "source" })),
+    ...writes.map((write) => ({ path: write.path, role: "write" }))
+  ].map((claim2) => ({ claim: claim2, key: claim2.path.replaceAll("/", "\0") })).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0).map((entry2) => entry2.claim);
+  const ancestors = [];
+  for (const claim2 of claims) {
+    while (ancestors.length > 0 && !inside(claim2.path, ancestors.at(-1).path)) ancestors.pop();
+    for (const ancestor of ancestors) checkOverlap(ancestor, claim2);
+    ancestors.push(claim2);
+  }
+}
+class Transaction {
+  constructor(host, batch) {
+    this.host = host;
+    const valid2 = (request, keys) => request !== null && typeof request === "object" && keys.every((key) => typeof request[key] === "string");
+    ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every((r) => valid2(r, ["from", "to", "expectedRevision"])), "INVALID_PLAN", "Renames need from, to and expectedRevision strings.");
+    ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every((r) => valid2(r, ["path", "expectedRevision"])), "INVALID_PLAN", "Removals need path and expectedRevision strings.");
+    this.renames = (batch.renames ?? []).map((r) => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
+    this.writes = snapshotWriteRequests(batch.writes ?? []);
+    this.removes = (batch.removes ?? []).map((r) => ({ path: vaultPath(r.path), expectedRevision: r.expectedRevision }));
+    validatePlan(this.renames, this.writes, this.removes);
+  }
+  host;
+  renames;
+  writes;
+  removes;
+  createdDirectories = [];
+  folders = [];
+  touched = /* @__PURE__ */ new Set();
+  /** Staged temporary files by write index, and the folder rename that carries each one staged inside a moved folder. */
+  staged = [];
+  carriers = [];
+  committedRenames = [];
+  committedWrites = [];
+  committedRemoves = [];
+  async run(dryRun) {
+    const conflicts = [];
+    const renames = await this.planRenames(conflicts);
+    const writes = await this.planWrites(conflicts);
+    const removes = await this.planRemoves(conflicts);
+    const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
+    const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict?.path}` : `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`;
+    ensure(conflict === void 0, "CONFLICT", message, conflict && { ...conflict, ...steps > 1 ? { conflicts } : {} });
+    if (!dryRun) {
+      try {
+        await this.apply(renames, writes, removes);
+      } catch (error2) {
+        await this.rollback();
+        throw error2;
+      }
+      await this.finalize();
+    }
+    return this.result(renames, writes, removes);
+  }
+  async entry(path) {
+    const target = await this.host.resolvePath(path, true);
+    const info = await exists(target);
+    if (!info) return void 0;
+    if ((await promises$1.lstat(target)).isDirectory()) {
+      const snapshot = await this.host.folder(path);
+      ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+      return { kind: "folder", snapshot };
+    }
+    return { kind: "file", stored: await this.host.stored(path) };
+  }
+  async planRenames(conflicts) {
+    const plans = [];
+    for (const request of this.renames) {
+      const entry2 = await this.entry(request.from);
+      if (!entry2) throw forgeError("NOT_FOUND", `File or folder not found: ${request.from}`);
+      if (entryRevision(entry2) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry2)));
+      const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
+      const caseOnly = await this.caseOnly(request, source, target);
+      plans.push({ request, source, target, entry: entry2, caseOnly });
+    }
+    return plans;
+  }
+  /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
+  async caseOnly(request, source, target) {
+    const existing = await exists(target);
+    if (!existing) return false;
+    const original = await promises$1.lstat(source);
+    const same = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
+    ensure(same, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
+    return true;
+  }
+  /** The path a write's current content comes from once the batch's renames apply. */
+  origin(path) {
+    for (const rename2 of this.renames) if (inside(path, rename2.to)) return rename2.from + path.slice(rename2.to.length);
+    return path;
+  }
+  async planWrites(conflicts) {
+    const plans = [];
+    for (const write of this.writes) {
+      const target = await this.host.resolvePath(write.path);
+      const before = await this.host.stored(this.origin(write.path));
+      if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
+      plans.push({ write, target, before });
+    }
+    return plans;
+  }
+  async planRemoves(conflicts) {
+    const plans = [];
+    for (const request of this.removes) {
+      const entry2 = await this.entry(request.path);
+      if (!entry2) throw forgeError("NOT_FOUND", `File not found: ${request.path}`);
+      const special = entry2.kind === "folder" ? entry2.snapshot.special : [];
+      ensure(special.length === 0, "PROTECTED_PATH", `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map((item) => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
+      const current = entryRevision(entry2);
+      ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
+      if (current !== request.expectedRevision) conflicts.push(revisionConflict(request.path, request.expectedRevision, current));
+      plans.push({ request, target: await this.host.resolvePath(request.path, true), entry: entry2 });
+    }
+    return plans;
+  }
+  async makeParents(path) {
+    let directory = this.host.root;
+    const parts = path.split("/");
+    for (const [index2, part] of parts.slice(0, -1).entries()) {
+      directory = minpath.join(directory, part);
+      try {
+        await promises$1.mkdir(directory);
+        this.createdDirectories.push(directory);
+        this.folders.push(parts.slice(0, index2 + 1).join("/"));
+        this.touched.add(minpath.dirname(directory));
+      } catch (error2) {
+        if (error2.code !== "EEXIST") throw error2;
+      }
+    }
+  }
+  /** Immediately before a step: the file or folder still has the revision the batch checked. */
+  async verify(path, entry2, expected) {
+    if (entry2.kind === "file") {
+      await this.host.assertRevision(path, expected);
+      return;
+    }
+    const current = (await this.host.folder(path))?.revision;
+    ensure(current === expected, "CONFLICT", `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
+  }
+  /**
+   * Where a write is staged: inside a folder that a rename moves to the write's folder (its deepest existing folder
+   * there, so the temporary file moves along), otherwise next to its target after creating the target's parents.
+   */
+  async stagingDirectory(plan, renames, index2) {
+    const carrier = renames.find((rename2) => rename2.entry.kind === "folder" && plan.write.path.startsWith(`${rename2.request.to}/`));
+    this.carriers[index2] = carrier;
+    if (!carrier) {
+      await this.makeParents(plan.write.path);
+      return minpath.dirname(plan.target);
+    }
+    let directory = minpath.dirname(minpath.join(carrier.source, plan.write.path.slice(carrier.request.to.length + 1)));
+    while (directory !== carrier.source && !(await exists(directory))?.isDirectory()) directory = minpath.dirname(directory);
+    return directory;
+  }
+  /** The staged temporary file's current location: a folder rename carries files staged inside it. */
+  stagedAt(index2) {
+    const temp = this.staged[index2], carrier = this.carriers[index2];
+    return carrier && this.committedRenames.includes(carrier) ? minpath.join(carrier.target, minpath.relative(carrier.source, temp)) : temp;
+  }
+  async apply(renames, writes, removes) {
+    for (const plan of renames) await this.makeParents(plan.request.to);
+    for (const [index2, plan] of writes.entries()) plan.stagingDirectory = await this.stagingDirectory(plan, renames, index2);
+    await this.host.stageAll(writes, this.staged);
+    for (const plan of renames) {
+      await this.verify(plan.request.from, plan.entry, plan.request.expectedRevision);
+      await this.move(plan, plan.source, plan.target);
+      this.committedRenames.push(plan);
+      this.touched.add(minpath.dirname(plan.source)).add(minpath.dirname(plan.target));
+    }
+    for (const [index2, plan] of writes.entries()) {
+      await this.makeParents(plan.write.path);
+      await this.host.resolvePath(plan.write.path);
+      const temp = this.stagedAt(index2);
+      await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), temp);
+      this.committedWrites.push(plan);
+      this.touched.add(minpath.dirname(plan.target)).add(minpath.dirname(temp));
+    }
+    for (const plan of removes) {
+      await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
+      const temp = temporary(plan.target);
+      await retryTransient(() => promises$1.rename(plan.target, temp));
+      plan.temp = temp;
+      this.committedRemoves.push(plan);
+      this.touched.add(minpath.dirname(plan.target));
+    }
+    await this.host.syncDirectories(this.touched);
+  }
+  /**
+   * Moves a rename's entry from `source` to `target` without replacing an existing target. A file is hard-linked
+   * to the target, which fails atomically when the target exists, and then unlinked from the source. Folders, and
+   * files on filesystems without hard links, are renamed after checking that the target is absent; a target
+   * created between that check and the rename by another program is a documented race. A case-only rename passes
+   * through a reserved name, which works whether or not the filesystem ignores case.
+   */
+  async move(plan, source, target) {
+    if (plan.caseOnly) {
+      const temp = temporary(source);
+      await retryTransient(() => promises$1.rename(source, temp));
+      try {
+        await retryTransient(() => promises$1.rename(temp, target));
+      } catch (error2) {
+        await retryTransient(() => promises$1.rename(temp, source)).catch(() => {
+        });
+        throw error2;
+      }
+      return;
+    }
+    const occupied = () => forgeError("DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
+    if (plan.entry.kind === "file" && await this.linkInPlace(source, target, occupied)) return;
+    if (await exists(target)) throw occupied();
+    await retryTransient(() => promises$1.rename(source, target));
+  }
+  /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
+  async linkInPlace(source, target, occupied) {
+    try {
+      await retryTransient(() => promises$1.link(source, target), { codes: ["EBUSY"] });
+    } catch (error2) {
+      const code2 = error2.code ?? "";
+      if (code2 === "EEXIST") throw occupied();
+      if (linkUnsupported.has(code2)) return false;
+      throw error2;
+    }
+    try {
+      await retryTransient(() => promises$1.unlink(source));
+    } catch (error2) {
+      await retryTransient(() => promises$1.unlink(target)).catch(() => {
+      });
+      throw error2;
+    }
+    return true;
+  }
+  /** Committed removals become permanent; a cleanup failure leaves a reserved temporary entry and a warning. */
+  async finalize() {
+    for (const plan of this.committedRemoves) {
+      try {
+        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
+      } catch (error2) {
+        this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error2)}`);
+      }
+    }
+    if (this.committedRemoves.length === 0) return;
+    try {
+      await this.host.syncDirectories(this.committedRemoves.map((plan) => minpath.dirname(plan.target)));
+    } catch (error2) {
+      this.host.warn(`Removed files, but syncing their folders failed: ${String(error2)}`);
+    }
+  }
+  async rollback() {
+    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises$1.rm(this.stagedAt(index2), { force: true })).catch(() => {
+    });
+    const failures = [];
+    for (const plan of this.committedRemoves.reverse()) {
+      try {
+        ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
+        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
+      } catch {
+        failures.push(plan.target);
+      }
+    }
+    for (const entry2 of this.committedWrites.reverse()) {
+      try {
+        const verify = () => this.host.assertRevision(entry2.write.path, this.host.revision(entry2.write.bytes));
+        if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
+        else {
+          await verify();
+          await retryTransient(() => promises$1.rm(entry2.target));
+        }
+      } catch {
+        failures.push(entry2.target);
+      }
+    }
+    for (const plan of this.committedRenames.reverse()) {
+      try {
+        if (plan.entry.kind === "file") await this.host.assertRevision(plan.request.to, plan.entry.stored.revision);
+        if (!plan.caseOnly) ensure(!await exists(plan.source), "ROLLBACK_FAILED", plan.source);
+        await this.move(plan, plan.target, plan.source);
+      } catch {
+        failures.push(plan.target);
+      }
+    }
+    for (const directory of this.createdDirectories.reverse()) {
+      try {
+        await retryTransient(() => promises$1.rmdir(directory));
+        this.touched.delete(directory);
+      } catch {
+      }
+    }
+    for (const directory of this.touched) {
+      try {
+        if (await exists(directory)) await this.host.syncDirectories([directory]);
+      } catch {
+        failures.push(directory);
+      }
+    }
+    if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
+  }
+  result(renames, writes, removes) {
+    const moved2 = renames.flatMap(({ request: { from, to }, entry: entry2 }) => {
+      if (entry2.kind === "file") return [{ from, to, kind: "file", revision: entry2.stored.revision, bytes: entry2.stored.bytes.length }];
+      const descendants = [
+        ...entry2.snapshot.folders.map((path) => ({ from: `${from}/${path}`, to: `${to}/${path}`, kind: "folder" })),
+        ...entry2.snapshot.files.map((file) => ({ from: `${from}/${file.path}`, to: `${to}/${file.path}`, kind: "file", revision: file.revision, bytes: file.bytes }))
+      ].sort((a, b) => a.to < b.to ? -1 : a.to > b.to ? 1 : 0);
+      return [{ from, to, kind: "folder" }, ...descendants];
+    });
+    const written = writes.map(({ write, before }) => ({ path: write.path, revision: this.host.revision(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
+    const removed = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [{ path, revision: entry2.stored.revision, operation: "deleted", bytes: entry2.stored.bytes.length }] : entry2.snapshot.files.map((file) => ({ path: `${path}/${file.path}`, revision: file.revision, operation: "deleted", bytes: file.bytes })));
+    const removedFolders = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [] : [...entry2.snapshot.folders.map((folder) => `${path}/${folder}`).sort().reverse(), path]);
+    return { renames: moved2, changes: [...written, ...removed], folders: this.folders, removedFolders };
+  }
+}
+const unsupported = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
+const isUnsupported = (error2) => unsupported.has(String(error2?.code));
+async function syncDirectory(path, openDirectory = (directory) => promises$1.open(directory, "r")) {
+  let handle;
+  try {
+    handle = await openDirectory(path);
+  } catch (error2) {
+    if (isUnsupported(error2)) return;
+    throw error2;
+  }
+  try {
+    await handle.sync();
+  } catch (error2) {
+    if (!isUnsupported(error2)) throw error2;
+  } finally {
+    await handle.close();
+  }
+}
 const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
-const missing = (error2) => error2.code === "ENOENT";
+const missing$1 = (error2) => error2.code === "ENOENT";
 const stagingConcurrency = 8;
 class NodeFiles {
-  constructor(root, warn, owner) {
+  constructor(root, warning, owner) {
     this.root = root;
-    this.warn = warn;
+    this.warning = warning;
     this.owner = owner;
   }
   root;
-  warn;
+  warning;
   owner;
   /** `owner` names the invocation recorded in the writer lock; composition code supplies it. */
   static async at(root, warn = () => {
   }, owner = () => ({})) {
-    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner);
+    return new NodeFiles(await promises$1.realpath(minpath.resolve(root)), warn, owner);
   }
-  async resolvePath(path) {
+  /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
+  async resolvePath(path, allowFolder = false) {
     const parts = vaultPath(path).split("/");
     let current = this.root;
     for (const [index2, part] of parts.entries()) {
       current = minpath.join(current, part);
       try {
-        const info = await promises.lstat(current);
+        const info = await promises$1.lstat(current);
         ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path}`);
-        ensure(index2 === parts.length - 1 ? info.isFile() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path}`);
+        ensure(index2 === parts.length - 1 ? info.isFile() || allowFolder && info.isDirectory() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path}`);
       } catch (error2) {
-        if (!missing(error2)) throw error2;
+        if (!missing$1(error2)) throw error2;
       }
     }
     return current;
   }
   async read(path) {
     try {
-      const bytes = await promises.readFile(await this.resolvePath(path));
+      const bytes = await promises$1.readFile(await this.resolvePath(path));
       return { path, bytes, revision: revisionOf(bytes) };
     } catch (error2) {
-      if (missing(error2)) throw forgeError("NOT_FOUND", `File not found: ${path}`);
+      if (missing$1(error2)) throw forgeError("NOT_FOUND", `File not found: ${path}`);
       throw error2;
     }
   }
   async list() {
     const result = [];
     const walk = async (directory, prefix) => {
-      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         if ([".git", "node_modules", lockName].includes(entry2.name) || entry2.name.startsWith(".agent-cli-tmp-")) continue;
         const path = prefix + entry2.name;
         if (entry2.isDirectory()) await walk(minpath.join(directory, entry2.name), path + "/");
@@ -9611,128 +10275,118 @@ class NodeFiles {
     await walk(this.root, "");
     return result.sort();
   }
+  /** @internal */
   async stored(path) {
     const target = await this.resolvePath(path);
     try {
-      const mode = (await promises.lstat(target)).mode & 4095;
-      const bytes = await promises.readFile(target);
+      const mode = (await promises$1.lstat(target)).mode & 4095;
+      const bytes = await promises$1.readFile(target);
       return { bytes, mode, revision: revisionOf(bytes) };
     } catch (error2) {
-      if (!missing(error2)) throw error2;
+      if (!missing$1(error2)) throw error2;
       return void 0;
     }
   }
+  /** @internal */
   async assertRevision(path, expected) {
     const current = (await this.stored(path))?.revision;
     ensure(current === expected, "CONFLICT", `File changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
   async remove(path, expectedRevision, dryRun) {
-    path = vaultPath(path);
-    const guarded2 = typeof expectedRevision === "string" && expectedRevision.length > 0;
+    await this.resolvePath(path);
+    const { changes } = await this.commit({ removes: [{ path, expectedRevision: typeof expectedRevision === "string" ? expectedRevision : "" }] }, dryRun);
+    return changes[0];
+  }
+  async writeBatch(writes, dryRun) {
+    const requests = snapshotWriteRequests(writes);
+    ensure(requests.length > 0, "INVALID_PLAN", "Plan must contain unique file paths.");
+    const { changes, folders: folders2 } = await this.commit({ writes: requests }, dryRun);
+    return { changes, folders: folders2 };
+  }
+  async commit(batch, dryRun) {
+    ensure(batch !== null && typeof batch === "object", "INVALID_PLAN", "A batch must be an object.");
+    const transaction = new Transaction(this, batch);
     const lock = minpath.join(this.root, lockName);
     let token;
     try {
       if (!dryRun) token = await acquireLock(lock, this.owner);
-      const target = await this.resolvePath(path);
-      const before = await this.stored(path);
-      if (before === void 0) throw forgeError("NOT_FOUND", `File not found: ${path}`);
-      ensure(guarded2, "CONFLICT", `Removing a file requires its current --if-match revision: ${path}`, revisionConflict(path, null, before.revision));
-      ensure(before.revision === expectedRevision, "CONFLICT", `File changed; read again before removing: ${path}`, revisionConflict(path, expectedRevision, before.revision));
-      if (!dryRun) {
-        await this.assertRevision(path, expectedRevision);
-        await retryTransient(() => promises.unlink(target));
-        await this.syncDirectories([minpath.dirname(target)]);
-      }
-      return { path, revision: before.revision, operation: "deleted", bytes: before.bytes.length };
+      return await transaction.run(dryRun);
     } finally {
       if (token !== void 0) await this.cleanupLock(lock, token);
     }
   }
-  async writeBatch(writes, dryRun) {
-    const requests = snapshotWriteRequests(writes);
-    ensure(requests.length > 0 && new Set(requests.map((w) => w.path)).size === requests.length, "INVALID_PLAN", "Plan must contain unique file paths.");
-    ensure(!requests.some((a) => requests.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
-    const lock = minpath.join(this.root, lockName);
-    let token;
-    const createdDirectories = [];
-    const committed = [];
-    const staged = [];
-    const touched = /* @__PURE__ */ new Set();
+  async stat(path) {
+    path = vaultPath(path);
+    const target = await this.resolvePath(path, true);
+    let info;
     try {
-      if (!dryRun) token = await acquireLock(lock, this.owner);
-      const plans = [];
-      const conflicts = [];
-      for (const write of requests) {
-        const target = await this.resolvePath(write.path);
-        const before = await this.stored(write.path);
-        if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
-        plans.push({ write, target, before });
-      }
-      const [conflict] = conflicts;
-      ensure(
-        conflict === void 0,
-        "CONFLICT",
-        `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`,
-        conflict && { ...conflict, ...requests.length > 1 ? { conflicts } : {} }
-      );
-      if (!dryRun) {
-        for (const plan of plans) {
-          let directory = this.root;
-          for (const part of plan.write.path.split("/").slice(0, -1)) {
-            directory = minpath.join(directory, part);
-            try {
-              await promises.mkdir(directory);
-              createdDirectories.push(directory);
-              touched.add(minpath.dirname(directory));
-            } catch (error2) {
-              if (error2.code !== "EEXIST") throw error2;
-            }
-          }
-        }
-        await this.stageAll(plans, staged);
-        for (const [index2, plan] of plans.entries()) {
-          await this.resolvePath(plan.write.path);
-          await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision), staged[index2]);
-          committed.push(plan);
-          touched.add(minpath.dirname(plan.target));
-        }
-        await this.syncDirectories(touched);
-      }
-      return plans.map(({ write, before }) => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
+      info = await promises$1.lstat(target);
     } catch (error2) {
-      for (const temp of staged) if (temp) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
-      });
-      const failures = [];
-      for (const entry2 of committed.reverse()) {
-        try {
-          const verify = () => this.assertRevision(entry2.write.path, revisionOf(entry2.write.bytes));
-          if (entry2.before) await this.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
-          else {
-            await verify();
-            await retryTransient(() => promises.rm(entry2.target));
-          }
-        } catch {
-          failures.push(entry2.target);
-        }
-      }
-      for (const directory of createdDirectories.reverse()) {
-        try {
-          await retryTransient(() => promises.rmdir(directory));
-          touched.delete(directory);
-        } catch {
-        }
-      }
-      for (const directory of touched) {
-        try {
-          await syncDirectory(directory);
-        } catch {
-          failures.push(directory);
-        }
-      }
-      if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
+      if (missing$1(error2)) throw forgeError("NOT_FOUND", `File or folder not found: ${path}`);
       throw error2;
-    } finally {
-      if (token !== void 0) await this.cleanupLock(lock, token);
+    }
+    if (info.isDirectory()) {
+      const { revision, files, folders: folders2 } = await this.folder(path);
+      return { path, kind: "folder", revision, files: files.map((file) => file.path), folders: folders2 };
+    }
+    const stored = await this.stored(path);
+    return { path, kind: "file", revision: stored.revision, bytes: stored.bytes.length };
+  }
+  /**
+   * @internal Batch step: the folder's revision and contents. The revision covers every file's path and revision,
+   * every subfolder (empty ones too) and each special entry by path and kind: symlinks with their target,
+   * `node_modules` folders without reading them, and other special files. Git and Forge's internal files are skipped.
+   */
+  async folder(path) {
+    const files = [], folders2 = [], special = [];
+    let git = false;
+    const walk = async (directory, prefix) => {
+      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
+        if (entry2.name === ".git") {
+          git = true;
+          continue;
+        }
+        if (entry2.name === lockName || entry2.name.startsWith(".agent-cli-tmp-")) continue;
+        const relative = prefix + entry2.name, absolute = minpath.join(directory, entry2.name);
+        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises$1.readlink(absolute) });
+        else if (entry2.isDirectory() && entry2.name === "node_modules") special.push({ path: relative, kind: "node_modules" });
+        else if (entry2.isDirectory()) {
+          folders2.push(relative);
+          await walk(absolute, relative + "/");
+        } else if (entry2.isFile()) {
+          const bytes = await promises$1.readFile(absolute);
+          files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
+        } else special.push({ path: relative, kind: "other" });
+      }
+    };
+    try {
+      await walk(await this.resolvePath(path, true), "");
+    } catch (error2) {
+      if (missing$1(error2)) return void 0;
+      throw error2;
+    }
+    const order2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+    files.sort((a, b) => order2(a.path, b.path));
+    folders2.sort(order2);
+    special.sort((a, b) => order2(a.path, b.path));
+    const digest = node_crypto.createHash("sha256");
+    for (const file of files) digest.update(`${file.path}\0${file.revision}
+`);
+    for (const folder of folders2) digest.update(`${folder}/\0folder
+`);
+    for (const entry2 of special) digest.update(`${entry2.path}\0${entry2.kind}${entry2.target === void 0 ? "" : `\0${entry2.target}`}
+`);
+    return { revision: digest.digest("hex"), files, folders: folders2, special, git };
+  }
+  /** @internal */
+  revision(bytes) {
+    return revisionOf(bytes);
+  }
+  /** @internal */
+  warn(message) {
+    try {
+      this.warning(message);
+    } catch {
     }
   }
   async cleanupLock(lock, token) {
@@ -9744,19 +10398,17 @@ class NodeFiles {
     } catch (error2) {
       warning = `Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error2)}`;
     }
-    if (warning === void 0) return;
-    try {
-      this.warn(warning);
-    } catch {
-    }
+    if (warning !== void 0) this.warn(warning);
   }
   async releaseLock(lock, token) {
     return releaseLock(lock, token);
   }
+  /** @internal */
   async syncDirectories(directories) {
     for (const directory of new Set(directories)) await syncDirectory(directory);
   }
   /** Stage every plan, waiting for all workers so that no temporary file escapes cleanup. */
+  /** @internal */
   async stageAll(plans, staged) {
     let next = 0;
     const failures = [];
@@ -9764,7 +10416,7 @@ class NodeFiles {
       while (next < plans.length && failures.length === 0) {
         const index2 = next++, plan = plans[index2];
         try {
-          staged[index2] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode);
+          staged[index2] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode, plan.stagingDirectory);
         } catch (error2) {
           failures.push(error2);
         }
@@ -9773,10 +10425,10 @@ class NodeFiles {
     await Promise.all(Array.from({ length: Math.min(stagingConcurrency, plans.length) }, worker));
     if (failures.length) throw failures[0];
   }
-  /** Write a same-directory temporary file whose data is durable before any rename publishes it. */
-  async stage(target, bytes, mode) {
-    const temp = minpath.join(minpath.resolve(target, ".."), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-    const handle = await promises.open(temp, "wx", mode ?? 438);
+  /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
+  async stage(target, bytes, mode, directory = minpath.dirname(target)) {
+    const temp = minpath.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+    const handle = await promises$1.open(temp, "wx", mode ?? 438);
     try {
       try {
         await handle.writeFile(bytes);
@@ -9786,22 +10438,23 @@ class NodeFiles {
         await handle.close();
       }
     } catch (error2) {
-      await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
       });
       throw error2;
     }
     return temp;
   }
   /** Publish `staged` (or freshly staged bytes) over the target; the caller fsyncs the directory entry. */
+  /** @internal */
   async replace(target, bytes, mode, verify, staged) {
     const temp = staged ?? await this.stage(target, bytes, mode);
     let renamed = false;
     try {
       await verify?.();
-      await retryTransient(() => promises.rename(temp, target));
+      await retryTransient(() => promises$1.rename(temp, target));
       renamed = true;
     } finally {
-      if (!renamed) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      if (!renamed) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
       });
     }
   }
@@ -9863,7 +10516,7 @@ function requireExtend() {
     return obj[name2];
   };
   extend$2 = function extend2() {
-    var options, name2, src, copy, copyIsArray, clone2;
+    var options, name2, src, copy2, copyIsArray, clone2;
     var target = arguments[0];
     var i = 1;
     var length = arguments.length;
@@ -9881,18 +10534,18 @@ function requireExtend() {
       if (options != null) {
         for (name2 in options) {
           src = getProperty(target, name2);
-          copy = getProperty(options, name2);
-          if (target !== copy) {
-            if (deep && copy && (isPlainObject2(copy) || (copyIsArray = isArray(copy)))) {
+          copy2 = getProperty(options, name2);
+          if (target !== copy2) {
+            if (deep && copy2 && (isPlainObject2(copy2) || (copyIsArray = isArray(copy2)))) {
               if (copyIsArray) {
                 copyIsArray = false;
                 clone2 = src && isArray(src) ? src : [];
               } else {
                 clone2 = src && isPlainObject2(src) ? src : {};
               }
-              setProperty(target, { name: name2, newValue: extend2(deep, clone2, copy) });
-            } else if (typeof copy !== "undefined") {
-              setProperty(target, { name: name2, newValue: copy });
+              setProperty(target, { name: name2, newValue: extend2(deep, clone2, copy2) });
+            } else if (typeof copy2 !== "undefined") {
+              setProperty(target, { name: name2, newValue: copy2 });
             }
           }
         }
@@ -10118,14 +10771,14 @@ class VFileMessage extends Error {
         options.place = parent.position;
       }
     }
-    const start = options.place && "start" in options.place ? options.place.start : options.place;
+    const start2 = options.place && "start" in options.place ? options.place.start : options.place;
     this.ancestors = options.ancestors || void 0;
     this.cause = options.cause || void 0;
-    this.column = start ? start.column : void 0;
+    this.column = start2 ? start2.column : void 0;
     this.fatal = void 0;
     this.file = "";
     this.message = reason;
-    this.line = start ? start.line : void 0;
+    this.line = start2 ? start2.line : void 0;
     this.name = stringifyPosition(options.place) || "1:1";
     this.place = options.place || void 0;
     this.reason = this.message;
@@ -13430,28 +14083,28 @@ const own$3 = {}.hasOwnProperty;
 function decodeNamedCharacterReference(value2) {
   return own$3.call(characterEntities, value2) ? characterEntities[value2] : false;
 }
-function splice(list2, start, remove, items) {
-  const end = list2.length;
+function splice(list2, start2, remove, items) {
+  const end2 = list2.length;
   let chunkStart = 0;
   let parameters;
-  if (start < 0) {
-    start = -start > end ? 0 : end + start;
+  if (start2 < 0) {
+    start2 = -start2 > end2 ? 0 : end2 + start2;
   } else {
-    start = start > end ? end : start;
+    start2 = start2 > end2 ? end2 : start2;
   }
   remove = remove > 0 ? remove : 0;
   if (items.length < 1e4) {
     parameters = Array.from(items);
-    parameters.unshift(start, remove);
+    parameters.unshift(start2, remove);
     list2.splice(...parameters);
   } else {
-    if (remove) list2.splice(start, remove);
+    if (remove) list2.splice(start2, remove);
     while (chunkStart < items.length) {
       parameters = items.slice(chunkStart, chunkStart + 1e4);
-      parameters.unshift(start, 0);
+      parameters.unshift(start2, 0);
       list2.splice(...parameters);
       chunkStart += 1e4;
-      start += 1e4;
+      start2 += 1e4;
     }
   }
 }
@@ -13551,8 +14204,8 @@ function regexCheck(regex) {
 function factorySpace(effects, ok, type2, max) {
   const limit = max ? max - 1 : Infinity;
   let size = 0;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (markdownSpace(code2)) {
       effects.enter(type2);
       return prefix(code2);
@@ -13570,8 +14223,8 @@ function factorySpace(effects, ok, type2, max) {
 }
 function factorySpaceMinMax(effects, ok, nok, type2, min, max) {
   let size = 0;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (markdownSpace(code2)) {
       effects.enter(type2);
       return prefix(code2);
@@ -13748,8 +14401,8 @@ function initializeDocument(effects) {
   let childFlow;
   let childToken;
   let lineStartOffset;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (continued < stack.length) {
       const item = stack[continued];
       self.containerState = item[1];
@@ -13787,7 +14440,7 @@ function initializeDocument(effects) {
       editMap.consume(self.events);
       return checkNewContainers(code2);
     }
-    return start(code2);
+    return start2(code2);
   }
   function checkNewContainers(code2) {
     if (continued === stack.length) {
@@ -13852,7 +14505,7 @@ function initializeDocument(effects) {
       writeToChild(effects.exit("chunkFlow"));
       continued = 0;
       self.interrupt = void 0;
-      return start;
+      return start2;
     }
     effects.consume(code2);
     return flowContinue;
@@ -13965,17 +14618,17 @@ function resolveAllAttention(events, context) {
             continue;
           }
           const use = events[open2][1].end.offset - events[open2][1].start.offset > 1 && events[index2][1].end.offset - events[index2][1].start.offset > 1 ? 2 : 1;
-          const start = {
+          const start2 = {
             ...events[open2][1].end
           };
-          const end = {
+          const end2 = {
             ...events[index2][1].start
           };
-          movePoint(start, -use);
-          movePoint(end, use);
+          movePoint(start2, -use);
+          movePoint(end2, use);
           const openingSequence = {
             type: use > 1 ? "strongSequence" : "emphasisSequence",
-            start,
+            start: start2,
             end: {
               ...events[open2][1].end
             }
@@ -13985,7 +14638,7 @@ function resolveAllAttention(events, context) {
             start: {
               ...events[index2][1].start
             },
-            end
+            end: end2
           };
           const text2 = {
             type: use > 1 ? "strongText" : "emphasisText",
@@ -14043,16 +14696,16 @@ function tokenizeAttention(effects, ok) {
   const previous2 = this.previous;
   const before = classifyCharacter(previous2);
   let marker;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     marker = code2;
     effects.enter("attentionSequence");
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === marker) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
     const token = effects.exit("attentionSequence");
     const after = classifyCharacter(code2);
@@ -14074,8 +14727,8 @@ const autolink = {
 };
 function tokenizeAutolink(effects, ok, nok) {
   let size = 0;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("autolink");
     effects.enter("autolinkMarker");
     effects.consume(code2);
@@ -14172,8 +14825,8 @@ const blankLine = {
   tokenize: tokenizeBlankLine
 };
 function tokenizeBlankLine(effects, ok, nok) {
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     return markdownSpace(code2) ? factorySpace(effects, after, "linePrefix")(code2) : after(code2);
   }
   function after(code2) {
@@ -14190,8 +14843,8 @@ const blockQuote = {
 };
 function tokenizeBlockQuoteStart(effects, ok, nok) {
   const self = this;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (code2 === 62) {
       const state2 = self.containerState;
       if (!state2.open) {
@@ -14241,15 +14894,15 @@ const characterEscape = {
   tokenize: tokenizeCharacterEscape
 };
 function tokenizeCharacterEscape(effects, ok, nok) {
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("characterEscape");
     effects.enter("escapeMarker");
     effects.consume(code2);
     effects.exit("escapeMarker");
-    return inside;
+    return inside2;
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (asciiPunctuation(code2)) {
       effects.enter("characterEscapeValue");
       effects.consume(code2);
@@ -14269,8 +14922,8 @@ function tokenizeCharacterReference(effects, ok, nok) {
   let size = 0;
   let max;
   let test;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("characterReference");
     effects.enter("characterReferenceMarker");
     effects.consume(code2);
@@ -14329,8 +14982,8 @@ const nonLazyContinuation = {
 };
 function tokenizeNonLazyContinuation(effects, ok, nok) {
   const self = this;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (code2 === null) {
       return nok(code2);
     }
@@ -14357,8 +15010,8 @@ function tokenizeCodeFenced(effects, ok, nok) {
   let initialPrefix = 0;
   let sizeOpen = 0;
   let marker;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     return beforeSequenceOpen(code2);
   }
   function beforeSequenceOpen(code2) {
@@ -14470,9 +15123,9 @@ function tokenizeCodeFenced(effects, ok, nok) {
       effects2.enter("lineEnding");
       effects2.consume(code2);
       effects2.exit("lineEnding");
-      return start2;
+      return start3;
     }
-    function start2(code2) {
+    function start3(code2) {
       effects2.enter("codeFencedFence");
       return markdownSpace(code2) ? factorySpace(effects2, beforeSequenceClose, "linePrefix", self.parser.constructs.disable.null.includes("codeIndented") ? void 0 : 4)(code2) : beforeSequenceClose(code2);
     }
@@ -14513,8 +15166,8 @@ const furtherStart = {
   tokenize: tokenizeFurtherStart
 };
 function tokenizeCodeIndented(effects, ok, nok) {
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("codeIndented");
     return factorySpaceMinMax(effects, atBreak, nok, "linePrefix", 4, 4)(code2);
   }
@@ -14526,15 +15179,15 @@ function tokenizeCodeIndented(effects, ok, nok) {
       return effects.attempt(furtherStart, atBreak, after)(code2);
     }
     effects.enter("codeFlowValue");
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === null || markdownLineEnding(code2)) {
       effects.exit("codeFlowValue");
       return atBreak(code2);
     }
     effects.consume(code2);
-    return inside;
+    return inside2;
   }
   function after(code2) {
     effects.exit("codeIndented");
@@ -14610,8 +15263,8 @@ function tokenizeCodeText(effects, ok, nok) {
   let sizeOpen = 0;
   let size;
   let token;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("codeText");
     effects.enter("codeTextSequence");
     return sequenceOpen(code2);
@@ -14728,15 +15381,15 @@ class SpliceBuffer {
    * @returns {Array<T>}
    *   Array of items.
    */
-  slice(start, end) {
-    const stop = end === null || end === void 0 ? Number.POSITIVE_INFINITY : end;
+  slice(start2, end2) {
+    const stop = end2 === null || end2 === void 0 ? Number.POSITIVE_INFINITY : end2;
     if (stop < this.left.length) {
-      return this.left.slice(start, stop);
+      return this.left.slice(start2, stop);
     }
-    if (start > this.left.length) {
-      return this.right.slice(this.right.length - stop + this.left.length, this.right.length - start + this.left.length).reverse();
+    if (start2 > this.left.length) {
+      return this.right.slice(this.right.length - stop + this.left.length, this.right.length - start2 + this.left.length).reverse();
     }
-    return this.left.slice(start).concat(this.right.slice(this.right.length - stop + this.left.length).reverse());
+    return this.left.slice(start2).concat(this.right.slice(this.right.length - stop + this.left.length).reverse());
   }
   /**
    * Mimics the behavior of Array.prototype.splice() except for the change of
@@ -14758,9 +15411,9 @@ class SpliceBuffer {
    * @return {Array<T>}
    *   Any removed items.
    */
-  splice(start, deleteCount, items) {
+  splice(start2, deleteCount, items) {
     const count2 = deleteCount || 0;
-    this.setCursor(Math.trunc(start));
+    this.setCursor(Math.trunc(start2));
     const removed = this.right.splice(this.right.length - count2, Number.POSITIVE_INFINITY);
     if (items) chunkedPush(this.left, items);
     return removed.reverse();
@@ -14954,8 +15607,8 @@ function subcontent(events, eventIndex) {
   let index2 = -1;
   let current = token;
   let adjust = 0;
-  let start = 0;
-  const breaks = [start];
+  let start2 = 0;
+  const breaks = [start2];
   while (current) {
     while (events.get(++startPosition)[1] !== current) {
     }
@@ -14985,8 +15638,8 @@ function subcontent(events, eventIndex) {
       // Find a void token that includes a break.
       childEvents[index2][0] === "exit" && childEvents[index2 - 1][0] === "enter" && childEvents[index2][1].type === childEvents[index2 - 1][1].type && childEvents[index2][1].start.line !== childEvents[index2][1].end.line
     ) {
-      start = index2 + 1;
-      breaks.push(start);
+      start2 = index2 + 1;
+      breaks.push(start2);
       current._tokenizer = void 0;
       current.previous = void 0;
       current = current.next;
@@ -15002,9 +15655,9 @@ function subcontent(events, eventIndex) {
   index2 = breaks.length;
   while (index2--) {
     const slice = childEvents.slice(breaks[index2], breaks[index2 + 1]);
-    const start2 = startPositions.pop();
-    jumps.push([start2, start2 + slice.length - 1]);
-    events.splice(start2, 2, slice);
+    const start3 = startPositions.pop();
+    jumps.push([start3, start3 + slice.length - 1]);
+    events.splice(start3, 2, slice);
   }
   jumps.reverse();
   index2 = -1;
@@ -15086,8 +15739,8 @@ function tokenizeContinuation(effects, ok, nok) {
 function factoryDestination(effects, ok, nok, type2, literalType, literalMarkerType, rawType, stringType, max) {
   const limit = max || Number.POSITIVE_INFINITY;
   let balance = 0;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (code2 === 60) {
       effects.enter(type2);
       effects.enter(literalType);
@@ -15177,8 +15830,8 @@ function factoryLabel(effects, ok, nok, type2, markerType, stringType) {
   const self = this;
   let size = 0;
   let seen;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter(type2);
     effects.enter(markerType);
     effects.consume(code2);
@@ -15234,8 +15887,8 @@ function factoryLabel(effects, ok, nok, type2, markerType, stringType) {
 }
 function factoryTitle(effects, ok, nok, type2, markerType, stringType) {
   let marker;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (code2 === 34 || code2 === 39 || code2 === 40) {
       effects.enter(type2);
       effects.enter(markerType);
@@ -15274,37 +15927,37 @@ function factoryTitle(effects, ok, nok, type2, markerType, stringType) {
     effects.enter("chunkString", {
       contentType: "string"
     });
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === marker || code2 === null || markdownLineEnding(code2)) {
       effects.exit("chunkString");
       return atBreak(code2);
     }
     effects.consume(code2);
-    return code2 === 92 ? escape : inside;
+    return code2 === 92 ? escape : inside2;
   }
   function escape(code2) {
     if (code2 === marker || code2 === 92) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
-    return inside(code2);
+    return inside2(code2);
   }
 }
 function factoryWhitespace(effects, ok) {
   let seen;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (markdownLineEnding(code2)) {
       effects.enter("lineEnding");
       effects.consume(code2);
       effects.exit("lineEnding");
       seen = true;
-      return start;
+      return start2;
     }
     if (markdownSpace(code2)) {
-      return factorySpace(effects, start, seen ? "linePrefix" : "lineSuffix")(code2);
+      return factorySpace(effects, start2, seen ? "linePrefix" : "lineSuffix")(code2);
     }
     return ok(code2);
   }
@@ -15320,8 +15973,8 @@ const titleBefore = {
 function tokenizeDefinition(effects, ok, nok) {
   const self = this;
   let identifier2;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("definition");
     return before(code2);
   }
@@ -15398,8 +16051,8 @@ const hardBreakEscape = {
   tokenize: tokenizeHardBreakEscape
 };
 function tokenizeHardBreakEscape(effects, ok, nok) {
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("hardBreakEscape");
     effects.consume(code2);
     return after;
@@ -15447,8 +16100,8 @@ function resolveHeadingAtx(events, context) {
 }
 function tokenizeHeadingAtx(effects, ok, nok) {
   let size = 0;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("atxHeading");
     return before(code2);
   }
@@ -15595,8 +16248,8 @@ function tokenizeHtmlFlow(effects, ok, nok) {
   let buffer;
   let index2;
   let markerB;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     return before(code2);
   }
   function before(code2) {
@@ -15913,8 +16566,8 @@ function tokenizeHtmlFlow(effects, ok, nok) {
   }
 }
 function tokenizeBlankLineBefore(effects, ok, nok) {
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("lineEnding");
     effects.consume(code2);
     effects.exit("lineEnding");
@@ -15930,8 +16583,8 @@ function tokenizeHtmlText(effects, ok, nok) {
   let marker;
   let index2;
   let returnState;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("htmlText");
     effects.enter("htmlTextData");
     effects.consume(code2);
@@ -16002,7 +16655,7 @@ function tokenizeHtmlText(effects, ok, nok) {
     return comment(code2);
   }
   function commentEnd(code2) {
-    return code2 === 62 ? end(code2) : code2 === 45 ? commentClose(code2) : comment(code2);
+    return code2 === 62 ? end2(code2) : code2 === 45 ? commentClose(code2) : comment(code2);
   }
   function cdataOpenInside(code2) {
     const value2 = "CDATA[";
@@ -16036,7 +16689,7 @@ function tokenizeHtmlText(effects, ok, nok) {
   }
   function cdataEnd(code2) {
     if (code2 === 62) {
-      return end(code2);
+      return end2(code2);
     }
     if (code2 === 93) {
       effects.consume(code2);
@@ -16046,7 +16699,7 @@ function tokenizeHtmlText(effects, ok, nok) {
   }
   function declaration(code2) {
     if (code2 === null || code2 === 62) {
-      return end(code2);
+      return end2(code2);
     }
     if (markdownLineEnding(code2)) {
       returnState = declaration;
@@ -16071,7 +16724,7 @@ function tokenizeHtmlText(effects, ok, nok) {
     return instruction;
   }
   function instructionClose(code2) {
-    return code2 === 62 ? end(code2) : instruction(code2);
+    return code2 === 62 ? end2(code2) : instruction(code2);
   }
   function tagCloseStart(code2) {
     if (asciiAlpha(code2)) {
@@ -16096,7 +16749,7 @@ function tokenizeHtmlText(effects, ok, nok) {
       effects.consume(code2);
       return tagCloseBetween;
     }
-    return end(code2);
+    return end2(code2);
   }
   function tagOpen(code2) {
     if (code2 === 45 || asciiAlphanumeric(code2)) {
@@ -16111,7 +16764,7 @@ function tokenizeHtmlText(effects, ok, nok) {
   function tagOpenBetween(code2) {
     if (code2 === 47) {
       effects.consume(code2);
-      return end;
+      return end2;
     }
     if (code2 === 58 || code2 === 95 || asciiAlpha(code2)) {
       effects.consume(code2);
@@ -16125,7 +16778,7 @@ function tokenizeHtmlText(effects, ok, nok) {
       effects.consume(code2);
       return tagOpenBetween;
     }
-    return end(code2);
+    return end2(code2);
   }
   function tagOpenAttributeName(code2) {
     if (code2 === 45 || code2 === 46 || code2 === 58 || code2 === 95 || asciiAlphanumeric(code2)) {
@@ -16201,7 +16854,7 @@ function tokenizeHtmlText(effects, ok, nok) {
     }
     return nok(code2);
   }
-  function end(code2) {
+  function end2(code2) {
     if (code2 === 62) {
       effects.consume(code2);
       effects.exit("htmlTextData");
@@ -16332,8 +16985,8 @@ function tokenizeLabelEnd(effects, ok, nok) {
     }
     labelStart = labelStarts[labelStarts.length - 1];
   }
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     if (!labelStart) {
       return nok(code2);
     }
@@ -16457,8 +17110,8 @@ const labelStartImage = {
 function tokenizeLabelStartImage(effects, ok, nok) {
   const self = this;
   let labelImage;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("labelImage");
     effects.enter("labelImageMarker");
     effects.consume(code2);
@@ -16492,8 +17145,8 @@ const labelStartLink = {
 function tokenizeLabelStartLink(effects, ok, nok) {
   const self = this;
   let labelLink;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("labelLink");
     effects.enter("labelMarker");
     effects.consume(code2);
@@ -16515,8 +17168,8 @@ const lineEnding = {
   tokenize: tokenizeLineEnding
 };
 function tokenizeLineEnding(effects, ok) {
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("lineEnding");
     effects.consume(code2);
     effects.exit("lineEnding");
@@ -16530,8 +17183,8 @@ const thematicBreak = {
 function tokenizeThematicBreak(effects, ok, nok) {
   let size = 0;
   let marker;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     effects.enter("thematicBreak");
     return before(code2);
   }
@@ -16581,8 +17234,8 @@ function tokenizeListStart(effects, ok, nok) {
   const tail = self.events[self.events.length - 1];
   let initialSize = tail && tail[1].type === "linePrefix" ? tail[2].sliceSerialize(tail[1], true).length : 0;
   let size = 0;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     const kind = self.containerState.type || (code2 === 42 || code2 === 43 || code2 === 45 ? "listUnordered" : "listOrdered");
     if (kind === "listUnordered" ? !self.containerState.marker || code2 === self.containerState.marker : asciiDigit(code2)) {
       if (!self.containerState.type) {
@@ -16598,15 +17251,15 @@ function tokenizeListStart(effects, ok, nok) {
       if (!self.interrupt || code2 === 49) {
         effects.enter("listItemPrefix");
         effects.enter("listItemValue");
-        return inside(code2);
+        return inside2(code2);
       }
     }
     return nok(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (asciiDigit(code2) && ++size < 10) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
     if ((!self.interrupt || size < 2) && (self.containerState.marker ? code2 === self.containerState.marker : code2 === 41 || code2 === 46)) {
       effects.exit("listItemValue");
@@ -16743,8 +17396,8 @@ function resolveToSetextUnderline(events, context) {
 function tokenizeSetextUnderline(effects, ok, nok) {
   const self = this;
   let marker;
-  return start;
-  function start(code2) {
+  return start2;
+  function start2(code2) {
     let index2 = self.events.length;
     let paragraph;
     while (index2--) {
@@ -16762,12 +17415,12 @@ function tokenizeSetextUnderline(effects, ok, nok) {
   }
   function before(code2) {
     effects.enter("setextHeadingLineSequence");
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === marker) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
     effects.exit("setextHeadingLineSequence");
     return markdownSpace(code2) ? factorySpace(effects, after, "lineSuffix")(code2) : after(code2);
@@ -16829,9 +17482,9 @@ function initializeFactory(field2) {
   function initializeText(effects) {
     const self = this;
     const constructs2 = this.parser.constructs[field2];
-    const text2 = effects.attempt(constructs2, start, notText);
-    return start;
-    function start(code2) {
+    const text2 = effects.attempt(constructs2, start2, notText);
+    return start2;
+    function start2(code2) {
       return atBreak(code2) ? text2(code2) : notText(code2);
     }
     function notText(code2) {
@@ -17185,8 +17838,8 @@ function createTokenizer(parser2, initialize, from) {
         ])
       ) : handleMapOfConstructs(constructs2);
       function handleMapOfConstructs(map2) {
-        return start;
-        function start(code2) {
+        return start2;
+        function start2(code2) {
           const left = code2 !== null && map2[code2];
           const all2 = code2 !== null && map2.null;
           const list2 = [
@@ -17207,8 +17860,8 @@ function createTokenizer(parser2, initialize, from) {
         return handleConstruct(list2[constructIndex]);
       }
       function handleConstruct(construct) {
-        return start;
-        function start(code2) {
+        return start2;
+        function start2(code2) {
           info = store();
           currentConstruct = construct;
           if (!construct.partial) {
@@ -17379,19 +18032,19 @@ const search = /[\0\t\n\r]/g;
 function preprocess() {
   let column = 1;
   let buffer = "";
-  let start = true;
+  let start2 = true;
   let atCarriageReturn;
   return preprocessor;
-  function preprocessor(value2, encoding, end) {
+  function preprocessor(value2, encoding, end2) {
     value2 = buffer + (typeof value2 === "string" ? value2.toString() : new TextDecoder(encoding || void 0).decode(value2));
     const chunks = [];
     let startPosition = 0;
     buffer = "";
-    if (start) {
+    if (start2) {
       if (value2.charCodeAt(0) === 65279) {
         startPosition++;
       }
-      start = void 0;
+      start2 = void 0;
     }
     while (startPosition < value2.length) {
       search.lastIndex = startPosition;
@@ -17441,7 +18094,7 @@ function preprocess() {
       }
       startPosition = endPosition + 1;
     }
-    if (end) {
+    if (end2) {
       if (atCarriageReturn) {
         chunks.push(-5);
       }
@@ -17455,9 +18108,9 @@ function preprocess() {
 }
 const characterEscapeOrReference = /\\([!-/:-@[-`{-~])|&(#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});/gi;
 function decodeString(value2) {
-  return value2.replace(characterEscapeOrReference, decode$2);
+  return value2.replace(characterEscapeOrReference, decode$4);
 }
-function decode$2($0, $1, $2) {
+function decode$4($0, $1, $2) {
   if ($1) {
     return $1;
   }
@@ -17663,9 +18316,9 @@ function compiler(options) {
       listeners[index2].call(context, token);
     }
   }
-  function prepareList(events, start) {
-    const end = events.length - 1;
-    let index2 = start - 1;
+  function prepareList(events, start2) {
+    const end2 = events.length - 1;
+    let index2 = start2 - 1;
     let containerBalance = -1;
     let listSpread = false;
     let listItem2;
@@ -17673,7 +18326,7 @@ function compiler(options) {
     let firstBlankLineIndex;
     let atMarker;
     const insertions = [];
-    while (++index2 <= end) {
+    while (++index2 <= end2) {
       const event = events[index2];
       switch (event[1].type) {
         case "listUnordered":
@@ -17753,16 +18406,16 @@ function compiler(options) {
         }
       }
     }
-    const listEvents = events.splice(start);
+    const listEvents = events.splice(start2);
     let insertion = 0;
     index2 = -1;
     while (++index2 < listEvents.length) {
-      while (insertion < insertions.length && insertions[insertion].at === start + index2) {
+      while (insertion < insertions.length && insertions[insertion].at === start2 + index2) {
         events.push(insertions[insertion++].event);
       }
       events.push(listEvents[index2]);
     }
-    events[start][1]._spread = listSpread;
+    events[start2][1]._spread = listSpread;
   }
   function opener2(create2, and) {
     return open2;
@@ -18451,8 +19104,8 @@ function createConstruct(matter2) {
   };
   function tokenizeFrontmatter(effects, ok, nok) {
     const self = this;
-    return start;
-    function start(code2) {
+    return start2;
+    function start2(code2) {
       const position2 = self.now();
       if (
         // Indent not allowed.
@@ -18699,7 +19352,86 @@ function validateCanvas(value2) {
     ensure(color(edge.color) && (edge.label === void 0 || typeof edge.label === "string"), "INVALID_CANVAS", "Invalid edge color or label.");
   }
 }
-const encode$1 = (text2) => new TextEncoder().encode(text2);
+const escapeRegExp = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const json$5 = (document2) => JSON.stringify(document2.toJS({ maxAliasCount: 100 }));
+function replaceOnce(value2, pairs2) {
+  const used = /* @__PURE__ */ new Set();
+  const order2 = pairs2.map((_, index2) => index2).filter((index2) => pairs2[index2][0].length > 0).sort((a, b) => pairs2[b][0].length - pairs2[a][0].length);
+  if (order2.length === 0) return { text: value2, used };
+  const lookup2 = /* @__PURE__ */ new Map();
+  for (const index2 of order2) if (!lookup2.has(pairs2[index2][0])) lookup2.set(pairs2[index2][0], index2);
+  const pattern = new RegExp(order2.map((index2) => escapeRegExp(pairs2[index2][0])).join("|"), "g");
+  const text2 = value2.replace(pattern, (match) => {
+    const index2 = lookup2.get(match);
+    used.add(index2);
+    return pairs2[index2][1];
+  });
+  return { text: text2, used };
+}
+function stringScalars(document2) {
+  const found = /* @__PURE__ */ new Map();
+  const walk = (node2, key, path) => {
+    if (distExports.isMap(node2)) {
+      for (const pair of node2.items) {
+        const name2 = String(distExports.isScalar(pair.key) ? pair.key.value : pair.key);
+        walk(pair.value, key ? `${key}.${name2}` : name2, [...path, name2]);
+      }
+    } else if (distExports.isSeq(node2)) node2.items.forEach((item, index2) => walk(item, key ? `${key}.${index2}` : String(index2), [...path, index2]));
+    else if (distExports.isAlias(node2)) {
+      const anchored = node2.resolve(document2);
+      if (distExports.isScalar(anchored)) found.get(anchored)?.keys.push(key);
+    } else if (distExports.isScalar(node2) && typeof node2.value === "string" && node2.range) found.set(node2, { path, keys: [key] });
+  };
+  walk(document2.contents, "", []);
+  return found;
+}
+function candidates$1(node2, source, value2, pairs2) {
+  const encode2 = node2.type === "QUOTE_SINGLE" ? (text2) => text2.replaceAll("'", "''") : node2.type === "QUOTE_DOUBLE" ? (text2) => text2.replace(/[\\"]/g, "\\$&") : (text2) => text2;
+  const raw = replaceOnce(source, pairs2.map(([from, to]) => [encode2(from), encode2(to)])).text;
+  const trailing = /(?:\r\n|\n|\r)*$/.exec(source)[0];
+  return [
+    raw,
+    ...node2.type === "QUOTE_SINGLE" && !/[\r\n]/.test(value2) ? [`'${encode2(value2)}'`] : [],
+    JSON.stringify(value2) + (node2.type === "BLOCK_LITERAL" || node2.type === "BLOCK_FOLDED" ? trailing : "")
+  ];
+}
+function replaceInYamlStrings(yaml, document2, replacements) {
+  const targets = [];
+  for (const [node2, { path, keys }] of stringScalars(document2)) {
+    const indexes = replacements.flatMap((replacement2, index2) => keys.includes(replacement2.key) ? [index2] : []);
+    if (indexes.length) targets.push({ path, node: node2, replacements: indexes });
+  }
+  const expected = document2.clone();
+  const applied = [];
+  let text2 = yaml;
+  for (const target of targets.sort((a, b) => b.node.range[0] - a.node.range[0])) {
+    const pairs2 = target.replacements.map((index2) => [replacements[index2].original, replacements[index2].text]);
+    const { text: value2, used } = replaceOnce(target.node.value, pairs2);
+    if (used.size === 0) continue;
+    const [start2, end2] = target.node.range;
+    const node2 = expected.getIn(target.path, true);
+    const previous2 = node2.value;
+    node2.value = value2;
+    const wanted = json$5(expected);
+    const accepted = candidates$1(target.node, text2.slice(start2, end2), value2, pairs2).find((candidate) => {
+      const spliced = distExports.parseDocument(text2.slice(0, start2) + candidate + text2.slice(end2), { uniqueKeys: true });
+      try {
+        return spliced.errors.length === 0 && json$5(spliced) === wanted;
+      } catch {
+        return false;
+      }
+    });
+    if (accepted === void 0) {
+      node2.value = previous2;
+      continue;
+    }
+    text2 = text2.slice(0, start2) + accepted + text2.slice(end2);
+    const matched2 = new Set([...used].map((index2) => pairs2[index2][0]));
+    applied.push(...target.replacements.filter((index2) => matched2.has(replacements[index2].original)));
+  }
+  return { yaml: text2, applied: applied.sort((a, b) => a - b) };
+}
+const encode$2 = (text2) => new TextEncoder().encode(text2);
 function textOf$1(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -18744,7 +19476,7 @@ function textStyle(text2) {
 }
 function styledText(text2, original) {
   const { prefix, newline } = textStyle(original);
-  return encode$1(prefix + text2.replace(/^\uFEFF/, "").replace(/\r?\n/g, newline));
+  return encode$2(prefix + text2.replace(/^\uFEFF/, "").replace(/\r?\n/g, newline));
 }
 const markdownParser = unified().use(remarkParse).use(remarkFrontmatter, ["yaml"]);
 function parseMarkdownParts(text2) {
@@ -18758,11 +19490,11 @@ function parseMarkdownParts(text2) {
     ensure(!opensFrontmatter, "INVALID_FRONTMATTER", "Unclosed YAML frontmatter.");
     return { yaml: "", body: text2, newline, exists: false, prefix };
   }
-  const end = firstNode.position?.end.offset;
-  ensure(end !== void 0 && firstNewline !== null, "INVALID_FRONTMATTER", "Missing frontmatter source position.");
-  const closingLineStart = Math.max(text2.lastIndexOf("\n", end - 1), text2.lastIndexOf("\r", end - 1)) + 1;
-  const separatorLength = text2.startsWith("\r\n", end) ? 2 : text2.startsWith("\n", end) || text2.startsWith("\r", end) ? 1 : 0;
-  return { yaml: text2.slice(firstNewline.index + firstNewline[0].length, closingLineStart), body: text2.slice(end + separatorLength), newline, exists: true, prefix };
+  const end2 = firstNode.position?.end.offset;
+  ensure(end2 !== void 0 && firstNewline !== null, "INVALID_FRONTMATTER", "Missing frontmatter source position.");
+  const closingLineStart = Math.max(text2.lastIndexOf("\n", end2 - 1), text2.lastIndexOf("\r", end2 - 1)) + 1;
+  const separatorLength = text2.startsWith("\r\n", end2) ? 2 : text2.startsWith("\n", end2) || text2.startsWith("\r", end2) ? 1 : 0;
+  return { yaml: text2.slice(firstNewline.index + firstNewline[0].length, closingLineStart), body: text2.slice(end2 + separatorLength), newline, exists: true, prefix };
 }
 function validateBase(value2) {
   ensure(isRecord(value2), "INVALID_BASE", "A Base must contain a YAML mapping.");
@@ -18811,7 +19543,7 @@ class ObsidianDocuments {
     if (fileKind(path) === "text") textOf$1(bytes);
     else this.inspect(path, bytes);
   }
-  properties(bytes, changes) {
+  properties(bytes, changes, remove = []) {
     const parts = parseMarkdownParts(textOf$1(bytes));
     const doc = yamlDocument(parts.yaml || "{}");
     yamlValue(doc);
@@ -18822,8 +19554,9 @@ class ObsidianDocuments {
       ensure(!["__proto__", "constructor", "prototype"].includes(key), "INVALID_KEY", key);
       doc.set(key, value2);
     }
-    const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
-    const result = encode$1(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
+    for (const key of remove) doc.delete(key);
+    const yaml = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, parts.newline);
+    const result = encode$2(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate("note.md", result);
     return result;
   }
@@ -18859,13 +19592,16 @@ class ObsidianDocuments {
         cursor = cursor && typeof cursor === "object" ? cursor[String(part)] : void 0;
       }
       doc.setIn(pathKeys, value2);
-      result = styledText(doc.toString(), textOf$1(bytes));
+      result = styledText(doc.toString({ lineWidth: 0 }), textOf$1(bytes));
     } else result = styledText(JSON.stringify(parsed.data, null, 2) + "\n", textOf$1(bytes));
     this.validate(path, result);
     return result;
   }
+  replaceInYamlStrings(yaml, replacements) {
+    return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
+  }
 }
-const encodeText$1 = encode$1;
+const encodeText$1 = encode$2;
 async function readManifest(path, files) {
   const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(path)).bytes);
   let value2;
@@ -18946,9 +19682,9 @@ function nullish(input) {
   return input === null || input === void 0;
 }
 function cleanRegex(source) {
-  const start = source.startsWith("^") ? 1 : 0;
-  const end = source.endsWith("$") ? source.length - 1 : source.length;
-  return source.slice(start, end);
+  const start2 = source.startsWith("^") ? 1 : 0;
+  const end2 = source.endsWith("$") ? source.length - 1 : source.length;
+  return source.slice(start2, end2);
 }
 function floatSafeRemainder(val, step) {
   const ratio = val / step;
@@ -19283,9 +20019,9 @@ function prefixIssues(path, issues) {
 function unwrapMessage(message) {
   return typeof message === "string" ? message : message?.message;
 }
-function attachSchema(issues, start, inst) {
+function attachSchema(issues, start2, inst) {
   var _a2;
-  for (let i = start; i < issues.length; i++) {
+  for (let i = start2; i < issues.length; i++) {
     (_a2 = issues[i]).schema ?? (_a2.schema = inst);
   }
 }
@@ -22006,15 +22742,15 @@ function bucketFor(state2, inst) {
 let handoff;
 const open = [];
 const memo = {
-  alloc(_inst, payload, empty) {
+  alloc(_inst, payload, empty2) {
     const bucket = handoff;
     if (!bucket)
-      return empty;
+      return empty2;
     handoff = void 0;
-    const entry2 = { value: empty, issues: null };
+    const entry2 = { value: empty2, issues: null };
     bucket.set(payload.value, entry2);
     open.push(entry2);
-    return empty;
+    return empty2;
   },
   guard(inst) {
     var _a2;
@@ -23910,8 +24646,8 @@ const parse = /* @__PURE__ */ _parse(ZodRealError);
 const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
 const safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
-const encode = /* @__PURE__ */ _encode(ZodRealError);
-const decode$1 = /* @__PURE__ */ _decode(ZodRealError);
+const encode$1 = /* @__PURE__ */ _encode(ZodRealError);
+const decode$3 = /* @__PURE__ */ _decode(ZodRealError);
 const encodeAsync = /* @__PURE__ */ _encodeAsync(ZodRealError);
 const decodeAsync = /* @__PURE__ */ _decodeAsync(ZodRealError);
 const safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
@@ -24066,10 +24802,10 @@ const ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
     return validateAsync$1(this, data, params);
   },
   encode: function _encode2(data, params) {
-    return encode(this, data, params, { callee: _encode2 });
+    return encode$1(this, data, params, { callee: _encode2 });
   },
   decode: function _decode2(data, params) {
-    return decode$1(this, data, params, { callee: _decode2 });
+    return decode$3(this, data, params, { callee: _decode2 });
   },
   encodeAsync: async function _encodeAsync2(data, params) {
     return await encodeAsync(this, data, params, { callee: _encodeAsync2 });
@@ -24571,7 +25307,7 @@ const ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
   inst.keyType = def.keyType;
   inst.valueType = def.valueType;
 });
-function record(keyType, valueType2, params) {
+function record$1(keyType, valueType2, params) {
   if (!valueType2 || !valueType2._zod) {
     return new ZodRecord({
       type: "record",
@@ -24838,7 +25574,7 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
   return /* @__PURE__ */ _superRefine(fn, params);
 }
-const relativePath = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
+const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
   try {
     vaultPath(value2);
     return true;
@@ -24849,20 +25585,20 @@ const relativePath = string$1().min(1).transform((value2) => value2.replace(/\/+
 const configSchema = strictObject({
   schemaVersion: literal$1(1).default(1),
   paths: strictObject({
-    projects: relativePath.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
-    components: relativePath.default("components"),
-    ui: relativePath.default("src/ui"),
-    stories: relativePath.default("stories"),
-    componentImports: relativePath.default("imports/components"),
-    componentExports: relativePath.default("exports/components"),
-    interactions: relativePath.default("interactions"),
-    interactionImports: relativePath.default("imports/interactions"),
-    interactionExports: relativePath.default("exports/interactions"),
-    dataSources: relativePath.default("data-sources"),
-    dataGenerated: relativePath.default("src/data-sources"),
-    dataFixtures: relativePath.default("test-data"),
-    dataImports: relativePath.default("imports/data-sources"),
-    dataExports: relativePath.default("exports/data-sources")
+    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
+    components: relativePath$1.default("components"),
+    ui: relativePath$1.default("src/ui"),
+    stories: relativePath$1.default("stories"),
+    componentImports: relativePath$1.default("imports/components"),
+    componentExports: relativePath$1.default("exports/components"),
+    interactions: relativePath$1.default("interactions"),
+    interactionImports: relativePath$1.default("imports/interactions"),
+    interactionExports: relativePath$1.default("exports/interactions"),
+    dataSources: relativePath$1.default("data-sources"),
+    dataGenerated: relativePath$1.default("src/data-sources"),
+    dataFixtures: relativePath$1.default("test-data"),
+    dataImports: relativePath$1.default("imports/data-sources"),
+    dataExports: relativePath$1.default("exports/data-sources")
   }).prefault({}),
   settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
   templates: strictObject({ dateFormat: string$1().min(1).default("YYYY-MM-DD"), timeFormat: string$1().min(1).default("HH:mm") }).prefault({}),
@@ -24873,19 +25609,19 @@ async function loadConfig(options) {
   const root = options.root !== void 0 ? minpath.resolve(options.cwd, options.root) : minpath.resolve(minpath.dirname(options.defaultPath), "..");
   const path = minpath.resolve(root, "bin/config.json");
   let content2;
-  let exists = true;
+  let exists2 = true;
   try {
-    content2 = JSON.parse(await promises.readFile(path, "utf8"));
+    content2 = JSON.parse(await promises$1.readFile(path, "utf8"));
   } catch (error2) {
     if (error2.code === "ENOENT") {
       content2 = {};
-      exists = false;
+      exists2 = false;
     } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`);
   }
   const parsed = configSchema.safeParse(content2);
   if (!parsed.success) throw forgeError("INVALID_CONFIG", parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
   const config2 = parsed.data;
-  return { path: exists ? path : null, root, config: config2 };
+  return { path: exists2 ? path : null, root, config: config2 };
 }
 var dayjs_min$1 = { exports: {} };
 var dayjs_min = dayjs_min$1.exports;
@@ -25417,12 +26153,12 @@ function renderYaml(source, resolve) {
     const exact = sentinels.indexOf(scalar2);
     if (exact >= 0) {
       consumed.add(exact);
-      const replacement = document2.createNode(resolved[exact]);
-      replacement.comment = node2.comment;
-      replacement.commentBefore = node2.commentBefore;
-      replacement.spaceBefore = node2.spaceBefore;
-      replacement.anchor = node2.anchor;
-      return replacement;
+      const replacement2 = document2.createNode(resolved[exact]);
+      replacement2.comment = node2.comment;
+      replacement2.commentBefore = node2.commentBefore;
+      replacement2.spaceBefore = node2.spaceBefore;
+      replacement2.anchor = node2.anchor;
+      return replacement2;
     }
     node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
       const position2 = Number(index2);
@@ -25570,10 +26306,10 @@ const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mj
 const qualityShared = "import { readdirSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n/** @param {string} value */\nfunction containedPath(value) {\n  // oxlint-disable-next-line no-control-regex -- Source roots must reject control characters and Windows/URL separators.\n  return value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\\:\\x00-\\x1f]/.test(part));\n}\n\n/** @param {unknown} error */\nfunction missing(error) { return error instanceof Error && 'code' in error && error.code === 'ENOENT'; }\n\n/** @param {string} root */\nfunction sourceDirectories(root) {\n  const path = resolve(root, 'configs/quality/source.json');\n  /** @type {unknown} */\n  let config;\n  try { config = JSON.parse(readFileSync(path, 'utf8')); }\n  catch (error) {\n    if (missing(error)) return { sourceRoot: 'src', additionalRoots: [] };\n    throw new Error(`Cannot read source inventory configuration configs/quality/source.json: ${error instanceof Error ? error.message : String(error)}`);\n  }\n  if (!config || typeof config !== 'object' || Array.isArray(config) || !('sourceRoot' in config) || typeof config.sourceRoot !== 'string' || Object.keys(config).some(key => !['sourceRoot', 'additionalRoots'].includes(key))) {\n    throw new Error('configs/quality/source.json requires a sourceRoot string and optional additionalRoots list.');\n  }\n  if (config.sourceRoot.split('/')[0] !== 'src' || !containedPath(config.sourceRoot)) {\n    throw new Error('sourceRoot must be src or a contained POSIX subdirectory such as src/the-forge.');\n  }\n  const additional = 'additionalRoots' in config ? config.additionalRoots : [];\n  if (!Array.isArray(additional) || additional.some(value => typeof value !== 'string' || !containedPath(value))) {\n    throw new Error('additionalRoots must contain relative POSIX directory paths.');\n  }\n  /** @type {string[]} */\n  const additionalRoots = additional;\n  const roots = [config.sourceRoot, ...additionalRoots];\n  if (roots.some((root, index) => roots.some((other, otherIndex) => index !== otherIndex && (root === other || root.startsWith(other + '/'))))) {\n    throw new Error('Source inventory roots must be unique and must not contain one another.');\n  }\n  return { sourceRoot: config.sourceRoot, additionalRoots };\n}\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  /** @type {string[]} */\n  const files = [];\n  const { sourceRoot, additionalRoots } = sourceDirectories(root);\n  /** @param {string} directory */\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  for (const selected of [sourceRoot, ...additionalRoots]) {\n    let directory = root;\n    for (const part of selected.split('/')) {\n      directory = join(directory, part);\n      let entry;\n      try { entry = lstatSync(directory); }\n      catch (error) {\n        if (missing(error)) throw new Error(`Required source directory ${selected} is missing`);\n        throw error;\n      }\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${selected}`);\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${selected}`);\n    }\n    visit(selected);\n  }\n  for (const entry of entries) {\n    if (['tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith(sourceRoot + '/'))) throw new Error(`Source inventory is empty: ${sourceRoot}`);\n  return [...new Set(files)].sort();\n}\n\n/** @param {string} name @param {string[]} args */\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\n/** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
 const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
 const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
-const json$3 = (value2) => JSON.stringify(value2, null, 2) + "\n";
+const json$4 = (value2) => JSON.stringify(value2, null, 2) + "\n";
 const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-function componentScaffold(project, name2, projectsDirectory, kind = "domain") {
-  const directory = `${vaultPath(projectsDirectory)}/${projectName(project)}`;
+function componentScaffold(project2, name2, projectsDirectory, kind = "domain") {
+  const directory = `${vaultPath(projectsDirectory)}/${projectName(project2)}`;
   ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase component name, for example WorkItem.");
   ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
   const file = kebab(name2);
@@ -25630,8 +26366,8 @@ describe('${name2}', () => {
 function projectScaffold(name2, projectsDirectory) {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
   const files = {
-    ".forge/project.json": json$3({ schemaVersion: 1, name: name2, type: "library" }),
-    "package.json": json$3({
+    ".forge/project.json": json$4({ schemaVersion: 1, name: name2, type: "library" }),
+    "package.json": json$4({
       name: name2,
       version: "0.1.0",
       private: true,
@@ -25661,7 +26397,7 @@ function projectScaffold(name2, projectsDirectory) {
     "scripts/quality/analyze.mjs": analyzeScript,
     "scripts/quality/shared.mjs": qualityShared,
     "configs/lint/oxlintrc.json": lintConfig,
-    "configs/quality/fallow.json": json$3({
+    "configs/quality/fallow.json": json$4({
       $schema: "../../node_modules/fallow/schema.json",
       minimumVersion: "3.31.0",
       entry: ["src/index.ts", "src/presentation/demo.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "vitest.config.ts"],
@@ -25685,11 +26421,11 @@ function projectScaffold(name2, projectsDirectory) {
         coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
       }
     }),
-    "tsconfig.json": json$3({
+    "tsconfig.json": json$4({
       compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, allowJs: true, checkJs: true, jsx: "preserve", noEmit: true, types: ["node"], skipLibCheck: true },
       include: ["src", "tests", "vite.config.ts", "vitest.config.ts"]
     }),
-    "tsconfig.build.json": json$3({
+    "tsconfig.build.json": json$4({
       extends: "./tsconfig.json",
       compilerOptions: { noEmit: false, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist" },
       include: ["src"]
@@ -25776,7 +26512,7 @@ const distributionPolicy = {
 };
 const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
-  const root = await promises.lstat(bundleDir);
+  const root = await promises$1.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
   const readAsset = async (path) => {
     vaultPath(path);
@@ -25785,10 +26521,10 @@ async function readSetupArtifacts(bundleDir) {
     let current = bundleDir;
     for (const [index2, segment2] of segments.entries()) {
       current = minpath.join(current, segment2);
-      const entry2 = await promises.lstat(current);
+      const entry2 = await promises$1.lstat(current);
       ensure(!entry2.isSymbolicLink() && (index2 === segments.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path}`);
     }
-    return promises.readFile(current);
+    return promises$1.readFile(current);
   };
   const manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
   ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
@@ -25899,8 +26635,8 @@ const reserved$1 = new Set("arguments await break case catch children class cons
 const identifier$2 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
 const id = string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 const value$2 = union([string$1(), number().finite(), boolean(), _null()]);
-const json$2 = lazy(() => union([value$2, array(json$2), record(string$1(), json$2)]));
-const values = record(identifier$2, value$2);
+const json$3 = lazy(() => union([value$2, array(json$3), record$1(string$1(), json$3)]));
+const values = record$1(identifier$2, value$2);
 const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
   if (property.default !== void 0 && typeof property.default !== property.type) context.addIssue({ code: "custom", message: "Prop default must match its declared type." });
 });
@@ -25909,14 +26645,14 @@ const state = strictObject({ type: _enum(["string", "number", "boolean"]), defau
 });
 const attribute = string$1().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/).refine((name2) => !/^on|^v-/i.test(name2) && !["innerHTML", "dangerouslySetInnerHTML", "ref", "key"].includes(name2), "Event handlers and framework runtime attributes belong in native code");
 const node = lazy(() => union([
-  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record(attribute, value$2).optional(), text: string$1().optional(), children: array(node).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
+  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record$1(attribute, value$2).optional(), text: string$1().optional(), children: array(node).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
     if (element2.tag === "svg" || element2.tag === "math") context.addIssue({ code: "custom", message: "SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets." });
     if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
   }),
   strictObject({ component: id, props: values.optional(), children: array(node).optional() }),
   strictObject({ slot: literal$1("children") })
 ]));
-const metadata = record(string$1(), json$2);
+const metadata = record$1(string$1(), json$3);
 const story = strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), args: values.optional(), parameters: metadata.optional(), tags: array(string$1()).optional() });
 const storybook = strictObject({
   title: string$1().min(1).optional(),
@@ -25930,7 +26666,7 @@ const storybook = strictObject({
   const names2 = settings2.stories?.map((entry2) => entry2.name) ?? [];
   if (new Set(names2).size !== names2.length) context.addIssue({ code: "custom", message: "Story names must be unique." });
 });
-const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record(identifier$2, prop).default({}), state: record(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
+const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record$1(identifier$2, prop).default({}), state: record$1(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
 class MarkdownUiDefinitions {
   documents = new ObsidianDocuments();
   parse(bytes, path) {
@@ -26014,7 +26750,7 @@ const standardUiCatalog = [
   element("time", "time", { datetime: string("2026-01-01"), label: string("Date") }, { datetime: "{{datetime}}" }, "{{label}}")
 ].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
 const ordered = (object2) => Object.entries(object2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-const json$1 = (value2) => JSON.stringify(value2).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+const json$2 = (value2) => JSON.stringify(value2).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const html = (value2) => String(value2 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const className = (definition2) => definition2.name ?? definition2.id.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("");
 const defaults = (definition2) => Object.fromEntries(ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => [key, prop2.default]));
@@ -26023,11 +26759,11 @@ function componentArtifact(definition2, framework) {
   return { fileName: `${definition2.id}.${extension2}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
 }
 function expression(value2, scope = "props", stateScope = "_uiState") {
-  if (typeof value2 !== "string") return json$1(value2);
+  if (typeof value2 !== "string") return json$2(value2);
   const parts = uiBindingParts(value2);
-  const binding = (name2) => name2.startsWith("state.") ? `${stateScope}[${json$1(name2.slice(6))}]` : `${scope}[${json$1(name2)}]`;
+  const binding = (name2) => name2.startsWith("state.") ? `${stateScope}[${json$2(name2.slice(6))}]` : `${scope}[${json$2(name2)}]`;
   if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
-  return parts.map((part) => "literal" in part ? json$1(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
+  return parts.map((part) => "literal" in part ? json$2(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
 }
 function evaluate(value2, props, state2 = {}) {
   if (typeof value2 !== "string") return value2;
@@ -26042,7 +26778,7 @@ function textExpression(value2, scope = "props", stateScope = "_uiState") {
   return parts.length === 1 && "prop" in parts[0] ? `(${result} ?? '')` : result;
 }
 function defaultAssignments(definition2) {
-  return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json$1(key)}] === undefined) props[${json$1(key)}] = ${json$1(prop2.default)};`).join("\n");
+  return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json$2(key)}] === undefined) props[${json$2(key)}] = ${json$2(prop2.default)};`).join("\n");
 }
 function formActionHelper(prefix, typescript, classMembers) {
   const member = classMembers ? "this." : "";
@@ -26100,7 +26836,7 @@ function stateDefaults(definition2) {
   return Object.fromEntries(ordered(definition2.state ?? {}).map(([name2, state2]) => [name2, state2.default]));
 }
 function stateType(definition2) {
-  return `{ ${ordered(definition2.state ?? {}).map(([name2, state2]) => `${json$1(name2)}: ${state2.type}`).join("; ")} }`;
+  return `{ ${ordered(definition2.state ?? {}).map(([name2, state2]) => `${json$2(name2)}: ${state2.type}`).join("; ")} }`;
 }
 const handlerName = (id2, prefix) => `${prefix}Interaction_${id2.replace(/-/g, "_")}`;
 function componentInteractions(definition2, interactions) {
@@ -26130,29 +26866,29 @@ function renderInteractionHandlers(definition2, interactions, options) {
     const asynchronous = interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type));
     const currentTarget = asynchronous ? `${prefix}Target` : `${event}.currentTarget`;
     const lines2 = [`${asynchronous ? "async " : ""}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
-    if (interaction.keys) lines2.push(`  if (!${json$1(interaction.keys)}.includes(${event}.key ?? '')) return;`);
+    if (interaction.keys) lines2.push(`  if (!${json$2(interaction.keys)}.includes(${event}.key ?? '')) return;`);
     if (interaction.preventDefault) lines2.push(`  ${event}.preventDefault();`);
     if (interaction.stopPropagation) lines2.push(`  ${event}.stopPropagation();`);
     if (asynchronous) lines2.push(`  const ${currentTarget} = ${event}.currentTarget;`);
     if (interactionUsesState(interaction)) lines2.push(`  const ${next} = { ...${options.stateScope ?? "_uiState"} };`);
     for (const [index2, action2] of interaction.actions.entries()) {
       if (action2.type === "toggle-state" || action2.type === "set-state") {
-        let assigned = action2.type === "toggle-state" ? `!${next}[${json$1(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
+        let assigned = action2.type === "toggle-state" ? `!${next}[${json$2(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
         if (action2.type === "set-state" && "fromEvent" in action2) {
           const field2 = `${prefix}Value${index2}`;
           lines2.push(`  const ${field2} = (${currentTarget}${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
-          lines2.push(`  if (typeof ${field2} !== ${json$1(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$1(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
+          lines2.push(`  if (typeof ${field2} !== ${json$2(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$2(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
           assigned = field2;
         }
-        lines2.push(`  ${next}[${json$1(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
+        lines2.push(`  ${next}[${json$2(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
       } else if (action2.type === "emit") {
-        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json$1(key)}]` : json$1(key)}: ${value2(item)}`).join(", ")} }`;
-        lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$1(action2.event)}, ${detail});`);
+        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json$2(key)}]` : json$2(key)}: ${value2(item)}`).join(", ")} }`;
+        lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$2(action2.event)}, ${detail});`);
       } else if (action2.type === "navigate") {
         lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${currentTarget}, ${value2(action2.url)});`);
       } else {
         const option = action2.type === "save-form" ? action2.key : action2.type === "upload-form" ? action2.url : action2.filename;
-        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$1(action2.type)}, ${value2(option)})) return;`);
+        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$2(action2.type)}, ${value2(option)})) return;`);
       }
     }
     lines2.push("}");
@@ -26183,23 +26919,23 @@ function renderInteractionHandlers(definition2, interactions, options) {
 function reactiveDomModule(definition2, interactions) {
   const references = componentDependencies(definition2.root);
   const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
-  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${id2}.js`)};`).join("\n");
+  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${id2}.js`)};`).join("\n");
   const prefix = interactionPrefix(definition2);
   function nodeCode(node2) {
     if ("slot" in node2) return "slot(children)";
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
-    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
-    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json$1(event)}: [${handlers.join(", ")}]`).join(", ");
-    return `element(${json$1(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
+    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
+    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json$2(event)}: [${handlers.join(", ")}]`).join(", ");
+    return `element(${json$2(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
   }
-  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$1([...uiBooleanAttributes].sort())});
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
 const updateProps = Symbol.for('forge.ui.updateProps');
 
 /** Create a live component; mounting and removal remain owned by the caller. */
 export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$1(defaults(definition2))}, ...input };
+  const props = { ...${json$2(defaults(definition2))}, ...input };
 ${defaultAssignments(definition2)}
-  const _uiState = ${json$1(stateDefaults(definition2))};
+  const _uiState = ${json$2(stateDefaults(definition2))};
   const updates = [];
   const refresh = () => { for (const update of updates) update(); };
 ${renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` })}
@@ -26244,7 +26980,7 @@ ${renderInteractionHandlers(definition2, interactions, { typescript: false, pref
   const result = ${nodeCode(definition2.root)};
   Object.defineProperty(result, updateProps, { configurable: true, value: input => {
     for (const key of Object.keys(props)) delete props[key];
-    Object.assign(props, ${json$1(defaults(definition2))}, input);
+    Object.assign(props, ${json$2(defaults(definition2))}, input);
 ${defaultAssignments(definition2)}
     refresh();
   } });
@@ -26280,14 +27016,14 @@ function domModule(definition2, definitions, interactions = []) {
   if (hasReactiveDom(definitions)) return reactiveDomModule(definition2, interactions);
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
-  const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}.js`)};`).join("\n");
+  const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}.js`)};`).join("\n");
   function nodeCode(node2) {
     if ("slot" in node2) return "slot(children)";
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
-    if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
-    return `element(${json$1(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
+    if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
+    return `element(${json$2(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
   }
-  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$1([...uiBooleanAttributes].sort())});
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
 function slot(children) {
   const fragment = document.createDocumentFragment();
   for (const child of children) if (child != null) fragment.append(child);
@@ -26306,7 +27042,7 @@ function element(tag, attributes, text, children) {
 
 /** Create DOM using text nodes and attributes; caller owns mounting and event listeners. */
 export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$1(defaults(definition2))}, ...input };
+  const props = { ...${json$2(defaults(definition2))}, ...input };
 ${defaultAssignments(definition2)}
   return ${nodeCode(definition2.root)};
 }
@@ -26315,7 +27051,7 @@ ${defaultAssignments(definition2)}
 function domDeclaration(definition2) {
   const required2 = Object.values(definition2.props).some((prop2) => prop2.required && prop2.default === void 0);
   return `export interface ${className(definition2)}Props {
-${ordered(definition2.props).map(([key, prop2]) => `  ${json$1(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n")}
+${ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n")}
 }
 
 export default function ${componentArtifact(definition2, "html").exportName}(input${required2 ? "" : "?"}: ${className(definition2)}Props, children?: readonly (Node | string | null | undefined)[]): HTMLElement | DocumentFragment;
@@ -26402,7 +27138,7 @@ function reactModule(definition2, definitions, interactions = []) {
         const property = `(element as HTMLInputElement).${key}`;
         const controlValue = value2 === null ? "''" : uiWholeBinding(value2) ? `(${rendered2} ?? '')` : rendered2;
         const converted = key === "checked" ? `(${rendered2} != null && (${rendered2} as unknown) !== false)` : `globalThis.String(${controlValue})`;
-        controls.push(`if (!globalThis.Object.hasOwn(previous, ${json$1(key)}) || previous[${json$1(key)}] !== ${converted}) ${property} = ${converted}; previous[${json$1(key)}] = ${converted};`);
+        controls.push(`if (!globalThis.Object.hasOwn(previous, ${json$2(key)}) || previous[${json$2(key)}] !== ${converted}) ${property} = ${converted}; previous[${json$2(key)}] = ${converted};`);
         return [`${key === "checked" ? "defaultChecked" : "defaultValue"}: ${converted}`];
       }
       const isStyle = "tag" in node2 && key === "style";
@@ -26410,20 +27146,20 @@ function reactModule(definition2, definitions, interactions = []) {
       const isAttribute = "tag" in node2 && !isStyle && !uiBooleanAttributes.has(key.toLowerCase());
       if (isAttribute) usesAttributes = true;
       const rendered = isStyle ? `css(${expression(value2, "props", state2)})` : isAttribute ? `attribute(${expression(value2, "props", state2)})` : expression(value2, "props", state2);
-      return [`${json$1("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
+      return [`${json$2("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
     });
     const events = groupElementInteractions(node2, interactions, prefix);
     if (events.length || controls.length) {
       const listeners = events.map(({ event, handlers }, index2) => ({ event, name: `${prefix}Listener${index2}`, body: handlers.map((handler2) => `${handler2}(event);`).join(" ") }));
       const syncControls = controls.length ? `const previous = ${prefix}ControlValues.get(element) ?? {}; ${controls.join(" ")} ${prefix}ControlValues.set(element, previous);` : "";
-      attrs.push(`ref: (() => { let cleanup: (() => void) | undefined; return (element: HTMLElement | null): void => { cleanup?.(); cleanup = undefined; if (!element) return; ${syncControls} ${listeners.map((listener) => `const ${listener.name} = (event: Event) => { ${listener.body} }; element.addEventListener(${json$1(listener.event)}, ${listener.name});`).join(" ")} cleanup = () => { ${listeners.map((listener) => `element.removeEventListener(${json$1(listener.event)}, ${listener.name});`).join(" ")} }; }; })()`);
+      attrs.push(`ref: (() => { let cleanup: (() => void) | undefined; return (element: HTMLElement | null): void => { cleanup?.(); cleanup = undefined; if (!element) return; ${syncControls} ${listeners.map((listener) => `const ${listener.name} = (event: Event) => { ${listener.body} }; element.addEventListener(${json$2(listener.event)}, ${listener.name});`).join(" ")} cleanup = () => { ${listeners.map((listener) => `element.removeEventListener(${json$2(listener.event)}, ${listener.name});`).join(" ")} }; }; })()`);
     }
-    return `_uiCreateElement(${"tag" in node2 ? json$1(node2.tag) : aliases.get(node2.component)}, {${attrs.join(", ")}}${children.length ? `, ${children.join(", ")}` : ""})`;
+    return `_uiCreateElement(${"tag" in node2 ? json$2(node2.tag) : aliases.get(node2.component)}, {${attrs.join(", ")}}${children.length ? `, ${children.join(", ")}` : ""})`;
   }
   const body = nodeCode(definition2.root);
-  const propTypes = ordered(definition2.props).map(([key, prop2]) => `  ${json$1(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n");
+  const propTypes = ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n");
   return `import { createElement as _uiCreateElement, type ReactNode as _UiReactNode${usesStyle ? ", type CSSProperties as _UiCSSProperties" : ""}${mutatesState ? ", useState as _uiUseState, useRef as _uiUseRef" : ""} } from 'react';
-${refs.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}`)};`).join("\n")}
+${refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}`)};`).join("\n")}
 export interface ${className(definition2)}Props {
 ${propTypes}${propTypes ? "\n" : ""}  children?: _UiReactNode;
 }
@@ -26434,12 +27170,12 @@ ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElem
 }
 ` : ""}
 export default function ${className(definition2)}(${usesProps ? "input" : "_input"}: ${className(definition2)}Props) {
-${usesProps ? `  const props = { ...${json$1(defaults(definition2))}, ...input };
+${usesProps ? `  const props = { ...${json$2(defaults(definition2))}, ...input };
 ${defaultAssignments(definition2)}` : ""}${mutatesState ? `
-  const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json$1(stateDefaults(definition2))}));
+  const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json$2(stateDefaults(definition2))}));
   const ${prefix}StateRef = _uiUseRef(${state2});
 ` : usesState ? `
-  const ${state2}: ${stateType(definition2)} = ${json$1(stateDefaults(definition2))};
+  const ${state2}: ${stateType(definition2)} = ${json$2(stateDefaults(definition2))};
 ` : ""}${selectedInteractions.length ? `
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: mutatesState ? `${prefix}StateRef.current` : state2, commit: (next) => `${prefix}StateRef.current = { ...${next} }; ${prefix}SetState(${prefix}StateRef.current);` })}
 ` : ""}
@@ -26463,11 +27199,11 @@ function vueModule(definition2, definitions, interactions = []) {
   }
   return `<script setup lang="ts">${interactive ? `
 import { reactive as _uiReactive } from 'vue';` : ""}
-${refs.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}.vue`)};`).join("\n")}
+${refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}.vue`)};`).join("\n")}
 const props = defineProps({
-${ordered(definition2.props).map(([key, prop2]) => `  ${json$1(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json$1(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
+${ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json$2(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
 });${interactive ? `
-const ${state2} = _uiReactive<${stateType(definition2)}>(${json$1(stateDefaults(definition2))});
+const ${state2} = _uiReactive<${stateType(definition2)}>(${json$2(stateDefaults(definition2))});
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: state2, commit: (next) => `globalThis.Object.assign(${state2}, ${next});` })}
 ` : ""}
 <\/script>
@@ -26495,11 +27231,11 @@ function svelteModule(definition2, definitions, interactions = []) {
     return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
   return `<script lang="ts">
-${refs.map((id2) => `  import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}.svelte`)};`).join("\n")}
-${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json$1(prop2.default)}` : prop2.required ? "" : " = undefined"};
+${refs.map((id2) => `  import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}.svelte`)};`).join("\n")}
+${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json$2(prop2.default)}` : prop2.required ? "" : " = undefined"};
   export { _uiProp${index2} as ${key} };`).join("\n")}
-  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json$1(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
-  let ${state2}: ${stateType(definition2)} = ${json$1(stateDefaults(definition2))};
+  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json$2(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
+  let ${state2}: ${stateType(definition2)} = ${json$2(stateDefaults(definition2))};
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, propsScope: "_uiProps", stateScope: state2, commit: (next) => `${state2} = { ...${next} };` })}
 ` : ""}
 <\/script>
@@ -26514,11 +27250,11 @@ function angularModule(definition2, definitions, interactions = []) {
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   function angularExpression(value2) {
-    if (typeof value2 !== "string") return json$1(value2);
+    if (typeof value2 !== "string") return json$2(value2);
     const parts = uiBindingParts(value2);
-    const binding = (name2) => name2.startsWith("state.") ? `${state2}[${json$1(name2.slice(6))}]` : name2;
+    const binding = (name2) => name2.startsWith("state.") ? `${state2}[${json$2(name2.slice(6))}]` : name2;
     if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
-    return parts.map((part) => "literal" in part ? json$1(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
+    return parts.map((part) => "literal" in part ? json$2(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
   }
   function nodeCode(node2) {
     if ("slot" in node2) return "<ng-content></ng-content>";
@@ -26534,20 +27270,20 @@ function angularModule(definition2, definitions, interactions = []) {
     return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
   return `import { Component${Object.keys(definition2.props).length ? ", Input" : ""} } from '@angular/core';
-${refs.map((id2) => `import { ${componentArtifact(definitions.get(id2), "angular").exportName} as ${aliases.get(id2)} } from ${json$1(`./${definitions.get(id2).id}`)};`).join("\n")}
+${refs.map((id2) => `import { ${componentArtifact(definitions.get(id2), "angular").exportName} as ${aliases.get(id2)} } from ${json$2(`./${definitions.get(id2).id}`)};`).join("\n")}
 
 @Component({
-  selector: ${json$1(`ui-${definition2.id}`)},
+  selector: ${json$2(`ui-${definition2.id}`)},
   standalone: true,
   imports: [${refs.map((id2) => aliases.get(id2)).join(", ")}],
-  template: ${json$1(nodeCode(definition2.root))},
+  template: ${json$2(nodeCode(definition2.root))},
 })
 export class ${componentArtifact(definition2, "angular").exportName} {
 ${ordered(definition2.props).map(([key, prop2]) => {
-    const options = prop2.default !== void 0 ? `{ transform: (value: ${prop2.type} | undefined) => value === undefined ? ${json$1(prop2.default)} : value }` : prop2.required ? "{ required: true }" : "";
-    return `  @Input(${options}) ${key}${prop2.required && prop2.default === void 0 ? "!" : ""}: ${prop2.type}${!prop2.required && prop2.default === void 0 ? " | undefined" : ""}${prop2.default === void 0 ? "" : ` = ${json$1(prop2.default)}`};`;
+    const options = prop2.default !== void 0 ? `{ transform: (value: ${prop2.type} | undefined) => value === undefined ? ${json$2(prop2.default)} : value }` : prop2.required ? "{ required: true }" : "";
+    return `  @Input(${options}) ${key}${prop2.required && prop2.default === void 0 ? "!" : ""}: ${prop2.type}${!prop2.required && prop2.default === void 0 ? " | undefined" : ""}${prop2.default === void 0 ? "" : ` = ${json$2(prop2.default)}`};`;
   }).join("\n")}${interactive ? `
-  ${state2}: ${stateType(definition2)} = ${json$1(stateDefaults(definition2))};
+  ${state2}: ${stateType(definition2)} = ${json$2(stateDefaults(definition2))};
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, classMembers: true, prefix, propsScope: "this", stateScope: `this.${state2}`, commit: (next) => `this.${state2} = { ...${next} };` })}
 ` : ""}
 }
@@ -26705,10 +27441,10 @@ const schema$1 = strictObject({
   schemaVersion: literal$1(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   kind: _enum(["rest", "json"]),
-  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record(identifier$1, field) }),
+  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record$1(identifier$1, field) }),
   rest: strictObject({ baseUrl: string$1().url(), operations }).optional(),
   json: strictObject({ path: string$1().min(1) }).optional(),
-  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record(identifier$1, value$1)).min(1).max(100).optional() }).optional()
+  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record$1(identifier$1, value$1)).min(1).max(100).optional() }).optional()
 }).superRefine((definition2, context) => {
   const issue2 = (message) => context.addIssue({ code: "custom", message });
   const fields = definition2.model.fields, primary = fields[definition2.model.idField];
@@ -26727,8 +27463,8 @@ const schema$1 = strictObject({
       if (!methods.includes(config2.method)) issue2(`Invalid HTTP method for ${name2}.`);
       if (!config2.path.startsWith("/") || config2.path.startsWith("//") || /[?#\\\s]/.test(config2.path) || config2.path.split("/").some((part) => part === "." || part === "..")) issue2(`Operation ${name2} requires an absolute URL pathname without traversal, query or fragment.`);
       try {
-        const decoded = decodeURIComponent(config2.path);
-        if (decoded.split("/").some((part) => part === "." || part === "..") || /[?#\\]/.test(decoded)) issue2(`Operation ${name2} cannot contain encoded traversal or URL delimiters.`);
+        const decoded2 = decodeURIComponent(config2.path);
+        if (decoded2.split("/").some((part) => part === "." || part === "..") || /[?#\\]/.test(decoded2)) issue2(`Operation ${name2} cannot contain encoded traversal or URL delimiters.`);
       } catch {
         issue2(`Operation ${name2} contains malformed URL encoding.`);
       }
@@ -26973,7 +27709,7 @@ const action = union([
   strictObject({ type: literal$1("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
   strictObject({ type: literal$1("upload-form"), url }),
   strictObject({ type: literal$1("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
-  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record(safeKey, scalar).optional() })
+  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
 ]);
 const schema = strictObject({
   schemaVersion: literal$1(1),
@@ -27018,9 +27754,9 @@ ${description2}`);
     return bytes;
   }
 }
-const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `file.*` changes by default; reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
-const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
+const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
+const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const builtinSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -27230,7 +27966,7 @@ async function claudeTarget(context, flags) {
     let root = directory;
     while (true) {
       try {
-        ensure((await promises.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
+        ensure((await promises$1.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
         break;
       } catch (error2) {
         if (error2.code !== "ENOENT") throw error2;
@@ -27243,7 +27979,7 @@ async function claudeTarget(context, flags) {
     const prefix = minpath.relative(root, directory).split("\\").join("/");
     const scoped = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
     return {
-      workspace: new Workspace(scoped, context.workspace.codec, context.events, context.workspace.dryRun, directory),
+      workspace: context.workspace.within(scoped, directory),
       scope,
       directory,
       agentsDirectory: "agents",
@@ -27292,7 +28028,7 @@ class NodeClaudeRuntime {
     );
     let directory;
     try {
-      directory = (await promises.stat(options.cwd)).isDirectory();
+      directory = (await promises$1.stat(options.cwd)).isDirectory();
     } catch (error2) {
       throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options.cwd}`, { cause: errorMessage(error2) });
     }
@@ -28650,18 +29386,18 @@ function editDistance(a, b) {
   }
   return d[a.length][b.length];
 }
-function suggestSimilar(word, candidates) {
-  if (!candidates || candidates.length === 0) return "";
-  candidates = Array.from(new Set(candidates));
+function suggestSimilar(word, candidates2) {
+  if (!candidates2 || candidates2.length === 0) return "";
+  candidates2 = Array.from(new Set(candidates2));
   const searchingOptions = word.startsWith("--");
   if (searchingOptions) {
     word = word.slice(2);
-    candidates = candidates.map((candidate) => candidate.slice(2));
+    candidates2 = candidates2.map((candidate) => candidate.slice(2));
   }
   let similar = [];
   let bestDistance = maxDistance;
   const minSimilarity = 0.4;
-  candidates.forEach((candidate) => {
+  candidates2.forEach((candidate) => {
     if (candidate.length <= 1) return;
     const distance = editDistance(word, candidate);
     const length = Math.max(word.length, candidate.length);
@@ -30934,19 +31670,19 @@ const globalOptions = {
   version: "boolean"
 };
 function parseBootstrap(tokens) {
-  let end = 0;
-  while (end < tokens.length) {
-    const token = tokens[end];
+  let end2 = 0;
+  while (end2 < tokens.length) {
+    const token = tokens[end2];
     if (token === "--" || !token.startsWith("-")) break;
     const key = token.startsWith("--") ? token.slice(2).split("=")[0] : token === "-h" ? "help" : token === "-V" ? "version" : token;
     const type2 = Object.hasOwn(globalOptions, key) ? globalOptions[key] : void 0;
     if (!type2) {
-      parseArguments(tokens.slice(0, end + 1), globalOptions);
+      parseArguments(tokens.slice(0, end2 + 1), globalOptions);
     }
-    end += type2 === "string" && !token.includes("=") ? 2 : 1;
+    end2 += type2 === "string" && !token.includes("=") ? 2 : 1;
   }
-  const parsed = parseArguments(tokens.slice(0, end), globalOptions);
-  return { flags: parsed.flags, args: tokens.slice(end + (tokens[end] === "--" ? 1 : 0)) };
+  const parsed = parseArguments(tokens.slice(0, end2), globalOptions);
+  return { flags: parsed.flags, args: tokens.slice(end2 + (tokens[end2] === "--" ? 1 : 0)) };
 }
 function parseArguments(tokens, options, allowUnknown = false) {
   const command2 = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
@@ -31401,17 +32137,17 @@ function validateClaudePlugin(value2) {
   }
 }
 const manifestPath = ".claude-plugin/plugin.json";
-function decode(bytes) {
+function decode$2(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw forgeError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.");
   }
 }
-function json(bytes, path) {
+function json$1(bytes, path) {
   let value2;
   try {
-    value2 = JSON.parse(decode(bytes));
+    value2 = JSON.parse(decode$2(bytes));
   } catch (error2) {
     throw forgeError("INVALID_CLAUDE_PLUGIN", `${path}: ${errorMessage(error2)}`);
   }
@@ -31460,7 +32196,7 @@ class ClaudePluginService {
     const files = (await this.workspace.files.list()).filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length)).sort();
     try {
       const snapshot = await this.workspace.files.read(`${prefix}${manifestPath}`);
-      return { directory: root, manifest: json(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
+      return { directory: root, manifest: json$1(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
     } catch (error2) {
       if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
       ensure(files.length > 0, "NOT_FOUND", `No regular plugin files found in ${root}.`);
@@ -31483,7 +32219,7 @@ class ClaudePluginService {
     }
     const result = { directory, asset: path, path: target, revision: snapshot.revision, bytes: snapshot.bytes.length, document: document2, ...validationError ? { validationError } : {} };
     try {
-      return { ...result, content: decode(snapshot.bytes) };
+      return { ...result, content: decode$2(snapshot.bytes) };
     } catch {
       return result;
     }
@@ -31492,7 +32228,7 @@ class ClaudePluginService {
     const target = this.path(directory, path);
     if (revision !== void 0) this.requireRevision(revision);
     const snapshot = Uint8Array.from(bytes);
-    if (path === manifestPath) validateClaudePlugin(json(snapshot, path));
+    if (path === manifestPath) validateClaudePlugin(json$1(snapshot, path));
     else {
       const { manifest } = await this.inspect(directory);
       if (manifest !== null) validateClaudePlugin(manifest);
@@ -31518,8 +32254,8 @@ class ClaudePluginService {
     const references = inspected.manifest === null ? [] : nativeReferences(inspected.manifest);
     for (const reference of references) {
       if (reference.path === "") continue;
-      const exists = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path) => path === reference.path || path.startsWith(`${reference.path}/`));
-      if (!exists) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
+      const exists2 = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path) => path === reference.path || path.startsWith(`${reference.path}/`));
+      if (!exists2) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
     }
     for (const path of inspected.files) {
       try {
@@ -31553,7 +32289,7 @@ class ClaudePluginService {
   validateAsset(path, bytes, references) {
     const warnings = [];
     if (path === manifestPath) {
-      validateClaudePlugin(json(bytes, path));
+      validateClaudePlugin(json$1(bytes, path));
       return warnings;
     }
     const kinds = new Set(references.filter((reference) => reference.path === path).map((reference) => reference.kind));
@@ -31563,23 +32299,23 @@ class ClaudePluginService {
     if (path === ".lsp.json") kinds.add("lsp");
     if (path === "settings.json") kinds.add("settings");
     if (kinds.has("agent")) {
-      const { metadata: metadata2 } = this.agentCodec.parse(decode(bytes));
+      const { metadata: metadata2 } = this.agentCodec.parse(decode$2(bytes));
       for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
         if (Object.hasOwn(metadata2, key)) warnings.push(`Claude ignores ${key} in plugin agents; use a project/user agent for per-agent configuration.`);
       }
     }
     if (kinds.has("hooks")) {
-      const config2 = json(bytes, path);
+      const config2 = json$1(bytes, path);
       ensure(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
       if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
       if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_PLUGIN", `${path}: modules must be an array of module paths.`);
     }
     if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path)) {
-      const config2 = json(bytes, path);
+      const config2 = json$1(bytes, path);
       validateClaudePlugin({ name: "asset-validation", mcpServers: config2.mcpServers ?? config2 });
     }
-    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json(bytes, path) });
-    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json(bytes, path) });
+    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json$1(bytes, path) });
+    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json$1(bytes, path) });
     this.workspace.codec.validate(path, bytes);
     return warnings;
   }
@@ -31897,7 +32633,7 @@ class Lexer {
     return { tokens: this.tokens, diagnostics: this.diagnostics };
   }
   scanNumber() {
-    const start = this.i;
+    const start2 = this.i;
     if (this.peek() !== ".") {
       while (isDigit(this.peek()))
         this.i++;
@@ -31919,18 +32655,18 @@ class Lexer {
           this.i++;
       }
     }
-    const raw = this.source.slice(start, this.i);
-    this.push("number", raw, raw, start, this.i);
+    const raw = this.source.slice(start2, this.i);
+    this.push("number", raw, raw, start2, this.i);
   }
   scanString(quote) {
-    const start = this.i;
+    const start2 = this.i;
     this.i++;
     let value2 = "";
     while (!this.done()) {
       const ch = this.peek();
       if (ch === quote) {
         this.i++;
-        this.push("string", value2, this.source.slice(start, this.i), start, this.i);
+        this.push("string", value2, this.source.slice(start2, this.i), start2, this.i);
         return;
       }
       if (ch === "\\") {
@@ -31949,12 +32685,12 @@ class Lexer {
       code: "unterminated-string",
       message: "Unterminated string literal",
       severity: "error",
-      span: { start, end: this.i }
+      span: { start: start2, end: this.i }
     });
-    this.push("string", value2, this.source.slice(start, this.i), start, this.i);
+    this.push("string", value2, this.source.slice(start2, this.i), start2, this.i);
   }
   scanRegex() {
-    const start = this.i;
+    const start2 = this.i;
     this.i++;
     let escaped = false;
     let inClass = false;
@@ -31984,7 +32720,7 @@ class Lexer {
           flags += this.peek();
           this.i++;
         }
-        this.push("regex", `${pattern}/${flags}`, this.source.slice(start, this.i), start, this.i);
+        this.push("regex", `${pattern}/${flags}`, this.source.slice(start2, this.i), start2, this.i);
         return;
       }
       pattern += ch;
@@ -31994,17 +32730,17 @@ class Lexer {
       code: "unterminated-regex",
       message: "Unterminated regular expression literal",
       severity: "error",
-      span: { start, end: this.i }
+      span: { start: start2, end: this.i }
     });
-    this.push("regex", pattern, this.source.slice(start, this.i), start, this.i);
+    this.push("regex", pattern, this.source.slice(start2, this.i), start2, this.i);
   }
   scanIdentifier() {
-    const start = this.i;
+    const start2 = this.i;
     this.i++;
     while (isIdentifierPart(this.peek()))
       this.i++;
-    const raw = this.source.slice(start, this.i);
-    this.push("identifier", raw, raw, start, this.i);
+    const raw = this.source.slice(start2, this.i);
+    this.push("identifier", raw, raw, start2, this.i);
   }
   shouldStartRegex() {
     const previous2 = this.lastSignificant;
@@ -32015,8 +32751,8 @@ class Lexer {
     }
     return !endExpressionValues.has(previous2.value);
   }
-  push(type2, value2, raw, start, end) {
-    const token = { type: type2, value: value2, raw, start, end };
+  push(type2, value2, raw, start2, end2) {
+    const token = { type: type2, value: value2, raw, start: start2, end: end2 };
     this.tokens.push(token);
     if (type2 !== "eof")
       this.lastSignificant = token;
@@ -32182,12 +32918,12 @@ let Parser$1 = class Parser {
       };
     }
     if (this.match("(")) {
-      const start = token.start;
+      const start2 = token.start;
       const expr = this.parseExpression(0);
       const close2 = this.expect(")", "Expected closing parenthesis");
       if (!expr)
         return null;
-      expr.span = { start, end: close2?.end ?? expr.span.end };
+      expr.span = { start: start2, end: close2?.end ?? expr.span.end };
       return expr;
     }
     if (this.match("["))
@@ -32282,12 +33018,12 @@ let Parser$1 = class Parser {
       if (token.value === "}")
         depth--;
     }
-    const end = this.tokens[Math.max(0, this.i - 1)]?.end ?? open2.end;
+    const end2 = this.tokens[Math.max(0, this.i - 1)]?.end ?? open2.end;
     this.diagnostics.push({
       code: "unsupported-object-literal",
       message: "Object literals are not supported by the observed Obsidian Bases runtime",
       severity: "error",
-      span: { start: open2.start, end }
+      span: { start: open2.start, end: end2 }
     });
     return null;
   }
@@ -32775,7 +33511,7 @@ function requireMoment() {
         return regexEscape(
           s.replace("\\", "").replace(
             /\\(\[)|\\(\])|\[([^\]\[]*)\]|\\(.)/g,
-            function(matched, p1, p2, p3, p4) {
+            function(matched2, p1, p2, p3, p4) {
               return p1 || p2 || p3 || p4;
             }
           )
@@ -32960,11 +33696,11 @@ function requireMoment() {
       function mod$1(n, x) {
         return (n % x + x) % x;
       }
-      var indexOf;
+      var indexOf2;
       if (Array.prototype.indexOf) {
-        indexOf = Array.prototype.indexOf;
+        indexOf2 = Array.prototype.indexOf;
       } else {
-        indexOf = function(o) {
+        indexOf2 = function(o) {
           var i;
           for (i = 0; i < this.length; ++i) {
             if (this[i] === o) {
@@ -33059,26 +33795,26 @@ function requireMoment() {
         }
         if (strict2) {
           if (format3 === "MMM") {
-            ii = indexOf.call(this._shortMonthsParse, llc);
+            ii = indexOf2.call(this._shortMonthsParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._longMonthsParse, llc);
+            ii = indexOf2.call(this._longMonthsParse, llc);
             return ii !== -1 ? ii : null;
           }
         } else {
           if (format3 === "MMM") {
-            ii = indexOf.call(this._shortMonthsParse, llc);
+            ii = indexOf2.call(this._shortMonthsParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._longMonthsParse, llc);
+            ii = indexOf2.call(this._longMonthsParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._longMonthsParse, llc);
+            ii = indexOf2.call(this._longMonthsParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._shortMonthsParse, llc);
+            ii = indexOf2.call(this._shortMonthsParse, llc);
             return ii !== -1 ? ii : null;
           }
         }
@@ -33330,48 +34066,48 @@ function requireMoment() {
         }
         if (strict2) {
           if (format3 === "dddd") {
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else if (format3 === "ddd") {
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           }
         } else {
           if (format3 === "dddd") {
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else if (format3 === "ddd") {
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           }
         }
@@ -34260,9 +34996,9 @@ function requireMoment() {
         }
       }
       function configFromString(config2) {
-        var matched = aspNetJsonRegex.exec(config2._i);
-        if (matched !== null) {
-          config2._d = /* @__PURE__ */ new Date(+matched[1]);
+        var matched2 = aspNetJsonRegex.exec(config2._i);
+        if (matched2 !== null) {
+          config2._d = /* @__PURE__ */ new Date(+matched2[1]);
           return;
         }
         configFromISO(config2);
@@ -34729,7 +35465,7 @@ function requireMoment() {
       function isDurationValid(m) {
         var key, unitHasDecimal = false, i, orderLen = ordering2.length;
         for (key in m) {
-          if (hasOwnProp(m, key) && !(indexOf.call(ordering2, key) !== -1 && (m[key] == null || !isNaN(m[key])))) {
+          if (hasOwnProp(m, key) && !(indexOf2.call(ordering2, key) !== -1 && (m[key] == null || !isNaN(m[key])))) {
             return false;
           }
         }
@@ -36737,10 +37473,10 @@ function parseDuration(input) {
     milliseconds: 0
   };
   const pattern = /([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(years?|y|months?|M|weeks?|w|days?|d|hours?|h|minutes?|m|seconds?|s|milliseconds?|ms)\b/g;
-  let matched = false;
+  let matched2 = false;
   let match;
   while (match = pattern.exec(input.trim())) {
-    matched = true;
+    matched2 = true;
     const amount = Number(match[1]);
     const unit = match[2];
     if (unit === "y" || unit.startsWith("year"))
@@ -36760,7 +37496,7 @@ function parseDuration(input) {
     else if (unit === "ms" || unit.startsWith("millisecond"))
       result.milliseconds += amount;
   }
-  return matched ? result : null;
+  return matched2 ? result : null;
 }
 function addDuration(date2, duration2, direction = 1) {
   return moment(date2).add(direction * duration2.years, "years").add(direction * duration2.months, "months").add(direction * duration2.weeks, "weeks").add(direction * duration2.days, "days").add(direction * duration2.hours, "hours").add(direction * duration2.minutes, "minutes").add(direction * duration2.seconds, "seconds").add(direction * duration2.milliseconds, "milliseconds").toDate();
@@ -37163,8 +37899,8 @@ class Evaluator {
         return stringValue(value2.toLowerCase());
       case "replace": {
         const pattern = args[0] ?? nullValue();
-        const replacement = stringifyValue(args[1] ?? stringValue(""));
-        return stringValue(pattern.type === "RegExp" ? value2.replace(pattern.value, replacement) : value2.split(stringifyValue(pattern)).join(replacement));
+        const replacement2 = stringifyValue(args[1] ?? stringValue(""));
+        return stringValue(pattern.type === "RegExp" ? value2.replace(pattern.value, replacement2) : value2.split(stringifyValue(pattern)).join(replacement2));
       }
       case "repeat":
         return stringValue(value2.repeat(this.asNumber(args[0] ?? numberValue(0))));
@@ -37943,12 +38679,645 @@ class BaseRowContexts {
   }
   // Date types apply only where the row has a value, so empty dates evaluate as null rather than invalid dates.
   propertyTypes(file) {
-    const empty = (name2) => {
+    const empty2 = (name2) => {
       const value2 = file.properties?.[name2];
       return value2 === void 0 || value2 === null || value2 === "";
     };
-    if (!this.dateTypes.some(empty)) return this.shared.propertyTypes;
-    return Object.fromEntries(Object.entries(this.shared.propertyTypes).filter(([name2, type2]) => type2 !== "date" || !empty(name2)));
+    if (!this.dateTypes.some(empty2)) return this.shared.propertyTypes;
+    return Object.fromEntries(Object.entries(this.shared.propertyTypes).filter(([name2, type2]) => type2 !== "date" || !empty2(name2)));
+  }
+}
+function parseLinktext(link) {
+  const hash = link.indexOf("#");
+  return hash < 0 ? { path: link, subpath: "" } : { path: link.slice(0, hash), subpath: link.slice(hash) };
+}
+function defaultDisplayText(link) {
+  const { path, subpath } = parseLinktext(link);
+  const parts = subpath.split("#").filter(Boolean);
+  return [path, ...parts].filter(Boolean).join(" > ");
+}
+function stringList(value2, split) {
+  if (typeof value2 === "string") return value2.split(split);
+  return Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
+}
+function frontmatterTags(frontmatter2) {
+  const value2 = frontmatter2?.tags ?? frontmatter2?.tag;
+  return stringList(value2, /[,\s]+/).filter((tag) => tag.length > 0).map((tag) => "#" + tag.replace(/^#/, ""));
+}
+function frontmatterAliases(frontmatter2) {
+  const value2 = frontmatter2?.aliases ?? frontmatter2?.alias;
+  return stringList(value2, /,/).map((alias) => alias.trim()).filter((alias) => alias.length > 0);
+}
+function allTags(cache) {
+  if (!cache) return [];
+  return [.../* @__PURE__ */ new Set([...(cache.tags ?? []).map((item) => item.tag), ...frontmatterTags(cache.frontmatter)])];
+}
+const pendingFileReads$1 = 16;
+const isMarkdown = (path) => path.toLowerCase().endsWith(".md");
+function typedLinks(value2, source, cache) {
+  if (typeof value2 === "string") {
+    const match = /^\[\[([^\]]+)\]\]$/.exec(value2);
+    if (!match) return value2;
+    const [target, display] = match[1].split("|");
+    return frontmatterLink(target, display, cache.getFirstLinkpathDest(target, source));
+  }
+  if (Array.isArray(value2)) return value2.map((item) => typedLinks(item, source, cache));
+  if (isRecord(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source, cache)]));
+  return value2;
+}
+function baseLink({ reference, resolution }, source) {
+  if (resolution.status === "unresolved" && resolution.reason === "ambiguous" && resolution.via === "path") {
+    throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${resolution.linkpath} in ${source} matches multiple files: ${resolution.candidates.join(", ")}`);
+  }
+  return { path: reference.link, resolvedPath: resolution.status === "resolved" && resolution.via === "path" ? resolution.path : null };
+}
+async function mapInOrder(items, limit, map2) {
+  const results = [], failures = /* @__PURE__ */ new Map();
+  let next = 0;
+  const work = async () => {
+    while (failures.size === 0 && next < items.length) {
+      const position2 = next++;
+      try {
+        results[position2] = await map2(items[position2]);
+      } catch (error2) {
+        failures.set(position2, error2);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, work));
+  if (failures.size > 0) throw failures.get(Math.min(...failures.keys()));
+  return results;
+}
+function baseFile(path, cache, problems) {
+  if (!isMarkdown(path)) return { path, properties: {}, links: [], embeds: [], tags: [], backlinks: [] };
+  const problem = problems.get(path);
+  if (problem !== void 0) throw forgeError("BASE_INDEX_ERROR", `Cannot index ${path}: ${problem}`);
+  const references = cache.references(path), metadata2 = cache.getFileCache(path);
+  const links = references.map((item) => baseLink(item, path));
+  const embeds = links.filter((_, position2) => {
+    const item = references[position2];
+    return item.kind === "embed" || item.kind === "frontmatter" && item.reference.embed === true;
+  });
+  return { path, properties: typedLinks(metadata2?.frontmatter ?? {}, path, cache), links, embeds, tags: allTags(metadata2), backlinks: [] };
+}
+async function indexBaseFiles(files, cache) {
+  const problems = new Map(cache.issues().map((issue2) => [issue2.path, issue2.message]));
+  const indexed = cache.files().map((path) => baseFile(path, cache, problems));
+  const result = await mapInOrder(indexed, pendingFileReads$1, async (file) => {
+    const info = await promises$1.stat(await files.resolvePath(file.path));
+    return { ...file, size: info.size, ctime: info.birthtime, mtime: info.mtime };
+  });
+  const byPath = new Map(result.map((file) => [file.path, file]));
+  for (const source of result) {
+    for (const target of new Set(source.links?.map((link) => link.resolvedPath).filter((path) => Boolean(path)))) {
+      byPath.get(target)?.backlinks?.push({ path: source.path, resolvedPath: source.path });
+    }
+  }
+  return result;
+}
+async function basePropertyTypes(files) {
+  let data;
+  try {
+    data = JSON.parse(new TextDecoder().decode((await files.read(".obsidian/types.json")).bytes));
+  } catch (error2) {
+    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return {};
+    if (error2 instanceof SyntaxError) throw forgeError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.");
+    throw error2;
+  }
+  ensure(isRecord(data) && isRecord(data.types), "INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain a types mapping.");
+  const names2 = { text: "string", multitext: "list", tags: "list", aliases: "list", number: "number", checkbox: "boolean", date: "date", datetime: "date" };
+  const result = {};
+  for (const [property, type2] of Object.entries(data.types)) {
+    ensure(typeof type2 === "string" && Object.hasOwn(names2, type2), "UNSUPPORTED_BASE_PROPERTY_TYPE", `Unsupported Obsidian property type for ${property}: ${String(type2)}`);
+    result[property] = names2[type2];
+  }
+  return result;
+}
+const internalContext = "__forge_base_context";
+const internalFormula = "__forge_base_formula";
+const internalTag = "__forge_base_tag";
+const internalGuard = "__forge_base_guard";
+function guarded(expression2, callee = false) {
+  let value2 = expression2;
+  if (value2.type === "Call") value2 = { ...value2, callee: guarded(value2.callee, true), args: value2.args.map((item) => guarded(item)) };
+  else if (value2.type === "Member") value2 = { ...value2, object: guarded(value2.object), property: typeof value2.property === "string" ? value2.property : guarded(value2.property) };
+  else if (value2.type === "Binary") value2 = { ...value2, left: guarded(value2.left), right: guarded(value2.right) };
+  else if (value2.type === "Unary") value2 = { ...value2, argument: guarded(value2.argument) };
+  else if (value2.type === "Array") value2 = { ...value2, elements: value2.elements.map((item) => guarded(item)) };
+  if (callee || ["Literal", "Identifier", "Regex"].includes(value2.type)) return value2;
+  return { type: "Call", callee: { type: "Identifier", name: internalGuard, span: value2.span }, args: [value2], span: value2.span };
+}
+function adapt(expression2) {
+  const span = expression2.span;
+  const root = { type: "Identifier", name: internalContext, span };
+  const member = (object2, property) => ({ type: "Member", object: object2, property, computed: false, span });
+  if (expression2.type === "Identifier" && expression2.name === "this") return member(root, "file");
+  if (expression2.type === "Member") {
+    if (expression2.computed && expression2.object.type === "Identifier" && expression2.object.name === "formula") {
+      if (typeof expression2.property !== "string" && expression2.property.type === "Literal" && typeof expression2.property.value === "string") return { ...expression2, computed: false, property: expression2.property.value };
+      ensure(typeof expression2.property !== "string", "INVALID_BASE_EXPRESSION", "Computed formula access needs an expression.");
+      return { type: "Call", callee: { type: "Identifier", name: internalFormula, span }, args: [adapt(expression2.property)], span };
+    }
+    if (expression2.object.type === "Identifier" && expression2.object.name === "this") {
+      const file = expression2.property === "file" || typeof expression2.property !== "string" && expression2.property.type === "Literal" && expression2.property.value === "file";
+      return file ? member(root, "file") : { ...expression2, object: member(root, "note"), property: typeof expression2.property === "string" ? expression2.property : adapt(expression2.property) };
+    }
+    return { ...expression2, object: adapt(expression2.object), property: typeof expression2.property === "string" ? expression2.property : adapt(expression2.property) };
+  }
+  if (expression2.type === "Unary") {
+    ensure(expression2.operator !== "+", "INVALID_BASE_EXPRESSION", "Unary plus is rejected by the observed Obsidian Bases parser.");
+    return { ...expression2, argument: adapt(expression2.argument) };
+  }
+  if (expression2.type === "Binary") return { ...expression2, left: adapt(expression2.left), right: adapt(expression2.right) };
+  if (expression2.type === "Call") {
+    if (expression2.callee.type === "Member" && expression2.callee.property === "hasTag") return { ...expression2, callee: { type: "Identifier", name: internalTag, span }, args: [adapt(expression2.callee.object), ...expression2.args.map(adapt)] };
+    return { ...expression2, callee: adapt(expression2.callee), args: expression2.args.map(adapt) };
+  }
+  if (expression2.type === "Array") return { ...expression2, elements: expression2.elements.map(adapt) };
+  return expression2;
+}
+function baseExpression(source) {
+  const parsed = compileExpression(source);
+  ensure(parsed.valid && parsed.ast, "INVALID_BASE_EXPRESSION", parsed.diagnostics.map((item) => item.message).join("; ") || "Invalid Bases expression.");
+  const nativeNumericMember = (node2) => {
+    if (!isRecord(node2)) return;
+    if (node2.type === "Member" && isRecord(node2.object) && node2.object.type === "Literal" && typeof node2.object.value === "number" && isRecord(node2.object.span)) {
+      ensure(source.slice(Number(node2.object.span.start), Number(node2.object.span.end)).trimStart().startsWith("("), "INVALID_BASE_EXPRESSION", "Numeric method receivers need parentheses, as in (1).isTruthy().");
+    }
+    for (const value2 of Object.values(node2)) {
+      if (Array.isArray(value2)) value2.forEach(nativeNumericMember);
+      else if (isRecord(value2)) nativeNumericMember(value2);
+    }
+  };
+  nativeNumericMember(parsed.ast);
+  return compileExpression(guarded(adapt(parsed.ast)));
+}
+function baseFilter(value2) {
+  if (value2 === void 0) return () => true;
+  if (typeof value2 === "string") {
+    const compiled = baseExpression(value2);
+    return (context) => isTruthy(compiled.evaluateValue(context, { throwOnError: true }));
+  }
+  ensure(isRecord(value2) && Object.keys(value2).length === 1, "INVALID_BASE_EXPRESSION", "Filters require an expression or a single and/or/not list.");
+  const [operator, children] = Object.entries(value2)[0];
+  ensure(["and", "or", "not"].includes(operator) && Array.isArray(children), "INVALID_BASE_EXPRESSION", "Filters require an and/or/not list.");
+  const filters = children.map(baseFilter);
+  return (context) => operator === "and" ? filters.every((filter) => filter(context)) : operator === "or" ? filters.some((filter) => filter(context)) : !filters.some((filter) => filter(context));
+}
+const strict = { throwOnError: true };
+const collator = new Intl.Collator(void 0, { numeric: true, sensitivity: "base" });
+function diagnostics(items, label) {
+  const failures = items.filter((item) => item.severity === "error" || item.code === "circular-formula");
+  ensure(failures.length === 0, "INVALID_BASE_EXPRESSION", `${label}: ${failures.map((item) => item.message).join("; ")}`);
+}
+function ordering(value2) {
+  ensure(isRecord(value2) && typeof value2.property === "string" && value2.property.length > 0, "INVALID_BASE_QUERY", "Sort and groupBy entries need a property name.");
+  ensure(value2.direction === "ASC" || value2.direction === "DESC", "INVALID_BASE_QUERY", "Sort and groupBy direction must be ASC or DESC.");
+  const property = value2.property;
+  const dot = property.indexOf(".");
+  const namespace = dot < 0 ? "note" : property.slice(0, dot);
+  const name2 = dot < 0 ? property : property.slice(dot + 1);
+  ensure(["note", "file", "formula"].includes(namespace) && name2.length > 0, "INVALID_BASE_QUERY", `Invalid property identifier: ${property}`);
+  const expression2 = baseExpression(`${namespace}[${JSON.stringify(name2)}]`);
+  diagnostics(expression2.diagnostics, property);
+  return { property, direction: value2.direction, expression: expression2 };
+}
+function compare(a, b) {
+  if (a.type === "Null" || b.type === "Null") return a.type === b.type ? 0 : a.type === "Null" ? -1 : 1;
+  if (a.type === "Date" && b.type === "Date") return a.value.getTime() - b.value.getTime();
+  if (a.type === "Number" && b.type === "Number") return a.value - b.value;
+  if (a.type === "Boolean" && b.type === "Boolean") return Number(a.value) - Number(b.value);
+  return collator.compare(stringifyValue(a), stringifyValue(b));
+}
+function groupIdentity(value2) {
+  return JSON.stringify(value2 ?? null);
+}
+function positions(groupOrder) {
+  const result = /* @__PURE__ */ new Map();
+  for (const [index2, value2] of groupOrder.entries()) {
+    const identity2 = groupIdentity(value2);
+    if (!result.has(identity2)) result.set(identity2, index2);
+  }
+  return result;
+}
+class NodeBasesQueryEngine {
+  /** `metadata` supplies the invocation's kernel metadata cache, built from the same root as `files`. */
+  constructor(files, codec, metadata2) {
+    this.files = files;
+    this.codec = codec;
+    this.metadata = metadata2;
+  }
+  files;
+  codec;
+  metadata;
+  capabilities() {
+    return {
+      engine: "obsidian-bases-expression",
+      version: "0.2.0",
+      standalone: true,
+      expressions: compatibilityProfile,
+      query: ["global-and-view-filters", "formulas", "sort", "limit", "groupBy", "groupOrder", "this-context", "property-types", "tags", "links", "embeds", "backlinks", "attachments"],
+      limits: [
+        "Independent implementation; not verified against a running Obsidian installation by The Forge.",
+        "Community-plugin functions and view-specific query behavior are not loaded.",
+        "Display columns, summaries and presentation settings do not change the returned file list.",
+        "Dot-prefixed paths, node_modules, symlinks and Forge temporary/lock files are excluded.",
+        "Links resolve by path through the kernel metadata cache; ambiguous basename links fail explicitly and alias-only links stay unresolved.",
+        "Rows sort by typed values with host-locale natural string collation; equal keys use file path.",
+        "The filesystem is indexed once per invocation, without a transactional snapshot or live refresh."
+      ]
+    };
+  }
+  async query(path, options) {
+    const base = this.codec.inspect(path, (await this.files.read(path)).bytes).data;
+    const views = base.views ?? [];
+    ensure(views.length > 0, "BASE_VIEW_NOT_FOUND", `No views are defined in ${path}.`);
+    ensure(new Set(views.map((view2) => view2.name)).size === views.length, "INVALID_BASE_QUERY", "Base view names must be unique.");
+    const view = options.view === void 0 ? views[0] : views.find((item) => item.name === options.view);
+    ensure(view, "BASE_VIEW_NOT_FOUND", `View ${options.view ?? ""} is not defined in ${path}.`);
+    const formulas = base.formulas ?? {};
+    const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name2, source]) => [name2, baseExpression(source).ast]));
+    const compiledFormulas = compileFormulaSet(formulaAsts);
+    diagnostics(compiledFormulas.diagnostics, "Formulas");
+    const globalFilter = baseFilter(base.filters), viewFilter = baseFilter(view.filters);
+    ensure(view.sort === void 0 || Array.isArray(view.sort), "INVALID_BASE_QUERY", "View sort must be a list of property/direction entries.");
+    const sorts = (view.sort ?? []).map(ordering);
+    const grouping = view.groupBy === void 0 ? void 0 : ordering(view.groupBy);
+    ensure(view.groupOrder === void 0 || grouping !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
+    const groupOrder = view.groupOrder;
+    const indexed = await indexBaseFiles(this.files, await this.metadata());
+    const contextPath = options.context ?? path;
+    const thisFile = indexed.find((file) => file.path === contextPath);
+    ensure(thisFile, "BASE_CONTEXT_NOT_FOUND", `Base context is not an indexed vault file: ${contextPath}`);
+    const propertyTypes = await basePropertyTypes(this.files);
+    const contextNote = Object.fromEntries(Object.entries(thisFile.properties ?? {}).map(([name2, value2]) => [name2, value2 === null || value2 === "" ? fromJs(value2) : fromJs(value2, propertyTypes[name2])]));
+    const objects = { [internalContext]: { file: fileValue(thisFile), note: contextNote } };
+    const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name2, ast]) => [name2, compileExpression(ast)]));
+    const groupPositions = groupOrder && positions(groupOrder);
+    const rows = [];
+    for (const { file, context } of new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: /* @__PURE__ */ new Date() }).rows()) {
+      try {
+        const evaluating = /* @__PURE__ */ new Set();
+        let evaluationError;
+        context.functions = { [internalFormula]: (name2) => {
+          const key = stringifyValue(name2);
+          if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
+          const formula = compiledFormulaByName.get(key);
+          if (!formula) return nullValue();
+          evaluating.add(key);
+          try {
+            return formula.evaluateValue(context, strict);
+          } finally {
+            evaluating.delete(key);
+          }
+        }, [internalTag]: (receiver, ...tags2) => {
+          if (receiver.type !== "File") return errorValue("hasTag requires a file.");
+          const normalized = receiver.value.tags.map((tag) => tag.replace(/^#/, "").toLocaleLowerCase());
+          return boolValue(tags2.some((tag) => {
+            const needle = stringifyValue(tag).replace(/^#/, "").toLocaleLowerCase();
+            return normalized.some((value2) => value2 === needle || value2.startsWith(needle + "/"));
+          }));
+        }, [internalGuard]: (value2) => {
+          if (value2.type === "Error") evaluationError ??= value2.value.message;
+          return value2;
+        } };
+        const matches2 = globalFilter(context) && viewFilter(context);
+        ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
+        if (!matches2) continue;
+        const group = grouping?.expression.evaluateValue(context, strict);
+        const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
+        if (groupIndex === -1) continue;
+        const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
+        ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
+        rows.push({ path: file.path, sort, group, groupIndex });
+      } catch (error2) {
+        throw forgeError("BASE_EVALUATION_ERROR", `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
+      }
+    }
+    rows.sort((a, b) => {
+      if (grouping && a.group && b.group) {
+        const comparison = groupOrder ? a.groupIndex - b.groupIndex : compare(a.group, b.group) * (grouping.direction === "DESC" ? -1 : 1);
+        if (comparison) return comparison;
+      }
+      for (const [index2, sort] of sorts.entries()) {
+        const comparison = compare(a.sort[index2], b.sort[index2]) * (sort.direction === "DESC" ? -1 : 1);
+        if (comparison) return comparison;
+      }
+      return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+    });
+    const limit = Math.min(options.limit ?? Infinity, typeof view.limit === "number" ? view.limit : Infinity);
+    return { path, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), compatibility: this.capabilities() };
+  }
+}
+const external = (target) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target);
+const isExternalLink = external;
+function linkIndex(paths2, aliases = /* @__PURE__ */ new Map()) {
+  const lower = /* @__PURE__ */ new Map(), suffixes = /* @__PURE__ */ new Map(), aliasKeys = /* @__PURE__ */ new Map();
+  const add = (map2, key, position2) => {
+    const positions2 = map2.get(key);
+    if (!positions2) map2.set(key, [position2]);
+    else if (positions2.at(-1) !== position2) positions2.push(position2);
+  };
+  for (const [position2, path] of paths2.entries()) {
+    const folded = path.toLowerCase();
+    add(lower, folded, position2);
+    for (let slash = folded.indexOf("/"); slash >= 0; slash = folded.indexOf("/", slash + 1)) add(suffixes, folded.slice(slash + 1), position2);
+    for (const alias of aliases.get(path) ?? []) add(aliasKeys, alias.toLowerCase(), position2);
+  }
+  return { paths: paths2, exact: new Set(paths2), lower, suffixes, aliases: aliasKeys };
+}
+function folderOf$1(path) {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? "." : slash === 0 ? "/" : path.slice(0, slash);
+}
+function joinPath(folder, target) {
+  const parts = [];
+  for (const part of `${folder}/${target}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
+    else parts.push(part);
+  }
+  const joined = parts.join("/") || ".";
+  return target.endsWith("/") ? `${joined}/` : joined;
+}
+function lookup(index2, keys, spelling) {
+  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
+  return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
+}
+function matched(found, linkpath, via) {
+  if (found.length === 1) return { status: "resolved", path: found[0], via };
+  if (found.length > 1) return { status: "unresolved", linkpath, reason: "ambiguous", via, candidates: found };
+  return void 0;
+}
+function resolveLinkpath(index2, link, source, options = {}) {
+  let target = parseLinktext(link).path;
+  if (!target) return { status: "resolved", path: source, via: "path" };
+  if (external(target)) return { status: "external" };
+  target = target.replace(/^\//, "");
+  const relative = options.relative === true;
+  const local = joinPath(folderOf$1(source), target);
+  const candidates2 = relative ? [local, target] : [target, local];
+  for (const candidate of candidates2) {
+    for (const spelling of [candidate, `${candidate}.md`]) {
+      if (index2.exact.has(spelling)) return { status: "resolved", path: spelling, via: "path" };
+    }
+  }
+  for (const candidate of candidates2) {
+    const result = matched(lookup(index2, index2.lower, candidate), target, "path");
+    if (result) return result;
+  }
+  if (relative || target.startsWith("../")) return { status: "unresolved", linkpath: target, reason: "missing" };
+  const suffix = matched(lookup(index2, index2.suffixes, target), target, "path");
+  if (suffix) return suffix;
+  const alias = options.aliases ? matched([...new Set(index2.aliases.get(target.toLowerCase()) ?? [])].map((position2) => index2.paths[position2]), target, "alias") : void 0;
+  return alias ?? { status: "unresolved", linkpath: target, reason: "missing" };
+}
+function fileToLinktext(index2, path, source, omitMdExtension = true) {
+  const spelling = (value2) => omitMdExtension && value2.toLowerCase().endsWith(".md") ? value2.slice(0, -3) : value2;
+  const resolvesTo2 = (link) => {
+    if (parseLinktext(link).path !== link || !link) return false;
+    const result = resolveLinkpath(index2, link, source);
+    return result.status === "resolved" && result.path === path;
+  };
+  for (const candidate of [spelling(path.slice(path.lastIndexOf("/") + 1)), spelling(path)]) {
+    if (resolvesTo2(candidate)) return candidate;
+  }
+  return path;
+}
+const pendingFileReads = 16;
+const visible = (path) => !path.split("/").some((part) => part.startsWith("."));
+const missing = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
+const counts = () => /* @__PURE__ */ Object.create(null);
+const vaultOrder = (paths2) => [...paths2].sort();
+async function eachConcurrently(items, limit, work) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) await work(items[next++]);
+  }));
+}
+function orderedReferences(cache) {
+  const body = [
+    ...(cache.links ?? []).map((reference) => ({ kind: "link", reference })),
+    ...(cache.embeds ?? []).map((reference) => ({ kind: "embed", reference }))
+  ].sort((a, b) => a.reference.position.start.offset - b.reference.position.start.offset);
+  return [
+    ...body,
+    ...(cache.frontmatterLinks ?? []).map((reference) => ({ kind: "frontmatter", reference })),
+    ...(cache.canvasLinks ?? []).map((reference) => ({ kind: "canvas", reference }))
+  ];
+}
+class VaultMetadata {
+  constructor(repository, parser2) {
+    this.repository = repository;
+    this.parser = parser2;
+  }
+  repository;
+  parser;
+  resolvedLinks = /* @__PURE__ */ Object.create(null);
+  unresolvedLinks = /* @__PURE__ */ Object.create(null);
+  paths = [];
+  caches = /* @__PURE__ */ new Map();
+  problems = /* @__PURE__ */ new Map();
+  outgoing = /* @__PURE__ */ new Map();
+  incoming = /* @__PURE__ */ new Map();
+  index = linkIndex([]);
+  loading;
+  pending = Promise.resolve();
+  load() {
+    this.loading ??= this.build();
+    return this.loading.then(() => this);
+  }
+  update(changes) {
+    if (!this.loading) return Promise.resolve(null);
+    const result = this.pending.then(() => this.loading).then(() => this.apply(changes));
+    this.pending = result.catch(() => void 0);
+    return result;
+  }
+  invalidate(paths2) {
+    return this.update(paths2.map((path) => ({ path, operation: "updated" })));
+  }
+  files() {
+    return this.paths;
+  }
+  getFileCache(path) {
+    return this.caches.get(path) ?? null;
+  }
+  issues() {
+    return vaultOrder(this.problems.keys()).map((path) => this.problems.get(path));
+  }
+  references(sourcePath) {
+    return this.outgoing.get(sourcePath) ?? [];
+  }
+  getFirstLinkpathDest(linkpath, sourcePath) {
+    const result = resolveLinkpath(this.index, linkpath, sourcePath);
+    return result.status === "resolved" ? result.path : null;
+  }
+  fileToLinktext(path, sourcePath, omitMdExtension = true) {
+    return fileToLinktext(this.index, path, sourcePath, omitMdExtension);
+  }
+  backlinks(path) {
+    return vaultOrder(this.incoming.get(path) ?? []).filter((source) => source !== path).flatMap((source) => this.references(source).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path).map((item) => ({ ...item, source })));
+  }
+  async build() {
+    this.paths = (await this.repository.list()).filter(visible);
+    await eachConcurrently(this.paths.filter((path) => this.parser.indexes(path)), pendingFileReads, async (path) => {
+      this.parse(path, (await this.repository.read(path)).bytes);
+    });
+    this.reindex();
+    for (const source of this.sources()) this.resolve(source);
+  }
+  parse(path, bytes) {
+    try {
+      this.caches.set(path, this.parser.parse(path, bytes));
+      this.problems.delete(path);
+    } catch (error2) {
+      this.caches.delete(path);
+      this.problems.set(path, { path, code: error2 instanceof AppError ? error2.code : "INVALID_FILE", message: errorMessage(error2) });
+    }
+  }
+  async apply(changes) {
+    const touched = /* @__PURE__ */ new Set(), removed = /* @__PURE__ */ new Set();
+    for (const change2 of changes) {
+      if (change2.operation === "renamed") {
+        removed.add(change2.oldPath);
+        touched.add(change2.path);
+      } else if (change2.operation === "deleted") removed.add(change2.path);
+      else touched.add(change2.path);
+    }
+    for (const path of touched) removed.delete(path);
+    const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map((path) => [path, this.aliasKey(path)]));
+    const contents = /* @__PURE__ */ new Map();
+    await eachConcurrently([...touched].filter(visible), pendingFileReads, async (path) => {
+      try {
+        contents.set(path, (await this.repository.read(path)).bytes);
+      } catch (error2) {
+        if (!missing(error2)) throw error2;
+        removed.add(path);
+      }
+    });
+    const changed = [], deleted = [];
+    const prevCaches = /* @__PURE__ */ Object.create(null);
+    for (const path of removed) {
+      if (!before.has(path)) continue;
+      prevCaches[path] = this.caches.get(path) ?? null;
+      this.caches.delete(path);
+      this.problems.delete(path);
+      this.forget(path);
+      deleted.push(path);
+    }
+    for (const [path, bytes] of contents) {
+      if (!this.parser.indexes(path)) continue;
+      this.parse(path, bytes);
+      changed.push(path);
+    }
+    const paths2 = vaultOrder(/* @__PURE__ */ new Set([...this.paths.filter((path) => !removed.has(path)), ...contents.keys()]));
+    const pathsChanged = paths2.length !== this.paths.length || paths2.some((path, position2) => path !== this.paths[position2]);
+    const aliasesChanged = [...aliasesBefore].some(([path, key]) => key !== this.aliasKey(path));
+    this.paths = paths2;
+    for (const path of changed) if (!this.caches.has(path)) this.forget(path);
+    let resolved;
+    if (pathsChanged || aliasesChanged) {
+      this.reindex();
+      const previous2 = new Map(this.sources().map((source) => [source, this.resolutionKey(source)]));
+      for (const source of this.sources()) this.resolve(source);
+      resolved = this.sources().filter((source) => contents.has(source) || previous2.get(source) !== this.resolutionKey(source));
+    } else {
+      resolved = vaultOrder(changed.filter((path) => this.caches.has(path)));
+      for (const source of resolved) this.resolve(source);
+    }
+    this.reorder();
+    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
+  }
+  aliasKey(path) {
+    return JSON.stringify(this.caches.get(path)?.aliases ?? []);
+  }
+  resolutionKey(source) {
+    const references = this.outgoing.get(source);
+    return references && JSON.stringify(references.map((item) => item.resolution));
+  }
+  sources() {
+    return this.paths.filter((path) => this.caches.has(path));
+  }
+  reindex() {
+    const aliases = new Map(this.sources().flatMap((path) => {
+      const names2 = this.caches.get(path).aliases;
+      return names2?.length ? [[path, names2]] : [];
+    }));
+    this.index = linkIndex(this.paths, aliases);
+  }
+  /** Re-resolves one parsed source and replaces its link counts and backlink entries. */
+  resolve(source) {
+    this.unlink(source);
+    const references = orderedReferences(this.caches.get(source)).flatMap((item) => {
+      const relative = !["wikilink", "canvas"].includes(item.reference.syntax);
+      const resolution = resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
+      return resolution.status === "external" ? [] : [{ ...item, resolution }];
+    });
+    const resolved = counts(), unresolved = counts();
+    for (const { resolution } of references) {
+      if (resolution.status === "resolved") {
+        resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
+        const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
+        this.incoming.set(resolution.path, sources.add(source));
+      } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
+    }
+    this.outgoing.set(source, references);
+    this.resolvedLinks[source] = resolved;
+    this.unresolvedLinks[source] = unresolved;
+  }
+  unlink(source) {
+    for (const item of this.outgoing.get(source) ?? []) {
+      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source);
+    }
+  }
+  /** Removes a source's outgoing references and link counts. */
+  forget(source) {
+    this.unlink(source);
+    this.outgoing.delete(source);
+    delete this.resolvedLinks[source];
+    delete this.unresolvedLinks[source];
+  }
+  /** Keeps the link maps' key order equal to a fresh build after sources were added. */
+  reorder() {
+    for (const maps of [this.resolvedLinks, this.unresolvedLinks]) {
+      const entries = this.sources().map((source) => [source, maps[source]]);
+      for (const [source, value2] of entries) {
+        delete maps[source];
+        maps[source] = value2;
+      }
+    }
+  }
+}
+const record = (cache) => JSON.parse(JSON.stringify(cache));
+class MetadataCacheEvents {
+  constructor(events, index2) {
+    this.events = events;
+    this.index = index2;
+  }
+  events;
+  index;
+  async committed({ renames, changes }) {
+    const update = await this.index.update([
+      ...renames.map(({ from, to }) => ({ path: to, oldPath: from, operation: "renamed" })),
+      ...changes.map(({ path, operation: operation2 }) => ({ path, operation: operation2 }))
+    ]);
+    if (!update) return;
+    const cache = await this.index.load();
+    const written = new Set(changes.map((change2) => change2.path)), indexed = new Set(cache.files());
+    const movedOnly = new Set(renames.filter((rename2) => !written.has(rename2.to)).map((rename2) => rename2.to));
+    const movedAway = new Set(renames.filter((rename2) => indexed.has(rename2.to)).map((rename2) => rename2.from));
+    for (const path of update.changed) {
+      if (movedOnly.has(path)) continue;
+      const metadata2 = cache.getFileCache(path);
+      if (metadata2) await publishHostEvent(this.events, "metadataCache.changed", { path, cache: record(metadata2) });
+    }
+    for (const path of update.deleted) {
+      if (movedAway.has(path)) continue;
+      const previous2 = update.prevCaches[path] ?? null;
+      await publishHostEvent(this.events, "metadataCache.deleted", { path, prevCache: previous2 && record(previous2) });
+    }
+    for (const path of update.resolved) await publishHostEvent(this.events, "metadataCache.resolve", { path });
+    await publishHostEvent(this.events, "metadataCache.resolved", {});
   }
 }
 const UNDEFINED_CODE_POINTS = /* @__PURE__ */ new Set([
@@ -38458,10 +39827,10 @@ class EntityDecoder {
     this.state = EntityDecoderState.NumericDecimal;
     return this.stateNumericDecimal(input, offset);
   }
-  addToNumericResult(input, start, end, base) {
-    if (start !== end) {
-      const digitCount = end - start;
-      this.result = this.result * Math.pow(base, digitCount) + Number.parseInt(input.substr(start, digitCount), base);
+  addToNumericResult(input, start2, end2, base) {
+    if (start2 !== end2) {
+      const digitCount = end2 - start2;
+      this.result = this.result * Math.pow(base, digitCount) + Number.parseInt(input.substr(start2, digitCount), base);
       this.consumed += digitCount;
     }
   }
@@ -42120,7 +43489,7 @@ class FormattingElementList {
   //OPTIMIZATION: at first we try to find possible candidates for exclusion using
   //lightweight heuristics without thorough attributes check.
   _getNoahArkConditionCandidates(newElement, neAttrs) {
-    const candidates = [];
+    const candidates2 = [];
     const neAttrsLength = neAttrs.length;
     const neTagName = this.treeAdapter.getTagName(newElement);
     const neNamespaceURI = this.treeAdapter.getNamespaceURI(newElement);
@@ -42133,23 +43502,23 @@ class FormattingElementList {
       if (this.treeAdapter.getTagName(element2) === neTagName && this.treeAdapter.getNamespaceURI(element2) === neNamespaceURI) {
         const elementAttrs = this.treeAdapter.getAttrList(element2);
         if (elementAttrs.length === neAttrsLength) {
-          candidates.push({ idx: i, attrs: elementAttrs });
+          candidates2.push({ idx: i, attrs: elementAttrs });
         }
       }
     }
-    return candidates;
+    return candidates2;
   }
   _ensureNoahArkCondition(newElement) {
     if (this.entries.length < NOAH_ARK_CAPACITY)
       return;
     const neAttrs = this.treeAdapter.getAttrList(newElement);
-    const candidates = this._getNoahArkConditionCandidates(newElement, neAttrs);
-    if (candidates.length < NOAH_ARK_CAPACITY)
+    const candidates2 = this._getNoahArkConditionCandidates(newElement, neAttrs);
+    if (candidates2.length < NOAH_ARK_CAPACITY)
       return;
     const neAttrsMap = new Map(neAttrs.map((neAttr) => [neAttr.name, neAttr.value]));
     let validCandidates = 0;
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
+    for (let i = 0; i < candidates2.length; i++) {
+      const candidate = candidates2[i];
       if (candidate.attrs.every((cAttr) => neAttrsMap.get(cAttr.name) === cAttr.value)) {
         validCandidates += 1;
         if (validCandidates >= NOAH_ARK_CAPACITY) {
@@ -45738,409 +47107,724 @@ function parseFragment(fragmentContext, html2, options) {
   parser2.tokenizer.write(html2, true);
   return parser2.getFragment();
 }
+class LineMap {
+  constructor(text2) {
+    this.text = text2;
+    for (let index2 = 0; index2 < text2.length; index2++) {
+      const character = text2[index2];
+      if (character === "\r" && text2[index2 + 1] === "\n") index2++;
+      if (character === "\n" || character === "\r") this.starts.push(index2 + 1);
+    }
+  }
+  text;
+  starts = [0];
+  line(offset) {
+    let low = 0, high = this.starts.length - 1;
+    while (low < high) {
+      const middle = low + high + 1 >> 1;
+      if (this.starts[middle] <= offset) low = middle;
+      else high = middle - 1;
+    }
+    return low;
+  }
+  lineStart(line) {
+    return this.starts[line] ?? this.text.length;
+  }
+  /** The offset where a line's content ends, before its line break. */
+  lineEnd(line) {
+    const next = this.starts[line + 1];
+    if (next === void 0) return this.text.length;
+    return this.text[next - 2] === "\r" && this.text[next - 1] === "\n" ? next - 2 : next - 1;
+  }
+  loc(offset) {
+    const line = this.line(offset);
+    return { line, col: offset - this.starts[line], offset };
+  }
+  pos(start2, end2) {
+    return { start: this.loc(start2), end: this.loc(end2) };
+  }
+}
 const parser = unified().use(remarkParse);
-const external = (target) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target);
-function baseLinkIndex(paths2) {
-  const lower = /* @__PURE__ */ new Map(), suffixes = /* @__PURE__ */ new Map();
-  const add = (map2, key, position2) => {
-    const positions2 = map2.get(key);
-    if (positions2) positions2.push(position2);
-    else map2.set(key, [position2]);
+const blank = (text2) => text2.replace(/[^\r\n]/g, " ");
+const math = /(?<!\\)\$\$[\s\S]*?\$\$|(?<!\\)\$(?![\s$])(?:\\.|[^\\$\n])*?(?<![\s\\])\$(?!\d)/g;
+const start$1 = (node2) => node2.position?.start.offset ?? 0;
+const end$1 = (node2) => node2.position?.end.offset ?? 0;
+function blankComments(value2) {
+  return value2.replace(/%%[\s\S]*?%%/g, blank);
+}
+function parseMarkdown(value2) {
+  return parser.parse(value2);
+}
+function decoded$1(target) {
+  try {
+    return decodeURI(target);
+  } catch {
+    return target;
+  }
+}
+function childText(value2, node2) {
+  const children = node2.children ?? [];
+  return children.length ? value2.slice(start$1(children[0]), end$1(children.at(-1))) : node2.alt ?? "";
+}
+function markdownReferences(value2, tree, inlineTags) {
+  const references = [], tags2 = [], definitions = [];
+  const targets = /* @__PURE__ */ new Map();
+  let lines2;
+  const add = (target, embed, syntax, found) => {
+    if (isExternalLink(target)) return;
+    const link = syntax === "wikilink" ? target : decoded$1(target);
+    const subpath = parseLinktext(link).subpath;
+    references.push({ syntax, embed, link, ...found, displayText: found.displayText ?? defaultDisplayText(link), ...subpath ? { subpath } : {} });
   };
-  for (const [position2, path] of paths2.entries()) {
-    const folded = path.toLowerCase();
-    add(lower, folded, position2);
-    for (let slash = folded.indexOf("/"); slash >= 0; slash = folded.indexOf("/", slash + 1)) add(suffixes, folded.slice(slash + 1), position2);
-  }
-  return { paths: paths2, exact: new Set(paths2), lower, suffixes };
-}
-function lookup(index2, keys, spelling) {
-  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
-  return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
-}
-function resolveBaseLink(target, source, index2, relative = false) {
-  target = target.split("#")[0] ?? "";
-  if (!target) return source;
-  if (external(target)) return null;
-  target = target.replace(/^\//, "");
-  const directory = minpath.posix.dirname(source);
-  const local = minpath.posix.normalize(minpath.posix.join(directory, target));
-  const candidates = relative ? [local, target] : [target, local];
-  for (const candidate of candidates) {
-    for (const spelling of [candidate, `${candidate}.md`]) {
-      if (index2.exact.has(spelling)) return spelling;
-    }
-  }
-  for (const candidate of candidates) {
-    const found = lookup(index2, index2.lower, candidate);
-    if (found.length === 1) return found[0];
-    if (found.length > 1) throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${target} in ${source} matches multiple files: ${found.join(", ")}`);
-  }
-  if (relative || target.startsWith("../")) return null;
-  const matches2 = lookup(index2, index2.suffixes, target);
-  if (matches2.length > 1) throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${target} in ${source} matches multiple files: ${matches2.join(", ")}`);
-  return matches2[0] ?? null;
-}
-function indexBaseLinks(body, properties, source, paths2) {
-  const links = [], embeds = [], tags2 = /* @__PURE__ */ new Set();
-  const add = (target, embedded, relative) => {
-    if (external(target)) return;
-    if (relative) {
-      try {
-        target = decodeURI(target);
-      } catch {
-      }
-    }
-    const link = { path: target, resolvedPath: resolveBaseLink(target, source, paths2, relative) };
-    links.push(link);
-    if (embedded) embeds.push(link);
-  };
-  const text2 = (value2, inlineTags) => {
+  const text2 = (slice, base) => {
     const escaped = (index2) => {
       let slashes = 0;
-      while (index2 > 0 && value2[--index2] === "\\") slashes++;
+      while (index2 > 0 && slice[--index2] === "\\") slashes++;
       return slashes % 2 === 1;
     };
-    for (const match of value2.matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
-      if (!escaped(match.index + match[1].length)) add(match[2].split("|")[0], match[1] === "!", false);
+    const visible2 = slice.includes("$") ? slice.replace(math, blank) : slice;
+    for (const match of visible2.matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
+      if (escaped(match.index + match[1].length)) continue;
+      const inner = match[2], pipe2 = inner.indexOf("|");
+      add(pipe2 < 0 ? inner : inner.slice(0, pipe2).replace(/\\$/, ""), match[1] === "!", "wikilink", {
+        original: match[0],
+        start: base + match.index,
+        end: base + match.index + match[0].length,
+        ...pipe2 < 0 ? {} : { displayText: inner.slice(pipe2 + 1) }
+      });
     }
-    if (inlineTags) for (const match of value2.matchAll(/(?:^|[\s(])#([\p{L}\p{N}\p{M}\p{S}_/-]+)/gu)) {
-      if (!new RegExp("^\\p{N}+$", "u").test(match[1]) && !escaped(match.index + match[0].indexOf("#"))) tags2.add("#" + match[1]);
-    }
-  };
-  const parse2 = (value2, inlineTags) => {
-    if (!/[[<]/.test(value2) && !(inlineTags && value2.includes("#"))) return;
-    value2 = value2.replace(/%%[\s\S]*?%%/g, (comment) => comment.replace(/[^\r\n]/g, " "));
-    const tree = parser.parse(value2);
-    const definitions = /* @__PURE__ */ new Map();
-    const collect = (node2) => {
-      if (node2.type === "definition" && node2.identifier && node2.url) definitions.set(node2.identifier, node2.url);
-      node2.children?.forEach(collect);
-    };
-    collect(tree);
-    const html2 = (node2) => {
-      if ("tagName" in node2) {
-        if (["script", "style", "code", "pre"].includes(node2.tagName)) return;
-        const attribute2 = node2.tagName === "a" ? "href" : ["img", "audio", "video", "source", "iframe"].includes(node2.tagName) ? "src" : void 0;
-        const target = node2.attrs.find((item) => item.name === attribute2)?.value;
-        if (target) add(target, node2.tagName !== "a", true);
-      }
-      if ("childNodes" in node2) node2.childNodes.forEach(html2);
-    };
-    const walk = (node2) => {
-      if (["code", "inlineCode", "definition"].includes(node2.type)) return;
-      if (node2.type === "html" && node2.value) {
-        html2(parseFragment(node2.value));
-        return;
-      }
-      if (node2.type === "text" && node2.value) text2(value2.slice(node2.position?.start.offset, node2.position?.end.offset), inlineTags);
-      if (["link", "image"].includes(node2.type) && node2.url) add(node2.url, node2.type === "image", true);
-      if (["linkReference", "imageReference"].includes(node2.type) && node2.identifier) {
-        const target = definitions.get(node2.identifier);
-        if (target) add(target, node2.type === "imageReference", true);
-      }
-      node2.children?.forEach(walk);
-    };
-    walk(tree);
-  };
-  parse2(body, true);
-  const frontmatter2 = (value2) => {
-    if (typeof value2 === "string") parse2(value2, false);
-    else if (value2 && typeof value2 === "object") Object.values(value2).forEach(frontmatter2);
-  };
-  frontmatter2(properties);
-  const rawTags = properties.tags ?? properties.tag;
-  for (const tag of Array.isArray(rawTags) ? rawTags : typeof rawTags === "string" ? rawTags.split(/[,\s]+/) : []) {
-    if (typeof tag === "string" && tag.length) tags2.add("#" + tag.replace(/^#/, ""));
-  }
-  return { links, embeds, tags: [...tags2] };
-}
-const pendingFileReads = 16;
-function typedLinks(value2, source, paths2) {
-  if (typeof value2 === "string") {
-    const match = /^\[\[([^\]]+)\]\]$/.exec(value2);
-    if (!match) return value2;
-    const [target, display] = match[1].split("|");
-    return frontmatterLink(target, display, resolveBaseLink(target, source, paths2));
-  }
-  if (Array.isArray(value2)) return value2.map((item) => typedLinks(item, source, paths2));
-  if (isRecord(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source, paths2)]));
-  return value2;
-}
-async function mapInOrder(items, limit, map2) {
-  const results = [], failures = /* @__PURE__ */ new Map();
-  let next = 0;
-  const work = async () => {
-    while (failures.size === 0 && next < items.length) {
-      const position2 = next++;
-      try {
-        results[position2] = await map2(items[position2]);
-      } catch (error2) {
-        failures.set(position2, error2);
-      }
+    if (inlineTags) for (const match of visible2.matchAll(/(?:^|[\s(])#([\p{L}\p{N}\p{M}\p{S}_/-]+)/gu)) {
+      const hash = match.index + match[0].indexOf("#");
+      if (!new RegExp("^\\p{N}+$", "u").test(match[1]) && !escaped(hash)) tags2.push({ tag: "#" + match[1], start: base + hash, end: base + hash + 1 + match[1].length });
     }
   };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, work));
-  if (failures.size > 0) throw failures.get(Math.min(...failures.keys()));
-  return results;
-}
-async function indexBaseFile(files, codec, path, paths2) {
-  const info = await promises.stat(await files.resolvePath(path));
-  let properties = {}, body = "";
-  if (path.toLowerCase().endsWith(".md")) {
-    try {
-      const document2 = codec.inspect(path, (await files.read(path)).bytes);
-      properties = document2.properties;
-      body = document2.body;
-    } catch (error2) {
-      throw forgeError("BASE_INDEX_ERROR", `Cannot index ${path}: ${errorMessage(error2)}`);
+  const htmlOffset = (node2, offset) => {
+    const html22 = node2.value;
+    if (value2.slice(start$1(node2), end$1(node2)) === html22) return start$1(node2) + offset;
+    lines2 ??= new LineMap(value2);
+    const before = html22.slice(0, offset).split(/\r\n|\n|\r/);
+    const line = (node2.position?.start.line ?? 1) - 1 + before.length - 1;
+    const valueLine = html22.split(/\r\n|\n|\r/)[before.length - 1] ?? "";
+    const prefix = Math.max(0, lines2.lineEnd(line) - lines2.lineStart(line) - valueLine.length);
+    return lines2.lineStart(line) + (before.length === 1 ? start$1(node2) - lines2.lineStart(line) : prefix) + before.at(-1).length;
+  };
+  const html2 = (node2, element2) => {
+    if ("tagName" in element2) {
+      if (["script", "style", "code", "pre"].includes(element2.tagName)) return;
+      const attribute2 = element2.tagName === "a" ? "href" : ["img", "audio", "video", "source", "iframe"].includes(element2.tagName) ? "src" : void 0;
+      const target = element2.attrs.find((item) => item.name === attribute2)?.value;
+      if (target) {
+        const location = element2.sourceCodeLocation?.attrs?.[attribute2];
+        const [from, to] = location ? [location.startOffset, location.endOffset] : [0, node2.value.length];
+        add(target, element2.tagName !== "a", "html", { original: node2.value.slice(from, to), start: htmlOffset(node2, from), end: htmlOffset(node2, to) });
+      }
     }
-  }
-  const links = indexBaseLinks(body, properties, path, paths2);
-  return { path, properties: typedLinks(properties, path, paths2), size: info.size, ctime: info.birthtime, mtime: info.mtime, ...links, backlinks: [] };
-}
-async function indexBaseFiles(files, codec) {
-  const paths2 = (await files.list()).filter((path) => !path.split("/").some((part) => part.startsWith(".")));
-  const links = baseLinkIndex(paths2);
-  const result = await mapInOrder(paths2, pendingFileReads, (path) => indexBaseFile(files, codec, path, links));
-  const byPath = new Map(result.map((file) => [file.path, file]));
-  for (const source of result) {
-    for (const target of new Set(source.links?.map((link) => link.resolvedPath).filter((path) => Boolean(path)))) {
-      byPath.get(target)?.backlinks?.push({ path: source.path, resolvedPath: source.path });
+    if ("childNodes" in element2) element2.childNodes.forEach((child) => html2(node2, child));
+  };
+  const collect = (node2) => {
+    if (node2.type === "definition" && node2.identifier && node2.url) {
+      targets.set(node2.identifier, node2.url);
+      if (!isExternalLink(node2.url)) definitions.push({ id: node2.label ?? node2.identifier, link: decoded$1(node2.url), original: value2.slice(start$1(node2), end$1(node2)), start: start$1(node2), end: end$1(node2) });
     }
+    node2.children?.forEach(collect);
+  };
+  const walk = (node2) => {
+    if (["code", "inlineCode", "definition"].includes(node2.type)) return;
+    if (node2.type === "html" && node2.value) {
+      html2(node2, parseFragment(node2.value, { sourceCodeLocationInfo: true }));
+      return;
+    }
+    const found = () => ({ original: value2.slice(start$1(node2), end$1(node2)), start: start$1(node2), end: end$1(node2), displayText: childText(value2, node2) });
+    if (node2.type === "text" && node2.value) text2(value2.slice(start$1(node2), end$1(node2)), start$1(node2));
+    if (["link", "image"].includes(node2.type) && node2.url) add(node2.url, node2.type === "image", "markdown", found());
+    if (["linkReference", "imageReference"].includes(node2.type) && node2.identifier) {
+      const target = targets.get(node2.identifier);
+      if (target) add(target, node2.type === "imageReference", "reference", { ...found(), reference: node2.label ?? node2.identifier });
+    }
+    node2.children?.forEach(walk);
+  };
+  collect(tree);
+  walk(tree);
+  return { references, tags: tags2, definitions };
+}
+function stringReferences(value2) {
+  if (!/[[<]/.test(value2)) return [];
+  const visible2 = blankComments(value2);
+  return markdownReferences(visible2, parseMarkdown(visible2), false).references;
+}
+const start = (node2) => node2.position?.start.offset ?? 0;
+const end = (node2) => node2.position?.end.offset ?? 0;
+const blockId = /(?:^|\s)\^([A-Za-z0-9-]+)\s*$/;
+const task = /^(?:[-*+]|\d+[.)])[ \t]+\[(.)\](?=[ \t]|$)/;
+function sectionType(node2, source) {
+  if (node2.type === "blockquote") return /^>\s*\[!/.test(source) ? "callout" : "blockquote";
+  if (node2.type === "paragraph" && source.startsWith("$$")) return "math";
+  return node2.type;
+}
+function markdownStructure(text2, tree, lines2) {
+  const sections = [], headings = [], blocks = [], listItems = [];
+  const lastLineId = (span) => blockId.exec(text2.slice(Math.max(span.start, lines2.lineStart(lines2.line(span.end))), span.end))?.[1];
+  for (const node2 of tree.children ?? []) {
+    const span = { start: start(node2), end: end(node2) }, source = text2.slice(span.start, span.end);
+    const section = { type: sectionType(node2, source), ...span };
+    if (node2.type === "heading") {
+      const children = node2.children ?? [];
+      headings.push({ heading: children.length ? text2.slice(start(children[0]), end(children.at(-1))) : "", level: node2.depth ?? 1, ...span });
+    }
+    if (node2.type === "paragraph") {
+      const id2 = lastLineId(span);
+      const previous2 = sections.at(-1);
+      if (id2 && previous2 && source.trim() === `^${id2}`) {
+        previous2.id = id2;
+        blocks.push({ id: id2, start: previous2.start, end: previous2.end });
+      } else if (id2) {
+        section.id = id2;
+        blocks.push({ id: id2, ...span });
+      }
+    }
+    sections.push(section);
   }
+  const items = (list2, parentLine) => {
+    const listLine = lines2.line(start(list2));
+    for (const item of list2.children ?? []) {
+      const content2 = (item.children ?? []).filter((child) => child.type !== "list");
+      const span = { start: start(item), end: content2.length ? end(content2.at(-1)) : lines2.lineEnd(lines2.line(start(item))) };
+      const marker = task.exec(text2.slice(span.start, lines2.lineEnd(lines2.line(span.start))))?.[1];
+      const id2 = content2.length ? lastLineId(span) : void 0;
+      listItems.push({ parentLine, listLine, ...span, ...marker === void 0 ? {} : { task: marker }, ...id2 ? { id: id2 } : {} });
+      if (id2) blocks.push({ id: id2, ...span });
+      for (const child of item.children ?? []) if (child.type === "list") items(child, lines2.line(span.start));
+    }
+  };
+  const visit2 = (node2) => {
+    if (node2.type === "list") items(node2, null);
+    else if (node2.type !== "code") node2.children?.forEach(visit2);
+  };
+  visit2(tree);
+  return { sections, headings, blocks, listItems };
+}
+const nonEmpty = (key, value2) => value2.length ? { [key]: value2 } : {};
+function frontmatterLinks(properties) {
+  const result = [];
+  const visit2 = (value2, key) => {
+    if (typeof value2 === "string") {
+      for (const { embed, syntax, link, original, displayText, subpath } of stringReferences(value2)) {
+        result.push({ key, link, original, displayText, syntax, ...subpath ? { subpath } : {}, ...embed ? { embed } : {} });
+      }
+    } else if (value2 && typeof value2 === "object") {
+      for (const [name2, item] of Object.entries(value2)) visit2(item, key ? `${key}.${name2}` : name2);
+    }
+  };
+  visit2(properties, "");
   return result;
 }
-async function basePropertyTypes(files) {
-  let data;
-  try {
-    data = JSON.parse(new TextDecoder().decode((await files.read(".obsidian/types.json")).bytes));
-  } catch (error2) {
-    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return {};
-    if (error2 instanceof SyntaxError) throw forgeError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.");
-    throw error2;
-  }
-  ensure(isRecord(data) && isRecord(data.types), "INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain a types mapping.");
-  const names2 = { text: "string", multitext: "list", tags: "list", aliases: "list", number: "number", checkbox: "boolean", date: "date", datetime: "date" };
+function markdownMetadata(content2, properties, body) {
+  const bodyOffset = content2.length - body.length, prefix = content2.startsWith("\uFEFF") ? 1 : 0;
+  const lines2 = new LineMap(content2), visible2 = blankComments(body), tree = parseMarkdown(visible2);
+  const at = (span) => ({ position: lines2.pos(bodyOffset + span.start, bodyOffset + span.end) });
+  const found = markdownReferences(visible2, tree, true);
+  const structure = markdownStructure(visible2, tree, new LineMap(visible2));
+  const link = ({ syntax, link: link2, original, displayText, subpath, reference, ...span }) => ({
+    link: link2,
+    original,
+    displayText,
+    syntax,
+    ...subpath ? { subpath } : {},
+    ...reference === void 0 ? {} : { reference },
+    ...at(span)
+  });
   const result = {};
-  for (const [property, type2] of Object.entries(data.types)) {
-    ensure(typeof type2 === "string" && Object.hasOwn(names2, type2), "UNSUPPORTED_BASE_PROPERTY_TYPE", `Unsupported Obsidian property type for ${property}: ${String(type2)}`);
-    result[property] = names2[type2];
+  const sections = structure.sections.map(({ type: type2, id: id2, ...span }) => ({ type: type2, ...id2 ? { id: id2 } : {}, ...at(span) }));
+  if (bodyOffset > prefix) {
+    const head = content2.slice(0, bodyOffset);
+    const end2 = bodyOffset - (head.endsWith("\r\n") ? 2 : /[\r\n]$/.test(head) ? 1 : 0);
+    result.frontmatter = properties;
+    result.frontmatterPosition = lines2.pos(prefix, end2);
+    sections.unshift({ type: "yaml", position: result.frontmatterPosition });
   }
-  return result;
-}
-const internalContext = "__forge_base_context";
-const internalFormula = "__forge_base_formula";
-const internalTag = "__forge_base_tag";
-const internalGuard = "__forge_base_guard";
-function guarded(expression2, callee = false) {
-  let value2 = expression2;
-  if (value2.type === "Call") value2 = { ...value2, callee: guarded(value2.callee, true), args: value2.args.map((item) => guarded(item)) };
-  else if (value2.type === "Member") value2 = { ...value2, object: guarded(value2.object), property: typeof value2.property === "string" ? value2.property : guarded(value2.property) };
-  else if (value2.type === "Binary") value2 = { ...value2, left: guarded(value2.left), right: guarded(value2.right) };
-  else if (value2.type === "Unary") value2 = { ...value2, argument: guarded(value2.argument) };
-  else if (value2.type === "Array") value2 = { ...value2, elements: value2.elements.map((item) => guarded(item)) };
-  if (callee || ["Literal", "Identifier", "Regex"].includes(value2.type)) return value2;
-  return { type: "Call", callee: { type: "Identifier", name: internalGuard, span: value2.span }, args: [value2], span: value2.span };
-}
-function adapt(expression2) {
-  const span = expression2.span;
-  const root = { type: "Identifier", name: internalContext, span };
-  const member = (object2, property) => ({ type: "Member", object: object2, property, computed: false, span });
-  if (expression2.type === "Identifier" && expression2.name === "this") return member(root, "file");
-  if (expression2.type === "Member") {
-    if (expression2.computed && expression2.object.type === "Identifier" && expression2.object.name === "formula") {
-      if (typeof expression2.property !== "string" && expression2.property.type === "Literal" && typeof expression2.property.value === "string") return { ...expression2, computed: false, property: expression2.property.value };
-      ensure(typeof expression2.property !== "string", "INVALID_BASE_EXPRESSION", "Computed formula access needs an expression.");
-      return { type: "Call", callee: { type: "Identifier", name: internalFormula, span }, args: [adapt(expression2.property)], span };
-    }
-    if (expression2.object.type === "Identifier" && expression2.object.name === "this") {
-      const file = expression2.property === "file" || typeof expression2.property !== "string" && expression2.property.type === "Literal" && expression2.property.value === "file";
-      return file ? member(root, "file") : { ...expression2, object: member(root, "note"), property: typeof expression2.property === "string" ? expression2.property : adapt(expression2.property) };
-    }
-    return { ...expression2, object: adapt(expression2.object), property: typeof expression2.property === "string" ? expression2.property : adapt(expression2.property) };
-  }
-  if (expression2.type === "Unary") {
-    ensure(expression2.operator !== "+", "INVALID_BASE_EXPRESSION", "Unary plus is rejected by the observed Obsidian Bases parser.");
-    return { ...expression2, argument: adapt(expression2.argument) };
-  }
-  if (expression2.type === "Binary") return { ...expression2, left: adapt(expression2.left), right: adapt(expression2.right) };
-  if (expression2.type === "Call") {
-    if (expression2.callee.type === "Member" && expression2.callee.property === "hasTag") return { ...expression2, callee: { type: "Identifier", name: internalTag, span }, args: [adapt(expression2.callee.object), ...expression2.args.map(adapt)] };
-    return { ...expression2, callee: adapt(expression2.callee), args: expression2.args.map(adapt) };
-  }
-  if (expression2.type === "Array") return { ...expression2, elements: expression2.elements.map(adapt) };
-  return expression2;
-}
-function baseExpression(source) {
-  const parsed = compileExpression(source);
-  ensure(parsed.valid && parsed.ast, "INVALID_BASE_EXPRESSION", parsed.diagnostics.map((item) => item.message).join("; ") || "Invalid Bases expression.");
-  const nativeNumericMember = (node2) => {
-    if (!isRecord(node2)) return;
-    if (node2.type === "Member" && isRecord(node2.object) && node2.object.type === "Literal" && typeof node2.object.value === "number" && isRecord(node2.object.span)) {
-      ensure(source.slice(Number(node2.object.span.start), Number(node2.object.span.end)).trimStart().startsWith("("), "INVALID_BASE_EXPRESSION", "Numeric method receivers need parentheses, as in (1).isTruthy().");
-    }
-    for (const value2 of Object.values(node2)) {
-      if (Array.isArray(value2)) value2.forEach(nativeNumericMember);
-      else if (isRecord(value2)) nativeNumericMember(value2);
-    }
+  const firstBodyLine = lines2.line(bodyOffset);
+  const listItems = structure.listItems.map(({ parentLine, listLine, task: task2, id: id2, ...span }) => ({
+    parent: parentLine === null ? 0 - (listLine + firstBodyLine) : parentLine + firstBodyLine,
+    ...task2 === void 0 ? {} : { task: task2 },
+    ...id2 ? { id: id2 } : {},
+    ...at(span)
+  }));
+  const blocks = {};
+  for (const { id: id2, ...span } of structure.blocks) blocks[id2.toLowerCase()] ??= { id: id2, ...at(span) };
+  const aliases = frontmatterAliases(properties);
+  return {
+    ...nonEmpty("links", found.references.filter((item) => !item.embed).map(link)),
+    ...nonEmpty("embeds", found.references.filter((item) => item.embed).map(link)),
+    ...nonEmpty("frontmatterLinks", frontmatterLinks(properties)),
+    ...nonEmpty("referenceLinks", found.definitions.map(({ id: id2, link: link2, original, ...span }) => ({ id: id2, link: link2, original, ...at(span) }))),
+    ...nonEmpty("tags", found.tags.map(({ tag, ...span }) => ({ tag, ...at(span) }))),
+    ...nonEmpty("headings", structure.headings.map(({ heading, level, ...span }) => ({ heading, level, ...at(span) }))),
+    ...Object.keys(blocks).length ? { blocks } : {},
+    ...nonEmpty("sections", sections),
+    ...nonEmpty("listItems", listItems),
+    ...result,
+    ...aliases.length ? { aliases } : {}
   };
-  nativeNumericMember(parsed.ast);
-  return compileExpression(guarded(adapt(parsed.ast)));
 }
-function baseFilter(value2) {
-  if (value2 === void 0) return () => true;
-  if (typeof value2 === "string") {
-    const compiled = baseExpression(value2);
-    return (context) => isTruthy(compiled.evaluateValue(context, { throwOnError: true }));
+function canvasMetadata(data) {
+  const links = [];
+  for (const node2 of Array.isArray(data.nodes) ? data.nodes : []) {
+    if (!isRecord(node2) || node2.type !== "file" || typeof node2.file !== "string" || typeof node2.id !== "string") continue;
+    const link = node2.file + (typeof node2.subpath === "string" ? node2.subpath : "");
+    const subpath = parseLinktext(link).subpath;
+    links.push({ node: node2.id, link, original: node2.file, displayText: defaultDisplayText(link), syntax: "canvas", ...subpath ? { subpath } : {} });
   }
-  ensure(isRecord(value2) && Object.keys(value2).length === 1, "INVALID_BASE_EXPRESSION", "Filters require an expression or a single and/or/not list.");
-  const [operator, children] = Object.entries(value2)[0];
-  ensure(["and", "or", "not"].includes(operator) && Array.isArray(children), "INVALID_BASE_EXPRESSION", "Filters require an and/or/not list.");
-  const filters = children.map(baseFilter);
-  return (context) => operator === "and" ? filters.every((filter) => filter(context)) : operator === "or" ? filters.some((filter) => filter(context)) : !filters.some((filter) => filter(context));
+  return nonEmpty("canvasLinks", links);
 }
-const strict = { throwOnError: true };
-const collator = new Intl.Collator(void 0, { numeric: true, sensitivity: "base" });
-function diagnostics(items, label) {
-  const failures = items.filter((item) => item.severity === "error" || item.code === "circular-formula");
-  ensure(failures.length === 0, "INVALID_BASE_EXPRESSION", `${label}: ${failures.map((item) => item.message).join("; ")}`);
-}
-function ordering(value2) {
-  ensure(isRecord(value2) && typeof value2.property === "string" && value2.property.length > 0, "INVALID_BASE_QUERY", "Sort and groupBy entries need a property name.");
-  ensure(value2.direction === "ASC" || value2.direction === "DESC", "INVALID_BASE_QUERY", "Sort and groupBy direction must be ASC or DESC.");
-  const property = value2.property;
-  const dot = property.indexOf(".");
-  const namespace = dot < 0 ? "note" : property.slice(0, dot);
-  const name2 = dot < 0 ? property : property.slice(dot + 1);
-  ensure(["note", "file", "formula"].includes(namespace) && name2.length > 0, "INVALID_BASE_QUERY", `Invalid property identifier: ${property}`);
-  const expression2 = baseExpression(`${namespace}[${JSON.stringify(name2)}]`);
-  diagnostics(expression2.diagnostics, property);
-  return { property, direction: value2.direction, expression: expression2 };
-}
-function compare(a, b) {
-  if (a.type === "Null" || b.type === "Null") return a.type === b.type ? 0 : a.type === "Null" ? -1 : 1;
-  if (a.type === "Date" && b.type === "Date") return a.value.getTime() - b.value.getTime();
-  if (a.type === "Number" && b.type === "Number") return a.value - b.value;
-  if (a.type === "Boolean" && b.type === "Boolean") return Number(a.value) - Number(b.value);
-  return collator.compare(stringifyValue(a), stringifyValue(b));
-}
-function groupIdentity(value2) {
-  return JSON.stringify(value2 ?? null);
-}
-function positions(groupOrder) {
-  const result = /* @__PURE__ */ new Map();
-  for (const [index2, value2] of groupOrder.entries()) {
-    const identity2 = groupIdentity(value2);
-    if (!result.has(identity2)) result.set(identity2, index2);
-  }
-  return result;
-}
-class NodeBasesQueryEngine {
-  constructor(files, codec) {
-    this.files = files;
+class ObsidianMetadataParser {
+  constructor(codec) {
     this.codec = codec;
   }
-  files;
   codec;
-  capabilities() {
-    return {
-      engine: "obsidian-bases-expression",
-      version: "0.2.0",
-      standalone: true,
-      expressions: compatibilityProfile,
-      query: ["global-and-view-filters", "formulas", "sort", "limit", "groupBy", "groupOrder", "this-context", "property-types", "tags", "links", "embeds", "backlinks", "attachments"],
-      limits: [
-        "Independent implementation; not verified against a running Obsidian installation by The Forge.",
-        "Community-plugin functions and view-specific query behavior are not loaded.",
-        "Display columns, summaries and presentation settings do not change the returned file list.",
-        "Dot-prefixed paths, node_modules, symlinks and Forge temporary/lock files are excluded.",
-        "Ambiguous unresolved basename links fail explicitly; no Obsidian metadata cache is available.",
-        "Rows sort by typed values with host-locale natural string collation; equal keys use file path.",
-        "The filesystem is indexed once per invocation, without a transactional snapshot or live refresh."
-      ]
-    };
+  indexes(path) {
+    return ["markdown", "canvas"].includes(fileKind(path));
   }
-  async query(path, options) {
-    const base = this.codec.inspect(path, (await this.files.read(path)).bytes).data;
-    const views = base.views ?? [];
-    ensure(views.length > 0, "BASE_VIEW_NOT_FOUND", `No views are defined in ${path}.`);
-    ensure(new Set(views.map((view2) => view2.name)).size === views.length, "INVALID_BASE_QUERY", "Base view names must be unique.");
-    const view = options.view === void 0 ? views[0] : views.find((item) => item.name === options.view);
-    ensure(view, "BASE_VIEW_NOT_FOUND", `View ${options.view ?? ""} is not defined in ${path}.`);
-    const formulas = base.formulas ?? {};
-    const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name2, source]) => [name2, baseExpression(source).ast]));
-    const compiledFormulas = compileFormulaSet(formulaAsts);
-    diagnostics(compiledFormulas.diagnostics, "Formulas");
-    const globalFilter = baseFilter(base.filters), viewFilter = baseFilter(view.filters);
-    ensure(view.sort === void 0 || Array.isArray(view.sort), "INVALID_BASE_QUERY", "View sort must be a list of property/direction entries.");
-    const sorts = (view.sort ?? []).map(ordering);
-    const grouping = view.groupBy === void 0 ? void 0 : ordering(view.groupBy);
-    ensure(view.groupOrder === void 0 || grouping !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
-    const groupOrder = view.groupOrder;
-    const indexed = await indexBaseFiles(this.files, this.codec);
-    const contextPath = options.context ?? path;
-    const thisFile = indexed.find((file) => file.path === contextPath);
-    ensure(thisFile, "BASE_CONTEXT_NOT_FOUND", `Base context is not an indexed vault file: ${contextPath}`);
-    const propertyTypes = await basePropertyTypes(this.files);
-    const contextNote = Object.fromEntries(Object.entries(thisFile.properties ?? {}).map(([name2, value2]) => [name2, value2 === null || value2 === "" ? fromJs(value2) : fromJs(value2, propertyTypes[name2])]));
-    const objects = { [internalContext]: { file: fileValue(thisFile), note: contextNote } };
-    const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name2, ast]) => [name2, compileExpression(ast)]));
-    const groupPositions = groupOrder && positions(groupOrder);
-    const rows = [];
-    for (const { file, context } of new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: /* @__PURE__ */ new Date() }).rows()) {
-      try {
-        const evaluating = /* @__PURE__ */ new Set();
-        let evaluationError;
-        context.functions = { [internalFormula]: (name2) => {
-          const key = stringifyValue(name2);
-          if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
-          const formula = compiledFormulaByName.get(key);
-          if (!formula) return nullValue();
-          evaluating.add(key);
-          try {
-            return formula.evaluateValue(context, strict);
-          } finally {
-            evaluating.delete(key);
-          }
-        }, [internalTag]: (receiver, ...tags2) => {
-          if (receiver.type !== "File") return errorValue("hasTag requires a file.");
-          const normalized = receiver.value.tags.map((tag) => tag.replace(/^#/, "").toLocaleLowerCase());
-          return boolValue(tags2.some((tag) => {
-            const needle = stringifyValue(tag).replace(/^#/, "").toLocaleLowerCase();
-            return normalized.some((value2) => value2 === needle || value2.startsWith(needle + "/"));
-          }));
-        }, [internalGuard]: (value2) => {
-          if (value2.type === "Error") evaluationError ??= value2.value.message;
-          return value2;
-        } };
-        const matches2 = globalFilter(context) && viewFilter(context);
-        ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
-        if (!matches2) continue;
-        const group = grouping?.expression.evaluateValue(context, strict);
-        const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
-        if (groupIndex === -1) continue;
-        const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
-        ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
-        rows.push({ path: file.path, sort, group, groupIndex });
-      } catch (error2) {
-        throw forgeError("BASE_EVALUATION_ERROR", `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
+  parse(path, bytes) {
+    if (fileKind(path) === "canvas") return canvasMetadata(this.codec.inspect(path, bytes).data);
+    const document2 = this.codec.inspect(path, bytes);
+    return markdownMetadata(document2.content, document2.properties, document2.body);
+  }
+}
+const isMarkdownPath = (path) => /\.md$/i.test(path);
+const folderOf = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ".";
+function relativePath(fromFolder, to) {
+  const from = fromFolder === "." ? [] : fromFolder.split("/");
+  const parts = to.split("/");
+  let shared = 0;
+  while (shared < from.length && shared < parts.length - 1 && from[shared] === parts[shared]) shared++;
+  return [...Array.from({ length: from.length - shared }, () => ".."), ...parts.slice(shared)].join("/");
+}
+function withExtensionStyle(target, previous2) {
+  return isMarkdownPath(target) && !isMarkdownPath(previous2) ? target.slice(0, -3) : target;
+}
+function vaultLinkpath(index2, previous2, target, source) {
+  const absolute = previous2.startsWith("/");
+  if (!previous2.includes("/") || absolute && !previous2.slice(1).includes("/")) {
+    return fileToLinktext(index2, target, source, !isMarkdownPath(previous2));
+  }
+  return (absolute ? "/" : "") + withExtensionStyle(target, previous2);
+}
+function rewriteWikilink(original, link, newPath) {
+  const embed = original.startsWith("!") ? "!" : "";
+  if (!original.startsWith(`${embed}[[`) || !original.endsWith("]]")) return void 0;
+  const inner = original.slice(embed.length + 2, -2);
+  const path = parseLinktext(link).path;
+  if (!inner.startsWith(path)) return void 0;
+  return `${embed}[[${newPath}${inner.slice(path.length)}]]`;
+}
+function destinationAt(text2, from) {
+  let start2 = from;
+  while (text2[start2] === " " || text2[start2] === "	" || text2[start2] === "\n") start2++;
+  if (text2[start2] === "<") {
+    const close2 = text2.indexOf(">", start2);
+    return close2 < 0 ? void 0 : { start: start2 + 1, end: close2, raw: text2.slice(start2 + 1, close2), angle: true };
+  }
+  let end2 = start2, depth = 0;
+  while (end2 < text2.length && !/\s/.test(text2[end2])) {
+    if (text2[end2] === "\\") {
+      end2 += 2;
+      continue;
+    }
+    if (text2[end2] === "(") depth++;
+    else if (text2[end2] === ")") {
+      if (depth === 0) break;
+      depth--;
+    }
+    end2++;
+  }
+  return end2 > start2 ? { start: start2, end: end2, raw: text2.slice(start2, end2), angle: false } : void 0;
+}
+function markdownDestination(original) {
+  if (!original.endsWith(")")) return void 0;
+  for (let open2 = original.lastIndexOf("]("); open2 >= 0; open2 = original.lastIndexOf("](", open2 - 1)) {
+    const found = destinationAt(original, open2 + 2);
+    if (!found) continue;
+    const rest = original.slice(found.end + (found.angle ? 1 : 0), -1);
+    if (/^\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))?\s*$/.test(rest)) return found;
+    if (open2 === 0) break;
+  }
+  return void 0;
+}
+function definitionDestination(original) {
+  const colon = /^\s{0,3}\[(?:[^\]\\]|\\.)+\]:/.exec(original);
+  return colon ? destinationAt(original, colon[0].length) : void 0;
+}
+function attributeDestination(original) {
+  const match = /^[^=]+=\s*(["']?)/.exec(original);
+  if (!match) return void 0;
+  const quote = match[1], start2 = match[0].length;
+  const end2 = quote ? original.indexOf(quote, start2) : original.search(/\s|$/);
+  return end2 < start2 ? void 0 : { start: start2, end: end2, raw: original.slice(start2, end2), angle: false };
+}
+function decoded(raw) {
+  try {
+    return decodeURI(raw);
+  } catch {
+    return raw;
+  }
+}
+function rewriteDestination(destination, oldSource, oldTarget, newSource, target) {
+  const hash = destination.raw.indexOf("#");
+  const rawPath = hash < 0 ? destination.raw : destination.raw.slice(0, hash), fragment = hash < 0 ? "" : destination.raw.slice(hash);
+  const previous2 = decoded(rawPath);
+  const leadingSlash = previous2.startsWith("/");
+  const viaVault = leadingSlash || joinPath(folderOf(oldSource), previous2) !== oldTarget && joinPath(folderOf(oldSource), `${previous2}.md`) !== oldTarget;
+  let path = viaVault ? (leadingSlash ? "/" : "") + target : relativePath(folderOf(newSource), target);
+  if (!viaVault && previous2.startsWith("./") && !path.startsWith("../")) path = `./${path}`;
+  path = withExtensionStyle(path, previous2);
+  const encode2 = !destination.angle && (rawPath !== previous2 || /\s/.test(path));
+  return (encode2 ? encodeURI(path) : path) + fragment;
+}
+function narrowed(edit) {
+  const { original, text: text2 } = edit, shortest = Math.min(original.length, text2.length);
+  let prefix = 0, suffix = 0;
+  while (prefix < shortest && original[prefix] === text2[prefix]) prefix++;
+  while (suffix < shortest - prefix && original[original.length - 1 - suffix] === text2[text2.length - 1 - suffix]) suffix++;
+  return { start: edit.start + prefix, end: edit.end - suffix, original: original.slice(prefix, original.length - suffix), text: text2.slice(prefix, text2.length - suffix) };
+}
+function applyEdits(text2, edits) {
+  if (edits.some((edit) => text2.slice(edit.start, edit.end) !== edit.original)) return void 0;
+  const ordered2 = edits.map((edit) => ({ edit, narrow: narrowed(edit) })).sort((a, b) => b.narrow.start - a.narrow.start || b.narrow.end - a.narrow.end);
+  const skipped = [];
+  let result = text2, limit = Infinity, last;
+  for (const { edit, narrow } of ordered2) {
+    if (last && narrow.start === last.start && narrow.end === last.end && narrow.text === last.text) continue;
+    if (narrow.end > limit) {
+      skipped.push(edit);
+      continue;
+    }
+    result = result.slice(0, narrow.start) + narrow.text + result.slice(narrow.end);
+    limit = narrow.start;
+    last = narrow;
+  }
+  return { text: result, skipped };
+}
+const sorted = (paths2) => [...paths2].sort();
+const isRelativeSyntax = (syntax) => !["wikilink", "canvas"].includes(syntax);
+function indexOf(paths2, cache, rename2) {
+  const aliases = /* @__PURE__ */ new Map();
+  for (const path of cache.files()) {
+    const names2 = cache.getFileCache(path)?.aliases;
+    if (names2?.length) aliases.set(rename2(path), names2);
+  }
+  return linkIndex(paths2, aliases);
+}
+function planLinkUpdates(cache, moves) {
+  const rename2 = (path) => moves.get(path) ?? path;
+  const before = indexOf(cache.files(), cache, (path) => path);
+  const after = indexOf(sorted(cache.files().map(rename2)), cache, rename2);
+  const files = [], unrewritten = [];
+  let references = 0;
+  for (const source of cache.files()) {
+    const metadata2 = cache.getFileCache(source);
+    if (!metadata2) continue;
+    const plan = { source, edits: [], frontmatter: [], canvas: [] };
+    const newSource = rename2(source);
+    for (const candidate of candidates(metadata2, plan)) {
+      const previous2 = resolveLinkpath(before, candidate.link, source, { relative: candidate.relative, aliases: true });
+      if (previous2.status !== "resolved") continue;
+      const target = rename2(previous2.path);
+      if (candidate.syntax === "canvas" ? !moves.has(previous2.path) : resolvesTo(after, candidate, newSource, target)) continue;
+      const text2 = replacement(candidate, after, source, previous2.path, newSource, target);
+      if (text2 === void 0) {
+        unrewritten.push({ source, original: candidate.original, reason: "Unrecognized link syntax." });
+        continue;
+      }
+      candidate.apply(text2);
+      references++;
+    }
+    if (plan.edits.length + plan.frontmatter.length + plan.canvas.length > 0) files.push(plan);
+  }
+  return { files, references, unrewritten };
+}
+function resolvesTo(index2, candidate, source, target) {
+  const current = resolveLinkpath(index2, candidate.link, source, { relative: candidate.relative, aliases: true });
+  return current.status === "resolved" && current.path === target;
+}
+function candidates(metadata2, plan) {
+  const result = [];
+  for (const item of [...metadata2.links ?? [], ...metadata2.embeds ?? []]) {
+    if (item.syntax === "reference") continue;
+    const { start: start2, end: end2 } = { start: item.position.start.offset, end: item.position.end.offset };
+    result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item.original, text: text2 }) });
+  }
+  for (const item of metadata2.referenceLinks ?? []) {
+    const { start: start2, end: end2 } = { start: item.position.start.offset, end: item.position.end.offset };
+    result.push({ link: item.link, original: item.original, syntax: "reference", relative: true, apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item.original, text: text2 }) });
+  }
+  for (const item of metadata2.frontmatterLinks ?? []) {
+    result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => {
+      if (!plan.frontmatter.some((entry2) => entry2.key === item.key && entry2.original === item.original)) plan.frontmatter.push({ key: item.key, original: item.original, text: text2 });
+    } });
+  }
+  for (const item of metadata2.canvasLinks ?? []) {
+    result.push({ link: item.link, original: item.original, syntax: "canvas", relative: false, apply: (file) => plan.canvas.push({ node: item.node, original: item.original, file }) });
+  }
+  return result;
+}
+function replacement(candidate, index2, oldSource, oldTarget, newSource, target) {
+  const { original, syntax, link } = candidate;
+  if (syntax === "canvas") return target;
+  if (syntax === "wikilink") return rewriteWikilink(original, link, vaultLinkpath(index2, parseLinktext(link).path, target, newSource));
+  const destination = syntax === "markdown" ? markdownDestination(original) : syntax === "reference" ? definitionDestination(original) : attributeDestination(original);
+  if (!destination) return void 0;
+  return original.slice(0, destination.start) + rewriteDestination(destination, oldSource, oldTarget, newSource, target) + original.slice(destination.end);
+}
+function rewriteText(plan, text2, metadata2, replaceInYaml) {
+  const unrewritten = [];
+  if (plan.canvas.length > 0) return { text: rewriteCanvas(text2, plan.canvas), unrewritten };
+  const edited = applyEdits(text2, plan.edits);
+  if (edited === void 0) return void 0;
+  for (const edit of edited.skipped) unrewritten.push({ source: plan.source, original: edit.original, reason: "It overlaps another rewritten reference it is nested in; edit it by hand." });
+  let result = edited.text;
+  const applied = /* @__PURE__ */ new Set(), block = metadata2.frontmatterPosition;
+  if (block && plan.frontmatter.length > 0) {
+    const frontmatter2 = result.slice(block.start.offset, block.end.offset);
+    const opening = /\r\n|\n|\r/.exec(frontmatter2);
+    const start2 = block.start.offset + (opening ? opening.index + opening[0].length : frontmatter2.length);
+    const end2 = block.start.offset + Math.max(frontmatter2.lastIndexOf("\n"), frontmatter2.lastIndexOf("\r")) + 1;
+    const replaced = replaceInYaml(result.slice(start2, Math.max(start2, end2)), plan.frontmatter);
+    result = result.slice(0, start2) + replaced.yaml + result.slice(Math.max(start2, end2));
+    for (const index2 of replaced.applied) applied.add(index2);
+  }
+  plan.frontmatter.forEach((entry2, index2) => {
+    if (!applied.has(index2)) unrewritten.push({ source: plan.source, original: entry2.original, reason: "The frontmatter value no longer holds this link; read the note again or edit it with properties." });
+  });
+  return { text: result, unrewritten };
+}
+function rewriteCanvas(text2, nodes) {
+  const files = new Map(nodes.map((node2) => [node2.original, node2.file]));
+  const replaced = text2.replace(/("file"\s*:\s*)"((?:[^"\\]|\\.)*)"/g, (match, key, value2) => {
+    const file = files.get(JSON.parse(`"${value2}"`));
+    return file === void 0 ? match : `${key}${JSON.stringify(file)}`;
+  });
+  const data = JSON.parse(replaced.replace(/^﻿/, ""));
+  const expected = new Map(nodes.map((node2) => [node2.node, node2.file]));
+  const nodesOf = data.nodes ?? [];
+  if (nodesOf.every((node2) => !expected.has(String(node2.id)) || node2.file === expected.get(String(node2.id)))) return replaced;
+  for (const node2 of nodesOf) if (expected.has(String(node2.id))) node2.file = expected.get(String(node2.id));
+  return (text2.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(data, null, 2) + "\n";
+}
+const encoder = new TextEncoder();
+const decode$1 = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+const notFound = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
+const json = (value2) => JSON.stringify(value2);
+const folders = (paths2) => paths2.map((path) => ({ path, kind: "folder" }));
+class FileManager {
+  constructor(workspace2, metadata2, scope) {
+    this.workspace = workspace2;
+    this.metadata = metadata2;
+    this.scope = scope;
+  }
+  workspace;
+  metadata;
+  scope;
+  /** Moves a file or folder and, unless `updateLinks` is false, rewrites every link to it in the same batch. */
+  async move(from, to, options = {}) {
+    from = vaultPath(from);
+    to = vaultPath(to);
+    ensure(from !== to, "INVALID_MOVE", `The destination equals the source: ${from}`);
+    ensure(!to.startsWith(`${from}/`), "INVALID_MOVE", `Cannot move ${from} into itself.`);
+    this.ensureMovable(from);
+    this.ensureMovable(to);
+    const entry2 = await this.workspace.files.stat(from);
+    await this.ensureAbsent(from, to);
+    const moves = new Map(entry2.kind === "file" ? [[from, to]] : entry2.files.map((file) => [`${from}/${file}`, `${to}/${file}`]));
+    const writes = [], previous2 = /* @__PURE__ */ new Map(), unrewritten = [];
+    let references = 0;
+    if (options.updateLinks !== false) {
+      const cache = await this.metadata.load();
+      const plan = planLinkUpdates(cache, moves);
+      references = plan.references;
+      unrewritten.push(...plan.unrewritten);
+      for (const file of plan.files) {
+        const snapshot = await this.workspace.files.read(file.source);
+        const rewritten = rewriteText(file, decode$1(snapshot.bytes), cache.getFileCache(file.source), (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
+        if (rewritten === void 0) throw forgeError("CONFLICT", `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
+        unrewritten.push(...rewritten.unrewritten);
+        references -= rewritten.unrewritten.length;
+        const path = moves.get(file.source) ?? file.source;
+        writes.push({ path, bytes: encoder.encode(rewritten.text), expectedRevision: snapshot.revision });
+        previous2.set(path, snapshot);
       }
     }
-    rows.sort((a, b) => {
-      if (grouping && a.group && b.group) {
-        const comparison = groupOrder ? a.groupIndex - b.groupIndex : compare(a.group, b.group) * (grouping.direction === "DESC" ? -1 : 1);
-        if (comparison) return comparison;
-      }
-      for (const [index2, sort] of sorts.entries()) {
-        const comparison = compare(a.sort[index2], b.sort[index2]) * (sort.direction === "DESC" ? -1 : 1);
-        if (comparison) return comparison;
-      }
-      return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
-    });
-    const limit = Math.min(options.limit ?? Infinity, typeof view.limit === "number" ? view.limit : Infinity);
-    return { path, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), compatibility: this.capabilities() };
+    writes.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    const result = await this.workspace.commit({ renames: [{ from, to, expectedRevision: options.ifMatch ?? entry2.revision }], writes }, { operation: "move", previous: previous2 });
+    return { dryRun: result.dryRun, from, to, kind: entry2.kind, revision: entry2.revision, renames: result.renames, changes: result.changes, links: { updated: references, files: writes.length, unrewritten } };
   }
+  /** Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  async rename(path, name2, options = {}) {
+    path = vaultPath(path);
+    ensure(typeof name2 === "string" && name2.length > 0 && !name2.includes("/"), "INVALID_MOVE", "rename takes a new name without slashes; use move to change folders.");
+    const entry2 = await this.workspace.files.stat(path);
+    const basename = path.slice(path.lastIndexOf("/") + 1), dot = basename.lastIndexOf(".");
+    const extension2 = entry2.kind === "file" && dot > 0 ? basename.slice(dot) : "";
+    const fullName = extension2 && !name2.toLowerCase().endsWith(extension2.toLowerCase()) ? name2 + extension2 : name2;
+    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    return this.move(path, folder + vaultPath(fullName), options);
+  }
+  /**
+   * Deletes a file, or a folder with `recursive`, moving it to `.trash/` unless `permanent` is set. Refuses with
+   * HAS_BACKLINKS while files outside the deleted path link into it, unless `allowBrokenLinks` is set.
+   */
+  async delete(path, options = {}) {
+    path = vaultPath(path);
+    this.ensureMovable(path);
+    const entry2 = await this.workspace.files.stat(path);
+    ensure(entry2.kind === "file" || options.recursive === true, "INVALID_ARGUMENT", `${path} is a folder; pass --recursive to delete it with its files.`);
+    ensure(options.permanent === true || !isInTrash(path), "INVALID_ARGUMENT", `${path} is already in ${trashFolder}; pass --permanent to remove it.`);
+    const brokenLinks = await this.brokenLinks(path, entry2);
+    ensure(brokenLinks.length === 0 || options.allowBrokenLinks === true, "HAS_BACKLINKS", `${brokenLinks.length} link(s) from other files still point into ${path}.`, { backlinks: brokenLinks });
+    const expectedRevision = options.ifMatch ?? entry2.revision;
+    if (options.permanent === true) {
+      const result2 = await this.workspace.commit({ removes: [{ path, expectedRevision }] }, { operation: "delete" });
+      const deleted2 = [...result2.changes.map(({ path: file, revision, bytes }) => ({ path: file, kind: "file", revision, bytes })), ...folders(result2.removedFolders)];
+      return { dryRun: result2.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: true, trashPath: null, deleted: deleted2, brokenLinks };
+    }
+    const trashPath = await this.trashDestination(path, entry2.kind);
+    const result = await this.workspace.commit({ renames: [{ from: path, to: trashPath, expectedRevision }] }, { operation: "delete", trash: true });
+    const deleted = [
+      ...result.renames.flatMap((rename2) => rename2.kind === "file" ? [{ path: rename2.from, kind: "file", revision: rename2.revision, bytes: rename2.bytes }] : []),
+      ...folders(result.renames.flatMap((rename2) => rename2.kind === "folder" ? [rename2.from] : []).sort().reverse())
+    ];
+    return { dryRun: result.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: false, trashPath, deleted, brokenLinks };
+  }
+  /** Obsidian's `renameFile`: a move that updates links. */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  renameFile(path, newPath, options = {}) {
+    return this.move(path, newPath, { ...options, updateLinks: true });
+  }
+  /** Obsidian's `trashFile`: moves a file or folder to `.trash/`, refusing while other files link into it. */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  trashFile(path, options = {}) {
+    return this.delete(path, { ...options, recursive: true });
+  }
+  /**
+   * Obsidian's `processFrontMatter`: `fn` mutates a copy of the note's properties; changed keys are set and removed
+   * keys deleted in one guarded edit that preserves the body. Without `ifMatch`, the revision read here guards it.
+   */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  async processFrontMatter(path, fn, options = {}) {
+    ensure(fileKind(path) === "markdown", "UNSUPPORTED_EDIT", "Frontmatter requires a Markdown note.");
+    ensure(typeof fn === "function", "INVALID_ARGUMENT", "processFrontMatter needs a function.");
+    const snapshot = await this.workspace.files.read(path);
+    const revision = options.ifMatch ?? snapshot.revision;
+    ensure(snapshot.revision === revision, "CONFLICT", `File changed; read again before editing: ${path}`, revisionConflict(path, revision, snapshot.revision));
+    const before = this.workspace.codec.inspect(path, snapshot.bytes).properties;
+    const after = structuredClone(before);
+    await fn(after);
+    ensure(isRecord(after), "INVALID_FRONTMATTER", "Frontmatter must stay a mapping.");
+    const changes = Object.fromEntries(Object.entries(after).filter(([key, value2]) => json(value2) !== json(before[key])));
+    const removed = Object.keys(before).filter((key) => !Object.hasOwn(after, key));
+    if (Object.keys(changes).length + removed.length === 0) return { dryRun: this.workspace.dryRun, changes: [] };
+    return this.workspace.edit(path, revision, (bytes) => this.workspace.codec.properties(bytes, changes, removed));
+  }
+  /** Links from outside `path` that resolve to it or into it. */
+  async brokenLinks(path, entry2) {
+    const cache = await this.metadata.load();
+    const targets = entry2.kind === "file" ? [path] : entry2.files.map((file) => `${path}/${file}`);
+    const inside2 = new Set(targets);
+    return targets.flatMap((target) => cache.backlinks(target).filter((link) => !inside2.has(link.source)).map((link) => {
+      const reference = link.reference;
+      return {
+        source: link.source,
+        target,
+        kind: link.kind,
+        line: reference.position ? reference.position.start.line + 1 : null,
+        original: reference.original,
+        ...reference.key === void 0 ? {} : { key: reference.key },
+        ...reference.node === void 0 ? {} : { node: reference.node }
+      };
+    }));
+  }
+  /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
+  async trashDestination(path, kind) {
+    const slash = path.lastIndexOf("/"), name2 = path.slice(slash + 1), dot = kind === "file" ? name2.lastIndexOf(".") : -1;
+    const [stem, extension2] = dot > 0 ? [name2.slice(0, dot), name2.slice(dot)] : [name2, ""];
+    const folder = `${trashFolder}/${path.slice(0, slash + 1)}`;
+    for (let copy2 = 0; ; copy2++) {
+      const candidate = `${folder}${stem}${copy2 === 0 ? "" : ` ${copy2}`}${extension2}`;
+      try {
+        await this.workspace.files.stat(candidate);
+      } catch (error2) {
+        if (notFound(error2)) return candidate;
+        throw error2;
+      }
+    }
+  }
+  async ensureAbsent(from, to) {
+    try {
+      await this.workspace.files.stat(to);
+      ensure(from.toLowerCase() === to.toLowerCase(), "DESTINATION_EXISTS", `Destination already exists: ${to}`, { path: to, from });
+    } catch (error2) {
+      if (!notFound(error2)) throw error2;
+    }
+  }
+  /** Protected roots are compared without letter case: on case-insensitive filesystems `.Obsidian` is `.obsidian`. */
+  ensureMovable(path) {
+    const top = path.split("/")[0];
+    const protectedRoots = [".obsidian", ".forge", ...this.scope.workspace ? ["bin"] : []];
+    ensure(!protectedRoots.includes(top.toLowerCase()), "PROTECTED_PATH", `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
+  }
+}
+const encode = (data) => typeof data === "string" ? new TextEncoder().encode(data) : data;
+const decode = (bytes) => new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+const copy = (value2) => structuredClone(value2);
+const listen = (events, prefix) => (name2, callback) => {
+  ensure(typeof name2 === "string", "INVALID_ARGUMENT", "Event names are strings.");
+  return events.on(`${prefix}.${name2}`, callback);
+};
+function createApp({ workspace: workspace2, metadata: metadata2, events, project: project2 }) {
+  const fileManager = new FileManager(workspace2, metadata2, { workspace: project2 === null });
+  const revision = async (path, options = {}) => options.ifMatch ?? (await workspace2.files.read(path)).revision;
+  const single = async (result) => {
+    const { path, revision: changed, operation: operation2, bytes } = (await result).changes[0];
+    return { path, revision: changed, operation: operation2, bytes };
+  };
+  const files = async () => (await metadata2.load()).files().slice();
+  const vault2 = {
+    read: async (path) => decode((await workspace2.files.read(path)).bytes),
+    create: (path, data) => single(workspace2.write([{ path, bytes: encode(data) }])),
+    modify: async (path, data, options) => single(workspace2.write([{ path, bytes: encode(data), expectedRevision: await revision(path, options) }])),
+    async process(path, fn, options = {}) {
+      const snapshot = await workspace2.files.read(path);
+      const text2 = await fn(decode(snapshot.bytes));
+      ensure(typeof text2 === "string", "INVALID_ARGUMENT", "vault.process needs a function returning text.");
+      await workspace2.edit(path, options.ifMatch ?? snapshot.revision, () => encode(text2));
+      return text2;
+    },
+    append: async (path, data, options) => single(workspace2.edit(path, await revision(path, options), (bytes) => encode(decode(bytes) + data))),
+    trash: (path, options = {}) => fileManager.delete(path, { ...options, recursive: true, allowBrokenLinks: true }),
+    delete: (path, options = {}) => fileManager.delete(path, { ...options, permanent: true, allowBrokenLinks: true }),
+    rename: (path, newPath, options = {}) => fileManager.move(path, newPath, { ...options, updateLinks: false }),
+    getMarkdownFiles: async () => (await files()).filter((path) => fileKind(path) === "markdown"),
+    getFiles: files,
+    on: listen(events, "vault")
+  };
+  const metadataCache = {
+    getFileCache: async (path) => copy((await metadata2.load()).getFileCache(path)),
+    getFirstLinkpathDest: async (linkpath, sourcePath) => (await metadata2.load()).getFirstLinkpathDest(linkpath, sourcePath),
+    fileToLinktext: async (path, sourcePath, omitMdExtension) => (await metadata2.load()).fileToLinktext(path, sourcePath, omitMdExtension),
+    resolvedLinks: async () => copy((await metadata2.load()).resolvedLinks),
+    unresolvedLinks: async () => copy((await metadata2.load()).unresolvedLinks),
+    on: listen(events, "metadataCache")
+  };
+  const workspaceFacade = {
+    onLayoutReady: (callback) => events.onLayoutReady(callback),
+    on: listen(events, "workspace"),
+    getActiveProject: () => project2 === null ? null : copy(project2)
+  };
+  return { vault: vault2, metadataCache, fileManager, workspace: workspaceFacade };
 }
 function basesCommand(service) {
   return {
@@ -46262,9 +47946,9 @@ const libraryGenerationOptions = {
   "plan-out": "string",
   check: "boolean"
 };
-function generationOutputPath(path, project) {
+function generationOutputPath(path, project2) {
   const relative = vaultPath(path);
-  return project ? `${project.directory}/${relative}` : relative;
+  return project2 ? `${project2.directory}/${relative}` : relative;
 }
 async function generationControls(flags, files) {
   const revisionsPath = value(flags, "revisions-from"), manifestPath2 = value(flags, "plan-out");
@@ -46481,7 +48165,7 @@ function catalogCommands(registry2) {
     node: metadata$1.engines.node,
     globalOptions,
     output: "{ ok, data?, error?: {code,message,hint?,retryable?,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
-    eventOutput: { option: "--events", setting: "settings.events", levels: eventOutputLevels, default: "changes", changes: "Only committed file.created, file.updated and file.deleted records." },
+    eventOutput: { option: "--events", setting: "settings.events", levels: eventOutputLevels, default: "changes", changes: "Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders." },
     commands: [...registry2.commands.values()].map(({ id: id2, description: description2, usage, options }) => ({ id: id2, description: description2, usage, options: options ?? {} })),
     generators: generatorCatalog(registry2),
     skills: [...registry2.skills.keys()]
@@ -46508,11 +48192,13 @@ function catalogCommands(registry2) {
     } }
   ];
 }
+const hostNamespaces = [...hostEventNamespaces];
+const eventDelivery = "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.*, claude.* and plugin.* records are lifecycle phases; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.";
 function extensionCommands(registry2) {
   return [
     { id: "events", description: "List invocation event contracts.", usage: "events", run(args, _, { events }) {
       arity(args, 0);
-      return { events: events.ids(), contracts: events.catalog(), delivery: "Ordered, awaited, per-listener snapshots; failures become warnings. Lifecycle phases cover commands, workspace operations, Claude execution and plugins. File events follow commits. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only file-change records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay." };
+      return { events: events.ids(), contracts: events.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
     { id: "plugins", description: "List explicitly loaded plugin manifests.", usage: "plugins", run(args) {
       arity(args, 0);
@@ -46615,7 +48301,7 @@ function lineNumbers(text2, offsets) {
   }
   return lines2;
 }
-function replaceUniqueLiteral(text2, find, replacement) {
+function replaceUniqueLiteral(text2, find, replacement2) {
   ensure(find.length > 0, "INVALID_INPUT", "--find must not be empty.");
   const matches2 = literalMatches(text2, find);
   ensure(matches2.length > 0, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
@@ -46626,7 +48312,7 @@ function replaceUniqueLiteral(text2, find, replacement) {
     { matches: matches2.length, lines: lineNumbers(text2, matches2.slice(0, reportedMatchLines)) }
   );
   const [offset] = matches2;
-  return text2.slice(0, offset) + replacement + text2.slice(offset + find.length);
+  return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
 }
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
@@ -46728,6 +48414,29 @@ function documentCommands() {
     } }
   ];
 }
+const linkOptions = { "if-match": "string", "no-update-links": "boolean" };
+const guard = (flags, dryRun) => value(flags, "if-match", !dryRun);
+function vaultCommands() {
+  return [
+    { id: "delete", description: "Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.", usage: "delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]", options: { "if-match": "string", recursive: "boolean", permanent: "boolean", "allow-broken-links": "boolean" }, async run(args, flags, { app, workspace: workspace2 }) {
+      arity(args, 1);
+      return app.fileManager.delete(args[0], {
+        ifMatch: guard(flags, workspace2.dryRun),
+        recursive: flags.recursive === true,
+        permanent: flags.permanent === true,
+        allowBrokenLinks: flags["allow-broken-links"] === true
+      });
+    } },
+    { id: "move", description: "Move or rename a file or folder and rewrite every link to it in one guarded batch.", usage: "move <from> <to> --if-match sha256 [--no-update-links]", options: linkOptions, async run(args, flags, { app, workspace: workspace2 }) {
+      arity(args, 2);
+      return app.fileManager.move(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
+    } },
+    { id: "rename", description: "Rename a file or folder in place and rewrite every link to it; a file keeps its extension.", usage: "rename <path> <new-name> --if-match sha256 [--no-update-links]", options: linkOptions, async run(args, flags, { app, workspace: workspace2 }) {
+      arity(args, 2);
+      return app.fileManager.rename(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
+    } }
+  ];
+}
 function skillsCommand(registry2) {
   return {
     id: "skills",
@@ -46763,6 +48472,7 @@ function commands(registry2, services) {
     ...workflowsCommands(services),
     ...catalogCommands(registry2),
     ...documentCommands(),
+    ...vaultCommands(),
     generationCommand(registry2, services),
     ...extensionCommands(registry2),
     skillsCommand(registry2)
@@ -46801,6 +48511,9 @@ const germanCommands = {
   edit: "Markdown oder UTF-8-Text ergänzen oder genau einen wörtlichen Treffer ersetzen.",
   properties: "YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.",
   patch: "Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.",
+  delete: "Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.",
+  move: "Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.",
+  rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
   make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
   events: "Ereignisverträge des Aufrufs auflisten.",
   plugins: "Explizit geladene Plugin-Manifeste auflisten.",
@@ -46822,12 +48535,45 @@ const germanGuidance = {
   attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
   otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
   textFiles: "UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.",
-  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Lebenszyklus-Ereignisse begleiten Befehle, Workspace-Vorgänge, Claude und Plugins. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur Dateiänderungen; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
+  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*-, claude.*- und plugin.*-Ereignisse sind Lebenszyklusphasen; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
+  eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
   setup: {
     "node bin/forge.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
     "node bin/forge.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
     "node bin/forge.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
   }
+};
+const germanEvents = {
+  "command.started": "Ein weitergeleiteter Befehl aktiviert gleich Plugins und läuft an.",
+  "command.succeeded": "Ein weitergeleiteter Befehl wurde erfolgreich beendet.",
+  "command.failed": "Ein weitergeleiteter Befehl ist fehlgeschlagen; Fehlercodes enthalten keine Befehlseingaben.",
+  "operation.started": "Ein geschützter Workspace-Vorgang hat begonnen, auch bei Probeläufen.",
+  "operation.succeeded": "Ein geschützter Workspace-Vorgang wurde abgeschlossen, auch bei Probeläufen.",
+  "operation.failed": "Ein geschützter Workspace-Vorgang ist fehlgeschlagen.",
+  "claude.started": "Ein Claude-Aufruf hat mit Prüfung oder Vorschau begonnen.",
+  "claude.succeeded": "Ein Claude-Aufruf oder eine geprüfte Vorschau wurde abgeschlossen.",
+  "claude.failed": "Prüfung, Ausführung oder Ausgabeverarbeitung von Claude ist fehlgeschlagen.",
+  "claude.executed": "Der Claude-Prozess hat einen Exit-Status geliefert, auch einen von null verschiedenen.",
+  "vault.create": "Ein erfolgreicher Schreibvorgang hat eine Datei oder einen Ordner angelegt.",
+  "vault.modify": "Ein erfolgreicher Schreibvorgang hat eine vorhandene Datei ersetzt.",
+  "vault.delete": "Eine Datei oder ein Ordner wurde entfernt; Revision und Bytes einer Datei beschreiben ihren vorherigen Inhalt.",
+  "vault.rename": "Eine Datei oder ein Ordner wurde in einem erfolgreichen Stapel von oldPath nach path verschoben.",
+  "metadataCache.changed": "Eine geschriebene Markdown- oder Canvas-Datei wurde indexiert; cache enthält ihre JSON-Metadaten.",
+  "metadataCache.deleted": "Eine gelöschte Datei hat den Index verlassen; prevCache enthält ihre letzten bekannten Metadaten oder null.",
+  "metadataCache.resolve": "Die aufgelösten und nicht aufgelösten Links einer Datei wurden aktualisiert.",
+  "metadataCache.resolved": "Die Linkauflösung für einen geschriebenen Stapel ist abgeschlossen.",
+  "workspace.file-open": "Ein Befehl hat eine Datei über den Workspace-Lesepfad gelesen.",
+  "workspace.quick-preview": "Ein Probelauf hat eine geplante Dateiänderung angezeigt, ohne sie zu schreiben.",
+  "workspace.layout-ready": "Plugins sind aktiv und der Befehl läuft gleich an.",
+  "workspace.quit": "Der Aufruf endet; danach laufen bestmöglich Beendigungsaufgaben, bevor Plugins entladen werden.",
+  "workspace.project-change": "project open oder project close hat eine andere Projektauswahl gespeichert.",
+  "plugin.registered": "Ein Plugin hat die atomare Registrierung seiner Beiträge bestanden.",
+  "plugin.activating": "Ein registriertes Plugin führt gleich seinen Aktivierungs-Hook aus.",
+  "plugin.activated": "Der Aktivierungs-Hook eines Plugins wurde erfolgreich abgeschlossen.",
+  "plugin.activation-failed": "Die Aktivierung eines Plugins ist fehlgeschlagen; die erfasste Bereinigung bleibt geplant.",
+  "plugin.unloading": "Ein gestartetes Plugin gibt gleich seine Ressourcen für diesen Aufruf frei.",
+  "plugin.unloaded": "Die Bereinigung eines Plugins wurde erfolgreich abgeschlossen.",
+  "plugin.unload-failed": "Die Bereinigung eines Plugins ist fehlgeschlagen; die übrige Bereinigung läuft weiter."
 };
 const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
 const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
@@ -46858,6 +48604,10 @@ const germanErrors = {
   UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
   INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
   WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
+  PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
+  INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
+  HAS_BACKLINKS: { summary: "Andere Notizen verlinken noch auf die Datei oder den Ordner.", hint: "Passen Sie zuerst die Links in error.details.backlinks an oder entfernen Sie sie, verschieben Sie die Datei stattdessen oder löschen Sie mit --allow-broken-links trotzdem." },
   ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },
   // Dokumente
   INVALID_FRONTMATTER: { summary: "Das YAML-Frontmatter ist ungültig.", hint: "Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate." },
@@ -46923,7 +48673,7 @@ const germanErrors = {
   INVALID_PLUGIN_CONFIG: { summary: "Die Liste aktivierter Plugins ist ungültig.", hint: "Tragen Sie in plugins.enabled in bin/config.json eindeutige Kebab-Case-Plugin-IDs ein." },
   INCOMPATIBLE_PLUGIN: { summary: "Das Plugin benötigt eine neuere Forge-Version.", hint: "Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin." },
   DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
-  PLUGIN_NAMESPACE: { summary: "Ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran." },
+  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
   UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." },
@@ -46933,6 +48683,7 @@ const germanErrors = {
   DUPLICATE_EVENT: { summary: "Die Ereignis-ID ist bereits registriert.", hint: "Verwenden Sie eine eindeutige Ereignis-ID." },
   UNKNOWN_EVENT: { summary: "Das Ereignis ist nicht registriert.", hint: "Registrierte Ereignis-IDs zeigt events." },
   EVENT_RECURSION: { summary: "Ereignisbehandler haben die maximale Rekursionstiefe überschritten.", hint: "Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen." },
+  EVENT_OWNERSHIP: { summary: "Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.", hint: "Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) sendet der Host." },
   // Claude-Code-Definitionen
   INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
@@ -46987,15 +48738,26 @@ class Localizer {
       return { ...item, summary: germanErrors[item.code].summary };
     });
   }
+  contracts(items) {
+    if (!Array.isArray(items)) return items;
+    return items.map((item) => {
+      if (!isRecord(item) || typeof item.id !== "string") return item;
+      const description2 = translated(germanEvents, item.id);
+      return description2 ? { ...item, description: description2 } : item;
+    });
+  }
+  eventOutput(value2) {
+    return isRecord(value2) && typeof value2.changes === "string" ? { ...value2, changes: germanGuidance.eventChanges } : value2;
+  }
   result(command2, data) {
     if (this.language === "en" || !isRecord(data)) return data;
-    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, generators: this.generators(data.generators), errors: this.errors(data.errors) };
-    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
+    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.generators(data.generators), errors: this.errors(data.errors) };
+    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, generators: this.generators(data.generators) };
     if (["components", "data-sources", "interactions"].includes(command2) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
       return { ...data, nextStep: `Führen Sie ${command2} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
     if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command2 === "events") return { ...data, delivery: germanGuidance.delivery };
+    if (command2 === "events") return { ...data, contracts: this.contracts(data.contracts), delivery: germanGuidance.delivery };
     if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
       ...data,
       nextSteps: data.nextSteps.map((step) => {
@@ -47068,7 +48830,7 @@ async function run() {
         files,
         templates: new MarkdownTemplates(),
         get projects() {
-          return new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold });
+          return new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
         },
         get dataSources() {
           return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer());
@@ -47092,7 +48854,7 @@ async function run() {
         setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run()
       })) registry2.add(registry2.commands, command22);
       registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
-      registry2.add(registry2.commands, basesCommand(async (context2) => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context2.root), context2.workspace.codec))));
+      registry2.add(registry2.commands, basesCommand(async (context2) => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context2.root), context2.workspace.codec, () => context2.metadata.load()))));
       if (!bootstrap.flags["no-plugins"]) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events);
       await registry2.publishRegistered(events);
       const id2 = bootstrap.args[0] ?? "help";
@@ -47110,14 +48872,22 @@ async function run() {
       config2.settings.json = parsed.flags["no-json"] ? false : parsed.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = parsed.flags["no-dry-run"] ? false : parsed.flags["dry-run"] ? true : config2.settings.dryRun;
       compact = config2.settings.json;
-      environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun, files.root);
+      let metadataCommits;
+      environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun, files.root, { committed: async (changes) => {
+        await metadataCommits?.committed(changes);
+      } });
       const policy = invocationPolicy(id2, parsed.args.slice(1), parsed.flags);
-      const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold });
-      const project = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects.inspect(policy.requestedProject) : await projects.current();
-      const workspace2 = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config2.settings.dryRun, minpath.resolve(files.root, project.directory)) : environment;
-      activeContext = { workspaceRoot: files.root, root: project ? minpath.resolve(files.root, project.directory) : files.root, project };
+      const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
+      const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects.inspect(policy.requestedProject) : await projects.current();
+      const scopedFiles = project2 ? new ScopedFiles(files, project2.directory) : files;
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec));
+      const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);
+      metadataCommits = project2 ? scopedCommitObserver(metadataEvents, project2.directory) : metadataEvents;
+      const workspace2 = project2 ? environment.within(scopedFiles, minpath.resolve(files.root, project2.directory), metadataEvents) : environment;
+      activeContext = { workspaceRoot: files.root, root: project2 ? minpath.resolve(files.root, project2.directory) : files.root, project: project2 };
       const claude2 = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace2.dryRun }, events);
-      const context = { workspace: workspace2, events, claude: claude2, ...activeContext, input: async () => {
+      const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events, project: project2 });
+      const context = { workspace: workspace2, events, claude: claude2, metadata: vaultMetadata, app, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
@@ -47130,7 +48900,9 @@ async function run() {
         workspaceRoot: context.workspaceRoot,
         dryRun: workspace2.dryRun
       }, async () => {
-        if (policy.activatePlugins) await registry2.activate(context);
+        if (!policy.activatePlugins) return;
+        await registry2.activate(events, context, bootstrap.flags["no-plugins"] ? void 0 : new WorkspacePluginState(environment, (message) => events.warn(message)));
+        await announceLayoutReady(events);
       }, async () => {
         const output = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed.args.slice(1), parsed.flags, context);
         return localizer.result(commandId, output);
@@ -47141,6 +48913,7 @@ async function run() {
     process.exitCode = error2 instanceof AppError ? error2.exitCode : 1;
     result = { ok: false, error: localizer.error(error2) };
   } finally {
+    await quitInvocation(events);
     await registry2.dispose(events);
   }
   try {

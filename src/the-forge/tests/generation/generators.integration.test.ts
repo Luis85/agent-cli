@@ -1,5 +1,6 @@
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { expect, it } from 'vitest';
+import { scopeServices } from '../support/metadata.ts';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,12 +64,13 @@ it('generates an installable plugin with a validated manifest and runnable lifec
     await files.writeBatch(plan, false);
     const registry = new Registry();
     const events = new EventBus(new NodeEventScope());
-    const context = { workspace: new Workspace(files, new ObsidianDocuments(), events, false), events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, input: async () => new Uint8Array() };
+    const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
+    const context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
     await loadEnabledPlugins('.agent-cli/plugins', ['http-tools'], files, registry, events);
     const command = registry.commands.get('http-tools.hello')!;
     expect(command).toBeDefined();
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: false });
-    await registry.activate(context);
+    await registry.activate(events, context);
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: true });
     await registry.dispose(events);
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: false });

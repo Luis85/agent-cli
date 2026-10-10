@@ -53,6 +53,18 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 
 **`WORKSPACE_BUSY`** (exit 4, retryable): see the [write contract](cli.md#write-contract) for `details.lock` and `details.stale`.
 
+## Recovering moves and deletions
+
+**`HAS_BACKLINKS`** (exit 2): `delete` found files outside the deleted path that link into it. `details.backlinks` lists each link as `{source, target, kind, line, original}`: `kind` is `link`, `embed`, `frontmatter` or `canvas`, `line` is the 1-based line of a body link and `null` otherwise, and frontmatter and Canvas links add the property `key` or Canvas `node`. Dry runs refuse the same way. Rewrite the links (or `move` the file, which rewrites them), or pass `--allow-broken-links` to delete anyway; the result then lists them in `data.brokenLinks`.
+
+**`DESTINATION_EXISTS`** (exit 2): `move` or `rename` never replaces an existing file or folder. `details` is `{path, from}`. Choose another destination, or move or delete the existing entry first. A rename that only changes letter case is allowed, including on case-insensitive filesystems.
+
+**`PROTECTED_PATH`** (exit 2): `move` and `delete` refuse the scope's `.obsidian` and `.forge` folders and `bin` at workspace scope, in any letter case (`details` names the `path` and the `protected` root), and folders that contain a `.git` repository. `delete --permanent` also refuses folders that contain symlinks, `node_modules` folders or other special files (`details` names the `path` and up to 20 such `entries`); move them to the trash instead. `.git` itself and the scope root are invalid paths (`INVALID_PATH`).
+
+**`INVALID_MOVE`** (exit 2): the destination equals the source, lies inside the moved folder, or a `rename` name contains `/`.
+
+A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry.
+
 ## Codes
 
 | Code | Exit | Category | Retryable | Summary | Hint |
@@ -80,6 +92,10 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `UNSUPPORTED_EDIT` | 2 | input | no | This edit is not supported for the file kind. | Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments. |
 | `INVALID_PLAN` | 2 | input | no | The write batch contains duplicate or overlapping paths. | Write each path once and do not write a file where another write needs a directory. |
 | `WORKSPACE_BUSY` | 4 | busy | yes | Another Forge writer holds the workspace lock. | Wait and retry. If `error.details.stale` is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in `error.details.lock` yourself first. |
+| `DESTINATION_EXISTS` | 2 | conflict | no | The move or rename destination already exists. | Choose a destination that does not exist (`error.details.path`), or move or delete the existing file first; Forge never overwrites a destination. |
+| `PROTECTED_PATH` | 2 | input | no | The path is protected from moves and deletion. | Forge never moves or deletes `.obsidian`, `.forge` or, at workspace scope, `bin` (in any letter case), nor a folder holding a `.git` repository; it permanently deletes only folders without symlinks, `node_modules` or special files, so move such a folder to the trash instead. The scope root and `.git` paths are refused as `INVALID_PATH`. |
+| `INVALID_MOVE` | 2 | input | no | The move or rename is not possible. | Use a destination that differs from the source and is not inside it; rename takes a new name without slashes. |
+| `HAS_BACKLINKS` | 2 | conflict | no | Other notes still link to the file or folder. | Update or remove the links in `error.details.backlinks` first, move the file instead, or pass `--allow-broken-links` to delete anyway. |
 | `ROLLBACK_FAILED` | 1 | runtime | no | A failed write could not restore every file. | Inspect the files named in the message and repair them before retrying. |
 | `INVALID_FRONTMATTER` | 2 | input | no | The YAML frontmatter is invalid. | Fix the frontmatter so it is a YAML mapping, then validate the note. |
 | `INVALID_YAML` | 2 | input | no | The YAML document is invalid. | Fix the YAML syntax, keys or aliases named in the message. |
@@ -138,7 +154,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `INVALID_PLUGIN_CONFIG` | 2 | input | no | The enabled plugin list is invalid. | List unique lowercase kebab-case plugin ids in plugins.enabled in `bin/config.json`. |
 | `INCOMPATIBLE_PLUGIN` | 2 | input | no | The plugin requires a newer Forge version. | Update The Forge or disable the plugin. |
 | `DUPLICATE_PLUGIN` | 2 | input | no | The plugin is registered twice. | Enable each plugin once. |
-| `PLUGIN_NAMESPACE` | 2 | input | no | A plugin contribution is outside its namespace. | Prefix plugin command, generator, skill and event ids with the plugin id and a dot. |
+| `PLUGIN_NAMESPACE` | 2 | input | no | A plugin id or contribution is outside its namespace. | Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (`command`, `operation`, `claude`, `vault`, `metadataCache`, `workspace`, `plugin`) as the plugin id. |
 | `PLUGIN_LIFECYCLE` | 2 | input | no | A plugin used the host outside its lifecycle. | Register contributions before activation and stop using the host after disposal. |
 | `DUPLICATE_OR_INVALID_ID` | 2 | input | no | A contribution id is invalid or already registered. | Use a unique lowercase dotted id. |
 | `UNKNOWN_SKILL` | 2 | input | no | The skill is not registered. | Run skills list. |
@@ -148,6 +164,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `DUPLICATE_EVENT` | 2 | input | no | The event id is already registered. | Use a unique event id. |
 | `UNKNOWN_EVENT` | 2 | input | no | The event is not registered. | Run events to list registered event ids. |
 | `EVENT_RECURSION` | 2 | input | no | Event handlers recursed too deeply. | Stop handlers from emitting the events that trigger them. |
+| `EVENT_OWNERSHIP` | 2 | input | no | A plugin tried to emit an event it does not own. | Emit only events in your plugin's own namespace; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) are emitted by the host. |
 | `INVALID_CLAUDE_AGENT` | 2 | input | no | The Claude agent definition is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_HOOKS` | 2 | input | no | The Claude hook configuration is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_PLUGIN` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. | Fix the field named in the message, then rerun the command. |

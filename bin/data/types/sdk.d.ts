@@ -1,7 +1,12 @@
 export type { Plugin, PluginManifest, PluginContributions, Command, CommandContext, Generator, Skill } from './application/plugins/registry.ts';
-export type { EventDefinition, EventRecord } from './application/plugins/events.ts';
-export type { HostEventMap, HostEventId, HostEventRecord } from './application/plugins/host-events.ts';
-export type { FileSnapshot, FileChange, PlannedChange, WriteRequest } from './domain/documents/file.ts';
-export type { WriteOptions } from './application/workspace/workspace.ts';
-export type { FileRepository, DocumentCodec } from './application/workspace/ports.ts';
+export type { EventDefinition, EventRecord, EventChannel } from './application/plugins/events.ts';
+export type { HostEventMap, HostEventId, HostEventRecord, VaultChange, VaultFileChange, VaultFolderChange, VaultRename, CachedMetadataRecord } from './application/plugins/host-events.ts';
+export type { FileSnapshot, FileChange, FileRename, FileStat, PlannedChange, RemoveRequest, RenameRequest, WriteRequest } from './domain/documents/file.ts';
+export type { CommitOptions, WriteOptions } from './application/workspace/workspace.ts';
+export type { BatchResult, CommittedBatch, FileBatch, FileRepository, DocumentCodec, WriteBatchResult } from './application/workspace/ports.ts';
 export type { ClaudeLifecycleClient, ClaudeLifecycleRequest, ClaudeLifecycleResult, ClaudeLifecyclePlan, ClaudeOutput } from './application/claude/lifecycle.ts';
+export type { App, Guard, VaultFacade, MetadataCacheFacade, WorkspaceFacade } from './application/vault/app.ts';
+export type { FileManager, MoveOptions, DeleteOptions, BrokenLink } from './application/vault/file-manager.ts';
+export type { UnrewrittenLink } from './application/vault/link-plan.ts';
+export type { CachedMetadata } from './domain/metadata/cache.ts';
+export type { LinkCounts } from './application/metadata/ports.ts';

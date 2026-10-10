@@ -1,12 +1,21 @@
 import type { Workspace } from '../workspace/workspace.ts';
 import type { ProjectInfo } from '../projects/projects.ts';
-import type { EventBus, EventDefinition } from './events.ts';
+import type { EventBus, EventChannel, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
 import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
+import type { MetadataIndex } from '../metadata/ports.ts';
+import type { App } from '../vault/app.ts';
+import { type PluginStateStore } from './plugin-state.ts';
+/**
+ * `metadata` is the lazily built metadata index of the same root as `workspace`; `app` is the Obsidian-shaped
+ * facade (vault, metadataCache, fileManager, workspace) over the same scope.
+ */
 export interface CommandContext {
     workspace: Workspace;
-    events: EventBus;
+    events: EventChannel;
     claude: ClaudeLifecycleClient;
+    metadata: MetadataIndex;
+    app: App;
     workspaceRoot: string;
     root: string;
     project: ProjectInfo | null;
@@ -42,6 +51,10 @@ export interface PluginContributions {
     events?: EventDefinition[];
     skills?: Skill[];
     onload?(context: CommandContext): void | Promise<void>;
+    /** Once, on the first activation after the plugin id is added to `plugins.enabled`. Runs after `onload`. */
+    onUserEnable?(context: CommandContext): void | Promise<void>;
+    /** On activation, when the plugin's settings changed since its previous activation. Runs after `onload`. */
+    onExternalSettingsChange?(context: CommandContext): void | Promise<void>;
     onunload?(): void | Promise<void>;
 }
 export interface Plugin extends PluginContributions {
@@ -61,6 +74,7 @@ export declare class Registry {
     }>(map: Map<string, T>, item: T): void;
     register(plugin: Plugin, events: EventBus): void;
     publishRegistered(events: EventBus): Promise<void>;
-    activate(context: CommandContext): Promise<void>;
+    /** Each plugin's hooks receive `context` with its own event channel. `state` enables onUserEnable/onExternalSettingsChange. */
+    activate(events: EventBus, context: CommandContext, state?: PluginStateStore): Promise<void>;
     dispose(events: EventBus): Promise<void>;
 }

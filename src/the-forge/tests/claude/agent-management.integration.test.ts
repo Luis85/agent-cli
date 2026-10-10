@@ -18,7 +18,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-agents-'));
   files = await NodeFiles.at(root);
   events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated', 'file.deleted']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
+  for (const id of ['vault.create', 'vault.modify', 'vault.delete']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
@@ -35,7 +35,8 @@ describe('native agent file management', () => {
     expect(await readFile(join(root, created.path), 'utf8')).toBe(next);
     await expect(agents.update('review/security', source, before.revision)).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(agents.create('review/security', source)).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect(events.history.map(entry => entry.id)).toEqual(['file.created', 'file.updated']);
+    // The nested agent id creates the .claude, agents and review folders, parent before child.
+    expect(events.history.map(entry => `${entry.id}:${(entry.payload as { kind: string }).kind}`)).toEqual(['vault.create:folder', 'vault.create:folder', 'vault.create:folder', 'vault.create:file', 'vault.modify:file']);
   });
 
   it('previews creation and updates without writing directories or events', async () => {
@@ -79,7 +80,7 @@ describe('native agent file management', () => {
     await expect(service().remove('broken', 'stale')).rejects.toMatchObject({ code: 'CONFLICT' });
     expect((await service().remove('broken', before.revision)).changes).toMatchObject([{ path, operation: 'deleted' }]);
     await expect(readFile(join(root, path))).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(events.history.map(entry => entry.id)).toEqual(['file.deleted']);
+    expect(events.history.map(entry => entry.id)).toEqual(['vault.delete']);
   });
 
   it('keeps configured directories explicit and rejects invalid IDs, source and missing revisions', async () => {

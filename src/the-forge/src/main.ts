@@ -3,12 +3,14 @@ import metadata from '../package.json';
 import { forgeError, AppError, ensure } from './domain/shared/errors.ts';
 import { EventBus } from './application/plugins/events.ts';
 import { registerHostEvents, type HostEventMap } from './application/plugins/host-events.ts';
-import { invokeCommand } from './application/plugins/invocation.ts';
+import { announceLayoutReady, invokeCommand, quitInvocation } from './application/plugins/invocation.ts';
+import { WorkspacePluginState } from './application/plugins/plugin-state.ts';
 import { eventOutput, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
 import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
 import { Workspace } from './application/workspace/workspace.ts';
-import { ScopedFiles } from './application/workspace/scoped-files.ts';
+import { ScopedFiles, scopedCommitObserver } from './application/workspace/scoped-files.ts';
+import type { CommitObserver } from './application/workspace/ports.ts';
 import { Registry, type CommandContext } from './application/plugins/registry.ts';
 import { ProjectService } from './application/projects/projects.ts';
 import { SetupService } from './application/workspace/setup.ts';
@@ -42,6 +44,10 @@ import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
 import { claudeCommand } from './presentation/claude/commands.ts';
 import { Bases } from './application/bases/query.ts';
 import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
+import { VaultMetadata } from './application/metadata/vault-metadata.ts';
+import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
+import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
+import { createApp } from './application/vault/app.ts';
 import { basesCommand } from './presentation/bases/commands.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/cli/arguments.ts';
@@ -88,7 +94,7 @@ async function run(): Promise<void> {
       for (const skill of builtinSkills) registry.add(registry.skills, skill);
       for (const command of commands(registry, {
         loaded, files, templates: new MarkdownTemplates(),
-        get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
+        get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
         get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
         get workflows() { return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer); },
@@ -103,7 +109,7 @@ async function run(): Promise<void> {
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
       })) registry.add(registry.commands, command);
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
-      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec))));
+      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec, () => context.metadata.load()))));
       if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
@@ -121,14 +127,23 @@ async function run(): Promise<void> {
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
       compact = config.settings.json;
-      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root);
+      // Environment commits reach the metadata index once the command's scope binds it below.
+      let metadataCommits: CommitObserver | undefined;
+      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root, { committed: async changes => { await metadataCommits?.committed(changes); } });
       const policy = invocationPolicy(id, parsed.args.slice(1), parsed.flags);
-      const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
+      const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
-      const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun, resolve(files.root, project.directory)) : environment;
+      const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec));
+      // Commits keep a loaded cache current and publish metadataCache.* events; workspace-scope commits while a
+      // project is selected reach the project's index only inside its directory, with project-relative paths.
+      const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);
+      metadataCommits = project ? scopedCommitObserver(metadataEvents, project.directory) : metadataEvents;
+      const workspace = project ? environment.within(scopedFiles, resolve(files.root, project.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
-      const context: CommandContext = { workspace, events, claude, ...activeContext, input: async () => {
+      const app = createApp({ workspace, metadata: vaultMetadata, events, project });
+      const context: CommandContext = { workspace, events, claude, metadata: vaultMetadata, app, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
@@ -137,7 +152,12 @@ async function run(): Promise<void> {
       const commandId = parsed.flags.help ? 'help' : id;
       const data = await invokeCommand(events, {
         command: commandId, root: context.root, workspaceRoot: context.workspaceRoot, dryRun: workspace.dryRun,
-      }, async () => { if (policy.activatePlugins) await registry.activate(context); }, async () => {
+      }, async () => {
+        if (!policy.activatePlugins) return;
+        // First-activation and settings state lives in workspace data; --no-plugins leaves it untouched.
+        await registry.activate(events, context, bootstrap.flags['no-plugins'] ? undefined : new WorkspacePluginState(environment, message => events.warn(message)));
+        await announceLayoutReady(events);
+      }, async () => {
         const output = parsed.flags.help
           ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
           : await command.run(parsed.args.slice(1), parsed.flags, context);
@@ -148,7 +168,10 @@ async function run(): Promise<void> {
   } catch (error) {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
     result = { ok: false, error: localizer.error(error) };
-  } finally { await registry.dispose(events); }
+  } finally {
+    await quitInvocation(events);
+    await registry.dispose(events);
+  }
   try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
   catch {
     process.exitCode = 1;

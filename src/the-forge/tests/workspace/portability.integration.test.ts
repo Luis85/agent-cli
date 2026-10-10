@@ -1,5 +1,6 @@
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { scopeServices } from '../support/metadata.ts';
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -17,9 +18,9 @@ beforeEach(async () => {
   root = join(parent, 'vault');
   await mkdir(root);
   const events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
+  for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
-  context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, input: async () => new Uint8Array() };
+  context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
 });
 afterEach(async () => { await rm(parent, { recursive: true, force: true }); });
 

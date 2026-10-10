@@ -15,7 +15,7 @@ const codec = new MarkdownInteractionDefinitions();
 const library = (dryRun = false) => new InteractionLibrary(new Workspace(files, new ObsidianDocuments(), events, dryRun), codec);
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-interactions-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (value): value is unknown => value !== null });
+  for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (value): value is unknown => value !== null });
 });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 
@@ -31,7 +31,7 @@ describe('workspace interaction library lifecycle', () => {
     expect(await files.read('custom/interactions/nested/toggle-expanded.md')).toEqual(before);
     expect((await library().init('custom/interactions')).changes).toEqual([]);
     expect((await library().list('custom/interactions')).map(item => item.id)).toEqual(['download', 'input-value', 'toggle-expanded', 'save', 'upload']);
-    expect(events.history.map(event => event.id)).toEqual(Array(5).fill('file.created'));
+    expect(events.history.filter(event => (event.payload as { kind: string }).kind === 'file').map(event => event.id)).toEqual(Array(5).fill('vault.create'));
     expect(await library().inspect('custom/interactions', 'toggle-expanded')).toMatchObject({ revision: before.revision, bytes: before.bytes.length, actions: [{ type: 'toggle-state', state: 'expanded' }] });
     expect(await library().validate('custom/interactions')).toMatchObject({ valid: true, count: 5, status: 'ready', interactions: ['download', 'input-value', 'toggle-expanded', 'save', 'upload'] });
   });

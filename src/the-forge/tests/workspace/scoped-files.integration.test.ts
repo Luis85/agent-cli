@@ -20,7 +20,7 @@ it('reads, lists and writes project-relative paths without exposing siblings', a
   await files.writeBatch([write('src/alpha/note.md'), write('src/alpha/deep/file.bin'), write('src/alpha-extra/hidden.md'), write('src/beta/hidden.md'), write('root.md')], false);
   expect(await project.list()).toEqual(['deep/file.bin', 'note.md']);
   expect(await project.read('note.md')).toEqual({ path: 'note.md', bytes: Buffer.from('Original'), revision: revisionOf(bytes('Original')) });
-  expect(await project.writeBatch([write('new.md')], false)).toEqual([{ path: 'new.md', operation: 'created', bytes: 8, revision: revisionOf(bytes('Original')) }]);
+  expect(await project.writeBatch([write('new.md')], false)).toEqual({ changes: [{ path: 'new.md', operation: 'created', bytes: 8, revision: revisionOf(bytes('Original')) }], folders: [] });
   expect(await readFile(join(root, 'src/alpha/new.md'), 'utf8')).toBe('Original');
   expect(await files.list()).toContain('src/beta/hidden.md');
 });
@@ -30,7 +30,7 @@ it('preserves revisions and rejects collisions before committing a batch', async
   const initial = await project.read('note.md');
   await expect(project.writeBatch([write('new.md'), write('note.md', 'Changed')], false)).rejects.toMatchObject({ code: 'CONFLICT' });
   expect(await project.list()).toEqual(['note.md']);
-  expect(await project.writeBatch([{ ...write('note.md', 'Changed'), expectedRevision: initial.revision }], false)).toMatchObject([{ path: 'note.md', operation: 'updated' }]);
+  expect(await project.writeBatch([{ ...write('note.md', 'Changed'), expectedRevision: initial.revision }], false)).toMatchObject({ changes: [{ path: 'note.md', operation: 'updated' }] });
   await expect(project.writeBatch([{ ...write('note.md'), expectedRevision: initial.revision }], false)).rejects.toMatchObject({ code: 'CONFLICT' });
   for (const plan of [[], [write('same.md'), write('same.md')], [write('file'), write('file/nested')]]) {
     await expect(project.writeBatch(plan, false)).rejects.toMatchObject({ code: 'INVALID_PLAN' });
@@ -40,8 +40,8 @@ it('preserves revisions and rejects collisions before committing a batch', async
 it('dry runs leave the complete root untouched and predict relative results', async () => {
   const preview = await project.writeBatch([write('new/deep.md')], true);
   expect(await readdir(root)).toEqual([]);
-  expect(preview).toMatchObject([{ path: 'new/deep.md', operation: 'created' }]);
-  expect(await project.writeBatch([write('new/deep.md')], false)).toEqual(preview);
+  expect(preview).toMatchObject({ changes: [{ path: 'new/deep.md', operation: 'created' }], folders: [] });
+  expect(await project.writeBatch([write('new/deep.md')], false)).toEqual({ ...preview, folders: ['new'] });
 });
 
 it.each(['../beta/hidden.md', '/outside.md', 'a/../../outside.md', 'a\\b.md', '.git/config', '.agent-cli.lock'])('rejects unsafe project-relative path %s before prefixing', async path => {
@@ -89,6 +89,8 @@ it('snapshots caller plans before an asynchronous repository consumes them', asy
     read: path => files.read(path),
     list: () => files.list(),
     remove: (path, revision, dryRun) => files.remove(path, revision, dryRun),
+    stat: path => files.stat(path),
+    commit: (batch, dryRun) => files.commit(batch, dryRun),
     async writeBatch(writes, dryRun) { await Promise.resolve(); return files.writeBatch(writes, dryRun); },
   }, 'src/alpha');
   const request = write('original.md'), plan = [request];
@@ -96,7 +98,7 @@ it('snapshots caller plans before an asynchronous repository consumes them', asy
   request.path = '../beta/changed.md';
   request.bytes.fill(0);
   plan.push(write('extra.md'));
-  expect(await operation).toMatchObject([{ path: 'original.md', revision: revisionOf(bytes('Original')) }]);
+  expect(await operation).toMatchObject({ changes: [{ path: 'original.md', revision: revisionOf(bytes('Original')) }] });
   expect(await files.list()).toEqual(['src/alpha/original.md']);
   expect(await readFile(join(root, 'src/alpha/original.md'), 'utf8')).toBe('Original');
 });

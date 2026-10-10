@@ -45,6 +45,11 @@ describe('presentation localization', () => {
     const formats = localizer.result('formats', { text: ['ts'], textFiles: 'UTF-8 read', attachments: 'Bytes', otherFiles: 'Opaque' });
     expect(formats).toMatchObject({ text: ['ts'], textFiles: expect.stringContaining('UTF-8 lesen'), attachments: expect.stringContaining('verlustfrei') });
     expect(localizer.result('events', { delivery: 'English' })).toEqual({ delivery: expect.stringContaining('--events none|changes|all') });
+    const contracts = [{ id: 'vault.create', description: 'English' }, { id: 'quality.checked', description: 'Plugin text' }, { id: 'quality.bare' }];
+    expect(localizer.result('events', { contracts, delivery: 'English' })).toEqual({ delivery: expect.stringContaining('vault.*'), contracts: [
+      { id: 'vault.create', description: expect.stringContaining('Ordner') }, contracts[1], contracts[2],
+    ] });
+    expect(localizer.result('schema', { errors: [], generators: [], eventOutput: { option: '--events', changes: 'English' } })).toMatchObject({ eventOutput: { option: '--events', changes: expect.stringContaining('vault.rename') } });
   });
   it('translates known metadata without changing machine identifiers or usage', () => {
     const localizer = new Localizer('de');

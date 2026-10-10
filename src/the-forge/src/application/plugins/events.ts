@@ -7,6 +7,26 @@ export interface EventDeliveryScope {
   run<T>(callback: () => Promise<T>): Promise<T>;
 }
 type Listener = { active: boolean; id?: string; invoke: (payload: unknown) => void | Promise<void> };
+type Callback = () => void | Promise<void>;
+
+/**
+ * The event API a command or plugin receives as `context.events`. Host commands receive the invocation
+ * bus itself; each plugin receives a channel that may emit only events in its own namespace.
+ */
+export interface EventChannel {
+  ids(): string[];
+  catalog(): Array<{ id: string; description?: string }>;
+  on<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;
+  once<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;
+  onAny(listener: (record: EventRecord) => void | Promise<void>): () => void;
+  replay(listener: (record: EventRecord) => void | Promise<void>): Promise<void>;
+  emit(id: string, payload: unknown): Promise<void>;
+  warn(message: string): void;
+  /** Like Obsidian's `workspace.onLayoutReady`: runs now when plugins are active, otherwise once they are. */
+  onLayoutReady(callback: Callback): void;
+  /** A best-effort task that runs after `workspace.quit`, before plugins unload. */
+  onQuit(task: Callback): void;
+}
 
 /** The CLI event log must survive JSON encoding without omissions or coercion. */
 function isJsonValue(value: unknown, ancestors = new Set<object>()): boolean {
@@ -23,12 +43,16 @@ function isJsonValue(value: unknown, ancestors = new Set<object>()): boolean {
 }
 
 /** Invocation-scoped notifications. Listener errors cannot undo committed work. */
-export class EventBus {
+export class EventBus implements EventChannel {
   private definitions = new Map<string, EventDefinition>();
   private listeners = new Set<Listener>();
   private disposed = false;
   private historyTruncated = false;
   private operationId = 0;
+  private layoutReady = false;
+  private readonly layoutCallbacks: Callback[] = [];
+  private readonly quitTasks: Callback[] = [];
+  private readonly settling = new Set<Promise<void>>();
   readonly history: EventRecord[] = [];
   readonly warnings: string[] = [];
 
@@ -42,7 +66,7 @@ export class EventBus {
     ensure(!this.disposed, 'INVALID_EVENT', 'Cannot define events after disposal.');
     const staged = new Map(this.definitions);
     for (const definition of definitions) {
-      ensure(isRecord(definition) && typeof definition.id === 'string' && /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/.test(definition.id) && typeof definition.validate === 'function', 'INVALID_EVENT', 'Invalid event definition.');
+      ensure(isRecord(definition) && typeof definition.id === 'string' && /^[a-z][a-zA-Z0-9-]*(\.[a-z][a-zA-Z0-9-]*)+$/.test(definition.id) && typeof definition.validate === 'function', 'INVALID_EVENT', 'Invalid event definition.');
       ensure(definition.description === undefined || (typeof definition.description === 'string' && definition.description.trim().length > 0), 'INVALID_EVENT', 'Event descriptions must be nonempty strings.');
       ensure(!staged.has(definition.id), 'DUPLICATE_EVENT', definition.id);
       staged.set(definition.id, definition);
@@ -117,5 +141,38 @@ export class EventBus {
     });
   }
   warn(message: string): void { if (this.warnings.length < 1000) this.warnings.push(message); }
+  onLayoutReady(callback: Callback): void {
+    this.ensureCallback(callback);
+    if (!this.layoutReady) { this.layoutCallbacks.push(callback); return; }
+    const running = this.settle('Layout ready', callback);
+    this.settling.add(running);
+    void running.then(() => this.settling.delete(running));
+  }
+  onQuit(task: Callback): void {
+    this.ensureCallback(task);
+    this.quitTasks.push(task);
+  }
+  /** Host: plugins are active. Queued layout callbacks run in registration order; failures become warnings. */
+  async markLayoutReady(): Promise<void> {
+    if (this.layoutReady) return;
+    this.layoutReady = true;
+    for (const callback of this.layoutCallbacks.splice(0)) await this.settle('Layout ready', callback);
+  }
+  /** Host: settle immediate layout callbacks, then run quit tasks in order, including tasks added meanwhile. */
+  async runQuitTasks(): Promise<void> {
+    await Promise.allSettled(this.settling);
+    for (let task = this.quitTasks.shift(); task; task = this.quitTasks.shift()) await this.settle('Quit task', task);
+  }
+  private ensureCallback(callback: unknown): void {
+    ensure(!this.disposed, 'INVALID_EVENT', 'Cannot schedule callbacks after disposal.');
+    ensure(typeof callback === 'function', 'INVALID_EVENT_LISTENER', 'Lifecycle callbacks must be functions.');
+  }
+  private async settle(label: string, callback: Callback): Promise<void> {
+    try { await this.delivery.run(async () => { await callback(); }); }
+    catch (error) {
+      try { this.warn(`${label}: ${errorMessage(error)}`); }
+      catch { /* A failed diagnostic sink cannot stop the remaining lifecycle callbacks. */ }
+    }
+  }
   dispose(): void { this.disposed = true; this.listeners.clear(); }
 }

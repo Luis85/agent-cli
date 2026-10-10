@@ -25,9 +25,13 @@ describe('lean agent responses', () => {
 
   it('selects envelope events with --events and settings.events', async () => {
     const created = cli(['write', 'src/x.ts', '--content', 'export const a = 1;\n']).body;
-    expect(ids(created.events)).toEqual(['file.created']);
+    // A new parent folder is reported before the file, as Obsidian's vault create event does.
+    expect(created.events).toEqual([
+      { id: 'vault.create', payload: { path: 'src', kind: 'folder', operation: 'created' } },
+      { id: 'vault.create', payload: { path: 'src/x.ts', kind: 'file', operation: 'created', revision: created.data.changes[0].revision, bytes: 20 } },
+    ]);
     const all = cli(['--events', 'all', 'write', 'src/y.ts', '--content', 'export const b = 2;\n']).body;
-    expect(ids(all.events)).toEqual(expect.arrayContaining(['command.started', 'workspace.started', 'file.created', 'workspace.succeeded', 'command.succeeded']));
+    expect(ids(all.events)).toEqual(expect.arrayContaining(['command.started', 'operation.started', 'vault.create', 'operation.succeeded', 'command.succeeded']));
     expect(cli(['write', 'src/z.ts', '--content', 'z\n', '--events', 'none']).body.events).toEqual([]);
     const invalid = cli(['read', 'note.md', '--events', 'verbose']);
     expect(invalid.status).toBe(2);
@@ -54,7 +58,7 @@ describe('lean agent responses', () => {
     expect(cli(['validate', 'src/x.ts']).body.data).toMatchObject({ valid: true, kind: 'text', validation: 'utf8' });
     const edited = cli(['edit', 'src/x.ts', '--find', 'a = 1', '--replace', 'a = 2', '--if-match', read.revision]);
     expect(edited.status).toBe(0);
-    expect(ids(edited.body.events)).toEqual(['file.updated']);
+    expect(ids(edited.body.events)).toEqual(['vault.modify']);
     expect(await readFile(join(fixture.project, 'src/x.ts'), 'utf8')).toBe('export const a = 2;\n');
     await writeFile(join(fixture.project, 'src/broken.ts'), Buffer.from([0x61, 0xff, 0x0a]));
     expect(cli(['read', 'src/broken.ts']).body.data.document).toEqual({ kind: 'attachment', encoding: 'base64', content: Buffer.from([0x61, 0xff, 0x0a]).toString('base64') });

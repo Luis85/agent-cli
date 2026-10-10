@@ -138,7 +138,7 @@
     {
       "id": "test-plan",
       "type": "file",
-      "file": "docs/delivery/Trip planner test plan.md",
+      "file": "docs/delivery/Trip planner verification plan.md",
       "x": 660,
       "y": 580,
       "width": 260,

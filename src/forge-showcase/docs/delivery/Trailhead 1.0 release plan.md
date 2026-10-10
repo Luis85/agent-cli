@@ -16,7 +16,7 @@ requirements:
   - REQ-004
   - REQ-005
 prd: "[[Trailhead PRD]]"
-test_plan: "[[Trip planner test plan]]"
+test_plan: "[[Trip planner verification plan]]"
 implementation: "[[Trip planner implementation plan]]"
 ---
 # Trailhead 1.0 release plan
@@ -73,4 +73,4 @@ only after they occur. Final status: pending.
 
 ## Knowledge graph
 
-Releases [[Trailhead PRD]] once [[Trip planner test plan]] passes. Implementation: [[Trip planner implementation plan]]. Deployment is out of scope for the showcase.
+Releases [[Trailhead PRD]] once [[Trip planner verification plan]] passes. Implementation: [[Trip planner implementation plan]]. Deployment is out of scope for the showcase.

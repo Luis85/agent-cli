@@ -1,17 +1,34 @@
-import { type WriteRequest, type FileChange, type PlannedChange } from '../../domain/documents/file.ts';
-import type { FileRepository, DocumentCodec } from './ports.ts';
+import { type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
+import type { FileRepository, DocumentCodec, CommitObserver, FileBatch } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 /** Dry-run result options; `diff` adds a unified diff to each planned change. */
 export interface WriteOptions {
     diff?: boolean;
 }
+/**
+ * How a mixed batch is reported. `trash` reports its renames as deletions, because they move files into the
+ * hidden `.trash` folder, and publishes no records for folders created there. `previous` holds the snapshots a dry
+ * run diffs each write against, keyed by the written path; without it dry runs carry no diffs.
+ */
+export interface CommitOptions {
+    operation: 'move' | 'delete';
+    trash?: boolean;
+    previous?: ReadonlyMap<string, FileSnapshot>;
+}
 export declare class Workspace {
     readonly files: FileRepository;
     readonly codec: DocumentCodec;
-    readonly events: EventBus;
+    private readonly events;
     readonly dryRun: boolean;
     readonly root: string | null;
-    constructor(files: FileRepository, codec: DocumentCodec, events: EventBus, dryRun: boolean, root?: string | null);
+    private readonly observer?;
+    /** `observer` follows each committed batch of this scope, such as the metadata cache of the same root. */
+    constructor(files: FileRepository, codec: DocumentCodec, events: EventBus, dryRun: boolean, root?: string | null, observer?: CommitObserver | undefined);
+    /**
+     * The same invocation (events, codec, dry run) over another repository scope, such as a selected project.
+     * Commit observers are bound to one scope, so the new scope has only the `observer` given here.
+     */
+    within(files: FileRepository, root: string | null, observer?: CommitObserver): Workspace;
     read(path: string): Promise<{
         path: string;
         revision: string;
@@ -30,7 +47,26 @@ export declare class Workspace {
         dryRun: boolean;
         changes: FileChange[];
     }>;
+    /**
+     * One guarded batch of renames, writes and removals (see `FileRepository.commit`). Structured writes are
+     * validated first; dry runs return each write's diff when `options.previous` is given.
+     */
+    commit(batch: FileBatch, options: CommitOptions): Promise<{
+        dryRun: boolean;
+        renames: FileRename[];
+        changes: FileChange[];
+        folders: string[];
+        removedFolders: string[];
+    }>;
+    /**
+     * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
+     * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
+     * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
+     * observer. A trash batch reports each moved file, then each moved folder (child before parent), as `vault.delete`.
+     */
     private committed;
+    private notify;
+    private warn;
     edit(path: string, revision: string, transform: (bytes: Uint8Array) => Uint8Array): Promise<{
         dryRun: boolean;
         changes: Array<FileChange | PlannedChange>;

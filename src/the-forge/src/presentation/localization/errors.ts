@@ -32,6 +32,10 @@ export const germanErrors = {
   UNSUPPORTED_EDIT: { summary: 'Diese Bearbeitung wird für den Dateityp nicht unterstützt.', hint: 'Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge.' },
   INVALID_PLAN: { summary: 'Der Schreibvorgang enthält doppelte oder überlappende Pfade.', hint: 'Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht.' },
   WORKSPACE_BUSY: { summary: 'Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.', hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  DESTINATION_EXISTS: { summary: 'Das Ziel des Verschiebens oder Umbenennens existiert bereits.', hint: 'Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel.' },
+  PROTECTED_PATH: { summary: 'Der Pfad ist vor Verschieben und Löschen geschützt.', hint: 'Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt.' },
+  INVALID_MOVE: { summary: 'Das Verschieben oder Umbenennen ist nicht möglich.', hint: 'Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche.' },
+  HAS_BACKLINKS: { summary: 'Andere Notizen verlinken noch auf die Datei oder den Ordner.', hint: 'Passen Sie zuerst die Links in error.details.backlinks an oder entfernen Sie sie, verschieben Sie die Datei stattdessen oder löschen Sie mit --allow-broken-links trotzdem.' },
   ROLLBACK_FAILED: { summary: 'Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.', hint: 'Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch.' },
   // Dokumente
   INVALID_FRONTMATTER: { summary: 'Das YAML-Frontmatter ist ungültig.', hint: 'Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate.' },
@@ -97,7 +101,7 @@ export const germanErrors = {
   INVALID_PLUGIN_CONFIG: { summary: 'Die Liste aktivierter Plugins ist ungültig.', hint: 'Tragen Sie in plugins.enabled in bin/config.json eindeutige Kebab-Case-Plugin-IDs ein.' },
   INCOMPATIBLE_PLUGIN: { summary: 'Das Plugin benötigt eine neuere Forge-Version.', hint: 'Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin.' },
   DUPLICATE_PLUGIN: { summary: 'Das Plugin ist doppelt registriert.', hint: 'Aktivieren Sie jedes Plugin nur einmal.' },
-  PLUGIN_NAMESPACE: { summary: 'Ein Plugin-Beitrag liegt außerhalb seines Namensraums.', hint: 'Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran.' },
+  PLUGIN_NAMESPACE: { summary: 'Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.', hint: 'Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID.' },
   PLUGIN_LIFECYCLE: { summary: 'Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.', hint: 'Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr.' },
   DUPLICATE_OR_INVALID_ID: { summary: 'Eine Beitrags-ID ist ungültig oder bereits registriert.', hint: 'Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten.' },
   UNKNOWN_SKILL: { summary: 'Der Skill ist nicht registriert.', hint: 'Verfügbare Skills zeigt skills list.' },
@@ -107,6 +111,7 @@ export const germanErrors = {
   DUPLICATE_EVENT: { summary: 'Die Ereignis-ID ist bereits registriert.', hint: 'Verwenden Sie eine eindeutige Ereignis-ID.' },
   UNKNOWN_EVENT: { summary: 'Das Ereignis ist nicht registriert.', hint: 'Registrierte Ereignis-IDs zeigt events.' },
   EVENT_RECURSION: { summary: 'Ereignisbehandler haben die maximale Rekursionstiefe überschritten.', hint: 'Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen.' },
+  EVENT_OWNERSHIP: { summary: 'Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.', hint: 'Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) sendet der Host.' },
   // Claude-Code-Definitionen
   INVALID_CLAUDE_AGENT: { summary: 'Die Claude-Agentendefinition ist ungültig.', hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: 'Die Claude-Hook-Konfiguration ist ungültig.', hint: claudeDefinitionHint },

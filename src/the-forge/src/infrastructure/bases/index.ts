@@ -1,22 +1,31 @@
 import { stat } from 'node:fs/promises';
-import { frontmatterLink, type ContextFileInput, type PropertyValueType } from 'obsidian-bases-expression';
-import type { DocumentCodec } from '../../application/workspace/ports.ts';
-import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { frontmatterLink, type ContextFileInput, type LinkValueInput, type PropertyValueType } from 'obsidian-bases-expression';
+import type { MetadataCache, SourceReference } from '../../application/metadata/ports.ts';
+import { allTags } from '../../domain/metadata/cache.ts';
+import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { NodeFiles } from '../workspace/files.ts';
-import { baseLinkIndex, indexBaseLinks, resolveBaseLink, type BaseLinkIndex } from './links.ts';
 
 const pendingFileReads = 16;
+const isMarkdown = (path: string) => path.toLowerCase().endsWith('.md');
 
-function typedLinks(value: unknown, source: string, paths: BaseLinkIndex): unknown {
+function typedLinks(value: unknown, source: string, cache: MetadataCache): unknown {
   if (typeof value === 'string') {
     const match = /^\[\[([^\]]+)\]\]$/.exec(value);
     if (!match) return value;
     const [target, display] = match[1]!.split('|');
-    return frontmatterLink(target!, display, resolveBaseLink(target!, source, paths));
+    return frontmatterLink(target!, display, cache.getFirstLinkpathDest(target!, source));
   }
-  if (Array.isArray(value)) return value.map(item => typedLinks(item, source, paths));
-  if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, typedLinks(item, source, paths)]));
+  if (Array.isArray(value)) return value.map(item => typedLinks(item, source, cache));
+  if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, typedLinks(item, source, cache)]));
   return value;
+}
+
+// Bases resolve by path only: an alias match stays unresolved, and an ambiguous path match fails the query.
+function baseLink({ reference, resolution }: SourceReference, source: string): LinkValueInput {
+  if (resolution.status === 'unresolved' && resolution.reason === 'ambiguous' && resolution.via === 'path') {
+    throw forgeError('AMBIGUOUS_BASE_LINK', `Link ${resolution.linkpath} in ${source} matches multiple files: ${resolution.candidates.join(', ')}`);
+  }
+  return { path: reference.link, resolvedPath: resolution.status === 'resolved' && resolution.via === 'path' ? resolution.path : null };
 }
 
 // Keeps at most `limit` items in flight and returns results in input order. Items start in order and
@@ -37,25 +46,28 @@ async function mapInOrder<Item, Result>(items: readonly Item[], limit: number, m
   return results;
 }
 
-async function indexBaseFile(files: NodeFiles, codec: DocumentCodec, path: string, paths: BaseLinkIndex): Promise<ContextFileInput> {
-  const info = await stat(await files.resolvePath(path));
-  let properties: Record<string, unknown> = {}, body = '';
-  if (path.toLowerCase().endsWith('.md')) {
-    try {
-      const document = codec.inspect(path, (await files.read(path)).bytes) as { properties: Record<string, unknown>; body: string };
-      properties = document.properties; body = document.body;
-    } catch (error) {
-      throw forgeError('BASE_INDEX_ERROR', `Cannot index ${path}: ${errorMessage(error)}`);
-    }
-  }
-  const links = indexBaseLinks(body, properties, path, paths);
-  return { path, properties: typedLinks(properties, path, paths) as Record<string, unknown>, size: info.size, ctime: info.birthtime, mtime: info.mtime, ...links, backlinks: [] };
+/** File inputs for a Markdown note or an attachment; Canvas file nodes are not Bases links. */
+function baseFile(path: string, cache: MetadataCache, problems: ReadonlyMap<string, string>): Omit<ContextFileInput, 'size' | 'ctime' | 'mtime'> {
+  if (!isMarkdown(path)) return { path, properties: {}, links: [], embeds: [], tags: [], backlinks: [] };
+  const problem = problems.get(path);
+  if (problem !== undefined) throw forgeError('BASE_INDEX_ERROR', `Cannot index ${path}: ${problem}`);
+  const references = cache.references(path), metadata = cache.getFileCache(path);
+  const links = references.map(item => baseLink(item, path));
+  const embeds = links.filter((_, position) => {
+    const item = references[position]!;
+    return item.kind === 'embed' || (item.kind === 'frontmatter' && item.reference.embed === true);
+  });
+  return { path, properties: typedLinks(metadata?.frontmatter ?? {}, path, cache) as Record<string, unknown>, links, embeds, tags: allTags(metadata), backlinks: [] };
 }
 
-export async function indexBaseFiles(files: NodeFiles, codec: DocumentCodec): Promise<ContextFileInput[]> {
-  const paths = (await files.list()).filter(path => !path.split('/').some(part => part.startsWith('.')));
-  const links = baseLinkIndex(paths);
-  const result = await mapInOrder(paths, pendingFileReads, path => indexBaseFile(files, codec, path, links));
+/** Adapts the kernel metadata cache to the evaluator's file inputs, adding filesystem sizes and dates. */
+export async function indexBaseFiles(files: NodeFiles, cache: MetadataCache): Promise<ContextFileInput[]> {
+  const problems = new Map(cache.issues().map(issue => [issue.path, issue.message]));
+  const indexed = cache.files().map(path => baseFile(path, cache, problems));
+  const result = await mapInOrder(indexed, pendingFileReads, async (file): Promise<ContextFileInput> => {
+    const info = await stat(await files.resolvePath(file.path!));
+    return { ...file, size: info.size, ctime: info.birthtime, mtime: info.mtime };
+  });
   const byPath = new Map(result.map(file => [file.path, file]));
   for (const source of result) {
     for (const target of new Set(source.links?.map(link => link.resolvedPath).filter((path): path is string => Boolean(path)))) {

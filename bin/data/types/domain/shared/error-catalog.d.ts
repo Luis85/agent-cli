@@ -46,6 +46,10 @@ export declare const errorCatalog: {
     readonly UNSUPPORTED_EDIT: ErrorDefinition;
     readonly INVALID_PLAN: ErrorDefinition;
     readonly WORKSPACE_BUSY: ErrorDefinition;
+    readonly DESTINATION_EXISTS: ErrorDefinition;
+    readonly PROTECTED_PATH: ErrorDefinition;
+    readonly INVALID_MOVE: ErrorDefinition;
+    readonly HAS_BACKLINKS: ErrorDefinition;
     readonly ROLLBACK_FAILED: ErrorDefinition;
     readonly INVALID_FRONTMATTER: ErrorDefinition;
     readonly INVALID_YAML: ErrorDefinition;
@@ -114,6 +118,7 @@ export declare const errorCatalog: {
     readonly DUPLICATE_EVENT: ErrorDefinition;
     readonly UNKNOWN_EVENT: ErrorDefinition;
     readonly EVENT_RECURSION: ErrorDefinition;
+    readonly EVENT_OWNERSHIP: ErrorDefinition;
     readonly INVALID_CLAUDE_AGENT: ErrorDefinition;
     readonly INVALID_CLAUDE_HOOKS: ErrorDefinition;
     readonly INVALID_CLAUDE_PLUGIN: ErrorDefinition;

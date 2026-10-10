@@ -16,7 +16,7 @@ it('loads runtime plugins, generators, skills and event subscriptions from a por
       commands: [{ id: 'quality.check', description: 'Check', usage: 'quality.check --label text', options: { label: 'string' }, async run(args, flags, ctx) { await ctx.events.emit('quality.checked', flags.label); return { label: flags.label }; } }],
       generators: [{ id: 'quality.fixture', description: 'Fixture', generate(name, out) { return [{ path: out + '/' + name + '.md', bytes: new TextEncoder().encode('# Fixture') }]; } }],
       skills: [{ id: 'quality.review', content: 'Review a change.' }],
-      onload(ctx) { this.context = ctx; ctx.events.on('file.created', () => { throw new Error('Observer failed'); }); },
+      onload(ctx) { this.context = ctx; ctx.events.on('vault.create', () => { throw new Error('Observer failed'); }); },
       onunload() { this.context.events.warn('cleaned up'); }
     };`);
     const pluginConfig = join(project, 'bin/config.json');

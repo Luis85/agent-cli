@@ -121,7 +121,7 @@ describe('owned writer lock', () => {
     const token = await acquireLock(lock, () => ({ command: '', operationId: -1 }));
     expect(JSON.parse(await readFile(lock, 'utf8'))).toEqual({ pid: process.pid, hostname: hostname(), startedAt: expect.any(String), forgeVersion: metadata.version, ...identity, token });
     expect(await releaseLock(lock, token)).toBe('released');
-    await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject([{ operation: 'created' }]);
+    await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject({ changes: [{ operation: 'created' }] });
   });
   it('acquires atomically and reports the existing holder', async () => {
     const token = await acquireLock(lock, () => ({ command: 'write' }));

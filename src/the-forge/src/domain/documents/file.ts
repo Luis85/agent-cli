@@ -9,6 +9,11 @@ export function vaultPath(input: string): string {
   return input;
 }
 
+/** Obsidian's vault trash: `delete` moves files here unless `--permanent` is passed. It is hidden from the metadata cache. */
+export const trashFolder = '.trash';
+/** Whether a path lies in the vault trash; letter case is ignored, as case-insensitive filesystems name one folder. */
+export const isInTrash = (path: string) => path.toLowerCase() === trashFolder || path.toLowerCase().startsWith(`${trashFolder}/`);
+
 /** Recursive libraries must not copy definitions into their own discovery scope. */
 export function ensureSeparateDirectories(source: string, destination: string): void {
   vaultPath(source); vaultPath(destination);
@@ -41,5 +46,21 @@ export const isTextLike = (path: string) => isStructured(path) || fileKind(path)
 export interface FileSnapshot { path: string; bytes: Uint8Array; revision: string }
 export interface WriteRequest { path: string; bytes: Uint8Array; expectedRevision?: string }
 export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted'; bytes: number }
+/** A guarded move of a file or folder. A folder's `expectedRevision` is its folder revision (see `FileStat`). */
+export interface RenameRequest { from: string; to: string; expectedRevision: string }
+/** A guarded removal of a file or, recursively, a folder. A folder's `expectedRevision` is its folder revision. */
+export interface RemoveRequest { path: string; expectedRevision: string }
+/**
+ * One committed move. A folder move reports the folder first, then every moved descendant folder and file in
+ * path order. Files carry their unchanged revision and size.
+ */
+export type FileRename = { from: string; to: string } & ({ kind: 'file'; revision: string; bytes: number } | { kind: 'folder' });
+/**
+ * A file's revision and size, or a folder's revision and contents. A folder revision is the SHA-256 of each
+ * contained file's folder-relative path and revision, in path order; any change inside the folder changes it.
+ */
+export type FileStat =
+  | { path: string; kind: 'file'; revision: string; bytes: number }
+  | { path: string; kind: 'folder'; revision: string; files: string[]; folders: string[] };
 /** Dry-run change with a unified diff for UTF-8 text-like files, or null for binary content. */
 export interface PlannedChange extends FileChange { diff: string | null }

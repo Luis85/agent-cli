@@ -6,7 +6,8 @@ import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
-import type { DocumentCodec } from '../../application/workspace/ports.ts';
+import type { DocumentCodec, YamlStringReplacement } from '../../application/workspace/ports.ts';
+import { replaceInYamlStrings } from './yaml-strings.ts';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
@@ -106,7 +107,7 @@ export class ObsidianDocuments implements DocumentCodec {
   validate(path: string, bytes: Uint8Array): void {
     if (fileKind(path) === 'text') textOf(bytes); else this.inspect(path, bytes);
   }
-  properties(bytes: Uint8Array, changes: Record<string, unknown>): Uint8Array {
+  properties(bytes: Uint8Array, changes: Record<string, unknown>, remove: readonly string[] = []): Uint8Array {
     const parts = parseMarkdownParts(textOf(bytes));
     const doc = yamlDocument(parts.yaml || '{}');
     yamlValue(doc);
@@ -117,7 +118,8 @@ export class ObsidianDocuments implements DocumentCodec {
       ensure(!['__proto__', 'constructor', 'prototype'].includes(key), 'INVALID_KEY', key);
       doc.set(key, value);
     }
-    const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
+    for (const key of remove) doc.delete(key);
+    const yaml = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, parts.newline);
     const result = encode(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate('note.md', result);
     return result;
@@ -152,9 +154,12 @@ export class ObsidianDocuments implements DocumentCodec {
         const part = Array.isArray(cursor) ? (segment === '-' ? cursor.length : Number(segment)) : segment;
         pathKeys.push(part); cursor = cursor && typeof cursor === 'object' ? (cursor as Record<string, unknown>)[String(part)] : undefined;
       }
-      doc.setIn(pathKeys, value); result = styledText(doc.toString(), textOf(bytes));
+      doc.setIn(pathKeys, value); result = styledText(doc.toString({ lineWidth: 0 }), textOf(bytes));
     } else result = styledText(JSON.stringify(parsed.data, null, 2) + '\n', textOf(bytes));
     this.validate(path, result); return result;
+  }
+  replaceInYamlStrings(yaml: string, replacements: readonly YamlStringReplacement[]): { yaml: string; applied: number[] } {
+    return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
   }
 }
 export const encodeText = encode;
