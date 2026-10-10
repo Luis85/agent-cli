@@ -87,6 +87,9 @@ export function forgeCli(executable, workspace, projectDirectory) {
     /** @param {string} name */
     begin(name) { section = name; },
 
+    /** Record a command in the current section without running it yet, for a step that must run last. @param {string[]} args */
+    record(args) { log.push({ section, command: describe(args, false) }); },
+
     /**
      * Run independent read-only commands (queries, drift checks) concurrently.
      * Results and log entries keep the given order.

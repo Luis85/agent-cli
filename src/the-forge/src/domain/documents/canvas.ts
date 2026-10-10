@@ -22,7 +22,9 @@ export function validateCanvas(value: unknown): asserts value is Record<string, 
   for (const edge of edges) {
     ensure(isRecord(edge) && typeof edge.id === 'string' && edge.id.length && !edgeIds.has(edge.id), 'INVALID_CANVAS', 'Edge IDs must be unique nonempty strings.');
     edgeIds.add(edge.id);
-    ensure(typeof edge.fromNode === 'string' && typeof edge.toNode === 'string' && ids.has(edge.fromNode) && ids.has(edge.toNode), 'INVALID_CANVAS', 'Edge endpoints must reference existing nodes.');
+    ensure(typeof edge.fromNode === 'string' && typeof edge.toNode === 'string', 'INVALID_CANVAS', `Edge ${edge.id} needs fromNode and toNode ids.`);
+    const dangling = [...new Set([edge.fromNode, edge.toNode])].filter(node => !ids.has(node));
+    ensure(dangling.length === 0, 'INVALID_CANVAS', `Edge endpoints must reference existing nodes: edge ${edge.id} names missing node ${dangling.join(' and ')}.`);
     for (const key of ['fromSide', 'toSide']) ensure(edge[key] === undefined || (typeof edge[key] === 'string' && ['top', 'right', 'bottom', 'left'].includes(edge[key])), 'INVALID_CANVAS', 'Invalid edge side.');
     for (const key of ['fromEnd', 'toEnd']) ensure(edge[key] === undefined || (typeof edge[key] === 'string' && ['none', 'arrow'].includes(edge[key])), 'INVALID_CANVAS', 'Invalid edge end.');
     ensure(color(edge.color) && (edge.label === undefined || typeof edge.label === 'string'), 'INVALID_CANVAS', 'Invalid edge color or label.');

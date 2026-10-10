@@ -19,7 +19,7 @@ const folders = [
   [vaultPaths.hub, 'Hub note that links the whole knowledge graph and embeds a Bases view', '`create`'],
   [vaultPaths.canvas, 'JSON Canvas architecture map with file nodes, groups and labelled edges', '`create`, `patch --pointer /nodes` and `/edges` (replace), `/nodes/-` and `/edges/-` (append), `validate`'],
   ['docs/bases', 'Native Bases views: documents by stage, requirement traceability and library backlinks', '`create`, `validate`, `bases list`, `bases inspect`, `bases query`'],
-  ['docs', 'Full-text search and link reports over the finished knowledge graph, recorded below', '`search`, `links back`, `links unresolved`, `links orphans`'],
+  ['docs', 'Full-text search and link reports over the finished knowledge graph, recorded below', '`search`, `links back`, `links unresolved`, `links orphans`, `vault check`'],
   [backlogPaths.folder, 'Product backlog compatible with the Obsidian Product Backlog view: Epics, Features, PBIs, a Bug and Tasks with ranks, states and stamps, assignees, dependencies, an iteration, two releases with readiness and generated release notes, and a sync base with two views bound to two Azure DevOps connections', '`backlog init`, `write --if-match`, `backlog add`, `backlog move`, `backlog set`, `backlog depend`, `backlog iteration add/assign`, `backlog release add/join/mark-released/readiness/notes`, `backlog check`, `create`, `connectors list`, `backlog sync --dry-run`'],
   [maintenance.renamed.to, 'Generated as "Trip planner test plan", then renamed: every wikilink, frontmatter link and the Canvas file node that named it were rewritten in the same guarded batch', '`rename --dry-run`, `rename --if-match`'],
   [maintenance.trashed, 'A scratch note deleted the Obsidian way: moved to the vault trash, which Obsidian and the metadata cache ignore', '`create`, `delete --if-match`'],
@@ -88,7 +88,7 @@ These results were produced by \`bases query\` during generation, with \`${proje
 ${results}
 ## Search and link reports
 
-The \`search\` and \`links\` core plugins read the same vault through the metadata cache. These read-only reports ran during generation, after the vault was built and restructured.
+The \`search\`, \`links\` and \`vault-check\` core plugins read the same vault through the metadata cache. These read-only reports ran during generation, after the vault was built and restructured.
 
 ${explorationSection(exploration)}## Product backlog
 

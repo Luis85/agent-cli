@@ -16,6 +16,7 @@ import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
+import { vaultCheckPlugin } from '../../src/plugins/vault-check/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
@@ -62,7 +63,7 @@ describe('built-in localization catalog coverage', () => {
     registerHostEvents(bus);
     const plugins = [
       templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
     ];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }), []);
