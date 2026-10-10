@@ -177,6 +177,23 @@ describe('apply plans', () => {
     ])).rejects.toMatchObject({ code: 'INVALID_PLAN', details: { operation: 1, path: 'Index.md', vacated: 'Index.md' } });
   });
 
+  it('reports a file the plan edits and then deletes only as deleted, and trashes its final content', async () => {
+    await writeVault(root, vault);
+    for (const dryRun of [true, false]) {
+      const { run, records } = await runner({ dryRun });
+      const result = await run([
+        { op: 'edit', path: 'notes/Scratch.md', append: 'last words\n' },
+        { op: 'delete', path: 'notes/Scratch.md' },
+      ]);
+      expect(result.changes.map((change: { path: string }) => change.path)).toEqual([]);
+      expect(result.renames).toMatchObject([{ from: 'notes/Scratch.md', to: '.trash/notes/Scratch.md', kind: 'file' }]);
+      expect(result.operations[1]).toMatchObject({ op: 'delete', trashPath: '.trash/notes/Scratch.md' });
+      if (dryRun) continue;
+      expect(records().filter(([id]) => id.startsWith('vault.'))).toEqual([['vault.delete', 'notes/Scratch.md']]);
+      expect(await text('.trash/notes/Scratch.md')).toBe('scratch\nlast words\n');
+    }
+  });
+
   it('writes nothing for a file the plan creates and deletes, or for unchanged frontmatter', async () => {
     await writeVault(root, vault);
     const { run, records } = await runner();
@@ -187,6 +204,7 @@ describe('apply plans', () => {
       { op: 'frontmatter', path: 'notes/Plan.md', set: { status: 'draft' } },
     ]);
     expect(result).toMatchObject({ dryRun: false, renames: [], changes: [] });
+    expect(result.operations[2]).toMatchObject({ op: 'delete', path: 'tmp/Later.md', trashPath: null });
     expect(result.operations[3]).toMatchObject({ op: 'frontmatter', changed: false });
     expect(await tree()).toEqual(Object.keys(vault).sort());
     expect(records()).toEqual([]);

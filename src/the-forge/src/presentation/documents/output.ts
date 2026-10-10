@@ -64,7 +64,7 @@ const rename: JsonSchema = {
 };
 const operationSummary: JsonSchema = {
   type: 'object', required: ['index', 'op', 'path'],
-  description: 'What one operation did in the planned state: write adds operation, frontmatter adds changed, move adds to, kind and links, delete adds kind, trashPath and brokenLinks.',
+  description: 'What one operation did in the planned state: write adds operation, frontmatter adds changed, move adds to, kind and links, delete adds kind, trashPath (null when the plan created everything it deleted, so nothing reaches .trash) and brokenLinks.',
   properties: {
     index: { type: 'integer', minimum: 0, description: 'Position of the operation in the plan.' },
     op: kind('write', 'edit', 'frontmatter', 'move', 'delete'), path: { type: 'string', description: 'The operation path, or the source of a move.' },

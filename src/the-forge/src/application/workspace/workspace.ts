@@ -19,8 +19,10 @@ export interface WriteOptions { diff?: boolean }
 /**
  * How a mixed batch is reported. `trash` lists trash destinations: renames to or into them are reported as
  * deletions, because they move files into the hidden `.trash` folder, and no records are published for folders the
- * batch creates in `.trash`. `previous` holds the snapshots a dry run diffs each write against, keyed by the written
- * path; without it dry runs carry no diffs.
+ * batch creates in `.trash`. A write inside a trash destination (a plan that edits a file and then deletes it) only
+ * gives the trashed file its final content: it is neither reported as a change nor published, so the file reads as
+ * deleted. `previous` holds the snapshots a dry run diffs each write against, keyed by the written path; without it
+ * dry runs carry no diffs.
  */
 export interface CommitOptions { operation: 'move' | 'delete' | 'apply'; trash?: readonly string[]; previous?: ReadonlyMap<string, FileSnapshot> }
 const into = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
@@ -96,8 +98,10 @@ export class Workspace {
     return this.observe(options.operation, paths, async () => {
       const requests = snapshotWriteRequests(batch.writes ?? []);
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-      const result = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
-      await this.committed(result, options.trash ?? []);
+      const trash = options.trash ?? [];
+      const committed = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
+      const result = { ...committed, changes: committed.changes.filter(change => !trash.some(destination => into(change.path, destination))) };
+      await this.committed(result, trash);
       const changes = this.dryRun && options.previous ? await this.preview(result.changes, requests, options.previous) : result.changes;
       return { dryRun: this.dryRun, renames: result.renames, changes, folders: result.folders, removedFolders: result.removedFolders };
     }, changeSummary);

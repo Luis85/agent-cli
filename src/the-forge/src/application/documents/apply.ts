@@ -67,6 +67,8 @@ export class PlanRunner {
       } catch (error) { throw located(error, position, item.op); }
     }
     const { batch, previous, trash, operations: owners } = await plannedBatch(this.staged, this.trash);
+    // A delete whose files the plan created itself trashes nothing, so its trash path never exists.
+    for (const summary of operations) if (summary.op === 'delete' && !trash.includes(String(summary.trashPath))) summary.trashPath = null;
     if (batch.renames.length + batch.writes.length === 0) return { dryRun: workspace.dryRun, operations, renames: [], changes: [], folders: [] };
     try {
       const result = await workspace.commit(batch, { operation: 'apply', trash, previous });

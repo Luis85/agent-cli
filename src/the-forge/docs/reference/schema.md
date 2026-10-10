@@ -51,7 +51,7 @@ Output schemas describe the documented fields and their types. Objects stay open
 | `schema` | This document |
 | `skills list` / `skills show` | `{skills}` / `{id, content}` |
 | `edit` | `{dryRun, changes: [{path, revision, operation, bytes, diff?}]}`; `diff` is the unified diff of a dry run (`null` for binary content) |
-| `apply` | `{dryRun, operations: [{index, op, path, …}], renames, changes, folders}`: one summary per plan operation (a move adds `to`, `kind` and `links`; a delete adds `kind`, `trashPath` and `brokenLinks`) and the one batch it committed or, with `--dry-run`, planned |
+| `apply` | `{dryRun, operations: [{index, op, path, …}], renames, changes, folders}`: one summary per plan operation (a move adds `to`, `kind` and `links`; a delete adds `kind`, `trashPath`, which is `null` when the plan created every file it deleted, and `brokenLinks`) and the one batch it committed or, with `--dry-run`, planned |
 | `vault check` | `{findings: [{rule, severity, path, line, column, message, hint, suggestion?}], summary: {files, findings, error, warning, info}, rules: [{id, severity, findings}], skipped, strict}` |
 | `vault tags` / `vault properties` | `{tags: [{tag, count, files}]}` / `{properties: [{name, count, empty, types, type, declared, conflicting, files?}], typesFile: {path, status}}` |
 
