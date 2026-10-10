@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { buildBacklog } from './showcase/backlog.mjs';
 import { forgeCli } from './showcase/cli.mjs';
 import { buildAutomation, buildCode, buildProject } from './showcase/code.mjs';
+import { buildAgents } from './showcase/agents.mjs';
 import { buildDataSources } from './showcase/data.mjs';
 import { buildDesignSystem } from './showcase/design-system.mjs';
 import { project } from './showcase/project.mjs';
@@ -60,11 +61,12 @@ async function generate(workspace) {
   // After the vault reports: backlog leaves have no inbound links by design and live outside docs.
   const backlog = buildBacklog(cli);
   buildAutomation(cli);
+  const agents = buildAgents(cli);
   configureToolchain(cli);
   cli.begin('Documentation');
   const log = [...cli.log];
   cli.create(buildLogPath, buildLog(log));
-  cli.replace('README.md', readme(queries, exploration, backlog));
+  cli.replace('README.md', readme(queries, exploration, backlog, agents));
   assertContained(workspace);
   return join(workspace, project.directory);
 }

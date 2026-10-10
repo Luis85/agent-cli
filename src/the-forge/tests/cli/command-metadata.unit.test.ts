@@ -19,9 +19,12 @@ describe('built-in command metadata', () => {
   it('marks exactly the discovery commands and derives annotations from metadata', () => {
     expect([...commands.values()].filter(command => command.discovery).map(command => command.id).sort()).toEqual(['config', 'events', 'formats', 'help', 'plugins', 'schema', 'setup']);
     expect(commandAnnotations(commands.get('read')!)).toEqual({ scope: 'project', discovery: false, mutating: false, readOnlyHint: true });
-    expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ scope: 'workspace', mutating: false, defaultAction: 'list', actions: { install: { scope: 'project', mutating: true, readOnlyHint: false } } });
+    // A command is read-only only when no action mutates; each action keeps its own mode.
+    expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, defaultAction: 'list', actions: { list: { mutating: false, readOnlyHint: true }, install: { scope: 'project', mutating: true, readOnlyHint: false } } });
+    expect(commandAnnotations(commands.get('bases')!)).toMatchObject({ mutating: false, readOnlyHint: true });
+    expect(commandAnnotations(commands.get('make')!)).toMatchObject({ mutating: true, readOnlyHint: false });
     expect(commandAnnotations(commands.get('make')!).actions).toMatchObject({
-      entity: { scope: 'project', mutating: true }, plugin: { scope: 'workspace' }, ui: { scope: 'project', projectOption: 'project' },
+      entity: { scope: 'project', mutating: true, usage: 'make entity <Name>', options: { out: { type: 'string' } } }, plugin: { scope: 'workspace' }, ui: { scope: 'project', projectOption: 'project' },
     });
   });
 
@@ -29,10 +32,33 @@ describe('built-in command metadata', () => {
     for (const command of commands.values()) {
       const schema = commandInputSchema(command);
       expect(schemaIssues(schema), command.id).toEqual([]);
-      expect(schema).toMatchObject({ $schema: jsonSchemaDialect, title: command.id, type: 'object', required: ['args', 'options'], additionalProperties: false });
-      expect(Object.keys(schema.properties!.options!.properties!).sort(), command.id).toEqual(Object.keys(command.options ?? {}).sort());
-      expect(schema.properties!.args!.type).toBe('array');
+      expect(schema).toMatchObject({ $schema: jsonSchemaDialect, title: command.id, type: 'object', required: ['args', 'options'] });
+      const branches = schema.oneOf ?? [schema];
+      if (schema.oneOf) expect(branches.length, command.id).toBeGreaterThanOrEqual(Object.keys(command.actions!).length);
+      for (const branch of branches) {
+        expect(branch).toMatchObject({ type: 'object', additionalProperties: false, required: ['args', 'options'] });
+        expect(branch.properties!.args!.type).toBe('array');
+        expect(Object.keys(branch.properties!.options!.properties!), command.id).toEqual(expect.arrayContaining(Object.keys(command.options ?? {})));
+      }
     }
+  });
+
+  it('publishes one schema branch per generator with its own options and required options', () => {
+    const make = commandInputSchema(commands.get('make')!);
+    const check = (args: string[], options: Record<string, unknown>) => validateJsonValue(make, { args, options }, 'input').issues;
+    expect(make.required).toEqual(['args', 'options']);
+    expect(check([], {})).toEqual([]);
+    expect(check(['entity', 'Order'], { out: 'src/domain/orders' })).toEqual([]);
+    expect(check(['entity', 'Order'], { template: 'x.md' })).toEqual(['input.options.template: is not allowed']);
+    expect(check(['document', 'Plan'], {})).toEqual(['input.options.template: is required']);
+    expect(check(['document', 'Plan'], { template: 'prd.md' })).toEqual([]);
+    expect(check(['ui', 'button'], { framework: 'react', plan: true })).toEqual([]);
+    expect(check(['plugin', 'quality'], { out: 'x' })).toEqual(['input.options.out: is not allowed']);
+    expect(check([], { out: 'x' })).toEqual(['input.options.out: is not allowed']);
+    const links = commandInputSchema(commands.get('skills')!);
+    expect(validateJsonValue(links, { args: [], options: {} }, 'input').issues).toEqual([]);
+    expect(validateJsonValue(links, { args: ['install'], options: { out: 'skills' } }, 'input').issues).toEqual([]);
+    expect(validateJsonValue(links, { args: ['remove'], options: {} }, 'input').issues).not.toEqual([]);
   });
 
   it('validates real invocations against the published schemas', () => {

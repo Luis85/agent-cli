@@ -27,12 +27,13 @@ import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
-import { optionTypes } from './application/plugins/command-metadata.ts';
+import { commandOptions, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
 import { value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { searchPlugin } from './plugins/search/plugin.ts';
 import { linksPlugin } from './plugins/links/plugin.ts';
+import { agentsPlugin } from './plugins/agents/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
@@ -63,7 +64,7 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, backlogPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -126,11 +127,14 @@ async function run(): Promise<void> {
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
       registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry), fileDates: nodeFileDates }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
-      config.plugins.settings = registry.settings.configure(config.plugins.settings, new Set(registry.origins.keys()));
+      config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.resolveCommand(id);
-      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) });
+      // An action's own options (make <generator>) parse only once the action is known: the first argument after
+      // the command id, unless an option precedes it.
+      const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
+      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) });
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.
       localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
@@ -150,7 +154,7 @@ async function run(): Promise<void> {
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
       const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
-      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec));
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), { workspaceRoot: project === null });
       // Commits keep a loaded cache current and publish metadataCache.* events; workspace-scope commits while a
       // project is selected reach the project's index only inside its directory, with project-relative paths.
       const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);
@@ -187,9 +191,9 @@ async function run(): Promise<void> {
       result = { ok: true, data };
     }
   } catch (error) {
-    const failure = registry.catalog.normalize(error);
-    process.exitCode = failure instanceof AppError ? failure.exitCode : 1;
-    result = { ok: false, error: localizer.error(failure) };
+    // Plugin failures were already mapped by their owner's wrapper; codes reaching here unmapped stay opaque.
+    process.exitCode = error instanceof AppError ? error.exitCode : 1;
+    result = { ok: false, error: localizer.error(error) };
   } finally {
     await quitInvocation(events);
     await registry.dispose(events);

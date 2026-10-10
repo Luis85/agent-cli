@@ -29,6 +29,7 @@ For users who already know their goal. Each guide states the needed context and 
 | Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
 | Extend the CLI with trusted Node modules | [Enable or disable plugins](how-to/enable-plugins.md) |
 | Maintain native Claude agents, hooks and plugin installations | [Manage Claude Code](how-to/manage-claude.md) |
+| Keep agents as docker-agent YAML and generate Claude Code agents from them | [Manage agent definitions](how-to/manage-agents.md) |
 | Plan, rank, track and release work in an Obsidian Product Backlog | [Plan and release work in a product backlog](how-to/manage-backlog.md) |
 | Browse the committed example project, regenerate it and check drift | [Explore the showcase](how-to/explore-the-showcase.md) |
 | Diagnose checks and deliver a verified repository change | [Develop and test](how-to/develop-and-test.md) |
@@ -55,6 +56,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
 | [Search](reference/search.md) | Literal and regular-expression search with path, kind, tag and property filters and paging |
 | [Links](reference/links.md) | Outgoing links, backlinks, unresolved links, orphans and dead ends from the metadata index |
+| [Agents](reference/agents.md) | docker-agent definitions: validation, diagnostics, creation, import, and the mapping to generated Claude Code agents |
 | [Backlog](reference/backlog.md) | backlog-view compatible product backlogs: configuration, model, commands, refusals and conformance |
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
 | [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
@@ -70,4 +72,4 @@ For contributors and teams deciding how to use The Forge within their architectu
 - [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
 - [Product review](explanation/product-review.md): existing workflow findings, polishing changes, research and verification limits.
 
-Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../skills/forge-workflow.md), [development skill](../skills/forge-development.md) and [file-editing skill](../skills/forge-vault.md).
+Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../skills/forge-workflow.md), [development skill](../skills/forge-development.md), [file-editing skill](../skills/forge-vault.md) and [agent definitions skill](../skills/forge-agents.md).

@@ -20,6 +20,22 @@ const today = () => { const now = new Date(); return { year: now.getFullYear(), 
 
 const de = {
   commands: { backlog: 'Ein Product Backlog kompatibel mit der Obsidian-Ansicht Product Backlog (backlog-view) planen: Hierarchie, Ränge, Status, Iterationen, Releases und Abhängigkeiten.' },
+  actions: {
+    'backlog init': 'Das Product-Backlog.base-Gerüst des Plugins in einen Ordner schreiben (Standard docs).',
+    'backlog list': 'Jeden Eintrag nach globalem Rang als JSON.',
+    'backlog tree': 'Die Hierarchie in Geschwister-Rangfolge, einschließlich Kontext-Vorfahren.',
+    'backlog board': 'Board-Spalten nach Status mit WIP-Limits und der Spalte ohne Status.',
+    'backlog show': 'Einen Eintrag mit Vorfahren, Kindern, Voraussetzungen und abhängigen Einträgen.',
+    'backlog add': 'Eine Eintragsnotiz genau wie das Plugin anlegen: bereinigter Name, Typ-Ordner, pbl-id, Schlüsselreihenfolge und Rang am Ende der Geschwister.',
+    'backlog move': 'Einen Eintrag mit der Rang-Arithmetik des Plugins umhängen oder neu einreihen; schreibt nur parent und order.',
+    'backlog ranks': 'seed (Baum-Präordnung) oder respace (aktuelle Rangfolge) vergibt Ränge im Abstand von 1000.',
+    'backlog set': 'Status (mit started/finished-Stempeln), Horizont, Priorität, Risiko, Daten, Zuständige oder Typ setzen; ein leerer Wert löscht.',
+    'backlog depend': 'Einen dependsOn-Link hinzufügen, sofern er keine Abhängigkeitsschleife schließt.',
+    'backlog undepend': 'Einen dependsOn-Eintrag entfernen; der Schlüssel entfällt, wenn die Liste leer wird.',
+    'backlog iteration': 'add legt eine Iteration mit den Namens- und Datumsvorgaben des Plugins an, assign <item> <iteration> plant einen Eintrag ein.',
+    'backlog release': 'add, join <item> <release>, mark-released, readiness, notes (generierte Release Notes) oder list für Releases.',
+    'backlog check': 'Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden.',
+  },
   events: {
     'backlog.item-created': 'Ein Backlog-Eintrag, eine Iteration oder ein Release wurde angelegt.',
     'backlog.item-moved': 'Ein Eintrag wurde umgehängt oder neu eingereiht.',

@@ -10,7 +10,8 @@ const config = (value: unknown) => writeFile(join(fixture.project, 'bin/config.j
 
 describe('the skills core plugin', () => {
   it('lists, shows and installs the bundled skills with an unchanged CLI contract', async () => {
-    expect(cli(['skills']).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-backlog'] });
+    // The agents and backlog core plugins contribute forge-agents and forge-backlog after the bundled skills.
+    expect(cli(['skills']).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog'] });
     expect(cli(['skills', 'show', 'forge-vault']).body.data).toEqual({ id: 'forge-vault', content: expect.stringContaining('name: forge-vault') });
     expect(cli(['skills', 'show', 'missing']).body.error.code).toBe('UNKNOWN_SKILL');
     expect(cli(['skills', 'list', '--out', 'x']).body.error.code).toBe('INVALID_ARGUMENT');
@@ -28,27 +29,30 @@ describe('the skills core plugin', () => {
     try {
       const schema = cli(['schema']).body.data;
       expect(ids(schema.commands)).not.toContain('skills');
-      // Skills other core plugins contribute stay: the backlog plugin brings forge-backlog.
-      expect(schema.skills).toEqual(['forge-backlog']);
+      // Skills contributed by other plugins stay registered for setup: agents brings forge-agents, backlog forge-backlog.
+      expect(schema.skills).toEqual(['forge-agents', 'forge-backlog']);
       expect(ids(cli(['help']).body.data.commands)).not.toContain('skills');
       expect(cli(['help', 'skills']).body.error.code).toBe('UNKNOWN_COMMAND');
       expect(cli(['skills']).body.error.code).toBe('UNKNOWN_COMMAND');
       expect(cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'skills', core: true, state: 'disabled', contributions: null }));
       await config({ plugins: { disabled: ['quality'] } });
-      expect(cli(['help']).body.error).toMatchObject({ code: 'INVALID_PLUGIN_CONFIG', message: expect.stringContaining('remove quality') });
+      const help = cli(['help']);
+      expect(help.status).toBe(0);
+      expect(help.body.warnings).toEqual([expect.stringContaining('ignored quality')]);
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     expect(ids(cli(['help']).body.data.commands)).toContain('skills');
-    expect(cli(['--no-plugins', 'skills']).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-backlog']);
+    expect(cli(['--no-plugins', 'skills']).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog']);
   });
 
   it('publishes per-command JSON Schema and annotations from the same metadata as help', () => {
     const schema = cli(['schema']).body.data;
     const skills = schema.commands.find((command: { id: string }) => command.id === 'skills');
-    expect(skills.inputSchema).toMatchObject({
-      $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object',
-      properties: { args: { type: 'array', maxItems: 2 }, options: { properties: { out: { type: 'string', default: '.agents/skills' } }, additionalProperties: false } },
+    expect(skills.inputSchema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['args', 'options'] });
+    expect(skills.inputSchema.oneOf.map((branch: { title: string }) => branch.title)).toEqual(['skills (list)', 'skills list', 'skills show', 'skills install']);
+    expect(skills.inputSchema.oneOf[3]).toMatchObject({
+      properties: { args: { type: 'array', maxItems: 2, prefixItems: [{ const: 'install' }, { type: 'string' }] }, options: { properties: { out: { type: 'string', default: '.agents/skills' } }, additionalProperties: false } },
     });
-    expect(skills.annotations).toMatchObject({ scope: 'workspace', readOnlyHint: true, actions: { install: { scope: 'project', mutating: true } } });
+    expect(skills.annotations).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, actions: { list: { readOnlyHint: true }, install: { scope: 'project', mutating: true } } });
     const { inputSchema: _inputSchema, ...described } = skills;
     expect(cli(['help', 'skills']).body.data).toEqual({ ...described, globalOptions: schema.globalOptions });
     expect(cli(['--lang', 'de', 'help', 'skills']).body.data.description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');

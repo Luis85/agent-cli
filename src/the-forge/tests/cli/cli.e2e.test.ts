@@ -26,18 +26,21 @@ it('rejects unknown commands/options and missing values with machine-readable er
   });
 
 it.each([
-    ['make', '--out', 'ignored'],
-    ['make', '--template', 'entity.md'],
-    ['make', '--values', '{}'],
-    ['make', '--values-from', 'inputs.json'],
-    ['make', '--date', '2026-10-07'],
-    ['skills', '--out', 'ignored'],
-    ['skills', 'list', '--out', 'ignored'],
-    ['skills', 'show', 'forge-workflow', '--out', 'ignored'],
-  ])('rejects inapplicable generation or installation options: %j', (...args) => {
+    ['UNKNOWN_OPTION', 'make', '--out', 'ignored'],
+    ['UNKNOWN_OPTION', 'make', '--template', 'entity.md'],
+    ['UNKNOWN_OPTION', 'make', '--values', '{}'],
+    ['UNKNOWN_OPTION', 'make', '--values-from', 'inputs.json'],
+    ['UNKNOWN_OPTION', 'make', '--date', '2026-10-07'],
+    ['UNKNOWN_OPTION', 'make', 'entity', 'Order', '--template', 'entity.md'],
+    ['UNKNOWN_OPTION', 'make', 'plugin', 'quality', '--out', 'elsewhere'],
+    ['UNKNOWN_OPTION', 'make', '--framework', 'react', 'ui', 'button'],
+    ['INVALID_ARGUMENT', 'skills', '--out', 'ignored'],
+    ['INVALID_ARGUMENT', 'skills', 'list', '--out', 'ignored'],
+    ['INVALID_ARGUMENT', 'skills', 'show', 'forge-workflow', '--out', 'ignored'],
+  ])('rejects inapplicable generation or installation options with %s: %j', (code, ...args) => {
     const result = cli(args);
     expect(result.status).toBe(2);
-    expect(result.body.error.code).toBe('INVALID_ARGUMENT');
+    expect(result.body.error.code).toBe(code);
     expect(committedEvents(result.body.events)).toEqual([]);
   });
 

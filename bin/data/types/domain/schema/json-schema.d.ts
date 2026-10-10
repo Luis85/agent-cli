@@ -19,6 +19,8 @@ export interface JsonSchema {
     enum?: unknown[];
     const?: unknown;
     default?: unknown;
+    /** Exactly one of these schemas must match; the matching one completes the value. */
+    oneOf?: JsonSchema[];
     minimum?: number;
     maximum?: number;
     minLength?: number;
@@ -28,6 +30,8 @@ export interface JsonSchema {
 export declare const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
 /** Structural meta-check of the supported subset: each problem names the schema path. */
 export declare function schemaIssues(schema: unknown, path?: string): string[];
+/** Every `default` that its own schema rejects, as `<schema path>: <problem>`; run on schemas that passed `schemaIssues`. */
+export declare function defaultIssues(schema: JsonSchema, path?: string): string[];
 /**
  * Validates `value` against a schema that passed `schemaIssues`, filling `default`s of missing object properties.
  * Returns the completed copy and every issue as `<path>: <problem>`.

@@ -73,7 +73,8 @@ describe('extracted command boundaries', () => {
       generate({ name, directory, flags }) { received = flags; return [{ path: `${directory}/${name}.md`, bytes: new TextEncoder().encode(`# ${String(flags.title ?? name)}\n`) }]; },
     });
     const make = registry.commands.get('make')!;
-    expect(make.options).toMatchObject({ title: { type: 'string' }, plan: { type: 'boolean' }, out: { type: 'string' } });
+    expect(make.options).toBeUndefined();
+    expect(make.actions!['custom.note']!.options).toMatchObject({ title: { type: 'string' }, plan: { type: 'boolean' }, out: { type: 'string' } });
     expect(await make.run(['custom.note', 'Plan'], { plan: true }, context)).toMatchObject({ generator: 'custom.note', plan: true, matches: false, outputs: [{ path: 'notes/Plan.md', status: 'missing' }] });
     expect(await make.run(['custom.note', 'Plan'], { title: 'Roadmap' }, context)).toMatchObject({ generator: 'custom.note', changes: [{ path: 'notes/Plan.md', operation: 'created' }] });
     expect(received).toEqual({ title: 'Roadmap' });

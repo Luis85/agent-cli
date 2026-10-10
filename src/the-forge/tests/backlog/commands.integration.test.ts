@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
-import { Registry } from '../../src/application/plugins/registry.ts';
+import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
 import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
@@ -27,14 +27,18 @@ describe('choosing the backlog', () => {
     await expect(runBacklog(vault.root, ['list'], { folder: 'x' })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 
-  it('is disabled together with the bases plugin whose service it requires', () => {
+  it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates }, ['bases']);
-    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases', 'backlog']);
-    expect(registry.commands.has('backlog')).toBe(false);
-    expect(registry.disabledReason('backlog')).toBe('Requires service bases.query; its provider bases is disabled.');
-    expect(() => registry.resolveCommand('backlog')).toThrow(expect.objectContaining({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason: registry.disabledReason('backlog') } }));
+    const warnings: string[] = [];
+    await registry.configure({}, async () => [], message => warnings.push(message));
+    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
+    const reason = 'Requires service bases.query; its provider bases is disabled.';
+    expect(registry.unavailable.get('backlog')).toEqual({ reason, issues: [] });
+    // plugins.disabled asked for the cascade, so it is reported by plugins and the command, not as a warning.
+    expect(warnings).toEqual([]);
+    await expect(registry.resolveCommand('backlog').run(['list'], {}, {} as CommandContext)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason, issues: [] } });
     expect(() => registry.resolveCommand('bases')).toThrow(expect.objectContaining({ code: 'UNKNOWN_COMMAND' }));
   });
 });

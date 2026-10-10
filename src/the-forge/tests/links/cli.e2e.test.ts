@@ -45,8 +45,18 @@ describe('the links core plugin through the portable CLI', () => {
     await configure({ plugins: { settings: { links: { roots: ['Archive/**'] } } } });
     try {
       expect(cli(['links', 'orphans']).body.data.files).toEqual(['Notes/Ideas.md']);
-      await configure({ plugins: { settings: { links: { roots: [''] } } } });
-      expect(cli(['links', 'orphans']).body.error.code).toBe('INVALID_CONFIG');
+      // An invalid section makes only its plugin unavailable; discovery, recovery and other commands keep working.
+      await configure({ plugins: { disabled: ['serach'], settings: { links: { roots: ['[z-a]'] }, lnks: { roots: [] } } } });
+      const failed = cli(['links', 'orphans']);
+      expect(failed.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'links', plugin: 'links', reason: expect.stringContaining('plugins.settings.links is invalid'), issues: ['plugins.settings.links.roots[0]: has the reversed class range [z-a].'] } });
+      expect(failed.body.warnings).toEqual([
+        expect.stringContaining('ignored serach'),
+        expect.stringContaining('Plugin links is unavailable in this invocation'),
+        expect.stringContaining('plugins.settings names no installed plugin: lnks'),
+      ]);
+      for (const args of [['help'], ['schema'], ['config'], ['plugins'], ['list'], ['--no-plugins', 'search', 'Ideas']]) expect(cli(args).status, args.join(' ')).toBe(0);
+      expect(cli(['config']).body.data.config.plugins.settings.links).toEqual({ roots: ['[z-a]'] });
+      expect(cli(['plugins']).body.data.plugins.find((plugin: { id: string }) => plugin.id === 'links')).toMatchObject({ state: 'unavailable', reason: expect.stringContaining('roots[0]'), contributions: { commands: ['links'] } });
       await configure({ plugins: { disabled: ['links'] } });
       expect(cli(['help', 'links']).body.error.code).toBe('UNKNOWN_COMMAND');
     } finally { await rm(join(fixture.project, 'bin/config.json')); }

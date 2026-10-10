@@ -14,7 +14,7 @@ import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
 import type { CommandFlags, CommandMetadata, CommandMode, CommandOption } from './command-metadata.ts';
 import { validateContributions, type PluginOrigin } from './contributions.ts';
 import { activationOrder, pluginServices, serviceProviders, type PluginServices } from './plugin-services.ts';
-import { PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
+import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
 
 /**
@@ -51,6 +51,11 @@ export interface Generator extends CommandMode {
   generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
   run?(request: GeneratorRequest): unknown | Promise<unknown>;
 }
+/**
+ * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ */
+export const hostGeneratorOptions = ['out', 'plan', 'plan-out', 'check', 'revisions-from'] as const;
 export interface Skill { id: string; content: string }
 /** `core: true` marks a bundled core plugin; the loader rejects it for user plugins. */
 export interface PluginManifest {
@@ -64,6 +69,11 @@ export interface PluginContributions {
   requires?: string[];
   /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
   settings?: JsonSchema;
+  /**
+   * Checks the schema-valid section (with defaults) beyond what JSON Schema expresses, such as glob syntax. Each
+   * returned issue `<path>: <problem>` makes the section invalid like a schema violation. Runs without I/O.
+   */
+  validateSettings?(settings: Readonly<Record<string, unknown>>): readonly string[];
   strings?: PluginStrings;
   errors?: PluginErrorDefinition[];
   onload?(context: PluginContext): void | Promise<void>;
@@ -90,12 +100,20 @@ export class Registry {
   readonly generators = new Map<string, Generator>();
   readonly skills = new Map<string, Skill>();
   readonly plugins: Plugin[] = [];
-  /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
+  /** Registered plugins with their origin. */
   readonly origins = new Map<string, PluginOrigin>();
+  /** Bundled core plugins listed in `plugins.disabled`: they contribute nothing, and their commands are unknown. */
   readonly disabled: PluginManifest[] = [];
-  private readonly disabledReasons = new Map<string, { reason: string; commands: string[] }>();
+  private readonly disabledReasons = new Map<string, string>();
   readonly catalog = new PluginCatalog();
   readonly settings = new PluginSettings();
+  /**
+   * Registered plugins that cannot run in this invocation, with a `reason` sentence: an invalid settings section
+   * (`issues` lists its problems), or a required service whose provider is disabled or itself unavailable (`issues`
+   * are the provider's). They stay listed with their contributions but never activate; their commands and
+   * generators fail with PLUGIN_UNAVAILABLE.
+   */
+  readonly unavailable = new Map<string, { reason: string; issues: string[] }>();
   private cleanups: Array<{ pluginId: string; run: () => void | Promise<void> }> = [];
   private published = new Set<string>();
   private state: 'registering' | 'activating' | 'active' | 'failed' | 'disposed' = 'registering';
@@ -115,48 +133,82 @@ export class Registry {
     const commands = new Map(this.commands), generators = new Map(this.generators), skills = new Map(this.skills);
     for (const command of plugin.commands ?? []) this.add(commands, command);
     for (const generator of plugin.generators ?? []) {
-      // make parses one flag set for every generator, so a shared option name must keep one type.
-      for (const [key, option] of Object.entries(generator.options ?? {})) {
-        const clash = [...generators.values()].find(other => other.options?.[key] !== undefined && other.options[key]!.type !== option.type);
-        ensure(!clash, 'INVALID_PLUGIN', `Generator ${generator.id} declares --${key} as ${option.type}, but ${clash?.id} declares it as ${clash?.options?.[key]?.type}.`);
-      }
+      const owned = Object.keys(generator.options ?? {}).filter(key => (hostGeneratorOptions as readonly string[]).includes(key));
+      ensure(owned.length === 0, 'PLUGIN_NAMESPACE', `Generator ${generator.id} cannot declare --${owned.join(', --')}; make owns --${hostGeneratorOptions.join(', --')} for every generator.`);
       this.add(generators, generator);
     }
     for (const skill of plugin.skills ?? []) this.add(skills, skill);
     serviceProviders([...this.plugins, plugin]);
-    for (const entry of plugin.errors ?? []) ensure(!this.catalog.error(entry.code), 'DUPLICATE_OR_INVALID_ID', entry.code);
+    const prefix = origin === 'core' ? null : errorPrefix(pluginId);
+    this.catalog.ensureRegistrable(pluginId, plugin.errors, prefix);
     events.defineAll(plugin.events ?? []);
-    this.catalog.add(pluginId, plugin.strings, plugin.errors);
-    if (plugin.settings) this.settings.declare(pluginId, plugin.settings);
+    this.catalog.add(pluginId, plugin.strings, plugin.errors, prefix);
+    if (plugin.settings) this.settings.declare(pluginId, plugin.settings, plugin.validateSettings?.bind(plugin));
     for (const command of plugin.commands ?? []) this.commands.set(command.id, this.ownedCommand(plugin, command, events));
     for (const generator of plugin.generators ?? []) this.generators.set(generator.id, this.ownedGenerator(plugin, generator, events));
     for (const skill of plugin.skills ?? []) this.skills.set(skill.id, skill);
     this.plugins.push(plugin);
     this.origins.set(pluginId, origin);
   }
-  /**
-   * A bundled core plugin that contributes nothing: listed by `plugins` with `reason`. `commands` are the command ids
-   * it would have contributed, when known, so invoking one reports PLUGIN_UNAVAILABLE instead of UNKNOWN_COMMAND.
-   */
-  disable(manifest: PluginManifest, reason: string, commands: readonly string[] = []): void {
+  /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
+  disable(manifest: PluginManifest, reason: string): void {
     validatePluginManifest(manifest, 'core');
     ensure(!this.origins.has(manifest.id) && !this.disabled.some(entry => entry.id === manifest.id), 'DUPLICATE_PLUGIN', manifest.id);
     this.disabled.push(manifest);
-    this.disabledReasons.set(manifest.id, { reason, commands: [...commands] });
+    this.disabledReasons.set(manifest.id, reason);
   }
   /** Why a disabled core plugin contributes nothing. */
-  disabledReason(pluginId: string): string | undefined { return this.disabledReasons.get(pluginId)?.reason; }
-  /**
-   * A registered command. A command a disabled core plugin would have contributed fails with PLUGIN_UNAVAILABLE and
-   * `details` `{command, plugin, reason}`; any other unknown id with UNKNOWN_COMMAND.
-   */
+  disabledReason(pluginId: string): string | undefined { return this.disabledReasons.get(pluginId); }
+  /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
   resolveCommand(commandId: string): Command {
     const command = this.commands.get(commandId);
-    if (command) return command;
-    for (const [plugin, { reason, commands }] of this.disabledReasons) {
-      if (commands.includes(commandId)) throw forgeError('PLUGIN_UNAVAILABLE', `Command ${commandId} is unavailable because the core plugin ${plugin} is disabled: ${reason}`, { command: commandId, plugin, reason });
+    ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${commandId}. Run help or schema.`);
+    return command;
+  }
+  /**
+   * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
+   * section becomes unavailable with a warning instead of failing the invocation, and so does every plugin that
+   * requires its services; a plugin that requires a service of a disabled core plugin (`backlog` without `bases`)
+   * becomes unavailable without a warning, since `plugins.disabled` asked for it. Discovery and recovery commands
+   * keep working; only the unavailable plugins' commands and generators fail with PLUGIN_UNAVAILABLE. Sections of
+   * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
+   * ids), are kept unchanged with a warning.
+   */
+  async configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>> {
+    const report = this.settings.configure(sections, new Set(this.origins.keys()));
+    for (const [pluginId, issues] of report.invalid) this.unavailable.set(pluginId, { reason: `plugins.settings.${pluginId} is invalid: ${issues.join('; ')}.`, issues });
+    this.cascadeUnavailable();
+    for (const [pluginId, { reason, issues }] of this.unavailable) {
+      if (issues.length > 0) warn(`Plugin ${pluginId} is unavailable in this invocation: ${reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.`);
     }
-    throw forgeError('UNKNOWN_COMMAND', `Unknown command ${commandId}. Run help or schema.`);
+    if (report.undeclared.length > 0) warn(`plugins.settings has sections for plugins that declare no settings: ${report.undeclared.join(', ')}; they are ignored.`);
+    const foreign = Object.keys(sections).filter(id => !this.origins.has(id) && !this.disabled.some(manifest => manifest.id === id));
+    const present = foreign.length > 0 ? new Set(await installed()) : new Set<string>();
+    const unknown = foreign.filter(id => !present.has(id)).sort();
+    if (unknown.length > 0) warn(`plugins.settings names no installed plugin: ${unknown.join(', ')}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.`);
+    return report.effective;
+  }
+  /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
+  private cascadeUnavailable(): void {
+    const providers = serviceProviders(this.plugins);
+    // Service ids start with their provider's plugin id (`bases.query`), which names a disabled provider.
+    const blocked = (service: string): { reason: string; issues: string[] } | undefined => {
+      const provider = providers.get(service)?.manifest.id;
+      const unavailable = provider === undefined ? undefined : this.unavailable.get(provider);
+      if (unavailable) return { reason: `Requires service ${service}; its provider ${provider} is unavailable.`, issues: unavailable.issues };
+      const disabled = provider === undefined ? this.disabled.find(manifest => service.startsWith(`${manifest.id}.`)) : undefined;
+      return disabled && { reason: `Requires service ${service}; its provider ${disabled.id} is disabled.`, issues: [] };
+    };
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const plugin of this.plugins) {
+        if (this.unavailable.has(plugin.manifest.id)) continue;
+        const cause = (plugin.requires ?? []).map(blocked).find(entry => entry !== undefined);
+        if (cause === undefined) continue;
+        this.unavailable.set(plugin.manifest.id, cause);
+        changed = true;
+      }
+    }
   }
   /** The context a plugin's hooks, commands and generators run with. */
   pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext {
@@ -186,7 +238,7 @@ export class Registry {
     let tracker: ActivationTracker | undefined;
     try {
       await this.publishRegistered(events);
-      const order = activationOrder(this.plugins);
+      const order = activationOrder(this.plugins.filter(plugin => !this.unavailable.has(plugin.manifest.id)));
       if (state && this.plugins.length > 0) tracker = await ActivationTracker.load(state);
       for (const plugin of order) {
         const pluginId = plugin.manifest.id, onunload = plugin.onunload;
@@ -199,7 +251,7 @@ export class Registry {
           await tracker?.activated(plugin, pluginContext);
           await publishHostEvent(events, 'plugin.activated', { pluginId });
         } catch (error) {
-          const failure = this.catalog.normalize(error);
+          const failure = this.catalog.normalize(error, pluginId);
           await publishHostEvent(events, 'plugin.activation-failed', { pluginId, error: summarizeError(failure) });
           throw failure;
         }
@@ -224,20 +276,29 @@ export class Registry {
     events.dispose();
   }
 
+  /** PLUGIN_UNAVAILABLE, with `details` `{command|generator, plugin, reason, issues}`, when the plugin cannot run. */
+  private ensureAvailable(plugin: Plugin, contribution: { command: string } | { generator: string }): void {
+    const unavailable = this.unavailable.get(plugin.manifest.id);
+    if (!unavailable) return;
+    const label = 'command' in contribution ? `Command ${contribution.command}` : `Generator ${contribution.generator}`;
+    throw forgeError('PLUGIN_UNAVAILABLE', `${label} is unavailable because plugin ${plugin.manifest.id} is unavailable: ${unavailable.reason}`, { ...contribution, plugin: plugin.manifest.id, reason: unavailable.reason, issues: unavailable.issues });
+  }
   /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
   private ownedCommand(plugin: Plugin, command: Command, events: EventBus): Command {
     return {
       ...command,
       run: async (args, flags, context) => {
+        this.ensureAvailable(plugin, { command: command.id });
         try { return await command.run(args, flags, this.pluginContext(plugin, context, events)); }
-        catch (error) { throw this.catalog.normalize(error); }
+        catch (error) { throw this.catalog.normalize(error, plugin.manifest.id); }
       },
     };
   }
   private ownedGenerator(plugin: Plugin, generator: Generator, events: EventBus): Generator {
     const owned = (call: (request: GeneratorRequest) => unknown) => async (request: GeneratorRequest) => {
+      this.ensureAvailable(plugin, { generator: generator.id });
       try { return await call({ ...request, context: this.pluginContext(plugin, request.context, events) }); }
-      catch (error) { throw this.catalog.normalize(error); }
+      catch (error) { throw this.catalog.normalize(error, plugin.manifest.id); }
     };
     const { generate, run } = generator;
     return {

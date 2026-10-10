@@ -22,7 +22,7 @@ node bin/forge.js links deadends --path "notes/*"
 | `links orphans [--path glob]` | `{files, issues}`: Markdown and Canvas notes that no other file links to or embeds, except configured roots |
 | `links deadends [--path glob]` | `{files, issues}`: parsed Markdown and Canvas notes without a reference to another file |
 
-`<path>` is the root-relative path of a visible file, for example `notes/plan.md`; link text such as `Plan` is not resolved here. A missing or dot-prefixed path fails with `NOT_FOUND`. Attachments have backlinks but no outgoing links. `--path` takes a [path glob](cli.md#path-globs-and-paging) and is rejected by `out` and `back`. Every action reads the current files and publishes no `vault.*` records.
+Reports cover the vault as the [metadata index](formats.md#metadata-index) enumerates it: at the workspace root, files below the workspace's own `bin/` distribution are neither sources nor targets. `<path>` is the root-relative path of a visible file, for example `notes/plan.md`; link text such as `Plan` is not resolved here. A missing or dot-prefixed path fails with `NOT_FOUND`. Attachments have backlinks but no outgoing links. `--path` takes a [path glob](cli.md#path-globs-and-paging) and is rejected by `out` and `back`. Every action reads the current files and publishes no `vault.*` records.
 
 Each link is reported as:
 
@@ -57,6 +57,6 @@ A note is a Markdown or Canvas file. It is an orphan when no other file links to
 { "plugins": { "settings": { "links": { "roots": ["Home.md", "maps/**"] } } } }
 ```
 
-Roots default to `[]`; an empty string fails with `INVALID_CONFIG`, and a malformed glob with `INVALID_ARGUMENT`. Roots affect only `orphans`.
+Roots default to `[]`; an empty string or a malformed glob, such as the reversed class `[z-a]`, makes the `links` plugin unavailable when the configuration loads: every response warns, and `links` fails with `PLUGIN_UNAVAILABLE`, naming the root in `error.details.issues`. Roots affect only `orphans`.
 
 A dead end is a parsed note without any reference to another file. Unresolved and ambiguous links count as references, because they are links the author wrote; `links unresolved` reports them. External URLs and links to the note itself (`[[#Heading]]`) do not count. Unparseable notes are never dead ends; they appear in `issues`.

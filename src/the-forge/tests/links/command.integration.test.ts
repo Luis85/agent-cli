@@ -23,7 +23,7 @@ async function links(settings: Record<string, unknown> = {}) {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   registerCorePlugins(registry, events, [linksPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); } }, []);
-  registry.settings.configure(settings, new Set(registry.origins.keys()));
+  await registry.configure(settings, async () => [], message => events.warn(message));
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;
   return (args: string[], flags: Record<string, string> = {}) => registry.commands.get('links')!.run(args, flags, context) as Promise<Record<string, unknown>>;
@@ -53,9 +53,17 @@ describe('the links command', () => {
     expect((await run(['orphans'])).files).toEqual(['notes/lonely.md']);
   });
 
+  it('rejects malformed root globs when the configuration loads, making only the links command fail', async () => {
+    const run = await links({ links: { roots: ['index.md', '[z-a]', 'x\\'] } });
+    await expect(run(['out', 'notes/a.md'])).rejects.toMatchObject({
+      code: 'PLUGIN_UNAVAILABLE',
+      details: { issues: ['plugins.settings.links.roots[1]: has the reversed class range [z-a].', 'plugins.settings.links.roots[2]: ends with an unescaped backslash.'] },
+    });
+  });
+
   it('validates actions, arguments and options', async () => {
     const run = await links();
-    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['back', 'notes/a.md'], { path: '**' }], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }]] as const) {
+    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['back', 'notes/a.md'], { path: '**' }], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }], [['orphans'], { path: '[z-a]' }]] as const) {
       await expect(run([...args], { ...flags }), JSON.stringify(args)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
     await expect(run(['out', 'notes/missing.md'])).rejects.toMatchObject({ code: 'NOT_FOUND' });

@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` disables `backlog` too.
+`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` makes `backlog` unavailable: `plugins` lists it as `unavailable` with the reason, and its commands fail with `PLUGIN_UNAVAILABLE`.
 
 Forge conforms to backlog-view 0.10.0 (plugin id `product-backlog-view`) with the global rank and release-join dates of commit `fb813df` on its `main` branch. The [conformance](#conformance) section lists what the fixtures prove and where Forge differs.
 

@@ -33,7 +33,10 @@ export interface MetadataUpdate { changed: string[]; deleted: string[]; resolved
 
 /** Read access to a loaded vault metadata index. Paths are relative to the bound workspace or project root. */
 export interface MetadataCache {
-  /** Visible vault paths in repository order; dot-prefixed files and folders are excluded. The same array is returned until an update, which replaces it. */
+  /**
+   * Vault paths in repository order: dot-prefixed files and folders are excluded and, at the workspace root, so is
+   * the workspace's own `bin/` distribution. The same array is returned until an update, which replaces it.
+   */
   files(): readonly string[];
   /** The parsed metadata of a Markdown or Canvas file, or null for other, unknown or unparseable files. */
   getFileCache(path: string): CachedMetadata | null;
@@ -59,6 +62,17 @@ export interface MetadataCache {
 export interface MetadataIndex {
   /** Builds the index on first use and returns the same live cache afterwards. */
   load(): Promise<MetadataCache>;
+  /**
+   * The vault's paths in repository order without building the index: the cache's `files()` once loaded, else the
+   * repository listing filtered by the same vault rule (no dot-prefixed segment and, at the workspace root, nothing
+   * below the workspace's `bin/` distribution).
+   */
+  vaultFiles(): Promise<readonly string[]>;
+  /**
+   * One file's metadata from content the caller already read, without building or changing the index: what
+   * `getFileCache` would hold for these bytes, or null for files the index does not parse or that fail to parse.
+   */
+  parseFile(path: string, bytes: Uint8Array): CachedMetadata | null;
   /**
    * Re-indexes committed changes and re-resolves affected sources. Before the first load it changes nothing and
    * returns null, because the later load reads the current files.

@@ -33,7 +33,7 @@ export function catalogCommands(registry: Registry): Command[] {
     skills: [...registry.skills.keys()],
   });
   return [
-    { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND', 'PLUGIN_UNAVAILABLE'], run(args) {
+    { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'], run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
       const command = registry.resolveCommand(args[0]);

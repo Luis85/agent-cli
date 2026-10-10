@@ -37,6 +37,14 @@ describe('localized portable CLI', () => {
     expect(german.body.data.globalOptions).toEqual(english.body.data.globalOptions);
     expect(german.body.data.commands.find((command: { id: string }) => command.id === 'read').description).not.toBe(english.body.data.commands.find((command: { id: string }) => command.id === 'read').description);
     expect(cli(['make', '--lang', 'de']).body.data.generators.find((generator: { id: string }) => generator.id === 'ui').description).toContain('Markdown');
+    // Every action description is German, including make's generators and core plugin actions; action modes stay.
+    const actions = (body: { data: { commands: Array<{ id: string; annotations: { actions?: Record<string, { description: string; mutating: boolean }> } }> } }) =>
+      body.data.commands.flatMap(command => Object.entries(command.annotations.actions ?? {}).map(([id, action]) => ({ key: `${command.id} ${id}`, ...action })));
+    const englishActions = actions(english.body), germanActions = actions(german.body);
+    expect(germanActions.length).toBeGreaterThanOrEqual(61);
+    expect(germanActions.map(({ key, mutating }) => ({ key, mutating }))).toEqual(englishActions.map(({ key, mutating }) => ({ key, mutating })));
+    germanActions.forEach((action, index) => expect(action.description, action.key).not.toBe(englishActions[index]!.description));
+    expect(cli(['--lang', 'de', 'help', 'links']).body.data.annotations.actions.orphans.description).toContain('Notizen');
   });
 
   it('initializes the requested preference and diagnoses invalid configuration without bypassing it', async () => {
