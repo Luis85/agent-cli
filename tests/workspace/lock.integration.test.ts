@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import metadata from '../../package.json';
@@ -9,7 +9,7 @@ import { acquireLock, inspectLock, releaseLock } from '../../src/the-forge/infra
 import { encodeText } from '../../src/the-forge/infrastructure/documents/codec.ts';
 
 let root: string, lock: string, files: NodeFiles;
-beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-lock-')); lock = join(root, '.agent-cli.lock'); files = await NodeFiles.at(root); });
+beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'forge-lock-'))); lock = join(root, '.agent-cli.lock'); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 const write = (path: string, text = 'Hello') => ({ path, bytes: encodeText(text) });
 const exitedPid = () => {
