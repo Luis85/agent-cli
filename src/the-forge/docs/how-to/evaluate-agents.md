@@ -85,6 +85,6 @@ Arguments after `node bin/forge.js` omit `--root` and `--json`. In prompts and a
 
 Prefer state checks over answer checks, check that unrelated content survived an edit, and add a check that fails on the prepared fixture. Validate the format with `npm run eval -- --task <id>`; the task schema is `taskSchema` in `scripts/eval/tasks.mjs`.
 
-## Coverage and planned tasks
+## Coverage
 
-The 28 tasks cover reading, search, links and link-preserving moves and deletes, literal edits, properties, text files, Canvas, Bases, backlog planning, document and code generation, project scope, dry runs, and recovery from `CONFLICT`, `AMBIGUOUS_EDIT` and `NOT_FOUND`. They use only commands that exist today. Tasks for multi-edits, section edits and `apply` plans, and for `vault check`, are added when those commands land.
+The 33 tasks cover reading, search, links and link-preserving moves and deletes, literal edits, precise edits (a section rewrite, a block replacement that keeps its `^id`, and several replacements in one `--edits` list), an atomic `apply` plan that sets a property, moves a note with link rewriting, edits it and moves another note to the trash, a `vault check --strict` repair loop, properties, text files, Canvas, Bases, backlog planning, document and code generation, project scope, dry runs, and recovery from `CONFLICT`, `AMBIGUOUS_EDIT` and `NOT_FOUND`. Keep the suite at most 35 tasks so the reference run stays affordable inside `npm run check`; replace a task rather than growing the suite past that.

@@ -1,0 +1,27 @@
+id: apply-plan
+title: Archive a project in one atomic change
+category: linking
+prompt: |
+  Archive the Beta project in one atomic change: move Projects/Beta.md to Archive/Beta.md so
+  that links to it keep working, set its status property to archived, point its broken
+  [[Idea List]] link at the existing Ideas note, and move Scratch.md to the trash.
+  Either every part of this happens or none of it does.
+fixture: vault
+reference:
+  - [create, plan.json, --content, '{"version":1,"operations":[{"op":"frontmatter","path":"Projects/Beta.md","set":{"status":"archived"},"ifMatch":"{{revision:Projects/Beta.md}}"},{"op":"move","from":"Projects/Beta.md","to":"Archive/Beta.md"},{"op":"edit","path":"Archive/Beta.md","edits":[{"find":"[[Idea List]]","replace":"[[Ideas]]"}]},{"op":"delete","path":"Scratch.md","ifMatch":"{{revision:Scratch.md}}"}]}']
+  - [apply, plan.json, --dry-run]
+  - [apply, plan.json]
+checks:
+  - file: Projects/Beta.md
+    exists: false
+  - file: Archive/Beta.md
+    contains: ["Related thinking lives in [[Ideas]].", "Testers should recieve the offline bundle by email."]
+    frontmatter: { status: archived, tags: [project] }
+  - file: Home.md
+    contains: ["- [[Archive/Beta]]\n", "- [[Projects/Alpha]]\n"]
+  - file: Scratch.md
+    exists: false
+  - file: .trash/Scratch.md
+    contains: [Temporary notes from a call.]
+  - command: [links, unresolved]
+    data: { pointer: /links, length: 0 }

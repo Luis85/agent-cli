@@ -1,0 +1,24 @@
+id: vault-check-strict
+title: Fix every error until the strict vault check passes
+category: linking
+prompt: |
+  Make the strict vault check pass. Fix each error it reports: point a misspelled or
+  misnamed link at the existing note it means, and remove embeds of attachments that do
+  not exist. Do not delete or create notes.
+fixture: vault
+setup:
+  - [create, Trips/Lakes.md, --content, "# Lakes\n\nStart from [[Projects/Alpah]] and the map ![[maps/lakes.png]].\n"]
+reference:
+  - run: [vault, check, --strict]
+    expect: { code: VAULT_CHECK_FAILED }
+  - [edit, Projects/Beta.md, --if-match, "{{revision:Projects/Beta.md}}", --find, "[[Idea List]]", --replace, "[[Ideas]]"]
+  - [edit, Trips/Lakes.md, --if-match, "{{revision:Trips/Lakes.md}}", --edits, '[{"find":"[[Projects/Alpah]]","replace":"[[Projects/Alpha]]"},{"find":" and the map ![[maps/lakes.png]]","replace":""}]']
+  - [vault, check, --strict]
+checks:
+  - command: [vault, check, --strict]
+    data: { pointer: /summary/error, equals: 0 }
+  - file: Trips/Lakes.md
+    contains: ["Start from [[Projects/Alpha]]."]
+    notContains: [Alpah, "![[maps/lakes.png]]"]
+  - file: Projects/Beta.md
+    contains: ["Related thinking lives in [[Ideas]]."]

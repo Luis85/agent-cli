@@ -7,9 +7,9 @@ import { describeCheck } from '../../scripts/eval/checks.mjs';
 const tasks = loadTasks();
 
 describe('agent evaluation task files', () => {
-  it('define 20 to 30 tasks with unique ids that cover every category', () => {
+  it('define 20 to 35 tasks with unique ids that cover every category', () => {
     expect(tasks.length).toBeGreaterThanOrEqual(20);
-    expect(tasks.length).toBeLessThanOrEqual(30);
+    expect(tasks.length).toBeLessThanOrEqual(35);
     expect(new Set(tasks.map(task => task.id)).size).toBe(tasks.length);
     expect(new Set(tasks.map(task => task.category))).toEqual(new Set(categories));
   });

@@ -1,0 +1,20 @@
+id: edit-block
+title: Replace a paragraph that another note links to by block id
+category: editing
+prompt: |
+  Home.md links to the budget decision in Meetings/2026-10-01.md by its block id ^budget.
+  Replace the text of that paragraph with "We agreed on a budget of 4,000 EUR for the Alpha pilot."
+  The link from Home.md must keep working.
+fixture: vault
+setup:
+  - [edit, Meetings/2026-10-01.md, --if-match, "{{initial:Meetings/2026-10-01.md}}", --find, "for the Alpha pilot.", --replace, "for the Alpha pilot. ^budget"]
+  - [edit, Home.md, --if-match, "{{initial:Home.md}}", --append, --content, "\nBudget decision: [[Meetings/2026-10-01#^budget]]\n"]
+reference:
+  - [edit, Meetings/2026-10-01.md, --if-match, "{{revision:Meetings/2026-10-01.md}}", --block, budget, --replace, "We agreed on a budget of 4,000 EUR for the Alpha pilot."]
+checks:
+  - file: Meetings/2026-10-01.md
+    contains: ["# Planning meeting #meeting\n\nWe agreed on a budget of 4,000 EUR for the Alpha pilot. ^budget\n", "- [ ] Send budget to Ada\n"]
+    notContains: [We agreed on the budget]
+  - command: [vault, check, --path, Home.md, --rule, unresolved-anchor]
+    data: { pointer: /summary/findings, equals: 0 }
+  - unchanged: Home.md

@@ -1,0 +1,16 @@
+id: edit-section
+title: Rewrite one section of a note
+category: editing
+prompt: |
+  Rewrite the Plan section of Projects/Alpha.md so that it lists exactly these steps:
+  "1. Prototype the share link.", "2. Run a pilot with two hiking groups." and
+  "3. Publish the share link.". Keep the heading, the frontmatter and every other section as they are.
+fixture: vault
+reference:
+  - [edit, Projects/Alpha.md, --if-match, "{{revision:Projects/Alpha.md}}", --section, "Alpha: route sharing > Plan", --replace, "1. Prototype the share link.\n2. Run a pilot with two hiking groups.\n3. Publish the share link.\n"]
+checks:
+  - file: Projects/Alpha.md
+    contains: ["## Plan\n\n1. Prototype the share link.\n2. Run a pilot with two hiking groups.\n3. Publish the share link.\n\n## Risks\n", "- Vendor delay on the map tiles.\n", "Back to [[Home]]."]
+    notContains: [recieve a route]
+    frontmatter: { status: active, owner: "[[People/Ada]]" }
+  - unchanged: Projects/Beta.md
