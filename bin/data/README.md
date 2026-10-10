@@ -54,7 +54,7 @@ This URL serves the latest `main` branch. For a fixed version, use a reviewed co
 - `templates`, `config`: inspect template inputs and effective configuration; install editable PRD, use-case, build-spec, design, implementation, test and release templates.
 - `data-sources`, `make data-source`: manage Markdown-defined REST/local JSON data sources and generate deterministic TypeScript adapters; see [data sources](docs/reference/data-sources.md).
 - `setup`, `project`: initialize a workspace, discover and select independent TypeScript libraries, and add domain or application components.
-- `create`, `read`, `write`, `edit`, `properties`, `patch`, `validate`, `list`: Markdown/YAML properties, JSON Canvas graphs, Bases YAML, and lossless attachment handling.
+- `create`, `read`, `write`, `edit`, `properties`, `patch`, `validate`, `list`: Markdown/YAML properties, JSON Canvas graphs, Bases YAML, UTF-8 source and data files, and lossless attachment handling.
 - `schema`, `help`, `formats`, `events`, `plugins`: discover the installed contracts and capabilities.
 - `skills`: inspect and install agent workflows for safe file editing, feature development and verification.
 - Explicit runtime plugins: manifest discovery, `onload`/`onunload`, commands, generators, validated events and skills.
@@ -81,9 +81,9 @@ node bin/app.js create plan.canvas
 node bin/app.js create tasks.base
 ```
 
-Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input and report planned hashes and paths without writing files or emitting file events.
+Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input, check `--if-match` like the real write, and report planned hashes, paths and a unified `diff` per text file without writing files or emitting file events. Responses carry only committed file-change events by default; add `--events all` for the full lifecycle history. See [dry-run diffs](docs/reference/cli.md#dry-run-diffs).
 
-If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. Follow the [write and recovery contract](docs/reference/cli.md#write-contract) before removing it.
+If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. `error.details.lock` names the holder's pid, host, start time and command, and `error.details.stale` reports `active`, `likely` or `unknown`. Forge never removes the lock itself; follow the [write and recovery contract](docs/reference/cli.md#write-contract) before deleting it.
 
 ## Documentation
 

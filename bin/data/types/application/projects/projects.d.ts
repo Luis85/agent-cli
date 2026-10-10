@@ -32,12 +32,12 @@ export declare class ProjectService {
             content: string;
         }[];
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: ProjectInfo | null;
     } | {
         preview?: undefined;
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: ProjectInfo | null;
     }>;
     close(): Promise<{
@@ -46,12 +46,12 @@ export declare class ProjectService {
             content: string;
         }[];
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: ProjectInfo | null;
     } | {
         preview?: undefined;
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: ProjectInfo | null;
     }>;
     create(name: string): Promise<{
@@ -69,7 +69,7 @@ export declare class ProjectService {
             content: string;
         }[];
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: {
             schemaVersion: number;
             name: string;
@@ -88,7 +88,7 @@ export declare class ProjectService {
         })[];
         preview?: undefined;
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: {
             schemaVersion: number;
             name: string;
@@ -102,7 +102,7 @@ export declare class ProjectService {
             content: string;
         }[];
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: ProjectInfo;
         component: {
             name: string;
@@ -111,7 +111,7 @@ export declare class ProjectService {
     } | {
         preview?: undefined;
         dryRun: boolean;
-        changes: import("../../sdk.ts").FileChange[];
+        changes: Array<import("../../sdk.ts").FileChange | import("../../domain/documents/file.ts").PlannedChange>;
         project: ProjectInfo;
         component: {
             name: string;
