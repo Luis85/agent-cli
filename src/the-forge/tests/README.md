@@ -5,7 +5,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | Concern | Coverage |
 | --- | --- |
 | [architecture](architecture/) | Domain and application import boundaries |
-| [bases](bases/) | Standalone native Bases filters, formulas, file metadata, link resolution, portable repository queries and query scaling |
+| [bases](bases/) | Standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries and query scaling |
 | [cli](cli/) | Argument parsing, discovery, errors, and input routing |
 | [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
 | [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
@@ -15,6 +15,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
 | [interactions](interactions/) | Declarative event/action schemas, component attachment, generated behavior, and portable workflows |
+| [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks and incremental updates against full rebuilds |
 | [plugins](plugins/) | Plugin lifecycle, generators, events, and skill installation |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |

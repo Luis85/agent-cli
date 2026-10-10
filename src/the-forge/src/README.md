@@ -34,6 +34,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | UI and interaction definitions | `domain/ui/`, `domain/interactions/` and matching application/infrastructure/presentation concerns |
 | Framework output | `infrastructure/ui/renderers/` and `infrastructure/ui/interactions/` |
 | Data sources | Matching `data-sources/` folders in all four layers |
+| Vault metadata cache: links, tags, headings, blocks and resolution | `domain/metadata/`, `application/metadata/`, `infrastructure/metadata/` |
 | Bases queries | `application/bases/`, `infrastructure/bases/`, `presentation/bases/` |
 | Generators, templates and skills | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` / `presentation/skills/` |
 | Project-owned CI workflows and generated GitHub entrypoints | Matching `workflows/` folders in all four layers; authored workflow sources sit beside the renderer in `infrastructure/workflows/<concern>/` |

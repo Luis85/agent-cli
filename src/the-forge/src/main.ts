@@ -42,6 +42,8 @@ import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
 import { claudeCommand } from './presentation/claude/commands.ts';
 import { Bases } from './application/bases/query.ts';
 import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
+import { VaultMetadata } from './application/metadata/vault-metadata.ts';
+import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { basesCommand } from './presentation/bases/commands.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/cli/arguments.ts';
@@ -103,7 +105,7 @@ async function run(): Promise<void> {
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
       })) registry.add(registry.commands, command);
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
-      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec))));
+      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec, () => context.metadata.load()))));
       if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
@@ -128,7 +130,10 @@ async function run(): Promise<void> {
       const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun, resolve(files.root, project.directory)) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
-      const context: CommandContext = { workspace, events, claude, ...activeContext, input: async () => {
+      const vaultMetadata = new VaultMetadata(workspace.files, new ObsidianMetadataParser(workspace.codec));
+      // Committed writes keep a loaded cache current; before the first load an update does nothing.
+      for (const id of ['file.created', 'file.updated', 'file.deleted'] as const) events.on<HostEventMap[typeof id]>(id, async change => { await vaultMetadata.update([change]); });
+      const context: CommandContext = { workspace, events, claude, metadata: vaultMetadata, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
