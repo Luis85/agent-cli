@@ -162,7 +162,7 @@ After plugins register, the host validates each declared section, fills `default
 
 ## Strings and error codes
 
-`strings` contributes localized text per language, `en` and `de`: `commands`, `generators` and `events` map the plugin's own ids to descriptions; `errors` maps its registered codes to `{summary, hint}`; `messages` holds free-form guidance that plugin code reads with `context.t(key)` in the response language, falling back to English and then to the key. Keys must name the plugin's own contributions (`PLUGIN_NAMESPACE` otherwise). The localizer merges them after the kernel catalogs, so `--lang de` describes plugin commands, generators and events in German.
+`strings` contributes localized text per language, `en` and `de`: `commands`, `generators` and `events` map the plugin's own ids to descriptions; `actions` maps `<command> <action>` keys of the plugin's own command actions (`"links orphans"`) to descriptions; `errors` maps its registered codes to `{summary, hint}`; `messages` holds free-form guidance that plugin code reads with `context.t(key)` in the response language, falling back to English and then to the key. Keys must name the plugin's own contributions (`PLUGIN_NAMESPACE` otherwise). The localizer merges them after the kernel catalogs, so `--lang de` describes plugin commands, their actions, generators and events in German.
 
 `errors` registers catalog entries `{code, category, summary, hint, retryable?}`, with the categories and exit statuses of the [error catalog](errors.md). Plugin code cannot construct host errors, so it throws an `Error` with a registered `code` and optional `details`:
 

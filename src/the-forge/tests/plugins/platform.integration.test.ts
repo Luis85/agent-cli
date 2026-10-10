@@ -171,6 +171,7 @@ describe('plugin strings and error catalog', () => {
     [{ errors: [{ code: 'NOT_FOUND', category: 'input', summary: 'S', hint: 'H' }] }, 'PLUGIN_NAMESPACE'],
     [{ strings: { fr: {} } }, 'INVALID_PLUGIN'],
     [{ strings: { de: { commands: { 'other.run': 'Fremd' } } } }, 'PLUGIN_NAMESPACE'],
+    [{ strings: { de: { actions: { 'other.run list': 'Fremd' } } } }, 'PLUGIN_NAMESPACE'],
     [{ strings: { de: { errors: { QUALITY_UNKNOWN: { summary: 'S', hint: 'H' } } } } }, 'PLUGIN_NAMESPACE'],
   ])('rejects invalid strings and error contributions %#', (contribution, code) => {
     const { registry, events } = setup();

@@ -39,7 +39,16 @@ export const linksPlugin: CorePlugin = {
     },
     validateSettings: rootIssues,
     strings: {
-      de: { commands: { links: 'Ausgehende Links, Rückverweise, unaufgelöste Links, verwaiste Notizen und Sackgassen aus dem Metadaten-Cache melden.' } },
+      de: {
+        commands: { links: 'Ausgehende Links, Rückverweise, unaufgelöste Links, verwaiste Notizen und Sackgassen aus dem Metadaten-Cache melden.' },
+        actions: {
+          'links out': 'Jeder Link, jede Einbettung, jeder Frontmatter-Link und jeder Canvas-Dateiknoten einer Datei, mit Fundstelle und Auflösung.',
+          'links back': 'Verweise in anderen Dateien, die auf eine Datei aufgelöst werden.',
+          'links unresolved': 'Jeder fehlende oder mehrdeutige Verweis im Vault, mit Kandidaten für mehrdeutige.',
+          'links orphans': 'Markdown- und Canvas-Notizen, auf die keine andere Datei verlinkt oder die sie einbettet, außer konfigurierten Einstiegsnotizen.',
+          'links deadends': 'Markdown- und Canvas-Notizen ohne Link auf eine andere Datei.',
+        },
+      },
     },
   }),
 };

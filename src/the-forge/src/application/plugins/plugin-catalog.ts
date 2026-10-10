@@ -6,6 +6,8 @@ const languages: readonly Language[] = ['en', 'de'];
 /** Localized text a plugin contributes for its own commands, generators, events, error codes and messages. */
 export interface PluginStringTable {
   commands?: Record<string, string>;
+  /** Descriptions of the plugin's command actions, keyed `<command> <action>`. */
+  actions?: Record<string, string>;
   generators?: Record<string, string>;
   events?: Record<string, string>;
   errors?: Record<string, { summary: string; hint: string }>;
@@ -16,8 +18,8 @@ export type PluginStrings = Partial<Record<Language, PluginStringTable>>;
 /** A plugin-defined failure code with the same fields as a built-in catalog entry. */
 export interface PluginErrorDefinition { code: string; category: ErrorCategory; summary: string; hint: string; retryable?: boolean }
 export interface CatalogedError { pluginId: string; code: string; exitCode: number; category: ErrorCategory; summary: string; hint: string; retryable: boolean }
-type TextKind = 'commands' | 'generators' | 'events';
-interface Owned { commands: readonly string[]; generators: readonly string[]; events: readonly string[] }
+type TextKind = 'commands' | 'actions' | 'generators' | 'events';
+interface Owned { commands: readonly string[]; actions: readonly string[]; generators: readonly string[]; events: readonly string[] }
 
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 const errorCode = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
@@ -48,7 +50,7 @@ export class PluginCatalog {
     for (const [language, table] of Object.entries((strings ?? {}) as Record<string, unknown>)) {
       ensure((languages as readonly string[]).includes(language) && isRecord(table), 'INVALID_PLUGIN', `strings.${language} is not a supported language table (en, de).`);
       for (const [kind, entries] of Object.entries(table)) {
-        ensure(['commands', 'generators', 'events', 'errors', 'messages'].includes(kind) && isRecord(entries), 'INVALID_PLUGIN', `strings.${language}.${kind} is not a string table.`);
+        ensure(['commands', 'actions', 'generators', 'events', 'errors', 'messages'].includes(kind) && isRecord(entries), 'INVALID_PLUGIN', `strings.${language}.${kind} is not a string table.`);
         for (const [id, entry] of Object.entries(entries)) {
           const known = kind === 'messages' || (kind === 'errors' ? codes.has(id) : owned[kind as TextKind].includes(id));
           ensure(known, 'PLUGIN_NAMESPACE', `strings.${language}.${kind}.${id} does not name a contribution of plugin ${pluginId}.`);

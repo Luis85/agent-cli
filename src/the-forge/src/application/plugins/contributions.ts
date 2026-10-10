@@ -41,7 +41,8 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
   const defaults = plugin.settings === undefined ? [] : defaultIssues(plugin.settings as JsonSchema, 'settings');
   ensure(defaults.length === 0, 'INVALID_PLUGIN', `settings defaults must satisfy their own schemas: ${defaults.join('; ')}`);
   const owned = (key: typeof lists[number]) => ((plugin[key] ?? []) as Array<{ id: string }>).map(item => item.id);
-  PluginCatalog.validate(pluginId, plugin.strings, plugin.errors, { commands: owned('commands'), generators: owned('generators'), events: owned('events') }, origin === 'core' ? null : errorPrefix(pluginId));
+  const actions = ((plugin.commands ?? []) as Array<{ id: string; actions?: object }>).flatMap(command => Object.keys(command.actions ?? {}).map(action => `${command.id} ${action}`));
+  PluginCatalog.validate(pluginId, plugin.strings, plugin.errors, { commands: owned('commands'), actions, generators: owned('generators'), events: owned('events') }, origin === 'core' ? null : errorPrefix(pluginId));
 }
 
 function validateGenerator(generator: Record<string, unknown>): void {
