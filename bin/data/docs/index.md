@@ -53,6 +53,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Plugins and events](reference/plugins.md) | Manifests, contributions, lifecycle and delivery semantics |
 | [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
+| [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 
 Run `node bin/app.js schema --json` for the installed executable's command catalog, and `node bin/app.js config --json` for its effective settings. The installed version is the authority for available commands.
 

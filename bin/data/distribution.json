@@ -56,6 +56,7 @@
     "data/docs/reference/storybook.md",
     "data/docs/reference/templates.md",
     "data/docs/reference/ui-components.md",
+    "data/docs/reference/workflows.md",
     "data/docs/templates/projects/form-model.ts",
     "data/docs/templates/projects/form-view.ts",
     "data/docs/templates/projects/project-demo.css",

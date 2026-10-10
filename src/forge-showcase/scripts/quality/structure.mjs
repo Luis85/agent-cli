@@ -14,9 +14,9 @@ try {
       report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });
     }
     if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });
-    if (forgeLayout && path.startsWith('src/') && !['src/the-forge/main.ts', 'src/the-forge/sdk.ts', 'src/the-forge/vite-env.d.ts'].includes(path)) {
-      if (!/^src\/the-forge\/(?:domain|application|infrastructure|presentation)\/[^/]+\/.+/.test(path)) {
-        report.violations.push({ path, rule: 'source-location', expected: 'Use src/the-forge/<layer>/<concern>/...; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });
+    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {
+      if (!/^src\/(?:domain|application|infrastructure|presentation)\/[^/]+\/.+/.test(path)) {
+        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/...; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });
       }
     }
   }

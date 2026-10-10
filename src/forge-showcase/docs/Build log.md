@@ -201,6 +201,7 @@ node bin/app.js bases query docs/bases/Library.base --view 'Data sources'
 
 ```sh
 node bin/app.js create src/infrastructure/workflows/check/check.yml --stdin < input
+node bin/app.js workflows list
 ```
 
 ## Agents and skills

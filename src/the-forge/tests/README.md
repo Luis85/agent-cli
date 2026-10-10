@@ -21,8 +21,9 @@ Tests live under the concern they verify. Every executable test file declares it
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
 | [templates](templates/) | Template rendering, required inputs, planning-pack installation, and project workflows |
 | [ui](ui/) | Component definitions, composition, renderers, Storybook, real framework compilation, and CLI workflows |
+| [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |
-| [support](support/) | Shared fixtures, including the copied portable CLI harness |
+| [support](support/) | Shared fixtures, including the copied portable CLI harness and the workspace distribution location |
 
 Choose the level from the boundary exercised:
 
@@ -32,7 +33,7 @@ Choose the level from the boundary exercised:
 
 Keep isolated codec assertions separate from filesystem lifecycle suites. Framework compatibility tests belong to integration even when their inputs are small; asserting emitted text alone is unit coverage. Avoid changing a label merely to change pyramid counts. Prefer many focused unit cases, fewer boundary tests, and a small set of complete workflows.
 
-Run commands from the repository root:
+Run commands from the Forge project directory `src/the-forge`. Tests that need the built distribution, the showcase or the checkout's generated workflows locate the workspace through `support/workspace.ts`, which reads `config.distribution` from `package.json`:
 
 ```sh
 npm test -- --project unit

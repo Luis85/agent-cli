@@ -36,18 +36,19 @@ npm ci
 npm run check
 ```
 
-Its CI workflow is authored at `src/infrastructure/workflows/check/check.yml` inside the project and assumes that it runs with the project directory as its working directory. The Forge repository's own gate does not lint, analyze or type-check the showcase; `configs/quality/source.json` limits Forge's source inventory to `src/the-forge`.
+Its CI workflow is authored at `src/infrastructure/workflows/check/check.yml` inside the project and stays independent of its location. From the workspace root, `node bin/app.js workflows sync` generates `.github/workflows/forge-showcase--check.yml`, which runs the steps in the project directory on Node 22.12 and 24 and only for changes to the project; see [workflows](../reference/workflows.md). The Forge's own gate does not lint, analyze or type-check the showcase: Forge's checks cover only its own project directory, `src/the-forge`.
 
 ## Regenerate and check drift
 
-From the repository root, after `npm run build`:
+From the Forge project directory `src/the-forge`, after `npm run build`:
 
 ```sh
+cd src/the-forge
 npm run showcase
 npm run showcase:check
 ```
 
-`npm run showcase` runs `scripts/showcase.mjs`. The script creates a temporary workspace with a fixed configuration, drives the bundled `bin/app.js` with `--root` and `--json`, fixed inputs and the fixed date `2026-10-10T09:00:00Z`, checks every exit status and `ok` field, and fails loudly on the first error. It then replaces exactly `src/forge-showcase` with the generated project. It never changes the checkout's project selection, configuration, templates or plugins, and it fails if generation writes outside the project. Running it twice produces identical bytes and uses no network.
+`npm run showcase` runs the Forge project's `scripts/showcase.mjs`. The script finds the workspace as the parent of the `bin/` directory that `config.distribution` in `package.json` names, creates a temporary workspace with a fixed configuration, drives the workspace's bundled `bin/app.js` with `--root` and `--json`, fixed inputs and the fixed date `2026-10-10T09:00:00Z`, checks every exit status and `ok` field, and fails loudly on the first error. It then replaces exactly the workspace's `src/forge-showcase` with the generated project. It never changes the checkout's project selection, configuration, templates or plugins, and it fails if generation writes outside the project. Running it twice produces identical bytes and uses no network.
 
 `npm run showcase:check` regenerates into a temporary workspace only and compares the result with the committed tree. It exits nonzero and lists each `missing`, `unexpected` or `changed` path, without modifying the checkout. Untracked toolchain outputs such as `node_modules`, `dist` and `.quality-reports` are ignored.
 
@@ -57,4 +58,4 @@ The lockfile is produced by npm, not by the CLI. Regeneration keeps the committe
 npm run showcase -- --lockfile
 ```
 
-When a change alters generated output or adds a user-visible capability, extend `scripts/showcase/`, regenerate and commit the showcase with the change. Do not edit generated showcase files by hand. See [develop and test](develop-and-test.md) for the full repository gate.
+When a change alters generated output or adds a user-visible capability, extend `scripts/showcase/`, regenerate and commit the showcase with the change. Do not edit generated showcase files by hand. See [develop and test](develop-and-test.md) for the full Forge gate.

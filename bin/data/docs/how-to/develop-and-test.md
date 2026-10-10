@@ -5,6 +5,7 @@
 Use Node >=22.12, npm and GNU tar (needed by archive tests and release packaging). `npm ci` installs locked development dependencies, including Oxlint 1.86.0 and the Rust-based fallow 3.31.0 analyzer. Their platform-specific native binaries are development tools; installation requires a supported OS/architecture and npm optional dependencies. Do not use `--omit=optional`. No Rust toolchain is needed for the prebuilt npm packages. Runtime libraries include Commander for CLI parsing, Zod for configuration, unified/remark for Markdown structure, YAML for document codecs, and Day.js for template dates. Vite includes them in the executable; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because `bin/package.json` sets `type: commonjs` for `bin/app.js`; keep both files together. Packaging copies direct and transitive runtime dependency licenses and generates `THIRD-PARTY-NOTICES.md` from the lockfile.
 
 ```sh
+cd src/the-forge
 npm ci
 # quick feedback while changing code
 npm run check:fast
@@ -14,22 +15,24 @@ npm run check
 npm run release
 ```
 
-`npm test` expects `bin/app.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
+Run npm from the Forge project directory `src/the-forge`; it owns `package.json`, the lockfile and `node_modules`. The workspace root has no npm toolchain. `npm test` expects the workspace `bin/app.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses, skills or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
+
+The build writes into the workspace `bin/` that `config.distribution` in `package.json` names (`../../bin`, relative to the project). Vite, `scripts/package.mjs`, `scripts/release.mjs`, the showcase script and the test support module `tests/support/workspace.ts` all read that one setting, so no script assumes the repository layout implicitly.
 
 ## Develop the selected source project
 
-Run the commands above from the repository root. Runtime source lives in `src/the-forge`; package/build configuration, tests, `scripts/` and `configs/` remain at the root. The checkout's tracked `bin/config.json` uses `paths.projects: "src"`, its `src/the-forge/.forge/project.json` marker registers the source project, and tracked `bin/data/context.json` selects `the-forge`. Confirm scope before using the bundled CLI:
+The checkout's tracked `bin/config.json` uses `paths.projects: "src"`, its `src/the-forge/.forge/project.json` marker registers the Forge project, and tracked `bin/data/context.json` selects `the-forge`. Confirm scope from the workspace root before using the bundled CLI:
 
 ```sh
 node bin/app.js project current --json
 node bin/app.js project open the-forge
-node bin/app.js read README.md --json
-node bin/app.js make entity SourceProbe --out domain/example --dry-run
+node bin/app.js read src/main.ts --json
+node bin/app.js make entity SourceProbe --out src/domain/example --dry-run
 ```
 
-These file paths resolve under `src/the-forge`. Specify a layer/concern output for self-generation: the normal `src/domain` generator default would create `src/the-forge/src/domain`. `project close` explicitly returns file commands to the repository root; reopen `the-forge` to resume source work. Setup and builds preserve the saved selection, including an intentional closed selection. Release packaging restores generic configuration and omits the checkout selection in the archive.
+These file paths resolve relative to the project root `src/the-forge`, the same way they resolve in any generated project: `read README.md` reads the project README, `read src/main.ts` the runtime entry, and `--out src/domain/<concern>` targets a source layer concern. `project close` explicitly returns file commands to the workspace root; reopen `the-forge` to resume project work. Setup and builds preserve the saved selection, including an intentional closed selection. Release packaging restores generic configuration and omits the checkout selection in the archive.
 
-The repository's `configs/quality/source.json` declares `sourceRoot: "src/the-forge"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source and authored asset code rather than all sibling managed projects in `src`. This quality policy is independent of the CLI's selected project. Run another project's own checks from its directory. Portable generated projects without this policy continue to use their ordinary `src` source root.
+The project's `configs/quality/source.json` declares `sourceRoot: "src"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source, `tests`, `scripts`, root configuration files and authored asset code. Sibling managed projects such as `src/forge-showcase` live outside the project directory, so they are never part of Forge's checks; run each project's own checks from its directory. This quality policy is independent of the CLI's selected project. Portable generated projects without this policy continue to use their ordinary `src` source root.
 
 ## Showcase drift check
 
@@ -56,7 +59,7 @@ After the targeted checks pass, run `npm run check` once as the final gate. It r
 
 ## Verification
 
-Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, showcase, templates, UI and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
+Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, showcase, templates, UI, workflows and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
 
 Every test has an explicit pyramid rank in its filename and runs in the matching named Vitest project:
 
@@ -68,9 +71,9 @@ Every test has an explicit pyramid rank in its filename and runs in the matching
 
 Put most behavioral cases in focused unit tests, test real boundaries with integration tests, and keep end-to-end cases for complete workflows. Choose the layer by what a test exercises, including when splitting pure parser/graph assertions away from filesystem or lifecycle integration tests. A concern folder can contain multiple ranks. Run `npm run build` before tests that execute the bundle; the full `check` does this automatically.
 
-`npm run lint` uses Oxlint's `max-lines` rule with `skipBlankLines` and `skipComments` to enforce **400 code-bearing lines per authored source file** and **450 per test file or test-support file under `tests/`**. Blank and comment-only lines are excluded; lines containing both code and comments count. The inventory covers authored JavaScript/TypeScript in configured `src/the-forge`, `docs/examples` and `docs/templates`, plus `scripts`, `tests` and root configuration files. Generated `bin` artifacts are excluded. When approaching a limit, extract a cohesive responsibility or split tests by behavior; do not compress statements, remove useful comments or rename files just to evade a limit. Line-limit findings appear in `.quality-reports/oxlint.json`.
+`npm run lint` uses Oxlint's `max-lines` rule with `skipBlankLines` and `skipComments` to enforce **400 code-bearing lines per authored source file** and **450 per test file or test-support file under `tests/`**. Blank and comment-only lines are excluded; lines containing both code and comments count. The inventory covers authored JavaScript/TypeScript in the configured project `src`, `docs/examples` and `docs/templates`, plus `scripts`, `tests` and root configuration files. Generated `bin` artifacts are excluded. When approaching a limit, extract a cohesive responsibility or split tests by behavior; do not compress statements, remove useful comments or rename files just to evade a limit. Line-limit findings appear in `.quality-reports/oxlint.json`.
 
-`npm run check:structure` checks test-pyramid suffixes, requires tests under `tests/`, and enforces Forge's `src/the-forge/<layer>/<concern>/` layout. It saves `.quality-reports/structure.json` using the same diagnostic envelope as lint/analysis. Use `node scripts/quality/structure.mjs --source-layout forge` for JSON stdout without npm's banner. The generated-project copy runs without that switch and keeps its own scaffold layout. See the source repository’s `src/the-forge/README.md` for placement rules. The TypeScript gate uses the official `tsc` compiler for application source and an explicit inventory of all test/support files, including hidden paths and JavaScript with `allowJs`/`checkJs`. This avoids files being silently omitted by compiler globs. Passing Vitest execution alone does not replace type checking.
+`npm run check:structure` checks test-pyramid suffixes, requires tests under `tests/`, and enforces Forge's `src/<layer>/<concern>/` layout. It saves `.quality-reports/structure.json` using the same diagnostic envelope as lint/analysis. Use `node scripts/quality/structure.mjs --source-layout forge` for JSON stdout without npm's banner. The generated-project copy runs without that switch and keeps its own scaffold layout. See the project's `src/README.md` for placement rules. The TypeScript gate uses the official `tsc` compiler for application source and an explicit inventory of all test/support files, including hidden paths and JavaScript with `allowJs`/`checkJs`. This avoids files being silently omitted by compiler globs. Passing Vitest execution alone does not replace type checking.
 
 Vitest exercises Canvas invariants, YAML/frontmatter preservation, optimistic revisions, no-write previews, path and symlink rejection, batch collision preflight, event delivery/lifecycle, and the standalone JSON protocol. End-to-end tests copy the bundle to a temporary directory without `node_modules` and invoke it through Node. Every accepted attachment extension gets a binary round-trip test; these tests establish byte fidelity, not media codec validity. Tests also load an external runtime plugin from the copied bundle. An architecture test rejects infrastructure or Node imports in domain/application code.
 
@@ -88,7 +91,7 @@ No global dependency container, Obsidian process or npm runtime installation is 
 
 ## Platform matrix
 
-GitHub Actions runs the full gate (`npm ci`, then `npm run check`) for every pull request, every push to `main` and manual dispatches. Pushes to other branches run only through their pull request, so each change runs the matrix once:
+GitHub Actions runs the full gate (`npm ci`, then `npm run check`, both in `src/the-forge`) for manual dispatches and for every pull request and push to `main` that touches the Forge project, the workspace `bin/` or the generated workflow itself. Pushes to other branches run only through their pull request, so each change runs the matrix once. The workflow is authored in `src/infrastructure/workflows/check/check.yml` and synchronized to `.github/workflows/the-forge--check.yml` by `node bin/app.js workflows sync`; a separate guard workflow runs `workflows sync --check` on every pull request. See [workflows](../reference/workflows.md).
 
 | Runner | Node | Additional steps |
 | --- | --- | --- |

@@ -81,6 +81,8 @@ export declare const errorCatalog: {
     readonly INVALID_GENERATION_REVISIONS: ErrorDefinition;
     readonly UI_DRIFT: ErrorDefinition;
     readonly DATA_SOURCE_DRIFT: ErrorDefinition;
+    readonly INVALID_WORKFLOW: ErrorDefinition;
+    readonly WORKFLOW_DRIFT: ErrorDefinition;
     readonly INVALID_UI: ErrorDefinition;
     readonly INVALID_UI_LIBRARY: ErrorDefinition;
     readonly INVALID_UI_FRAMEWORK: ErrorDefinition;

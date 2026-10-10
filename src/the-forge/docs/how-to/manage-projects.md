@@ -21,7 +21,7 @@ bin/
 projects/                 # configurable with paths.projects
 ```
 
-`bin/package.json` keeps `app.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; authored skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
+`bin/package.json` keeps `app.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
 
 To initialize another existing directory, run `node /absolute/path/to/bin/app.js --root /absolute/path/to/workspace setup`. The workspace root must exist. Setup always targets the workspace, even while a project is open. It does not install npm packages or silently upgrade existing application files; replace a bundle explicitly from a reviewed distribution.
 
@@ -29,7 +29,9 @@ To initialize another existing directory, run `node /absolute/path/to/bin/app.js
 
 Newly generated projects are TypeScript libraries under `paths.projects`, default `projects`. Set that configuration value to `src` or another workspace-relative directory when preferred. Generated projects have their own build/test setup and a marker used for discovery; unrelated directories are not assumed to be managed projects.
 
-The Forge checkout selects its existing source as `the-forge` under configured `src`, using `src/the-forge/.forge/project.json`. Its build/test toolchain remains at the repository root. With that selection, file commands address `src/the-forge`; use explicit generation destinations such as `--out domain/example` to avoid nesting the generic `src/domain` default. Run `project open the-forge` to restore this source scope after working with another project. Released bundles start with generic defaults and no source-checkout selection.
+The Forge checkout manages The Forge itself as the self-contained project `the-forge` under configured `src`, using `src/the-forge/.forge/project.json`. Like a generated project, it owns its package, lockfile, build/test toolchain, docs and CI; its build writes the workspace `bin/`. With that selection, file commands address `src/the-forge`, so runtime source is `src/main.ts` and `--out src/domain/example` targets a source layer, exactly as in a generated project. Run `project open the-forge` to restore this project scope after working with another project. Released bundles start with generic defaults and no source-checkout selection.
+
+Each project can author its own CI under `src/infrastructure/workflows/<concern>/`. Run `node bin/app.js workflows sync` from the workspace to generate the prefixed `.github/workflows` entrypoints, and `workflows sync --check` in CI to detect drift. See [workflows](../reference/workflows.md).
 
 ```sh
 node bin/app.js project list --json

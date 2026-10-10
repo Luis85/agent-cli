@@ -53,6 +53,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Plugins and events](reference/plugins.md) | Manifests, contributions, lifecycle and delivery semantics |
 | [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
+| [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 
 Run `node bin/app.js schema --json` for the installed executable's command catalog, and `node bin/app.js config --json` for its effective settings. The installed version is the authority for available commands.
 
@@ -64,4 +65,4 @@ For contributors and teams deciding how to use The Forge within their architectu
 - [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
 - [Product review](explanation/product-review.md): existing workflow findings, polishing changes, research and verification limits.
 
-Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../bin/skills/forge-workflow.md), [development skill](../bin/skills/forge-development.md) and [file-editing skill](../bin/skills/forge-vault.md).
+Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../skills/forge-workflow.md), [development skill](../skills/forge-development.md) and [file-editing skill](../skills/forge-vault.md).
