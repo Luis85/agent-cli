@@ -23,7 +23,10 @@ describe('built-in command metadata', () => {
     expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, defaultAction: 'list', actions: { list: { mutating: false, readOnlyHint: true }, install: { scope: 'project', mutating: true, readOnlyHint: false } } });
     expect(commandAnnotations(commands.get('bases')!)).toMatchObject({ mutating: false, readOnlyHint: true });
     expect(commandAnnotations(commands.get('make')!)).toMatchObject({ mutating: true, readOnlyHint: false });
+    // The kernel make command stays generic; each generator documents its own usage.
+    expect(commands.get('make')).toMatchObject({ description: 'Run a registered generator, or list the generators.', usage: 'make [generator Name] [--out directory]' });
     expect(commandAnnotations(commands.get('make')!).actions).toMatchObject({
+      document: { usage: expect.stringContaining('make document Title --template name.md') }, 'data-source': { usage: expect.stringContaining('make data-source <id>') },
       entity: { scope: 'project', mutating: true, usage: 'make entity <Name>', options: { out: { type: 'string' } } }, plugin: { scope: 'workspace' }, ui: { scope: 'project', projectOption: 'project' },
     });
   });

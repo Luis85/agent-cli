@@ -17,7 +17,7 @@ export const germanCommands = {
   delete: 'Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.',
   move: 'Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.',
   rename: 'Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.',
-  make: 'Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.',
+  make: 'Einen registrierten Generator ausführen oder die Generatoren auflisten.',
   events: 'Ereignisverträge des Aufrufs auflisten.',
   plugins: 'Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten.',
 } satisfies Record<string, string>;

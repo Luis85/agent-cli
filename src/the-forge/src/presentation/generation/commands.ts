@@ -22,8 +22,8 @@ function generatorOptions(generator: Generator): Record<string, CommandOption> {
 export function generationCommand(registry: Registry): Command {
   return {
     id: 'make',
-    description: 'Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.',
-    usage: 'make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]',
+    description: 'Run a registered generator, or list the generators.',
+    usage: 'make [generator Name] [--out directory]',
     scope: 'workspace', discovery: false, mutating: false,
     args: [
       { name: 'generator', description: 'A generator id; without one, make lists the generators.' },
@@ -42,7 +42,7 @@ export function generationCommand(registry: Registry): Command {
     async run(args, flags, context) {
       const own = Object.keys(flags).filter(key => !Object.hasOwn(globalOptions, key));
       if (args.length === 0) {
-        ensure(own.length === 0, 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.');
+        ensure(own.length === 0, 'INVALID_ARGUMENT', 'Generation options require a generator and name. Run make <generator> <Name>; help make lists each generator\'s usage and options.');
         return { generators: generatorCatalog(registry) };
       }
       arity(args, 2);
