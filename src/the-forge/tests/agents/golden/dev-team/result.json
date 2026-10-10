@@ -1,0 +1,155 @@
+{
+  "agents": [
+    ".claude/agents/root.md",
+    ".claude/agents/designer.md",
+    ".claude/agents/awesome-engineer.md"
+  ],
+  "skills": [],
+  "mcpServers": {},
+  "settings": {
+    "permissions": {
+      "allow": [],
+      "ask": [],
+      "deny": []
+    },
+    "agent": "root"
+  },
+  "diagnostics": [
+    {
+      "severity": "info",
+      "code": "model-setting-unsupported",
+      "pointer": "/models/model/max_tokens",
+      "message": "Model setting max_tokens has no Claude agent equivalent and is not emitted.",
+      "fidelity": "U",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/root/toolsets/0",
+      "message": "The filesystem toolset is approximated by the Claude tools Read, Write, Edit, Glob, Grep.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/root/toolsets/1",
+      "message": "The think toolset is not emitted; Claude models think natively, tuned by effort.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/root/toolsets/2",
+      "message": "The todo toolset is approximated by Claude's task tools TaskCreate, TaskGet, TaskList, TaskUpdate.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/root/toolsets/3",
+      "message": "The memory toolset is approximated by memory: project; its database path is not used.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "mcp-docker-gateway",
+      "pointer": "/agents/root/toolsets/4/ref",
+      "message": "docker:context7 runs through the Docker MCP Gateway: docker mcp gateway run --servers context7.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "delegation-approximated",
+      "pointer": "/agents/root/sub_agents",
+      "message": "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when root runs as the main thread.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/designer/toolsets/0",
+      "message": "The filesystem toolset is approximated by the Claude tools Read, Write, Edit, Glob, Grep.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/designer/toolsets/1",
+      "message": "The think toolset is not emitted; Claude models think natively, tuned by effort.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/designer/toolsets/2",
+      "message": "The memory toolset is approximated by memory: project; its database path is not used.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "mcp-docker-gateway",
+      "pointer": "/agents/designer/toolsets/3/ref",
+      "message": "docker:context7 runs through the Docker MCP Gateway: docker mcp gateway run --servers context7.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "info",
+      "code": "name-sanitized",
+      "pointer": "/agents/awesome_engineer",
+      "message": "Agent awesome_engineer is generated as awesome-engineer.",
+      "fidelity": "E",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/awesome_engineer/toolsets/0",
+      "message": "The filesystem toolset is approximated by the Claude tools Read, Write, Edit, Glob, Grep.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/awesome_engineer/toolsets/2",
+      "message": "The think toolset is not emitted; Claude models think natively, tuned by effort.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/awesome_engineer/toolsets/3",
+      "message": "The memory toolset is approximated by memory: project; its database path is not used.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "mcp-docker-gateway",
+      "pointer": "/agents/awesome_engineer/toolsets/4/ref",
+      "message": "docker:context7 runs through the Docker MCP Gateway: docker mcp gateway run --servers context7.",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "main-agent-approximated",
+      "pointer": "/agents/root",
+      "message": "The default agent root becomes the project's main agent (\"agent\": \"root\").",
+      "fidelity": "A",
+      "path": "agents/dev-team.yaml"
+    }
+  ]
+}

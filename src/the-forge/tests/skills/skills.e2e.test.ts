@@ -10,7 +10,8 @@ const config = (value: unknown) => writeFile(join(fixture.project, 'bin/config.j
 
 describe('the skills core plugin', () => {
   it('lists, shows and installs the bundled skills with an unchanged CLI contract', async () => {
-    expect(cli(['skills']).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development'] });
+    // The agents core plugin contributes forge-agents after the bundled skills.
+    expect(cli(['skills']).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents'] });
     expect(cli(['skills', 'show', 'forge-vault']).body.data).toEqual({ id: 'forge-vault', content: expect.stringContaining('name: forge-vault') });
     expect(cli(['skills', 'show', 'missing']).body.error.code).toBe('UNKNOWN_SKILL');
     expect(cli(['skills', 'list', '--out', 'x']).body.error.code).toBe('INVALID_ARGUMENT');
@@ -28,7 +29,8 @@ describe('the skills core plugin', () => {
     try {
       const schema = cli(['schema']).body.data;
       expect(ids(schema.commands)).not.toContain('skills');
-      expect(schema.skills).toEqual([]);
+      // Skills contributed by other plugins stay registered for setup.
+      expect(schema.skills).toEqual(['forge-agents']);
       expect(ids(cli(['help']).body.data.commands)).not.toContain('skills');
       expect(cli(['help', 'skills']).body.error.code).toBe('UNKNOWN_COMMAND');
       expect(cli(['skills']).body.error.code).toBe('UNKNOWN_COMMAND');
@@ -37,7 +39,7 @@ describe('the skills core plugin', () => {
       expect(cli(['help']).body.error).toMatchObject({ code: 'INVALID_PLUGIN_CONFIG', message: expect.stringContaining('remove quality') });
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     expect(ids(cli(['help']).body.data.commands)).toContain('skills');
-    expect(cli(['--no-plugins', 'skills']).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development']);
+    expect(cli(['--no-plugins', 'skills']).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents']);
   });
 
   it('publishes per-command JSON Schema and annotations from the same metadata as help', () => {

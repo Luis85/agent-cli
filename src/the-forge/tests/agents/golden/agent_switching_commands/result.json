@@ -1,0 +1,95 @@
+{
+  "agents": [
+    ".claude/agents/root.md",
+    ".claude/agents/planner.md",
+    ".claude/agents/reviewer.md"
+  ],
+  "skills": [
+    ".claude/skills/plan/SKILL.md",
+    ".claude/skills/review/SKILL.md",
+    ".claude/skills/back/SKILL.md"
+  ],
+  "mcpServers": {},
+  "settings": {
+    "permissions": {
+      "allow": [],
+      "ask": [],
+      "deny": []
+    },
+    "agent": "root"
+  },
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "code": "toolset-approximated",
+      "pointer": "/agents/root/toolsets/0",
+      "message": "The filesystem toolset is approximated by the Claude tools Read, Write, Edit, Glob, Grep.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "delegation-approximated",
+      "pointer": "/agents/root/sub_agents",
+      "message": "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when root runs as the main thread.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "command-approximated",
+      "pointer": "/agents/root/commands/plan/agent",
+      "message": "docker-agent switches the conversation to planner; the Claude skill runs in a forked planner subagent instead.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "command-approximated",
+      "pointer": "/agents/root/commands/review/agent",
+      "message": "docker-agent switches the conversation to reviewer; the Claude skill runs in a forked reviewer subagent instead.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "delegation-approximated",
+      "pointer": "/agents/planner/sub_agents",
+      "message": "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when planner runs as the main thread.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "command-approximated",
+      "pointer": "/agents/planner/commands/back/agent",
+      "message": "docker-agent switches the conversation to root; the Claude skill runs in a forked root subagent instead.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "delegation-approximated",
+      "pointer": "/agents/reviewer/sub_agents",
+      "message": "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when reviewer runs as the main thread.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "command-approximated",
+      "pointer": "/agents/reviewer/commands/back/agent",
+      "message": "docker-agent switches the conversation to root; the Claude skill runs in a forked root subagent instead.",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "main-agent-approximated",
+      "pointer": "/agents/root",
+      "message": "The default agent root becomes the project's main agent (\"agent\": \"root\").",
+      "fidelity": "A",
+      "path": "agents/agent_switching_commands.yaml"
+    }
+  ]
+}
