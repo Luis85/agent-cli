@@ -62,12 +62,6 @@ export const germanActions: Record<string, string> = {
 };
 
 export const germanGenerators = {
-  form: 'Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.',
-  entity: 'Domain-Entität mit Identität und Prüfung von Invarianten.',
-  'value-object': 'Unveränderliches Wertobjekt mit Gleichheitsprüfung und Validierung.',
-  'use-case': 'Anwendungsfall mit injiziertem Repository-Port.',
-  event: 'Typisierte Ereignisdaten mit Laufzeitbeschreibung.',
-  plugin: 'Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.',
   ui: 'Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.',
   stories: 'Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren.',
   'data-source': 'Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren.',

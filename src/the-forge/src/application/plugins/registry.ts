@@ -196,6 +196,18 @@ export class Registry {
     const provider = serviceProviders(this.plugins).get(id);
     return provider === undefined || this.unavailable.has(provider.manifest.id) ? undefined : serviceView<T>(provider, id);
   }
+  /**
+   * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
+   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+   */
+  requireService<T>(id: string, command: string): T {
+    const service = this.service<T>(id);
+    if (service !== undefined) return service;
+    const pluginId = id.split('.')[0]!;
+    const unavailable = this.unavailable.get(pluginId);
+    const reason = unavailable?.reason ?? (this.disabled.some(manifest => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id}.`);
+    throw forgeError('PLUGIN_UNAVAILABLE', `Command ${command} is unavailable because it needs service ${id} of plugin ${pluginId}: ${reason}`, { command, plugin: pluginId, service: id, reason, issues: unavailable?.issues ?? [] });
+  }
   /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
   private cascadeUnavailable(): void {
     const providers = serviceProviders(this.plugins);

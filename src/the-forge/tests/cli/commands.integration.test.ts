@@ -11,7 +11,7 @@ import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
+import { componentScaffold, projectScaffold } from '../../src/plugins/scaffolds/infrastructure/projects.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { claudeBytes, claudeInput } from '../../src/presentation/claude/input.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
@@ -29,7 +29,7 @@ beforeEach(async () => {
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
     loaded, files,
-    projects: new ProjectService(files, workspace, 'projects', { project: projectScaffold, component: componentScaffold }, events),
+    projects: new ProjectService(files, workspace, 'projects', () => ({ project: projectScaffold, component: componentScaffold }), events),
     get uiLibrary(): never { throw new Error('Document commands must not access UI library'); },
     get dataSources(): never { throw new Error('Document commands must not access data sources'); },
     get interactions(): never { throw new Error('Document commands must not access interactions'); },

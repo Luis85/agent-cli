@@ -6,7 +6,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
-import { generators } from '../../src/infrastructure/generation/generators.ts';
+import { scaffoldGenerators as generators } from '../../src/plugins/scaffolds/infrastructure/generators.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { loadEnabledPlugins } from '../../src/infrastructure/plugins/loader.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';

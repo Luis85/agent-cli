@@ -1,16 +1,18 @@
 import { posix } from 'node:path';
-import { formDefinitionSource, formDefinitionTestSource } from './form-definition.ts';
-import type { Generator } from '../../application/plugins/registry.ts';
-import { ensure } from '../../domain/shared/errors.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
-import { encodeText } from '../documents/codec.ts';
+import { formDefinitionSource, formDefinitionTestSource } from './forms.ts';
+import type { Generator } from '../../../application/plugins/registry.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { vaultPath } from '../../../domain/documents/file.ts';
+
+const encodeText = (text: string) => new TextEncoder().encode(text);
 
 function names(name: string, directory: string) {
   ensure(/^[A-Z][A-Za-z0-9]*$/.test(name), 'INVALID_NAME', 'Use a PascalCase TypeScript name, for example WorkItem.');
   vaultPath(directory);
   return { name, directory, file: name.replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() };
 }
-export const generators: Generator[] = [
+/** `make form|entity|value-object|use-case|event|plugin`: TypeScript scaffolds in the selected project, and user plugin folders. */
+export const scaffoldGenerators: Generator[] = [
   { id: 'form', description: 'Typed form definition with Zod validation and HTML preview in a Forge project.', directory: 'src/presentation/forms', async generate({ name: input, directory: dir, context }) {
     ensure(context.project, 'PROJECT_REQUIRED', 'Open a Forge project with project open <name> before making a form.');
     await context.workspace.files.read('src/presentation/forms/form-model.ts');

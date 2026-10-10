@@ -1,5 +1,4 @@
 import { Registry, type Command } from '../../src/application/plugins/registry.ts';
-import { generators } from '../../src/infrastructure/generation/generators.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
 import { claudeCommand } from '../../src/presentation/claude/commands.ts';
@@ -8,6 +7,7 @@ import { skillsCommand } from '../../src/plugins/skills/presentation/commands.ts
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
 import type { CorePlugin } from '../../src/application/plugins/core-plugins.ts';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
+import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
 
 /**
  * Every command the bundle registers without user plugins, assembled like the composition root but with services
@@ -20,8 +20,8 @@ export function builtinCommands(): { registry: Registry; commands: Map<string, C
   }) as unknown as WorkflowServices;
   const registry = new Registry();
   const contributions = (plugin: CorePlugin) => plugin.create({ skills: { list: () => [], get: () => undefined }, fileDates: unavailable });
-  const templates = contributions(templatesPlugin);
-  for (const generator of [...generators, ...libraryGenerators(services), ...templates.generators!]) registry.add(registry.generators, generator);
+  const [templates, scaffolds] = [contributions(templatesPlugin), contributions(scaffoldsPlugin)];
+  for (const generator of [...libraryGenerators(services), ...templates.generators!, ...scaffolds.generators!]) registry.add(registry.generators, generator);
   const all = [
     ...commands(registry, services),
     claudeCommand({ agentCodec: { parse: unavailable, render: unavailable }, target: unavailable }),
