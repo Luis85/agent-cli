@@ -211,6 +211,15 @@ node bin/forge.js bases query docs/bases/Library.base --view 'Trailhead definiti
 node bin/forge.js bases query docs/bases/Library.base --view 'Data sources'
 ```
 
+## Search and links
+
+```sh
+node bin/forge.js search REQ-004 --kind markdown --path 'docs/**' --in body
+node bin/forge.js links back 'docs/product/Trailhead PRD.md'
+node bin/forge.js links unresolved
+node bin/forge.js links orphans --path 'docs/**'
+```
+
 ## Project CI workflow
 
 ```sh

@@ -72,6 +72,15 @@ describe('committed showcase project', () => {
     expect(query.body.data.files).toEqual(expect.arrayContaining(['docs/product/Trailhead PRD.md', 'docs/use-cases/UC-002 Share an itinerary.md']));
   });
 
+  it('answers search and link reports through the CLI with no unresolved links or orphaned documents', () => {
+    expect(cli(['project', 'open', 'forge-showcase']).status).toBe(0);
+    const search = cli(['search', 'REQ-004', '--kind', 'markdown', '--path', 'docs/**', '--in', 'body']).body.data;
+    expect(search.hits).toContainEqual(expect.objectContaining({ path: 'docs/product/Trailhead PRD.md', match: 'REQ-004' }));
+    expect(cli(['links', 'back', 'docs/product/Trailhead PRD.md']).body.data.backlinks).toContainEqual(expect.objectContaining({ source: 'docs/maps/Trailhead map.canvas', kind: 'canvas' }));
+    expect(cli(['links', 'unresolved']).body.data).toEqual({ links: [], issues: [] });
+    expect(cli(['links', 'orphans', '--path', 'docs/**']).body.data.files).toEqual([]);
+  });
+
   it('generates UI and stories for every target and adapters with fixtures, all free of drift', () => {
     for (const target of targets) {
       expect(tree.some(path => path.startsWith(`ui/${target}/components/trip-planner.`))).toBe(true);
