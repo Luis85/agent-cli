@@ -69,6 +69,15 @@ describe('Markdown metadata parsing', () => {
     ]);
   });
 
+  it('reads a table-escaped `\\|` as the display separator of a wikilink', () => {
+    const table = '| Note | Link |\n| --- | --- |\n| a | [[Note\\|alias]] and ![[Pic.png\\|200]] |\n';
+    const found = parse('Table.md', table);
+    expect(found.links?.map(({ position, ...link }) => ({ ...link, source: at(table, position) }))).toEqual([
+      { link: 'Note', original: '[[Note\\|alias]]', displayText: 'alias', syntax: 'wikilink', source: '[[Note\\|alias]]' },
+    ]);
+    expect(found.embeds?.map(item => [item.link, item.displayText])).toEqual([['Pic.png', '200']]);
+  });
+
   it('excludes code, comments, math, escaped syntax, numeric tags and external URLs', () => {
     const found = JSON.stringify(cache);
     for (const excluded of ['Code', 'Hidden', 'Math', 'Escaped', 'Fenced', 'Display', '#code', '#hidden', '#math', '#esc', '#2026', '#fenced', 'example.com']) {

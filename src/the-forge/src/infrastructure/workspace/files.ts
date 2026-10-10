@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, readdir, realpath, rename, rm, open } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { lstat, readFile, readdir, readlink, realpath, rename, rm, open } from 'node:fs/promises';
+import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch, FileRepository, WriteBatchResult } from '../../application/workspace/ports.ts';
-import { Transaction, type BatchHost, type FilePlan, type FolderSnapshot, type StoredFile } from './batch.ts';
+import { Transaction, type BatchHost, type FilePlan, type FolderSnapshot, type SpecialEntry, type StoredFile } from './batch.ts';
 import { syncDirectory } from './durable.ts';
 import { acquireLock, lockName, releaseLock, type LockOwner, type LockRelease } from './lock.ts';
 import { retryTransient } from './retry.ts';
@@ -105,28 +105,37 @@ export class NodeFiles implements FileRepository, BatchHost {
     const stored = (await this.stored(path))!;
     return { path, kind: 'file', revision: stored.revision, bytes: stored.bytes.length };
   }
-  /** @internal Batch step: the folder's revision and contents, skipping Git, node_modules, symlinks and Forge's internal files. */
+  /**
+   * @internal Batch step: the folder's revision and contents. The revision covers every file's path and revision,
+   * every subfolder (empty ones too) and each special entry by path and kind: symlinks with their target,
+   * `node_modules` folders without reading them, and other special files. Git and Forge's internal files are skipped.
+   */
   async folder(path: string): Promise<FolderSnapshot | undefined> {
-    const files: FolderSnapshot['files'] = [], folders: string[] = [];
+    const files: FolderSnapshot['files'] = [], folders: string[] = [], special: SpecialEntry[] = [];
     let git = false;
     const walk = async (directory: string, prefix: string) => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
-        if (entry.name === '.git') git = true;
-        if (['.git', 'node_modules', lockName].includes(entry.name) || entry.name.startsWith('.agent-cli-tmp-')) continue;
-        const relative = prefix + entry.name;
-        if (entry.isDirectory()) { folders.push(relative); await walk(join(directory, entry.name), relative + '/'); }
+        if (entry.name === '.git') { git = true; continue; }
+        if (entry.name === lockName || entry.name.startsWith('.agent-cli-tmp-')) continue;
+        const relative = prefix + entry.name, absolute = join(directory, entry.name);
+        if (entry.isSymbolicLink()) special.push({ path: relative, kind: 'symlink', target: await readlink(absolute) });
+        else if (entry.isDirectory() && entry.name === 'node_modules') special.push({ path: relative, kind: 'node_modules' });
+        else if (entry.isDirectory()) { folders.push(relative); await walk(absolute, relative + '/'); }
         else if (entry.isFile()) {
-          const bytes = await readFile(join(directory, entry.name));
+          const bytes = await readFile(absolute);
           files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
-        }
+        } else special.push({ path: relative, kind: 'other' });
       }
     };
     try { await walk(await this.resolvePath(path, true), ''); }
     catch (error) { if (missing(error)) return undefined; throw error; }
-    files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    files.sort((a, b) => order(a.path, b.path)); folders.sort(order); special.sort((a, b) => order(a.path, b.path));
     const digest = createHash('sha256');
     for (const file of files) digest.update(`${file.path}\0${file.revision}\n`);
-    return { revision: digest.digest('hex'), files, folders: folders.sort(), git };
+    for (const folder of folders) digest.update(`${folder}/\0folder\n`);
+    for (const entry of special) digest.update(`${entry.path}\0${entry.kind}${entry.target === undefined ? '' : `\0${entry.target}`}\n`);
+    return { revision: digest.digest('hex'), files, folders, special, git };
   }
   /** @internal */
   revision(bytes: Uint8Array): string { return revisionOf(bytes); }
@@ -160,16 +169,16 @@ export class NodeFiles implements FileRepository, BatchHost {
     const worker = async () => {
       while (next < plans.length && failures.length === 0) {
         const index = next++, plan = plans[index]!;
-        try { staged[index] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode); }
+        try { staged[index] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode, plan.stagingDirectory); }
         catch (error) { failures.push(error); }
       }
     };
     await Promise.all(Array.from({ length: Math.min(stagingConcurrency, plans.length) }, worker));
     if (failures.length) throw failures[0];
   }
-  /** Write a same-directory temporary file whose data is durable before any rename publishes it. */
-  private async stage(target: string, bytes: Uint8Array, mode?: number): Promise<string> {
-    const temp = join(resolve(target, '..'), `.agent-cli-tmp-${randomUUID()}`);
+  /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
+  private async stage(target: string, bytes: Uint8Array, mode?: number, directory = dirname(target)): Promise<string> {
+    const temp = join(directory, `.agent-cli-tmp-${randomUUID()}`);
     const handle = await open(temp, 'wx', mode ?? 0o666);
     try {
       try {

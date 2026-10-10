@@ -97,18 +97,20 @@ describe('plugin activation hooks', () => {
     expect(await stored()).toEqual({ schemaVersion: 1, plugins: { alpha: { settings: null } } });
   });
 
-  it('warns instead of failing when a concurrent writer changed the state file', async () => {
-    const concurrent = '{"schemaVersion":1,"plugins":{}}\n';
+  it('merges a concurrent writer\'s state and retries the write once', async () => {
+    const concurrent = '{"schemaVersion":1,"plugins":{"beta":{"settings":"other"}}}\n';
     const racing = hooked('alpha', { async onUserEnable() {
       calls.push('alpha:onUserEnable');
       await mkdir(join(root, 'bin/data'), { recursive: true });
       await writeFile(join(root, pluginStatePath), concurrent);
     } });
-    const result = await invoke([racing]);
-    expect(result.failure).toBeUndefined();
+    // beta fails before its hook, so only the concurrent writer recorded it.
+    const failing = hooked('beta', { onload() { throw new Error('beta failed'); } });
+    const result = await invoke([racing, failing]);
+    expect(result.failure).toMatchObject({ message: 'beta failed' });
     expect(result.calls).toEqual(['alpha:onload', 'alpha:onUserEnable']);
-    expect(result.events.warnings).toEqual([expect.stringMatching(new RegExp(`^Could not record plugin activation state in ${pluginStatePath}: `))]);
-    expect(await readFile(join(root, pluginStatePath), 'utf8')).toBe(concurrent);
+    expect(result.events.warnings).toEqual([]);
+    expect(await stored()).toEqual({ schemaVersion: 1, plugins: { alpha: { settings: null }, beta: { settings: 'other' } } });
   });
 
   it('rejects non-function hooks at registration and hooks that return values at activation', async () => {

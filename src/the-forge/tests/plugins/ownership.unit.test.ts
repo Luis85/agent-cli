@@ -4,6 +4,8 @@ import { registerHostEvents, hostEventNamespaces } from '../../src/application/p
 import { pluginEvents } from '../../src/application/plugins/ownership.ts';
 import { Registry, validatePluginManifest, type CommandContext, type Plugin } from '../../src/application/plugins/registry.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
+import { errorCatalog } from '../../src/domain/shared/error-catalog.ts';
+import { germanErrors } from '../../src/presentation/localization/errors.ts';
 
 const manifest = (id: string) => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Ownership test', author: 'Test' });
 const plugin = (id: string, extra: Partial<Plugin> = {}): Plugin => ({ manifest: manifest(id), ...extra });
@@ -66,6 +68,10 @@ describe('event ownership', () => {
       expect(() => validatePluginManifest(manifest(id))).toThrowError(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     }
     expect(() => validatePluginManifest(manifest('vaults'))).not.toThrow();
+    // The recovery hints list every reserved namespace.
+    for (const hint of [errorCatalog.PLUGIN_NAMESPACE.hint, germanErrors.PLUGIN_NAMESPACE.hint]) {
+      expect(hint.match(/\(([^)]*)\)/)![1]!.split(', ')).toEqual([...hostEventNamespaces]);
+    }
   });
 
   it('accepts camelCase event segments such as metadataCache.changed but keeps lowercase leading characters', () => {

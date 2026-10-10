@@ -1,20 +1,18 @@
 import { type CachedMetadata } from '../../domain/metadata/cache.ts';
 import { type TextEdit } from '../../domain/metadata/link-text.ts';
 import type { MetadataCache } from '../metadata/ports.ts';
+import type { DocumentCodec, YamlStringReplacement } from '../workspace/ports.ts';
 /** A reference the planner could not rewrite safely, such as a frontmatter value whose YAML spelling differs from its link text. */
 export interface UnrewrittenLink {
     source: string;
     original: string;
     reason: string;
 }
-/** One file's planned link updates: body edits by offset, frontmatter text replacements, and Canvas file node values by node id. */
+/** One file's planned link updates: body edits by offset, link replacements in frontmatter values by key, and Canvas file node values by node id. */
 export interface FileLinkPlan {
     source: string;
     edits: TextEdit[];
-    frontmatter: Array<{
-        original: string;
-        text: string;
-    }>;
+    frontmatter: YamlStringReplacement[];
     canvas: Array<{
         node: string;
         original: string;
@@ -36,11 +34,12 @@ export interface LinkPlan {
 export declare function planLinkUpdates(cache: MetadataCache, moves: ReadonlyMap<string, string>): LinkPlan;
 /**
  * Applies one file's planned updates to its decoded text (BOM included, as cache offsets count it). Body edits
- * replace exact offsets; frontmatter links are replaced literally inside the frontmatter block; Canvas file nodes
- * are replaced in their JSON string values, falling back to re-serializing the Canvas. Returns undefined when the
- * text no longer matches the cache, and lists frontmatter links whose YAML spelling was not found.
+ * replace exact offsets; frontmatter links are replaced inside their YAML values through `replaceInYaml`, which
+ * re-serializes each changed value in its own quoting style; Canvas file nodes are replaced in their JSON string
+ * values, falling back to re-serializing the Canvas. Returns undefined when the body no longer matches the cache,
+ * and lists the links it could not rewrite.
  */
-export declare function rewriteText(plan: FileLinkPlan, text: string, metadata: CachedMetadata): {
+export declare function rewriteText(plan: FileLinkPlan, text: string, metadata: CachedMetadata, replaceInYaml: DocumentCodec['replaceInYamlStrings']): {
     text: string;
     unrewritten: UnrewrittenLink[];
 } | undefined;

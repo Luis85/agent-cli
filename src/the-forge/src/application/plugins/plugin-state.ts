@@ -91,15 +91,27 @@ export class ActivationTracker {
     this.next[id] = { settings };
   }
 
-  /** Keeps unreached enabled plugins' entries and forgets disabled plugins; a failed save is a warning. */
+  /**
+   * Keeps unreached enabled plugins' entries and forgets disabled plugins. When another invocation changed the
+   * state since it was loaded, the save rereads it, keeps that invocation's entries for enabled plugins this one
+   * did not activate, and retries once. A failed save is a warning.
+   */
   async save(plugins: ReadonlyArray<TrackedPlugin<unknown>>, warn: (message: string) => void): Promise<void> {
-    const states: PluginStates = {};
-    for (const plugin of plugins.filter(tracked)) {
-      const entry = this.next[plugin.manifest.id] ?? this.previous[plugin.manifest.id];
-      if (entry) states[plugin.manifest.id] = entry;
-    }
-    try { await this.store.save(states); }
-    catch (error) {
+    const states = (current: PluginStates) => {
+      const result: PluginStates = {};
+      for (const plugin of plugins.filter(tracked)) {
+        const id = plugin.manifest.id, entry = this.next[id] ?? current[id] ?? this.previous[id];
+        if (entry) result[id] = entry;
+      }
+      return result;
+    };
+    try {
+      try { await this.store.save(states({})); }
+      catch (error) {
+        if (!(error instanceof AppError && error.code === 'CONFLICT')) throw error;
+        await this.store.save(states(await this.store.load()));
+      }
+    } catch (error) {
       try { warn(`Could not record plugin activation state in ${pluginStatePath}: ${errorMessage(error)}`); }
       catch { /* Diagnostics cannot replace the command result. */ }
     }

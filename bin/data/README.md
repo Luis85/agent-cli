@@ -1,6 +1,8 @@
 # The Forge
 
-A portable Node CLI for AI-assisted engineering, TypeScript projects and Obsidian-compatible files. Built with strict TypeScript, Vite and Vitest. The Forge runs without Obsidian, npm installation, or runtime packages in your project.
+A terminal project companion for AI-assisted project and product development. The user works in Obsidian. The AI agent uses this portable Node CLI to create, edit and verify the same Markdown, Canvas and Bases files, without Obsidian running or installed. Specifications, design, documentation, the backlog and code form one Git-backed knowledge graph. See the [product vision](docs/explanation/product-vision.md).
+
+The CLI is built with strict TypeScript, Vite and Vitest. It needs no npm installation and no runtime packages in your project.
 
 ## Use the committed bundle
 

@@ -6,9 +6,9 @@ const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
 const promises$1 = require("node:fs/promises");
-const promises = require("node:timers/promises");
 const fs = require("node:fs");
 const node_os = require("node:os");
+const promises = require("node:timers/promises");
 const process$1 = require("node:process");
 const node_url = require("node:url");
 const node_module = require("node:module");
@@ -79,7 +79,7 @@ const errorCatalog = {
   INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
   WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
   DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
-  PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Do not move or delete the scope root, .git, .obsidian or, at workspace scope, bin; a folder holding a .git repository is protected too."),
+  PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
   INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
   HAS_BACKLINKS: entry("conflict", "Other notes still link to the file or folder.", "Update or remove the links in error.details.backlinks first, move the file instead, or pass --allow-broken-links to delete anyway."),
   ROLLBACK_FAILED: entry("runtime", "A failed write could not restore every file.", "Inspect the files named in the message and repair them before retrying."),
@@ -566,15 +566,27 @@ class ActivationTracker {
     ensure(result === void 0, "INVALID_PLUGIN", `${hook} must return nothing.`);
     this.next[id2] = { settings: settings2 };
   }
-  /** Keeps unreached enabled plugins' entries and forgets disabled plugins; a failed save is a warning. */
+  /**
+   * Keeps unreached enabled plugins' entries and forgets disabled plugins. When another invocation changed the
+   * state since it was loaded, the save rereads it, keeps that invocation's entries for enabled plugins this one
+   * did not activate, and retries once. A failed save is a warning.
+   */
   async save(plugins, warn) {
-    const states = {};
-    for (const plugin2 of plugins.filter(tracked)) {
-      const entry2 = this.next[plugin2.manifest.id] ?? this.previous[plugin2.manifest.id];
-      if (entry2) states[plugin2.manifest.id] = entry2;
-    }
+    const states = (current) => {
+      const result = {};
+      for (const plugin2 of plugins.filter(tracked)) {
+        const id2 = plugin2.manifest.id, entry2 = this.next[id2] ?? current[id2] ?? this.previous[id2];
+        if (entry2) result[id2] = entry2;
+      }
+      return result;
+    };
     try {
-      await this.store.save(states);
+      try {
+        await this.store.save(states({}));
+      } catch (error2) {
+        if (!(error2 instanceof AppError && error2.code === "CONFLICT")) throw error2;
+        await this.store.save(states(await this.store.load()));
+      }
     } catch (error2) {
       try {
         warn(`Could not record plugin activation state in ${pluginStatePath}: ${errorMessage(error2)}`);
@@ -705,7 +717,7 @@ function vaultPath(input) {
   return input;
 }
 const trashFolder = ".trash";
-const isInTrash = (path) => path === trashFolder || path.startsWith(`${trashFolder}/`);
+const isInTrash = (path) => path.toLowerCase() === trashFolder || path.toLowerCase().startsWith(`${trashFolder}/`);
 function ensureSeparateDirectories(source, destination) {
   vaultPath(source);
   vaultPath(destination);
@@ -923,8 +935,8 @@ class Workspace {
     }
     return this.observe("write", requests.map((request) => request.path), async () => {
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-      const { changes, folders } = await this.files.writeBatch(requests, this.dryRun);
-      await this.committed({ renames: [], changes, folders, removedFolders: [] });
+      const { changes, folders: folders2 } = await this.files.writeBatch(requests, this.dryRun);
+      await this.committed({ renames: [], changes, folders: folders2, removedFolders: [] });
       return { dryRun: this.dryRun, changes: this.dryRun && previous2 ? await this.preview(changes, requests, previous2) : changes };
     }, changeSummary);
   }
@@ -969,12 +981,12 @@ class Workspace {
    * observer. A trash batch reports each moved file, then each moved folder (child before parent), as `vault.delete`.
    */
   async committed(result, trash = false) {
-    const { renames, changes, folders, removedFolders } = result;
+    const { renames, changes, folders: folders2, removedFolders } = result;
     if (this.dryRun) {
       for (const { path, operation: operation2, bytes } of changes) await publishHostEvent(this.events, "workspace.quick-preview", { path, operation: operation2, bytes });
       return;
     }
-    for (const path of folders) if (!(trash && isInTrash(path))) await this.notify(path, "vault.create", { path, kind: "folder", operation: "created" });
+    for (const path of folders2) if (!(trash && isInTrash(path))) await this.notify(path, "vault.create", { path, kind: "folder", operation: "created" });
     if (trash) {
       for (const rename2 of renames) if (rename2.kind === "file") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "file", revision: rename2.revision, bytes: rename2.bytes, operation: "deleted" });
       for (const rename2 of [...renames].reverse()) if (rename2.kind === "folder") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "folder", operation: "deleted" });
@@ -1044,10 +1056,10 @@ class ScopedFiles {
   /** Folders created above the project directory are outside this scope and are not reported. */
   async writeBatch(writes, dryRun) {
     const requests = snapshotWriteRequests(writes).map((write) => ({ ...write, path: this.prefix + write.path }));
-    const { changes, folders } = await this.files.writeBatch(requests, dryRun);
+    const { changes, folders: folders2 } = await this.files.writeBatch(requests, dryRun);
     return {
       changes: changes.map((change2) => ({ ...change2, path: this.relative(change2.path) })),
-      folders: folders.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder))
+      folders: folders2.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder))
     };
   }
   async remove(path, expectedRevision, dryRun) {
@@ -1064,7 +1076,7 @@ class ScopedFiles {
       writes: snapshotWriteRequests(batch.writes ?? []).map((write) => ({ ...write, path: this.prefix + write.path })),
       removes: (batch.removes ?? []).map((remove) => ({ ...remove, path: this.prefix + vaultPath(remove.path) }))
     }, dryRun);
-    const inScope = (folders) => folders.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder));
+    const inScope = (folders2) => folders2.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder));
     return {
       renames: result.renames.map((rename2) => ({ ...rename2, from: this.relative(rename2.from), to: this.relative(rename2.to) })),
       changes: result.changes.map((change2) => ({ ...change2, path: this.relative(change2.path) })),
@@ -10117,303 +10129,6 @@ async function retryTransient(operation2, options = {}) {
     }
   }
 }
-const missing$2 = (error2) => error2.code === "ENOENT";
-const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-const inside = (path, folder) => path === folder || path.startsWith(`${folder}/`);
-const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
-async function exists(target) {
-  try {
-    return await promises$1.lstat(target);
-  } catch (error2) {
-    if (missing$2(error2)) return void 0;
-    throw error2;
-  }
-}
-function validatePlan(renames, writes, removes) {
-  ensure(renames.length + writes.length + removes.length > 0, "INVALID_PLAN", "Plan must contain at least one change.");
-  ensure(new Set(writes.map((w) => w.path)).size === writes.length, "INVALID_PLAN", "Plan must contain unique file paths.");
-  ensure(!writes.some((a) => writes.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
-  for (const rename2 of renames) ensure(!inside(rename2.to, rename2.from) && !inside(rename2.from, rename2.to), "INVALID_PLAN", `Cannot move ${rename2.from} into itself or its parent path ${rename2.to}.`);
-  const claims = [
-    ...renames.flatMap((rename2) => [{ path: rename2.from, role: "source" }, { path: rename2.to, role: "destination" }]),
-    ...removes.map((remove) => ({ path: remove.path, role: "source" })),
-    ...writes.map((write) => ({ path: write.path, role: "write" }))
-  ];
-  for (const [index2, claim2] of claims.entries()) {
-    for (const other of claims.slice(index2 + 1)) {
-      if (claim2.role === "write" && other.role === "write") continue;
-      if (!inside(claim2.path, other.path) && !inside(other.path, claim2.path)) continue;
-      const roles = [claim2.role, other.role];
-      const allowed = roles.includes("write") && roles.includes("destination") && inside((claim2.role === "write" ? claim2 : other).path, (claim2.role === "write" ? other : claim2).path);
-      ensure(allowed, "INVALID_PLAN", `Batch steps overlap at ${claim2.path} and ${other.path}.`);
-    }
-  }
-}
-class Transaction {
-  constructor(host, batch) {
-    this.host = host;
-    const valid2 = (request, keys) => request !== null && typeof request === "object" && keys.every((key) => typeof request[key] === "string");
-    ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every((r) => valid2(r, ["from", "to", "expectedRevision"])), "INVALID_PLAN", "Renames need from, to and expectedRevision strings.");
-    ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every((r) => valid2(r, ["path", "expectedRevision"])), "INVALID_PLAN", "Removals need path and expectedRevision strings.");
-    this.renames = (batch.renames ?? []).map((r) => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
-    this.writes = snapshotWriteRequests(batch.writes ?? []);
-    this.removes = (batch.removes ?? []).map((r) => ({ path: vaultPath(r.path), expectedRevision: r.expectedRevision }));
-    validatePlan(this.renames, this.writes, this.removes);
-  }
-  host;
-  renames;
-  writes;
-  removes;
-  createdDirectories = [];
-  folders = [];
-  touched = /* @__PURE__ */ new Set();
-  staged = [];
-  committedRenames = [];
-  committedWrites = [];
-  committedRemoves = [];
-  async run(dryRun) {
-    const conflicts = [];
-    const renames = await this.planRenames(conflicts);
-    const writes = await this.planWrites(conflicts);
-    const removes = await this.planRemoves(conflicts);
-    const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
-    const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict?.path}` : `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`;
-    ensure(conflict === void 0, "CONFLICT", message, conflict && { ...conflict, ...steps > 1 ? { conflicts } : {} });
-    if (!dryRun) {
-      try {
-        await this.apply(renames, writes, removes);
-      } catch (error2) {
-        await this.rollback();
-        throw error2;
-      }
-      await this.finalize();
-    }
-    return this.result(renames, writes, removes);
-  }
-  async entry(path) {
-    const target = await this.host.resolvePath(path, true);
-    const info = await exists(target);
-    if (!info) return void 0;
-    if ((await promises$1.lstat(target)).isDirectory()) {
-      const snapshot = await this.host.folder(path);
-      ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
-      return { kind: "folder", snapshot };
-    }
-    return { kind: "file", stored: await this.host.stored(path) };
-  }
-  async planRenames(conflicts) {
-    const plans = [];
-    for (const request of this.renames) {
-      const entry2 = await this.entry(request.from);
-      if (!entry2) throw forgeError("NOT_FOUND", `File or folder not found: ${request.from}`);
-      if (entryRevision(entry2) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry2)));
-      const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
-      const caseOnly = await this.caseOnly(request, source, target);
-      plans.push({ request, source, target, entry: entry2, caseOnly });
-    }
-    return plans;
-  }
-  /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
-  async caseOnly(request, source, target) {
-    const existing = await exists(target);
-    if (!existing) return false;
-    const original = await promises$1.lstat(source);
-    const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
-    ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
-    return true;
-  }
-  /** The path a write's current content comes from once the batch's renames apply. */
-  origin(path) {
-    for (const rename2 of this.renames) if (inside(path, rename2.to)) return rename2.from + path.slice(rename2.to.length);
-    return path;
-  }
-  async planWrites(conflicts) {
-    const plans = [];
-    for (const write of this.writes) {
-      const target = await this.host.resolvePath(write.path);
-      const before = await this.host.stored(this.origin(write.path));
-      if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
-      plans.push({ write, target, before });
-    }
-    return plans;
-  }
-  async planRemoves(conflicts) {
-    const plans = [];
-    for (const request of this.removes) {
-      const entry2 = await this.entry(request.path);
-      if (!entry2) throw forgeError("NOT_FOUND", `File not found: ${request.path}`);
-      const current = entryRevision(entry2);
-      ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
-      if (current !== request.expectedRevision) conflicts.push(revisionConflict(request.path, request.expectedRevision, current));
-      plans.push({ request, target: await this.host.resolvePath(request.path, true), entry: entry2 });
-    }
-    return plans;
-  }
-  async makeParents(path) {
-    let directory = this.host.root;
-    const parts = path.split("/");
-    for (const [index2, part] of parts.slice(0, -1).entries()) {
-      directory = minpath.join(directory, part);
-      try {
-        await promises$1.mkdir(directory);
-        this.createdDirectories.push(directory);
-        this.folders.push(parts.slice(0, index2 + 1).join("/"));
-        this.touched.add(minpath.dirname(directory));
-      } catch (error2) {
-        if (error2.code !== "EEXIST") throw error2;
-      }
-    }
-  }
-  /** Immediately before a step: the file or folder still has the revision the batch checked. */
-  async verify(path, entry2, expected) {
-    if (entry2.kind === "file") {
-      await this.host.assertRevision(path, expected);
-      return;
-    }
-    const current = (await this.host.folder(path))?.revision;
-    ensure(current === expected, "CONFLICT", `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
-  }
-  async apply(renames, writes, removes) {
-    for (const plan of renames) {
-      await this.makeParents(plan.request.to);
-      await this.verify(plan.request.from, plan.entry, plan.request.expectedRevision);
-      if (!plan.caseOnly) ensure(!await exists(plan.target), "DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
-      await this.move(plan.source, plan.target, plan.caseOnly);
-      this.committedRenames.push(plan);
-      this.touched.add(minpath.dirname(plan.source)).add(minpath.dirname(plan.target));
-    }
-    for (const plan of writes) await this.makeParents(plan.write.path);
-    await this.host.stageAll(writes, this.staged);
-    for (const [index2, plan] of writes.entries()) {
-      await this.host.resolvePath(plan.write.path);
-      await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), this.staged[index2]);
-      this.committedWrites.push(plan);
-      this.touched.add(minpath.dirname(plan.target));
-    }
-    for (const plan of removes) {
-      await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
-      const temp = temporary(plan.target);
-      await retryTransient(() => promises$1.rename(plan.target, temp));
-      plan.temp = temp;
-      this.committedRemoves.push(plan);
-      this.touched.add(minpath.dirname(plan.target));
-    }
-    await this.host.syncDirectories(this.touched);
-  }
-  /** A case-only rename passes through a reserved name, which works whether or not the filesystem ignores case. */
-  async move(source, target, caseOnly) {
-    if (!caseOnly) {
-      await retryTransient(() => promises$1.rename(source, target));
-      return;
-    }
-    const temp = temporary(source);
-    await retryTransient(() => promises$1.rename(source, temp));
-    try {
-      await retryTransient(() => promises$1.rename(temp, target));
-    } catch (error2) {
-      await retryTransient(() => promises$1.rename(temp, source)).catch(() => {
-      });
-      throw error2;
-    }
-  }
-  /** Committed removals become permanent; a cleanup failure leaves a reserved temporary entry and a warning. */
-  async finalize() {
-    for (const plan of this.committedRemoves) {
-      try {
-        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
-      } catch (error2) {
-        this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error2)}`);
-      }
-    }
-    if (this.committedRemoves.length === 0) return;
-    try {
-      await this.host.syncDirectories(this.committedRemoves.map((plan) => minpath.dirname(plan.target)));
-    } catch (error2) {
-      this.host.warn(`Removed files, but syncing their folders failed: ${String(error2)}`);
-    }
-  }
-  async rollback() {
-    for (const temp of this.staged) if (temp) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
-    });
-    const failures = [];
-    for (const plan of this.committedRemoves.reverse()) {
-      try {
-        ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
-        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
-      } catch {
-        failures.push(plan.target);
-      }
-    }
-    for (const entry2 of this.committedWrites.reverse()) {
-      try {
-        const verify = () => this.host.assertRevision(entry2.write.path, this.host.revision(entry2.write.bytes));
-        if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
-        else {
-          await verify();
-          await retryTransient(() => promises$1.rm(entry2.target));
-        }
-      } catch {
-        failures.push(entry2.target);
-      }
-    }
-    for (const plan of this.committedRenames.reverse()) {
-      try {
-        if (plan.entry.kind === "file") await this.host.assertRevision(plan.request.to, plan.entry.stored.revision);
-        if (!plan.caseOnly) ensure(!await exists(plan.source), "ROLLBACK_FAILED", plan.source);
-        await this.move(plan.target, plan.source, plan.caseOnly);
-      } catch {
-        failures.push(plan.target);
-      }
-    }
-    for (const directory of this.createdDirectories.reverse()) {
-      try {
-        await retryTransient(() => promises$1.rmdir(directory));
-        this.touched.delete(directory);
-      } catch {
-      }
-    }
-    for (const directory of this.touched) {
-      try {
-        await this.host.syncDirectories([directory]);
-      } catch {
-        failures.push(directory);
-      }
-    }
-    if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
-  }
-  result(renames, writes, removes) {
-    const moved2 = renames.flatMap(({ request: { from, to }, entry: entry2 }) => {
-      if (entry2.kind === "file") return [{ from, to, kind: "file", revision: entry2.stored.revision, bytes: entry2.stored.bytes.length }];
-      const descendants = [
-        ...entry2.snapshot.folders.map((path) => ({ from: `${from}/${path}`, to: `${to}/${path}`, kind: "folder" })),
-        ...entry2.snapshot.files.map((file) => ({ from: `${from}/${file.path}`, to: `${to}/${file.path}`, kind: "file", revision: file.revision, bytes: file.bytes }))
-      ].sort((a, b) => a.to < b.to ? -1 : a.to > b.to ? 1 : 0);
-      return [{ from, to, kind: "folder" }, ...descendants];
-    });
-    const written = writes.map(({ write, before }) => ({ path: write.path, revision: this.host.revision(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
-    const removed = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [{ path, revision: entry2.stored.revision, operation: "deleted", bytes: entry2.stored.bytes.length }] : entry2.snapshot.files.map((file) => ({ path: `${path}/${file.path}`, revision: file.revision, operation: "deleted", bytes: file.bytes })));
-    const removedFolders = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [] : [...entry2.snapshot.folders.map((folder) => `${path}/${folder}`).sort().reverse(), path]);
-    return { renames: moved2, changes: [...written, ...removed], folders: this.folders, removedFolders };
-  }
-}
-const unsupported = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
-const isUnsupported = (error2) => unsupported.has(String(error2?.code));
-async function syncDirectory(path, openDirectory = (directory) => promises$1.open(directory, "r")) {
-  let handle;
-  try {
-    handle = await openDirectory(path);
-  } catch (error2) {
-    if (isUnsupported(error2)) return;
-    throw error2;
-  }
-  try {
-    await handle.sync();
-  } catch (error2) {
-    if (!isUnsupported(error2)) throw error2;
-  } finally {
-    await handle.close();
-  }
-}
 const lockName = ".agent-cli.lock";
 const writingWindowMs = 5e3;
 const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
@@ -10580,6 +10295,361 @@ async function busy(path) {
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
   return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
 }
+const missing$2 = (error2) => error2.code === "ENOENT";
+const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+const inside = (path, folder) => path === folder || path.startsWith(`${folder}/`);
+const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
+async function exists(target) {
+  try {
+    return await promises$1.lstat(target);
+  } catch (error2) {
+    if (missing$2(error2)) return void 0;
+    throw error2;
+  }
+}
+function checkOverlap(outer, inner) {
+  if (outer.role === "write" && inner.role === "write") {
+    ensure(outer.path === inner.path, "INVALID_PLAN", "A generated file cannot also be a directory.");
+    return;
+  }
+  const write = outer.role === "write" ? outer : inner, other = write === outer ? inner : outer;
+  const allowed = write.role === "write" && other.role === "destination" && inside(write.path, other.path);
+  ensure(allowed, "INVALID_PLAN", `Batch steps overlap at ${outer.path} and ${inner.path}.`);
+}
+function validatePlan(renames, writes, removes) {
+  ensure(renames.length + writes.length + removes.length > 0, "INVALID_PLAN", "Plan must contain at least one change.");
+  ensure(new Set(writes.map((w) => w.path)).size === writes.length, "INVALID_PLAN", "Plan must contain unique file paths.");
+  for (const rename2 of renames) ensure(!inside(rename2.to, rename2.from) && !inside(rename2.from, rename2.to), "INVALID_PLAN", `Cannot move ${rename2.from} into itself or its parent path ${rename2.to}.`);
+  const claims = [
+    ...renames.flatMap((rename2) => [{ path: rename2.from, role: "source" }, { path: rename2.to, role: "destination" }]),
+    ...removes.map((remove) => ({ path: remove.path, role: "source" })),
+    ...writes.map((write) => ({ path: write.path, role: "write" }))
+  ].map((claim2) => ({ claim: claim2, key: claim2.path.replaceAll("/", "\0") })).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0).map((entry2) => entry2.claim);
+  const ancestors = [];
+  for (const claim2 of claims) {
+    while (ancestors.length > 0 && !inside(claim2.path, ancestors.at(-1).path)) ancestors.pop();
+    for (const ancestor of ancestors) checkOverlap(ancestor, claim2);
+    ancestors.push(claim2);
+  }
+}
+class Transaction {
+  constructor(host, batch) {
+    this.host = host;
+    const valid2 = (request, keys) => request !== null && typeof request === "object" && keys.every((key) => typeof request[key] === "string");
+    ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every((r) => valid2(r, ["from", "to", "expectedRevision"])), "INVALID_PLAN", "Renames need from, to and expectedRevision strings.");
+    ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every((r) => valid2(r, ["path", "expectedRevision"])), "INVALID_PLAN", "Removals need path and expectedRevision strings.");
+    this.renames = (batch.renames ?? []).map((r) => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
+    this.writes = snapshotWriteRequests(batch.writes ?? []);
+    this.removes = (batch.removes ?? []).map((r) => ({ path: vaultPath(r.path), expectedRevision: r.expectedRevision }));
+    validatePlan(this.renames, this.writes, this.removes);
+  }
+  host;
+  renames;
+  writes;
+  removes;
+  createdDirectories = [];
+  folders = [];
+  touched = /* @__PURE__ */ new Set();
+  /** Staged temporary files by write index, and the folder rename that carries each one staged inside a moved folder. */
+  staged = [];
+  carriers = [];
+  committedRenames = [];
+  committedWrites = [];
+  committedRemoves = [];
+  async run(dryRun) {
+    const conflicts = [];
+    const renames = await this.planRenames(conflicts);
+    const writes = await this.planWrites(conflicts);
+    const removes = await this.planRemoves(conflicts);
+    const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
+    const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict?.path}` : `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`;
+    ensure(conflict === void 0, "CONFLICT", message, conflict && { ...conflict, ...steps > 1 ? { conflicts } : {} });
+    if (!dryRun) {
+      try {
+        await this.apply(renames, writes, removes);
+      } catch (error2) {
+        await this.rollback();
+        throw error2;
+      }
+      await this.finalize();
+    }
+    return this.result(renames, writes, removes);
+  }
+  async entry(path) {
+    const target = await this.host.resolvePath(path, true);
+    const info = await exists(target);
+    if (!info) return void 0;
+    if ((await promises$1.lstat(target)).isDirectory()) {
+      const snapshot = await this.host.folder(path);
+      ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+      return { kind: "folder", snapshot };
+    }
+    return { kind: "file", stored: await this.host.stored(path) };
+  }
+  async planRenames(conflicts) {
+    const plans = [];
+    for (const request of this.renames) {
+      const entry2 = await this.entry(request.from);
+      if (!entry2) throw forgeError("NOT_FOUND", `File or folder not found: ${request.from}`);
+      if (entryRevision(entry2) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry2)));
+      const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
+      const caseOnly = await this.caseOnly(request, source, target);
+      plans.push({ request, source, target, entry: entry2, caseOnly });
+    }
+    return plans;
+  }
+  /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
+  async caseOnly(request, source, target) {
+    const existing = await exists(target);
+    if (!existing) return false;
+    const original = await promises$1.lstat(source);
+    const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
+    ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
+    return true;
+  }
+  /** The path a write's current content comes from once the batch's renames apply. */
+  origin(path) {
+    for (const rename2 of this.renames) if (inside(path, rename2.to)) return rename2.from + path.slice(rename2.to.length);
+    return path;
+  }
+  async planWrites(conflicts) {
+    const plans = [];
+    for (const write of this.writes) {
+      const target = await this.host.resolvePath(write.path);
+      const before = await this.host.stored(this.origin(write.path));
+      if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
+      plans.push({ write, target, before });
+    }
+    return plans;
+  }
+  async planRemoves(conflicts) {
+    const plans = [];
+    for (const request of this.removes) {
+      const entry2 = await this.entry(request.path);
+      if (!entry2) throw forgeError("NOT_FOUND", `File not found: ${request.path}`);
+      const special2 = entry2.kind === "folder" ? entry2.snapshot.special : [];
+      ensure(special2.length === 0, "PROTECTED_PATH", `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special2.slice(0, 20).map((item) => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
+      const current = entryRevision(entry2);
+      ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
+      if (current !== request.expectedRevision) conflicts.push(revisionConflict(request.path, request.expectedRevision, current));
+      plans.push({ request, target: await this.host.resolvePath(request.path, true), entry: entry2 });
+    }
+    return plans;
+  }
+  async makeParents(path) {
+    let directory = this.host.root;
+    const parts = path.split("/");
+    for (const [index2, part] of parts.slice(0, -1).entries()) {
+      directory = minpath.join(directory, part);
+      try {
+        await promises$1.mkdir(directory);
+        this.createdDirectories.push(directory);
+        this.folders.push(parts.slice(0, index2 + 1).join("/"));
+        this.touched.add(minpath.dirname(directory));
+      } catch (error2) {
+        if (error2.code !== "EEXIST") throw error2;
+      }
+    }
+  }
+  /** Immediately before a step: the file or folder still has the revision the batch checked. */
+  async verify(path, entry2, expected) {
+    if (entry2.kind === "file") {
+      await this.host.assertRevision(path, expected);
+      return;
+    }
+    const current = (await this.host.folder(path))?.revision;
+    ensure(current === expected, "CONFLICT", `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
+  }
+  /**
+   * Where a write is staged: inside a folder that a rename moves to the write's folder (its deepest existing folder
+   * there, so the temporary file moves along), otherwise next to its target after creating the target's parents.
+   */
+  async stagingDirectory(plan, renames, index2) {
+    const carrier = renames.find((rename2) => rename2.entry.kind === "folder" && plan.write.path.startsWith(`${rename2.request.to}/`));
+    this.carriers[index2] = carrier;
+    if (!carrier) {
+      await this.makeParents(plan.write.path);
+      return minpath.dirname(plan.target);
+    }
+    let directory = minpath.dirname(minpath.join(carrier.source, plan.write.path.slice(carrier.request.to.length + 1)));
+    while (directory !== carrier.source && !(await exists(directory))?.isDirectory()) directory = minpath.dirname(directory);
+    return directory;
+  }
+  /** The staged temporary file's current location: a folder rename carries files staged inside it. */
+  stagedAt(index2) {
+    const temp = this.staged[index2], carrier = this.carriers[index2];
+    return carrier && this.committedRenames.includes(carrier) ? minpath.join(carrier.target, minpath.relative(carrier.source, temp)) : temp;
+  }
+  async apply(renames, writes, removes) {
+    for (const plan of renames) await this.makeParents(plan.request.to);
+    for (const [index2, plan] of writes.entries()) plan.stagingDirectory = await this.stagingDirectory(plan, renames, index2);
+    await this.host.stageAll(writes, this.staged);
+    for (const plan of renames) {
+      await this.verify(plan.request.from, plan.entry, plan.request.expectedRevision);
+      await this.move(plan, plan.source, plan.target);
+      this.committedRenames.push(plan);
+      this.touched.add(minpath.dirname(plan.source)).add(minpath.dirname(plan.target));
+    }
+    for (const [index2, plan] of writes.entries()) {
+      await this.makeParents(plan.write.path);
+      await this.host.resolvePath(plan.write.path);
+      const temp = this.stagedAt(index2);
+      await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), temp);
+      this.committedWrites.push(plan);
+      this.touched.add(minpath.dirname(plan.target)).add(minpath.dirname(temp));
+    }
+    for (const plan of removes) {
+      await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
+      const temp = temporary(plan.target);
+      await retryTransient(() => promises$1.rename(plan.target, temp));
+      plan.temp = temp;
+      this.committedRemoves.push(plan);
+      this.touched.add(minpath.dirname(plan.target));
+    }
+    await this.host.syncDirectories(this.touched);
+  }
+  /**
+   * Moves a rename's entry from `source` to `target` without replacing an existing target. A file is hard-linked
+   * to the target, which fails atomically when the target exists, and then unlinked from the source. Folders, and
+   * files on filesystems without hard links, are renamed after checking that the target is absent; a target
+   * created between that check and the rename by another program is a documented race. A case-only rename passes
+   * through a reserved name, which works whether or not the filesystem ignores case.
+   */
+  async move(plan, source, target) {
+    if (plan.caseOnly) {
+      const temp = temporary(source);
+      await retryTransient(() => promises$1.rename(source, temp));
+      try {
+        await retryTransient(() => promises$1.rename(temp, target));
+      } catch (error2) {
+        await retryTransient(() => promises$1.rename(temp, source)).catch(() => {
+        });
+        throw error2;
+      }
+      return;
+    }
+    const occupied = () => forgeError("DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
+    if (plan.entry.kind === "file" && await this.linkInPlace(source, target, occupied)) return;
+    if (await exists(target)) throw occupied();
+    await retryTransient(() => promises$1.rename(source, target));
+  }
+  /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
+  async linkInPlace(source, target, occupied) {
+    try {
+      await retryTransient(() => promises$1.link(source, target), { codes: ["EBUSY"] });
+    } catch (error2) {
+      const code2 = error2.code ?? "";
+      if (code2 === "EEXIST") throw occupied();
+      if (linkUnsupported.has(code2)) return false;
+      throw error2;
+    }
+    try {
+      await retryTransient(() => promises$1.unlink(source));
+    } catch (error2) {
+      await retryTransient(() => promises$1.unlink(target)).catch(() => {
+      });
+      throw error2;
+    }
+    return true;
+  }
+  /** Committed removals become permanent; a cleanup failure leaves a reserved temporary entry and a warning. */
+  async finalize() {
+    for (const plan of this.committedRemoves) {
+      try {
+        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
+      } catch (error2) {
+        this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error2)}`);
+      }
+    }
+    if (this.committedRemoves.length === 0) return;
+    try {
+      await this.host.syncDirectories(this.committedRemoves.map((plan) => minpath.dirname(plan.target)));
+    } catch (error2) {
+      this.host.warn(`Removed files, but syncing their folders failed: ${String(error2)}`);
+    }
+  }
+  async rollback() {
+    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises$1.rm(this.stagedAt(index2), { force: true })).catch(() => {
+    });
+    const failures = [];
+    for (const plan of this.committedRemoves.reverse()) {
+      try {
+        ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
+        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
+      } catch {
+        failures.push(plan.target);
+      }
+    }
+    for (const entry2 of this.committedWrites.reverse()) {
+      try {
+        const verify = () => this.host.assertRevision(entry2.write.path, this.host.revision(entry2.write.bytes));
+        if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
+        else {
+          await verify();
+          await retryTransient(() => promises$1.rm(entry2.target));
+        }
+      } catch {
+        failures.push(entry2.target);
+      }
+    }
+    for (const plan of this.committedRenames.reverse()) {
+      try {
+        if (plan.entry.kind === "file") await this.host.assertRevision(plan.request.to, plan.entry.stored.revision);
+        if (!plan.caseOnly) ensure(!await exists(plan.source), "ROLLBACK_FAILED", plan.source);
+        await this.move(plan, plan.target, plan.source);
+      } catch {
+        failures.push(plan.target);
+      }
+    }
+    for (const directory of this.createdDirectories.reverse()) {
+      try {
+        await retryTransient(() => promises$1.rmdir(directory));
+        this.touched.delete(directory);
+      } catch {
+      }
+    }
+    for (const directory of this.touched) {
+      try {
+        if (await exists(directory)) await this.host.syncDirectories([directory]);
+      } catch {
+        failures.push(directory);
+      }
+    }
+    if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
+  }
+  result(renames, writes, removes) {
+    const moved2 = renames.flatMap(({ request: { from, to }, entry: entry2 }) => {
+      if (entry2.kind === "file") return [{ from, to, kind: "file", revision: entry2.stored.revision, bytes: entry2.stored.bytes.length }];
+      const descendants = [
+        ...entry2.snapshot.folders.map((path) => ({ from: `${from}/${path}`, to: `${to}/${path}`, kind: "folder" })),
+        ...entry2.snapshot.files.map((file) => ({ from: `${from}/${file.path}`, to: `${to}/${file.path}`, kind: "file", revision: file.revision, bytes: file.bytes }))
+      ].sort((a, b) => a.to < b.to ? -1 : a.to > b.to ? 1 : 0);
+      return [{ from, to, kind: "folder" }, ...descendants];
+    });
+    const written = writes.map(({ write, before }) => ({ path: write.path, revision: this.host.revision(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
+    const removed = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [{ path, revision: entry2.stored.revision, operation: "deleted", bytes: entry2.stored.bytes.length }] : entry2.snapshot.files.map((file) => ({ path: `${path}/${file.path}`, revision: file.revision, operation: "deleted", bytes: file.bytes })));
+    const removedFolders = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [] : [...entry2.snapshot.folders.map((folder) => `${path}/${folder}`).sort().reverse(), path]);
+    return { renames: moved2, changes: [...written, ...removed], folders: this.folders, removedFolders };
+  }
+}
+const unsupported = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
+const isUnsupported = (error2) => unsupported.has(String(error2?.code));
+async function syncDirectory(path, openDirectory = (directory) => promises$1.open(directory, "r")) {
+  let handle;
+  try {
+    handle = await openDirectory(path);
+  } catch (error2) {
+    if (isUnsupported(error2)) return;
+    throw error2;
+  }
+  try {
+    await handle.sync();
+  } catch (error2) {
+    if (!isUnsupported(error2)) throw error2;
+  } finally {
+    await handle.close();
+  }
+}
 const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
 const missing$1 = (error2) => error2.code === "ENOENT";
 const stagingConcurrency = 8;
@@ -10660,8 +10730,8 @@ class NodeFiles {
   async writeBatch(writes, dryRun) {
     const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0, "INVALID_PLAN", "Plan must contain unique file paths.");
-    const { changes, folders } = await this.commit({ writes: requests }, dryRun);
-    return { changes, folders };
+    const { changes, folders: folders2 } = await this.commit({ writes: requests }, dryRun);
+    return { changes, folders: folders2 };
   }
   async commit(batch, dryRun) {
     ensure(batch !== null && typeof batch === "object", "INVALID_PLAN", "A batch must be an object.");
@@ -10686,28 +10756,37 @@ class NodeFiles {
       throw error2;
     }
     if (info.isDirectory()) {
-      const { revision, files, folders } = await this.folder(path);
-      return { path, kind: "folder", revision, files: files.map((file) => file.path), folders };
+      const { revision, files, folders: folders2 } = await this.folder(path);
+      return { path, kind: "folder", revision, files: files.map((file) => file.path), folders: folders2 };
     }
     const stored = await this.stored(path);
     return { path, kind: "file", revision: stored.revision, bytes: stored.bytes.length };
   }
-  /** @internal Batch step: the folder's revision and contents, skipping Git, node_modules, symlinks and Forge's internal files. */
+  /**
+   * @internal Batch step: the folder's revision and contents. The revision covers every file's path and revision,
+   * every subfolder (empty ones too) and each special entry by path and kind: symlinks with their target,
+   * `node_modules` folders without reading them, and other special files. Git and Forge's internal files are skipped.
+   */
   async folder(path) {
-    const files = [], folders = [];
+    const files = [], folders2 = [], special2 = [];
     let git = false;
     const walk = async (directory, prefix) => {
       for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
-        if (entry2.name === ".git") git = true;
-        if ([".git", "node_modules", lockName].includes(entry2.name) || entry2.name.startsWith(".agent-cli-tmp-")) continue;
-        const relative = prefix + entry2.name;
-        if (entry2.isDirectory()) {
-          folders.push(relative);
-          await walk(minpath.join(directory, entry2.name), relative + "/");
-        } else if (entry2.isFile()) {
-          const bytes = await promises$1.readFile(minpath.join(directory, entry2.name));
-          files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
+        if (entry2.name === ".git") {
+          git = true;
+          continue;
         }
+        if (entry2.name === lockName || entry2.name.startsWith(".agent-cli-tmp-")) continue;
+        const relative = prefix + entry2.name, absolute = minpath.join(directory, entry2.name);
+        if (entry2.isSymbolicLink()) special2.push({ path: relative, kind: "symlink", target: await promises$1.readlink(absolute) });
+        else if (entry2.isDirectory() && entry2.name === "node_modules") special2.push({ path: relative, kind: "node_modules" });
+        else if (entry2.isDirectory()) {
+          folders2.push(relative);
+          await walk(absolute, relative + "/");
+        } else if (entry2.isFile()) {
+          const bytes = await promises$1.readFile(absolute);
+          files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
+        } else special2.push({ path: relative, kind: "other" });
       }
     };
     try {
@@ -10716,11 +10795,18 @@ class NodeFiles {
       if (missing$1(error2)) return void 0;
       throw error2;
     }
-    files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    const order2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+    files.sort((a, b) => order2(a.path, b.path));
+    folders2.sort(order2);
+    special2.sort((a, b) => order2(a.path, b.path));
     const digest = node_crypto.createHash("sha256");
     for (const file of files) digest.update(`${file.path}\0${file.revision}
 `);
-    return { revision: digest.digest("hex"), files, folders: folders.sort(), git };
+    for (const folder of folders2) digest.update(`${folder}/\0folder
+`);
+    for (const entry2 of special2) digest.update(`${entry2.path}\0${entry2.kind}${entry2.target === void 0 ? "" : `\0${entry2.target}`}
+`);
+    return { revision: digest.digest("hex"), files, folders: folders2, special: special2, git };
   }
   /** @internal */
   revision(bytes) {
@@ -10760,7 +10846,7 @@ class NodeFiles {
       while (next < plans.length && failures.length === 0) {
         const index2 = next++, plan = plans[index2];
         try {
-          staged[index2] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode);
+          staged[index2] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode, plan.stagingDirectory);
         } catch (error2) {
           failures.push(error2);
         }
@@ -10769,9 +10855,9 @@ class NodeFiles {
     await Promise.all(Array.from({ length: Math.min(stagingConcurrency, plans.length) }, worker));
     if (failures.length) throw failures[0];
   }
-  /** Write a same-directory temporary file whose data is durable before any rename publishes it. */
-  async stage(target, bytes, mode) {
-    const temp = minpath.join(minpath.resolve(target, ".."), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+  /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
+  async stage(target, bytes, mode, directory = minpath.dirname(target)) {
+    const temp = minpath.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
     const handle = await promises$1.open(temp, "wx", mode ?? 438);
     try {
       try {
@@ -19703,6 +19789,85 @@ function validateCanvas(value2) {
     ensure(color(edge.color) && (edge.label === void 0 || typeof edge.label === "string"), "INVALID_CANVAS", "Invalid edge color or label.");
   }
 }
+const escapeRegExp = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const json$5 = (document2) => JSON.stringify(document2.toJS({ maxAliasCount: 100 }));
+function replaceOnce(value2, pairs2) {
+  const used = /* @__PURE__ */ new Set();
+  const order2 = pairs2.map((_, index2) => index2).filter((index2) => pairs2[index2][0].length > 0).sort((a, b) => pairs2[b][0].length - pairs2[a][0].length);
+  if (order2.length === 0) return { text: value2, used };
+  const lookup2 = /* @__PURE__ */ new Map();
+  for (const index2 of order2) if (!lookup2.has(pairs2[index2][0])) lookup2.set(pairs2[index2][0], index2);
+  const pattern = new RegExp(order2.map((index2) => escapeRegExp(pairs2[index2][0])).join("|"), "g");
+  const text2 = value2.replace(pattern, (match) => {
+    const index2 = lookup2.get(match);
+    used.add(index2);
+    return pairs2[index2][1];
+  });
+  return { text: text2, used };
+}
+function stringScalars(document2) {
+  const found = /* @__PURE__ */ new Map();
+  const walk = (node2, key, path) => {
+    if (distExports.isMap(node2)) {
+      for (const pair of node2.items) {
+        const name2 = String(distExports.isScalar(pair.key) ? pair.key.value : pair.key);
+        walk(pair.value, key ? `${key}.${name2}` : name2, [...path, name2]);
+      }
+    } else if (distExports.isSeq(node2)) node2.items.forEach((item, index2) => walk(item, key ? `${key}.${index2}` : String(index2), [...path, index2]));
+    else if (distExports.isAlias(node2)) {
+      const anchored = node2.resolve(document2);
+      if (distExports.isScalar(anchored)) found.get(anchored)?.keys.push(key);
+    } else if (distExports.isScalar(node2) && typeof node2.value === "string" && node2.range) found.set(node2, { path, keys: [key] });
+  };
+  walk(document2.contents, "", []);
+  return found;
+}
+function candidates$1(node2, source, value2, pairs2) {
+  const encode2 = node2.type === "QUOTE_SINGLE" ? (text2) => text2.replaceAll("'", "''") : node2.type === "QUOTE_DOUBLE" ? (text2) => text2.replace(/[\\"]/g, "\\$&") : (text2) => text2;
+  const raw = replaceOnce(source, pairs2.map(([from, to]) => [encode2(from), encode2(to)])).text;
+  const trailing = /(?:\r\n|\n|\r)*$/.exec(source)[0];
+  return [
+    raw,
+    ...node2.type === "QUOTE_SINGLE" && !/[\r\n]/.test(value2) ? [`'${encode2(value2)}'`] : [],
+    JSON.stringify(value2) + (node2.type === "BLOCK_LITERAL" || node2.type === "BLOCK_FOLDED" ? trailing : "")
+  ];
+}
+function replaceInYamlStrings(yaml, document2, replacements) {
+  const targets = [];
+  for (const [node2, { path, keys }] of stringScalars(document2)) {
+    const indexes = replacements.flatMap((replacement2, index2) => keys.includes(replacement2.key) ? [index2] : []);
+    if (indexes.length) targets.push({ path, node: node2, replacements: indexes });
+  }
+  const expected = document2.clone();
+  const applied = [];
+  let text2 = yaml;
+  for (const target of targets.sort((a, b) => b.node.range[0] - a.node.range[0])) {
+    const pairs2 = target.replacements.map((index2) => [replacements[index2].original, replacements[index2].text]);
+    const { text: value2, used } = replaceOnce(target.node.value, pairs2);
+    if (used.size === 0) continue;
+    const [start2, end2] = target.node.range;
+    const node2 = expected.getIn(target.path, true);
+    const previous2 = node2.value;
+    node2.value = value2;
+    const wanted = json$5(expected);
+    const accepted = candidates$1(target.node, text2.slice(start2, end2), value2, pairs2).find((candidate) => {
+      const spliced = distExports.parseDocument(text2.slice(0, start2) + candidate + text2.slice(end2), { uniqueKeys: true });
+      try {
+        return spliced.errors.length === 0 && json$5(spliced) === wanted;
+      } catch {
+        return false;
+      }
+    });
+    if (accepted === void 0) {
+      node2.value = previous2;
+      continue;
+    }
+    text2 = text2.slice(0, start2) + accepted + text2.slice(end2);
+    const matched2 = new Set([...used].map((index2) => pairs2[index2][0]));
+    applied.push(...target.replacements.filter((index2) => matched2.has(replacements[index2].original)));
+  }
+  return { yaml: text2, applied: applied.sort((a, b) => a - b) };
+}
 const encode$2 = (text2) => new TextEncoder().encode(text2);
 function textOf$1(bytes) {
   try {
@@ -19827,7 +19992,7 @@ class ObsidianDocuments {
       doc.set(key, value2);
     }
     for (const key of remove) doc.delete(key);
-    const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
+    const yaml = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, parts.newline);
     const result = encode$2(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate("note.md", result);
     return result;
@@ -19864,10 +20029,13 @@ class ObsidianDocuments {
         cursor = cursor && typeof cursor === "object" ? cursor[String(part)] : void 0;
       }
       doc.setIn(pathKeys, value2);
-      result = styledText(doc.toString(), textOf$1(bytes));
+      result = styledText(doc.toString({ lineWidth: 0 }), textOf$1(bytes));
     } else result = styledText(JSON.stringify(parsed.data, null, 2) + "\n", textOf$1(bytes));
     this.validate(path, result);
     return result;
+  }
+  replaceInYamlStrings(yaml, replacements) {
+    return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
   }
 }
 const encodeText$1 = encode$2;
@@ -26506,8 +26674,8 @@ const basesPlugin = {
   })
 };
 const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
-const vault = '---\nname: forge-vault\ndescription: Search, link-check, create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected (`PROTECTED_PATH`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`) so `help`, `schema` and the invocation policy describe it; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for one-time setup after enabling and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
+const vault = '---\nname: forge-vault\ndescription: Search, link-check, create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`) so `help`, `schema` and the invocation policy describe it; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -48622,7 +48790,7 @@ function markdownReferences(value2, tree, inlineTags) {
     for (const match of visible2.matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
       if (escaped(match.index + match[1].length)) continue;
       const inner = match[2], pipe2 = inner.indexOf("|");
-      add(pipe2 < 0 ? inner : inner.slice(0, pipe2), match[1] === "!", "wikilink", {
+      add(pipe2 < 0 ? inner : inner.slice(0, pipe2).replace(/\\$/, ""), match[1] === "!", "wikilink", {
         original: match[0],
         start: base + match.index,
         end: base + match.index + match[0].length,
@@ -48916,15 +49084,29 @@ function rewriteDestination(destination, oldSource, oldTarget, newSource, target
   const encode2 = !destination.angle && (rawPath !== previous2 || /\s/.test(path));
   return (encode2 ? encodeURI(path) : path) + fragment;
 }
+function narrowed(edit) {
+  const { original, text: text2 } = edit, shortest = Math.min(original.length, text2.length);
+  let prefix = 0, suffix = 0;
+  while (prefix < shortest && original[prefix] === text2[prefix]) prefix++;
+  while (suffix < shortest - prefix && original[original.length - 1 - suffix] === text2[text2.length - 1 - suffix]) suffix++;
+  return { start: edit.start + prefix, end: edit.end - suffix, original: original.slice(prefix, original.length - suffix), text: text2.slice(prefix, text2.length - suffix) };
+}
 function applyEdits(text2, edits) {
-  const ordered2 = [...edits].sort((a, b) => b.start - a.start);
-  let result = text2, limit = Infinity;
-  for (const edit of ordered2) {
-    if (edit.end > limit || text2.slice(edit.start, edit.end) !== edit.original) return void 0;
-    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
-    limit = edit.start;
+  if (edits.some((edit) => text2.slice(edit.start, edit.end) !== edit.original)) return void 0;
+  const ordered2 = edits.map((edit) => ({ edit, narrow: narrowed(edit) })).sort((a, b) => b.narrow.start - a.narrow.start || b.narrow.end - a.narrow.end);
+  const skipped = [];
+  let result = text2, limit = Infinity, last;
+  for (const { edit, narrow } of ordered2) {
+    if (last && narrow.start === last.start && narrow.end === last.end && narrow.text === last.text) continue;
+    if (narrow.end > limit) {
+      skipped.push(edit);
+      continue;
+    }
+    result = result.slice(0, narrow.start) + narrow.text + result.slice(narrow.end);
+    limit = narrow.start;
+    last = narrow;
   }
-  return result;
+  return { text: result, skipped };
 }
 const sorted = (paths2) => [...paths2].sort();
 const isRelativeSyntax = (syntax2) => !["wikilink", "canvas"].includes(syntax2);
@@ -48981,7 +49163,7 @@ function candidates(metadata2, plan) {
   }
   for (const item of metadata2.frontmatterLinks ?? []) {
     result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => {
-      if (!plan.frontmatter.some((entry2) => entry2.original === item.original)) plan.frontmatter.push({ original: item.original, text: text2 });
+      if (!plan.frontmatter.some((entry2) => entry2.key === item.key && entry2.original === item.original)) plan.frontmatter.push({ key: item.key, original: item.original, text: text2 });
     } });
   }
   for (const item of metadata2.canvasLinks ?? []) {
@@ -48997,20 +49179,26 @@ function replacement(candidate, index2, oldSource, oldTarget, newSource, target)
   if (!destination) return void 0;
   return original.slice(0, destination.start) + rewriteDestination(destination, oldSource, oldTarget, newSource, target) + original.slice(destination.end);
 }
-function rewriteText(plan, text2, metadata2) {
+function rewriteText(plan, text2, metadata2, replaceInYaml) {
   const unrewritten = [];
   if (plan.canvas.length > 0) return { text: rewriteCanvas(text2, plan.canvas), unrewritten };
-  let result = applyEdits(text2, plan.edits);
-  if (result === void 0) return void 0;
-  const block = metadata2.frontmatterPosition;
+  const edited = applyEdits(text2, plan.edits);
+  if (edited === void 0) return void 0;
+  for (const edit of edited.skipped) unrewritten.push({ source: plan.source, original: edit.original, reason: "It overlaps another rewritten reference it is nested in; edit it by hand." });
+  let result = edited.text;
+  const applied = /* @__PURE__ */ new Set(), block = metadata2.frontmatterPosition;
   if (block && plan.frontmatter.length > 0) {
-    let yaml = result.slice(block.start.offset, block.end.offset);
-    for (const { original, text: replacement2 } of plan.frontmatter) {
-      if (yaml.includes(original)) yaml = yaml.split(original).join(replacement2);
-      else unrewritten.push({ source: plan.source, original, reason: "The frontmatter spells this link differently, for example with YAML escapes; edit it with properties." });
-    }
-    result = result.slice(0, block.start.offset) + yaml + result.slice(block.end.offset);
+    const frontmatter2 = result.slice(block.start.offset, block.end.offset);
+    const opening = /\r\n|\n|\r/.exec(frontmatter2);
+    const start2 = block.start.offset + (opening ? opening.index + opening[0].length : frontmatter2.length);
+    const end2 = block.start.offset + Math.max(frontmatter2.lastIndexOf("\n"), frontmatter2.lastIndexOf("\r")) + 1;
+    const replaced = replaceInYaml(result.slice(start2, Math.max(start2, end2)), plan.frontmatter);
+    result = result.slice(0, start2) + replaced.yaml + result.slice(Math.max(start2, end2));
+    for (const index2 of replaced.applied) applied.add(index2);
   }
+  plan.frontmatter.forEach((entry2, index2) => {
+    if (!applied.has(index2)) unrewritten.push({ source: plan.source, original: entry2.original, reason: "The frontmatter value no longer holds this link; read the note again or edit it with properties." });
+  });
   return { text: result, unrewritten };
 }
 function rewriteCanvas(text2, nodes) {
@@ -49030,6 +49218,7 @@ const encoder = new TextEncoder();
 const decode$1 = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 const notFound = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
 const json = (value2) => JSON.stringify(value2);
+const folders = (paths2) => paths2.map((path) => ({ path, kind: "folder" }));
 class FileManager {
   constructor(workspace2, metadata2, scope) {
     this.workspace = workspace2;
@@ -49059,9 +49248,10 @@ class FileManager {
       unrewritten.push(...plan.unrewritten);
       for (const file of plan.files) {
         const snapshot = await this.workspace.files.read(file.source);
-        const rewritten = rewriteText(file, decode$1(snapshot.bytes), cache.getFileCache(file.source));
+        const rewritten = rewriteText(file, decode$1(snapshot.bytes), cache.getFileCache(file.source), (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
         if (rewritten === void 0) throw forgeError("CONFLICT", `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
         unrewritten.push(...rewritten.unrewritten);
+        references -= rewritten.unrewritten.length;
         const path = moves.get(file.source) ?? file.source;
         writes.push({ path, bytes: encoder.encode(rewritten.text), expectedRevision: snapshot.revision });
         previous2.set(path, snapshot);
@@ -49099,11 +49289,15 @@ class FileManager {
     const expectedRevision = options.ifMatch ?? entry2.revision;
     if (options.permanent === true) {
       const result2 = await this.workspace.commit({ removes: [{ path, expectedRevision }] }, { operation: "delete" });
-      return { dryRun: result2.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: true, trashPath: null, deleted: result2.changes.map(({ path: file, revision, bytes }) => ({ path: file, revision, bytes })), brokenLinks };
+      const deleted2 = [...result2.changes.map(({ path: file, revision, bytes }) => ({ path: file, kind: "file", revision, bytes })), ...folders(result2.removedFolders)];
+      return { dryRun: result2.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: true, trashPath: null, deleted: deleted2, brokenLinks };
     }
     const trashPath = await this.trashDestination(path, entry2.kind);
     const result = await this.workspace.commit({ renames: [{ from: path, to: trashPath, expectedRevision }] }, { operation: "delete", trash: true });
-    const deleted = result.renames.flatMap((rename2) => rename2.kind === "file" ? [{ path: rename2.from, revision: rename2.revision, bytes: rename2.bytes }] : []);
+    const deleted = [
+      ...result.renames.flatMap((rename2) => rename2.kind === "file" ? [{ path: rename2.from, kind: "file", revision: rename2.revision, bytes: rename2.bytes }] : []),
+      ...folders(result.renames.flatMap((rename2) => rename2.kind === "folder" ? [rename2.from] : []).sort().reverse())
+    ];
     return { dryRun: result.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: false, trashPath, deleted, brokenLinks };
   }
   /** Obsidian's `renameFile`: a move that updates links. */
@@ -49180,10 +49374,11 @@ class FileManager {
       if (!notFound(error2)) throw error2;
     }
   }
+  /** Protected roots are compared without letter case: on case-insensitive filesystems `.Obsidian` is `.obsidian`. */
   ensureMovable(path) {
     const top = path.split("/")[0];
     const protectedRoots = [".obsidian", ".forge", ...this.scope.workspace ? ["bin"] : []];
-    ensure(!protectedRoots.includes(top), "PROTECTED_PATH", `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
+    ensure(!protectedRoots.includes(top.toLowerCase()), "PROTECTED_PATH", `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
   }
 }
 const encode = (data) => typeof data === "string" ? new TextEncoder().encode(data) : data;
@@ -49876,7 +50071,7 @@ const germanErrors = {
   INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
   WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
   DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
-  PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Verschieben oder löschen Sie weder die Bereichswurzel noch .git, .obsidian oder im Workspace-Bereich bin; ein Ordner mit einem .git-Repository ist ebenfalls geschützt." },
+  PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
   INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
   HAS_BACKLINKS: { summary: "Andere Notizen verlinken noch auf die Datei oder den Ordner.", hint: "Passen Sie zuerst die Links in error.details.backlinks an oder entfernen Sie sie, verschieben Sie die Datei stattdessen oder löschen Sie mit --allow-broken-links trotzdem." },
   ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },

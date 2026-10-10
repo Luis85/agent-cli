@@ -10,6 +10,8 @@ export interface MoveOptions { ifMatch?: string; updateLinks?: boolean }
 export interface DeleteOptions { ifMatch?: string; permanent?: boolean; allowBrokenLinks?: boolean; recursive?: boolean }
 /** A link into a deleted file or folder; `line` is 1-based for body links and null for frontmatter and Canvas links. */
 export interface BrokenLink { source: string; target: string; kind: Backlink['kind']; line: number | null; original: string; key?: string; node?: string }
+/** A file or folder a delete removed from its path: files in batch order, then folders, child before parent. */
+interface DeletedEntry { path: string; kind: 'file' | 'folder'; revision?: string; bytes?: number }
 /** Which paths are off limits: the scope root's `.obsidian` and `.forge` always, and `bin` at workspace scope. */
 export interface FileManagerScope { workspace: boolean }
 
@@ -17,6 +19,7 @@ const encoder = new TextEncoder();
 const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
 const notFound = (error: unknown) => error instanceof AppError && error.code === 'NOT_FOUND';
 const json = (value: unknown) => JSON.stringify(value);
+const folders = (paths: readonly string[]) => paths.map((path): DeletedEntry => ({ path, kind: 'folder' }));
 
 /**
  * Obsidian's FileManager for the agent: moves and renames that keep every link intact, guarded deletion to the
@@ -44,10 +47,11 @@ export class FileManager {
       unrewritten.push(...plan.unrewritten);
       for (const file of plan.files) {
         const snapshot = await this.workspace.files.read(file.source);
-        const rewritten = rewriteText(file, decode(snapshot.bytes), cache.getFileCache(file.source)!);
+        const rewritten = rewriteText(file, decode(snapshot.bytes), cache.getFileCache(file.source)!, (yaml, replacements) => this.workspace.codec.replaceInYamlStrings(yaml, replacements));
         // The cache was read moments ago in this invocation; a file edited since then is a conflict, not a guess.
         if (rewritten === undefined) throw forgeError('CONFLICT', `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
         unrewritten.push(...rewritten.unrewritten);
+        references -= rewritten.unrewritten.length;
         const path = moves.get(file.source) ?? file.source;
         writes.push({ path, bytes: encoder.encode(rewritten.text), expectedRevision: snapshot.revision });
         previous.set(path, snapshot);
@@ -88,11 +92,15 @@ export class FileManager {
     const expectedRevision = options.ifMatch ?? entry.revision;
     if (options.permanent === true) {
       const result = await this.workspace.commit({ removes: [{ path, expectedRevision }] }, { operation: 'delete' });
-      return { dryRun: result.dryRun, path, kind: entry.kind, revision: entry.revision, permanent: true, trashPath: null, deleted: result.changes.map(({ path: file, revision, bytes }) => ({ path: file, revision, bytes })), brokenLinks };
+      const deleted = [...result.changes.map(({ path: file, revision, bytes }): DeletedEntry => ({ path: file, kind: 'file', revision, bytes })), ...folders(result.removedFolders)];
+      return { dryRun: result.dryRun, path, kind: entry.kind, revision: entry.revision, permanent: true, trashPath: null, deleted, brokenLinks };
     }
     const trashPath = await this.trashDestination(path, entry.kind);
     const result = await this.workspace.commit({ renames: [{ from: path, to: trashPath, expectedRevision }] }, { operation: 'delete', trash: true });
-    const deleted = result.renames.flatMap(rename => rename.kind === 'file' ? [{ path: rename.from, revision: rename.revision, bytes: rename.bytes }] : []);
+    const deleted = [
+      ...result.renames.flatMap((rename): DeletedEntry[] => rename.kind === 'file' ? [{ path: rename.from, kind: 'file', revision: rename.revision, bytes: rename.bytes }] : []),
+      ...folders(result.renames.flatMap(rename => rename.kind === 'folder' ? [rename.from] : []).sort().reverse()),
+    ];
     return { dryRun: result.dryRun, path, kind: entry.kind, revision: entry.revision, permanent: false, trashPath, deleted, brokenLinks };
   }
 
@@ -167,9 +175,10 @@ export class FileManager {
     } catch (error) { if (!notFound(error)) throw error; }
   }
 
+  /** Protected roots are compared without letter case: on case-insensitive filesystems `.Obsidian` is `.obsidian`. */
   private ensureMovable(path: string): void {
     const top = path.split('/')[0]!;
     const protectedRoots = ['.obsidian', '.forge', ...(this.scope.workspace ? ['bin'] : [])];
-    ensure(!protectedRoots.includes(top), 'PROTECTED_PATH', `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
+    ensure(!protectedRoots.includes(top.toLowerCase()), 'PROTECTED_PATH', `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
   }
 }
