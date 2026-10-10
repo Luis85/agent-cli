@@ -42,6 +42,9 @@ describe('presentation localization', () => {
     expect(localizer.result('setup', { nextSteps })).toEqual({ nextSteps: [{ command: nextSteps[0]!.command, purpose: expect.stringContaining('Ein Projekt suchen') }, nextSteps[1]] });
     const data = { status: 'empty', directory: 'my sources', nextStep: 'Initialize', description: 'Author-owned text' };
     expect(localizer.result('data-sources', data)).toEqual({ ...data, nextStep: 'Führen Sie data-sources init --library my sources aus oder fügen Sie eine Markdown-Definition hinzu.' });
+    const formats = localizer.result('formats', { text: ['ts'], textFiles: 'UTF-8 read', attachments: 'Bytes', otherFiles: 'Opaque' });
+    expect(formats).toMatchObject({ text: ['ts'], textFiles: expect.stringContaining('UTF-8 lesen'), attachments: expect.stringContaining('verlustfrei') });
+    expect(localizer.result('events', { delivery: 'English' })).toEqual({ delivery: expect.stringContaining('--events none|changes|all') });
   });
   it('translates known metadata without changing machine identifiers or usage', () => {
     const localizer = new Localizer('de');

@@ -1,7 +1,7 @@
 import { Command, CommanderError, Option } from 'commander';
 import { AppError, ensure } from '../../domain/shared/errors.ts';
 export const globalOptions = {
-  root: 'string', lang: 'string', json: 'boolean', 'no-json': 'boolean',
+  root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
   'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
   help: 'boolean', version: 'boolean',
 } as const;

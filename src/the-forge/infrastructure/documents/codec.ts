@@ -10,7 +10,7 @@ import type { DocumentCodec } from '../../application/workspace/ports.ts';
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Structured documents must be valid UTF-8.', 2); }
+  catch { throw new AppError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.', 2); }
 }
 function yamlDocument(text: string): Document {
   const document = parseDocument(text, { uniqueKeys: true });
@@ -81,6 +81,11 @@ function validateBase(value: unknown) {
 export class ObsidianDocuments implements DocumentCodec {
   inspect(path: string, bytes: Uint8Array): unknown {
     const kind = fileKind(path);
+    if (kind === 'text') {
+      // Text extensions are a hint, not a guarantee; undecodable bytes keep the lossless attachment form.
+      try { return { kind, content: textOf(bytes) }; }
+      catch { return { kind: 'attachment', encoding: 'base64', content: Buffer.from(bytes).toString('base64') }; }
+    }
     if (!['markdown', 'canvas', 'base'].includes(kind)) return { kind, encoding: 'base64', content: Buffer.from(bytes).toString('base64') };
     const text = textOf(bytes);
     if (kind === 'markdown') {
@@ -97,7 +102,9 @@ export class ObsidianDocuments implements DocumentCodec {
     if (kind === 'canvas') validateCanvas(data); else validateBase(data);
     return { kind, data };
   }
-  validate(path: string, bytes: Uint8Array): void { this.inspect(path, bytes); }
+  validate(path: string, bytes: Uint8Array): void {
+    if (fileKind(path) === 'text') textOf(bytes); else this.inspect(path, bytes);
+  }
   properties(bytes: Uint8Array, changes: Record<string, unknown>): Uint8Array {
     const parts = parseMarkdownParts(textOf(bytes));
     const doc = yamlDocument(parts.yaml || '{}');

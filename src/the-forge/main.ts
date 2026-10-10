@@ -4,6 +4,7 @@ import { AppError, ensure } from './domain/shared/errors.ts';
 import { EventBus } from './application/plugins/events.ts';
 import { registerHostEvents } from './application/plugins/host-events.ts';
 import { invokeCommand } from './application/plugins/invocation.ts';
+import { eventOutput, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
 import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
 import { Workspace } from './application/workspace/workspace.ts';
@@ -51,8 +52,12 @@ async function run(): Promise<void> {
   let activeContext: Pick<CommandContext, 'workspaceRoot' | 'root' | 'project'> | undefined;
   let localizer = new Localizer();
   let compact = tokens.includes('--json');
+  // Response event output only; listeners and replay always observe the full invocation history.
+  let eventLevel: EventOutput = 'changes';
   try {
     const bootstrap = parseBootstrap(tokens);
+    const requestedEvents = value(bootstrap.flags, 'events');
+    if (requestedEvents !== undefined) eventLevel = eventOutput(requestedEvents);
     const requestedLanguage = value(bootstrap.flags, 'lang');
     if (requestedLanguage !== undefined) localizer = new Localizer(language(requestedLanguage));
     if (bootstrap.flags.version) {
@@ -66,6 +71,7 @@ async function run(): Promise<void> {
       config.settings.language = localizer.language;
       config.settings.json = bootstrap.flags['no-json'] ? false : bootstrap.flags.json ? true : config.settings.json;
       config.settings.dryRun = bootstrap.flags['no-dry-run'] ? false : bootstrap.flags['dry-run'] ? true : config.settings.dryRun;
+      if (requestedEvents !== undefined) config.settings.events = eventLevel; else eventLevel = config.settings.events;
       compact = config.settings.json;
       const files = await NodeFiles.at(loaded.root, message => events.warn(message));
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
@@ -99,6 +105,8 @@ async function run(): Promise<void> {
       const parsedLanguage = value(parsed.flags, 'lang');
       if (parsedLanguage !== undefined) localizer = new Localizer(language(parsedLanguage));
       config.settings.language = localizer.language;
+      const parsedEvents = value(parsed.flags, 'events');
+      if (parsedEvents !== undefined) eventLevel = config.settings.events = eventOutput(parsedEvents);
       for (const [commandId, registered] of registry.commands) registry.commands.set(commandId, localizer.command(registered));
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
       for (const option of ['root', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
@@ -133,11 +141,11 @@ async function run(): Promise<void> {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
     result = { ok: false, error: localizer.error(error) };
   } finally { await registry.dispose(events); }
-  try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: events.history, warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
+  try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
   catch {
     process.exitCode = 1;
     // Keep committed change evidence even if a plugin command returns invalid data.
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(new AppError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: events.history, warnings: events.warnings }) + '\n');
+    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(new AppError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }) + '\n');
   }
 }
 void run();
