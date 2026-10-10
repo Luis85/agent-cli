@@ -35,3 +35,8 @@ Trailhead is a fictional trip-planning web app for small hiking groups. This vau
 - Requirement traceability: [[Requirements.base]]
 - Library definitions: [[Library.base]]
 - How it was built: [[Build log]]
+
+## Product backlog
+
+- Backlog view: [[Product Backlog.base]]
+- Next release: [[Trailhead 1.0]] and its [[Trailhead 1.0 release notes]]
