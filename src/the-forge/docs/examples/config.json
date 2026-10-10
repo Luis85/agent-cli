@@ -1,12 +1,7 @@
 {
   "schemaVersion": 1,
   "paths": {
-    "projects": "projects",
-    "dataSources": "data-sources",
-    "dataGenerated": "src/data-sources",
-    "dataFixtures": "test-data",
-    "dataImports": "imports/data-sources",
-    "dataExports": "exports/data-sources"
+    "projects": "projects"
   },
   "plugins": {
     "enabled": [

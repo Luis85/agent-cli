@@ -2,8 +2,6 @@ import type { Generator } from '../../application/plugins/registry.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import type { WorkflowServices } from '../cli/services.ts';
 import { makeDocument } from '../workspace/commands.ts';
-import { libraryGenerationOptions, reviewOptions } from '../../application/generation/controls.ts';
-import { makeDataSource, dataSourceGenerationOptions } from '../data-sources/commands.ts';
 
 /** Kernel generators with their own results: template documents. */
 export function libraryGenerators(services: WorkflowServices): Generator[] {
@@ -18,11 +16,6 @@ export function libraryGenerators(services: WorkflowServices): Generator[] {
         date: option.string('ISO date used for template dates; defaults to today.'),
       },
       run: ({ name, flags, context }) => makeDocument(name, flags, context, services),
-    },
-    {
-      id: 'data-source', description: 'Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.', usage: 'make data-source <id> [--project id] [--out directory] [--test-data-out directory]',
-      projectOption: 'project', options: { ...libraryGenerationOptions, ...reviewOptions, ...dataSourceGenerationOptions },
-      run: ({ name, flags, context }) => makeDataSource(name, flags, context, services),
     },
   ];
 }

@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
-import type { DataSourceDefinition, DataSourceField, DataSourceValue } from '../../domain/data-sources/definition.ts';
-import type { DataSourceDefinitionCodec } from '../../application/data-sources/library.ts';
-import { ObsidianDocuments } from '../documents/codec.ts';
+import { forgeError, AppError, ensure } from '../../../domain/shared/errors.ts';
+import { vaultPath } from '../../../domain/documents/file.ts';
+import type { DataSourceDefinition, DataSourceField, DataSourceValue } from '../domain/definition.ts';
+import type { DataSourceDefinitionCodec } from '../application/library.ts';
+import type { DocumentCodec } from '../../../application/workspace/ports.ts';
 
 const reserved = new Set('arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__'.split(' '));
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine(value => !reserved.has(value), 'Reserved field name');
@@ -81,7 +81,7 @@ const schema = z.strictObject({
 
 /** Descriptions remain Markdown and are never evaluated as code. */
 export class MarkdownDataSourceDefinitions implements DataSourceDefinitionCodec {
-  private readonly documents = new ObsidianDocuments();
+  constructor(private readonly documents: Pick<DocumentCodec, 'inspect'>) {}
   parse(bytes: Uint8Array, path: string): DataSourceDefinition {
     vaultPath(path);
     try {

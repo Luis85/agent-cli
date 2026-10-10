@@ -31,7 +31,6 @@ beforeEach(async () => {
   for (const command of commands(registry, {
     loaded, files, templates: new MarkdownTemplates(),
     projects: new ProjectService(files, workspace, 'projects', { project: projectScaffold, component: componentScaffold }, events),
-    get dataSources(): never { throw new Error('Document commands must not access data sources'); },
     get workflows(): never { throw new Error('Document commands must not access workflows'); },
     async installTemplates() { throw new Error('Document commands must not install templates'); },
     setup: async () => undefined,
@@ -42,7 +41,7 @@ beforeEach(async () => {
 
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
-    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'data-sources', 'workflows',
+    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'workflows',
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });

@@ -95,9 +95,9 @@ describe('portable data-source workflow', () => {
 
   it('honors configured paths and explicit project scope without changing saved selection', async () => {
     await mkdir(join(root, 'bin'));
-    await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: {
-      dataSources: 'contracts/data', dataGenerated: 'adapters', dataFixtures: 'fixtures', dataImports: 'incoming', dataExports: 'outgoing', projects: 'apps',
-    } }));
+    await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: { projects: 'apps' }, plugins: { settings: { 'data-sources': {
+      library: 'contracts/data', output: 'adapters/', fixtures: 'fixtures', imports: 'incoming', exports: 'outgoing',
+    } } } }));
     await seed('json', 'contracts/data');
     expect(cli(['project', 'create', 'portal']).status).toBe(0);
     expect(cli(['make', 'data-source', 'requests', '--project', 'portal']).status).toBe(0);

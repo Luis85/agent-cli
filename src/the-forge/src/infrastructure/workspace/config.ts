@@ -14,8 +14,6 @@ const configSchema = z.strictObject({
   schemaVersion: z.literal(1).default(1),
   paths: z.strictObject({
     projects: relativePath.refine(value => value.toLowerCase() !== 'bin' && !value.toLowerCase().startsWith('bin/'), 'Projects must be outside the fixed bin directory.').default('projects'),
-    dataSources: relativePath.default('data-sources'), dataGenerated: relativePath.default('src/data-sources'),
-    dataFixtures: relativePath.default('test-data'), dataImports: relativePath.default('imports/data-sources'), dataExports: relativePath.default('exports/data-sources'),
   }).prefault({}),
   settings: z.strictObject({ language: z.enum(['en', 'de']).default('en'), json: z.boolean().default(false), dryRun: z.boolean().default(false), events: z.enum(eventOutputLevels).default('changes') }).prefault({}),
   templates: z.strictObject({ dateFormat: z.string().min(1).default('YYYY-MM-DD'), timeFormat: z.string().min(1).default('HH:mm') }).prefault({}),

@@ -9,8 +9,8 @@ import { validateUiLibrary } from '../../src/plugins/ui/domain/components/librar
 import { renderUiComponents } from '../../src/plugins/ui/infrastructure/components/renderers.ts';
 import { renderUiStories } from '../../src/plugins/ui/infrastructure/components/stories.ts';
 import { uiFrameworks } from '../../src/plugins/ui/domain/components/definition.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/plugins/data-sources/infrastructure/definitions.ts';
+import { TypeScriptDataSourceRenderer } from '../../src/plugins/data-sources/infrastructure/generator.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
 async function markdownFiles(directory: string): Promise<string[]> {
@@ -62,7 +62,7 @@ it('keeps the worked UI and data-source documents valid and deterministically ge
     expect(renderUiComponents([...definitions].reverse(), framework, `generated/${framework}`)).toEqual(components);
     expect(renderUiStories(definitions, framework, `generated/${framework}`, `stories/${framework}`)).toHaveLength(definitions.length);
   }
-  const dataCodec = new MarkdownDataSourceDefinitions();
+  const dataCodec = new MarkdownDataSourceDefinitions(new ObsidianDocuments());
   const sources = await Promise.all((await markdownFiles('docs/examples/idea-to-production/sources')).map(async path => dataCodec.parse(await readFile(path), path)));
   const renderer = new TypeScriptDataSourceRenderer();
   const options = { outputDirectory: 'generated/data', testDataDirectory: 'test-data' };

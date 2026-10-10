@@ -41,7 +41,8 @@ describe('presentation localization', () => {
     const nextSteps = [{ command: 'node bin/forge.js project list', purpose: 'Find a project' }, { command: 'custom', purpose: 'Preserve me' }];
     expect(localizer.result('setup', { nextSteps })).toEqual({ nextSteps: [{ command: nextSteps[0]!.command, purpose: expect.stringContaining('Ein Projekt suchen') }, nextSteps[1]] });
     const data = { status: 'empty', directory: 'my sources', nextStep: 'Initialize', description: 'Author-owned text' };
-    expect(localizer.result('data-sources', data)).toEqual({ ...data, nextStep: 'Führen Sie data-sources init --library my sources aus oder fügen Sie eine Markdown-Definition hinzu.' });
+    // Library guidance belongs to the core plugins that own those commands (localizedLibraryResult); the kernel leaves it alone.
+    expect(localizer.result('data-sources', data)).toBe(data);
     const formats = localizer.result('formats', { text: ['ts'], textFiles: 'UTF-8 read', attachments: 'Bytes', otherFiles: 'Opaque' });
     expect(formats).toMatchObject({ text: ['ts'], textFiles: expect.stringContaining('UTF-8 lesen'), attachments: expect.stringContaining('verlustfrei') });
     expect(localizer.result('events', { delivery: 'English' })).toEqual({ delivery: expect.stringContaining('--events none|changes|all') });

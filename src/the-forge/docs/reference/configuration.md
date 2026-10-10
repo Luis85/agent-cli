@@ -10,12 +10,7 @@ The shipped configuration is:
 {
   "schemaVersion": 1,
   "paths": {
-    "projects": "projects",
-    "dataSources": "data-sources",
-    "dataGenerated": "src/data-sources",
-    "dataFixtures": "test-data",
-    "dataImports": "imports/data-sources",
-    "dataExports": "exports/data-sources"
+    "projects": "projects"
   },
   "settings": {
     "language": "en",
@@ -35,7 +30,7 @@ The shipped configuration is:
 }
 ```
 
-Configuration is validated with Zod. Partial objects inherit defaults; unknown keys and invalid values fail before execution. `paths.projects` is relative to that workspace and defaults to `projects`; set it to `src` or another contained directory for managed projects.
+Configuration is validated with Zod. Partial objects inherit defaults; unknown keys and invalid values fail before execution. `paths` holds only `projects`; feature folders live in their core plugin's section under `plugins.settings`. `paths.projects` is relative to that workspace and defaults to `projects`; set it to `src` or another contained directory for managed projects.
 
 The Forge source checkout deliberately overrides this default: its tracked `bin/config.json` uses `paths.projects: "src"`, and tracked `bin/data/context.json` selects `the-forge` at `src/the-forge`. Generic release archives use the defaults shown above and contain no saved selection. Setup preserves existing settings and context; it does not convert a copied checkout configuration into generic defaults. Follow the [new-workspace installation steps](../tutorials/getting-started.md#1-install-the-portable-distribution) when copying the repository bundle elsewhere.
 
@@ -69,10 +64,20 @@ The `plugins` section has three keys:
 | --- | --- | --- |
 | `plugins.enabled` | `[]` | User plugin ids that load from `bin/plugins`, in load order. Installing a directory does not enable it |
 | `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; other ids are ignored with a warning. A plugin that requires a service of a disabled core plugin becomes unavailable (`backlog` without `bases`) |
-| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), and `ui` holds the UI framework and folders described above. See [config sections](plugins.md#config-sections) |
+| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), `ui` holds the UI framework and folders described above, and `data-sources` the data-source folders described below. See [config sections](plugins.md#config-sections) |
 
 Use `node bin/forge.js --no-plugins <command>` to skip user plugins for one invocation, including recovery from a broken plugin; core plugins still load. `node bin/forge.js plugins` lists every plugin with its state.
 
 Keep workspace configuration under version control as appropriate for your repository. Persisted selection is operating state; this source checkout intentionally tracks its self-management selection. For upgrades, extract separately; preserve configuration, shared plugins/templates and current context while replacing the executable and packaged assets.
 
-Data-source definitions use workspace-relative `paths.dataSources` (default `data-sources`), `paths.dataImports` (`imports/data-sources`) and `paths.dataExports` (`exports/data-sources`). Generated adapters use `paths.dataGenerated` (`src/data-sources`) in the selected project or workspace; generated test data uses `paths.dataFixtures` (`test-data`) in that same scope. See [data-source contracts](data-sources.md) for overrides, supported adapters and exact input resolution.
+Data sources belong to the `data-sources` core plugin, whose section `plugins.settings.data-sources` holds its folders. The former kernel keys `paths.dataSources`, `paths.dataGenerated`, `paths.dataFixtures`, `paths.dataImports` and `paths.dataExports` are rejected with `INVALID_CONFIG`; move them into this section:
+
+| Setting in `plugins.settings.data-sources` | Default | Scope and override |
+| --- | --- | --- |
+| `library` | `data-sources` | Workspace definition library; `--library` |
+| `imports` | `imports/data-sources` | Workspace import source; `data-sources import --from` |
+| `exports` | `exports/data-sources` | Workspace export destination; `data-sources export --out` |
+| `output` | `src/data-sources` | Generated adapters in the selected project or workspace; `make data-source --out` |
+| `fixtures` | `test-data` | Generated test data in that same scope; `make data-source --test-data-out` |
+
+See [data-source contracts](data-sources.md) for supported adapters and exact input resolution.

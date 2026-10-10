@@ -4,14 +4,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventBus } from '../../src/application/plugins/events.ts';
-import { DataSourceLibrary, type DataSourceRenderer } from '../../src/application/data-sources/library.ts';
+import { DataSourceLibrary, type DataSourceRenderer } from '../../src/plugins/data-sources/application/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/plugins/data-sources/infrastructure/definitions.ts';
 
 let root: string, files: NodeFiles;
-const codec = new MarkdownDataSourceDefinitions();
+const codec = new MarkdownDataSourceDefinitions(new ObsidianDocuments());
 const library = (dryRun = false, renderer?: DataSourceRenderer) => new DataSourceLibrary(new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), dryRun), codec, renderer);
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-data-sources-')); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });

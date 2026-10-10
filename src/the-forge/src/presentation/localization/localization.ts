@@ -68,9 +68,6 @@ export class Localizer {
     if (this.language === 'en' || !isRecord(data)) return data;
     if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.described('generators', data.generators), errors: this.errors(data.errors) };
     if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), generators: this.described('generators', data.generators) };
-    if (['data-sources'].includes(command) && data.status === 'empty' && typeof data.directory === 'string' && typeof data.nextStep === 'string') {
-      return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
-    }
     if (command === 'formats') return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
     if (command === 'events') return { ...data, contracts: this.described('events', data.contracts), delivery: germanGuidance.delivery };
     if (command === 'setup' && Array.isArray(data.nextSteps)) return {

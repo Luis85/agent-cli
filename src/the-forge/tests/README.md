@@ -8,7 +8,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
-| [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
+| [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |
 | [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |

@@ -6,6 +6,7 @@ import { claudeCommand } from '../../src/presentation/claude/commands.ts';
 import { basesCommand } from '../../src/plugins/bases/presentation/commands.ts';
 import { skillsCommand } from '../../src/plugins/skills/presentation/commands.ts';
 import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
+import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
 
 /**
@@ -18,14 +19,15 @@ export function builtinCommands(): { registry: Registry; commands: Map<string, C
     get: (target, key) => key in target ? target[key as keyof typeof target] : unavailable,
   }) as unknown as WorkflowServices;
   const registry = new Registry();
-  const ui = uiPlugin.create({ skills: { list: () => [], get: () => undefined }, fileDates: unavailable });
-  for (const generator of [...generators, ...libraryGenerators(services), ...ui.generators!]) registry.add(registry.generators, generator);
+  const host = { skills: { list: () => [], get: () => undefined }, fileDates: unavailable };
+  const plugins = [uiPlugin, dataSourcesPlugin].map(plugin => plugin.create(host));
+  for (const generator of [...generators, ...libraryGenerators(services), ...plugins.flatMap(plugin => plugin.generators!)]) registry.add(registry.generators, generator);
   const all = [
     ...commands(registry, services),
     claudeCommand({ agentCodec: { parse: unavailable, render: unavailable }, target: unavailable }),
     basesCommand(unavailable),
     skillsCommand({ list: () => [], get: () => undefined }),
-    ...ui.commands!,
+    ...plugins.flatMap(plugin => plugin.commands!),
   ];
   for (const command of all) registry.add(registry.commands, command);
   return { registry, commands: registry.commands };

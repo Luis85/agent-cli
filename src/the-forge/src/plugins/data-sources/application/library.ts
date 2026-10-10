@@ -1,8 +1,8 @@
-import { ensure } from '../../domain/shared/errors.ts';
-import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../domain/documents/file.ts';
-import type { DataSourceDefinition } from '../../domain/data-sources/definition.ts';
-import type { Workspace } from '../workspace/workspace.ts';
-import { GenerationService } from '../generation/plans.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../../domain/documents/file.ts';
+import type { DataSourceDefinition } from '../domain/definition.ts';
+import type { Workspace } from '../../../application/workspace/workspace.ts';
+import { GenerationService } from '../../../application/generation/plans.ts';
 
 export interface DataSourceDefinitionCodec {
   parse(bytes: Uint8Array, path: string): DataSourceDefinition;

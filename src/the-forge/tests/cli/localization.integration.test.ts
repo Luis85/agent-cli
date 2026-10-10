@@ -22,6 +22,7 @@ import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
+import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
@@ -35,7 +36,6 @@ describe('built-in localization catalog coverage', () => {
         get files(): never { throw new Error('Catalog must not access files'); },
         get templates(): never { throw new Error('Catalog must not access templates'); },
         get projects(): never { throw new Error('Catalog must not access projects'); },
-        get dataSources(): never { throw new Error('Catalog must not access data sources'); },
         get workflows(): never { throw new Error('Catalog must not access workflows'); },
         async installTemplates() { throw new Error('Catalog must not install templates'); },
         async setup() { throw new Error('Catalog must not run setup'); },
@@ -63,7 +63,7 @@ describe('built-in localization catalog coverage', () => {
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, uiPlugin];
+    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, uiPlugin, dataSourcesPlugin];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }, []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));

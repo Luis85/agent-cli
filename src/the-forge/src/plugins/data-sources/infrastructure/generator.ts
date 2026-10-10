@@ -1,8 +1,7 @@
-import type { DataSourceDefinition, DataSourceField, DataSourceRecord, DataSourceValue } from '../../domain/data-sources/definition.ts';
-import type { DataSourceGenerateOptions, DataSourceRenderer } from '../../application/data-sources/library.ts';
-import type { WriteRequest } from '../../domain/documents/file.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
-import { encodeText } from '../documents/codec.ts';
+import type { DataSourceDefinition, DataSourceField, DataSourceRecord, DataSourceValue } from '../domain/definition.ts';
+import type { DataSourceGenerateOptions, DataSourceRenderer } from '../application/library.ts';
+import type { WriteRequest } from '../../../domain/documents/file.ts';
+import { vaultPath } from '../../../domain/documents/file.ts';
 
 const compare = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
 function canonicalJson(value: unknown, spaces?: number): string {
@@ -172,8 +171,8 @@ export class TypeScriptDataSourceRenderer implements DataSourceRenderer {
   generate(definitions: readonly DataSourceDefinition[], options: DataSourceGenerateOptions): readonly WriteRequest[] {
     vaultPath(options.outputDirectory); vaultPath(options.testDataDirectory);
     return [...definitions].sort((left, right) => compare(left.id, right.id)).flatMap(definition => [
-      { path: `${options.outputDirectory}/${definition.id}.ts`, bytes: encodeText(modelSource(definition) + (definition.kind === 'rest' ? restSource(definition) : jsonSource(definition))) },
-      { path: `${options.testDataDirectory}/${definition.id}.fixtures.json`, bytes: encodeText(canonicalJson(fixtureRecords(definition), 2) + '\n') },
+      { path: `${options.outputDirectory}/${definition.id}.ts`, bytes: new TextEncoder().encode(modelSource(definition) + (definition.kind === 'rest' ? restSource(definition) : jsonSource(definition))) },
+      { path: `${options.testDataDirectory}/${definition.id}.fixtures.json`, bytes: new TextEncoder().encode(canonicalJson(fixtureRecords(definition), 2) + '\n') },
     ]);
   }
 }

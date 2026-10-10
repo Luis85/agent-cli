@@ -6,14 +6,14 @@ import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { ClaudeAgents } from '../../src/application/claude/agents.ts';
-import { DataSourceLibrary } from '../../src/application/data-sources/library.ts';
+import { DataSourceLibrary } from '../../src/plugins/data-sources/application/library.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { InteractionLibrary } from '../../src/plugins/ui/application/interactions/library.ts';
 import { UiLibrary } from '../../src/plugins/ui/application/components/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/plugins/data-sources/infrastructure/definitions.ts';
+import { TypeScriptDataSourceRenderer } from '../../src/plugins/data-sources/infrastructure/generator.ts';
 import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { MarkdownInteractionDefinitions } from '../../src/plugins/ui/infrastructure/interactions/definitions.ts';
@@ -116,7 +116,7 @@ describe('generated Markdown as editable Obsidian source', () => {
   });
 
   it('regenerates typed data fixtures from YAML edits without interpreting linked Markdown as model configuration', async () => {
-    const sources = new DataSourceLibrary(workspace, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer());
+    const sources = new DataSourceLibrary(workspace, new MarkdownDataSourceDefinitions(new ObsidianDocuments()), new TypeScriptDataSourceRenderer());
     await sources.create('sources', 'work-items', 'json');
     const path = 'sources/work-items.md';
     await authorNotes(path);
