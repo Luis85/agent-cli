@@ -1,7 +1,7 @@
-import type { FileRepository, WriteBatchResult } from '../../src/application/workspace/ports.ts';
+import type { BatchResult, FileRepository, WriteBatchResult } from '../../src/application/workspace/ports.ts';
 import type { MetadataCache } from '../../src/application/metadata/ports.ts';
 import { VaultMetadata } from '../../src/application/metadata/vault-metadata.ts';
-import type { FileChange } from '../../src/domain/documents/file.ts';
+import type { FileChange, FileStat } from '../../src/domain/documents/file.ts';
 import { forgeError } from '../../src/domain/shared/errors.ts';
 import { NodeBasesQueryEngine } from '../../src/infrastructure/bases/engine.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
@@ -31,6 +31,11 @@ export class MemoryFiles implements FileRepository {
   async list(): Promise<string[]> { return [...this.files.keys()].sort(); }
   async writeBatch(): Promise<WriteBatchResult> { throw new Error('MemoryFiles is read-only.'); }
   async remove(): Promise<FileChange> { throw new Error('MemoryFiles is read-only.'); }
+  async commit(): Promise<BatchResult> { throw new Error('MemoryFiles is read-only.'); }
+  async stat(path: string): Promise<FileStat> {
+    const { bytes, revision } = await this.read(path);
+    return { path, kind: 'file', revision, bytes: bytes.length };
+  }
 }
 
 /** Every observable part of a loaded cache, for comparing an incrementally updated index with a fresh build. */

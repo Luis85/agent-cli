@@ -4,7 +4,7 @@ import type { EventBus, EventDefinition } from './events.ts';
 
 interface HostError { code: string; exitCode: number }
 interface CommandOperation { operationId: number; command: string; root: string; workspaceRoot: string; dryRun: boolean }
-interface WorkspaceOperation { operationId: number; operation: 'read' | 'write' | 'edit' | 'remove'; root: string | null; paths: string[]; dryRun: boolean }
+interface WorkspaceOperation { operationId: number; operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete'; root: string | null; paths: string[]; dryRun: boolean }
 interface ClaudeOperation { operationId: number; executable: string; cwd: string; dryRun: boolean }
 interface PluginOperation { pluginId: string }
 type Empty = Record<string, never>;
@@ -22,7 +22,7 @@ export interface HostEventMap {
   'command.succeeded': CommandOperation;
   'command.failed': CommandOperation & { error: HostError };
   'operation.started': WorkspaceOperation;
-  'operation.succeeded': WorkspaceOperation & { changes?: FileChange[]; bytes?: number };
+  'operation.succeeded': WorkspaceOperation & { changes?: FileChange[]; bytes?: number; renames?: Array<{ from: string; to: string; kind: 'file' | 'folder' }> };
   'operation.failed': WorkspaceOperation & { error: HostError };
   'claude.started': ClaudeOperation;
   'claude.succeeded': ClaudeOperation & { exitCode?: number };
@@ -62,11 +62,12 @@ const empty = (value: Record<string, unknown>) => Object.keys(value).length === 
 const operation = (value: Record<string, unknown>) => count(value.operationId) && Number(value.operationId) > 0 && typeof value.dryRun === 'boolean';
 const error = (value: unknown) => isRecord(value) && text(value.code) && status(value.exitCode);
 const command = (value: Record<string, unknown>) => operation(value) && text(value.command) && text(value.root) && text(value.workspaceRoot);
-const workspace = (value: Record<string, unknown>) => operation(value) && ['read', 'write', 'edit', 'remove'].includes(String(value.operation)) && (value.root === null || text(value.root)) && Array.isArray(value.paths) && value.paths.every(text);
+const workspace = (value: Record<string, unknown>) => operation(value) && ['read', 'write', 'edit', 'remove', 'move', 'delete'].includes(String(value.operation)) && (value.root === null || text(value.root)) && Array.isArray(value.paths) && value.paths.every(text);
 const claude = (value: Record<string, unknown>) => operation(value) && text(value.executable) && text(value.cwd);
 const plugin = (value: Record<string, unknown>) => text(value.pluginId);
 const changeOperations = ['created', 'updated', 'deleted'];
 const change = (value: unknown): value is FileChange => isRecord(value) && text(value.path) && text(value.revision) && count(value.bytes) && changeOperations.includes(String(value.operation));
+const moved = (value: unknown) => isRecord(value) && text(value.from) && text(value.to) && ['file', 'folder'].includes(String(value.kind));
 const optionalStatus = (value: Record<string, unknown>) => value.exitCode === undefined || status(value.exitCode);
 const project = (value: unknown) => value === null || text(value);
 /** Files carry revision and bytes; folders carry neither. */
@@ -84,7 +85,8 @@ const hostEventDefinitions: readonly EventDefinition[] = [
   definition('command.succeeded', 'A routed command returned successfully.', command),
   definition('command.failed', 'A routed command failed; error codes contain no command input.', value => command(value) && error(value.error)),
   definition('operation.started', 'A guarded workspace operation started, including previews.', workspace),
-  definition('operation.succeeded', 'A guarded workspace operation completed, including previews.', value => workspace(value) && (value.bytes === undefined || count(value.bytes)) && (value.changes === undefined || (Array.isArray(value.changes) && value.changes.every(change)))),
+  definition('operation.succeeded', 'A guarded workspace operation completed, including previews.', value => workspace(value) && (value.bytes === undefined || count(value.bytes)) && (value.changes === undefined || (Array.isArray(value.changes) && value.changes.every(change)))
+    && (value.renames === undefined || (Array.isArray(value.renames) && value.renames.every(moved)))),
   definition('operation.failed', 'A guarded workspace operation failed.', value => workspace(value) && error(value.error)),
   definition('claude.started', 'A Claude invocation began validation or preview.', claude),
   definition('claude.succeeded', 'A Claude invocation or validated preview completed.', value => claude(value) && optionalStatus(value)),

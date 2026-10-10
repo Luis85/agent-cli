@@ -1,9 +1,8 @@
-import type { FileChange } from '../../domain/documents/file.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type CachedMetadataRecord } from '../plugins/host-events.ts';
-import type { CommitObserver } from '../workspace/ports.ts';
-import type { MetadataIndex } from './ports.ts';
+import type { CommitObserver, CommittedBatch } from '../workspace/ports.ts';
+import type { MetadataChange, MetadataIndex } from './ports.ts';
 
 /** Event payloads carry the cache's JSON form, detached from the live index. */
 const record = (cache: CachedMetadata): CachedMetadataRecord => JSON.parse(JSON.stringify(cache)) as CachedMetadataRecord;
@@ -19,8 +18,11 @@ const record = (cache: CachedMetadata): CachedMetadataRecord => JSON.parse(JSON.
 export class MetadataCacheEvents implements CommitObserver {
   constructor(private readonly events: EventBus, private readonly index: MetadataIndex) {}
 
-  async committed(changes: readonly FileChange[]): Promise<void> {
-    const update = await this.index.update(changes.map(({ path, operation }) => ({ path, operation })));
+  async committed({ renames, changes }: CommittedBatch): Promise<void> {
+    const update = await this.index.update([
+      ...renames.map(({ from, to }): MetadataChange => ({ path: to, oldPath: from, operation: 'renamed' })),
+      ...changes.map(({ path, operation }): MetadataChange => ({ path, operation })),
+    ]);
     if (!update) return;
     const cache = await this.index.load();
     for (const path of update.changed) {

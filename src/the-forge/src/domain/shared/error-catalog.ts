@@ -48,6 +48,10 @@ export const errorCatalog = {
   UNSUPPORTED_EDIT: entry('input', 'This edit is not supported for the file kind.', 'Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments.'),
   INVALID_PLAN: entry('input', 'The write batch contains duplicate or overlapping paths.', 'Write each path once and do not write a file where another write needs a directory.'),
   WORKSPACE_BUSY: entry('busy', 'Another Forge writer holds the workspace lock.', 'Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder\'s changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.', true),
+  DESTINATION_EXISTS: entry('conflict', 'The move or rename destination already exists.', 'Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination.'),
+  PROTECTED_PATH: entry('input', 'The path is protected from moves and deletion.', 'Do not move or delete the scope root, .git, .obsidian or, at workspace scope, bin; a folder holding a .git repository is protected too.'),
+  INVALID_MOVE: entry('input', 'The move or rename is not possible.', 'Use a destination that differs from the source and is not inside it; rename takes a new name without slashes.'),
+  HAS_BACKLINKS: entry('conflict', 'Other notes still link to the file or folder.', 'Update or remove the links in error.details.backlinks first, move the file instead, or pass --allow-broken-links to delete anyway.'),
   ROLLBACK_FAILED: entry('runtime', 'A failed write could not restore every file.', 'Inspect the files named in the message and repair them before retrying.'),
   // Documents
   INVALID_FRONTMATTER: entry('input', 'The YAML frontmatter is invalid.', 'Fix the frontmatter so it is a YAML mapping, then validate the note.'),

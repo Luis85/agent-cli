@@ -25,7 +25,7 @@ async function vault(directory: string) {
   const nodeFiles = await NodeFiles.at(root);
   const files = directory ? new ScopedFiles(nodeFiles, directory) : nodeFiles;
   const index = metadataIndex(files), reports: unknown[] = [];
-  const workspace = new Workspace(files, new ObsidianDocuments(), events, false, null, { committed: async changes => { reports.push(await index.update(changes)); } });
+  const workspace = new Workspace(files, new ObsidianDocuments(), events, false, null, { committed: async ({ changes }) => { reports.push(await index.update(changes)); } });
   return { workspace, index, files, reports };
 }
 

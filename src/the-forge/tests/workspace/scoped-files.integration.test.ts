@@ -89,6 +89,8 @@ it('snapshots caller plans before an asynchronous repository consumes them', asy
     read: path => files.read(path),
     list: () => files.list(),
     remove: (path, revision, dryRun) => files.remove(path, revision, dryRun),
+    stat: path => files.stat(path),
+    commit: (batch, dryRun) => files.commit(batch, dryRun),
     async writeBatch(writes, dryRun) { await Promise.resolve(); return files.writeBatch(writes, dryRun); },
   }, 'src/alpha');
   const request = write('original.md'), plan = [request];
