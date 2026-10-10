@@ -2,7 +2,7 @@
 
 Researched 2026-10-10 · Maintainer material, not packaged into `bin/data/docs`; it does not define runtime contracts.
 
-This research asks four questions about The Forge at v0.1.0. What can it help with today? Where is it lacking? What should improve? What should be added? Seven research passes each took one product perspective and surveyed the 2025–2026 landscape on the web. Each pass then compared The Forge against that landscape and proposed prioritized recommendations. This page synthesizes the passes for planning the next iteration. The perspective reports hold the evidence and sources.
+This research asks four questions about The Forge at v0.1.0. What can it help with today? Where is it lacking? What should improve? What should be added? Seven research passes each took one product perspective and surveyed the 2025–2026 landscape on the web. Each pass then compared The Forge against that landscape and proposed prioritized recommendations. This page synthesizes the passes for planning the next iteration. The perspective reports hold the evidence and sources. The maintainer then set the direction: The Forge is a terminal project companion, the agent's independent interface to an Obsidian-compatible vault. The [next iteration plan](10-next-iteration-plan.md) turns that direction into milestones. It supersedes the positioning options and roadmap candidates below wherever they differ.
 
 | # | Report | Perspective | Recommendations |
 | --- | --- | --- | --- |
@@ -13,6 +13,9 @@ This research asks four questions about The Forge at v0.1.0. What can it help wi
 | 05 | [Security, safety and trust](05-security-and-trust.md) | Threat model, write durability, Claude settings risk, plugin and supply-chain trust | ST-1 to ST-13 |
 | 06 | [Distribution, operations and platform](06-distribution-and-platform.md) | Install, upgrade, cross-platform, performance, plugin ecosystem, observability | DP-1 to DP-15 |
 | 07 | [Engineering workflow and adoption](07-workflow-and-adoption.md) | AI-assisted SDLC, context engineering, onboarding, naming, open-source go-to-market | WA-1 to WA-13 |
+| 08 | [Obsidian event model](08-obsidian-event-model.md) | Reference: vault, metadata cache, workspace and lifecycle events from `obsidian.d.ts` | none |
+| 09 | [backlog-view compatibility contract](09-backlog-view-contract.md) | Reference: on-disk format and write rules of the backlog-view plugin | none |
+| 10 | [Next iteration plan](10-next-iteration-plan.md) | Product direction, kernel and core-plugin architecture, event parity, milestones M1–M6 | none |
 
 ## What The Forge helps with today
 
