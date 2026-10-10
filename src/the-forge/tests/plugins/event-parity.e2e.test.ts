@@ -55,6 +55,36 @@ describe('Obsidian event parity through the portable CLI', () => {
     expect(change(['project', 'close'])).toEqual([{ from: 'beta', to: null }]);
   });
 
+  it('publishes metadataCache events after vault records once a command loaded the cache', async () => {
+    const { run } = await workspace('metadata-events', `
+      const text = value => new TextEncoder().encode(value);
+      export default {
+        onload(context) { context.events.on('metadataCache.resolved', () => context.events.warn('resolved observed')); },
+        commands: [{ id: 'parity.link', description: 'Link a note after loading the cache', usage: 'parity.link <path> <target>', async run([path, target], flags, context) {
+          const cache = await context.metadata.load();
+          const before = cache.resolvedLinks[path];
+          const { revision } = await context.workspace.read(path);
+          await context.workspace.write([{ path, bytes: text('See [[' + target + ']].'), expectedRevision: revision }]);
+          return { before, after: cache.resolvedLinks[path] };
+        } }],
+      };
+    `);
+    expect(run(['create', 'notes/plan.md', '--content', '# Plan']).status).toBe(0);
+    const created = run(['--events', 'all', 'create', 'notes/spec.md', '--content', 'Draft']);
+    expect(ids(created.body.events).some(id => id.startsWith('metadataCache.'))).toBe(false);
+    const linked = run(['--events', 'all', 'parity.link', 'notes/spec.md', 'plan']);
+    expect(linked.status, linked.stdout).toBe(0);
+    expect(linked.body.data).toEqual({ before: {}, after: { 'notes/plan.md': 1 } });
+    const records = linked.body.events.filter((event: Record) => /^(vault|metadataCache)\./.test(event.id));
+    expect(records.map((event: Record) => [event.id, event.payload.path])).toEqual([
+      ['vault.modify', 'notes/spec.md'], ['metadataCache.changed', 'notes/spec.md'], ['metadataCache.resolve', 'notes/spec.md'], ['metadataCache.resolved', undefined],
+    ]);
+    expect(records[1].payload.cache).toMatchObject({ links: [{ link: 'plan', original: '[[plan]]' }] });
+    expect(linked.body.warnings).toEqual(['resolved observed']);
+    const changes = run(['parity.link', 'notes/spec.md', 'missing']);
+    expect(ids(changes.body.events)).toEqual(['vault.modify']);
+  });
+
   it('runs onUserEnable once, onLayoutReady and quit tasks, and rejects host-event emission by plugins', async () => {
     const { root, run } = await workspace('plugin-hooks', `
       export default {

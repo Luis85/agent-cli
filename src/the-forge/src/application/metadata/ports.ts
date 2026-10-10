@@ -26,9 +26,10 @@ export type MetadataChange =
 /**
  * Paths affected by an update, in vault path order: `changed` files were re-indexed, `deleted` files left the
  * index, and `resolved` sources had their `resolvedLinks`/`unresolvedLinks` entries recomputed with a different
- * result or new references. An update before the first load changes nothing and reports empty lists.
+ * result or new references. `prevCaches` holds each deleted file's metadata before the update, or null when it
+ * had none (non-Markdown, non-Canvas or unparseable files).
  */
-export interface MetadataUpdate { changed: string[]; deleted: string[]; resolved: string[] }
+export interface MetadataUpdate { changed: string[]; deleted: string[]; resolved: string[]; prevCaches: Record<string, CachedMetadata | null> }
 
 /** Read access to a loaded vault metadata index. Paths are relative to the bound workspace or project root. */
 export interface MetadataCache {
@@ -53,10 +54,13 @@ export interface MetadataCache {
 export interface MetadataIndex {
   /** Builds the index on first use and returns the same live cache afterwards. */
   load(): Promise<MetadataCache>;
-  /** Re-indexes committed changes and re-resolves affected sources. */
-  update(changes: readonly MetadataChange[]): Promise<MetadataUpdate>;
-  /** Re-reads the given paths from the repository, treating missing files as deleted. */
-  invalidate(paths: readonly string[]): Promise<MetadataUpdate>;
+  /**
+   * Re-indexes committed changes and re-resolves affected sources. Before the first load it changes nothing and
+   * returns null, because the later load reads the current files.
+   */
+  update(changes: readonly MetadataChange[]): Promise<MetadataUpdate | null>;
+  /** Re-reads the given paths from the repository, treating missing files as deleted; null before the first load. */
+  invalidate(paths: readonly string[]): Promise<MetadataUpdate | null>;
 }
 
 /** Parses one file's bytes into Obsidian-shaped metadata. */

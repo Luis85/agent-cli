@@ -2,7 +2,7 @@ import { ensure, summarizeError, errorMessage } from '../../domain/shared/errors
 import { isStructured, isTextLike, type WriteRequest, type FileChange, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import { unifiedDiff } from '../../domain/documents/diff.ts';
-import type { FileRepository, DocumentCodec } from './ports.ts';
+import type { FileRepository, DocumentCodec, CommitObserver } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type HostEventMap } from '../plugins/host-events.ts';
 
@@ -21,10 +21,17 @@ const utf8 = (bytes: Uint8Array): string | undefined => {
 };
 
 export class Workspace {
-  constructor(readonly files: FileRepository, readonly codec: DocumentCodec, private readonly events: EventBus, readonly dryRun: boolean, readonly root: string | null = null) {}
-  /** The same invocation (events, codec, dry run) over another repository scope, such as a selected project. */
-  within(files: FileRepository, root: string | null): Workspace {
-    return new Workspace(files, this.codec, this.events, this.dryRun, root);
+  /** `observer` follows each committed batch of this scope, such as the metadata cache of the same root. */
+  constructor(
+    readonly files: FileRepository, readonly codec: DocumentCodec, private readonly events: EventBus, readonly dryRun: boolean,
+    readonly root: string | null = null, private readonly observer?: CommitObserver,
+  ) {}
+  /**
+   * The same invocation (events, codec, dry run) over another repository scope, such as a selected project.
+   * Commit observers are bound to one scope, so the new scope has only the `observer` given here.
+   */
+  within(files: FileRepository, root: string | null, observer?: CommitObserver): Workspace {
+    return new Workspace(files, this.codec, this.events, this.dryRun, root, observer);
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
@@ -73,7 +80,7 @@ export class Workspace {
   }
   /**
    * Dry runs emit one `workspace.quick-preview` per planned file. Commits emit `vault.create` for each new
-   * folder (parent before child), then one `vault.*` record per file in batch order.
+   * folder (parent before child), then one `vault.*` record per file in batch order, then run the commit observer.
    */
   private async committed(changes: FileChange[], folders: readonly string[] = []) {
     if (this.dryRun) {
@@ -82,14 +89,19 @@ export class Workspace {
     }
     for (const path of folders) await this.notify(path, 'vault.create', { path, kind: 'folder', operation: 'created' });
     for (const { path, revision, operation, bytes } of changes) await this.notify(path, vaultEvents[operation], { path, kind: 'file', revision, bytes, operation });
+    if (this.observer && changes.length > 0) {
+      try { await this.observer.committed(changes); }
+      catch (error) { this.warn(`Committed ${changes.length} file(s); post-commit update failed: ${errorMessage(error)}`); }
+    }
     return { dryRun: this.dryRun, changes };
   }
   private async notify(path: string, id: string, payload: unknown): Promise<void> {
     try { await this.events.emit(id, payload); }
-    catch (error) {
-      try { this.events.warn(`Committed ${path}; vault notification failed: ${errorMessage(error)}`); }
-      catch { /* A failed diagnostic sink cannot turn committed persistence into failure. */ }
-    }
+    catch (error) { this.warn(`Committed ${path}; vault notification failed: ${errorMessage(error)}`); }
+  }
+  private warn(message: string): void {
+    try { this.events.warn(message); }
+    catch { /* A failed diagnostic sink cannot turn committed persistence into failure. */ }
   }
   // CLI handlers and external plugins use this guarded editing API through CommandContext.
   // Dry-run edits always include a unified diff of the transformed file.

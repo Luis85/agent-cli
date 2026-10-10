@@ -15,7 +15,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
 | [interactions](interactions/) | Declarative event/action schemas, component attachment, generated behavior, and portable workflows |
-| [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks and incremental updates against full rebuilds |
+| [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
 | [plugins](plugins/) | Plugin lifecycle, generators, events, and skill installation |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |

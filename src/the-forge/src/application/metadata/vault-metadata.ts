@@ -56,14 +56,14 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     return this.loading.then(() => this);
   }
 
-  update(changes: readonly MetadataChange[]): Promise<MetadataUpdate> {
-    if (!this.loading) return Promise.resolve({ changed: [], deleted: [], resolved: [] });
+  update(changes: readonly MetadataChange[]): Promise<MetadataUpdate | null> {
+    if (!this.loading) return Promise.resolve(null);
     const result = this.pending.then(() => this.loading).then(() => this.apply(changes));
     this.pending = result.catch(() => undefined);
     return result;
   }
 
-  invalidate(paths: readonly string[]): Promise<MetadataUpdate> {
+  invalidate(paths: readonly string[]): Promise<MetadataUpdate | null> {
     return this.update(paths.map(path => ({ path, operation: 'updated' as const })));
   }
 
@@ -121,8 +121,10 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
       catch (error) { if (!missing(error)) throw error; removed.add(path); }
     });
     const changed: string[] = [], deleted: string[] = [];
+    const prevCaches = Object.create(null) as Record<string, CachedMetadata | null>;
     for (const path of removed) {
       if (!before.has(path)) continue;
+      prevCaches[path] = this.caches.get(path) ?? null;
       this.caches.delete(path); this.problems.delete(path);
       this.forget(path);
       deleted.push(path);
@@ -148,7 +150,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
       for (const source of resolved) this.resolve(source);
     }
     this.reorder();
-    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved };
+    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
   }
 
   private aliasKey(path: string): string { return JSON.stringify(this.caches.get(path)?.aliases ?? []); }

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventBus } from '../../src/application/plugins/events.ts';
-import { registerHostEvents, type HostEventMap } from '../../src/application/plugins/host-events.ts';
+import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
@@ -18,17 +18,14 @@ afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 const board = (file: string) => JSON.stringify({ nodes: [{ id: 'n1', type: 'file', file, subpath: '#Note 3', x: 0, y: 0, width: 100, height: 100 }], edges: [] });
 
-/** A workspace whose committed file events update the metadata index, as the composition root wires them. */
+/** A workspace whose committed batches update the metadata index of the same scope, as the composition root binds it. */
 async function vault(directory: string) {
   const events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   const nodeFiles = await NodeFiles.at(root);
   const files = directory ? new ScopedFiles(nodeFiles, directory) : nodeFiles;
-  const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   const index = metadataIndex(files), reports: unknown[] = [];
-  for (const id of ['vault.create', 'vault.modify', 'vault.delete'] as const) {
-    events.on<HostEventMap[typeof id]>(id, async change => { if (change.kind === 'file') reports.push(await index.update([change])); });
-  }
+  const workspace = new Workspace(files, new ObsidianDocuments(), events, false, null, { committed: async changes => { reports.push(await index.update(changes)); } });
   return { workspace, index, files, reports };
 }
 
@@ -63,12 +60,14 @@ describe('kernel metadata cache over a filesystem vault', () => {
     ]);
     expect(cache.resolvedLinks['Missing 0.md']).toEqual({ 'Missing 0.md': 1, 'Areas/Area 1/Note 1.md': 1 });
     expect(cache.unresolvedLinks['Areas/Area 1/Note 1.md']).toEqual({ 'Note 2': 1 });
+    // One report per committed batch: the three-file write re-indexes its files together.
     expect(reports).toEqual([
-      { changed: ['Missing 0.md'], deleted: [], resolved: ['Areas/Area 0/Note 0.md', 'Areas/Area 14/Note 34.md', 'Missing 0.md'] },
-      { changed: ['Areas/Area 1/Note 1.md'], deleted: [], resolved: ['Areas/Area 1/Note 1.md'] },
-      { changed: ['Boards/Map.canvas'], deleted: [], resolved: ['Boards/Map.canvas'] },
-      { changed: [], deleted: ['Assets/image 3.png'], resolved: imageSources },
-      { changed: [], deleted: ['Areas/Area 2/Note 2.md'], resolved: noteSources },
+      {
+        changed: ['Areas/Area 1/Note 1.md', 'Boards/Map.canvas', 'Missing 0.md'], deleted: [],
+        resolved: ['Areas/Area 0/Note 0.md', 'Areas/Area 1/Note 1.md', 'Areas/Area 14/Note 34.md', 'Boards/Map.canvas', 'Missing 0.md'], prevCaches: {},
+      },
+      { changed: [], deleted: ['Assets/image 3.png'], resolved: imageSources, prevCaches: { 'Assets/image 3.png': null } },
+      { changed: [], deleted: ['Areas/Area 2/Note 2.md'], resolved: noteSources, prevCaches: { 'Areas/Area 2/Note 2.md': expect.objectContaining({ links: expect.any(Array) }) } },
     ]);
   });
 });

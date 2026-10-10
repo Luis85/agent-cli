@@ -94,7 +94,7 @@ const hostEventDefinitions: readonly EventDefinition[] = [
   definition('vault.modify', 'An existing file was replaced by a committed write.', vault('updated', ['file'])),
   definition('vault.delete', 'A file or folder was removed; a file\'s revision and bytes describe its prior content.', vault('deleted', ['file', 'folder'])),
   definition('vault.rename', 'A file or folder moved from oldPath to path in a committed batch.', rename),
-  definition('metadataCache.changed', 'A committed Markdown file was indexed; cache is its JSON metadata.', value => text(value.path) && isRecord(value.cache)),
+  definition('metadataCache.changed', 'A committed Markdown or Canvas file was indexed; cache is its JSON metadata.', value => text(value.path) && isRecord(value.cache)),
   definition('metadataCache.deleted', 'A deleted file left the index; prevCache is its best-effort previous metadata or null.', value => text(value.path) && (value.prevCache === null || isRecord(value.prevCache))),
   definition('metadataCache.resolve', 'A file\'s resolved and unresolved links were updated.', value => text(value.path) && Object.keys(value).length === 1),
   definition('metadataCache.resolved', 'Link resolution finished for a committed batch.', empty),

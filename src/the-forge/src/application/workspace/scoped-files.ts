@@ -1,7 +1,7 @@
 import { ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type FileChange, type FileSnapshot, type WriteRequest } from '../../domain/documents/file.ts';
 import { snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
-import type { FileRepository, WriteBatchResult } from './ports.ts';
+import type { CommitObserver, FileRepository, WriteBatchResult } from './ports.ts';
 
 /** Project-relative paths with the parent repository's lock and filesystem guards. */
 export class ScopedFiles implements FileRepository {
@@ -39,4 +39,18 @@ export class ScopedFiles implements FileRepository {
     ensure(path.startsWith(this.prefix), 'INVALID_PATH', 'Repository returned a path outside the selected project.');
     return vaultPath(path.slice(this.prefix.length));
   }
+}
+
+/**
+ * Adapts an observer bound to `directory` to commits of the parent repository: it receives only the changes
+ * inside that directory, with paths relative to it, and nothing for batches entirely outside it.
+ */
+export function scopedCommitObserver(observer: CommitObserver, directory: string): CommitObserver {
+  const prefix = `${vaultPath(directory)}/`;
+  return {
+    async committed(changes) {
+      const inside = changes.filter(change => change.path.startsWith(prefix)).map(change => ({ ...change, path: change.path.slice(prefix.length) }));
+      if (inside.length > 0) await observer.committed(inside);
+    },
+  };
 }

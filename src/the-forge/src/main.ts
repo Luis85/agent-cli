@@ -9,7 +9,8 @@ import { eventOutput, selectEventOutput, type EventOutput } from './application/
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
 import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
 import { Workspace } from './application/workspace/workspace.ts';
-import { ScopedFiles } from './application/workspace/scoped-files.ts';
+import { ScopedFiles, scopedCommitObserver } from './application/workspace/scoped-files.ts';
+import type { CommitObserver } from './application/workspace/ports.ts';
 import { Registry, type CommandContext } from './application/plugins/registry.ts';
 import { ProjectService } from './application/projects/projects.ts';
 import { SetupService } from './application/workspace/setup.ts';
@@ -44,6 +45,7 @@ import { claudeCommand } from './presentation/claude/commands.ts';
 import { Bases } from './application/bases/query.ts';
 import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
+import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { basesCommand } from './presentation/bases/commands.ts';
 import { commands } from './presentation/cli/commands.ts';
@@ -124,16 +126,21 @@ async function run(): Promise<void> {
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
       compact = config.settings.json;
-      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root);
+      // Environment commits reach the metadata index once the command's scope binds it below.
+      let metadataCommits: CommitObserver | undefined;
+      environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root, { committed: async changes => { await metadataCommits?.committed(changes); } });
       const policy = invocationPolicy(id, parsed.args.slice(1), parsed.flags);
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
-      const workspace = project ? environment.within(new ScopedFiles(files, project.directory), resolve(files.root, project.directory)) : environment;
+      const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec));
+      // Commits keep a loaded cache current and publish metadataCache.* events; workspace-scope commits while a
+      // project is selected reach the project's index only inside its directory, with project-relative paths.
+      const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);
+      metadataCommits = project ? scopedCommitObserver(metadataEvents, project.directory) : metadataEvents;
+      const workspace = project ? environment.within(scopedFiles, resolve(files.root, project.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
-      const vaultMetadata = new VaultMetadata(workspace.files, new ObsidianMetadataParser(workspace.codec));
-      // Committed writes keep a loaded cache current; before the first load an update does nothing.
-      for (const id of ['vault.create', 'vault.modify', 'vault.delete'] as const) events.on<HostEventMap[typeof id]>(id, async change => { if (change.kind === 'file') await vaultMetadata.update([change]); });
       const context: CommandContext = { workspace, events, claude, metadata: vaultMetadata, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];

@@ -8,6 +8,12 @@ export interface FileRepository {
   writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<WriteBatchResult>;
   remove(path: string, expectedRevision: string, dryRun: boolean): Promise<FileChange>;
 }
+/**
+ * Runs once per committed (never dry-run) batch, after the batch's `vault.*` records were published. `changes` are
+ * the batch's file changes in batch order, with paths relative to the committing workspace. A failure is reported
+ * as a warning and cannot undo the commit.
+ */
+export interface CommitObserver { committed(changes: readonly FileChange[]): Promise<void> }
 export interface DocumentCodec {
   inspect(path: string, bytes: Uint8Array): unknown;
   validate(path: string, bytes: Uint8Array): void;

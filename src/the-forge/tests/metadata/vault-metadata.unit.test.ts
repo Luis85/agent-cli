@@ -69,26 +69,33 @@ describe('incremental metadata updates', () => {
     const files = vault();
     const index = metadataIndex(files);
     files.files.set('New.md', '[[Plan]]');
-    expect(await index.update([{ path: 'New.md', operation: 'created' }])).toEqual({ changed: [], deleted: [], resolved: [] });
+    expect(await index.update([{ path: 'New.md', operation: 'created' }])).toBeNull();
     expect((await index.load()).files()).toContain('New.md');
   });
 
   it('re-indexes a modified note and only its own resolution', async () => {
     const files = vault();
     const report = await apply(files, [{ path: 'Notes/Ideas.md', operation: 'updated' }], () => files.files.set('Notes/Ideas.md', '---\naliases: [Brainstorm]\n---\nOnly [[Missing]] now.'));
-    expect(report).toEqual({ changed: ['Notes/Ideas.md'], deleted: [], resolved: ['Notes/Ideas.md'] });
+    expect(report).toEqual({ changed: ['Notes/Ideas.md'], deleted: [], resolved: ['Notes/Ideas.md'], prevCaches: {} });
   });
 
   it('re-resolves sources whose links a created file satisfies', async () => {
     const files = vault();
     const report = await apply(files, [{ path: 'Missing.md', operation: 'created' }], () => files.files.set('Missing.md', '# Found'));
-    expect(report).toEqual({ changed: ['Missing.md'], deleted: [], resolved: ['Missing.md', 'Notes/Plan.md'] });
+    expect(report).toEqual({ changed: ['Missing.md'], deleted: [], resolved: ['Missing.md', 'Notes/Plan.md'], prevCaches: {} });
   });
 
-  it('reports deleted files and the sources whose ambiguity it removed', async () => {
-    const files = vault();
+  it('reports deleted files with their previous metadata and the sources whose ambiguity it removed', async () => {
+    let files = vault();
     const report = await apply(files, [{ path: 'B/Target.md', operation: 'deleted' }], () => files.files.delete('B/Target.md'));
-    expect(report).toEqual({ changed: [], deleted: ['B/Target.md'], resolved: ['Notes/Ideas.md'] });
+    expect(report).toEqual({ changed: [], deleted: ['B/Target.md'], resolved: ['Notes/Ideas.md'], prevCaches: { 'B/Target.md': {} } });
+    files = vault();
+    const previous = (await metadataIndex(files).load()).getFileCache('Notes/Ideas.md');
+    const removed = await apply(files, [{ path: 'Notes/Ideas.md', operation: 'deleted' }, { path: 'Assets/diagram.png', operation: 'deleted' }], () => {
+      files.files.delete('Notes/Ideas.md'); files.files.delete('Assets/diagram.png');
+    });
+    expect(removed).toMatchObject({ deleted: ['Assets/diagram.png', 'Notes/Ideas.md'], prevCaches: { 'Assets/diagram.png': null, 'Notes/Ideas.md': previous } });
+    expect(previous?.aliases).toEqual(['Brainstorm']);
   });
 
   it('handles renames, alias changes and missing files reported as updated', async () => {
@@ -97,13 +104,13 @@ describe('incremental metadata updates', () => {
       files.files.set('Notes/Thoughts.md', files.files.get('Notes/Ideas.md')!);
       files.files.delete('Notes/Ideas.md');
     });
-    expect(renamed).toEqual({ changed: ['Notes/Thoughts.md'], deleted: ['Notes/Ideas.md'], resolved: ['Notes/Plan.md', 'Notes/Thoughts.md'] });
+    expect(renamed).toEqual({ changed: ['Notes/Thoughts.md'], deleted: ['Notes/Ideas.md'], resolved: ['Notes/Plan.md', 'Notes/Thoughts.md'], prevCaches: { 'Notes/Ideas.md': expect.objectContaining({ aliases: ['Brainstorm'] }) } });
     files = vault();
     expect(await apply(files, [{ path: 'Notes/Ideas.md', operation: 'updated' }], () => files.files.set('Notes/Ideas.md', '---\naliases: Storm\n---\n[[Plan]]')))
-      .toEqual({ changed: ['Notes/Ideas.md'], deleted: [], resolved: ['Notes/Ideas.md', 'Notes/Plan.md'] });
+      .toEqual({ changed: ['Notes/Ideas.md'], deleted: [], resolved: ['Notes/Ideas.md', 'Notes/Plan.md'], prevCaches: {} });
     files = vault();
     expect(await apply(files, [{ path: 'A/Target.md', operation: 'updated' }], () => files.files.delete('A/Target.md')))
-      .toEqual({ changed: [], deleted: ['A/Target.md'], resolved: ['Notes/Ideas.md'] });
+      .toEqual({ changed: [], deleted: ['A/Target.md'], resolved: ['Notes/Ideas.md'], prevCaches: { 'A/Target.md': {} } });
   });
 
   it('invalidates paths by re-reading them, clearing fixed issues and ignoring hidden files', async () => {
@@ -112,7 +119,7 @@ describe('incremental metadata updates', () => {
     const cache = await index.load();
     files.files.set('Bad.md', '[[Plan]]');
     files.files.set('.hidden/Other.md', '[[Plan]]');
-    expect(await index.invalidate(['Bad.md', '.hidden/Other.md'])).toEqual({ changed: ['Bad.md'], deleted: [], resolved: ['Bad.md'] });
+    expect(await index.invalidate(['Bad.md', '.hidden/Other.md'])).toEqual({ changed: ['Bad.md'], deleted: [], resolved: ['Bad.md'], prevCaches: {} });
     expect(cache.issues()).toEqual([]);
     expect(cache.backlinks('Notes/Plan.md').map(item => item.source)).toEqual(['Bad.md', 'Board.canvas', 'Notes/Ideas.md']);
     expect(metadataState(cache)).toEqual(metadataState(await metadataIndex(files).load()));
