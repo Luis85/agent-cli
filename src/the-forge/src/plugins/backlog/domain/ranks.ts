@@ -6,7 +6,7 @@
 export const ORDER_SPACING = 1000;
 
 export interface Ranked { path: string; order: number | null; entryIndex: number; outsideFilter: boolean }
-export type RankRefusal = 'gapSpent' | 'parentGone' | 'tied' | 'unranked' | 'unseededList';
+export type RankRefusal = 'gapSpent' | 'tied' | 'unranked';
 export type RankResult = { order: number } | { refusal: RankRefusal };
 
 export function compareRank(a: Ranked, b: Ranked): number {
@@ -86,18 +86,12 @@ export function spreadAround<T extends Ranked>(sequence: readonly T[]): { writes
   return flush() ? { writes } : { wedged: run };
 }
 
-/** Whether every result row of `rows` has its own distinct rank. */
-export function distinctlyRanked(rows: readonly Ranked[]): boolean {
-  const orders = rows.filter(item => !item.outsideFilter).map(item => item.order);
-  return !orders.some(order => order === null) && new Set(orders).size === orders.length;
-}
-
 const isUnrankedContext = (anchor: Ranked | null) => anchor !== null && anchor.outsideFilter && anchor.order === null;
 /** Peers a drop can be placed among: unranked context rows hold no rank to place against. */
 export const rankablePeers = <T extends Ranked>(rows: readonly T[]) => rows.filter(row => !isUnrankedContext(row));
 
 /** Where a note lands: its new parent, its peers there (without the moved note) and the index among them. */
-export interface DropTarget<T extends Ranked> { parent: T | null; peers: T[]; insertIndex: number; parentUnchanged?: boolean }
+export interface DropTarget<T extends Ranked> { parent: T | null; peers: T[]; insertIndex: number }
 
 function anchoredOrder<T extends Ranked>(ranked: readonly T[], anchor: T | null, side: 'before' | 'after'): RankResult {
   const usable = ranked.filter(item => !(item.outsideFilter && item.order === null));
@@ -125,22 +119,25 @@ function orderForTarget<T extends Ranked>(ranked: readonly T[], target: DropTarg
   return anchoredOrder(ranked, peers[insertIndex - 1]!, 'after');
 }
 
-const drawnInRankOrder = (rows: readonly Ranked[]) => rows.every((item, index) => index === 0 || compareRank(rows[index - 1]!, item) < 0);
-
 /**
  * backlog-view's `dropPlacement`: the global rank between the neighbours a placement implies. On a global tie it
- * falls back to sibling-scoped arithmetic when that rank is free. A reorder among unseeded siblings is refused,
- * since no single rank write can show it.
+ * falls back to sibling-scoped arithmetic when that rank is free. The plugin's `unseededList` guard belongs to its
+ * focus-mode ranking, which never changes the parent; Forge has no focus mode, so the guard is not ported.
  */
 export function dropPlacement<T extends Ranked>(dragged: T | null, target: DropTarget<T>, ranked: readonly T[]): RankResult {
-  const invisible = (placed: RankResult): RankResult => {
-    if ('refusal' in placed || target.parentUnchanged !== true || dragged === null) return placed;
-    if (distinctlyRanked([...target.peers, dragged])) return placed;
-    return distinctlyRanked(target.peers) && drawnInRankOrder(target.peers) ? placed : { refusal: 'unseededList' };
-  };
   const global = orderForTarget(ranked.filter(item => item !== dragged), target);
-  if (!('refusal' in global) || global.refusal !== 'tied') return invisible(global);
+  if (!('refusal' in global) || global.refusal !== 'tied') return global;
   const scoped = orderForTarget(target.peers.filter(item => item !== dragged), target);
-  if ('refusal' in scoped || !ranked.some(item => item !== dragged && item.order === scoped.order)) return invisible(scoped);
-  return invisible(global);
+  if ('refusal' in scoped || !ranked.some(item => item !== dragged && item.order === scoped.order)) return scoped;
+  return global;
+}
+
+/**
+ * backlog-view's no-op test (`dropTargetFor`): a placement that keeps the parent and lands the item where it
+ * already is among its rankable siblings changes nothing, unless it clears a stale parent link.
+ */
+export function unchangedPlacement<T extends Ranked & { parent: T | null; hasParentValue: boolean }>(dragged: T, target: DropTarget<T>, siblings: readonly T[]): boolean {
+  if (target.parent !== dragged.parent) return false;
+  if (target.parent === null && dragged.parent === null && dragged.hasParentValue) return false;
+  return rankablePeers(siblings).indexOf(dragged) === target.insertIndex;
 }

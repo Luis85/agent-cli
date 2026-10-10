@@ -4,7 +4,7 @@ import { formatCivil, setOwn, type Frontmatter } from '../domain/fields.ts';
 import { vaultFolder } from '../domain/settings-resolve.ts';
 import type { BacklogItem } from '../domain/model.ts';
 import { ITEM_ID_KEY, newItemFrontmatter, nextItemId, uniqueNotePath } from '../domain/notes.ts';
-import { dropPlacement, rankablePeers, spreadAround, type DropTarget, type RankResult } from '../domain/ranks.ts';
+import { dropPlacement, rankablePeers, spreadAround, unchangedPlacement, type DropTarget, type RankResult } from '../domain/ranks.ts';
 import { folderForType, isDoneValue, isStartedValue } from '../domain/settings.ts';
 import {
   ABSENCE_TYPE, RELEASE_TYPE, RESOURCE_TYPE, canonicalType, isMarkerType, isReleaseType, keepsProjection, mayHoldField, sameType,
@@ -16,8 +16,6 @@ const rankMessages = {
   gapSpent: 'No rank gap is left between the neighbours; run backlog ranks respace.',
   tied: 'The neighbours share one rank; run backlog ranks respace.',
   unranked: 'A neighbour has no rank; run backlog ranks seed.',
-  unseededList: 'The siblings are not distinctly ranked; run backlog ranks seed.',
-  parentGone: 'The parent is no longer in the backlog.',
 } as const;
 
 function placed(result: RankResult): number {
@@ -141,8 +139,11 @@ export async function moveItem(session: BacklogSession, request: MoveRequest): P
     if (ancestor === moved) throw refused('parent-cycle', `${moved.title} cannot move under itself or its descendants.`, { path: moved.path });
   }
   if (!keepsProjection(moved, target.parent)) throw refused('projection', `${moved.title} cannot move between the plan and the test catalog.`, { path: moved.path });
-  const order = placed(dropPlacement(moved, target, session.model.ranked));
   const newParent = target.parent?.path ?? null, oldParent = moved.parent?.path ?? null;
+  if (unchangedPlacement(moved, target, moved.parent ? moved.parent.children : session.model.roots)) {
+    return { dryRun: session.context.workspace.dryRun, changes: [], item: { path: moved.path, parent: oldParent, order: moved.order, previousParent: oldParent, previousOrder: moved.order } };
+  }
+  const order = placed(dropPlacement(moved, target, session.model.ranked));
   const parentChanged = newParent !== oldParent || (target.parent === null && moved.parent === null && moved.hasParentValue);
   const result = await writeItems(session, [{ path: moved.path, order, ...(parentChanged ? { parent: newParent } : {}) }], request.ifMatch);
   const item = { path: moved.path, parent: newParent, order, previousParent: oldParent, previousOrder: moved.order };

@@ -71,6 +71,34 @@ describe('ranks and dependencies', () => {
       .toEqual([['C', 1000, [['D', 4000]]], ['A', 2000, [['B', 3000]]]]);
   });
 
+  it('writes nothing for a move that keeps the parent and the position', async () => {
+    const files = {
+      'm/Backlog.base': base('m'),
+      'm/A.md': note({ type: 'Epic', order: 1000 }), 'm/B.md': note({ type: 'Epic', order: 2000 }),
+      'm/C.md': note({ type: 'Feature', parent: '[[A]]', order: 3000 }),
+    };
+    vault = await backlogVault(files);
+    const noOps: Array<[string, Record<string, string | boolean>]> = [
+      ['B', { last: true }], ['B', {}], ['A', { first: true }], ['A', { top: true, first: true }], ['C', { first: true }], ['C', { last: true }],
+      ['C', { parent: 'A' }], ['B', { after: 'A' }], ['A', { before: 'B' }],
+    ];
+    for (const [item, flags] of noOps) {
+      const moved = await runBacklog(vault.root, ['move', item], flags);
+      expect(moved.data.changes, `${item} ${JSON.stringify(flags)}`).toEqual([]);
+      expect(moved.events).toEqual([]);
+    }
+    for (const [path, content] of Object.entries(files)) expect(await vault.read(path)).toBe(content);
+    expect((await runBacklog(vault.root, ['move', 'A'], { last: true })).events.map(event => event.id)).toEqual(['backlog.item-moved']);
+    expect(await vault.read('m/A.md')).toBe(note({ type: 'Epic', order: 2500 }));
+  });
+
+  it('still clears a stale parent link when the position stays', async () => {
+    vault = await backlogVault({ 'o/Backlog.base': base('o'), 'o/A.md': note({ type: 'Epic', parent: '[[Gone]]', order: 1000 }) });
+    expect((await runBacklog(vault.root, ['move', 'A'], { first: true })).data.changes).toHaveLength(1);
+    expect(await vault.read('o/A.md')).toBe(note({ type: 'Epic', order: 1000 }));
+    expect((await runBacklog(vault.root, ['move', 'A'], { top: true })).data.changes).toEqual([]);
+  });
+
   it('adds and removes dependsOn entries, deleting the key when the list empties', async () => {
     vault = await backlogVault({ 'd/Backlog.base': base('d'), 'd/A.md': note({ type: 'PBI', order: 1 }), 'd/B.md': note({ type: 'PBI', order: 2 }), 'd/M.md': note({ type: 'Milestone', order: 3 }) });
     await runBacklog(vault.root, ['depend', 'A'], { on: 'B' });

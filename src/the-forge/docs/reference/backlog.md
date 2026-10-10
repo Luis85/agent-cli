@@ -111,7 +111,7 @@ Releases get `pbl-id`, type and the stated version, target date, status and desc
 
 ## Ranks
 
-`move` places the note between the neighbours its position implies in the global rank: the midpoint rounded to 6 decimals, or `floor(neighbour) ± 1000` at an edge, 1000 in an empty backlog. On a global tie it falls back to sibling-scoped arithmetic when that rank is free. Otherwise it refuses with `BACKLOG_NO_GAP` and `details.reason`: `tied`, `gapSpent`, `unranked` (a neighbour has no rank) or `unseededList`. Run `ranks respace` (or `ranks seed`) and move again. A move under the note itself or a descendant is refused (`parent-cycle`), and so is a move between the plan and the test catalog (`projection`). Ranks need not be unique; `check` reports ties.
+`move` places the note between the neighbours its position implies in the global rank: the midpoint rounded to 6 decimals, or `floor(neighbour) ± 1000` at an edge, 1000 in an empty backlog. On a global tie it falls back to sibling-scoped arithmetic when that rank is free. Otherwise it refuses with `BACKLOG_NO_GAP` and `details.reason`: `tied`, `gapSpent`, `unranked` (a neighbour has no rank). Run `ranks respace` (or `ranks seed`) and move again. A move that keeps the parent and lands the note where it already is among its siblings (such as `--last` on the last sibling) writes nothing: `changes` is empty and no event follows, unless it clears a parent link that resolves to nothing. A move under the note itself or a descendant is refused (`parent-cycle`), and so is a move between the plan and the test catalog (`projection`). Ranks need not be unique; `check` reports ties.
 
 ## State writes
 
