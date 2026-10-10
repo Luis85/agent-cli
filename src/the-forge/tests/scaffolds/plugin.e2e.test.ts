@@ -32,6 +32,9 @@ describe('the scaffolds core plugin', () => {
       expect(create.status).toBe(2);
       expect(create.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'project create', plugin: 'scaffolds', service: 'scaffolds.projects', issues: [] } });
       expect(create.body.error.details.reason).toContain('disabled');
+      // The summary covers kernel commands that need a service of the unavailable plugin.
+      expect(cli(['schema']).body.data.errors).toContainEqual(expect.objectContaining({ code: 'PLUGIN_UNAVAILABLE', summary: 'The command or generator belongs to, or needs a service of, a plugin that is disabled or unavailable.' }));
+      expect(cli(['--lang', 'de', 'project', 'create', 'other']).body.error.message).toBe('Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.');
       expect(cli(['project', 'component', 'demo', 'Widget']).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'project component', plugin: 'scaffolds' } });
       expect(cli(['project', 'list']).body.data.projects.map((project: { name: string }) => project.name)).toEqual(['demo']);
       expect(cli(['project', 'open', 'demo']).status).toBe(0);
