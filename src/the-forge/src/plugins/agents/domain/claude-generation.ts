@@ -6,6 +6,7 @@ import { commandSkills, type CommandSkill } from './claude-commands.ts';
 import type { ModelStyle } from './claude-models.ts';
 import { completeAgent, type McpMode } from './claude-execution.ts';
 import { reviewedRules, serverNames, topLevelRules, type PermissionRule } from './claude-permissions.ts';
+import type { ForeignEntries } from './claude-merge.ts';
 
 export interface ClaudeGenerationOptions {
   /** `none` (the default) writes no MCP servers; `inline` puts them in agent frontmatter; `project` merges them into `.mcp.json`. */
@@ -21,6 +22,10 @@ export interface ClaudeGenerationOptions {
   modelStyle: ModelStyle;
   /** Generate only these docker-agent agents (by their definition names). */
   agents?: readonly string[];
+  /** Entries of the project's `.mcp.json` and settings that Forge does not own and must not replace. */
+  foreign?: ForeignEntries;
+  /** Give generated MCP servers whose name a foreign server uses a numbered name instead of failing. */
+  renameConflicts?: boolean;
   /** Hash of the options that shape agent files (`--mcp`, `--hooks`, `--model-style`), recorded in their provenance. */
   optionsHash?: string;
 }
@@ -47,11 +52,24 @@ const ordered = (metadata: Record<string, unknown>) => Object.fromEntries(frontm
 const unsupportedTopLevel = ['metadata', 'runtime', 'budget', 'budgets', 'flavors', 'evaluators', 'providers'];
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
-/** Project `.mcp.json` names are shared by every agent: equal servers merge, different ones get a numbered name. */
-function projectServers(drafts: ClaudeAgentDraft[], servers: Record<string, Record<string, unknown>>) {
+/**
+ * Project `.mcp.json` names are shared by every agent: equal servers merge, different ones get a numbered name. A
+ * server the project defines that Forge does not own keeps its name: a generated server with that name and other
+ * content is a conflict, or gets a numbered name with `renameConflicts`.
+ */
+function projectServers(drafts: ClaudeAgentDraft[], servers: Record<string, Record<string, unknown>>, options: ClaudeGenerationOptions, diagnostics: AgentDiagnostic[]) {
+  const foreign = options.foreign?.servers ?? {};
+  // A numbered name never lands on a foreign server; the declared name does only to report the conflict.
+  const taken = (name: string, base: string, config: unknown) => (servers[name] !== undefined && !same(servers[name], config))
+    || ((options.renameConflicts === true || name !== base) && foreign[name] !== undefined && !same(foreign[name], config));
   for (const server of drafts.flatMap(draft => draft.servers)) {
     const base = server.name;
-    for (let index = 2; servers[server.name] && !same(servers[server.name], server.config); index++) server.name = `${base}-${index}`;
+    for (let index = 2; taken(server.name, base, server.config); index++) server.name = `${base}-${index}`;
+    if (foreign[base] !== undefined && !same(foreign[base], server.config) && (server.name === base || options.renameConflicts === true)) {
+      diagnostics.push(server.name === base
+        ? diagnostic('error', 'mcp-server-conflict', server.at, `.mcp.json already defines the server ${base}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.`)
+        : diagnostic('warning', 'mcp-server-renamed', server.at, `.mcp.json already defines a different server ${base}; this one is generated as ${server.name}.`, 'A'));
+    }
     servers[server.name] = server.config;
   }
 }
@@ -123,7 +141,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
   const skills: Array<CommandSkill & { source: DefinitionSource }> = [], permissions = { allow: [] as string[], ask: [] as string[], deny: [] as string[] };
   for (const source of sources) {
     const generated = generateSource(source, names, options);
-    if (options.mcp === 'project') projectServers(generated.drafts, output.mcpServers);
+    if (options.mcp === 'project') projectServers(generated.drafts, output.mcpServers, options, generated.diagnostics);
     for (const draft of generated.drafts) {
       const metadata = ordered({ ...completeAgent(draft, options, generated.diagnostics), 'x-forge-source': { path: source.path, agent: draft.agent, sourceHash: source.sourceHash, ...(options.optionsHash ? { optionsHash: options.optionsHash } : {}) } });
       validateClaudeAgent(metadata, draft.prompt);
@@ -138,6 +156,10 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
     const main = sources.length === 1 ? defaultAgent(sources[0]!.config) : undefined;
     const agent = main !== undefined && output.agents.some(entry => entry.agent === main && entry.source === sources[0]!.path) ? names.get(main) : undefined;
     if (agent !== undefined) diagnostics.push({ ...diagnostic('warning', 'main-agent-approximated', pointer('agents', main!), `The default agent ${main} becomes the project's main agent ("agent": "${agent}").`, 'A'), path: sources[0]!.path });
+    const foreignAgent = options.foreign?.agent;
+    if (agent !== undefined && foreignAgent !== undefined && foreignAgent !== agent) {
+      diagnostics.push({ ...diagnostic('error', 'settings-agent-conflict', pointer('agents', main!), `.claude/settings.json already sets agent to ${foreignAgent}, which Forge did not generate; remove it to let Forge set ${agent}.`), path: sources[0]!.path });
+    }
     output.settings = { permissions: Object.fromEntries(Object.entries(permissions).map(([list, rules]) => [list, [...new Set(rules)]])) as typeof permissions, ...(agent ? { agent } : {}) };
   }
   output.diagnostics = dedupe(diagnostics);

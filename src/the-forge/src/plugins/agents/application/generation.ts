@@ -6,12 +6,12 @@ import { AppError, forgeError } from '../../../domain/shared/errors.ts';
 import type { WriteRequest } from '../../../domain/documents/file.ts';
 import { hasErrors, isObject, record } from '../domain/config.ts';
 import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource } from '../domain/claude-generation.ts';
-import { mergeMcpServers, mergeSettings } from '../domain/claude-merge.ts';
+import { foreignEntries, manifestPath, mergeMcpServers, mergeSettings, nextManifest, parseManifest, type ForgeManifest } from '../domain/claude-merge.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentDefinitions } from './definitions.ts';
 import type { AgentPorts } from './ports.ts';
 
-export interface GenerateRequest extends Omit<ClaudeGenerationOptions, 'agents' | 'optionsHash'> {
+export interface GenerateRequest extends Omit<ClaudeGenerationOptions, 'agents' | 'optionsHash' | 'foreign'> {
   file?: string; agent?: string;
   mode: GenerationMode; manifestPath?: string; revisions?: Record<string, string>;
 }
@@ -23,6 +23,10 @@ type OutputStatus = 'unchanged' | 'changed' | 'missing' | 'hand-edited';
 type Markdown = { metadata: Record<string, unknown>; body: string };
 
 const mcpPath = '.mcp.json', settingsPath = '.claude/settings.json';
+/** Error diagnostics about entries of the project's Claude files that Forge does not own. */
+const conflictCodes = ['mcp-server-conflict', 'settings-agent-conflict'];
+/** The project's current Claude files that generation merges into, and the manifest of the entries Forge owns. */
+interface ProjectFiles { mcp?: string; settings?: string; manifestText?: string; manifest: ForgeManifest }
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -51,16 +55,21 @@ export class AgentGeneration {
 
   async run(request: GenerateRequest) {
     const sources = await this.sources(request);
+    const project = await this.projectFiles(request);
     const optionsHash = this.ports.digest(JSON.stringify({ mcp: request.mcp, hooks: request.hooks, modelStyle: request.modelStyle }));
-    const generated = generateClaude(sources, { optionsHash, mcp: request.mcp, hooks: request.hooks, settings: request.settings, allowBroadPermissions: request.allowBroadPermissions === true, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
+    const generated = generateClaude(sources, {
+      optionsHash, mcp: request.mcp, hooks: request.hooks, settings: request.settings, allowBroadPermissions: request.allowBroadPermissions === true,
+      commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}),
+      ...(project ? { foreign: foreignEntries(project.mcp, project.settings, project.manifest), renameConflicts: request.renameConflicts === true } : {}),
+    });
     if (hasErrors(generated.diagnostics)) {
-      const errors = generated.diagnostics.filter(entry => entry.severity === 'error');
-      throw agentError('INVALID_AGENT_DEFINITION', `Generation stopped on ${[...new Set(errors.map(entry => entry.code))].join(', ')} errors; see details.diagnostics.`, { diagnostics: errors });
+      const errors = generated.diagnostics.filter(entry => entry.severity === 'error'), codes = [...new Set(errors.map(entry => entry.code))];
+      const code = codes.every(entry => conflictCodes.includes(entry)) ? 'AGENT_MERGE_CONFLICT' : 'INVALID_AGENT_DEFINITION';
+      throw agentError(code, `Generation stopped on ${codes.join(', ')} errors; see details.diagnostics.`, { diagnostics: errors });
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.render(file)) }));
-    if (request.mcp === 'project' && Object.keys(generated.mcpServers).length > 0) writes.push({ path: mcpPath, bytes: encode(mergeMcpServers(mcpPath, await this.text(mcpPath), generated.mcpServers)) });
-    if (generated.settings) writes.push({ path: settingsPath, bytes: encode(mergeSettings(settingsPath, await this.text(settingsPath), generated.settings)) });
+    if (project) writes.push(...this.projectWrites(project, generated));
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === 'plan' ? request.manifestPath : undefined);
     const generatedMarkdown = new Set(markdown.map(file => file.path));
@@ -89,6 +98,23 @@ export class AgentGeneration {
       await this.events.emit('agents.generated', { target: 'claude', sources: sources.map(source => source.path), agents: summary.agents.map(entry => entry.name), files: [...pending] });
     }
     return { ...summary, ...result };
+  }
+
+  /** With `--mcp project` or `--settings`: the project files generation merges into and the ownership manifest. */
+  private async projectFiles(request: GenerateRequest): Promise<ProjectFiles | undefined> {
+    if (request.mcp !== 'project' && !request.settings) return undefined;
+    const [mcp, settings, manifestText] = await Promise.all([this.text(mcpPath), this.text(settingsPath), this.text(manifestPath)]);
+    return { ...(mcp === undefined ? {} : { mcp }), ...(settings === undefined ? {} : { settings }), ...(manifestText === undefined ? {} : { manifestText }), manifest: parseManifest(manifestText) };
+  }
+
+  /** Merged `.mcp.json` and settings, and the manifest recording what Forge now owns in them. */
+  private projectWrites(project: ProjectFiles, generated: ReturnType<typeof generateClaude>): WriteRequest[] {
+    const servers = generated.mcpServers, writes: WriteRequest[] = [];
+    if (Object.keys(servers).length > 0) writes.push({ path: mcpPath, bytes: encode(mergeMcpServers(project.mcp, servers, project.manifest)) });
+    if (generated.settings) writes.push({ path: settingsPath, bytes: encode(mergeSettings(project.settings, generated.settings, project.manifest)) });
+    if (writes.length === 0) return [];
+    const written = { servers, ...(generated.settings?.agent ? { agent: generated.settings.agent } : {}) };
+    return [...writes, { path: manifestPath, bytes: encode(nextManifest(project.manifest, project.manifestText, project, written)) }];
   }
 
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */

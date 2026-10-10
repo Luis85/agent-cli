@@ -65,25 +65,52 @@ describe('generating Claude agents in a workspace', () => {
     expect(await failure(generate({ check: true }))).toMatchObject({ details: { outputs: [{ path: '.claude/agents/root.md', status: 'hand-edited' }] } });
   });
 
-  it('merges MCP servers, settings and skills into existing Claude files without clobbering unrelated keys', async () => {
+  it('merges settings and skills into existing Claude files without clobbering unrelated keys', async () => {
     await scope.put('agents/switching.yaml', await example('agent_switching_commands.yaml'));
-    await scope.put('.mcp.json', JSON.stringify({ mcpServers: { local: { command: 'mine' } } }));
-    await scope.put('.claude/settings.json', JSON.stringify({ model: 'opus', permissions: { deny: ['Read(.env)'] } }));
+    await scope.put('.claude/settings.json', '{\n    "model": "opus",\n    "agent": "mine",\n    "permissions": {"deny": ["Read(.env)"]}\n}\n');
     expect(await failure(generate({ mcp: 'project', settings: true, commands: true }))).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { diagnostics: [expect.objectContaining({ code: 'agent-name-collision' })] } });
+    expect(await failure(generate({ file: 'switching.yaml', settings: true }))).toMatchObject({ code: 'AGENT_MERGE_CONFLICT', details: { diagnostics: [expect.objectContaining({ code: 'settings-agent-conflict' })] } });
+    await scope.put('.claude/settings.json', '{\n    "model": "opus",\n    "permissions": {"deny": ["Read(.env)"]}\n}\n');
     const result = await generate({ file: 'switching.yaml', settings: true, commands: true, 'plan-out': 'plan.json' });
     expect((result.data.files as Array<{ path: string; status: string }>).map(file => [file.path, file.status])).toEqual([
       ['.claude/agents/root.md', 'missing'], ['.claude/agents/planner.md', 'missing'], ['.claude/agents/reviewer.md', 'missing'],
-      ['.claude/skills/plan/SKILL.md', 'missing'], ['.claude/skills/review/SKILL.md', 'missing'], ['.claude/skills/back/SKILL.md', 'missing'], ['.claude/settings.json', 'changed'],
+      ['.claude/skills/plan/SKILL.md', 'missing'], ['.claude/skills/review/SKILL.md', 'missing'], ['.claude/skills/back/SKILL.md', 'missing'],
+      ['.claude/settings.json', 'changed'], ['.claude/forge-generated.json', 'missing'],
     ]);
     await generate({ file: 'switching.yaml', settings: true, commands: true, 'revisions-from': 'plan.json' });
-    expect(JSON.parse(await scope.read('.claude/settings.json'))).toEqual({ model: 'opus', permissions: { deny: ['Read(.env)'] }, agent: 'root' });
+    expect(await scope.read('.claude/settings.json')).toBe('{\n    "model": "opus",\n    "permissions": {\n        "deny": [\n            "Read(.env)"\n        ]\n    },\n    "agent": "root"\n}\n');
+    expect(JSON.parse(await scope.read('.claude/forge-generated.json'))).toMatchObject({ mcpServers: {}, settings: { agent: 'root' } });
     expect(await scope.read('.claude/skills/plan/SKILL.md')).toContain('context: fork\nagent: planner\n');
+    expect((await generate({ file: 'switching.yaml', settings: true, commands: true, check: true })).data).toMatchObject({ matches: true });
+  });
 
-    const team = await scope.run(['generate'], { target: 'claude', file: 'team.yaml', mcp: 'project', agent: 'frontend', 'plan-out': 'mcp.json' });
-    expect((team.data.files as Array<{ path: string }>).map(file => file.path)).toEqual(['.claude/agents/frontend.md', '.mcp.json']);
-    await scope.run(['generate'], { target: 'claude', file: 'team.yaml', mcp: 'project', agent: 'frontend', 'revisions-from': 'mcp.json' });
-    expect(Object.keys(JSON.parse(await scope.read('.mcp.json')).mcpServers)).toEqual(['local', 'context7', 'github']);
-    expect(await scope.read('.claude/agents/frontend.md')).toContain('mcpServers:\n  - context7\n  - github\n');
+  it('merges MCP servers into .mcp.json, updating only servers Forge owns', async () => {
+    await scope.put('.mcp.json', JSON.stringify({ mcpServers: { local: { command: 'mine' }, context7: { command: 'my-context7' } } }));
+    const flags = { file: 'team.yaml', mcp: 'project', agent: 'frontend' };
+    expect(await failure(generate(flags))).toMatchObject({ code: 'AGENT_MERGE_CONFLICT', details: { diagnostics: [expect.objectContaining({ code: 'mcp-server-conflict', pointer: '/agents/frontend/toolsets/2/ref' })] } });
+    expect(await failure(generate({ 'rename-conflicts': true }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
+    const plan = await generate({ ...flags, 'rename-conflicts': true, 'plan-out': 'mcp.json' });
+    expect((plan.data.files as Array<{ path: string }>).map(file => file.path)).toEqual(['.claude/agents/frontend.md', '.mcp.json', '.claude/forge-generated.json']);
+    expect((plan.data.diagnostics as Array<{ code: string }>).map(entry => entry.code)).toContain('mcp-server-renamed');
+    await generate({ ...flags, 'rename-conflicts': true, 'revisions-from': 'mcp.json' });
+    const servers = JSON.parse(await scope.read('.mcp.json')).mcpServers;
+    expect(Object.keys(servers)).toEqual(['local', 'context7', 'context7-2', 'github']);
+    expect(servers.context7).toEqual({ command: 'my-context7' });
+    expect(await scope.read('.claude/agents/frontend.md')).toContain('mcpServers:\n  - context7-2\n  - github\n');
+    expect(await scope.read('.claude/agents/frontend.md')).toContain('mcp__context7-2__*');
+
+    // A changed definition updates the server Forge wrote; a hand-edited one becomes the user's and conflicts.
+    await scope.put('agents/team.yaml', (await scope.read('agents/team.yaml')).replace('ref: docker:github-official', 'ref: docker:github-enterprise'));
+    await generate({ ...flags, 'rename-conflicts': true, 'plan-out': 'update.json' });
+    await generate({ ...flags, 'rename-conflicts': true, 'revisions-from': 'update.json' });
+    expect(JSON.parse(await scope.read('.mcp.json')).mcpServers.github.args).toContain('github-enterprise');
+    const edited = JSON.parse(await scope.read('.mcp.json'));
+    edited.mcpServers.github.args.push('--hand-edited');
+    await scope.put('.mcp.json', JSON.stringify(edited));
+    await scope.put('agents/team.yaml', (await scope.read('agents/team.yaml')).replace('ref: docker:github-enterprise', 'ref: docker:github-official'));
+    expect(await failure(generate({ ...flags, 'rename-conflicts': true, check: true }))).toMatchObject({ code: 'AGENT_DRIFT' });
+    const renamed = await generate({ ...flags, 'rename-conflicts': true, plan: true });
+    expect((renamed.data.diagnostics as Array<{ code: string; message: string }>).filter(entry => entry.code === 'mcp-server-renamed').map(entry => entry.message)).toContain('.mcp.json already defines a different server github; this one is generated as github-2.');
   });
 
   it('refuses invalid definitions and unknown agents with coded errors', async () => {

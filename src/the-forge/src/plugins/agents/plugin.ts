@@ -57,6 +57,7 @@ export const agentsPlugin: CorePlugin = {
       { code: 'INVALID_AGENT_DEFINITION', category: 'input', summary: 'An agent definition fails docker-agent schema or semantic validation.', hint: 'Fix each error in details.files[].diagnostics (JSON pointer, line and column), then run agents validate.' },
       { code: 'AGENT_NOT_FOUND', category: 'not-found', summary: 'No definition file defines the named agent.', hint: 'Run agents list for the defined agents, or create it with agents create.' },
       { code: 'AGENT_EXISTS', category: 'conflict', summary: 'The team file already defines an agent with this name.', hint: 'Choose another name or file, or edit the existing agent in the YAML file.' },
+      { code: 'AGENT_MERGE_CONFLICT', category: 'conflict', summary: 'Generation would replace an MCP server or main agent in the project\'s Claude files that Forge did not write.', hint: 'Rename the generated MCP server in the definition, pass --rename-conflicts with --mcp project, or remove the entry; Forge only replaces entries recorded in .claude/forge-generated.json.' },
       { code: 'AGENT_DRIFT', category: 'drift', summary: 'Generated Claude files are missing, stale or differ from their agent definitions.', hint: 'Run agents generate with the same options and --plan-out review.json, review the outputs, then regenerate with --revisions-from review.json.' },
     ],
     strings: {
@@ -67,6 +68,7 @@ export const agentsPlugin: CorePlugin = {
           INVALID_AGENT_DEFINITION: { summary: 'Eine Agentendefinition verletzt das docker-agent-Schema oder dessen semantische Regeln.', hint: 'Beheben Sie jeden Fehler in details.files[].diagnostics (JSON-Pointer, Zeile und Spalte) und führen Sie dann agents validate aus.' },
           AGENT_NOT_FOUND: { summary: 'Keine Definitionsdatei definiert den genannten Agenten.', hint: 'Führen Sie agents list für die definierten Agenten aus oder legen Sie ihn mit agents create an.' },
           AGENT_EXISTS: { summary: 'Die Team-Datei definiert bereits einen Agenten mit diesem Namen.', hint: 'Wählen Sie einen anderen Namen oder eine andere Datei oder bearbeiten Sie den vorhandenen Agenten in der YAML-Datei.' },
+          AGENT_MERGE_CONFLICT: { summary: 'Die Generierung würde einen MCP-Server oder Hauptagenten in den Claude-Dateien des Projekts ersetzen, den Forge nicht geschrieben hat.', hint: 'Benennen Sie den generierten MCP-Server in der Definition um, übergeben Sie --rename-conflicts mit --mcp project oder entfernen Sie den Eintrag; Forge ersetzt nur Einträge, die in .claude/forge-generated.json verzeichnet sind.' },
           AGENT_DRIFT: { summary: 'Generierte Claude-Dateien fehlen, sind veraltet oder weichen von ihren Agentendefinitionen ab.', hint: 'Führen Sie agents generate mit denselben Optionen und --plan-out review.json aus, prüfen Sie die Ausgaben und generieren Sie dann mit --revisions-from review.json neu.' },
         },
       },
