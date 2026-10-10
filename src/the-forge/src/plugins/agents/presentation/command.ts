@@ -69,8 +69,9 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       list: { description: 'List definition files with their agents, default agent and diagnostic counts.' },
       inspect: { description: 'Return one definition file, or one agent with file#agent, with diagnostics.' },
       validate: { description: 'Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION.' },
-      create: { description: 'Add a docker-agent agent, or a bundled template\'s agents, to a new or existing team file, preserving comments.', mutating: true },
-      import: { description: 'Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.', mutating: true },
+      // Idempotent although --if-match is optional: it is required once the team file exists, so a repeat fails.
+      create: { description: 'Add a docker-agent agent, or a bundled template\'s agents, to a new or existing team file, preserving comments.', mutating: true, idempotent: true },
+      import: { description: 'Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.', mutating: true, idempotent: true },
       generate: { description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true },
     },
     args: [

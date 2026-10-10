@@ -69,6 +69,27 @@ describe('the published schema contract', () => {
     expect(annotations.project).toMatchObject({ mutating: true, destructiveHint: false, actions: { current: { readOnlyHint: true }, open: { destructiveHint: false, idempotentHint: true } } });
   });
 
+  it('pins the destructive and idempotent hints of representative commands and actions', () => {
+    const hints = (id: string, action?: string) => {
+      const annotations = document.commands.find(command => command.id === id)!.annotations as Record<string, unknown> & { actions?: Record<string, Record<string, unknown>> };
+      const mode = action === undefined ? annotations : annotations.actions![action]!;
+      return [mode.destructiveHint, mode.idempotentHint];
+    };
+    const expected: [string, string | undefined, boolean, boolean][] = [
+      ['setup', undefined, false, true], ['project', 'create', false, true], ['project', 'component', false, true], ['create', undefined, false, true],
+      ['write', undefined, true, true], ['edit', undefined, true, true], ['delete', undefined, true, true], ['move', undefined, true, true], ['rename', undefined, true, true],
+      ['apply', undefined, true, false], ['make', 'document', true, false], ['templates', 'install', true, false], ['skills', 'install', false, true],
+      // An optional --if-match does not make these repeatable: backlog init, add and iteration add create another
+      // note, and the claude plugins, marketplaces and runtime sections run the installed CLI.
+      ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration', true, false], ['backlog', 'release', true, false], ['backlog', 'sync', true, false],
+      ['claude', 'plugins', true, false], ['claude', 'marketplaces', true, false], ['claude', 'runtime', true, false], ['agents', 'generate', true, false], ['workflows', 'sync', true, false],
+      // These require --if-match once their file exists, so a repeat fails with CONFLICT.
+      ['claude', 'hooks', true, true], ['claude', 'agents', true, true], ['agents', 'create', true, true], ['agents', 'import', true, true],
+    ];
+    for (const [id, action, destructive, idempotent] of expected) expect(hints(id, action), `${id} ${action ?? ''}`).toEqual([destructive, idempotent]);
+    for (const id of ['backlog', 'claude', 'agents']) expect(hints(id), id).toEqual([true, false]);
+  });
+
   it('describes one command with its contract and the error codes it can report', () => {
     const one = cli(['schema', 'read']);
     expect(one.status).toBe(0);

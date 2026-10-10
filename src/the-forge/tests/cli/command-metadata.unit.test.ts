@@ -144,7 +144,7 @@ describe('command modes', () => {
 describe('derived behavior annotations and output schemas', () => {
   const reports: CommandMetadata = {
     id: 'reports', description: 'Reports', usage: 'reports', defaultAction: 'list', output: { type: 'object' },
-    options: { 'if-match': { type: 'string', description: 'Revision.' } },
+    options: { 'if-match': { type: 'string', description: 'Revision.', required: true } },
     actions: {
       list: { description: 'List', mutating: false, output: { type: 'array' } },
       draft: { description: 'Draft', destructive: false },
@@ -152,9 +152,15 @@ describe('derived behavior annotations and output schemas', () => {
     },
   };
 
-  it('defaults a mutating mode to destructive, and to idempotent only when it is revision-guarded', () => {
+  it('defaults a mutating mode to destructive, and to idempotent only when it requires --if-match', () => {
     expect(commandAnnotations({ id: 'x', description: 'X', usage: 'x' })).toMatchObject({ mutating: true, readOnlyHint: false, destructiveHint: true, idempotentHint: false });
     expect(commandAnnotations({ ...reports, actions: undefined, defaultAction: undefined })).toMatchObject({ destructiveHint: true, idempotentHint: true });
+    // An optional --if-match guards nothing when it is omitted: `backlog add` twice creates two notes.
+    const optional: CommandMetadata = { ...reports, actions: undefined, defaultAction: undefined, options: { 'if-match': { type: 'string', description: 'Revision.' } } };
+    expect(commandAnnotations(optional)).toMatchObject({ destructiveHint: true, idempotentHint: false });
+    expect(commandAnnotations({ ...optional, idempotent: true })).toMatchObject({ idempotentHint: true });
+    const actionGuard: CommandMetadata = { id: 'y', description: 'Y', usage: 'y', actions: { sign: { description: 'Sign', options: { 'if-match': { type: 'string', description: 'Revision.', required: true } } }, add: { description: 'Add' } } };
+    expect(commandAnnotations(actionGuard).actions).toMatchObject({ sign: { idempotentHint: true }, add: { idempotentHint: false } });
     expect(commandAnnotations(reports)).toMatchObject({
       readOnlyHint: false, destructiveHint: true, idempotentHint: false,
       actions: {

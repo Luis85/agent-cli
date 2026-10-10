@@ -19,7 +19,8 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  * - `destructive`: whether a mutating mode can replace or remove existing content. Default `true` for a mutating
  *   mode, so only modes that never touch existing files (`create`, `setup`) declare `false`.
  * - `idempotent`: whether repeating the identical invocation has no further effect. Default: a read-only mode is
- *   idempotent, and so is a revision-guarded one (it declares `--if-match`): the repeat fails on the changed revision.
+ *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
+ *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
  * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
  */
 export type CommandScope = 'workspace' | 'project';
@@ -184,7 +185,8 @@ export function commandInputSchema(command: CommandMetadata): JsonSchema {
 function modeHints(command: CommandMetadata, args: readonly string[]) {
   const action = selectedAction(command, args);
   const { mutating } = commandMode(command, args);
-  const guarded = Object.hasOwn(commandOptions(command, args), 'if-match');
+  // Only a required --if-match guards every invocation; an optional one is often omitted, as in `backlog add`.
+  const guarded = commandOptions(command, args)['if-match']?.required === true;
   return {
     readOnlyHint: !mutating,
     destructiveHint: mutating && (action?.destructive ?? command.destructive ?? true),

@@ -4,7 +4,9 @@ import { option } from '../../application/plugins/command-metadata.ts';
 
 const ifMatch = option.string('SHA-256 revision of the source file (from read); required unless --dry-run.');
 const linkOptions = { 'if-match': ifMatch, 'no-update-links': option.boolean('Move without rewriting links to the moved files.') };
-const vaultWrite = { scope: 'project', discovery: false, mutating: true } as const;
+// Idempotent although --if-match is optional for a dry run: a real change requires it, and a repeat then fails
+// with NOT_FOUND (the source moved or was deleted) or CONFLICT.
+const vaultWrite = { scope: 'project', discovery: false, mutating: true, idempotent: true } as const;
 const moveErrors = ['NOT_FOUND', 'CONFLICT', 'DESTINATION_EXISTS', 'PROTECTED_PATH', 'INVALID_MOVE'];
 /** A real change needs the source's revision; a dry run may omit it and reports the revision to pass. */
 const guard = (flags: Record<string, string | boolean>, dryRun: boolean) => value(flags, 'if-match', !dryRun);

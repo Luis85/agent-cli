@@ -89,7 +89,9 @@ export function documentCommands(): Command[] {
       const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
       return context.workspace.write([{ path, bytes }], { diff: true });
     } },
-    { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', ...writing, args: [pathArgument()],
+    // Idempotent although --if-match is optional: it is required once the file exists, so a repeat is refused with
+    // CONFLICT, or writes the same bytes when the revision still matches.
+    { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', ...writing, idempotent: true, args: [pathArgument()],
       options: { ...contentOptions, 'if-match': ifMatch() }, errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
       arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
     } },
