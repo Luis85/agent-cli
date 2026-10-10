@@ -47,7 +47,8 @@ describe('committed showcase project', () => {
 
   it('contains an independent project toolchain, CI workflow, agent and skills', () => {
     for (const path of ['.forge/project.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'configs/quality/fallow.json',
-      'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md']) {
+      'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md',
+      'agents/trailhead-team.yaml', '.claude/agents/trailhead-lead.md', '.claude/agents/spec-writer.md', '.claude/agents/ui-builder.md', '.claude/skills/trace/SKILL.md']) {
       expect(tree).toContain(path);
     }
     expect(tree.filter(path => path.startsWith('tests/') && /\.(?:unit|integration)\.test\.ts$/.test(path)).length).toBeGreaterThanOrEqual(8);
@@ -67,6 +68,9 @@ describe('committed showcase project', () => {
   it('validates its canvas and answers Bases queries through the CLI', () => {
     expect(cli(['project', 'open', 'forge-showcase']).status).toBe(0);
     expect(cli(['validate', 'docs/maps/Trailhead map.canvas']).body.data).toMatchObject({ valid: true, kind: 'canvas' });
+    // The generated Claude agents match the committed docker-agent team.
+    expect(cli(['agents', 'validate']).body.data).toMatchObject({ valid: true });
+    expect(cli(['agents', 'generate', '--target', 'claude', '--commands', '--check']).body.data).toMatchObject({ check: true, matches: true });
     const query = cli(['bases', 'query', 'docs/bases/Requirements.base', '--view', 'REQ-004']);
     expect(query.status).toBe(0);
     expect(query.body.data.files).toEqual(expect.arrayContaining(['docs/product/Trailhead PRD.md', 'docs/use-cases/UC-002 Share an itinerary.md']));

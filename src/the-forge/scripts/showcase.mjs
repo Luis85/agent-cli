@@ -15,6 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { forgeCli } from './showcase/cli.mjs';
 import { buildAutomation, buildCode, buildProject } from './showcase/code.mjs';
+import { buildAgents } from './showcase/agents.mjs';
 import { buildDataSources } from './showcase/data.mjs';
 import { buildDesignSystem } from './showcase/design-system.mjs';
 import { project } from './showcase/project.mjs';
@@ -57,11 +58,12 @@ async function generate(workspace) {
   const { queries } = await buildVault(cli);
   const exploration = await exploreVault(cli);
   buildAutomation(cli);
+  const agents = buildAgents(cli);
   configureToolchain(cli);
   cli.begin('Documentation');
   const log = [...cli.log];
   cli.create(buildLogPath, buildLog(log));
-  cli.replace('README.md', readme(queries, exploration));
+  cli.replace('README.md', readme(queries, exploration, agents));
   assertContained(workspace);
   return join(workspace, project.directory);
 }

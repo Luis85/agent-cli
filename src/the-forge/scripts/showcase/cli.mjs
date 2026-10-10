@@ -7,7 +7,7 @@ const env = { ...process.env, NO_COLOR: '1' };
 
 /** Values longer than this are abbreviated in the recorded build log. */
 const loggedValueLimit = 48;
-const verboseOptions = new Set(['--content', '--set', '--value', '--values', '--metadata', '--prompt', '--find', '--replace']);
+const verboseOptions = new Set(['--content', '--set', '--value', '--values', '--metadata', '--prompt', '--find', '--replace', '--description', '--instruction']);
 
 /**
  * Drive the bundled CLI against one isolated workspace. Every invocation
