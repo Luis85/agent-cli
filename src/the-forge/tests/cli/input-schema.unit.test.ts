@@ -6,6 +6,7 @@ import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
+import { vaultCheckPlugin } from '../../src/plugins/vault-check/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
@@ -21,10 +22,10 @@ import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 const host = testHost({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')), ...offlineHost });
 const corePlugins = [
   templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
 ];
 const { commands } = builtinCommands();
-for (const plugin of [searchPlugin, linksPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);
+for (const plugin of [searchPlugin, linksPlugin, vaultCheckPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);
 /**
  * An independent JSON Schema 2020-12 validator in strict mode, so unknown keywords and formats fail to compile.
  * Positional arguments are deliberately open-ended tuples (optional trailing arguments), which strictTuples flags.
@@ -56,6 +57,11 @@ describe('published input schemas under an independent JSON Schema 2020-12 valid
     ['skills', invocation(['remove']), false],
     ['links', invocation(['orphans'], { path: 'notes/**' }), true],
     ['links', invocation([]), false],
+    ['vault', invocation([], { path: 'notes/**' }), true],
+    ['vault', invocation(['check'], { rule: 'unresolved-link,empty-file', strict: true }), true],
+    ['vault', invocation(['tags'], { sort: 'count' }), true],
+    ['vault', invocation(['tags'], { strict: true }), false],
+    ['vault', invocation(['properties'], { name: 'status', sort: 'name' }), false],
     ['claude', invocation(['plugins', 'install', 'review@team']), true],
     ['edit', invocation(['note.md'], { 'if-match': 'a'.repeat(64), append: true, content: 'More' }), true],
     ['edit', invocation([], { append: 'yes' }), false],

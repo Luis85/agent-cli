@@ -57,6 +57,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
 | [Search](reference/search.md) | Literal and regular-expression search with path, kind, tag and property filters and paging |
 | [Links](reference/links.md) | Outgoing links, backlinks, unresolved links, orphans and dead ends from the metadata index |
+| [Vault checks](reference/vault.md) | `vault check` rules for broken links, invalid notes, Canvas and Bases files and property types; tag and property inventories |
 | [Agents](reference/agents.md) | docker-agent definitions: validation, diagnostics, creation, import, and the mapping to generated Claude Code agents |
 | [Backlog](reference/backlog.md) | backlog-view compatible product backlogs: configuration, model, commands, refusals, sync and conformance |
 | [Connectors](reference/connectors.md) | Connection profiles, the `connectors` command, the connector contract and the sync model |
