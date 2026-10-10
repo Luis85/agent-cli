@@ -1,5 +1,4 @@
-import { ensure, isRecord } from '../../domain/shared/errors.ts';
-import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
+import { ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
 import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 
 /**
@@ -14,11 +13,13 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  * - `actions`: refinements keyed by the first positional argument (`skills install`), with `defaultAction` used
  *   when it is omitted. A refinement inherits every field it does not set and may add its own `options`, which
  *   the parser accepts only for that action (`make <generator>`).
- * - `unknownAction`: a built-in error code for a first argument that names no declared action. It is reported
- *   before any option parses, so options of an unknown action never read as `UNKNOWN_OPTION`.
+ * - `unknownAction`: the code for a first argument that names no declared action, `UNKNOWN_GENERATOR` or
+ *   `INVALID_ARGUMENT`. It outranks option errors, so options of an unknown action never read as `UNKNOWN_OPTION`.
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
  */
 export type CommandScope = 'workspace' | 'project';
+export const unknownActionCodes = ['UNKNOWN_GENERATOR', 'INVALID_ARGUMENT'] as const;
+export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
 export interface CommandOption {
   type: 'string' | 'boolean'; description: string;
@@ -37,7 +38,7 @@ export interface CommandMetadata extends CommandMode {
   args?: readonly CommandArgument[];
   actions?: Readonly<Record<string, CommandAction>>;
   defaultAction?: string;
-  unknownAction?: ErrorCode;
+  unknownAction?: UnknownActionCode;
   /** Optional JSON Schema of `data` in a successful response. */
   output?: JsonSchema;
   /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
@@ -85,7 +86,10 @@ export function hasActionOptions(command: CommandMetadata): boolean {
 export function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void {
   const action = args[0];
   if (command.unknownAction === undefined || action === undefined || action.startsWith('-')) return;
-  ensure(command.actions !== undefined && Object.hasOwn(command.actions, action), command.unknownAction, action);
+  if (command.actions === undefined || !Object.hasOwn(command.actions, action)) unknownAction(command.unknownAction, action);
+}
+function unknownAction(code: 'UNKNOWN_GENERATOR' | 'INVALID_ARGUMENT', action: string): never {
+  throw forgeError(code, action);
 }
 
 /** Option types for the argument parser. */
@@ -203,7 +207,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
     validateMode(action, `${where} action ${id}`, { ...options, ...(action.options as object | undefined) } as CommandMetadata['options']);
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
-  ensure(command.unknownAction === undefined || (typeof command.unknownAction === 'string' && isRecord(command.actions) && errorDefinition(command.unknownAction) !== undefined), 'INVALID_PLUGIN', `${where} unknownAction must be a built-in error code of a command with actions.`);
+  ensure(command.unknownAction === undefined || (unknownActionCodes.includes(command.unknownAction as UnknownActionCode) && isRecord(command.actions)), 'INVALID_PLUGIN', `${where} unknownAction must be ${unknownActionCodes.join(' or ')} for a command with actions.`);
   ensure(command.output === undefined || schemaIssues(command.output).length === 0, 'INVALID_PLUGIN', `${where} output must be a supported JSON Schema: ${schemaIssues(command.output).join('; ')}`);
   ensure(command.errors === undefined || (Array.isArray(command.errors) && command.errors.every(code => typeof code === 'string' && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))), 'INVALID_PLUGIN', `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }

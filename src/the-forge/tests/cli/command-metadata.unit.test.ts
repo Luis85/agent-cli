@@ -109,8 +109,8 @@ describe('command modes', () => {
   });
 
   it.each([
-    [{ unknownAction: 'UNKNOWN_GENERATOR' }, 'unknownAction must be a built-in error code of a command with actions'],
-    [{ actions: { list: { description: 'List' } }, unknownAction: 'QUALITY_MISSING' }, 'unknownAction must be a built-in error code'],
+    [{ unknownAction: 'UNKNOWN_GENERATOR' }, 'unknownAction must be UNKNOWN_GENERATOR or INVALID_ARGUMENT for a command with actions'],
+    [{ actions: { list: { description: 'List' } }, unknownAction: 'CONFLICT' }, 'unknownAction must be UNKNOWN_GENERATOR or INVALID_ARGUMENT'],
     [{ scope: 'global' }, 'scope must be workspace or project'],
     [{ options: { label: 'string' } }, 'requires type string or boolean and a description'],
     [{ options: { label: { type: 'string', description: 'L', default: true } } }, 'default must match its type'],
