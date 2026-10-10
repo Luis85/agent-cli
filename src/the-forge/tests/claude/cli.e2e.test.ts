@@ -27,7 +27,9 @@ describe('portable native Claude management', () => {
     const created = cli(['agents', 'create', 'reviews/security', '--stdin'], source);
     expect(created.status).toBe(0);
     expect(created.body.context.root).toBe(selected);
-    expect(committedEvents(created.body.events).map((event: { id: string }) => event.id)).toEqual(['file.created']);
+    expect(committedEvents(created.body.events).map(event => `${event.id} ${(event.payload as { kind: string }).kind} ${(event.payload as { path: string }).path}`)).toEqual([
+      'vault.create folder .claude', 'vault.create folder .claude/agents', 'vault.create folder .claude/agents/reviews', 'vault.create file .claude/agents/reviews/security.md',
+    ]);
     expect(await readFile(join(selected, '.claude/agents/reviews/security.md'), 'utf8')).toBe(source);
     for (const directory of [root, join(root, 'projects/beta')]) await expect(readFile(join(directory, '.claude/agents/reviews/security.md'))).rejects.toMatchObject({ code: 'ENOENT' });
     const before = cli(['agents', 'inspect', 'reviews/security']).body.data;
@@ -40,7 +42,7 @@ describe('portable native Claude management', () => {
     expect(cli(['agents', 'export', 'reviews/security']).body.data.session.reviewer.prompt).toContain('$ARGUMENTS');
     expect(committedEvents(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision, '--dry-run']).body.events)).toEqual([]);
     expect(await readFile(join(selected, current.path), 'utf8')).toBe(next);
-    expect(committedEvents(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision]).body.events)[0]?.id).toBe('file.deleted');
+    expect(committedEvents(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision]).body.events)[0]?.id).toBe('vault.delete');
     await expect(readFile(join(selected, current.path))).rejects.toMatchObject({ code: 'ENOENT' });
   }, 60_000);
 

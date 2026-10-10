@@ -37,7 +37,7 @@ describe('writer lock ownership', () => {
       await fs.writeFile(lock, foreign);
       await stageAll(...args);
     });
-    await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject([{ operation: 'created' }]);
+    await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject({ changes: [{ operation: 'created' }] });
     expect(await fs.readFile(lock, 'utf8')).toBe(foreign);
     expect(warnings).toEqual([expect.stringContaining("no longer carries this writer's token")]);
   });
@@ -60,7 +60,7 @@ describe('writer lock ownership', () => {
   it.each(['ENOTSUP', 'EPERM', 'EXDEV'])('falls back to an exclusive create when hard links fail with %s', async code => {
     faults.link = code;
     const files = await NodeFiles.at(root);
-    await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject([{ operation: 'created' }]);
+    await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject({ changes: [{ operation: 'created' }] });
     expect(await fs.readdir(root)).toEqual(['note.md']);
     const token = await acquireLock(lock, () => ({}));
     await expect(acquireLock(lock, () => ({}))).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', details: { stale: 'active' } });

@@ -27,7 +27,7 @@ Command families own their handlers: document editing, generation, skills, proje
 
 Within Claude presentation, agent, hook and authored-plugin asset handlers live in `agents.ts`, `hooks.ts` and `plugin-assets.ts`. `commands.ts` dispatches among those handlers and the installed lifecycle service. Argument parsing and text encoding are presentation responsibilities; the concrete codec and process implementations remain in infrastructure.
 
-The workspace use case owns validation and post-commit notifications; command handlers do not publish fake file events. Plugin generators return write plans instead of writing directly. Core event delivery failures become warnings because persistence has already succeeded.
+The workspace use case owns validation and post-commit notifications; command handlers do not publish fake `vault.*` events, and plugins cannot emit host-owned events at all. Plugin generators return write plans instead of writing directly. Core event delivery failures become warnings because persistence has already succeeded.
 
 ## Source placement and enforcement
 

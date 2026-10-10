@@ -1,7 +1,6 @@
 import { homedir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
-import { Workspace } from '../../application/workspace/workspace.ts';
 import { ScopedFiles } from '../../application/workspace/scoped-files.ts';
 import type { CommandContext } from '../../application/plugins/registry.ts';
 import type { ClaudeTarget } from '../../application/claude/target.ts';
@@ -32,7 +31,7 @@ export async function claudeTarget(context: CommandContext, flags: Record<string
     const files = await NodeFiles.at(root, message => context.events.warn(message));
     const prefix = relative(root, directory).split('\\').join('/');
     const scoped = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
-    return { workspace: new Workspace(scoped, context.workspace.codec, context.events, context.workspace.dryRun, directory), scope, directory,
+    return { workspace: context.workspace.within(scoped, directory), scope, directory,
       agentsDirectory: 'agents', settingsPath: 'settings.json' };
   }
   if (scope === 'plugin') {

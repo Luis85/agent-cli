@@ -97,7 +97,7 @@ export const germanErrors = {
   INVALID_PLUGIN_CONFIG: { summary: 'Die Liste aktivierter Plugins ist ungültig.', hint: 'Tragen Sie in plugins.enabled in bin/config.json eindeutige Kebab-Case-Plugin-IDs ein.' },
   INCOMPATIBLE_PLUGIN: { summary: 'Das Plugin benötigt eine neuere Forge-Version.', hint: 'Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin.' },
   DUPLICATE_PLUGIN: { summary: 'Das Plugin ist doppelt registriert.', hint: 'Aktivieren Sie jedes Plugin nur einmal.' },
-  PLUGIN_NAMESPACE: { summary: 'Ein Plugin-Beitrag liegt außerhalb seines Namensraums.', hint: 'Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran.' },
+  PLUGIN_NAMESPACE: { summary: 'Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.', hint: 'Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, workspace, plugin) als Plugin-ID.' },
   PLUGIN_LIFECYCLE: { summary: 'Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.', hint: 'Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr.' },
   DUPLICATE_OR_INVALID_ID: { summary: 'Eine Beitrags-ID ist ungültig oder bereits registriert.', hint: 'Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten.' },
   UNKNOWN_SKILL: { summary: 'Der Skill ist nicht registriert.', hint: 'Verfügbare Skills zeigt skills list.' },
@@ -107,6 +107,7 @@ export const germanErrors = {
   DUPLICATE_EVENT: { summary: 'Die Ereignis-ID ist bereits registriert.', hint: 'Verwenden Sie eine eindeutige Ereignis-ID.' },
   UNKNOWN_EVENT: { summary: 'Das Ereignis ist nicht registriert.', hint: 'Registrierte Ereignis-IDs zeigt events.' },
   EVENT_RECURSION: { summary: 'Ereignisbehandler haben die maximale Rekursionstiefe überschritten.', hint: 'Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen.' },
+  EVENT_OWNERSHIP: { summary: 'Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.', hint: 'Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) sendet der Host.' },
   // Claude-Code-Definitionen
   INVALID_CLAUDE_AGENT: { summary: 'Die Claude-Agentendefinition ist ungültig.', hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: 'Die Claude-Hook-Konfiguration ist ungültig.', hint: claudeDefinitionHint },

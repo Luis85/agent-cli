@@ -113,7 +113,7 @@ export const errorCatalog = {
   INVALID_PLUGIN_CONFIG: entry('input', 'The enabled plugin list is invalid.', 'List unique lowercase kebab-case plugin ids in plugins.enabled in bin/config.json.'),
   INCOMPATIBLE_PLUGIN: entry('input', 'The plugin requires a newer Forge version.', 'Update The Forge or disable the plugin.'),
   DUPLICATE_PLUGIN: entry('input', 'The plugin is registered twice.', 'Enable each plugin once.'),
-  PLUGIN_NAMESPACE: entry('input', 'A plugin contribution is outside its namespace.', 'Prefix plugin command, generator, skill and event ids with the plugin id and a dot.'),
+  PLUGIN_NAMESPACE: entry('input', 'A plugin id or contribution is outside its namespace.', 'Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (command, operation, claude, vault, workspace, plugin) as the plugin id.'),
   PLUGIN_LIFECYCLE: entry('input', 'A plugin used the host outside its lifecycle.', 'Register contributions before activation and stop using the host after disposal.'),
   DUPLICATE_OR_INVALID_ID: entry('input', 'A contribution id is invalid or already registered.', 'Use a unique lowercase dotted id.'),
   UNKNOWN_SKILL: entry('input', 'The skill is not registered.', 'Run skills list.'),
@@ -123,6 +123,7 @@ export const errorCatalog = {
   DUPLICATE_EVENT: entry('input', 'The event id is already registered.', 'Use a unique event id.'),
   UNKNOWN_EVENT: entry('input', 'The event is not registered.', 'Run events to list registered event ids.'),
   EVENT_RECURSION: entry('input', 'Event handlers recursed too deeply.', 'Stop handlers from emitting the events that trigger them.'),
+  EVENT_OWNERSHIP: entry('input', 'A plugin tried to emit an event it does not own.', 'Emit only events in your plugin\'s own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) are emitted by the host.'),
   // Claude Code definitions
   INVALID_CLAUDE_AGENT: entry('input', 'The Claude agent definition is invalid.', claudeDefinitionHint),
   INVALID_CLAUDE_HOOKS: entry('input', 'The Claude hook configuration is invalid.', claudeDefinitionHint),

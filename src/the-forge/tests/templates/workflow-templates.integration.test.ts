@@ -27,7 +27,7 @@ const setup = (dryRun = false) => new SetupService(workspace(dryRun), config, [
 ], [], workflowTemplates);
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-workflow-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (_value): _value is unknown => true });
+  for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (_value): _value is unknown => true });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 

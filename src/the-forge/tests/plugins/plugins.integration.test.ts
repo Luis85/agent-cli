@@ -21,7 +21,7 @@ it('disposes successful activations in reverse order after a later activation fa
   registry.register({ ...plugin('one'), onload() { calls.push('one'); }, async onunload() { await Promise.resolve(); calls.push('dispose-one'); } }, events);
   registry.register({ ...plugin('two'), onload() { calls.push('two'); }, onunload() { calls.push('dispose-two'); throw new Error('cleanup failed'); } }, events);
   registry.register({ ...plugin('three'), onload() { throw new Error('activation failed'); } }, events);
-  await expect(registry.activate({ events } as CommandContext)).rejects.toThrow('activation failed');
+  await expect(registry.activate(events, {} as CommandContext)).rejects.toThrow('activation failed');
   await registry.dispose(events);
   expect(calls).toEqual(['one', 'two', 'dispose-two', 'dispose-one']);
   expect(events.warnings[0]).toContain('cleanup failed');
@@ -57,11 +57,11 @@ it.each([
 it('rejects repeated activation and registration after activation/disposal', async () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope()); let activations = 0;
   registry.register({ ...plugin('one'), onload() { activations++; } }, events);
-  await registry.activate({ events } as CommandContext);
-  await expect(registry.activate({ events } as CommandContext)).rejects.toThrowError(expect.objectContaining({ code: 'PLUGIN_LIFECYCLE' }));
+  await registry.activate(events, {} as CommandContext);
+  await expect(registry.activate(events, {} as CommandContext)).rejects.toThrowError(expect.objectContaining({ code: 'PLUGIN_LIFECYCLE' }));
   expect(() => registry.register(plugin('two'), events)).toThrow();
   await registry.dispose(events);
-  await expect(registry.activate({ events } as CommandContext)).rejects.toThrow();
+  await expect(registry.activate(events, {} as CommandContext)).rejects.toThrow();
   expect(activations).toBe(1);
 });
 
@@ -69,7 +69,7 @@ it('unloads a partially loaded plugin before earlier plugins', async () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope()), calls: string[] = [];
   registry.register({ ...plugin('first'), onunload() { calls.push('first'); } }, events);
   registry.register({ ...plugin('broken'), onload() { throw new Error('partial load'); }, onunload() { calls.push('broken'); } }, events);
-  await expect(registry.activate({ events } as CommandContext)).rejects.toThrow('partial load');
+  await expect(registry.activate(events, {} as CommandContext)).rejects.toThrow('partial load');
   await registry.dispose(events);
   expect(calls).toEqual(['broken', 'first']);
 });
@@ -83,7 +83,7 @@ it('retains the original unload hook and its receiver when activation replaces t
     onunload() { calls.push(this.manifest.id); },
   };
   registry.register(candidate, events);
-  await registry.activate({ events } as CommandContext);
+  await registry.activate(events, {} as CommandContext);
   await registry.dispose(events);
   expect(calls).toEqual(['mutable']);
   expect(events.warnings).toEqual([]);
@@ -112,7 +112,7 @@ it('loads only enabled directory packages and preserves class lifecycle receiver
   await packagePlugin(root, 'disabled', `throw new Error('disabled code executed');`);
   await loadEnabledPlugins('plugins', ['quality'], files, registry, events);
   expect(registry.commands.has('quality.run')).toBe(true);
-  await registry.activate({ events } as CommandContext);
+  await registry.activate(events, {} as CommandContext);
   await registry.dispose(events);
   expect(events.warnings).toEqual(['quality:loaded', 'quality:unloaded']);
 });
@@ -122,7 +122,7 @@ it('loads Obsidian-style CommonJS main.js inside a type:module project', async (
     commands: [{ id: 'common.run', description: 'Run', usage: 'common.run', run() { return { directory: path.basename(__dirname), filename: path.basename(__filename) }; } }]
   };`, 'main.js');
   await loadEnabledPlugins('plugins', ['common'], files, registry, events);
-  expect(await registry.commands.get('common.run')!.run([], {}, { events } as CommandContext)).toEqual({ directory: 'common', filename: 'main.js' });
+  expect(await registry.commands.get('common.run')!.run([], {}, {} as CommandContext)).toEqual({ directory: 'common', filename: 'main.js' });
 });
 it('validates every manifest before executing enabled plugin code', async () => {
   const { root, files, registry, events } = await fixture();

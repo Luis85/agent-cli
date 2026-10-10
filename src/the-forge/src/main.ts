@@ -3,7 +3,8 @@ import metadata from '../package.json';
 import { forgeError, AppError, ensure } from './domain/shared/errors.ts';
 import { EventBus } from './application/plugins/events.ts';
 import { registerHostEvents, type HostEventMap } from './application/plugins/host-events.ts';
-import { invokeCommand } from './application/plugins/invocation.ts';
+import { announceLayoutReady, invokeCommand, quitInvocation } from './application/plugins/invocation.ts';
+import { WorkspacePluginState } from './application/plugins/plugin-state.ts';
 import { eventOutput, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
 import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
@@ -88,7 +89,7 @@ async function run(): Promise<void> {
       for (const skill of builtinSkills) registry.add(registry.skills, skill);
       for (const command of commands(registry, {
         loaded, files, templates: new MarkdownTemplates(),
-        get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
+        get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
         get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
         get workflows() { return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer); },
@@ -123,9 +124,9 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root);
       const policy = invocationPolicy(id, parsed.args.slice(1), parsed.flags);
-      const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold });
+      const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
-      const workspace = project ? new Workspace(new ScopedFiles(files, project.directory), environment.codec, events, config.settings.dryRun, resolve(files.root, project.directory)) : environment;
+      const workspace = project ? environment.within(new ScopedFiles(files, project.directory), resolve(files.root, project.directory)) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
       const context: CommandContext = { workspace, events, claude, ...activeContext, input: async () => {
@@ -137,7 +138,12 @@ async function run(): Promise<void> {
       const commandId = parsed.flags.help ? 'help' : id;
       const data = await invokeCommand(events, {
         command: commandId, root: context.root, workspaceRoot: context.workspaceRoot, dryRun: workspace.dryRun,
-      }, async () => { if (policy.activatePlugins) await registry.activate(context); }, async () => {
+      }, async () => {
+        if (!policy.activatePlugins) return;
+        // First-activation and settings state lives in workspace data; --no-plugins leaves it untouched.
+        await registry.activate(events, context, bootstrap.flags['no-plugins'] ? undefined : new WorkspacePluginState(environment, message => events.warn(message)));
+        await announceLayoutReady(events);
+      }, async () => {
         const output = parsed.flags.help
           ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
           : await command.run(parsed.args.slice(1), parsed.flags, context);
@@ -148,7 +154,10 @@ async function run(): Promise<void> {
   } catch (error) {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
     result = { ok: false, error: localizer.error(error) };
-  } finally { await registry.dispose(events); }
+  } finally {
+    await quitInvocation(events);
+    await registry.dispose(events);
+  }
   try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
   catch {
     process.exitCode = 1;

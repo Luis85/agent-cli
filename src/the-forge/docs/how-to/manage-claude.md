@@ -63,7 +63,7 @@ node bin/app.js claude agents remove reviewer --if-match AGENT_REVISION --dry-ru
 node bin/app.js claude agents remove reviewer --if-match AGENT_REVISION
 ```
 
-The committed response includes `file.deleted` with the removed file's hash and size. Removal leaves sibling files and directories in place.
+The committed response includes `vault.delete` with the removed file's hash and size. Removal leaves sibling files and directories in place.
 
 ## Maintain hooks without replacing other settings
 

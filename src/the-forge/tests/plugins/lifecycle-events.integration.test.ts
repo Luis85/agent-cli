@@ -9,7 +9,7 @@ const plugin = (id: string): Plugin => ({ manifest: { id, name: id, version: '1.
 const create = () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
-  return { registry, events, context: { events } as CommandContext };
+  return { registry, events, context: {} as CommandContext };
 };
 
 describe('observable plugin lifecycle', () => {
@@ -23,7 +23,7 @@ describe('observable plugin lifecycle', () => {
     registry.register(plugin('plain'), events);
     await registry.publishRegistered(events);
     await registry.publishRegistered(events);
-    await registry.activate(context);
+    await registry.activate(events, context);
     await registry.dispose(events);
     expect(replayed.map(record => record.id)).toEqual(['plugin.registered', 'plugin.registered', 'plugin.activating']);
     expect(events.history.filter(record => record.id === 'plugin.registered')).toHaveLength(2);
@@ -38,7 +38,7 @@ describe('observable plugin lifecycle', () => {
     const primary = new AppError('ACTIVATION_BROKEN', 'private diagnostic', 4);
     events.onAny(() => { throw Object.create(null); });
     registry.register({ ...plugin('broken'), onload() { throw primary; }, onunload() { throw Object.create(null); } }, events);
-    await expect(registry.activate(context)).rejects.toBe(primary);
+    await expect(registry.activate(events, context)).rejects.toBe(primary);
     await expect(registry.dispose(events)).resolves.toBeUndefined();
     expect(events.history).toContainEqual({ id: 'plugin.activation-failed', payload: { pluginId: 'broken', error: { code: 'ACTIVATION_BROKEN', exitCode: 4 } } });
     expect(events.history.map(record => record.id)).toEqual(['plugin.registered', 'plugin.activating', 'plugin.activation-failed', 'plugin.unloading', 'plugin.unload-failed']);
@@ -48,7 +48,7 @@ describe('observable plugin lifecycle', () => {
 
   it('does not report registered capabilities when atomic plugin validation failed', async () => {
     const { registry, events } = create();
-    expect(() => registry.register({ ...plugin('bad'), events: [{ id: 'file.created', validate: (_value): _value is unknown => true }] }, events)).toThrow();
+    expect(() => registry.register({ ...plugin('bad'), events: [{ id: 'vault.create', validate: (_value): _value is unknown => true }] }, events)).toThrow();
     await registry.publishRegistered(events);
     expect(events.history).toEqual([]);
   });
@@ -64,7 +64,7 @@ describe('observable plugin lifecycle', () => {
       throw Object.create(null);
     } }, events);
     const invocation = async () => {
-      try { await registry.activate(context); }
+      try { await registry.activate(events, context); }
       finally { await registry.dispose(events); }
     };
     await expect(invocation()).rejects.toBe(primary);

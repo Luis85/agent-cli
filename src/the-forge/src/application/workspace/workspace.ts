@@ -6,7 +6,8 @@ import type { FileRepository, DocumentCodec } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type HostEventMap } from '../plugins/host-events.ts';
 
-type Operation = HostEventMap['workspace.started']['operation'];
+type Operation = HostEventMap['operation.started']['operation'];
+const vaultEvents = { created: 'vault.create', updated: 'vault.modify', deleted: 'vault.delete' } as const;
 /** Phase records summarize persistence; preview diffs stay in the command result. */
 const changeSummary = (result: { changes: FileChange[] }) => ({
   changes: result.changes.map(({ path, revision, operation, bytes }) => ({ path, revision, operation, bytes })),
@@ -20,13 +21,20 @@ const utf8 = (bytes: Uint8Array): string | undefined => {
 };
 
 export class Workspace {
-  constructor(readonly files: FileRepository, readonly codec: DocumentCodec, readonly events: EventBus, readonly dryRun: boolean, readonly root: string | null = null) {}
+  constructor(readonly files: FileRepository, readonly codec: DocumentCodec, private readonly events: EventBus, readonly dryRun: boolean, readonly root: string | null = null) {}
+  /** The same invocation (events, codec, dry run) over another repository scope, such as a selected project. */
+  within(files: FileRepository, root: string | null): Workspace {
+    return new Workspace(files, this.codec, this.events, this.dryRun, root);
+  }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
+  // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
   // fallow-ignore-next-line unused-class-member
   async read(path: string) {
     return this.observe('read', [path], async () => {
       const file = await this.files.read(path);
-      return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+      const result = { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
+      await publishHostEvent(this.events, 'workspace.file-open', { path });
+      return result;
     }, result => ({ bytes: result.bytes }));
   }
   async write(writes: readonly WriteRequest[], options: WriteOptions = {}) {
@@ -40,8 +48,8 @@ export class Workspace {
     catch (error) { return this.observe('write', [], async (): Promise<{ dryRun: boolean; changes: Array<FileChange | PlannedChange> }> => { throw error; }, changeSummary); }
     return this.observe('write', requests.map(request => request.path), async () => {
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-      const changes = await this.files.writeBatch(requests, this.dryRun);
-      const result = await this.committed(changes);
+      const { changes, folders } = await this.files.writeBatch(requests, this.dryRun);
+      const result = await this.committed(changes, folders);
       return this.dryRun && previous ? { ...result, changes: await this.preview(changes, requests, previous) } : result;
     }, changeSummary);
   }
@@ -63,15 +71,25 @@ export class Workspace {
       return this.committed([change]);
     }, changeSummary);
   }
-  private async committed(changes: FileChange[]) {
-    if (!this.dryRun) for (const change of changes) {
-      try { await this.events.emit(`file.${change.operation}`, change); }
-      catch (error) {
-        try { this.events.warn(`Committed ${change.path}; file notification failed: ${errorMessage(error)}`); }
-        catch { /* A failed diagnostic sink cannot turn committed persistence into failure. */ }
-      }
+  /**
+   * Dry runs emit one `workspace.quick-preview` per planned file. Commits emit `vault.create` for each new
+   * folder (parent before child), then one `vault.*` record per file in batch order.
+   */
+  private async committed(changes: FileChange[], folders: readonly string[] = []) {
+    if (this.dryRun) {
+      for (const { path, operation, bytes } of changes) await publishHostEvent(this.events, 'workspace.quick-preview', { path, operation, bytes });
+      return { dryRun: this.dryRun, changes };
     }
+    for (const path of folders) await this.notify(path, 'vault.create', { path, kind: 'folder', operation: 'created' });
+    for (const { path, revision, operation, bytes } of changes) await this.notify(path, vaultEvents[operation], { path, kind: 'file', revision, bytes, operation });
     return { dryRun: this.dryRun, changes };
+  }
+  private async notify(path: string, id: string, payload: unknown): Promise<void> {
+    try { await this.events.emit(id, payload); }
+    catch (error) {
+      try { this.events.warn(`Committed ${path}; vault notification failed: ${errorMessage(error)}`); }
+      catch { /* A failed diagnostic sink cannot turn committed persistence into failure. */ }
+    }
   }
   // CLI handlers and external plugins use this guarded editing API through CommandContext.
   // Dry-run edits always include a unified diff of the transformed file.
@@ -84,13 +102,13 @@ export class Workspace {
   }
   private async observe<T>(operation: Operation, paths: string[], action: () => Promise<T>, summarize: (result: T) => { changes?: FileChange[]; bytes?: number }) {
     const payload = { operationId: this.events.nextOperationId(), operation, root: this.root, paths: paths.filter(path => typeof path === 'string' && path.length > 0), dryRun: this.dryRun };
-    await publishHostEvent(this.events, 'workspace.started', payload);
+    await publishHostEvent(this.events, 'operation.started', payload);
     try {
       const result = await action();
-      await publishHostEvent(this.events, 'workspace.succeeded', { ...payload, ...summarize(result) });
+      await publishHostEvent(this.events, 'operation.succeeded', { ...payload, ...summarize(result) });
       return result;
     } catch (error) {
-      await publishHostEvent(this.events, 'workspace.failed', { ...payload, error: summarizeError(error) });
+      await publishHostEvent(this.events, 'operation.failed', { ...payload, error: summarizeError(error) });
       throw error;
     }
   }

@@ -1,4 +1,4 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, committedFileEvents } from '../support/events.ts';
 import { expect, it } from 'vitest';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,7 +13,7 @@ it('installs an editable shared planning pack and renders required inputs in the
   expect(preview.body.data.changes).toHaveLength(7); expect(committedEvents(preview.body.events)).toEqual([]);
   await expect(readFile(join(fixture.project, 'bin/templates/workflow/prd.md'))).rejects.toThrow();
   const installed = cli(['templates', 'install', 'workflow']);
-  expect(installed.status, installed.stdout).toBe(0); expect(committedEvents(installed.body.events)).toHaveLength(7);
+  expect(installed.status, installed.stdout).toBe(0); expect(committedFileEvents(installed.body.events)).toHaveLength(7);
   const template = cli(['templates', 'inspect', 'workflow/prd.md']);
   expect(template.body.data.requiredVariables).toEqual(['owner']);
   expect(template.body.data.builtins).toEqual(expect.arrayContaining(['title', 'date:YYYY-MM-DD']));

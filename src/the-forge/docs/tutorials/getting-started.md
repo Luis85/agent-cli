@@ -55,7 +55,7 @@ node bin/app.js properties notes/plan.md --set '{"status":"draft"}' --if-match Y
 node bin/app.js read notes/plan.md --json
 ```
 
-The final read shows the new frontmatter and a new revision. A stale revision produces `CONFLICT`; reread and reconcile before retrying. Dry runs emit no file events and reserve no files.
+The final read shows the new frontmatter and a new revision. A stale revision produces `CONFLICT`; reread and reconcile before retrying. Dry runs emit no `vault.*` events and reserve no files.
 
 ## 4. Preview a scaffold and return to workspace scope
 

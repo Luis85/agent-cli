@@ -9,11 +9,12 @@ import { EventBus } from '../../src/application/plugins/events.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
 
-let root: string, files: NodeFiles, workspace: Workspace;
+let root: string, files: NodeFiles, workspace: Workspace, events: EventBus;
 const write = (path: string, content: string) => ({ path, bytes: encodeText(content) });
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-generation-')); files = await NodeFiles.at(root);
-  workspace = new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), false);
+  events = new EventBus(new NodeEventScope());
+  workspace = new Workspace(files, new ObsidianDocuments(), events, false);
 });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 
@@ -23,7 +24,7 @@ describe('generation review and explicit revision authorization', () => {
     const service = new GenerationService(workspace), spy = vi.spyOn(files, 'writeBatch');
     const writes = [write('ui/same.ts', 'same'), write('ui/changed.ts', 'after'), write('ui/new.ts', 'new')];
     const plan = await service.plan(writes);
-    expect(spy).not.toHaveBeenCalled(); expect(workspace.events.history).toEqual([]);
+    expect(spy).not.toHaveBeenCalled(); expect(events.history).toEqual([]);
     expect(plan.matches).toBe(false);
     expect(plan.outputs).toEqual([
       { path: 'ui/same.ts', status: 'unchanged', revision: expect.any(String), content: 'same' },
@@ -48,17 +49,17 @@ describe('generation review and explicit revision authorization', () => {
   });
 
   it('previews manifest creation without files and guards manifest/output collisions', async () => {
-    const dry = new GenerationService(new Workspace(files, workspace.codec, workspace.events, true));
+    const dry = new GenerationService(new Workspace(files, workspace.codec, events, true));
     const writes = [write('ui/item.ts', 'content')];
     const plan = await dry.plan(writes, 'reviews/new.json');
     expect(plan.manifest).toMatchObject({ path: 'reviews/new.json', dryRun: true });
-    expect(await files.list()).toEqual([]); expect(workspace.events.history).toEqual([]);
+    expect(await files.list()).toEqual([]); expect(events.history).toEqual([]);
     await expect(dry.plan(writes, 'ui/item.ts')).rejects.toMatchObject({ code: 'INVALID_GENERATION_PLAN' });
     await expect(dry.plan([...writes, ...writes])).rejects.toMatchObject({ code: 'INVALID_GENERATION_PLAN' });
     const live = new GenerationService(workspace);
     for (const manifest of ['ui', 'ui/item.ts/review.json']) await expect(live.plan(writes, manifest)).rejects.toMatchObject({ code: 'INVALID_GENERATION_PLAN' });
     for (const overlap of [[write('ui', 'file'), ...writes], [...writes, write('ui', 'file')]]) await expect(live.plan(overlap)).rejects.toMatchObject({ code: 'INVALID_GENERATION_PLAN' });
-    expect(await files.list()).toEqual([]); expect(workspace.events.history).toEqual([]);
+    expect(await files.list()).toEqual([]); expect(events.history).toEqual([]);
   });
 
   it('provides CI drift status with no writes and succeeds after explicit generation', async () => {

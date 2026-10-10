@@ -15,7 +15,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-removal-'));
   files = await NodeFiles.at(root);
   events = new EventBus(new NodeEventScope());
-  events.define({ id: 'file.deleted', validate: (value): value is object => typeof value === 'object' });
+  events.define({ id: 'vault.delete', validate: (value): value is object => typeof value === 'object' });
   await mkdir(join(root, '.claude/agents'), { recursive: true });
   // Removing a damaged definition must not require parsing that definition first.
   await writeFile(join(root, asset), '---\ninvalid: [\n');
@@ -28,12 +28,12 @@ describe('guarded native asset removal', () => {
     const before = await files.read(asset);
     await writeFile(join(root, '.claude/agents/other.md'), 'Keep');
     const observe = vi.fn(async () => { await expect(readFile(join(root, asset))).rejects.toMatchObject({ code: 'ENOENT' }); });
-    events.on('file.deleted', observe);
+    events.on('vault.delete', observe);
     const result = await workspace().remove(asset, before.revision);
     expect(result).toEqual({ dryRun: false, changes: [{ path: asset, operation: 'deleted', revision: before.revision, bytes: before.bytes.length }] });
     expect(await readdir(join(root, '.claude/agents'))).toEqual(['other.md']);
     expect(observe).toHaveBeenCalledOnce();
-    expect(events.history).toEqual([{ id: 'file.deleted', payload: result.changes[0] }]);
+    expect(events.history).toEqual([{ id: 'vault.delete', payload: { ...result.changes[0], kind: 'file' } }]);
     expect(await readdir(root)).toEqual(['.claude']);
   });
 
@@ -103,7 +103,7 @@ describe('guarded native asset removal', () => {
     const warnings: string[] = [];
     files = await NodeFiles.at(root, message => warnings.push(message));
     const before = await files.read(asset);
-    events.on('file.deleted', () => { throw new Error('Observer failed'); });
+    events.on('vault.delete', () => { throw new Error('Observer failed'); });
     const adapter = files as unknown as { releaseLock(path: string): Promise<void> };
     vi.spyOn(adapter, 'releaseLock').mockRejectedValueOnce(new Error('Lock cleanup failed'));
     expect((await workspace().remove(asset, before.revision)).changes[0]?.operation).toBe('deleted');
