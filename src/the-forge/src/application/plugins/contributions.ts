@@ -1,10 +1,10 @@
 import { ensure, isRecord } from '../../domain/shared/errors.ts';
-import { schemaIssues } from '../../domain/schema/json-schema.ts';
+import { defaultIssues, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 import { validateCommandMetadata } from './command-metadata.ts';
-import { PluginCatalog } from './plugin-catalog.ts';
+import { errorPrefix, PluginCatalog } from './plugin-catalog.ts';
 
 export type PluginOrigin = 'core' | 'user';
-const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload'] as const;
+const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload', 'validateSettings'] as const;
 const lists = ['commands', 'generators', 'events', 'skills'] as const;
 const id = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
 
@@ -36,9 +36,13 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
     ensure(id.test(service), 'DUPLICATE_OR_INVALID_ID', service);
     ensure(origin === 'core' || inNamespace(service), 'PLUGIN_NAMESPACE', `Service ${service} must start with ${pluginId}.`);
   }
+  ensure(plugin.validateSettings === undefined || plugin.settings !== undefined, 'INVALID_PLUGIN', 'validateSettings requires settings.');
   ensure(plugin.settings === undefined || (isRecord(plugin.settings) && plugin.settings.type === 'object' && schemaIssues(plugin.settings).length === 0), 'INVALID_PLUGIN', `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin.settings).join('; ')}`);
+  const defaults = plugin.settings === undefined ? [] : defaultIssues(plugin.settings as JsonSchema, 'settings');
+  ensure(defaults.length === 0, 'INVALID_PLUGIN', `settings defaults must satisfy their own schemas: ${defaults.join('; ')}`);
   const owned = (key: typeof lists[number]) => ((plugin[key] ?? []) as Array<{ id: string }>).map(item => item.id);
-  PluginCatalog.validate(pluginId, plugin.strings, plugin.errors, { commands: owned('commands'), generators: owned('generators'), events: owned('events') }, origin === 'core' ? null : `${pluginId.replaceAll('-', '_').toUpperCase()}_`);
+  const actions = ((plugin.commands ?? []) as Array<{ id: string; actions?: object }>).flatMap(command => Object.keys(command.actions ?? {}).map(action => `${command.id} ${action}`));
+  PluginCatalog.validate(pluginId, plugin.strings, plugin.errors, { commands: owned('commands'), actions, generators: owned('generators'), events: owned('events') }, origin === 'core' ? null : errorPrefix(pluginId));
 }
 
 function validateGenerator(generator: Record<string, unknown>): void {

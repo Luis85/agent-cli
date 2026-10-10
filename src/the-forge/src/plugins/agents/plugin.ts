@@ -63,6 +63,14 @@ export const agentsPlugin: CorePlugin = {
     strings: {
       de: {
         commands: { agents: 'docker-agent-Definitionen verwalten (auflisten, prüfen, validieren, anlegen, importieren) und daraus Claude-Code-Agenten generieren.' },
+        actions: {
+          'agents list': 'Definitionsdateien mit ihren Agenten, dem Standardagenten und der Anzahl der Diagnosen auflisten.',
+          'agents inspect': 'Eine Definitionsdatei oder mit datei#agent einen Agenten samt Diagnosen zurückgeben.',
+          'agents validate': 'Eine oder alle Definitionsdateien gegen das docker-agent-Schema und dessen semantische Regeln prüfen; Fehler scheitern mit INVALID_AGENT_DEFINITION.',
+          'agents create': 'Einen docker-agent-Agenten oder die Agenten einer mitgelieferten Vorlage einer neuen oder vorhandenen Team-Datei hinzufügen; Kommentare bleiben erhalten.',
+          'agents import': 'Einen Claude-Agenten (.claude/agents/<name>.md) in einen docker-agent-Agenten umwandeln, mit Diagnosen für Näherungen.',
+          'agents generate': '.claude/agents/<name>.md (und optional .mcp.json, Einstellungen und Skills) aus den Definitionen generieren; --plan und --check schreiben nie.',
+        },
         events: { 'agents.generated': 'Claude-Code-Dateien wurden aus Agentendefinitionen generiert: {target, sources, agents, files}.' },
         errors: {
           INVALID_AGENT_DEFINITION: { summary: 'Eine Agentendefinition verletzt das docker-agent-Schema oder dessen semantische Regeln.', hint: 'Beheben Sie jeden Fehler in details.files[].diagnostics (JSON-Pointer, Zeile und Spalte) und führen Sie dann agents validate aus.' },

@@ -1,7 +1,8 @@
 import { ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import { value } from '../plugins/command-input.ts';
-import { option, type CommandFlags } from '../plugins/command-metadata.ts';
+import { option, type CommandFlags, type CommandOption } from '../plugins/command-metadata.ts';
+import type { hostGeneratorOptions } from '../plugins/registry.ts';
 
 /**
  * Review controls of every reviewed generator: plan, check drift, or regenerate with approved revisions. Kernel
@@ -12,7 +13,7 @@ export const reviewOptions = {
   plan: option.boolean('Report planned outputs and their status without writing.'),
   'plan-out': option.string('Write the plan\'s revision manifest to this path.'),
   check: option.boolean('Fail with a drift code when outputs are missing or differ.'),
-};
+} satisfies Record<Exclude<typeof hostGeneratorOptions[number], 'out'>, CommandOption>;
 
 export type GenerationMode = 'check' | 'plan' | 'generate';
 

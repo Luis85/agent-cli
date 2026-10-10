@@ -9,7 +9,8 @@ import { type JsonSchema } from '../../domain/schema/json-schema.ts';
  *   selection or a failing plugin `onload` cannot block it. Default `false`.
  * - `mutating`: whether the command can change files or external state. Default `true` for undeclared commands.
  * - `actions`: refinements keyed by the first positional argument (`skills install`), with `defaultAction` used
- *   when it is omitted. A refinement inherits every field it does not set.
+ *   when it is omitted. A refinement inherits every field it does not set and may add its own `options`, which
+ *   the parser accepts only for that action (`make <generator>`).
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
  */
 export type CommandScope = 'workspace' | 'project';
@@ -36,6 +37,9 @@ export interface CommandMode {
 }
 export interface CommandAction extends CommandMode {
     description: string;
+    usage?: string;
+    /** Options accepted only with this action, besides the command's own; names never repeat a command option. */
+    options?: Readonly<Record<string, CommandOption>>;
 }
 export interface CommandMetadata extends CommandMode {
     id: string;
@@ -64,23 +68,34 @@ export declare const option: {
 };
 /** The mode an invocation runs in: the action refinement for the first argument, over the command's own fields. */
 export declare function commandMode(command: CommandMetadata, args: readonly string[]): ResolvedMode;
+/** The options an invocation accepts: the command's own plus those of the action its arguments select. */
+export declare function commandOptions(command: CommandMetadata, args: readonly string[]): Record<string, CommandOption>;
+/** Whether some action declares its own options, so parsing must resolve the action first. */
+export declare function hasActionOptions(command: CommandMetadata): boolean;
 /** Option types for the argument parser. */
 export declare function optionTypes(options: CommandMetadata['options']): Record<string, 'string' | 'boolean'>;
 /**
  * JSON Schema 2020-12 of one invocation: `args` are the positional arguments after the command id and `options`
- * the command's own flags (global options are described once in the catalog).
+ * the command's own flags (global options are described once in the catalog). A command with actions publishes
+ * one `oneOf` branch per action, keyed by the first argument as a `const`, with that action's options and required
+ * options; when the first argument is optional, a further branch without arguments covers the default action.
  */
 export declare function commandInputSchema(command: CommandMetadata): JsonSchema;
-/** Annotations for agents: the resolved default mode plus each action's refinement. */
+/**
+ * Annotations for agents: the default mode's scope and discovery, plus each action's refinement. `mutating` (and
+ * `readOnlyHint`, its negation) covers every mode, so a command is read-only only when none of its actions mutates.
+ */
 export declare function commandAnnotations(command: CommandMetadata): {
     actions?: {
         [k: string]: {
+            options?: Readonly<Record<string, CommandOption>> | undefined;
             projectOption?: string | undefined;
-            description: string;
             scope: CommandScope;
             discovery: boolean;
             mutating: boolean;
             readOnlyHint: boolean;
+            usage?: string | undefined;
+            description: string;
         };
     } | undefined;
     defaultAction?: string | undefined;

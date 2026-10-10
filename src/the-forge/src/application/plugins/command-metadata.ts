@@ -11,7 +11,8 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  *   selection or a failing plugin `onload` cannot block it. Default `false`.
  * - `mutating`: whether the command can change files or external state. Default `true` for undeclared commands.
  * - `actions`: refinements keyed by the first positional argument (`skills install`), with `defaultAction` used
- *   when it is omitted. A refinement inherits every field it does not set.
+ *   when it is omitted. A refinement inherits every field it does not set and may add its own `options`, which
+ *   the parser accepts only for that action (`make <generator>`).
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
  */
 export type CommandScope = 'workspace' | 'project';
@@ -22,7 +23,11 @@ export interface CommandOption {
 }
 export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean }
 export interface CommandMode { scope?: CommandScope; discovery?: boolean; mutating?: boolean; projectOption?: string }
-export interface CommandAction extends CommandMode { description: string }
+export interface CommandAction extends CommandMode {
+  description: string; usage?: string;
+  /** Options accepted only with this action, besides the command's own; names never repeat a command option. */
+  options?: Readonly<Record<string, CommandOption>>;
+}
 export interface CommandMetadata extends CommandMode {
   id: string; description: string; usage: string;
   options?: Readonly<Record<string, CommandOption>>;
@@ -56,6 +61,22 @@ export function commandMode(command: CommandMetadata, args: readonly string[]): 
   };
 }
 
+/** The action an invocation selects: the first argument when it names an action, else the default action. */
+function selectedAction(command: CommandMetadata, args: readonly string[]): CommandAction | undefined {
+  const action = args[0] ?? command.defaultAction;
+  return action !== undefined && command.actions && Object.hasOwn(command.actions, action) ? command.actions[action] : undefined;
+}
+
+/** The options an invocation accepts: the command's own plus those of the action its arguments select. */
+export function commandOptions(command: CommandMetadata, args: readonly string[]): Record<string, CommandOption> {
+  return { ...command.options, ...selectedAction(command, args)?.options };
+}
+
+/** Whether some action declares its own options, so parsing must resolve the action first. */
+export function hasActionOptions(command: CommandMetadata): boolean {
+  return Object.values(command.actions ?? {}).some(action => Object.keys(action.options ?? {}).length > 0);
+}
+
 /** Option types for the argument parser. */
 export function optionTypes(options: CommandMetadata['options']): Record<string, 'string' | 'boolean'> {
   return Object.fromEntries(Object.entries(options ?? {}).map(([key, schema]) => [key, schema.type]));
@@ -65,42 +86,72 @@ function optionSchema(schema: CommandOption): JsonSchema {
   return { type: schema.type, description: schema.description, ...(schema.enum ? { enum: [...schema.enum] } : {}), ...(schema.default === undefined ? {} : { default: schema.default }) };
 }
 
-/**
- * JSON Schema 2020-12 of one invocation: `args` are the positional arguments after the command id and `options`
- * the command's own flags (global options are described once in the catalog).
- */
-export function commandInputSchema(command: CommandMetadata): JsonSchema {
-  const args = command.args ?? [];
-  const required = Object.entries(command.options ?? {}).filter(([, schema]) => schema.required).map(([key]) => key);
+const positionalSchema = (arg: CommandArgument): JsonSchema => ({ type: 'string', description: arg.description, ...(arg.enum ? { enum: [...arg.enum] } : {}) });
+
+/** `args` and `options` of one invocation shape; `action` pins the first argument to one action id. */
+function invocationSchema(usage: string, args: readonly CommandArgument[], options: Readonly<Record<string, CommandOption>>, action?: string): JsonSchema {
+  const required = Object.entries(options).filter(([, schema]) => schema.required).map(([key]) => key);
   const variadic = args.at(-1)?.variadic === true;
-  const positional = args.map(arg => ({ type: 'string' as const, description: arg.description, ...(arg.enum ? { enum: [...arg.enum] } : {}) }));
+  const positional = args.map(positionalSchema);
+  if (action !== undefined && positional.length > 0) positional[0] = { type: 'string', const: action, description: args[0]!.description };
+  const minimum = Math.max(args.filter(arg => arg.required).length, action === undefined ? 0 : 1);
   return {
-    $schema: jsonSchemaDialect, title: command.id, description: command.description, type: 'object', additionalProperties: false,
+    type: 'object', additionalProperties: false, required: ['args', 'options'],
     properties: {
       args: {
-        type: 'array', description: command.usage, items: variadic ? positional.at(-1)! : { type: 'string' },
+        type: 'array', description: usage, items: variadic ? positional.at(-1)! : { type: 'string' },
         ...(positional.length > 0 ? { prefixItems: positional } : {}),
-        minItems: args.filter(arg => arg.required).length, ...(variadic ? {} : { maxItems: args.length }),
+        minItems: minimum, ...(variadic ? {} : { maxItems: args.length }),
       },
       options: {
         type: 'object', additionalProperties: false,
-        properties: Object.fromEntries(Object.entries(command.options ?? {}).map(([key, schema]) => [key, optionSchema(schema)])),
+        properties: Object.fromEntries(Object.entries(options).map(([key, schema]) => [key, optionSchema(schema)])),
         ...(required.length > 0 ? { required } : {}),
       },
     },
-    required: ['args', 'options'],
   };
 }
 
-/** Annotations for agents: the resolved default mode plus each action's refinement. */
+/**
+ * JSON Schema 2020-12 of one invocation: `args` are the positional arguments after the command id and `options`
+ * the command's own flags (global options are described once in the catalog). A command with actions publishes
+ * one `oneOf` branch per action, keyed by the first argument as a `const`, with that action's options and required
+ * options; when the first argument is optional, a further branch without arguments covers the default action.
+ */
+export function commandInputSchema(command: CommandMetadata): JsonSchema {
+  const head = { $schema: jsonSchemaDialect, title: command.id, description: command.description };
+  const args = command.args ?? [];
+  if (!command.actions || args.length === 0) return { ...head, ...invocationSchema(command.usage, args, command.options ?? {}) };
+  const branches = Object.entries(command.actions).map(([id, action]): JsonSchema => ({
+    title: `${command.id} ${id}`, description: action.description,
+    ...invocationSchema(action.usage ?? command.usage, args, { ...command.options, ...action.options }, id),
+  }));
+  const omitted: JsonSchema[] = args[0]!.required ? [] : [{
+    title: command.defaultAction === undefined ? command.id : `${command.id} (${command.defaultAction})`,
+    description: command.defaultAction === undefined ? command.description : command.actions[command.defaultAction]!.description,
+    ...invocationSchema(command.usage, [], commandOptions(command, [])),
+  }];
+  return { ...head, type: 'object', required: ['args', 'options'], oneOf: [...omitted, ...branches] };
+}
+
+/**
+ * Annotations for agents: the default mode's scope and discovery, plus each action's refinement. `mutating` (and
+ * `readOnlyHint`, its negation) covers every mode, so a command is read-only only when none of its actions mutates.
+ */
 export function commandAnnotations(command: CommandMetadata) {
-  const { scope, discovery, mutating } = commandMode(command, []);
+  const { scope, discovery } = commandMode(command, []);
+  const modes = [commandMode(command, []), ...Object.keys(command.actions ?? {}).map(id => commandMode(command, [id]))];
+  const mutating = modes.some(mode => mode.mutating);
   return {
     scope, discovery, mutating, readOnlyHint: !mutating,
     ...(command.defaultAction === undefined ? {} : { defaultAction: command.defaultAction }),
     ...(command.actions ? { actions: Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
       const mode = commandMode(command, [id]);
-      return [id, { description: action.description, scope: mode.scope, discovery: mode.discovery, mutating: mode.mutating, readOnlyHint: !mode.mutating, ...(mode.projectOption ? { projectOption: mode.projectOption } : {}) }];
+      return [id, {
+        description: action.description, ...(action.usage ? { usage: action.usage } : {}),
+        scope: mode.scope, discovery: mode.discovery, mutating: mode.mutating, readOnlyHint: !mode.mutating,
+        ...(mode.projectOption ? { projectOption: mode.projectOption } : {}), ...(action.options ? { options: action.options } : {}),
+      }];
     })) } : {}),
   };
 }
@@ -108,6 +159,15 @@ export function commandAnnotations(command: CommandMetadata) {
 const reservedOptions = ['root', 'lang', 'events', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'];
 const flag = /^[a-z][a-z0-9-]*$/;
 const text = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
+function validateOptions(options: Record<string, unknown>, shared: Readonly<Record<string, unknown>> = {}): void {
+  for (const [key, schema] of Object.entries(options)) {
+    ensure(flag.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
+    ensure(isRecord(schema) && (schema.type === 'string' || schema.type === 'boolean') && text(schema.description), 'INVALID_PLUGIN', `Command option ${key} requires type string or boolean and a description.`);
+    ensure(schema.enum === undefined || (Array.isArray(schema.enum) && schema.enum.length > 0 && schema.enum.every(item => typeof item === 'string')), 'INVALID_PLUGIN', `Command option ${key} enum must list strings.`);
+    ensure(schema.default === undefined || typeof schema.default === schema.type, 'INVALID_PLUGIN', `Command option ${key} default must match its type.`);
+    ensure(schema.required === undefined || typeof schema.required === 'boolean', 'INVALID_PLUGIN', `Command option ${key} required must be a boolean.`);
+  }
+}
 function validateMode(mode: Record<string, unknown>, where: string, options: CommandMetadata['options']): void {
   ensure(mode.scope === undefined || mode.scope === 'workspace' || mode.scope === 'project', 'INVALID_PLUGIN', `${where} scope must be workspace or project.`);
   for (const key of ['discovery', 'mutating']) ensure(mode[key] === undefined || typeof mode[key] === 'boolean', 'INVALID_PLUGIN', `${where} ${key} must be a boolean.`);
@@ -120,20 +180,16 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   ensure(text(command.description) && text(command.usage), 'INVALID_PLUGIN', `${where} requires a description and usage.`);
   ensure(command.options === undefined || isRecord(command.options), 'INVALID_PLUGIN', `${where} options must be an object.`);
   const options = (command.options ?? {}) as Record<string, unknown>;
-  for (const [key, schema] of Object.entries(options)) {
-    ensure(flag.test(key) && !reservedOptions.includes(key), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
-    ensure(isRecord(schema) && (schema.type === 'string' || schema.type === 'boolean') && text(schema.description), 'INVALID_PLUGIN', `Command option ${key} requires type string or boolean and a description.`);
-    ensure(schema.enum === undefined || (Array.isArray(schema.enum) && schema.enum.length > 0 && schema.enum.every(item => typeof item === 'string')), 'INVALID_PLUGIN', `Command option ${key} enum must list strings.`);
-    ensure(schema.default === undefined || typeof schema.default === schema.type, 'INVALID_PLUGIN', `Command option ${key} default must match its type.`);
-    ensure(schema.required === undefined || typeof schema.required === 'boolean', 'INVALID_PLUGIN', `Command option ${key} required must be a boolean.`);
-  }
+  validateOptions(options);
   validateMode(command, where, options as CommandMetadata['options']);
   ensure(command.args === undefined || (Array.isArray(command.args) && command.args.every((arg: unknown, index, all) => isRecord(arg) && text(arg.name) && text(arg.description)
     && (arg.variadic === undefined || (arg.variadic === true && index === all.length - 1)))), 'INVALID_PLUGIN', `${where} args must list named, described arguments; only the last may be variadic.`);
   ensure(command.actions === undefined || isRecord(command.actions), 'INVALID_PLUGIN', `${where} actions must be an object.`);
   for (const [id, action] of Object.entries((command.actions ?? {}) as Record<string, unknown>)) {
-    ensure(isRecord(action) && text(action.description), 'INVALID_PLUGIN', `${where} action ${id} requires a description.`);
-    validateMode(action, `${where} action ${id}`, options as CommandMetadata['options']);
+    ensure(isRecord(action) && text(action.description) && (action.usage === undefined || text(action.usage)), 'INVALID_PLUGIN', `${where} action ${id} requires a description.`);
+    ensure(action.options === undefined || isRecord(action.options), 'INVALID_PLUGIN', `${where} action ${id} options must be an object.`);
+    validateOptions((action.options ?? {}) as Record<string, unknown>, options);
+    validateMode(action, `${where} action ${id}`, { ...options, ...(action.options as object | undefined) } as CommandMetadata['options']);
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
   ensure(command.output === undefined || schemaIssues(command.output).length === 0, 'INVALID_PLUGIN', `${where} output must be a supported JSON Schema: ${schemaIssues(command.output).join('; ')}`);

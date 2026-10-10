@@ -36,7 +36,9 @@ describe('the skills core plugin', () => {
       expect(cli(['skills']).body.error.code).toBe('UNKNOWN_COMMAND');
       expect(cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'skills', core: true, state: 'disabled', contributions: null }));
       await config({ plugins: { disabled: ['quality'] } });
-      expect(cli(['help']).body.error).toMatchObject({ code: 'INVALID_PLUGIN_CONFIG', message: expect.stringContaining('remove quality') });
+      const help = cli(['help']);
+      expect(help.status).toBe(0);
+      expect(help.body.warnings).toEqual([expect.stringContaining('ignored quality')]);
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     expect(ids(cli(['help']).body.data.commands)).toContain('skills');
     expect(cli(['--no-plugins', 'skills']).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents']);
@@ -45,11 +47,12 @@ describe('the skills core plugin', () => {
   it('publishes per-command JSON Schema and annotations from the same metadata as help', () => {
     const schema = cli(['schema']).body.data;
     const skills = schema.commands.find((command: { id: string }) => command.id === 'skills');
-    expect(skills.inputSchema).toMatchObject({
-      $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object',
-      properties: { args: { type: 'array', maxItems: 2 }, options: { properties: { out: { type: 'string', default: '.agents/skills' } }, additionalProperties: false } },
+    expect(skills.inputSchema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['args', 'options'] });
+    expect(skills.inputSchema.oneOf.map((branch: { title: string }) => branch.title)).toEqual(['skills (list)', 'skills list', 'skills show', 'skills install']);
+    expect(skills.inputSchema.oneOf[3]).toMatchObject({
+      properties: { args: { type: 'array', maxItems: 2, prefixItems: [{ const: 'install' }, { type: 'string' }] }, options: { properties: { out: { type: 'string', default: '.agents/skills' } }, additionalProperties: false } },
     });
-    expect(skills.annotations).toMatchObject({ scope: 'workspace', readOnlyHint: true, actions: { install: { scope: 'project', mutating: true } } });
+    expect(skills.annotations).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, actions: { list: { readOnlyHint: true }, install: { scope: 'project', mutating: true } } });
     const { inputSchema: _inputSchema, ...described } = skills;
     expect(cli(['help', 'skills']).body.data).toEqual({ ...described, globalOptions: schema.globalOptions });
     expect(cli(['--lang', 'de', 'help', 'skills']).body.data.description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');

@@ -6,6 +6,8 @@ const languages: readonly Language[] = ['en', 'de'];
 /** Localized text a plugin contributes for its own commands, generators, events, error codes and messages. */
 export interface PluginStringTable {
   commands?: Record<string, string>;
+  /** Descriptions of the plugin's command actions, keyed `<command> <action>`. */
+  actions?: Record<string, string>;
   generators?: Record<string, string>;
   events?: Record<string, string>;
   errors?: Record<string, { summary: string; hint: string }>;
@@ -16,16 +18,21 @@ export type PluginStrings = Partial<Record<Language, PluginStringTable>>;
 /** A plugin-defined failure code with the same fields as a built-in catalog entry. */
 export interface PluginErrorDefinition { code: string; category: ErrorCategory; summary: string; hint: string; retryable?: boolean }
 export interface CatalogedError { pluginId: string; code: string; exitCode: number; category: ErrorCategory; summary: string; hint: string; retryable: boolean }
-type TextKind = 'commands' | 'generators' | 'events';
-interface Owned { commands: readonly string[]; generators: readonly string[]; events: readonly string[] }
+type TextKind = 'commands' | 'actions' | 'generators' | 'events';
+interface Owned { commands: readonly string[]; actions: readonly string[]; generators: readonly string[]; events: readonly string[] }
 
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 const errorCode = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+
+/** A user plugin's error code prefix: its id in UPPER_SNAKE_CASE and `_` (`quality-gate` → `QUALITY_GATE_`). */
+export const errorPrefix = (pluginId: string) => `${pluginId.replaceAll('-', '_').toUpperCase()}_`;
 
 /** The plugin-contributed localization and error catalog that the kernel catalogs fall back to. */
 export class PluginCatalog {
   private readonly tables = new Map<string, PluginStrings>();
   private readonly codes = new Map<string, CatalogedError>();
+  /** Error code prefixes of registered user plugins, by plugin id. */
+  private readonly prefixes = new Map<string, string>();
 
   /** Validates one plugin's contributions; `prefix` restricts user plugin codes to `<ID>_…`. */
   static validate(pluginId: string, strings: unknown, errors: unknown, owned: Owned, prefix: string | null): void {
@@ -43,7 +50,7 @@ export class PluginCatalog {
     for (const [language, table] of Object.entries((strings ?? {}) as Record<string, unknown>)) {
       ensure((languages as readonly string[]).includes(language) && isRecord(table), 'INVALID_PLUGIN', `strings.${language} is not a supported language table (en, de).`);
       for (const [kind, entries] of Object.entries(table)) {
-        ensure(['commands', 'generators', 'events', 'errors', 'messages'].includes(kind) && isRecord(entries), 'INVALID_PLUGIN', `strings.${language}.${kind} is not a string table.`);
+        ensure(['commands', 'actions', 'generators', 'events', 'errors', 'messages'].includes(kind) && isRecord(entries), 'INVALID_PLUGIN', `strings.${language}.${kind} is not a string table.`);
         for (const [id, entry] of Object.entries(entries)) {
           const known = kind === 'messages' || (kind === 'errors' ? codes.has(id) : owned[kind as TextKind].includes(id));
           ensure(known, 'PLUGIN_NAMESPACE', `strings.${language}.${kind}.${id} does not name a contribution of plugin ${pluginId}.`);
@@ -53,8 +60,30 @@ export class PluginCatalog {
     }
   }
 
-  add(pluginId: string, strings: PluginStrings | undefined, errors: readonly PluginErrorDefinition[] | undefined): void {
+  /**
+   * Checks, before anything registers, that one plugin's codes are new and that user plugin codes stay owned: a
+   * code belongs to the registered user plugin with the longest matching prefix, so plugin `a` (`A_`) cannot
+   * register `A_B_X` while plugin `a-b` (`A_B_`) is registered, and `a-b` cannot register after `a` registered
+   * `A_B_X`. The later plugin fails with PLUGIN_NAMESPACE. `prefix` is null for core plugins.
+   */
+  ensureRegistrable(pluginId: string, errors: readonly PluginErrorDefinition[] | undefined, prefix: string | null): void {
     for (const entry of errors ?? []) ensure(!this.codes.has(entry.code), 'DUPLICATE_OR_INVALID_ID', entry.code);
+    if (prefix === null) return;
+    const prefixes = new Map([...this.prefixes, [pluginId, prefix]]);
+    const owned = [
+      ...[...this.codes.values()].filter(entry => this.prefixes.has(entry.pluginId)).map(entry => [entry.code, entry.pluginId] as const),
+      ...(errors ?? []).map(entry => [entry.code, pluginId] as const),
+    ];
+    for (const [code, owner] of owned) {
+      const [claimant, claimed] = [...prefixes].filter(([, candidate]) => code.startsWith(candidate)).sort((a, b) => b[1].length - a[1].length)[0]!;
+      ensure(claimant === owner, 'PLUGIN_NAMESPACE', `Error code ${code} of plugin ${owner} falls in the namespace ${claimed} of plugin ${claimant}; plugin ${pluginId} cannot register.`);
+    }
+  }
+
+  /** Registers a plugin that passed `ensureRegistrable` with the same `prefix`. */
+  add(pluginId: string, strings: PluginStrings | undefined, errors: readonly PluginErrorDefinition[] | undefined, prefix: string | null = null): void {
+    this.ensureRegistrable(pluginId, errors, prefix);
+    if (prefix !== null) this.prefixes.set(pluginId, prefix);
     if (strings) this.tables.set(pluginId, strings);
     for (const entry of errors ?? []) {
       this.codes.set(entry.code, { pluginId, code: entry.code, exitCode: categoryExitCodes[entry.category], category: entry.category, summary: entry.summary, hint: entry.hint, retryable: entry.retryable ?? false });
@@ -89,14 +118,18 @@ export class PluginCatalog {
   errors(): CatalogedError[] { return [...this.codes.values()]; }
 
   /**
-   * Plugin code cannot construct host errors, so it throws an `Error` with a registered `code` (and optional
-   * `details`). This turns it into a coded failure with the category's exit status; anything else is unchanged.
+   * Plugin code cannot construct host errors, so it throws an `Error` with a `code` (and optional `details`). This
+   * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
+   * category's exit status. Another plugin's code stays an uncoded error: a plugin cannot borrow a code it does not
+   * own. Anything else is unchanged.
    */
-  normalize(error: unknown): unknown {
+  normalize(error: unknown, pluginId: string): unknown {
     if (error instanceof AppError || !(error instanceof Error) || !('code' in error) || typeof error.code !== 'string') return error;
-    const entry = this.codes.get(error.code);
-    if (!entry) return error;
     const details = 'details' in error && isRecord(error.details) ? error.details : undefined;
+    const builtIn = errorDefinition(error.code);
+    if (builtIn) return codedError(error.code, error.message, builtIn.exitCode, details);
+    const entry = this.codes.get(error.code);
+    if (!entry || entry.pluginId !== pluginId) return error;
     return codedError(entry.code, error.message, entry.exitCode, details);
   }
 }

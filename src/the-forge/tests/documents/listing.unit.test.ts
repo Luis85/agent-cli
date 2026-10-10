@@ -36,8 +36,31 @@ describe('path globs', () => {
     expect(pathGlob('a,b}')('a,b}')).toBe(true);
   });
 
-  it.each(['', '{a,b', 'trailing\\', 'x'.repeat(1025)])('rejects the malformed glob %j with INVALID_ARGUMENT', pattern => {
-    expect(() => pathGlob(pattern)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+  it.each(['', '{a,b', 'trailing\\', 'x'.repeat(1025), '[z-a].md', 'notes/[9-0]', '{a,b}'.repeat(9)])('rejects the malformed glob %j with INVALID_ARGUMENT', pattern => {
+    expect(() => pathGlob(pattern, '--path')).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('--path') }));
+  });
+
+  it('escapes inside classes, keeps a leading ] as a member and expands nested braces', () => {
+    expect(pathGlob('[\\]x]')(']')).toBe(true);
+    expect(pathGlob('[\\]x]')('x')).toBe(true);
+    expect(pathGlob('[a\\-z]')('-')).toBe(true);
+    expect(pathGlob('[a\\-z]')('m')).toBe(false);
+    expect(pathGlob('[]a]')(']')).toBe(true);
+    expect(pathGlob('[^a]')('b')).toBe(true);
+    expect(pathGlob('{notes/{a,deep/b},src/*}.md')('notes/deep/b.md')).toBe(true);
+    expect(pathGlob('{**/b,x}.md')('notes/deep/b.md')).toBe(true);
+    expect(pathGlob('notes/**')('notes')).toBe(false);
+    expect(pathGlob('?.md')('😀.md')).toBe(true);
+  });
+
+  it.each([
+    ['many stars in one segment', `g/${'*a'.repeat(40)}*c`, `g/${'a'.repeat(5000)}`],
+    ['many globstars', `${'**/a/'.repeat(30)}c`, `${'a/'.repeat(400)}b`],
+    ['stars across braces', `{${'*a'.repeat(20)}*c,${'*b'.repeat(20)}*c}`, 'ab'.repeat(3000)],
+  ])('matches adversarial globs with %s in polynomial time', (_name, pattern, path) => {
+    const started = performance.now();
+    expect(pathGlob(pattern)(path)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

@@ -19,7 +19,8 @@ export const searchPlugin: CorePlugin = {
   create: () => ({
     commands: [searchCommand(context => (query, page) => searchFiles({
       files: context.workspace.files,
-      metadata: () => context.metadata.load(),
+      paths: () => context.metadata.vaultFiles(),
+      parse: (path, bytes) => context.metadata.parseFile(path, bytes),
       budget: vmSearchBudget(Number((context as PluginContext).settings?.timeoutMs ?? defaultTimeoutMs)),
     }, query, page))],
     settings: {

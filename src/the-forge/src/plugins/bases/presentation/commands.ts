@@ -34,7 +34,7 @@ export function basesCommand(service: (context: CommandContext) => Bases): Comma
       for (const key of Object.keys(flags)) ensure(action === 'query' || !queryOptions.includes(key), 'INVALID_ARGUMENT', `--${key} is not supported by bases ${action}.`);
       if (action === 'list') {
         arity(args, 0, 1);
-        return { files: (await context.workspace.files.list()).filter(path => path.endsWith('.base') && !path.split('/').some(part => part.startsWith('.'))), scope: context.root };
+        return { files: (await context.metadata.vaultFiles()).filter(path => path.endsWith('.base')), scope: context.root };
       }
       if (action === 'capabilities') { arity(args, 1); return service(context).capabilities(); }
       ensure(action === 'inspect' || action === 'query', 'INVALID_ARGUMENT', 'Use bases list, inspect, query, or capabilities.');

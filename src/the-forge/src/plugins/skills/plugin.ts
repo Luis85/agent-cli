@@ -14,6 +14,15 @@ export const skillsPlugin: CorePlugin = {
   create: host => ({
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],
-    strings: { de: { commands: { skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.' } } },
+    strings: {
+      de: {
+        commands: { skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.' },
+        actions: {
+          'skills list': 'Die IDs aller registrierten Skills auflisten.',
+          'skills show': 'Einen Skill mit seinem Markdown-Inhalt zurückgeben.',
+          'skills install': 'Jeden Skill im ausgewählten Projekt nach <out>/<id>/SKILL.md schreiben; vorhandene Dateien werden abgelehnt.',
+        },
+      },
+    },
   }),
 };

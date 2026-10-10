@@ -44,7 +44,11 @@ describe('the packaged quality example plugin', () => {
     ]);
     expect(config.body.data.sections.at(-1).schema).toMatchObject({ type: 'object' });
     await configure({ ownerProperty: '' });
-    expect(run('config').body.error).toMatchObject({ code: 'INVALID_CONFIG', message: 'plugins.settings.quality.ownerProperty: must have at least 1 characters' });
+    // An invalid section disables only the plugin for the invocation: config still reports it, its commands fail.
+    const invalid = run('config');
+    expect(invalid.status).toBe(0);
+    expect(invalid.body.warnings).toEqual([expect.stringContaining('plugins.settings.quality.ownerProperty: must have at least 1 characters')]);
+    expect(run('quality.check').body.error).toMatchObject({ code: 'INVALID_CONFIG', details: { plugin: 'quality', issues: ['plugins.settings.quality.ownerProperty: must have at least 1 characters'] } });
     await configure({ ownerProperty: 'maintainer' });
     const changed = run('quality.check');
     expect(changed.body.warnings).toEqual(['Quality settings changed; owner property is now maintainer.']);

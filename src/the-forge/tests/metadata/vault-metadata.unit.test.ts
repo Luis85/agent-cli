@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MetadataChange } from '../../src/application/metadata/ports.ts';
+import { VaultMetadata, vaultMember } from '../../src/application/metadata/vault-metadata.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser.ts';
 import { MemoryFiles, metadataIndex, metadataState } from '../support/metadata.ts';
 
 const canvas = JSON.stringify({ nodes: [{ id: 'n1', type: 'file', file: 'Notes/Plan.md', subpath: '#Plan', x: 0, y: 0, width: 10, height: 10 }] });
@@ -123,5 +126,27 @@ describe('incremental metadata updates', () => {
     expect(cache.issues()).toEqual([]);
     expect(cache.backlinks('Notes/Plan.md').map(item => item.source)).toEqual(['Bad.md', 'Board.canvas', 'Notes/Ideas.md']);
     expect(metadataState(cache)).toEqual(metadataState(await metadataIndex(files).load()));
+  });
+});
+
+describe('the vault rule of enumeration', () => {
+  it('hides dot-prefixed paths everywhere and the workspace bin distribution only at the workspace root', () => {
+    const paths = ['a.md', 'notes/.draft.md', '.obsidian/app.json', '.trash/old.md', 'x/y.md', 'bin/config.json', 'BIN/plugins/q/main.mjs', 'bin', 'src/bin/tool.md'];
+    expect(paths.filter(path => vaultMember(path, false))).toEqual(['a.md', 'x/y.md', 'bin/config.json', 'BIN/plugins/q/main.mjs', 'bin', 'src/bin/tool.md']);
+    expect(paths.filter(path => vaultMember(path, true))).toEqual(['a.md', 'x/y.md', 'bin', 'src/bin/tool.md']);
+  });
+
+  it('leaves the workspace distribution out of a workspace-root index, its listing and its updates', async () => {
+    const files = new MemoryFiles({ 'Home.md': '[[bin/data/docs/guide]] [[Notes/Plan]]', 'Notes/Plan.md': '# Plan', 'bin/data/docs/guide.md': '[[Home]]', 'bin/config.json': '{}' });
+    const index = new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()), { workspaceRoot: true });
+    expect(await index.vaultFiles()).toEqual(['Home.md', 'Notes/Plan.md']);
+    const cache = await index.load();
+    expect(cache.files()).toEqual(['Home.md', 'Notes/Plan.md']);
+    expect(cache.unresolvedLinks['Home.md']).toEqual({ 'bin/data/docs/guide': 1 });
+    expect(cache.backlinks('Home.md')).toEqual([]);
+    files.files.set('bin/data/docs/new.md', '[[Home]]');
+    expect(await index.update([{ path: 'bin/data/docs/new.md', operation: 'created' }])).toMatchObject({ changed: [], deleted: [] });
+    expect(await index.vaultFiles()).toEqual(['Home.md', 'Notes/Plan.md']);
+    expect((await metadataIndex(files).vaultFiles())).toContain('bin/config.json');
   });
 });

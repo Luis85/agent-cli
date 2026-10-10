@@ -10,6 +10,8 @@ import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { metadataIndex } from '../support/metadata.ts';
 
 let root: string;
+/** The files a search parsed for metadata filters: never the whole vault, only the candidates it read. */
+const parsed: string[] = [];
 const put = async (path: string, content: string | Uint8Array) => {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content);
@@ -17,9 +19,11 @@ const put = async (path: string, content: string | Uint8Array) => {
 const query = (pattern: string, extra: Partial<SearchQuery> = {}): SearchQuery => ({ pattern, regex: false, caseSensitive: false, scope: 'all', skipCode: false, context: 0, ...extra });
 async function search(pattern: string, extra: Partial<SearchQuery> = {}, page: PageRequest = {}, timeoutMs = 10_000): Promise<SearchResult> {
   const files = await NodeFiles.at(root);
-  let loads = 0;
-  const result = await searchFiles({ files, metadata: () => { loads++; return metadataIndex(files).load(); }, budget: vmSearchBudget(timeoutMs) }, query(pattern, extra), page);
-  if (extra.tag === undefined && extra.property === undefined && !extra.skipCode) expect(loads).toBe(0);
+  const index = metadataIndex(files, { workspaceRoot: true });
+  parsed.length = 0;
+  const parse = (path: string, bytes: Uint8Array) => { parsed.push(path); return index.parseFile(path, bytes); };
+  const result = await searchFiles({ files, paths: () => index.vaultFiles(), parse, budget: vmSearchBudget(timeoutMs) }, query(pattern, extra), page);
+  if (extra.tag === undefined && extra.property === undefined && !extra.skipCode) expect(parsed).toEqual([]);
   return result;
 }
 const places = (result: SearchResult) => result.hits.map(hit => `${hit.path}:${hit.line}:${hit.column}`);
@@ -32,6 +36,8 @@ beforeEach(async () => {
   await put('src/plan.ts', 'export const plan = "PLAN";\n');
   await put('assets/plan.png', 'plan bytes are never searched');
   await put('.obsidian/plan.json', '{"plan":true}');
+  // The workspace's own distribution is not vault content at the workspace root.
+  await put('bin/data/docs/plan.md', 'plan in the distribution');
   await put('notes/binary.md', new Uint8Array([0x70, 0x6c, 0x61, 0x6e, 0xff, 0xfe]));
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
@@ -86,4 +92,36 @@ describe('searching vault text files', () => {
     expect(performance.now() - started).toBeLessThan(10_000);
     await expect(search('(', { regex: true })).rejects.toMatchObject({ code: 'INVALID_SEARCH_PATTERN' });
   });
+
+  it('filters paths with an adversarial glob in polynomial time', async () => {
+    await put(`g/${'a'.repeat(200)}.md`, 'plan\n');
+    const started = performance.now();
+    expect((await search('plan', { path: `g/${'*a'.repeat(40)}*c` })).total).toBe(0);
+    expect((await search('plan', { path: `g/${'*a'.repeat(40)}*` })).total).toBe(1);
+    expect(performance.now() - started).toBeLessThan(2000);
+    await expect(search('plan', { path: 'notes/[z-a]' })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+  });
+
+  it('parses only the files it reads for metadata filters, narrowed by --path', async () => {
+    expect(places(await search('plan', { tag: 'project', path: 'notes/b.md' }))).toEqual(['notes/b.md:6:23', 'notes/b.md:8:7']);
+    expect(parsed).toEqual(['notes/b.md']);
+  });
+
+  it('searches 3,000 notes by tag within a budget, parsing only files with hits and building snippets only for the returned page', async () => {
+    for (let index = 0; index < 3000; index++) {
+      const folder = `scale/${String(index % 30).padStart(2, '0')}`;
+      const body = index % 10 === 0 ? 'Release checklist line. '.repeat(20) : 'Ordinary prose. '.repeat(20);
+      await put(`${folder}/note-${String(index).padStart(4, '0')}.md`, `---\ntags: [${index % 3 === 0 ? 'release' : 'draft'}]\n---\n# Note ${index}\n${body}\n`);
+    }
+    const started = performance.now();
+    const result = await search('checklist', { tag: 'release', context: 1 }, { limit: 5 });
+    expect(performance.now() - started).toBeLessThan(10_000);
+    // Every 30th note is a release note with the checklist: 100 notes of 20 hits each.
+    expect(result.total).toBe(2000);
+    expect(result.hits).toHaveLength(5);
+    expect(result.hits[0]).toMatchObject({ path: 'scale/00/note-0000.md', line: 5, before: ['# Note 0'], after: [''], snippet: expect.stringContaining('…') });
+    expect(parsed).toHaveLength(300);
+    expect((await search('checklist', { property: { key: 'tags', value: 'release' } }, { limit: 1 })).total).toBe(2000);
+  }, 60_000);
 });
+
