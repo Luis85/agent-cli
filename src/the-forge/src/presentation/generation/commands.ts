@@ -1,10 +1,9 @@
 import type { Command, Generator, Registry } from '../../application/plugins/registry.ts';
 import type { CommandAction, CommandOption } from '../../application/plugins/command-metadata.ts';
-import { arity, value } from '../../application/plugins/command-input.ts';
+import { arity, globalOptions, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { GenerationService } from '../../application/generation/plans.ts';
 import { ensure } from '../../domain/shared/errors.ts';
-import { globalOptions } from '../cli/arguments.ts';
 import { generationControls, reviewOptions } from '../../application/generation/controls.ts';
 
 export const generatorCatalog = (registry: Registry) => [...registry.generators.values()].map(({ id, description }) => ({ id, description }));

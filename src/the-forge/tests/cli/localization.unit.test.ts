@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import { AppError } from '../../src/domain/shared/errors.ts';
 import { language, Localizer } from '../../src/presentation/localization/localization.ts';
 import { PluginCatalog } from '../../src/application/plugins/plugin-catalog.ts';
@@ -56,7 +57,7 @@ describe('presentation localization', () => {
   it('translates known metadata without changing machine identifiers or usage', () => {
     // Generator descriptions come from the plugin that contributes the generator (here scaffolds' entity).
     const catalog = new PluginCatalog();
-    catalog.add('scaffolds', scaffoldsPlugin.create({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) }).strings, undefined);
+    catalog.add('scaffolds', scaffoldsPlugin.create(testHost({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) })).strings, undefined);
     const localizer = new Localizer('de', catalog);
     expect(localizer.command({ id: 'read', description: 'Read', usage: 'read <path>' })).toEqual({ id: 'read', description: expect.stringContaining('lesen'), usage: 'read <path>' });
     expect(localizer.result('make', { generators: [{ id: 'entity', description: 'Entity' }] })).toEqual({ generators: [{ id: 'entity', description: expect.stringContaining('Domain-Entität') }] });

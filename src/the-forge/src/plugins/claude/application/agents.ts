@@ -1,7 +1,7 @@
-import { forgeError, errorMessage, AppError, ensure } from '../../domain/shared/errors.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
-import type { ClaudeAgentDocument } from '../../domain/claude/agents.ts';
-import type { Workspace } from '../workspace/workspace.ts';
+import { forgeError, errorMessage, AppError, ensure } from '../../../domain/shared/errors.ts';
+import { vaultPath } from '../../../domain/documents/file.ts';
+import type { ClaudeAgentDocument } from '../../../domain/claude/agents.ts';
+import type { Workspace } from '../../../application/workspace/workspace.ts';
 
 export interface ClaudeAgentCodec {
   parse(text: string): ClaudeAgentDocument;

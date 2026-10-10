@@ -1,4 +1,4 @@
-import type { Workspace } from '../workspace/workspace.ts';
+import type { Workspace } from '../../../application/workspace/workspace.ts';
 
 export interface ClaudeTarget {
   workspace: Workspace;

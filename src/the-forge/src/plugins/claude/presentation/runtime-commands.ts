@@ -1,7 +1,6 @@
-import { ensure } from '../../domain/shared/errors.ts';
-import { globalOptions } from '../cli/arguments.ts';
-import { arity } from '../../application/plugins/command-input.ts';
-import type { CommandOption } from '../../application/plugins/command-metadata.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { arity, globalOptions } from '../../../application/plugins/command-input.ts';
+import type { CommandOption } from '../../../application/plugins/command-metadata.ts';
 
 type RuntimeSection = 'plugins' | 'marketplaces' | 'runtime';
 type Flags = Record<string, string | boolean>;

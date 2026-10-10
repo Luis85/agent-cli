@@ -73,7 +73,7 @@ it('generates an installable plugin with a validated manifest and runnable lifec
     const registry = new Registry();
     const events = new EventBus(new NodeEventScope());
     const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
-    const context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
+    const context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
     await loadEnabledPlugins('.agent-cli/plugins', ['http-tools'], files, registry, events);
     const command = registry.commands.get('http-tools.hello')!;
     expect(command).toBeDefined();

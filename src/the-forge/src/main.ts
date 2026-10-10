@@ -8,7 +8,6 @@ import { announceLayoutReady, invokeCommand, quitInvocation } from './applicatio
 import { WorkspacePluginState } from './application/plugins/plugin-state.ts';
 import { eventOutput, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
-import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
 import { Workspace } from './application/workspace/workspace.ts';
 import { ScopedFiles, scopedCommitObserver } from './application/workspace/scoped-files.ts';
 import type { CommitObserver } from './application/workspace/ports.ts';
@@ -27,7 +26,7 @@ import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
 import { commandOptions, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
-import { value } from './application/plugins/command-input.ts';
+import { globalOptions, value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { searchPlugin } from './plugins/search/plugin.ts';
@@ -36,6 +35,7 @@ import { agentsPlugin } from './plugins/agents/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
 import { templatesPlugin } from './plugins/templates/plugin.ts';
 import { scaffoldsPlugin } from './plugins/scaffolds/plugin.ts';
+import { claudePlugin } from './plugins/claude/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
@@ -47,21 +47,17 @@ import { renderUiStories } from './infrastructure/ui/stories.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/data-sources/definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/data-sources/generator.ts';
 import { MarkdownInteractionDefinitions } from './infrastructure/interactions/definitions.ts';
-import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude/agents.ts';
-import { claudeTarget } from './infrastructure/claude/target.ts';
-import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
-import { claudeCommand } from './presentation/claude/commands.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { globalOptions, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
+import { parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, templatesPlugin, scaffoldsPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, templatesPlugin, scaffoldsPlugin, claudePlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -126,9 +122,11 @@ async function run(): Promise<void> {
       };
       for (const generator of libraryGenerators(services)) registry.add(registry.generators, generator);
       for (const command of commands(registry, services)) registry.add(registry.commands, command);
-      registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
-      registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry), fileDates: nodeFileDates }, config.plugins.disabled);
+      registerCorePlugins(registry, events, corePlugins, {
+        skills: registrySkills(registry), fileDates: nodeFileDates,
+        openFiles: (root, warn) => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
+      }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
       await registry.publishRegistered(events);
@@ -164,9 +162,8 @@ async function run(): Promise<void> {
       metadataCommits = project ? scopedCommitObserver(metadataEvents, project.directory) : metadataEvents;
       const workspace = project ? environment.within(scopedFiles, resolve(files.root, project.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
-      const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
       const app = createApp({ workspace, metadata: vaultMetadata, events, project });
-      const context: CommandContext = { workspace, environment, events, claude, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
+      const context: CommandContext = { workspace, environment, events, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));

@@ -1,9 +1,9 @@
-import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
-import { claudePluginCapabilities, validateClaudePlugin } from '../../domain/claude/plugins.ts';
-import { validateClaudeHooks } from '../../domain/claude/hooks.ts';
+import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { vaultPath } from '../../../domain/documents/file.ts';
+import { claudePluginCapabilities, validateClaudePlugin } from '../domain/plugins.ts';
+import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
 import type { ClaudeAgentCodec } from './agents.ts';
-import type { Workspace } from '../workspace/workspace.ts';
+import type { Workspace } from '../../../application/workspace/workspace.ts';
 
 const manifestPath = '.claude-plugin/plugin.json';
 type AssetKind = 'agent' | 'hooks' | 'mcp' | 'lsp' | 'settings' | 'other';

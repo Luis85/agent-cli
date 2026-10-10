@@ -7,7 +7,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
 | [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
-| [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
+| [claude](claude/) | The `claude` core plugin: native agents, hooks, plugin assets, guarded removal, installed CLI invocation, its `claude.*` events and the `claude.lifecycle` service for trusted plugins, and disabling it |
 | [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |

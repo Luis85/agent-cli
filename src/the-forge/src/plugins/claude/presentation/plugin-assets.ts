@@ -1,8 +1,7 @@
-import { ClaudePluginService } from '../../application/claude/plugins.ts';
-import type { CommandContext } from '../../application/plugins/registry.ts';
+import { ClaudePluginService } from '../application/plugins.ts';
+import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
-import { arity, value } from '../../application/plugins/command-input.ts';
-import { parseJson } from '../../application/plugins/command-input.ts';
+import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
 import { claudeBytes, claudeInput, claudeInputOptions, claudeOptions } from './input.ts';
 
 type Flags = Record<string, string | boolean>;

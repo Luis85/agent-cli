@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
-import { ClaudeAgents } from '../../src/application/claude/agents.ts';
+import { ClaudeAgents } from '../../src/plugins/claude/application/agents.ts';
 import { DataSourceLibrary } from '../../src/application/data-sources/library.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { InteractionLibrary } from '../../src/application/interactions/library.ts';
 import { UiLibrary } from '../../src/application/ui/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
+import { claudeAgentCodec } from '../../src/plugins/claude/infrastructure/agents.ts';
 import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
 import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
 import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents/codec.ts';
@@ -67,6 +67,7 @@ describe('generated Markdown as editable Obsidian source', () => {
   });
 
   it('round trips native Claude agent metadata and the authored system prompt without Obsidian wrappers', async () => {
+    const { parse: parseClaudeAgent, render: renderClaudeAgent } = claudeAgentCodec(new ObsidianDocuments());
     const agents = new ClaudeAgents(workspace, { parse: parseClaudeAgent, render: renderClaudeAgent });
     await agents.create('review', renderClaudeAgent({ metadata: { name: 'review', description: 'Review changes', tools: ['Read', 'Grep'], tags: ['agents/review'], background: false, maxTurns: 4 }, prompt: '# Review\n' }));
     const path = '.claude/agents/review.md';

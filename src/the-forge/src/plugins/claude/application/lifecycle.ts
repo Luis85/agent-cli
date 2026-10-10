@@ -1,7 +1,7 @@
-import { forgeError, ensure, isRecord, summarizeError } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord, summarizeError } from '../../../domain/shared/errors.ts';
 import type { ClaudeRuntime } from './runtime.ts';
-import type { EventBus } from '../plugins/events.ts';
-import { publishHostEvent } from '../plugins/host-events.ts';
+import type { EventChannel } from '../../../application/plugins/events.ts';
+import { notifyClaude, type ClaudeEventMap } from './events.ts';
 
 export type ClaudeOutput = 'text' | 'json' | 'json-last-line';
 /** Literal native arguments. Plugins own operation policy; the host owns execution. */
@@ -31,13 +31,20 @@ function nativeResult(stdout: string, output: ClaudeOutput): unknown {
   return JSON.parse(output === 'json-last-line' ? text.split('\n').at(-1) ?? '' : text);
 }
 
-/** Shared by built-in commands and trusted plugin commands, with invocation scope fixed by the host. */
+/**
+ * Shared by the `claude` command and, as the `claude.lifecycle` service, by trusted plugin commands; the invocation
+ * scope is fixed when the plugin activates. `operationId` draws from the invocation-wide counter of command.* and
+ * operation.* records, and `events` is the claude plugin's channel, which owns the claude.* records.
+ */
 export class ClaudeLifecycle implements ClaudeLifecycleClient {
   constructor(
     private readonly runtime: (executable: string) => ClaudeRuntime,
     private readonly scope: { cwd: string; dryRun: boolean },
-    private readonly events: EventBus,
+    private readonly events: EventChannel,
+    private readonly operationId: () => number,
   ) {}
+
+  private notify<Id extends keyof ClaudeEventMap>(id: Id, payload: ClaudeEventMap[Id]): Promise<void> { return notifyClaude(this.events, id, payload); }
 
   async execute(request: ClaudeLifecycleRequest): Promise<ClaudeLifecycleResult> {
     let detached = request;
@@ -51,16 +58,16 @@ export class ClaudeLifecycle implements ClaudeLifecycleClient {
     } catch (error) { snapshotFailure = { error }; }
     const requestedExecutable: unknown = !snapshotFailure && isRecord(detached) ? detached.executable ?? 'claude' : 'claude';
     const executable = typeof requestedExecutable === 'string' && requestedExecutable.trim().length > 0 && !requestedExecutable.includes('\0') ? requestedExecutable : '<invalid>';
-    const operation = { operationId: this.events.nextOperationId(), executable, cwd: this.scope.cwd, dryRun: this.scope.dryRun };
+    const operation = { operationId: this.operationId(), executable, cwd: this.scope.cwd, dryRun: this.scope.dryRun };
     let exitCode: number | undefined;
-    await publishHostEvent(this.events, 'claude.started', operation);
+    await this.notify('claude.started', operation);
     try {
       if (snapshotFailure) throw snapshotFailure.error;
       const result = await this.invoke(detached, status => { exitCode = status; });
-      await publishHostEvent(this.events, 'claude.succeeded', { ...operation, ...(exitCode === undefined ? {} : { exitCode }) });
+      await this.notify('claude.succeeded', { ...operation, ...(exitCode === undefined ? {} : { exitCode }) });
       return result;
     } catch (error) {
-      await publishHostEvent(this.events, 'claude.failed', { ...operation, ...(exitCode === undefined ? {} : { exitCode }), error: summarizeError(error) });
+      await this.notify('claude.failed', { ...operation, ...(exitCode === undefined ? {} : { exitCode }), error: summarizeError(error) });
       throw error;
     }
   }
@@ -88,7 +95,7 @@ export class ClaudeLifecycle implements ClaudeLifecycleClient {
     const result = await this.runtime(executable).run(args, { cwd: this.scope.cwd, ...(timeoutMs === undefined ? {} : { timeoutMs }), ...(input === undefined ? {} : { stdin: input }) });
     ensure(Number.isInteger(result.exitCode), 'CLAUDE_RUNTIME_FAILED', 'Claude Code returned no exit status.');
     observeExit(result.exitCode);
-    await publishHostEvent(this.events, 'claude.executed', { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
+    await this.notify('claude.executed', { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
     let data: unknown, malformed = false;
     try { data = nativeResult(result.stdout, output); } catch { malformed = true; }
     const details = { ...plan, ...result, ...(data === undefined ? {} : { result: data }) };

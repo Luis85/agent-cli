@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import type { ClaudeRuntime, ClaudeRuntimeOptions, ClaudeRuntimeResult } from '../../application/claude/runtime.ts';
-import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
-import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
+import type { ClaudeRuntime, ClaudeRuntimeOptions, ClaudeRuntimeResult } from '../application/runtime.ts';
+import { forgeError, errorMessage, ensure } from '../../../domain/shared/errors.ts';
+import type { ErrorCode } from '../../../domain/shared/error-catalog.ts';
 
 /** A reader that closed its input pipe: EPIPE on POSIX; libuv reports the Windows broken pipe as EOF. */
 const closedInputCodes: ReadonlySet<string> = new Set(['EPIPE', 'EOF']);

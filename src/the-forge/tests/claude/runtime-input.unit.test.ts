@@ -23,7 +23,7 @@ class ClosedInputChild extends EventEmitter {
 
 const spawned = vi.hoisted(() => ({ code: 'EPIPE', exitCode: 2 }));
 vi.mock('node:child_process', () => ({ spawn: () => new ClosedInputChild(spawned.code, spawned.exitCode) }));
-const { NodeClaudeRuntime } = await import('../../src/infrastructure/claude/runtime.ts');
+const { NodeClaudeRuntime } = await import('../../src/plugins/claude/infrastructure/runtime.ts');
 
 afterEach(() => { spawned.code = 'EPIPE'; spawned.exitCode = 2; });
 

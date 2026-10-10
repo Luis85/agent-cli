@@ -2,7 +2,6 @@ import type { Workspace } from '../workspace/workspace.ts';
 import type { ProjectInfo } from '../projects/projects.ts';
 import type { EventBus, EventChannel, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
-import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 import type { App } from '../vault/app.ts';
 import type { GenerationService } from '../generation/plans.ts';
@@ -23,7 +22,7 @@ import { PluginSettings } from './plugin-settings.ts';
  * root as `workspace`; `app` is the Obsidian-shaped facade (vault, metadataCache, fileManager, workspace) over it.
  */
 export interface CommandContext {
-  workspace: Workspace; environment: Workspace; events: EventChannel; claude: ClaudeLifecycleClient; metadata: MetadataIndex; app: App;
+  workspace: Workspace; environment: Workspace; events: EventChannel; metadata: MetadataIndex; app: App;
   workspaceRoot: string; root: string; project: ProjectInfo | null; language: Language; input: () => Promise<Uint8Array>;
 }
 /** What a plugin's hooks, commands and generators receive: the command context plus its own settings, services and strings. */

@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { testHost } from '../support/core-plugins.ts';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { EventBus, type EventRecord } from '../../src/application/plugins/events.ts';
@@ -28,7 +29,7 @@ export async function agentsWorkspace() {
   async function run(args: string[], flags: Record<string, string | boolean> = {}, options: { settings?: Record<string, unknown>; dryRun?: boolean } = {}) {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [agentsPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('agents reads no file dates'); } }, []);
+    registerCorePlugins(registry, events, [agentsPlugin], testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('agents reads no file dates'); } }), []);
     registry.settings.configure(options.settings ?? {}, new Set(registry.origins.keys()));
     const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, options.dryRun ?? false);
     const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;

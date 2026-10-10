@@ -1,5 +1,5 @@
-import { AppError, ensure, forgeError, isRecord } from '../shared/errors.ts';
-import { validateClaudeHooks } from './hooks.ts';
+import { AppError, ensure, forgeError, isRecord } from '../../../domain/shared/errors.ts';
+import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
 
 /** Discovery metadata describes Claude's loading behavior, not features executed by Forge. */
 export const claudePluginCapabilities = {

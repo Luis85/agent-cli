@@ -2,6 +2,13 @@ import { ensure, forgeError } from '../../domain/shared/errors.ts';
 import type { CommandFlags } from './command-metadata.ts';
 import type { CommandContext } from './registry.ts';
 
+/** The parser types of the global options, which every command accepts in addition to its own. */
+export const globalOptions = {
+  root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
+  'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
+  help: 'boolean', version: 'boolean',
+} as const;
+
 /** A string option's value; `required` reports MISSING_ARGUMENT when it is absent. */
 export function value(flags: CommandFlags, key: string, required = false): string | undefined {
   const result = flags[key];

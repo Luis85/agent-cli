@@ -5,21 +5,22 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
-import { ClaudeSettings } from '../../src/application/claude/settings.ts';
+import { ClaudeSettings } from '../../src/plugins/claude/application/settings.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { claudeTarget } from '../../src/infrastructure/claude/target.ts';
+import { claudeTarget as targetAt } from '../../src/plugins/claude/infrastructure/target.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
+const claudeTarget = targetAt((root, warn) => NodeFiles.at(root, warn));
 let root: string, context: CommandContext, events: EventBus;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-target-'));
   events = new EventBus(new NodeEventScope());
   events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
-  context = { root, workspaceRoot: root, workspace, events, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
+  context = { root, workspaceRoot: root, workspace, events, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
 });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 

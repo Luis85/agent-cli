@@ -6,17 +6,18 @@ import { portableCli } from '../support/portable-cli.ts';
 const fixture = portableCli();
 const commandHash = 'a'.repeat(64);
 
-async function configuredPlugin(name: string) {
+async function configuredPlugin(name: string, config: Record<string, unknown> = {}) {
   const root = join(fixture.project, name);
   const directory = join(root, 'bin/plugins/native-audit');
   const executableScript = join(root, 'fake-claude.mjs');
   const log = join(root, 'native-launches.jsonl');
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, 'manifest.json'), JSON.stringify({ id: 'native-audit', name: 'Native audit', version: '1.0.0', minAppVersion: '0.1.0', description: 'Exercise the injected Claude client', author: 'Tests' }));
-  await writeFile(join(root, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['native-audit'] } }));
+  await writeFile(join(root, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['native-audit'], ...config } }));
   // The plugin has no process or filesystem imports: execution comes exclusively
-  // from its public, invocation-scoped Claude lifecycle client.
+  // from the claude core plugin's invocation-scoped lifecycle service.
   await writeFile(join(directory, 'main.mjs'), `export default {
+    requires: ['claude.lifecycle'],
     onload(context) { context.events.warn('native-audit activated'); },
     commands: [{
       id: 'native-audit.run', description: 'Run a native fixture', usage: 'native-audit.run [--mode success|failure]',
@@ -27,7 +28,7 @@ async function configuredPlugin(name: string) {
         const sensitiveArgs = [];
         if (flags.secret !== undefined) { args.push('--credential', flags.secret); sensitiveArgs.push(args.length - 1); }
         const stdin = flags['read-input'] ? new TextDecoder().decode(await context.input()) : undefined;
-        return context.claude.execute({ args, executable: ${JSON.stringify(process.execPath)},
+        return context.services.get('claude.lifecycle').execute({ args, executable: ${JSON.stringify(process.execPath)},
           output: flags.output ?? 'json-last-line', stdin, sensitiveArgs });
       }
     }]
@@ -55,7 +56,7 @@ if (args[0] === 'failure') {
   };
 }
 
-describe('portable plugin Claude lifecycle boundary', () => {
+describe('the claude.lifecycle service for trusted plugins', () => {
   it('discovers configured commands without activation or a native launch', async () => {
     const plugin = await configuredPlugin('lifecycle-discovery');
     const schema = plugin.cli(['schema']);
@@ -138,6 +139,17 @@ describe('portable plugin Claude lifecycle boundary', () => {
     expect(preview.status).toBe(0);
     expect(preview.body.data).toMatchObject({ dryRun: true, executed: false });
     expect(preview.body.warnings).toEqual([]);
+    await expect(readFile(plugin.log)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('leaves a plugin that requires it unavailable when the claude core plugin is disabled', async () => {
+    const plugin = await configuredPlugin('lifecycle-disabled', { disabled: ['claude'] });
+    const result = plugin.cli(['native-audit.run']);
+    expect(result.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'native-audit.run', plugin: 'native-audit', reason: 'Requires service claude.lifecycle; its provider claude is disabled.' } });
+    expect(plugin.cli(['claude', 'capabilities']).body.error.code).toBe('UNKNOWN_COMMAND');
+    const events = plugin.cli(['events']).body.data;
+    expect(events.events.filter((id: string) => id.startsWith('claude.'))).toEqual([]);
+    expect(events.hostNamespaces).not.toContain('claude');
     await expect(readFile(plugin.log)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

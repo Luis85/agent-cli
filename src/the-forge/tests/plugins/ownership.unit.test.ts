@@ -22,7 +22,7 @@ describe('event ownership', () => {
     bus.defineAll([{ id: 'quality.checked', validate: valid }, { id: 'other.done', validate: valid }]);
     const events = pluginEvents(bus, 'quality');
     await events.emit('quality.checked', { ok: true });
-    for (const id of ['vault.create', 'metadataCache.resolved', 'workspace.quit', 'operation.started', 'command.started', 'plugin.activated', 'claude.executed']) {
+    for (const id of ['vault.create', 'metadataCache.resolved', 'workspace.quit', 'operation.started', 'command.started', 'plugin.activated']) {
       await expect(events.emit(id, {})).rejects.toMatchObject({ code: 'EVENT_OWNERSHIP', exitCode: 2, message: expect.stringContaining('belongs to the host') });
     }
     await expect(events.emit('other.done', {})).rejects.toMatchObject({ code: 'EVENT_OWNERSHIP', message: expect.stringContaining('belongs to plugin other') });

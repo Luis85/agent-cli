@@ -61,7 +61,7 @@ A disabled core plugin contributes nothing: `help` and `schema` no longer list i
 
 ## Observe events
 
-Inspect available notifications with `node bin/forge.js events --json`. Event discovery includes descriptions for the host's Obsidian-style `vault.*`, `metadataCache.*` and `workspace.*` events, the `command.*`, `operation.*`, Claude and plugin lifecycle phases, and plugin-defined events. `data.hostNamespaces` lists the namespaces only the host may emit. Discovery registers contributions without running `onload`; it does not test a plugin's observers.
+Inspect available notifications with `node bin/forge.js events --json`. Event discovery includes descriptions for the host's Obsidian-style `vault.*`, `metadataCache.*` and `workspace.*` events, the `command.*`, `operation.*` and plugin lifecycle phases, and plugin-defined events such as the `claude` core plugin's Claude phases. `data.hostNamespaces` lists the namespaces only the host may emit. Discovery registers contributions without running `onload`; it does not test a plugin's observers.
 
 The [quality example](../examples/plugins/quality/main.mjs) demonstrates named listeners, `onAny` for future notifications and awaited `replay` for the retained history of the current invocation. Register observers in `onload` and release subscriptions in `onunload`. Command start and registration can precede activation, so use replay explicitly if you need those earlier records. Replay is bounded and does not load events from an earlier CLI run.
 

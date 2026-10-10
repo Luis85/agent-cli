@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { globalOptions, parseArguments } from '../../src/presentation/cli/arguments.ts';
+import { globalOptions } from '../../src/application/plugins/command-input.ts';
+import { parseArguments } from '../../src/presentation/cli/arguments.ts';
 describe('Commander integration', () => {
   it('parses aliases, global flags and command values without altering literal values', () => {
     expect(parseArguments(['--root', 'my project', 'write', 'note.md', '--content=--literal', '--json'], { ...globalOptions, content: 'string' })).toEqual({ args: ['write', 'note.md'], flags: { root: 'my project', content: '--literal', json: true } });

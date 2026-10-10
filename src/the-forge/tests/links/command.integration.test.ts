@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -22,7 +23,7 @@ const put = async (path: string, content: string) => {
 async function links(settings: Record<string, unknown> = {}) {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
-  registerCorePlugins(registry, events, [linksPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); } }, []);
+  registerCorePlugins(registry, events, [linksPlugin], testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); } }), []);
   await registry.configure(settings, async () => [], message => events.warn(message));
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;

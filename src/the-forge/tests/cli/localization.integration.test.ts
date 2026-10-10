@@ -9,7 +9,6 @@ import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
-import { claudeCommand } from '../../src/presentation/claude/commands.ts';
 import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
@@ -22,7 +21,8 @@ import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
 import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
-import { bundledCorePlugins } from '../support/core-plugins.ts';
+import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
+import { bundledCorePlugins, testHost } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
@@ -43,11 +43,7 @@ describe('built-in localization catalog coverage', () => {
         async installedPlugins() { throw new Error('Catalog must not list plugin directories'); },
       };
       const registry = new Registry();
-      const unavailable = (): never => { throw new Error('Catalog must not invoke management services'); };
-      const management = [claudeCommand({
-        agentCodec: { parse: unavailable, render: unavailable }, target: unavailable,
-      })];
-      const kernel = [...commands(registry, services), ...management];
+      const kernel = commands(registry, services);
       const ids = kernel.map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);
       // Every kernel action has a German description; make's actions are the generators below.
@@ -63,9 +59,9 @@ describe('built-in localization catalog coverage', () => {
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, templatesPlugin, scaffoldsPlugin];
+    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, templatesPlugin, scaffoldsPlugin, claudePlugin];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
-    registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }, []);
+    registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }), []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));
     for (const id of registry.generators.keys()) expect(registry.catalog.text('de', 'generators', id), id).toEqual(expect.any(String));
     const german = new Localizer('de', registry.catalog);

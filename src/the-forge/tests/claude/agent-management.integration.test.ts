@@ -3,16 +3,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudeAgents } from '../../src/application/claude/agents.ts';
+import { ClaudeAgents } from '../../src/plugins/claude/application/agents.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
+import { claudeAgentCodec } from '../../src/plugins/claude/infrastructure/agents.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const source = '---\r\n# Authored comment\r\nname: reviewer\r\ndescription: Review changes\r\nfuture: { enabled: true }\r\n---\r\n\r\nKeep $ARGUMENTS and [[links]].\r\n';
-const codec = { parse: parseClaudeAgent, render: renderClaudeAgent };
+const codec = claudeAgentCodec(new ObsidianDocuments());
 const service = (dryRun = false, directory = '.claude/agents') => new ClaudeAgents(new Workspace(files, new ObsidianDocuments(), events, dryRun), codec, directory);
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-agents-'));

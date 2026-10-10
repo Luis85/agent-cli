@@ -20,7 +20,7 @@ beforeEach(async () => {
   const events = new EventBus(new NodeEventScope());
   for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
-  context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
+  context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
 });
 afterEach(async () => { await rm(parent, { recursive: true, force: true }); });
 

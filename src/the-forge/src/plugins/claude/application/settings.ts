@@ -1,7 +1,7 @@
-import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
-import { validateClaudeHooks } from '../../domain/claude/hooks.ts';
-import { revisionConflict } from '../../domain/documents/write-plan.ts';
-import type { Workspace } from '../workspace/workspace.ts';
+import { forgeError, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
+import { revisionConflict } from '../../../domain/documents/write-plan.ts';
+import type { Workspace } from '../../../application/workspace/workspace.ts';
 
 const policyBooleans = ['disableAllHooks', 'allowManagedHooksOnly'];
 const policyLists = ['allowedHttpHookUrls', 'httpHookAllowedEnvVars'];

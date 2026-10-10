@@ -1,7 +1,6 @@
-import { ensure } from '../../domain/shared/errors.ts';
-import type { CommandContext } from '../../application/plugins/registry.ts';
-import { globalOptions } from '../cli/arguments.ts';
-import { readInputBytes } from '../../application/plugins/command-input.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import type { CommandContext } from '../../../application/plugins/registry.ts';
+import { globalOptions, readInputBytes } from '../../../application/plugins/command-input.ts';
 
 export function claudeOptions(flags: Record<string, string | boolean>, allowed: readonly string[]): void {
   const unexpected = Object.keys(flags).filter(key => !Object.hasOwn(globalOptions, key) && !allowed.includes(key));

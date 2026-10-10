@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Registry, type CommandContext, type Plugin, type PluginContext, type PluginManifest } from '../../src/application/plugins/registry.ts';
@@ -186,7 +187,7 @@ describe('core plugins', () => {
 
   it('registers bundled plugins enabled by default with bare command ids and records disabled ones without contributions', () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [core('search'), core('links')], { skills: registrySkills(registry), fileDates: unusedFileDates }, ['links']);
+    registerCorePlugins(registry, events, [core('search'), core('links')], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), ['links']);
     expect([...registry.commands.keys()]).toEqual(['search']);
     expect(registry.origins.get('search')).toBe('core');
     expect(registry.disabled.map(entry => entry.id)).toEqual(['links']);
@@ -195,7 +196,7 @@ describe('core plugins', () => {
 
   it('ignores unknown ids in plugins.disabled with a warning and rejects core claims from user plugins', () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates }, ['serach']);
+    registerCorePlugins(registry, events, [core('search')], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), ['serach']);
     expect([...registry.commands.keys()]).toEqual(['search']);
     expect(events.warnings).toEqual([expect.stringContaining('ignored serach')]);
     expect(() => registry.register({ manifest: { ...manifest('quality'), core: true } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
@@ -206,18 +207,18 @@ describe('core plugins', () => {
   it('keeps core plugin events in their own namespace', () => {
     const { registry, events } = setup();
     const event = { id: 'indexed', validate: (value: unknown): value is object => typeof value === 'object' };
-    expect(() => registerCorePlugins(registry, events, [core('search', { events: [event] })], { skills: registrySkills(registry), fileDates: unusedFileDates }, [])).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    expect(() => registerCorePlugins(registry, events, [core('search', { events: [event] })], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), [])).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
   });
 
   it('migrates the skills command and bundled skills into the skills core plugin with German strings', async () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [skillsPlugin], { skills: registrySkills(registry), fileDates: unusedFileDates }, []);
+    registerCorePlugins(registry, events, [skillsPlugin], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), []);
     registry.register({ manifest: manifest('quality'), skills: [{ id: 'quality.review', content: 'Review.' }] }, events);
     expect([...registry.skills.keys()]).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'quality.review']);
     expect(await registry.commands.get('skills')!.run([], {}, context as PluginContext)).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'quality.review'] });
     expect(new Localizer('de', registry.catalog).command(registry.commands.get('skills')!).description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');
     const disabled = setup();
-    registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], { skills: registrySkills(disabled.registry), fileDates: unusedFileDates }, ['skills']);
+    registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], testHost({ skills: registrySkills(disabled.registry), fileDates: unusedFileDates }), ['skills']);
     expect(disabled.registry.commands.has('skills')).toBe(false);
     expect(disabled.registry.skills.size).toBe(0);
   });

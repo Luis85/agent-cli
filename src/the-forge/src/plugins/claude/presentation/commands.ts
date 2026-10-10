@@ -1,19 +1,17 @@
 import { agentCommands } from './agents.ts';
 import { hookCommands } from './hooks.ts';
 import { nativePlugin, nativePluginActions } from './plugin-assets.ts';
-import { ensure, isRecord } from '../../domain/shared/errors.ts';
-import { claudeHookEvents } from '../../domain/claude/hooks.ts';
-import { claudePluginCapabilities } from '../../domain/claude/plugins.ts';
-import type { Command } from '../../application/plugins/registry.ts';
-import type { ClaudeServices } from './services.ts';
-import { arity, value } from '../../application/plugins/command-input.ts';
-import { parseJson } from '../../application/plugins/command-input.ts';
-import { option } from '../../application/plugins/command-metadata.ts';
+import { ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { claudeHookEvents } from '../../../domain/claude/hooks.ts';
+import { claudePluginCapabilities } from '../domain/plugins.ts';
+import type { Command } from '../../../application/plugins/registry.ts';
+import type { ClaudeCommandServices, ClaudeServices } from './services.ts';
+import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
+import { option } from '../../../application/plugins/command-metadata.ts';
 import { claudeInput, claudeOptions } from './input.ts';
 import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from './runtime-commands.ts';
 
-
-export function claudeCommand(services: ClaudeServices): Command {
+export function claudeCommand(adapters: ClaudeCommandServices): Command {
   return {
     id: 'claude', description: 'Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.',
     usage: 'claude capabilities | agents list|inspect|create|update|remove|enable|disable|export [id] | hooks inspect|check|set|add|remove|configure|enable|disable [event] | plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory> [path] | plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval [id] | marketplaces add|list|remove|update [source] | runtime version|doctor|install|update',
@@ -59,6 +57,7 @@ export function claudeCommand(services: ClaudeServices): Command {
           plugins: claudePluginCapabilities,
           lifecycle: { executable: 'claude', commands: ['plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval', 'marketplaces add|list|remove|update', 'runtime version|doctor|install|update'], mutationDefaultScope: 'project where the native command supports a scope', dryRun: 'Returns command arguments without starting Claude Code.' } };
       }
+      const services: ClaudeServices = { agentCodec: adapters.agentCodec(context.workspace.codec), target: adapters.target };
       if (section === 'agents') return agentCommands(args.slice(1), flags, context, services);
       if (section === 'hooks') return hookCommands(args.slice(1), flags, context, services);
       if (section === 'plugins' && nativePluginActions.includes(action ?? '')) return nativePlugin(args.slice(1), flags, context, services);
@@ -75,7 +74,7 @@ export function claudeCommand(services: ClaudeServices): Command {
         input = JSON.stringify(values) + '\n';
         ensure(new TextEncoder().encode(input).length <= 1024 * 1024, 'INVALID_CLAUDE_INPUT', 'Claude configuration input must not exceed 1 MiB.');
       }
-      return context.claude.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
+      return adapters.lifecycle.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     },
   };
 }

@@ -1,10 +1,9 @@
-import { ensure } from '../../domain/shared/errors.ts';
-import { ClaudeAgents } from '../../application/claude/agents.ts';
-import { ClaudeSettings } from '../../application/claude/settings.ts';
-import type { CommandContext } from '../../application/plugins/registry.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { ClaudeAgents } from '../application/agents.ts';
+import { ClaudeSettings } from '../application/settings.ts';
+import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
-import { arity, value } from '../../application/plugins/command-input.ts';
-import { parseJson } from '../../application/plugins/command-input.ts';
+import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
 import { claudeInput, claudeInputOptions, claudeOptions, claudeScopeOptions } from './input.ts';
 
 type Flags = Record<string, string | boolean>;
