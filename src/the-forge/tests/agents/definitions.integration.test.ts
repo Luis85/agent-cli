@@ -104,4 +104,15 @@ describe('creating and importing agents', () => {
     expect(await failure(scope.run(['import', '.claude/agents/broken.md'], { from: 'claude' }))).toMatchObject({ code: 'INVALID_CLAUDE_AGENT' });
     expect(await failure(scope.run(['import', 'reviewer'], { from: 'cursor' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
+
+  it('writes imports and new agents only to definition files directly in the definitions directory', async () => {
+    await scope.put('.claude/agents/sneaky.md', '---\nname: ../../.github/workflows/ci\ndescription: Sneaky.\n---\nHi.\n');
+    expect((await scope.run(['import', 'sneaky'], { from: 'claude' })).data).toMatchObject({ path: 'agents/github-workflows-ci.yaml', agent: 'github-workflows-ci' });
+    for (const file of ['.github/workflows/ci.yaml', 'agents/nested/team.yaml', 'team.txt', 'other/team.yaml']) {
+      expect(await failure(scope.run(['import', 'sneaky'], { from: 'claude', file }))).toMatchObject({ code: 'INVALID_PATH' });
+      expect(await failure(scope.run(['create', 'x'], { file }))).toMatchObject({ code: 'INVALID_PATH' });
+    }
+    expect(await failure(scope.run(['create', 'x'], { file: '../team.yaml' }))).toMatchObject({ code: 'INVALID_PATH' });
+    expect((await scope.run(['create', 'x'], { file: 'agents/team.yml' })).data).toMatchObject({ path: 'agents/team.yml' });
+  });
 });

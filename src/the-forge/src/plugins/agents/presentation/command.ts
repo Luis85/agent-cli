@@ -20,7 +20,7 @@ export interface AgentServices {
 const actions = ['list', 'inspect', 'validate', 'create', 'import', 'generate'] as const;
 type Action = typeof actions[number];
 const options = {
-  file: option.string('create and import: the team file to add to (a name in the definitions directory or a scope path); generate: only this file. Defaults to <name>.yaml for create and import.'),
+  file: option.string('create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file.'),
   model: option.string('create: the model reference, such as anthropic/claude-sonnet-5 or a named model; defaults to plugins.settings.agents.defaultModel.'),
   description: option.string('create: the agent description.'),
   instruction: option.string('create: the agent instruction (system prompt); defaults to the description.'),
@@ -75,7 +75,7 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       { name: 'target', description: 'inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path.' },
     ],
     options,
-    errors: ['INVALID_AGENT_DEFINITION', 'AGENT_NOT_FOUND', 'AGENT_EXISTS', 'AGENT_DRIFT', 'NOT_FOUND', 'CONFLICT', 'INVALID_NAME', 'INVALID_YAML', 'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_SETTINGS', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS'],
+    errors: ['INVALID_AGENT_DEFINITION', 'AGENT_NOT_FOUND', 'AGENT_EXISTS', 'AGENT_DRIFT', 'NOT_FOUND', 'CONFLICT', 'INVALID_NAME', 'INVALID_PATH', 'INVALID_YAML', 'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_SETTINGS', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS'],
     async run(args, flags, context) {
       const action = (args[0] ?? 'list') as Action;
       ensure((actions as readonly string[]).includes(action), 'INVALID_ARGUMENT', `Use agents ${actions.join(', agents ')}.`);

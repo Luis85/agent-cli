@@ -95,13 +95,18 @@ function hooks(value: unknown, diagnostics: AgentDiagnostic[]): Record<string, u
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+/** The docker-agent name of an imported Claude agent: characters other than letters, digits, `-` and `_` become `-`. */
+export function importedName(name: unknown): string {
+  return String(name).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent';
+}
+
 /**
  * Converts a Claude agent's frontmatter and prompt into a docker-agent agent definition (approximate). `Agent(x)`
  * tools become `sub_agents` only for agents in `knownAgents`, the agents of the target definition file.
  */
 export function importClaudeAgent(metadata: Record<string, unknown>, prompt: string, defaultModel: string, knownAgents: readonly string[]): ImportedAgent {
   const diagnostics: AgentDiagnostic[] = [];
-  const name = String(metadata.name).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent';
+  const name = importedName(metadata.name);
   if (name !== metadata.name) diagnostics.push(diagnostic('info', 'name-sanitized', '/name', `Agent ${String(metadata.name)} is imported as ${name}.`, 'E'));
   const source = record(metadata['x-forge-source']);
   if (text(source.path)) diagnostics.push(diagnostic('warning', 'generated-agent', '/x-forge-source', `This agent was generated from ${source.path}#${String(source.agent)}; edit that definition instead, since an import is lossy.`, 'A'));

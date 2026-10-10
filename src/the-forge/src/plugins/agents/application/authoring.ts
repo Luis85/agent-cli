@@ -4,7 +4,7 @@ import { revisionConflict } from '../../../domain/documents/write-plan.ts';
 import { validateClaudeAgent } from '../../../domain/claude/agents.ts';
 import { AppError, ensure } from '../../../domain/shared/errors.ts';
 import { hasErrors, record, type AgentDiagnostic } from '../domain/config.ts';
-import { importClaudeAgent } from '../domain/claude-import.ts';
+import { importClaudeAgent, importedName } from '../domain/claude-import.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentDefinitions } from './definitions.ts';
 import type { AgentPorts } from './ports.ts';
@@ -45,8 +45,8 @@ export class AgentAuthoring {
     const snapshot = await this.workspace.files.read(path);
     const { metadata, body } = this.ports.markdown.parse(decoder.decode(snapshot.bytes));
     validateClaudeAgent(metadata, body);
-    const file = options.file ?? `${String(metadata.name)}.yaml`;
-    const known = await this.knownAgents(this.definitions.resolve(file));
+    const file = options.file ?? `${importedName(metadata.name)}.yaml`;
+    const known = await this.knownAgents(this.definitions.target(file));
     const imported = importClaudeAgent(metadata, body, this.defaultModel, known);
     const diagnostics = imported.diagnostics.map(entry => ({ ...entry, path }));
     return { from: { target: 'claude', path, revision: snapshot.revision }, ...await this.add(file, imported.name, imported.agent, options.ifMatch, diagnostics) };
@@ -64,7 +64,7 @@ export class AgentAuthoring {
   }
 
   private async add(file: string, name: string, agent: Record<string, unknown>, ifMatch: string | undefined, extra: Array<AgentDiagnostic & { path?: string }>) {
-    const path = this.definitions.resolve(file), current = await this.current(path);
+    const path = this.definitions.target(file), current = await this.current(path);
     let text: string;
     if (current) {
       ensure(ifMatch !== undefined, 'CONFLICT', `${path} exists; pass its current revision with --if-match to add ${name} to it.`, revisionConflict(path, null, current.revision));

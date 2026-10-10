@@ -1,6 +1,6 @@
 import type { FileRepository } from '../../../application/workspace/ports.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
-import { AppError, errorMessage } from '../../../domain/shared/errors.ts';
+import { AppError, ensure, errorMessage } from '../../../domain/shared/errors.ts';
 import {
   agentEntries, defaultAgent, diagnostic, hasErrors, instructionFiles, isObject, localPath, normalizedDocument, pointer, record,
   type AgentConfigDocument, type AgentDiagnostic,
@@ -43,6 +43,17 @@ export class AgentDefinitions {
   /** A command's file argument: a bare file name lives in the definitions directory; a path is scope-relative. */
   resolve(file: string): string {
     return vaultPath(file.includes('/') ? file : `${this.directory}/${file}`);
+  }
+
+  /**
+   * The file `agents create` and `agents import` write: a definition file directly in the definitions directory
+   * (`.yaml` or `.yml`), never another scope path such as `.github/workflows/ci.yaml`.
+   */
+  target(file: string): string {
+    const path = this.resolve(file), prefix = `${this.directory}/`;
+    ensure(path.startsWith(prefix) && !path.slice(prefix.length).includes('/') && definitionFile.test(path), 'INVALID_PATH',
+      `Definition files are written directly in ${prefix} with a .yaml or .yml extension; ${file} is not such a file.`, { path, directory: this.directory });
+    return path;
   }
 
   /** Parse, schema and semantic diagnostics for definition text; positions come from the YAML source. */
