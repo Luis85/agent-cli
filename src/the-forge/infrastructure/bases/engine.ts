@@ -1,11 +1,12 @@
 import {
-  compileExpression, compileFormulaSet, createEvaluationContext, compatibilityProfile, fileValue, fromJs, errorValue, nullValue, boolValue,
+  compileExpression, compileFormulaSet, compatibilityProfile, fileValue, fromJs, errorValue, nullValue, boolValue,
   stringifyValue, toPlain, type CompiledExpression, type Diagnostic, type RuntimeValue,
 } from 'obsidian-bases-expression';
 import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../../application/bases/query.ts';
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
 import { errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { NodeFiles } from '../workspace/files.ts';
+import { BaseRowContexts } from './contexts.ts';
 import { basePropertyTypes, indexBaseFiles } from './index.ts';
 import { baseExpression, baseFilter, internalContext, internalFormula, internalTag, internalGuard } from './expressions.ts';
 
@@ -38,6 +39,15 @@ function compare(a: RuntimeValue, b: RuntimeValue): number {
   return collator.compare(stringifyValue(a), stringifyValue(b));
 }
 function groupIdentity(value: unknown): string { return JSON.stringify(value ?? null); }
+// First position of each visible group value, as Array#findIndex reports it.
+function positions(groupOrder: readonly unknown[]): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const [index, value] of groupOrder.entries()) {
+    const identity = groupIdentity(value);
+    if (!result.has(identity)) result.set(identity, index);
+  }
+  return result;
+}
 
 export class NodeBasesQueryEngine implements BasesQueryEngine {
   constructor(private readonly files: NodeFiles, private readonly codec: DocumentCodec) {}
@@ -80,22 +90,21 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
     ensure(thisFile, 'BASE_CONTEXT_NOT_FOUND', `Base context is not an indexed vault file: ${contextPath}`);
     const propertyTypes = await basePropertyTypes(this.files);
     const contextNote = Object.fromEntries(Object.entries(thisFile.properties ?? {}).map(([name, value]) => [name, value === null || value === '' ? fromJs(value) : fromJs(value, propertyTypes[name])]));
-    const now = new Date();
+    const objects = { [internalContext]: { file: fileValue(thisFile), note: contextNote } };
+    const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name, ast]) => [name, compileExpression(ast)]));
+    const groupPositions = groupOrder && positions(groupOrder);
     const rows: Row[] = [];
-    for (const file of indexed) {
+    for (const { file, context } of new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: new Date() }).rows()) {
       try {
-        const linkResolutions = Object.fromEntries((file.links ?? []).map(link => [link.path, link.resolvedPath ?? null]));
-        const rowTypes = Object.fromEntries(Object.entries(propertyTypes).filter(([name, type]) => type !== 'date' || (file.properties?.[name] !== undefined && file.properties[name] !== null && file.properties[name] !== '')));
-        const context = createEvaluationContext({ note: file.properties, file, files: indexed, thisFile, formulas: formulaAsts, propertyTypes: rowTypes, now, linkResolutions, objects: { [internalContext]: { file: fileValue(thisFile), note: contextNote } } });
         const evaluating = new Set<string>();
         let evaluationError: string | undefined;
         context.functions = { [internalFormula]: name => {
           const key = stringifyValue(name);
           if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
-          const ast = Object.hasOwn(formulaAsts, key) ? formulaAsts[key] : undefined;
-          if (!ast) return nullValue();
+          const formula = compiledFormulaByName.get(key);
+          if (!formula) return nullValue();
           evaluating.add(key);
-          try { return compileExpression(ast).evaluateValue(context, strict); }
+          try { return formula.evaluateValue(context, strict); }
           finally { evaluating.delete(key); }
         }, [internalTag]: (receiver, ...tags) => {
           if (receiver.type !== 'File') return errorValue('hasTag requires a file.');
@@ -112,7 +121,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
         ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
         if (!matches) continue;
         const group = grouping?.expression.evaluateValue(context, strict);
-        const groupIndex = groupOrder?.findIndex(value => groupIdentity(value) === groupIdentity(group && toPlain(group)));
+        const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
         if (groupIndex === -1) continue;
         const sort = sorts.map(item => item.expression.evaluateValue(context, strict));
         ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
