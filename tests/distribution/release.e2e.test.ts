@@ -52,6 +52,8 @@ describe('release distribution', () => {
     const root = await checkout();
     const archive = release(root);
     const first = await readFile(join(root, archive));
+    // The gzip header carries no packaging time, file name or platform: flags 0, MTIME 0, OS Unix.
+    expect([...first.subarray(0, 10)]).toEqual([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 2, 3]);
     const checksum = await readFile(join(root, `${archive}.sha256`), 'utf8');
     expect(checksum).toBe(`${createHash('sha256').update(first).digest('hex')}  ${archive.slice('release/'.length)}\n`);
 

@@ -88,7 +88,7 @@ No global dependency container, Obsidian process or npm runtime installation is 
 
 ## Platform matrix
 
-GitHub Actions runs the full gate (`npm ci`, then `npm run check`) on every push and pull request:
+GitHub Actions runs the full gate (`npm ci`, then `npm run check`) for every pull request, every push to `main` and manual dispatches. Pushes to other branches run only through their pull request, so each change runs the matrix once:
 
 | Runner | Node | Additional steps |
 | --- | --- | --- |
@@ -103,10 +103,13 @@ The committed bundle is the Linux build. Windows and macOS verify behavior, not 
 Keep tests portable:
 
 - Build expected OS paths with `node:path` (`join`, `basename`), and pass POSIX workspace paths (`notes/a.md`) to the CLI and repository ports.
-- The CLI reports canonical roots (`realpath`). Canonicalize temporary directories before comparing them, because macOS `/var` links to `/private/var` and Windows can report 8.3 short names. `tests/support/portable-cli.ts` already does this.
+- The CLI reports canonical roots (`realpath`). Canonicalize temporary directories before comparing them or running toolchains such as Vite in them, because macOS `/var` links to `/private/var` and Windows can report 8.3 short names. `tests/support/portable-cli.ts` already does this.
 - Start npm through a shell (`exec('npm run ...')`). On Windows, npm is a `.cmd` shim that Node only starts through a shell.
 - Use `'junction'` when linking `node_modules` into fixtures. Junctions need no symlink privilege on Windows, and other platforms ignore the type. Symlink-rejection tests still create real symlinks, which the Windows runners allow.
 - Run `tar` with relative paths from a working directory. GNU tar reads `C:\...` as a remote host name.
+- Pass `-c core.autocrlf=false` when a test lets Git write files. Git for Windows enables `core.autocrlf` globally and would write CRLF.
+- Remove temporary directories that a terminated child process used with `rm(..., { maxRetries })`. Windows can keep the working directory busy (`EBUSY`) for a moment after termination.
+- A child that closes its input early fails the parent's write with `EPIPE` on POSIX but `EOF` on Windows.
 - Do not assume POSIX permission bits, signals or process groups. Windows reports writable files as `0o666`. Skip a test on `win32` only when the behavior it checks cannot exist there, and give the reason in a comment. The current skips are the Claude runtime signal and process-group cases and the installed-lifecycle fixture that executes a script through its shebang.
 - macOS and Windows file systems are case-insensitive by default. Detect case sensitivity at runtime when a test depends on it, as `tests/workspace/portability.integration.test.ts` does.
 

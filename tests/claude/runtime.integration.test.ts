@@ -6,7 +6,8 @@ import { spawn } from 'node:child_process';
 import { NodeClaudeRuntime } from '../../src/the-forge/infrastructure/claude/runtime.ts';
 
 const directories: string[] = [];
-afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
+// A terminated child can briefly keep its working directory open on Windows (EBUSY); rm retries those errors.
+afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))); });
 
 async function fixture(source: string) {
   // Children report their canonical working directory (macOS /var is /private/var).

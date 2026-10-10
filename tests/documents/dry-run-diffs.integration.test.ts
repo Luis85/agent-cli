@@ -46,7 +46,8 @@ describe('dry-run unified diffs', () => {
     ], { diff: true });
     const patch = (result.changes as Array<{ diff: string }>).map(change => change.diff).join('');
     await writeFile(join(root, 'preview.patch'), patch);
-    const applied = spawnSync('git', ['apply', '--unsafe-paths', 'preview.patch'], { cwd: root, encoding: 'utf8' });
+    // Windows Git defaults to core.autocrlf=true, which would rewrite the applied files with CRLF.
+    const applied = spawnSync('git', ['-c', 'core.autocrlf=false', 'apply', '--unsafe-paths', 'preview.patch'], { cwd: root, encoding: 'utf8' });
     expect(applied.stderr).toBe('');
     expect(applied.status).toBe(0);
     expect(await readFile(join(root, 'src/value.ts'), 'utf8')).toBe(created);

@@ -4,6 +4,9 @@ import type { ClaudeRuntime, ClaudeRuntimeOptions, ClaudeRuntimeResult } from '.
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 
+/** A reader that closed its input pipe: EPIPE on POSIX; libuv reports the Windows broken pipe as EOF. */
+const closedInputCodes: ReadonlySet<string> = new Set(['EPIPE', 'EOF']);
+
 interface NodeClaudeRuntimeOptions {
   executable?: string;
   maxOutputBytes?: number;
@@ -117,7 +120,7 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
       child.stdin?.on('error', error => {
         // An early native rejection may close stdin; retain its exit code and diagnostics.
         inputError = error;
-        if ((error as NodeJS.ErrnoException).code !== 'EPIPE') fail('CLAUDE_COMMAND_FAILED', `Cannot send input to Claude: ${error.message}`);
+        if (!closedInputCodes.has((error as NodeJS.ErrnoException).code ?? '')) fail('CLAUDE_COMMAND_FAILED', `Cannot send input to Claude: ${error.message}`);
       });
       child.stdin?.end(options.stdin);
     });

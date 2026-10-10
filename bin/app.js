@@ -26946,6 +26946,7 @@ async function claudeTarget(context, flags) {
     settingsPath: scope === "local" ? ".claude/settings.local.json" : ".claude/settings.json"
   };
 }
+const closedInputCodes = /* @__PURE__ */ new Set(["EPIPE", "EOF"]);
 class NodeClaudeRuntime {
   executable;
   maxOutputBytes;
@@ -27079,7 +27080,7 @@ class NodeClaudeRuntime {
       });
       child.stdin?.on("error", (error2) => {
         inputError = error2;
-        if (error2.code !== "EPIPE") fail("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
+        if (!closedInputCodes.has(error2.code ?? "")) fail("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
       });
       child.stdin?.end(options.stdin);
     });

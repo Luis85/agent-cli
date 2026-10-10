@@ -1,6 +1,6 @@
 import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { exec, execFile } from 'node:child_process';
@@ -17,7 +17,8 @@ let root: string;
 let files: NodeFiles;
 const execute = promisify(execFile);
 const shell = promisify(exec);
-beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-projects-')); files = await NodeFiles.at(root); });
+// A canonical root: Windows temp paths may hold 8.3 short names that Vite resolves inconsistently with their long form.
+beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'forge-projects-'))); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 function service(directory = 'projects', dryRun = false, events = new EventBus(new NodeEventScope())) {
   events.defineAll(['file.created', 'file.updated'].map(id => ({ id, validate: (value): value is object => typeof value === 'object' })));

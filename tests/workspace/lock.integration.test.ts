@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import metadata from '../../package.json';
 import { NodeFiles } from '../../src/the-forge/infrastructure/workspace/files.ts';
 import { acquireLock, inspectLock, releaseLock } from '../../src/the-forge/infrastructure/workspace/lock.ts';
@@ -132,7 +132,7 @@ describe('owned writer lock', () => {
     const adapter = files as unknown as Adapter & { stage(target: string, bytes: Uint8Array, mode?: number): Promise<string> };
     const stage = adapter.stage.bind(files);
     vi.spyOn(adapter, 'stage').mockImplementation(async (target, ...args) => {
-      if (target.endsWith('/broken.md')) throw Object.assign(new Error('ENOSPC: injected'), { code: 'ENOSPC' });
+      if (basename(target) === 'broken.md') throw Object.assign(new Error('ENOSPC: injected'), { code: 'ENOSPC' });
       return stage(target, ...args);
     });
     const replace = vi.spyOn(adapter, 'replace');
