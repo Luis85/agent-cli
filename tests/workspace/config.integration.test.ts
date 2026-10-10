@@ -15,7 +15,7 @@ describe('Forge configuration', () => {
     const result = await load();
     expect(result.path).toBe(configPath()); expect(result.root).toBe(root);
     expect(result.config.paths).toEqual({ projects: 'src', ...uiPaths });
-    expect(result.config.settings).toEqual({ json: true, dryRun: false, language: 'en' });
+    expect(result.config.settings).toEqual({ json: true, dryRun: false, language: 'en', events: 'changes' });
     expect(result.config.plugins.enabled).toEqual([]);
     expect(result.config.ui).toEqual({ framework: 'html' });
   });

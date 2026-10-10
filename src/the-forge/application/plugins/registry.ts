@@ -63,7 +63,7 @@ export class Registry {
     for (const command of plugin.commands ?? []) {
       ensure(typeof command.run === 'function' && typeof command.description === 'string' && typeof command.usage === 'string', 'INVALID_PLUGIN', 'Invalid command.');
       ensure(command.options === undefined || isRecord(command.options), 'INVALID_PLUGIN', 'Command options must be an object.');
-      for (const [key, type] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !['root', 'lang', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'].includes(key) && ['boolean', 'string'].includes(type), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
+      for (const [key, type] of Object.entries(command.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !['root', 'lang', 'events', 'json', 'no-json', 'dry-run', 'no-dry-run', 'no-plugins', 'help', 'version'].includes(key) && ['boolean', 'string'].includes(type), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
       this.add(commands, command);
     }
     for (const generator of plugin.generators ?? []) {

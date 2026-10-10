@@ -27,7 +27,7 @@ async function plugin(name: string, failure = false) {
       } }]
     };
   `);
-  return { root, run: () => fixture.cli(['observer.run', 'private-argument'], undefined, { root }) };
+  return { root, run: () => fixture.cli(['--events', 'all', 'observer.run', 'private-argument'], undefined, { root }) };
 }
 
 describe('portable host lifecycle observation', () => {

@@ -35,7 +35,7 @@ export class Localizer {
     if (['components', 'data-sources', 'interactions'].includes(command) && data.status === 'empty' && typeof data.directory === 'string' && typeof data.nextStep === 'string') {
       return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
-    if (command === 'formats') return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
+    if (command === 'formats') return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
     if (command === 'events') return { ...data, delivery: germanGuidance.delivery };
     if (command === 'setup' && Array.isArray(data.nextSteps)) return {
       ...data, nextSteps: data.nextSteps.map((step: unknown) => {

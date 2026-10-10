@@ -28,7 +28,7 @@ describe('repository self-management defaults', () => {
     const source = cli(['read', 'main.ts']);
     expect(source.status).toBe(0);
     expect(source.body.context).toMatchObject({ workspaceRoot: checkout.bundle, root: selected, project });
-    expect(Buffer.from(source.body.data.document.content, 'base64')).toEqual(await readFile(join(selected, 'main.ts')));
+    expect(source.body.data.document).toEqual({ kind: 'text', content: await readFile(join(selected, 'main.ts'), 'utf8') });
   });
 
   it('previews and commits only inside its selected source tree with the normal revision guards', async () => {
