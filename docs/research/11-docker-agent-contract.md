@@ -121,21 +121,21 @@ Fidelity: E means exact, A means approximate (emitted with a warning diagnostic)
 | `handoffs`, `force_handoff`, `routing`, external OCI sub-agents | Not emitted (delegation is opt-in) | U |
 | `max_iterations` | `maxTurns` (0 means omitted) | A |
 | `readonly` | Read-only tool set, plus `disallowedTools: Write, Edit, NotebookEdit` | A |
-| `filesystem` | `Read, Write, Edit, Glob, Grep`; allow/deny lists become project permission rules by option | A |
+| `filesystem` | `Read, Write, Edit, Glob, Grep`. `deny_list` becomes deny rules with `--settings`. `allow_list` restricts access in docker-agent, so it never becomes an allow rule; it produces a diagnostic instead | A |
 | `shell` | `Bash` | E |
-| `fetch` | `WebFetch`; domains become permission rules by option | E/A |
+| `fetch` | `WebFetch`. `blocked_domains` becomes deny rules with `--settings`. `allowed_domains` never becomes allow rules; it produces a diagnostic | E/A |
 | `todo`, `tasks` | `TaskCreate, TaskGet, TaskList, TaskUpdate` | A |
 | `memory` | `memory: project` | A |
 | `user_prompt` | `AskUserQuestion` | A |
 | `think` | Not emitted (use `effort`) | A |
-| `mcp` stdio | Inline `mcpServers` (the default) or a `.mcp.json` merge, plus `mcp__<srv>__*` grants. `${env.X}` becomes `${X}` | E/A |
+| `mcp` stdio | Opt-in only: `--mcp inline` writes `mcpServers`, `--mcp project` merges into `.mcp.json`. The default `--mcp none` writes no servers and no `mcp__` grants. Each written command gets an `executes-command` diagnostic. `${env.X}` becomes `${X}` | E/A |
 | `mcp` remote | `type: http` (streamable) or `sse`, `url`, `headers`, mapped `oauth` fields | E |
 | `mcp` `ref: docker:<name>` | stdio `docker mcp gateway run --servers <name>` | A |
 | `script`, `api`, `openapi`, `a2a`, `rag`, `webhook`, `scheduler`, `lsp`, other toolsets | Not emitted, with diagnostics | U |
 | `commands` | `.claude/skills/<n>/SKILL.md`; `${args[i]}` becomes `$i`, `${args}` becomes `$ARGUMENTS` | A |
 | `skills` | `skills:` frontmatter (preloaded) | A |
-| `hooks` with a Claude equivalent | Frontmatter `hooks`, with tool matchers translated | A |
-| Top-level `permissions` | Project `settings.json` permissions, merged by option | A |
+| `hooks` with a Claude equivalent | Frontmatter `hooks` with translated tool matchers, written only with `--hooks`. Each command gets an `executes-command` diagnostic | A |
+| Top-level `permissions` | Project `settings.json` permissions, written only with `--settings`. A narrow permission is never widened. Broad allow rules require `--allow-broad-permissions`. Each rule gets a `grants-permission` diagnostic | A |
 | `harness: claude-code` | `model` and `effort` from the harness | A |
 | Compaction, cache, budgets, flavors, evaluators, metadata, runtime | Not emitted | U |
 
@@ -143,6 +143,7 @@ Fidelity: E means exact, A means approximate (emitted with a warning diagnostic)
 - **Source of truth.** The docker-agent YAML file is the source of truth and is stored verbatim, comments included. Forge validates it against a vendored `agent-schema.json`, pinned to the conforming docker-agent version, and then applies docker-agent's semantic checks. It accepts files whose `version` is absent or `"16"`; older versions get a diagnostic.
 - **Generation** is a pure function from config to `{files, diagnostics}`. Each diagnostic records `severity`, `code`, a JSON pointer, `fidelity` and a message.
   - Written through the existing guarded write path, with dry runs, revisions and `vault.*` events.
-  - `.mcp.json` and settings changes are merged into the existing files, never overwrite them, and are opt-in.
-  - Generated agent files carry `x-forge-source: {path, sha256, agent}` provenance, which Claude Code ignores. Forge uses it for drift checks and to regenerate safely without overwriting hand edits.
+  - Anything that runs code (hooks, MCP server commands) or grants permissions is opt-in and listed as an explicit diagnostic before it is written.
+  - `.mcp.json` and settings changes are opt-in and merged into the existing files. Forge only replaces entries it owns, as recorded in `.claude/forge-generated.json`; any other entry with the same name is a conflict.
+  - Generated agent files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance, which Claude Code ignores. `sourceHash` covers the YAML and its instruction files. Forge uses the hashes to tell a changed source or option apart from a hand edit.
 - **Round trips.** docker-agent → Claude → docker-agent is lossy by design. A lossless re-import is possible only from the preserved source. Importing a hand-written Claude agent into docker-agent YAML is feasible but approximate, and every concept that cannot be represented gets a diagnostic.
