@@ -62,7 +62,7 @@ const errorCatalog = {
   INVALID_INPUT: entry("input", "The input options are invalid or contradictory.", "Use exactly one input source and the option combination named in the message."),
   INPUT_REQUIRED: entry("input", "--stdin was requested without piped input.", "Pipe the content into the command, or use --content or --from instead."),
   INVALID_JSON: entry("input", "The input is not valid JSON.", "Pass a valid JSON value; quote it for your shell."),
-  INVALID_ENCODING: entry("input", "The content is not valid in the required encoding.", "Use valid UTF-8 text, or --encoding base64 with valid base64 for binary content."),
+  INVALID_ENCODING: entry("input", "The content is not valid in the required encoding.", "Use valid UTF-8 text. For binary content use write or create with --stdin, --from or --encoding base64; edit and structured commands accept only UTF-8 text."),
   INVALID_LANGUAGE: entry("input", "The language is not supported.", "Use --lang en or --lang de."),
   INVALID_NAME: entry("input", "The name does not follow the required naming rule.", "Use the name format described in the message, for example PascalCase."),
   INVALID_KEY: entry("input", "The property key is reserved or unsafe.", "Use a different property key."),
@@ -72,12 +72,12 @@ const errorCatalog = {
   INVALID_PATH: entry("input", "The path is not a valid workspace-relative path.", "Use a relative path inside the selected workspace or project, with forward slashes and no .. segments."),
   UNSAFE_PATH: entry("input", "The path leaves the workspace or crosses a symbolic link.", "Use a path inside the workspace that does not traverse symbolic links."),
   NOT_FOUND: entry("not-found", "The file or resource does not exist.", "Check the path and the selected project (project current); run list to find files."),
-  CONFLICT: entry("conflict", "The file already exists or its revision changed since it was read.", "Read the file again, reapply your change to the current content and retry with the new --if-match revision (error.details.currentRevision)."),
+  CONFLICT: entry("conflict", "The file already exists or its revision changed since it was read.", "Reread the file and reconcile your change with the current content (error.details.currentRevision), then retry with the command's revision guard (--if-match or --revisions-from); create only adds new paths."),
   NO_MATCH: entry("input", "The --find text does not occur in the file.", "Read the file again and copy the exact current text into --find, including whitespace and line endings."),
   AMBIGUOUS_EDIT: entry("input", "The --find text occurs more than once, counting overlapping matches.", "Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines."),
   UNSUPPORTED_EDIT: entry("input", "This edit is not supported for the file kind.", "Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments."),
   INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
-  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely", inspect the holder's changes, confirm no Forge writer runs, then delete the lock file.`, true),
+  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
   ROLLBACK_FAILED: entry("runtime", "A failed write could not restore every file.", "Inspect the files named in the message and repair them before retrying."),
   // Documents
   INVALID_FRONTMATTER: entry("input", "The YAML frontmatter is invalid.", "Fix the frontmatter so it is a YAML mapping, then validate the note."),
@@ -1809,22 +1809,27 @@ async function syncDirectory(path, openDirectory = (directory) => promises.open(
 }
 const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
 const lockedFileDelays = [10, 20, 40, 80, 160, 320];
-const errorCode = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
+const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
 async function retryTransient(operation2, options = {}) {
   const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options;
   for (let attempt = 0; ; attempt++) {
     try {
       return await operation2();
     } catch (error2) {
-      const code2 = errorCode(error2);
+      const code2 = errorCode$1(error2);
       if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
       await sleep(delays[attempt]);
     }
   }
 }
 const lockName = ".agent-cli.lock";
+const writingWindowMs = 5e3;
+const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
+const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
+const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
 const text$4 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const errorCode = (error2) => error2.code ?? "";
 function ownerDetails(owner) {
   try {
     const { command: command2, operationId } = owner();
@@ -1833,30 +1838,89 @@ function ownerDetails(owner) {
     return {};
   }
 }
+let identity$1;
+function hostIdentity() {
+  identity$1 ??= (async () => {
+    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    return { ...text$4(pidNamespace) ? { pidNamespace } : {}, ...text$4(bootId) ? { bootId } : {} };
+  })();
+  return identity$1;
+}
 async function acquireLock(path, owner) {
+  const token = node_crypto.randomUUID();
+  const record2 = {
+    pid: process.pid,
+    hostname: node_os.hostname(),
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    ...ownerDetails(owner),
+    forgeVersion: metadata$1.version,
+    ...await hostIdentity(),
+    token
+  };
+  const content2 = JSON.stringify(record2) + "\n";
+  const temporary = minpath.join(minpath.dirname(path), `.agent-cli-tmp-lock-${token}`);
+  let linked = false;
+  try {
+    await writeDurably(temporary, content2);
+    await retryTransient(() => promises.link(temporary, path), { codes: ["EBUSY"] });
+    linked = true;
+  } catch (error2) {
+    if (errorCode(error2) === "EEXIST") throw await busy(path);
+    if (!linkUnsupported.has(errorCode(error2))) throw error2;
+  } finally {
+    await retryTransient(() => promises.rm(temporary, { force: true })).catch(() => {
+    });
+  }
+  if (!linked) await createExclusively(path, content2);
+  heldTokens.add(token);
+  return token;
+}
+async function record$1(handle, content2) {
+  try {
+    await handle.writeFile(content2);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function writeDurably(path, content2) {
+  await record$1(await retryTransient(() => promises.open(path, "wx")), content2);
+}
+async function createExclusively(path, content2) {
   let handle;
   try {
-    handle = await promises.open(path, "wx");
+    handle = await retryTransient(() => promises.open(path, "wx"));
   } catch (error2) {
-    if (error2.code === "EEXIST") throw await busy(path);
+    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path);
     throw error2;
   }
-  const record2 = { pid: process.pid, hostname: node_os.hostname(), startedAt: (/* @__PURE__ */ new Date()).toISOString(), ...ownerDetails(owner), forgeVersion: metadata$1.version };
   try {
-    try {
-      await handle.writeFile(JSON.stringify(record2) + "\n");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await record$1(handle, content2);
   } catch (error2) {
-    await releaseLock(path).catch(() => {
+    await retryTransient(() => promises.rm(path, { force: true })).catch(() => {
     });
     throw error2;
   }
 }
-async function releaseLock(path) {
-  await retryTransient(() => promises.rm(path, { force: true }));
+async function releaseLock(path, token) {
+  heldTokens.delete(token);
+  let content2;
+  try {
+    content2 = await retryTransient(() => promises.readFile(path, "utf8"));
+  } catch (error2) {
+    if (errorCode(error2) === "ENOENT") return "missing";
+    throw error2;
+  }
+  let recorded;
+  try {
+    recorded = JSON.parse(content2).token;
+  } catch {
+    return "foreign";
+  }
+  if (recorded !== token) return "foreign";
+  await retryTransient(() => promises.unlink(path));
+  return "released";
 }
 function parseMetadata(content2) {
   let value2;
@@ -1866,22 +1930,39 @@ function parseMetadata(content2) {
     return null;
   }
   if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$4(value2.hostname) || !text$4(value2.startedAt)) return null;
-  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion } = value2;
-  return { pid, hostname: host, startedAt, ...text$4(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {}, ...text$4(forgeVersion) ? { forgeVersion } : {} };
+  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
+  return {
+    pid,
+    hostname: host,
+    startedAt,
+    ...text$4(command2) ? { command: command2 } : {},
+    ...positiveInteger(operationId) ? { operationId } : {},
+    ...text$4(forgeVersion) ? { forgeVersion } : {},
+    ...text$4(pidNamespace) ? { pidNamespace } : {},
+    ...text$4(bootId) ? { bootId } : {}
+  };
 }
-async function readMetadata(path) {
+async function readLock(path) {
   try {
-    if (!(await promises.lstat(path)).isFile()) return null;
+    const entry2 = await promises.lstat(path);
+    if (!entry2.isFile()) return { lock: null, young: false };
+    const young = Date.now() - entry2.mtimeMs < writingWindowMs;
     const handle = await promises.open(path, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
     try {
       const buffer = Buffer.alloc(4096);
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      return parseMetadata(buffer.subarray(0, bytesRead).toString("utf8"));
+      const content2 = buffer.subarray(0, bytesRead).toString("utf8");
+      let token;
+      try {
+        token = JSON.parse(content2)?.token;
+      } catch {
+      }
+      return { lock: parseMetadata(content2), token, young };
     } finally {
       await handle.close();
     }
   } catch {
-    return null;
+    return { lock: null, young: false };
   }
 }
 function processAlive(pid) {
@@ -1889,13 +1970,15 @@ function processAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error2) {
-    const code2 = error2.code;
-    return code2 === "ESRCH" ? false : code2 === "EPERM" ? true : void 0;
+    return errorCode(error2) === "ESRCH" ? false : errorCode(error2) === "EPERM" ? true : void 0;
   }
 }
 async function inspectLock(path) {
-  const lock = await readMetadata(path);
-  if (lock === null || lock.hostname !== node_os.hostname()) return { lock, stale: "unknown" };
+  const { lock, token, young } = await readLock(path);
+  if (lock === null) return { lock, stale: young ? "active" : "unknown" };
+  const current = await hostIdentity();
+  if (lock.hostname !== node_os.hostname() || lock.pidNamespace !== current.pidNamespace || lock.bootId !== current.bootId) return { lock, stale: "unknown" };
+  if (lock.pid === process.pid) return { lock, stale: typeof token === "string" && heldTokens.has(token) ? "active" : "likely" };
   const alive = processAlive(lock.pid);
   return { lock, stale: alive === void 0 ? "unknown" : alive ? "active" : "likely" };
 }
@@ -1903,7 +1986,7 @@ async function busy(path) {
   const details = await inspectLock(path);
   const { lock, stale } = details;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
-  return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs on this host: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown", verify the recorded pid and host in error.details.lock yourself before deleting it.`, details);
+  return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
 }
 const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
 const missing = (error2) => error2.code === "ENOENT";
@@ -1978,12 +2061,9 @@ class NodeFiles {
     path = vaultPath(path);
     const guarded2 = typeof expectedRevision === "string" && expectedRevision.length > 0;
     const lock = minpath.join(this.root, lockName);
-    let locked = false;
+    let token;
     try {
-      if (!dryRun) {
-        await acquireLock(lock, this.owner);
-        locked = true;
-      }
+      if (!dryRun) token = await acquireLock(lock, this.owner);
       const target = await this.resolvePath(path);
       const before = await this.stored(path);
       if (before === void 0) throw forgeError("NOT_FOUND", `File not found: ${path}`);
@@ -1996,7 +2076,7 @@ class NodeFiles {
       }
       return { path, revision: before.revision, operation: "deleted", bytes: before.bytes.length };
     } finally {
-      if (locked) await this.cleanupLock(lock);
+      if (token !== void 0) await this.cleanupLock(lock, token);
     }
   }
   async writeBatch(writes, dryRun) {
@@ -2004,16 +2084,13 @@ class NodeFiles {
     ensure(requests.length > 0 && new Set(requests.map((w) => w.path)).size === requests.length, "INVALID_PLAN", "Plan must contain unique file paths.");
     ensure(!requests.some((a) => requests.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
     const lock = minpath.join(this.root, lockName);
-    let locked = false;
+    let token;
     const createdDirectories = [];
     const committed = [];
     const staged = [];
     const touched = /* @__PURE__ */ new Set();
     try {
-      if (!dryRun) {
-        await acquireLock(lock, this.owner);
-        locked = true;
-      }
+      if (!dryRun) token = await acquireLock(lock, this.owner);
       const plans = [];
       const conflicts = [];
       for (const write of requests) {
@@ -2086,21 +2163,26 @@ class NodeFiles {
       if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
       throw error2;
     } finally {
-      if (locked) await this.cleanupLock(lock);
+      if (token !== void 0) await this.cleanupLock(lock, token);
     }
   }
-  async cleanupLock(lock) {
+  async cleanupLock(lock, token) {
+    let warning;
     try {
-      await this.releaseLock(lock);
+      const outcome = await this.releaseLock(lock, token);
+      if (outcome === "foreign") warning = `Left ${lockName} in place: it no longer carries this writer's token, so another writer may hold it.`;
+      else if (outcome === "missing") warning = `${lockName} was removed by someone else while this writer held it; inspect concurrent changes.`;
     } catch (error2) {
-      try {
-        this.warn(`Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error2)}`);
-      } catch {
-      }
+      warning = `Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error2)}`;
+    }
+    if (warning === void 0) return;
+    try {
+      this.warn(warning);
+    } catch {
     }
   }
-  async releaseLock(lock) {
-    await releaseLock(lock);
+  async releaseLock(lock, token) {
+    return releaseLock(lock, token);
   }
   async syncDirectories(directories) {
     for (const directory of new Set(directories)) await syncDirectory(directory);
@@ -26702,7 +26784,7 @@ ${description2}`);
   }
 }
 const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `app.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/app.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/app.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `file.*` changes by default; reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
-const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/app.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid on the recorded host is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/app.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
 const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/app.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. For changes to The Forge itself, run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit its rebuilt executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const builtinSkills = [
   { id: "forge-workflow", content: workflow },
@@ -46504,7 +46586,7 @@ const germanErrors = {
   INVALID_INPUT: { summary: "Die Eingabeoptionen sind ungültig oder widersprüchlich.", hint: "Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination." },
   INPUT_REQUIRED: { summary: "--stdin wurde ohne weitergeleitete Eingabe angegeben.", hint: "Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from." },
   INVALID_JSON: { summary: "Die Eingabe ist kein gültiges JSON.", hint: "Übergeben Sie einen gültigen JSON-Wert und maskieren Sie ihn für Ihre Shell." },
-  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8 oder für Binärinhalte --encoding base64 mit gültigem Base64." },
+  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text." },
   INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
   INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
   INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
@@ -46514,12 +46596,12 @@ const germanErrors = {
   INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
   UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
   NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien." },
-  CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Lesen Sie die Datei erneut, übertragen Sie Ihre Änderung auf den aktuellen Inhalt und versuchen Sie es mit der neuen --if-match-Revision (error.details.currentRevision)." },
+  CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Lesen Sie die Datei erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab (error.details.currentRevision) und versuchen Sie es dann mit dem Revisionsschutz des Befehls erneut (--if-match oder --revisions-from); create legt nur neue Pfade an." },
   NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find." },
   AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen." },
   UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
   INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
-  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely", prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie Prozess-ID und Rechner in error.details.lock selbst.' },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
   ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },
   // Dokumente
   INVALID_FRONTMATTER: { summary: "Das YAML-Frontmatter ist ungültig.", hint: "Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate." },
@@ -46694,10 +46776,10 @@ async function run() {
   let eventLevel = "changes";
   try {
     const bootstrap = parseBootstrap(tokens);
-    const requestedEvents = value(bootstrap.flags, "events");
-    if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
     const requestedLanguage = value(bootstrap.flags, "lang");
     if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
+    const requestedEvents = value(bootstrap.flags, "events");
+    if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
     if (bootstrap.flags.version) {
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");

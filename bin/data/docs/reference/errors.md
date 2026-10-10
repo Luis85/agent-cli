@@ -49,7 +49,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `currentRevision` | The stored file's revision, or `null` when the file does not exist |
 | `conflicts` | Multi-file batches only: `{path, expectedRevision, currentRevision}` for every conflicting path |
 
-`currentRevision` equals what a fresh `read` returns. Do not resend the old request with that revision unchanged: read the file, reapply the change to its current content, then retry with the new revision. `write`, `edit`, `properties`, `patch`, `create` over an existing file and native Claude settings updates report these details. Generation commands such as `make ui` keep the details and replace the message with planning guidance.
+`currentRevision` equals what a fresh `read` returns. Do not resend the old request with that revision unchanged: read the file, reapply the change to its current content, then retry through the command's revision guard: `--if-match` for file commands, or a reviewed `--plan-out` plan and `--revisions-from` for generation. `create` has no guard and only adds new paths; replace an existing file with `write --if-match`. `write`, `edit`, `properties`, `patch`, `create` over an existing file and native Claude settings updates report these details. Generation commands such as `make ui` keep the details and replace the message with planning guidance.
 
 **`WORKSPACE_BUSY`** (exit 4, retryable): see the [write contract](cli.md#write-contract) for `details.lock` and `details.stale`.
 
@@ -65,7 +65,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `INVALID_INPUT` | 2 | input | no | The input options are invalid or contradictory. | Use exactly one input source and the option combination named in the message. |
 | `INPUT_REQUIRED` | 2 | input | no | `--stdin` was requested without piped input. | Pipe the content into the command, or use `--content` or `--from` instead. |
 | `INVALID_JSON` | 2 | input | no | The input is not valid JSON. | Pass a valid JSON value; quote it for your shell. |
-| `INVALID_ENCODING` | 2 | input | no | The content is not valid in the required encoding. | Use valid UTF-8 text, or `--encoding` base64 with valid base64 for binary content. |
+| `INVALID_ENCODING` | 2 | input | no | The content is not valid in the required encoding. | Use valid UTF-8 text. For binary content use `write` or `create` with `--stdin`, `--from` or `--encoding base64`; `edit` and structured commands accept only UTF-8 text. |
 | `INVALID_LANGUAGE` | 2 | input | no | The language is not supported. | Use `--lang` en or `--lang` de. |
 | `INVALID_NAME` | 2 | input | no | The name does not follow the required naming rule. | Use the name format described in the message, for example PascalCase. |
 | `INVALID_KEY` | 2 | input | no | The property key is reserved or unsafe. | Use a different property key. |
@@ -74,12 +74,12 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `INVALID_PATH` | 2 | input | no | The path is not a valid workspace-relative path. | Use a relative path inside the selected workspace or project, with forward slashes and no `..` segments. |
 | `UNSAFE_PATH` | 2 | input | no | The path leaves the workspace or crosses a symbolic link. | Use a path inside the workspace that does not traverse symbolic links. |
 | `NOT_FOUND` | 3 | not-found | no | The file or resource does not exist. | Check the path and the selected project (project current); run list to find files. |
-| `CONFLICT` | 2 | conflict | no | The file already exists or its revision changed since it was read. | Read the file again, reapply your change to the current content and retry with the new `--if-match` revision (`error.details.currentRevision`). |
+| `CONFLICT` | 2 | conflict | no | The file already exists or its revision changed since it was read. | Reread the file and reconcile your change with the current content (`error.details.currentRevision`), then retry with the command's revision guard (`--if-match` or `--revisions-from`); `create` only adds new paths. |
 | `NO_MATCH` | 2 | input | no | The `--find` text does not occur in the file. | Read the file again and copy the exact current text into `--find`, including whitespace and line endings. |
 | `AMBIGUOUS_EDIT` | 2 | input | no | The `--find` text occurs more than once, counting overlapping matches. | Extend `--find` with surrounding text so it matches exactly once; `error.details.lines` lists the matching lines. |
 | `UNSUPPORTED_EDIT` | 2 | input | no | This edit is not supported for the file kind. | Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments. |
 | `INVALID_PLAN` | 2 | input | no | The write batch contains duplicate or overlapping paths. | Write each path once and do not write a file where another write needs a directory. |
-| `WORKSPACE_BUSY` | 4 | busy | yes | Another Forge writer holds the workspace lock. | Wait and retry. If `error.details.stale` is "likely", inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. |
+| `WORKSPACE_BUSY` | 4 | busy | yes | Another Forge writer holds the workspace lock. | Wait and retry. If `error.details.stale` is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in `error.details.lock` yourself first. |
 | `ROLLBACK_FAILED` | 1 | runtime | no | A failed write could not restore every file. | Inspect the files named in the message and repair them before retrying. |
 | `INVALID_FRONTMATTER` | 2 | input | no | The YAML frontmatter is invalid. | Fix the frontmatter so it is a YAML mapping, then validate the note. |
 | `INVALID_YAML` | 2 | input | no | The YAML document is invalid. | Fix the YAML syntax, keys or aliases named in the message. |

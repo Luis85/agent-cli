@@ -57,10 +57,11 @@ async function run(): Promise<void> {
   let eventLevel: EventOutput = 'changes';
   try {
     const bootstrap = parseBootstrap(tokens);
-    const requestedEvents = value(bootstrap.flags, 'events');
-    if (requestedEvents !== undefined) eventLevel = eventOutput(requestedEvents);
+    // The requested language applies first, so every later bootstrap failure is reported in it.
     const requestedLanguage = value(bootstrap.flags, 'lang');
     if (requestedLanguage !== undefined) localizer = new Localizer(language(requestedLanguage));
+    const requestedEvents = value(bootstrap.flags, 'events');
+    if (requestedEvents !== undefined) eventLevel = eventOutput(requestedEvents);
     if (bootstrap.flags.version) {
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, 'INVALID_ARGUMENT', '--version does not accept a command.');

@@ -32,6 +32,10 @@ describe('lean agent responses', () => {
     const invalid = cli(['read', 'note.md', '--events', 'verbose']);
     expect(invalid.status).toBe(2);
     expect(invalid.body.error.code).toBe('INVALID_ARGUMENT');
+    // An invalid event level is reported in the requested language wherever both options appear.
+    const german = cli(['--events', 'verbose', '--lang', 'de', 'read', 'note.md']);
+    expect(german.status).toBe(2);
+    expect(german.body.error).toMatchObject({ code: 'INVALID_ARGUMENT', message: 'Die Argumente oder Optionswerte sind für diesen Befehl ungültig.' });
     const workspace = await mkdtemp(join(tmpdir(), 'forge-event-settings-'));
     try {
       await mkdir(join(workspace, 'bin'));

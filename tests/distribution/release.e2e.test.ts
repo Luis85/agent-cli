@@ -76,6 +76,9 @@ describe('release distribution', () => {
     for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
       expect((await readFile(join(project, 'bin/data', path))).length).toBeGreaterThan(0);
     }
+    // Plugins type dry-run write previews with the shipped SDK.
+    const sdk = await readFile(join(project, 'bin/data/types/sdk.d.ts'), 'utf8');
+    for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
     const listed = entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
     expect(listed).toContain('bin/app.js');
