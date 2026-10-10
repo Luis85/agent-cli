@@ -73,12 +73,14 @@ describe('dry-run unified diffs', () => {
   });
 
   it('applies --if-match on dry runs exactly like the real write', async () => {
-    const stale = revisionOf(encodeText('older'));
+    const stale = revisionOf(encodeText('older')), current = revisionOf(encodeText(note));
+    const conflict = (expectedRevision: string | null, currentRevision: string | null, path = 'note.md') => ({ code: 'CONFLICT', exitCode: 2, details: { path, expectedRevision, currentRevision } });
     for (const dryRun of [true, false]) {
       const target = workspace(dryRun).workspace;
-      await expect(target.edit('note.md', stale, replaceFour)).rejects.toMatchObject({ code: 'CONFLICT', exitCode: 2 });
-      await expect(target.write([{ path: 'note.md', bytes: encodeText('x'), expectedRevision: stale }], { diff: true })).rejects.toMatchObject({ code: 'CONFLICT', exitCode: 2 });
-      await expect(target.write([{ path: 'note.md', bytes: encodeText('x') }], { diff: true })).rejects.toMatchObject({ code: 'CONFLICT', exitCode: 2 });
+      await expect(target.edit('note.md', stale, replaceFour)).rejects.toMatchObject(conflict(stale, current));
+      await expect(target.write([{ path: 'note.md', bytes: encodeText('x'), expectedRevision: stale }], { diff: true })).rejects.toMatchObject(conflict(stale, current));
+      await expect(target.write([{ path: 'note.md', bytes: encodeText('x') }], { diff: true })).rejects.toMatchObject(conflict(null, current));
+      await expect(target.write([{ path: 'absent.md', bytes: encodeText('x'), expectedRevision: stale }], { diff: true })).rejects.toMatchObject(conflict(stale, null, 'absent.md'));
     }
     expect(await readFile(join(root, 'note.md'), 'utf8')).toBe(note);
   });

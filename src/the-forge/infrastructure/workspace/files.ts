@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open, unlink } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
-import { errorMessage, AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../../domain/documents/file.ts';
-import { snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
+import { revisionConflict, snapshotWriteRequests, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { FileRepository } from '../../application/workspace/ports.ts';
 import { syncDirectory } from './durable.ts';
 import { acquireLock, lockName, releaseLock, type LockOwner } from './lock.ts';
@@ -40,7 +40,7 @@ export class NodeFiles implements FileRepository {
       const bytes = await readFile(await this.resolvePath(path));
       return { path, bytes, revision: revisionOf(bytes) };
     } catch (error) {
-      if (missing(error)) throw new AppError('NOT_FOUND', `File not found: ${path}`, 3);
+      if (missing(error)) throw forgeError('NOT_FOUND', `File not found: ${path}`);
       throw error;
     }
   }
@@ -65,19 +65,21 @@ export class NodeFiles implements FileRepository {
     } catch (error) { if (!missing(error)) throw error; return undefined; }
   }
   private async assertRevision(path: string, expected: string | undefined): Promise<void> {
-    ensure((await this.stored(path))?.revision === expected, 'CONFLICT', `File changed; read again before modifying: ${path}`);
+    const current = (await this.stored(path))?.revision;
+    ensure(current === expected, 'CONFLICT', `File changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
   async remove(path: string, expectedRevision: string, dryRun: boolean): Promise<FileChange> {
     path = vaultPath(path);
-    ensure(typeof expectedRevision === 'string' && expectedRevision.length > 0, 'CONFLICT', `Removing a file requires its current --if-match revision: ${path}`);
+    const guarded = typeof expectedRevision === 'string' && expectedRevision.length > 0;
     const lock = join(this.root, lockName);
     let locked = false;
     try {
       if (!dryRun) { await acquireLock(lock, this.owner); locked = true; }
       const target = await this.resolvePath(path);
       const before = await this.stored(path);
-      if (before === undefined) throw new AppError('NOT_FOUND', `File not found: ${path}`, 3);
-      ensure(before.revision === expectedRevision, 'CONFLICT', `File changed; read again before removing: ${path}`);
+      if (before === undefined) throw forgeError('NOT_FOUND', `File not found: ${path}`);
+      ensure(guarded, 'CONFLICT', `Removing a file requires its current --if-match revision: ${path}`, revisionConflict(path, null, before.revision));
+      ensure(before.revision === expectedRevision, 'CONFLICT', `File changed; read again before removing: ${path}`, revisionConflict(path, expectedRevision, before.revision));
       if (!dryRun) {
         await this.assertRevision(path, expectedRevision);
         // unlink cannot remove a directory, even if an external writer replaces the file.
@@ -101,12 +103,17 @@ export class NodeFiles implements FileRepository {
     try {
       if (!dryRun) { await acquireLock(lock, this.owner); locked = true; }
       const plans: FilePlan[] = [];
+      const conflicts: RevisionConflict[] = [];
       for (const write of requests) {
         const target = await this.resolvePath(write.path);
         const before = await this.stored(write.path);
-        ensure(before === undefined ? write.expectedRevision === undefined : write.expectedRevision === before.revision, 'CONFLICT', `Existing files require their current --if-match revision: ${write.path}`);
+        if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
         plans.push({ write, target, before });
       }
+      // The first conflict keeps single-file details flat; multi-file batches also list every conflicting path.
+      const [conflict] = conflicts;
+      ensure(conflict === undefined, 'CONFLICT', `Existing files require their current --if-match revision: ${conflicts.map(item => item.path).join(', ')}`,
+        conflict && { ...conflict, ...(requests.length > 1 ? { conflicts } : {}) });
       if (!dryRun) {
         for (const plan of plans) {
           let directory = this.root;
@@ -146,7 +153,7 @@ export class NodeFiles implements FileRepository {
         try { await syncDirectory(directory); }
         catch { failures.push(directory); }
       }
-      if (failures.length) throw new AppError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
+      if (failures.length) throw forgeError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
       throw error;
     } finally { if (locked) await this.cleanupLock(lock); }
   }

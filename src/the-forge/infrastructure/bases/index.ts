@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { frontmatterLink, type ContextFileInput, type PropertyValueType } from 'obsidian-bases-expression';
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
-import { errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { NodeFiles } from '../workspace/files.ts';
 import { baseLinkIndex, indexBaseLinks, resolveBaseLink, type BaseLinkIndex } from './links.ts';
 
@@ -45,7 +45,7 @@ async function indexBaseFile(files: NodeFiles, codec: DocumentCodec, path: strin
       const document = codec.inspect(path, (await files.read(path)).bytes) as { properties: Record<string, unknown>; body: string };
       properties = document.properties; body = document.body;
     } catch (error) {
-      throw new AppError('BASE_INDEX_ERROR', `Cannot index ${path}: ${errorMessage(error)}`, 2);
+      throw forgeError('BASE_INDEX_ERROR', `Cannot index ${path}: ${errorMessage(error)}`);
     }
   }
   const links = indexBaseLinks(body, properties, path, paths);
@@ -70,7 +70,7 @@ export async function basePropertyTypes(files: NodeFiles): Promise<Record<string
   try { data = JSON.parse(new TextDecoder().decode((await files.read('.obsidian/types.json')).bytes)); }
   catch (error) {
     if (error instanceof AppError && error.code === 'NOT_FOUND') return {};
-    if (error instanceof SyntaxError) throw new AppError('INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain valid JSON.', 2);
+    if (error instanceof SyntaxError) throw forgeError('INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain valid JSON.');
     throw error;
   }
   ensure(isRecord(data) && isRecord(data.types), 'INVALID_BASE_PROPERTY_TYPES', '.obsidian/types.json must contain a types mapping.');

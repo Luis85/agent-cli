@@ -1,4 +1,4 @@
-import { AppError, ensure, isRecord, errorMessage } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord, errorMessage } from '../../domain/shared/errors.ts';
 
 export interface EventDefinition<T = unknown> { id: string; description?: string; validate: (payload: unknown) => payload is T }
 export interface EventRecord { id: string; payload: unknown }
@@ -100,7 +100,7 @@ export class EventBus {
       // Drain its rejection while rejecting the unsupported asynchronous result.
       if (valid instanceof Promise) void valid.catch(() => {});
       ensure(valid === true, 'INVALID_EVENT_PAYLOAD', id);
-    } catch { throw new AppError('INVALID_EVENT_PAYLOAD', `Invalid payload for ${id}.`, 2); }
+    } catch { throw forgeError('INVALID_EVENT_PAYLOAD', `Invalid payload for ${id}.`); }
     const depth = this.delivery.depth();
     ensure(depth < 32, 'EVENT_RECURSION', 'Event recursion exceeds 32.');
     if (this.history.length < 1000) this.history.push({ id, payload: structuredClone(snapshot) });

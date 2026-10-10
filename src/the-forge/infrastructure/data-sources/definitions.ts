@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import type { DataSourceDefinition, DataSourceField, DataSourceValue } from '../../domain/data-sources/definition.ts';
 import type { DataSourceDefinitionCodec } from '../../application/data-sources/library.ts';
@@ -95,7 +95,7 @@ export class MarkdownDataSourceDefinitions implements DataSourceDefinitionCodec 
       return { ...result.data, description: document.body, sourcePath: path };
     } catch (error) {
       if (error instanceof AppError && error.code === 'INVALID_DATA_SOURCE') throw error;
-      throw new AppError('INVALID_DATA_SOURCE', `${path}: ${error instanceof Error ? error.message : 'Invalid data-source definition.'}`, 2);
+      throw forgeError('INVALID_DATA_SOURCE', `${path}: ${error instanceof Error ? error.message : 'Invalid data-source definition.'}`);
     }
   }
   serialize(definition: DataSourceDefinition): Uint8Array {

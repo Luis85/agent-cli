@@ -1,4 +1,4 @@
-import { AppError, ensure, isRecord, summarizeError } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord, summarizeError } from '../../domain/shared/errors.ts';
 import type { ClaudeRuntime } from './runtime.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent } from '../plugins/host-events.ts';
@@ -92,8 +92,8 @@ export class ClaudeLifecycle implements ClaudeLifecycleClient {
     let data: unknown, malformed = false;
     try { data = nativeResult(result.stdout, output); } catch { malformed = true; }
     const details = { ...plan, ...result, ...(data === undefined ? {} : { result: data }) };
-    if (result.exitCode !== 0) throw new AppError('CLAUDE_RUNTIME_FAILED', `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, 1, details);
-    if (malformed) throw new AppError('CLAUDE_INVALID_OUTPUT', 'Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.', 1, details);
+    if (result.exitCode !== 0) throw forgeError('CLAUDE_RUNTIME_FAILED', `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, details);
+    if (malformed) throw forgeError('CLAUDE_INVALID_OUTPUT', 'Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.', details);
     return { dryRun: false, executed: true, ...details };
   }
 }

@@ -4,7 +4,7 @@ import advancedFormat from 'dayjs/plugin/advancedFormat.js';
 import localizedFormat from 'dayjs/plugin/localizedFormat.js';
 import { isMap, isScalar, parseDocument, visit } from 'yaml';
 import type { DocumentTemplates, TemplateInspection, TemplateOptions } from '../../application/templates/templates.ts';
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { parseMarkdownParts } from '../documents/codec.ts';
 
 dayjs.extend(utc);
@@ -15,7 +15,7 @@ interface Placeholder { expression: string; key: string; format?: string; start:
 
 function textOf(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Templates must be valid UTF-8.', 2); }
+  catch { throw forgeError('INVALID_ENCODING', 'Templates must be valid UTF-8.'); }
 }
 
 function placeholders(text: string): Placeholder[] {
@@ -98,9 +98,9 @@ function renderYaml(source: string, resolve: (token: Placeholder) => unknown): s
   ensure(consumed.size === tokens.length, 'INVALID_TEMPLATE', 'Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.');
   let data: unknown;
   try { data = document.toJS({ maxAliasCount: 100 }); }
-  catch { throw new AppError('INVALID_TEMPLATE', 'Template YAML aliases are invalid or excessive.', 2); }
+  catch { throw forgeError('INVALID_TEMPLATE', 'Template YAML aliases are invalid or excessive.'); }
   try { jsonValue(data); }
-  catch { throw new AppError('INVALID_TEMPLATE', 'Template YAML must contain JSON-compatible values without cycles.', 2); }
+  catch { throw forgeError('INVALID_TEMPLATE', 'Template YAML must contain JSON-compatible values without cycles.'); }
   return document.toString();
 }
 
@@ -143,7 +143,7 @@ export class MarkdownTemplates implements DocumentTemplates {
       if (token.key === 'date' || token.key === 'time') {
         const format = token.format ?? (token.key === 'date' ? options.dateFormat ?? 'YYYY-MM-DD' : options.timeFormat ?? 'HH:mm');
         try { return date.format(format); }
-        catch { throw new AppError('INVALID_TEMPLATE_DATE', `Unsupported date format: ${format}.`, 2); }
+        catch { throw forgeError('INVALID_TEMPLATE_DATE', `Unsupported date format: ${format}.`); }
       }
       ensure(Object.hasOwn(values, token.key), 'UNKNOWN_TEMPLATE_VARIABLE', `Missing template value: ${token.key}.`);
       return values[token.key];

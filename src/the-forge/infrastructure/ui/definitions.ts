@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import type { UiDefinition, UiJson, UiNode } from '../../domain/ui/definition.ts';
 import { uiVoidTags } from '../../domain/ui/syntax.ts';
@@ -57,7 +57,7 @@ export class MarkdownUiDefinitions implements UiDefinitionCodec {
       return { ...result.data, description: document.body, sourcePath: path };
     } catch (error) {
       if (error instanceof AppError && error.code === 'INVALID_UI') throw error;
-      throw new AppError('INVALID_UI', `${path}: ${error instanceof Error ? error.message : 'Invalid component definition.'}`, 2);
+      throw forgeError('INVALID_UI', `${path}: ${error instanceof Error ? error.message : 'Invalid component definition.'}`);
     }
   }
   serialize(definition: UiDefinition): Uint8Array {

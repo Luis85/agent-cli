@@ -1,5 +1,6 @@
 import metadata from '../../../../package.json';
 import { ensure } from '../../domain/shared/errors.ts';
+import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
 import { nativeFormats, textExtensions } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
@@ -9,7 +10,7 @@ import { generatorCatalog } from '../generation/commands.ts';
 export function catalogCommands(registry: Registry): Command[] {
   const catalog = () => ({
     name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node,
-    globalOptions, output: '{ ok, data?, error?: {code,message,details?}, context?: {workspaceRoot,root,project}, events, warnings }',
+    globalOptions, output: '{ ok, data?, error?: {code,message,hint?,retryable?,details?}, context?: {workspaceRoot,root,project}, events, warnings }',
     eventOutput: { option: '--events', setting: 'settings.events', levels: eventOutputLevels, default: 'changes', changes: 'Only committed file.created, file.updated and file.deleted records.' },
     commands: [...registry.commands.values()].map(({ id, description, usage, options }) => ({ id, description, usage, options: options ?? {} })),
     generators: generatorCatalog(registry),
@@ -22,7 +23,11 @@ export function catalogCommands(registry: Registry): Command[] {
       const command = registry.commands.get(args[0]); ensure(command, 'UNKNOWN_COMMAND', args[0]);
       const { id, description, usage, options } = command; return { id, description, usage, options: options ?? {}, globalOptions };
     } },
-    { id: 'schema', description: 'Machine-readable capability catalog.', usage: 'schema', run(args) { arity(args, 0); return catalog(); } },
+    { id: 'schema', description: 'Machine-readable capability catalog.', usage: 'schema', run(args) {
+      arity(args, 0);
+      // Built-in failure codes; hints arrive with each failure as error.hint.
+      return { ...catalog(), errors: errorCodes.map(code => { const { exitCode, category, retryable, summary } = errorCatalog[code]; return { code, exitCode, category, retryable, summary }; }) };
+    } },
     { id: 'formats', description: 'Native Obsidian formats and supported operations.', usage: 'formats', run(args) {
       arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFiles: 'UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
     } },

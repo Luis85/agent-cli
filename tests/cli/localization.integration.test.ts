@@ -1,11 +1,9 @@
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadConfig } from '../../src/the-forge/infrastructure/workspace/config.ts';
-import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { germanCommands, germanGenerators } from '../../src/the-forge/presentation/localization/catalog.ts';
-import { germanErrors } from '../../src/the-forge/presentation/localization/errors.ts';
 import { commands } from '../../src/the-forge/presentation/cli/commands.ts';
 import { basesCommand } from '../../src/the-forge/presentation/bases/commands.ts';
 import { claudeCommand } from '../../src/the-forge/presentation/claude/commands.ts';
@@ -13,29 +11,8 @@ import { generators } from '../../src/the-forge/infrastructure/generation/genera
 import { Registry } from '../../src/the-forge/application/plugins/registry.ts';
 import type { WorkflowServices } from '../../src/the-forge/presentation/cli/services.ts';
 
-async function sources(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
-  return (await Promise.all(entries.map(entry => entry.isDirectory() ? sources(join(directory, entry.name)) : [join(directory, entry.name)]))).flat().filter(path => path.endsWith('.ts'));
-}
-
+// Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
-  it('covers all statically declared application error codes and dynamic boundary codes', async () => {
-    const codes = new Set(['UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'OPERATION_FAILED', 'INVALID_RESULT', 'GENERATION_DRIFT', 'UI_DRIFT', 'DATA_SOURCE_DRIFT']);
-    for (const path of await sources('src/the-forge')) {
-      const source = ts.createSourceFile(path, await readFile(path, 'utf8'), ts.ScriptTarget.Latest, true);
-      const visit = (node: ts.Node): void => {
-        const offset = ts.isCallExpression(node) && node.expression.getText(source) === 'ensure' ? 1
-          : ts.isNewExpression(node) && node.expression.getText(source) === 'AppError' ? 0 : undefined;
-        if (offset !== undefined && (ts.isCallExpression(node) || ts.isNewExpression(node))) {
-          const code = node.arguments?.[offset];
-          if (code && ts.isStringLiteral(code)) codes.add(code.text);
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(source);
-    }
-    expect([...codes].filter(code => !Object.hasOwn(germanErrors, code))).toEqual([]);
-  });
   it('covers every registered built-in command and generator', async () => {
     const root = await mkdtemp(join(tmpdir(), 'forge-locale-catalog-'));
     try {

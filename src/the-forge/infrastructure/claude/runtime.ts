@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import type { ClaudeRuntime, ClaudeRuntimeOptions, ClaudeRuntimeResult } from '../../application/claude/runtime.ts';
-import { errorMessage, AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
+import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 
 interface NodeClaudeRuntimeOptions {
   executable?: string;
@@ -31,8 +32,7 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
     let directory: boolean;
     try { directory = (await stat(options.cwd)).isDirectory(); }
     catch (error) {
-      throw new AppError('CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Cannot access Claude working directory: ${options.cwd}`, 1,
-        { cause: errorMessage(error) });
+      throw forgeError('CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Cannot access Claude working directory: ${options.cwd}`, { cause: errorMessage(error) });
     }
     ensure(directory, 'CLAUDE_WORKING_DIRECTORY_UNAVAILABLE', `Claude working directory is not a directory: ${options.cwd}`);
 
@@ -59,7 +59,7 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
         process.removeListener('SIGTERM', terminate);
         process.removeListener('exit', exit);
       };
-      const fail = (code: string, message: string, details: Record<string, unknown> = {}, exitCode = 1) => {
+      const fail = (code: ErrorCode, message: string, details: Record<string, unknown> = {}, exitCode?: number) => {
         if (settled) return;
         settled = true;
         cleanup();
@@ -73,10 +73,10 @@ export class NodeClaudeRuntime implements ClaudeRuntime {
         if (['CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_OUTPUT_LIMIT', 'CLAUDE_COMMAND_INTERRUPTED'].includes(code)) {
           message += ` ${terminationRequested ? 'Termination requested.' : 'Termination could not be requested.'} Inspect its state before retrying.`;
         }
-        reject(new AppError(code, message, exitCode, { executable: this.executable, ...details,
-          terminationScope: grouped ? 'process-group' : 'direct-process', terminationRequested, ...output() }));
+        reject(forgeError(code, message, { executable: this.executable, ...details,
+          terminationScope: grouped ? 'process-group' : 'direct-process', terminationRequested, ...output() }, exitCode));
       };
-      const interrupt = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGINT while running Claude.', { signal: 'SIGINT' }, 130);
+      const interrupt = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGINT while running Claude.', { signal: 'SIGINT' });
       const terminate = () => fail('CLAUDE_COMMAND_INTERRUPTED', 'Forge received SIGTERM while running Claude.', { signal: 'SIGTERM' }, 143);
       const exit = () => { try { stop(); } catch { /* The host is already exiting; cleanup cannot be reported asynchronously. */ } };
       process.once('SIGINT', interrupt);

@@ -1,5 +1,6 @@
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { validateClaudeHooks } from '../../domain/claude/hooks.ts';
+import { revisionConflict } from '../../domain/documents/write-plan.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 
 const policyBooleans = ['disableAllHooks', 'allowManagedHooksOnly'];
@@ -23,7 +24,7 @@ export class ClaudeSettings {
       const file = await this.workspace.files.read(this.path);
       let settings: unknown;
       try { settings = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(file.bytes)); }
-      catch { throw new AppError('INVALID_CLAUDE_SETTINGS', `Expected UTF-8 JSON settings at ${this.path}.`, 2); }
+      catch { throw forgeError('INVALID_CLAUDE_SETTINGS', `Expected UTF-8 JSON settings at ${this.path}.`); }
       ensure(isRecord(settings), 'INVALID_CLAUDE_SETTINGS', 'Claude settings must be a JSON object.');
       return { path: this.path, revision: file.revision, settings, hooks: Object.hasOwn(settings, 'hooks') ? settings.hooks : {} };
     } catch (error) {
@@ -98,7 +99,7 @@ export class ClaudeSettings {
   }
 
   private async save(settings: Record<string, unknown>, actual: string | null, expected?: string) {
-    ensure(actual === (expected ?? null), 'CONFLICT', `Inspect ${this.path} and supply its current --if-match revision before updating existing settings.`);
+    ensure(actual === (expected ?? null), 'CONFLICT', `Inspect ${this.path} and supply its current --if-match revision before updating existing settings.`, revisionConflict(this.path, expected, actual));
     const content = JSON.stringify(settings, null, 2) + '\n';
     const result = await this.workspace.write([{ path: this.path, bytes: new TextEncoder().encode(content), ...(expected ? { expectedRevision: expected } : {}) }]);
     return { path: this.path, ...result, ...(result.dryRun ? { preview: [{ path: this.path, content }] } : {}) };

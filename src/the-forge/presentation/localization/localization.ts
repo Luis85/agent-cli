@@ -1,8 +1,10 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
 import { germanCommands, germanGenerators, germanGuidance } from './catalog.ts';
 import { germanErrors } from './errors.ts';
+import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 
 export type Language = 'en' | 'de';
+export interface LocalizedError { code: string; message: string; hint?: string; retryable?: boolean; details?: Record<string, unknown> }
 export function language(value: string): Language {
   ensure(value === 'en' || value === 'de', 'INVALID_LANGUAGE', 'Unsupported language. Use --lang en or --lang de.');
   return value;
@@ -29,8 +31,16 @@ export class Localizer {
     });
   }
 
+  private errors(items: unknown[]): unknown[] {
+    return items.map((item: unknown) => {
+      if (!isRecord(item) || typeof item.code !== 'string' || !errorDefinition(item.code)) return item;
+      return { ...item, summary: germanErrors[item.code as ErrorCode].summary };
+    });
+  }
+
   result(command: string, data: unknown): unknown {
     if (this.language === 'en' || !isRecord(data)) return data;
+    if (command === 'schema' && Array.isArray(data.errors)) return { ...data, generators: this.generators(data.generators), errors: this.errors(data.errors) };
     if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
     if (['components', 'data-sources', 'interactions'].includes(command) && data.status === 'empty' && typeof data.directory === 'string' && typeof data.nextStep === 'string') {
       return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
@@ -47,7 +57,8 @@ export class Localizer {
     return data;
   }
 
-  error(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
+  /** Built-in codes add a catalog hint and retryability; plugin-defined codes keep their own shape. */
+  error(error: unknown): LocalizedError {
     const code = error instanceof AppError ? error.code : 'OPERATION_FAILED';
     const diagnostic = errorMessage(error);
     let details = error instanceof AppError ? error.details : undefined;
@@ -56,9 +67,11 @@ export class Localizer {
       try { details = JSON.parse(JSON.stringify(details)) as Record<string, unknown>; }
       catch { details = { diagnostic: 'Error details were not JSON-serializable.' }; }
     }
-    const message = this.language === 'de' ? translated(germanErrors, code) : undefined;
-    if (!message) return { code, message: diagnostic, ...(details ? { details } : {}) };
+    const definition = errorDefinition(code);
+    if (!definition) return { code, message: diagnostic, ...(details ? { details } : {}) };
+    const german = this.language === 'de' ? germanErrors[code as ErrorCode] : undefined;
+    if (!german) return { code, message: diagnostic, hint: definition.hint, retryable: definition.retryable, ...(details ? { details } : {}) };
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
-    return { code, message, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
+    return { code, message: german.summary, hint: german.hint, retryable: definition.retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }
 }

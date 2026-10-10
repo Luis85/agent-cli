@@ -1,5 +1,5 @@
 import { stringify } from 'yaml';
-import { errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { validateClaudeAgent, type ClaudeAgentDocument } from '../../domain/claude/agents.ts';
 import { ObsidianDocuments, parseMarkdownParts } from '../documents/codec.ts';
 
@@ -14,7 +14,7 @@ export function parseClaudeAgent(text: string): ClaudeAgentDocument {
     return { metadata: document.properties, prompt: document.body };
   } catch (error) {
     if (error instanceof AppError && error.code === 'INVALID_CLAUDE_AGENT') throw error;
-    throw new AppError('INVALID_CLAUDE_AGENT', `Invalid agent definition: ${errorMessage(error)}`, 2);
+    throw forgeError('INVALID_CLAUDE_AGENT', `Invalid agent definition: ${errorMessage(error)}`);
   }
 }
 

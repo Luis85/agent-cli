@@ -58,12 +58,12 @@ describe('CRLF Markdown keeps raw-byte revisions', () => {
     expect(/(?<!\r)\n/.test(bytes.toString('utf8'))).toBe(false);
     expect(result.changes[0]!.revision).toBe(sha256(expected));
     expect(await revision('note.md')).toBe(sha256(expected));
-    await expect(run('edit', ['note.md'], { 'if-match': before, find: 'Changed', replace: 'Stale' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(run('edit', ['note.md'], { 'if-match': before, find: 'Changed', replace: 'Stale' })).rejects.toMatchObject({ code: 'CONFLICT', details: { path: 'note.md', expectedRevision: before, currentRevision: sha256(expected) } });
   });
 
   it('matches line endings literally: CRLF find text applies, an LF-only find text leaves the file untouched', async () => {
     await writeFile(join(root, 'note.md'), original);
-    await expect(run('edit', ['note.md'], { 'if-match': await revision('note.md'), find: 'First line\nSecond line', replace: 'Joined' })).rejects.toMatchObject({ code: expect.any(String) });
+    await expect(run('edit', ['note.md'], { 'if-match': await revision('note.md'), find: 'First line\nSecond line', replace: 'Joined' })).rejects.toMatchObject({ code: 'NO_MATCH', exitCode: 2, details: { find: 'First line\nSecond line', matches: 0 } });
     expect(await readFile(join(root, 'note.md'), 'utf8')).toBe(original);
     await run('edit', ['note.md'], { 'if-match': await revision('note.md'), find: 'First line\r\nSecond line', replace: 'Joined' });
     expect(await readFile(join(root, 'note.md'), 'utf8')).toBe(original.replace('First line\r\nSecond line', 'Joined'));

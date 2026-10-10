@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import metadata from '../../package.json';
-import { AppError, ensure } from './domain/shared/errors.ts';
+import { forgeError, AppError, ensure } from './domain/shared/errors.ts';
 import { EventBus } from './application/plugins/events.ts';
 import { registerHostEvents, type HostEventMap } from './application/plugins/host-events.ts';
 import { invokeCommand } from './application/plugins/invocation.ts';
@@ -149,7 +149,7 @@ async function run(): Promise<void> {
   catch {
     process.exitCode = 1;
     // Keep committed change evidence even if a plugin command returns invalid data.
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(new AppError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }) + '\n');
+    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }) + '\n');
   }
 }
 void run();

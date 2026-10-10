@@ -14,7 +14,7 @@ describe('presentation localization', () => {
     const result = { path: 'hello.md', content: 'The text is German: Hallo' };
     expect(localizer.command(command)).toBe(command);
     expect(localizer.result('read', result)).toBe(result);
-    expect(localizer.error(new AppError('CONFLICT', 'Original conflict', 2, { revision: '123' }))).toEqual({ code: 'CONFLICT', message: 'Original conflict', details: { revision: '123' } });
+    expect(localizer.error(new AppError('CONFLICT', 'Original conflict', 2, { revision: '123' }))).toEqual({ code: 'CONFLICT', message: 'Original conflict', hint: expect.stringContaining('--if-match'), retryable: false, details: { revision: '123' } });
   });
   it('preserves diagnostics and existing error details without mutating them', () => {
     const localizer = new Localizer('de');

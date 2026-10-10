@@ -1,4 +1,4 @@
-import { AppError, ensure, isRecord } from '../shared/errors.ts';
+import { ensure, forgeError, isRecord } from '../shared/errors.ts';
 import { validateClaudeHooks } from './hooks.ts';
 
 /** Native Claude Code frontmatter stays extensible; omitted capabilities stay omitted. */
@@ -73,6 +73,6 @@ export function validateClaudeAgent(metadata: unknown, prompt: unknown): asserts
   if (metadata.mcpServers !== undefined) mcpServers(metadata.mcpServers);
   if (metadata.hooks !== undefined) {
     try { validateClaudeHooks(metadata.hooks); }
-    catch (error) { throw new AppError('INVALID_CLAUDE_AGENT', `Agent hooks: ${error instanceof Error ? error.message : 'Invalid hooks.'}`, 2); }
+    catch (error) { throw forgeError('INVALID_CLAUDE_AGENT', `Agent hooks: ${error instanceof Error ? error.message : 'Invalid hooks.'}`); }
   }
 }
