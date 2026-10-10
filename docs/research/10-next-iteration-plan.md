@@ -2,7 +2,7 @@
 
 [Research index](README.md) · Drafted 2026-10-10 · Status: proposal for review
 
-This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request, in the order M1, M1b, M2, M3, M4, M4b, M5, M6. Each milestone defines its acceptance examples first and ends with `npm run check`.
+This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request, in the order M1, M1b, M2, M3, M3b, M4, M4b, M5, M6. Each milestone defines its acceptance examples first and ends with `npm run check`.
 
 ## Product direction
 
@@ -166,6 +166,34 @@ Every project under `src/` is fully independent and self-contained, The Forge in
   - A user plugin can call `app.metadataCache.getFileCache`, contribute a config section and German strings, and react to `vault.rename`.
   - Architecture tests reject a plugin-to-plugin import.
 
+### M3b: Agent definitions with docker-agent compatibility
+
+Users create and maintain agent definitions for their environment in [docker-agent](https://github.com/docker/docker-agent) YAML. Claude Code agents are generated from those definitions. The format and the mapping are recorded in the [docker-agent contract](11-docker-agent-contract.md).
+
+- **New core plugin `agents`.** Definition files live at `<scope>/agents/*.yaml`, a path set by the plugin's config section. One file can define a team of agents, exactly as in docker-agent. Forge stores the files verbatim and preserves comments.
+- **Validation.**
+  - The vendored docker-agent JSON Schema (draft-07, v16, strict) is pinned to a recorded docker-agent commit, refreshed by a script, and tested against docker-agent's own `examples/*.yaml`.
+  - Forge then applies docker-agent's semantic checks: agent references resolve, `instruction` and `instruction_file` are exclusive, `force_handoff` has no cycles, and models resolve.
+  - Versions other than absent or `"16"` get a diagnostic.
+- **Commands:**
+  - `agents list|inspect|validate`
+  - `agents create <name> [--from-template …]`, which writes valid docker-agent YAML
+  - `agents import --from claude <agent>`, which converts a Claude agent into docker-agent YAML (approximate, with diagnostics)
+  - `agents generate --target claude [--agent <name>] [--plan|--check|--dry-run] [--revisions-from …]`
+- **Generation** follows the same pattern as UI generation:
+  - It writes `.claude/agents/<name>.md` for each agent: frontmatter from the mapping table and the instruction as the body.
+  - Merging MCP servers into `.mcp.json`, permissions and the main agent into project settings, and commands into `.claude/skills/` are each opt-in.
+  - Every unmapped field becomes a diagnostic with severity, code, JSON pointer and fidelity.
+  - Generated files carry `x-forge-source` provenance. `--check` detects drift with exit 5, and regeneration is revision-guarded.
+  - It reuses the existing `claude` validation for the generated agent files.
+- **Events:** `agents.generated`, plus normal `vault.*` records.
+- **Showcase:** a docker-agent team (a root agent with sub-agents, an MCP toolset and a command) with its generated Claude agents.
+- **Acceptance:**
+  - Every docker-agent example in the pinned commit validates.
+  - Generation from `dev-team.yaml`, `mcp-definitions.yaml` and `agent_switching_commands.yaml` produces stable files and diagnostic sets.
+  - The generated agents pass Forge's Claude agent validation.
+  - `--check` reports drift after a hand edit.
+
 ### M4: The `backlog` core plugin
 
 The plugin is compatible with backlog-view 0.10.0 and its unreleased global rank, following the [contract](09-backlog-view-contract.md). The backlog's `.base` view options are the configuration source of truth.
@@ -258,7 +286,8 @@ The knowledge-graph vision builds on M2 and M6. Specs, backlog items, docs and c
 | Delete semantics | Move to `.trash/` by default, with `--permanent` to remove |
 | Core plugin source layout | `src/the-forge/plugins/<id>/<layer>/…`, with the kernel staying in the existing layer folders |
 | Backlog first cut | Items, hierarchy, ranks, states, dependencies, iterations and releases; estimation, My Work and absences read-only for now |
-| Milestone order | M1 → M1b → M2 → M3 → M4 → M4b → M5 → M6 (approved; M1b added for self-contained projects, M4b for backlog connectors) |
+| Milestone order | M1 → M1b → M2 → M3 → M3b → M4 → M4b → M5 → M6 (M1b, M3b and M4b added on request) |
+| Agent definitions | docker-agent YAML is the source of truth; Claude agents are generated from it (requested) |
 | Connectors | Two-way sync with explicit conflicts; connection profiles in workspace config; Azure DevOps first, then GitHub and Jira (approved) |
 | Project independence | Every project under `src/`, The Forge included, is self-contained with its own toolchain, tests and workflows (approved) |
 | Workflow wiring | Project-authored workflows synced into `.github/workflows/` by `workflows sync`, drift-checked in CI (approved) |

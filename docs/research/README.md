@@ -15,6 +15,7 @@ This research asks four questions about The Forge at v0.1.0. What can it help wi
 | 07 | [Engineering workflow and adoption](07-workflow-and-adoption.md) | AI-assisted SDLC, context engineering, onboarding, naming, open-source go-to-market | WA-1 to WA-13 |
 | 08 | [Obsidian event model](08-obsidian-event-model.md) | Reference: vault, metadata cache, workspace and lifecycle events from `obsidian.d.ts` | none |
 | 09 | [backlog-view compatibility contract](09-backlog-view-contract.md) | Reference: on-disk format and write rules of the backlog-view plugin | none |
+| 11 | [docker-agent contract](11-docker-agent-contract.md) | Reference: docker-agent YAML format, Claude Code artifacts and the generation mapping | none |
 | 10 | [Next iteration plan](10-next-iteration-plan.md) | Product direction, kernel and core-plugin architecture, event parity, milestones M1–M6 | none |
 
 ## What The Forge helps with today
