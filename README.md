@@ -83,7 +83,7 @@ node bin/app.js create tasks.base
 
 Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input, check `--if-match` like the real write, and report planned hashes, paths and a unified `diff` per text file without writing files or emitting file events. Responses carry only committed file-change events by default; add `--events all` for the full lifecycle history. See [dry-run diffs](docs/reference/cli.md#dry-run-diffs).
 
-If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. Follow the [write and recovery contract](docs/reference/cli.md#write-contract) before removing it.
+If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. `error.details.lock` names the holder's pid, host, start time and command, and `error.details.stale` reports `active`, `likely` or `unknown`. Forge never removes the lock itself; follow the [write and recovery contract](docs/reference/cli.md#write-contract) before deleting it.
 
 ## Documentation
 
