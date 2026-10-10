@@ -2,7 +2,7 @@
 
 [Research index](README.md) · Drafted 2026-10-10 · Status: proposal for review
 
-This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request. Each milestone defines its acceptance examples first and ends with `npm run check`.
+This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request, in the order M1, M1b, M2, M3, M4, M5, M6. Each milestone defines its acceptance examples first and ends with `npm run check`.
 
 ## Product direction
 
@@ -136,6 +136,19 @@ These items need no architecture change and ship first.
 | Cross-platform CI | Ubuntu, Windows and macOS × Node 22.12 and 24. `.gitattributes` sets LF endings. Tests cover CRLF revisions and case-only renames |
 | Error catalog | Every thrown code is documented, which a test enforces. `NO_MATCH` is split from `AMBIGUOUS_EDIT`. `CONFLICT` includes the current revision |
 
+### M1b: Self-contained projects and project-owned workflows
+
+Every project under `src/` is fully independent and self-contained, The Forge included.
+
+- **The Forge moves in.** Its `package.json`, lockfile, `tests/`, `scripts/`, `configs/`, build and test configuration, and product documentation move into `src/the-forge/`. Runtime source moves to `src/the-forge/src/<layer>/<concern>/`, the same layout as generated projects. The repository root becomes a thin workspace: the shipped `bin/` distribution, the workspace `README.md`, `AGENTS.md`, `LICENSE`, `.gitattributes` and the synced `.github/workflows/`. Building The Forge still produces the workspace `bin/` distribution, preserving checkout configuration and selection. `AGENTS.md` and all docs describe the new layout.
+- **Project-owned workflows.** Each project authors its CI workflows, grouped by concern, under `<project>/src/infrastructure/workflows/<concern>/`. A new `workflows sync` command generates the root `.github/workflows/<project>--<concern>.yml` copies that GitHub requires. Each copy is scoped to its project's paths and its working directory is set to the project. `workflows sync --check` exits non-zero on drift, and a root guard workflow runs that check. The authored files are the single source of truth.
+- **The showcase is self-contained.** It has its own toolchain, lockfile, generated test suite and workflows. Its own CI runs `npm ci` and `npm run check` inside `src/forge-showcase`.
+- **Acceptance:**
+  - `npm ci && npm run check` succeeds inside `src/the-forge` and inside `src/forge-showcase`, each without the other.
+  - `workflows sync --check` passes.
+  - CI runs each project's workflows.
+  - The repository root contains no project toolchain.
+
 ### M2: Vault kernel, MetadataCache and events
 
 - Lift the index into a kernel MetadataCache. Add headings, block IDs, aliases, positions, display text and subpaths, plus `resolvedLinks` and `unresolvedLinks`. Bases consumes it.
@@ -201,4 +214,6 @@ The knowledge-graph vision builds on M2 and M6. Specs, backlog items, docs and c
 | Delete semantics | Move to `.trash/` by default, with `--permanent` to remove |
 | Core plugin source layout | `src/the-forge/plugins/<id>/<layer>/…`, with the kernel staying in the existing layer folders |
 | Backlog first cut | Items, hierarchy, ranks, states, dependencies, iterations and releases; estimation, My Work and absences read-only for now |
-| Milestone order | M1 → M2 → M3 → M4 → M5 → M6. M4 could follow M2 directly if the backlog is more urgent than the plugin platform, at the cost of migrating it later |
+| Milestone order | M1 → M1b → M2 → M3 → M4 → M5 → M6 (approved; M1b added for self-contained projects) |
+| Project independence | Every project under `src/`, The Forge included, is self-contained with its own toolchain, tests and workflows (approved) |
+| Workflow wiring | Project-authored workflows synced into `.github/workflows/` by `workflows sync`, drift-checked in CI (approved) |
