@@ -1,4 +1,4 @@
-import { ensure } from '../shared/errors.ts';
+import { AppError, ensure, locatedError } from '../shared/errors.ts';
 
 /** AMBIGUOUS_EDIT reports at most this many match lines; `matches` always carries the full count. */
 export const reportedMatchLines = 20;
@@ -32,4 +32,30 @@ export function replaceUniqueLiteral(text: string, find: string, replacement: st
     { matches: matches.length, lines: lineNumbers(text, matches.slice(0, reportedMatchLines)) });
   const [offset] = matches as [number];
   return text.slice(0, offset) + replacement + text.slice(offset + find.length);
+}
+
+/** One literal replacement of a multi-edit: `find` must occur exactly once, or at least once with `all`. */
+export interface LiteralEdit { find: string; replace: string; all?: boolean }
+
+/** Replaces every non-overlapping occurrence of `find`, scanning left to right; none is NO_MATCH. */
+function replaceEveryLiteral(text: string, find: string, replacement: string): string {
+  ensure(find.length > 0, 'INVALID_INPUT', 'find must not be empty.');
+  const parts = text.split(find);
+  ensure(parts.length > 1, 'NO_MATCH', 'The find text does not occur in the file. Read it again and copy the exact current text.', { find, matches: 0 });
+  return parts.join(replacement);
+}
+
+/**
+ * Applies literal edits in order, each to the result of the previous one, entirely in memory. A failing edit
+ * keeps its code (NO_MATCH, AMBIGUOUS_EDIT, INVALID_INPUT) and names its 0-based position in `details.edit`.
+ */
+export function applyLiteralEdits(text: string, edits: readonly LiteralEdit[]): string {
+  ensure(edits.length > 0, 'INVALID_INPUT', 'Pass at least one edit.');
+  return edits.reduce((current, edit, index) => {
+    try { return edit.all === true ? replaceEveryLiteral(current, edit.find, edit.replace) : replaceUniqueLiteral(current, edit.find, edit.replace); }
+    catch (error) {
+      if (!(error instanceof AppError)) throw error;
+      throw locatedError(error, `Edit ${index}: `, { edit: index });
+    }
+  }, text);
 }

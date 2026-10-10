@@ -188,7 +188,7 @@ describe('workspace events for mixed batches', () => {
     await put({ 'docs/a.md': 'A', 'docs/sub/b.md': 'B' });
     const { events, space } = await workspace();
     const folder = await files.stat('docs');
-    await space.commit({ renames: [{ from: 'docs', to: '.trash/docs', expectedRevision: folder.revision }] }, { operation: 'delete', trash: true });
+    await space.commit({ renames: [{ from: 'docs', to: '.trash/docs', expectedRevision: folder.revision }] }, { operation: 'delete', trash: ['.trash/docs'] });
     expect(vault(events)).toEqual([
       ['vault.delete', { path: 'docs/a.md', kind: 'file', revision: rev('A'), bytes: 1, operation: 'deleted' }],
       ['vault.delete', { path: 'docs/sub/b.md', kind: 'file', revision: rev('B'), bytes: 1, operation: 'deleted' }],

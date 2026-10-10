@@ -14,6 +14,10 @@ export function forgeError(code: ErrorCode, message: string, details?: Record<st
 export function codedError(code: string, message: string, exitCode: number, details?: Record<string, unknown>): AppError {
   return new AppError(code, message, exitCode, details);
 }
+/** The same failure located inside a larger request: its message gains `prefix` and its details gain `details`. */
+export function locatedError(error: AppError, prefix: string, details: Record<string, unknown>): AppError {
+  return new AppError(error.code, `${prefix}${error.message}`, error.exitCode, { ...error.details, ...details });
+}
 /** Event diagnostics deliberately omit messages, input and arbitrary error details. */
 export function summarizeError(error: unknown): { code: string; exitCode: number } {
   return error instanceof AppError ? { code: error.code, exitCode: error.exitCode } : { code: 'OPERATION_FAILED', exitCode: errorCatalog.OPERATION_FAILED.exitCode };
