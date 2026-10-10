@@ -4,7 +4,8 @@ import type { FileRepository } from '../../application/workspace/ports.ts';
 import type { ParsedArguments } from '../cli/arguments.ts';
 import { value } from '../../application/plugins/command-input.ts';
 import { parseJson } from '../cli/input.ts';
-import { option } from '../../application/plugins/command-metadata.ts';
+import { option, type CommandOption } from '../../application/plugins/command-metadata.ts';
+import type { hostGeneratorOptions } from '../../application/plugins/registry.ts';
 
 /** Review controls of every reviewed generator: plan, check drift, or regenerate with approved revisions. */
 export const reviewOptions = {
@@ -12,7 +13,7 @@ export const reviewOptions = {
   plan: option.boolean('Report planned outputs and their status without writing.'),
   'plan-out': option.string('Write the plan\'s revision manifest to this path.'),
   check: option.boolean('Fail with a drift code when outputs are missing or differ.'),
-};
+} satisfies Record<Exclude<typeof hostGeneratorOptions[number], 'out'>, CommandOption>;
 export const libraryGenerationOptions = {
   project: option.string('Generate into this project instead of the selected one.'),
   library: option.string('Definition library directory; defaults to the configured path.'),

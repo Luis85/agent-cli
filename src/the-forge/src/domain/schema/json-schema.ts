@@ -10,6 +10,8 @@ export interface JsonSchema {
   properties?: Record<string, JsonSchema>; required?: string[]; additionalProperties?: boolean | JsonSchema;
   items?: JsonSchema; prefixItems?: JsonSchema[]; minItems?: number; maxItems?: number;
   enum?: unknown[]; const?: unknown; default?: unknown;
+  /** Exactly one of these schemas must match; the matching one completes the value. */
+  oneOf?: JsonSchema[];
   minimum?: number; maximum?: number; minLength?: number; maxLength?: number; pattern?: string;
 }
 
@@ -35,6 +37,7 @@ const keywords: Record<string, (value: unknown, path: string) => string[]> = {
   maximum: (value, path) => Number.isFinite(value) ? [] : [`${path}.maximum must be a number`],
   enum: (value, path) => Array.isArray(value) && value.length > 0 ? [] : [`${path}.enum must be a nonempty array`],
   const: () => [],
+  oneOf: (value, path) => Array.isArray(value) && value.length > 0 ? value.flatMap((schema, index) => schemaIssues(schema, `${path}.oneOf[${index}]`)) : [`${path}.oneOf must be a nonempty array`],
   default: () => [],
   pattern: (value, path) => {
     if (typeof value !== 'string') return [`${path}.pattern must be a string`];
@@ -59,13 +62,38 @@ function typeMatches(type: JsonSchemaType, value: unknown): boolean {
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 const copy = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 
+/** How deep an issue's path reaches: a branch that fails deeper inside the value matched more of it. */
+const depth = (issue: string) => (issue.slice(0, issue.indexOf(':')).match(/[.[]/g) ?? []).length;
+/** A `const` mismatch marks a branch for another discriminator value, such as another command action. */
+const discriminated = (issues: readonly string[]) => issues.some(issue => issue.includes(': must equal '));
+function closer(left: string[], right: string[]): boolean {
+  if (discriminated(left) !== discriminated(right)) return !discriminated(left);
+  if (left.length !== right.length) return left.length < right.length;
+  return left.reduce((sum, issue) => sum + depth(issue), 0) > right.reduce((sum, issue) => sum + depth(issue), 0);
+}
+
+/**
+ * The value completed by the one matching branch. Without exactly one match it reports that several branches match,
+ * or the issues of the closest branch: one without a `const` mismatch, then the fewest issues, then the deepest
+ * ones, then the first branch.
+ */
+function oneOf(branches: readonly JsonSchema[], value: unknown, at: string, issues: string[]): unknown {
+  const outcomes = branches.map(branch => validateJsonValue(branch, value, at));
+  const matching = outcomes.filter(outcome => outcome.issues.length === 0);
+  if (matching.length === 1) return matching[0]!.value;
+  if (matching.length > 1) issues.push(`${at}: matches ${matching.length} schemas of oneOf; exactly one must match`);
+  else issues.push(...outcomes.reduce((closest, outcome) => closer(outcome.issues, closest.issues) ? outcome : closest).issues);
+  return value;
+}
+
 /**
  * Validates `value` against a schema that passed `schemaIssues`, filling `default`s of missing object properties.
  * Returns the completed copy and every issue as `<path>: <problem>`.
  */
 export function validateJsonValue(schema: JsonSchema, value: unknown, path: string): { value: unknown; issues: string[] } {
   const issues: string[] = [];
-  const visit = (node: JsonSchema, current: unknown, at: string): unknown => {
+  const visit = (node: JsonSchema, value: unknown, at: string): unknown => {
+    const current = node.oneOf ? oneOf(node.oneOf, value, at, issues) : value;
     if (node.type !== undefined && !typeMatches(node.type, current)) { issues.push(`${at}: must be ${node.type}`); return current; }
     if (node.enum !== undefined && !node.enum.some(item => same(item, current))) issues.push(`${at}: must be one of ${node.enum.map(item => JSON.stringify(item)).join(', ')}`);
     if (Object.hasOwn(node, 'const') && !same(node.const, current)) issues.push(`${at}: must equal ${JSON.stringify(node.const)}`);

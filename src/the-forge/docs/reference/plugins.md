@@ -106,15 +106,15 @@ One declaration drives argument parsing, the invocation policy, `help` and `sche
 | --- | --- | --- |
 | `scope` | `project`: the selected project's root, or the workspace when none is selected. `workspace`: always the workspace root | `project` |
 | `discovery` | A discovery or recovery command: workspace scope, no plugin activation, so a stale selection or a failing `onload` cannot block it | `false` |
-| `mutating` | Whether the command can change files or external state; `schema` reports `readOnlyHint: !mutating` | `true` |
+| `mutating` | Whether the command (or an action) can change files or external state | `true` |
 | `options` | `{flag: {type: 'string' \| 'boolean', description, enum?, default?, required?}}`. Global options are reserved. The parser enforces types; the command validates values, `enum`, `default` and `required` are published for agents | `{}` |
 | `args` | Positional arguments after the command id: `[{name, description, required?, enum?, variadic?}]`; only the last may be variadic | `[]` |
-| `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, scope?, discovery?, mutating?, projectOption?}`; `defaultAction` applies when the first argument is omitted | none |
+| `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, usage?, scope?, discovery?, mutating?, projectOption?, options?}`; `defaultAction` applies when the first argument is omitted. An action's `options` are accepted only with that action and cannot repeat a command option | none |
 | `projectOption` | A declared string option that selects the project for this invocation (`make ui --project web`) | none |
 | `output` | Optional JSON Schema of `data` in a successful response | none |
 | `errors` | Codes the command reports itself (built-in or the plugin's registered codes) | `[]` |
 
-Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the catalog; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, outputSchema?, globalOptions}`. `schema` returns the same entry for every command plus `inputSchema`, a JSON Schema 2020-12 document of one invocation:
+Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the catalog; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, outputSchema?, globalOptions}`. `schema` returns the same entry for every command plus `inputSchema`, a JSON Schema 2020-12 document of one invocation. For a command without actions it describes `args` and `options` directly:
 
 ```json
 {
@@ -127,7 +127,9 @@ Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the ca
 }
 ```
 
-`annotations` holds the resolved `scope`, `discovery`, `mutating` and `readOnlyHint`, the `defaultAction`, and each action's resolved mode. Global options are described once in `globalOptions` with the same option shape. The schema subset Forge emits and accepts covers `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `title` and `description`; other keywords are rejected rather than ignored.
+A command with actions publishes `{"$schema", "title", "type": "object", "required": ["args", "options"], "oneOf": [...]}` with one branch per action: the branch pins the first argument with `const` (`"prefixItems": [{"type": "string", "const": "install"}, …]`) and lists the command's options plus that action's own, with only that action's `required` options. When the first argument is optional, a first branch without arguments covers the default action (or, for `make`, the generator listing). `make document` therefore requires `--template`, while `make entity` accepts only `--out`.
+
+`annotations` holds the default mode's `scope` and `discovery`, `mutating` and `readOnlyHint` for the whole command, the `defaultAction`, and each action's resolved mode with its `usage` and `options` when it declares them. `mutating` is `true` when any mode of the command mutates, so `readOnlyHint` is `true` only for commands whose every action is read-only; each action's `mutating` and `readOnlyHint` describe that action alone (`skills list` is read-only, `skills install` is not). Global options are described once in `globalOptions` with the same option shape. The schema subset Forge emits and accepts covers `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `oneOf`, `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `title` and `description`; other keywords are rejected rather than ignored. A `oneOf` value must match exactly one branch, whose defaults complete it.
 
 ## Generators
 
@@ -136,7 +138,9 @@ Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the ca
 - `generate(request)`: returns the write plan `{path, bytes, expectedRevision?}[]`. The host validates documents and destinations and previews (`--dry-run`) or writes the plan, emitting committed `vault.*` events. With `review: true`, the host also accepts `--plan`, `--plan-out`, `--check` and `--revisions-from` and runs the plan through the shared generation service: `--plan` reports each output's status, `--check` fails with `GENERATION_DRIFT` when outputs differ, and `--revisions-from` authorizes regeneration of reviewed files.
 - `run(request)`: returns its own result, for generators that need full control.
 
-`request` is `{name, directory, flags, context, generation}`: the name argument, the resolved output directory (`--out`, else `directory`), the invocation's flags, the plugin context and the `GenerationService` with `plan(writes, manifestPath?)`, `check(writes, code)` and `commit(writes, revisions?)`. Generators should be pure and never write directly. Encode text with `new TextEncoder().encode(text)`. `make` accepts only the global options, `--out` (unless `fixedDirectory`), the generator's options and, with `review`, the review options; anything else is `INVALID_ARGUMENT`. Two generators that declare one option name must agree on its type. `make` without arguments lists the generators, and `help make` lists each generator's mode under `annotations.actions`.
+`request` is `{name, directory, flags, context, generation}`: the name argument, the resolved output directory (`--out`, else `directory`), the invocation's flags, the plugin context and the `GenerationService` with `plan(writes, manifestPath?)`, `check(writes, code)` and `commit(writes, revisions?)`. Generators should be pure and never write directly. Encode text with `new TextEncoder().encode(text)`.
+
+Each generator is an action of `make` with its own options. `make` owns `--out` (unless `fixedDirectory`) and the review options `--plan`, `--plan-out`, `--check` and `--revisions-from`: a plugin generator that declares one of them fails registration with `PLUGIN_NAMESPACE`. The parser resolves the generator first and then accepts only the global options, `--out`, the generator's options and, with `review`, the review options; anything else is `UNKNOWN_OPTION`. Put generator options after `make <generator>`: an option before the generator id is parsed without the generator and is unknown. Because each generator's options are parsed on their own, two generators may declare the same option name with different types. `make` without arguments lists the generators, and `help make` lists each generator's mode, usage and options under `annotations.actions`.
 
 ## Services
 

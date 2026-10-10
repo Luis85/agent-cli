@@ -51,6 +51,11 @@ export interface Generator extends CommandMode {
   generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
   run?(request: GeneratorRequest): unknown | Promise<unknown>;
 }
+/**
+ * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ */
+export const hostGeneratorOptions = ['out', 'plan', 'plan-out', 'check', 'revisions-from'] as const;
 export interface Skill { id: string; content: string }
 /** `core: true` marks a bundled core plugin; the loader rejects it for user plugins. */
 export interface PluginManifest {
@@ -119,11 +124,8 @@ export class Registry {
     const commands = new Map(this.commands), generators = new Map(this.generators), skills = new Map(this.skills);
     for (const command of plugin.commands ?? []) this.add(commands, command);
     for (const generator of plugin.generators ?? []) {
-      // make parses one flag set for every generator, so a shared option name must keep one type.
-      for (const [key, option] of Object.entries(generator.options ?? {})) {
-        const clash = [...generators.values()].find(other => other.options?.[key] !== undefined && other.options[key]!.type !== option.type);
-        ensure(!clash, 'INVALID_PLUGIN', `Generator ${generator.id} declares --${key} as ${option.type}, but ${clash?.id} declares it as ${clash?.options?.[key]?.type}.`);
-      }
+      const owned = Object.keys(generator.options ?? {}).filter(key => (hostGeneratorOptions as readonly string[]).includes(key));
+      ensure(owned.length === 0, 'PLUGIN_NAMESPACE', `Generator ${generator.id} cannot declare --${owned.join(', --')}; make owns --${hostGeneratorOptions.join(', --')} for every generator.`);
       this.add(generators, generator);
     }
     for (const skill of plugin.skills ?? []) this.add(skills, skill);

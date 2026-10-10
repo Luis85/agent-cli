@@ -52,13 +52,16 @@ describe('plugin services', () => {
 });
 
 describe('plugin generators', () => {
-  it('keeps one type per make option across generators', () => {
+  it('lets generators declare option names independently but reserves the options make owns', () => {
     const { registry, events } = setup();
     registry.add(registry.generators, { id: 'ui', description: 'UI', options: { framework: { type: 'string', description: 'Target' } }, run: () => null });
-    expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, generate: () => [] }] }, events))
-      .toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('--framework as boolean, but ui declares it as string') }));
+    for (const owned of ['out', 'plan', 'plan-out', 'check', 'revisions-from']) {
+      expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { [owned]: { type: 'boolean', description: 'Flag' } }, generate: () => [] }] }, events))
+        .toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE', message: expect.stringContaining(`cannot declare --${owned}`) }));
+    }
     expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', generate: () => [], run: () => null }] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
-    registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'string', description: 'Target' } }, review: true, generate: () => [] }] }, events);
+    // Each generator parses only its own options, so another generator's --framework may be a boolean.
+    registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, review: true, generate: () => [] }] }, events);
     expect(registry.generators.get('quality.page')).toMatchObject({ review: true });
   });
 });
@@ -92,7 +95,7 @@ describe('plugin config sections', () => {
 
   it('rejects settings schemas outside the supported JSON Schema subset', () => {
     const { registry, events } = setup();
-    expect(() => registry.register({ manifest: manifest('quality'), settings: { type: 'object', oneOf: [] } as never }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('unsupported keyword oneOf') }));
+    expect(() => registry.register({ manifest: manifest('quality'), settings: { type: 'object', anyOf: [] } as never }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('unsupported keyword anyOf') }));
     expect(() => registry.register({ manifest: manifest('quality'), settings: { type: 'string' } }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
   });
 });

@@ -27,7 +27,7 @@ import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
-import { optionTypes } from './application/plugins/command-metadata.ts';
+import { commandOptions, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
 import { value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
@@ -130,7 +130,10 @@ async function run(): Promise<void> {
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.commands.get(id);
       ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${id}. Run help or schema.`);
-      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) });
+      // An action's own options (make <generator>) parse only once the action is known: the first argument after
+      // the command id, unless an option precedes it.
+      const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
+      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) });
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.
       localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
