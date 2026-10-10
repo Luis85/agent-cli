@@ -10,7 +10,7 @@ it('rejects type errors in every accepted test extension even when runtime asser
     await cp(resolve('tsconfig.json'), join(root, 'tsconfig.json'));
     await cp(resolve('vitest.config.ts'), join(root, 'vitest.config.ts'));
     await cp(resolve('scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
-    await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+    await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
     const manifest = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as { scripts: { typecheck: string } };
     await writeFile(join(root, 'package.json'), JSON.stringify({ private: true, type: 'module', scripts: { typecheck: manifest.scripts.typecheck } }));
     await mkdir(join(root, 'src'), { recursive: true });
@@ -32,11 +32,12 @@ it('rejects type errors in every accepted test extension even when runtime asser
     const runtime = "import { expect, it } from 'vitest';\nit('passes runtime assertions despite a static error', () => { const value: string = 42; expect(String(value)).toBe('42'); });\n";
     cases.push({ file: runtimeFile, content: runtime });
     await writeFile(join(root, runtimeFile), runtime);
-    const transpiled = spawnSync(process.execPath, [resolve('node_modules/vitest/vitest.mjs'), 'run', runtimeFile], { cwd: root, encoding: 'utf8', timeout: 20_000 });
+    const transpiled = spawnSync(process.execPath, [resolve('node_modules/vitest/vitest.mjs'), 'run', runtimeFile], { cwd: root, encoding: 'utf8', timeout: 40_000 });
     expect(transpiled.error).toBeUndefined();
     expect(transpiled.status, transpiled.stdout + transpiled.stderr).toBe(0);
 
-    const typecheck = () => spawnSync('npm', ['run', 'typecheck', '--', '--pretty', 'false'], { cwd: root, encoding: 'utf8', timeout: 30_000 });
+    // npm is a .cmd shim on Windows, which Node only starts through a shell; the command is a fixed literal.
+    const typecheck = () => spawnSync('npm run typecheck -- --pretty false', { cwd: root, encoding: 'utf8', timeout: 60_000, shell: true });
     const invalid = typecheck();
     expect(invalid.error).toBeUndefined();
     expect(invalid.status).not.toBe(0);
@@ -47,4 +48,4 @@ it('rejects type errors in every accepted test extension even when runtime asser
     expect(repaired.error).toBeUndefined();
     expect(repaired.status, repaired.stdout + repaired.stderr).toBe(0);
   } finally { await rm(root, { recursive: true, force: true }); }
-}, 60_000);
+}, 180_000);

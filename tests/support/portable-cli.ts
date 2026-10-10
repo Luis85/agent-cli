@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { copyFile, cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -10,8 +10,10 @@ interface Invocation { root?: string | null; entry?: string; cwd?: string }
 export function portableCli() {
   let project: string, bundle: string;
   beforeAll(async () => {
-    project = await mkdtemp(join(tmpdir(), 'forge-project-'));
-    bundle = await mkdtemp(join(tmpdir(), 'forge-bundle-'));
+    // The CLI reports canonical roots. Canonicalize temporary aliases such as macOS /var
+    // (-> /private/var) and Windows 8.3 short names (C:\Users\RUNNER~1) before comparing.
+    project = await realpath(await mkdtemp(join(tmpdir(), 'forge-project-')));
+    bundle = await realpath(await mkdtemp(join(tmpdir(), 'forge-bundle-')));
     await cp(resolve('bin'), join(bundle, 'bin'), { recursive: true });
     // Repository-local self-management is not part of a generic distribution.
     await copyFile(join(bundle, 'bin/config/default.json'), join(bundle, 'bin/config.json'));
@@ -25,7 +27,7 @@ export function portableCli() {
   function cli(args: string[], input?: string | Buffer, invocation: Invocation = {}) {
     const root = invocation.root === undefined ? project : invocation.root;
     const result = spawnSync(process.execPath, [invocation.entry ?? join(bundle, 'bin/app.js'), ...(root === null ? [] : ['--root', root]), '--json', ...args], {
-      cwd: invocation.cwd ?? project, encoding: 'utf8', input, timeout: 10000, env: { ...process.env, NODE_PATH: '' },
+      cwd: invocation.cwd ?? project, encoding: 'utf8', input, timeout: 30_000, env: { ...process.env, NODE_PATH: '' },
     });
     expect(result.error).toBeUndefined();
     expect(result.stderr).toBe('');

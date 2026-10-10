@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -9,7 +9,8 @@ const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
 
 async function fixture(source: string) {
-  const cwd = await mkdtemp(join(tmpdir(), 'forge claude runtime '));
+  // Children report their canonical working directory (macOS /var is /private/var).
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'forge claude runtime ')));
   directories.push(cwd);
   const script = join(cwd, 'fake-claude.mjs');
   await writeFile(script, source);
@@ -200,7 +201,8 @@ describe('installed Claude CLI adapter', () => {
     }
   });
 
-  it('reports a signal termination with diagnostics instead of calling it a successful exit', async () => {
+  // Windows has no POSIX signals: a self-sent SIGTERM ends the process with exit code 1, not a signal.
+  it.skipIf(process.platform === 'win32')('reports a signal termination with diagnostics instead of calling it a successful exit', async () => {
     const { runtime, script, cwd } = await fixture(`
       process.stderr.write('interrupted', () => process.kill(process.pid, 'SIGTERM'));
     `);

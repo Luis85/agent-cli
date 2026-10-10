@@ -17,7 +17,7 @@ async function fixture() {
   roots.push(root);
   await cp(resolve('scripts/quality'), join(root, 'scripts/quality'), { recursive: true });
   await cp(resolve('configs'), join(root, 'configs'), { recursive: true });
-  await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+  await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
   const config = JSON.parse(await readFile(join(root, 'configs/quality/fallow.json'), 'utf8'));
   config.entry = ['src/index.ts'];
   config.ignorePatterns = config.ignorePatterns.filter((pattern: string) => !['src/**', '!src/the-forge/**'].includes(pattern));

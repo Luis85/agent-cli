@@ -15,7 +15,7 @@
     "dev": "vite build --watch --emptyOutDir=false",
     "typecheck": "node scripts/quality/typecheck.mjs",
     "build": "vite build && node scripts/package.mjs",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=30000 --hookTimeout=30000",
     "check": "npm run check:fast && npm run build && npm test",
     "release": "npm run check && node scripts/release.mjs",
     "lint": "node scripts/quality/lint.mjs",

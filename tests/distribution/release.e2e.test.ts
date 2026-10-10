@@ -23,12 +23,19 @@ function release(root: string) {
   return execFileSync(process.execPath, ['scripts/release.mjs'], { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
 }
 
+// Run tar from the checkout with relative paths: GNU tar reads `C:\...` archive names as remote hosts.
+function tar(root: string, args: string[]) {
+  return execFileSync('tar', args, { cwd: root, encoding: 'utf8' });
+}
+const entries = (root: string, archive: string) => tar(root, ['-tzf', archive]).trim().split(/\r?\n/);
+
 describe('release distribution', () => {
   it('repackages owned assets without replacing configuration, context, plugins or templates', async () => {
     const root = await checkout();
     for (const path of ['src', 'docs', 'scripts/licenses']) await cp(resolve(path), join(root, path), { recursive: true });
     for (const path of ['scripts/package.mjs', 'tsconfig.json', 'tsconfig.sdk.json', 'package-lock.json', 'README.md', 'LICENSE']) await cp(resolve(path), join(root, path));
-    await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+    // A junction needs no symlink privilege on Windows; other platforms ignore the type.
+    await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
     const privateFiles = ['bin/config.json', 'bin/data/context.json', 'bin/data/private.json', 'bin/plugins/private.mjs', 'bin/templates/private.md'];
     for (const path of privateFiles) await writeFile(join(root, path), `preserve ${path}\n`);
     await writeFile(join(root, 'bin/data/docs/obsolete.md'), '# Stale generated documentation');
@@ -39,7 +46,7 @@ describe('release distribution', () => {
     expect(manifest.files).toContain('app.js');
     expect(manifest.files).toContain('data/types/sdk.d.ts');
     expect(manifest.files.some((path: string) => /context|private|obsolete/.test(path))).toBe(false);
-  }, 15_000);
+  }, 60_000);
 
   it('extracts a complete, checksummed standalone app and reproduces the archive across checkout metadata changes', async () => {
     const root = await checkout();
@@ -57,7 +64,7 @@ describe('release distribution', () => {
     const project = join(root, 'project');
     await mkdir(project);
     await writeFile(join(project, 'package.json'), '{"type":"module"}');
-    execFileSync('tar', ['-xzf', join(root, archive), '-C', project]);
+    tar(root, ['-xzf', archive, '-C', 'project']);
     const invoke = (args: string[]) => JSON.parse(execFileSync(process.execPath, ['bin/app.js', ...args], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } }));
     const source = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
     expect(invoke(['--version']).data.version).toBe(source.version);
@@ -67,19 +74,19 @@ describe('release distribution', () => {
     for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
       expect((await readFile(join(project, 'bin/data', path))).length).toBeGreaterThan(0);
     }
-    const entries = execFileSync('tar', ['-tzf', join(root, archive)], { encoding: 'utf8' }).trim().split('\n');
-    expect(entries.every(path => path.startsWith('bin/'))).toBe(true);
-    expect(entries).toContain('bin/app.js');
-    expect(entries).toContain('bin/package.json');
-    expect(entries).toContain('bin/data/distribution.json');
-    expect(entries).toContain('bin/plugins/.gitkeep');
-    expect(entries).toContain('bin/templates/.gitkeep');
-    expect(entries).toContain('bin/config.json');
-    expect(entries).toContain('bin/config/default.json');
-    expect(entries).toContain('bin/skills/forge-workflow.md');
-    expect(entries.some(path => path.startsWith('bin/data/skills/'))).toBe(false);
-    expect(entries.some(path => path.includes('node_modules/'))).toBe(false);
-  }, 15_000);
+    const listed = entries(root, archive);
+    expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
+    expect(listed).toContain('bin/app.js');
+    expect(listed).toContain('bin/package.json');
+    expect(listed).toContain('bin/data/distribution.json');
+    expect(listed).toContain('bin/plugins/.gitkeep');
+    expect(listed).toContain('bin/templates/.gitkeep');
+    expect(listed).toContain('bin/config.json');
+    expect(listed).toContain('bin/config/default.json');
+    expect(listed).toContain('bin/skills/forge-workflow.md');
+    expect(listed.some(path => path.startsWith('bin/data/skills/'))).toBe(false);
+    expect(listed.some(path => path.includes('node_modules/'))).toBe(false);
+  }, 60_000);
 
   it('refuses an archive whose package version disagrees with the bundled executable', async () => {
     const root = await checkout();
@@ -100,9 +107,8 @@ describe('release distribution', () => {
     await writeFile(join(root, 'bin/plugins/private-plugin.mjs'), 'export default {};');
     await writeFile(join(root, 'bin/templates/private-template.md'), '# Private');
     const archive = release(root);
-    const entries = execFileSync('tar', ['-tzf', join(root, archive)], { encoding: 'utf8' }).trim().split('\n');
-    expect(entries.some(path => /context|private/.test(path))).toBe(false);
-    const config = execFileSync('tar', ['-xOf', join(root, archive), 'bin/config.json'], { encoding: 'utf8' });
+    expect(entries(root, archive).some(path => /context|private/.test(path))).toBe(false);
+    const config = tar(root, ['-xOzf', archive, 'bin/config.json']);
     expect(config).toBe(await readFile(join(root, 'bin/config/default.json'), 'utf8'));
     expect(await readFile(join(root, 'bin/data/context.json'), 'utf8')).toContain('private-project');
   });

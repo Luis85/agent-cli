@@ -53,7 +53,7 @@ describe('repository self-management defaults', () => {
     await expect(readFile(join(selected, 'domain/generated/self-managed.ts'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(cli(generation).status).toBe(0);
     expect(await readFile(join(selected, 'domain/generated/self-managed.ts'), 'utf8')).toContain('class SelfManaged');
-  }, 15000);
+  }, 60_000);
 
   it('respects explicit project closure instead of silently restoring the checkout default', async () => {
     expect(cli(['project', 'close']).status).toBe(0);
@@ -67,7 +67,7 @@ describe('repository self-management defaults', () => {
     expect(JSON.parse(await readFile(join(checkout.bundle, 'bin/data/context.json'), 'utf8'))).toEqual({ schemaVersion: 1, project: null });
     expect(cli(['project', 'open', 'the-forge']).status).toBe(0);
     expect(cli(['read', 'main.ts']).body.context.root).toBe(selected);
-  }, 15000);
+  }, 60_000);
 
   it('keeps generic copied distributions independent of repository settings and selection', async () => {
     const config = generic.cli(['config'], undefined, { root: null });

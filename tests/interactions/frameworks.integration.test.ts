@@ -183,7 +183,7 @@ async function mount(target) {
 
 it.each(['react', 'vue', 'svelte', 'angular'] as const)('compiles and executes %s state, form persistence, upload and download interactions', async framework => {
   const directory = await mkdtemp(join(tmpdir(), 'forge-' + framework + '-interactions-')); temporary.push(directory);
-  await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'dir');
+  await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'junction');
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   const files = renderUiComponents(definitions, framework, 'generated', interactions);
   const roots: string[] = [];

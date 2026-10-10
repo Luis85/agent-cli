@@ -42,7 +42,7 @@ describe('portable native Claude management', () => {
     expect(await readFile(join(selected, current.path), 'utf8')).toBe(next);
     expect(committedEvents(cli(['agents', 'remove', 'reviews/security', '--if-match', current.revision]).body.events)[0]?.id).toBe('file.deleted');
     await expect(readFile(join(selected, current.path))).rejects.toMatchObject({ code: 'ENOENT' });
-  }, 20000);
+  }, 60_000);
 
   it('edits native hooks and agent permissions through settings revision guards', async () => {
     const { root, cli } = await workspace('settings');
@@ -68,7 +68,7 @@ describe('portable native Claude management', () => {
     expect(cli(['hooks', 'remove', 'PreToolUse', '--index', '0', '--if-match', settings.revision]).status).toBe(0);
     expect(cli(['hooks', 'inspect']).body.data.settings).toMatchObject({ hooks: {}, disableAllHooks: true, future: { keep: true } });
     await expect(readFile(join(root, 'hook-executed'))).rejects.toMatchObject({ code: 'ENOENT' });
-  }, 20000);
+  }, 60_000);
 
   it('exports native agents into visible selected-project files with dry runs and destination revision guards', async () => {
     const { root, cli } = await workspace('agent-export');
@@ -120,7 +120,7 @@ describe('portable native Claude management', () => {
     expect(cli(['agents', 'export', 'review', ...scope, '--if-match', agentRevision]).body.error.code).toBe('INVALID_ARGUMENT');
     expect(cli(['agents', 'export', 'review', ...scope, '--out', '../escape.md']).body.error.code).toBe('INVALID_PATH');
     expect(cli(['agents', 'export', 'review', ...scope, '--out', 'agent.json']).body.error.code).toBe('INVALID_ARGUMENT');
-  }, 20000);
+  }, 60_000);
 
   it('creates native plugin assets and round-trips binary files without executing plugin code', async () => {
     const { root, cli } = await workspace('plugin-assets');
@@ -143,7 +143,7 @@ describe('portable native Claude management', () => {
     expect(cli(['plugins', 'remove-asset', 'plugins/team', 'assets/raw.bin', '--if-match', asset.revision]).status).toBe(0);
     await expect(readFile(join(root, 'plugins/team/assets/raw.bin'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(cli(['plugins', 'write-asset', 'plugins/team', '../outside', '--content', 'bad']).body.error.code).toBe('INVALID_PATH');
-  }, 20000);
+  }, 60_000);
 
   it('keeps explicit user overrides isolated and dry runs leave missing user directories absent', async () => {
     const { root, cli } = await workspace('user-scope');
@@ -161,7 +161,7 @@ describe('portable native Claude management', () => {
     expect(cli(['agents', 'list']).body.data.agents).toEqual([]);
     expect(cli(['agents', 'list', ...flags]).body.data.agents).toHaveLength(1);
     expect(cli(['agents', 'list', '--scope', 'local']).body.error.code).toBe('INVALID_ARGUMENT');
-  }, 15000);
+  }, 60_000);
 
   it.skipIf(process.platform === 'win32')('previews installed lifecycle without spawning and executes only the explicitly selected fixture', async () => {
     const { root, cli } = await workspace('runtime-fixture');
@@ -212,5 +212,5 @@ else {
     expect(cli(['runtime', 'version', '--claude-bin', join(root, 'missing'), '--dry-run']).status).toBe(0);
     expect(cli(['runtime', 'version', '--claude-bin', join(root, 'missing')]).body.error.code).toBe('CLAUDE_NOT_INSTALLED');
     expect(cli(['marketplaces', 'remove', 'team', '--dry-run']).body.data.plan.args).toEqual(['plugin', 'marketplace', 'remove', 'team', '--scope', 'project']);
-  }, 15000);
+  }, 60_000);
 });

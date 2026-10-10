@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile, mkdtemp, copyFile, rm, lstat, chmod } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import distributionPolicy from '../configs/distribution-policy.json' with { type: 'json' };
 
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
@@ -39,8 +39,10 @@ try {
     await mkdir(join(staging, 'bin', directory));
     await writeFile(join(staging, 'bin', directory, '.gitkeep'), '');
   }
-  // Normalize checkout metadata while retaining executable entry points.
-  execFileSync('tar', ['--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner', '--mode=u=rwX,go=rX', '-czf', resolve(archive), '-C', staging, 'bin']);
+  // Normalize checkout metadata while retaining executable entry points. The archive is
+  // streamed to stdout and the staging directory is the working directory, so GNU tar never
+  // receives a drive-letter path (Windows `C:\...`), which it would parse as a remote host.
+  await writeFile(archive, execFileSync('tar', ['--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner', '--mode=u=rwX,go=rX', '-czf', '-', 'bin'], { cwd: staging, maxBuffer: 256 * 1024 * 1024 }));
 } finally { await rm(staging, { recursive: true, force: true }); }
 const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
 await writeFile(`${archive}.sha256`, `${hash}  forge-${version}.tar.gz\n`);

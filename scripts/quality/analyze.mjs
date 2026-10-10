@@ -8,7 +8,8 @@ try {
   const config = ['--config', 'configs/quality/fallow.json'];
   const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);
   if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');
-  const discovered = new Set(discovery.report.files);
+  // The inventory uses POSIX separators on every platform; compare Windows reports the same way.
+  const discovered = new Set(discovery.report.files.map(file => String(file).replaceAll('\\', '/')));
   const omitted = scope.filter(file => !discovered.has(file));
   if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);
   const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);
