@@ -13,6 +13,12 @@ import { generators } from '../../src/infrastructure/generation/generators.ts';
 import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
+import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
+import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
+import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
+import { searchPlugin } from '../../src/plugins/search/plugin.ts';
+import { linksPlugin } from '../../src/plugins/links/plugin.ts';
+import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
@@ -46,5 +52,15 @@ describe('built-in localization catalog coverage', () => {
       expect(Object.keys(germanEvents).sort()).toEqual(bus.ids());
       expect(Object.keys(germanGenerators).sort()).toEqual([...generators, ...libraryGenerators(services)].map(generator => generator.id).sort());
     } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('covers every command and error code of the bundled core plugins in German', () => {
+    const registry = new Registry(), bus = new EventBus(new NodeEventScope());
+    registerHostEvents(bus);
+    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin];
+    expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
+    registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }, []);
+    for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));
+    for (const { code } of registry.catalog.errors()) expect(registry.catalog.localizedError(code, 'de'), code).toEqual({ summary: expect.any(String), hint: expect.any(String) });
   });
 });

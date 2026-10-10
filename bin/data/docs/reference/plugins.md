@@ -4,7 +4,7 @@
 
 Plugins extend The Forge. There are two kinds, with one contract (plugin contract v2):
 
-- **Core plugins** are bundled with the distribution under `src/plugins/<id>/` in the Forge source, like Obsidian's core plugins. They are enabled by default and can be disabled in configuration. `skills` is the first core plugin; `search`, `links` and `bases` follow.
+- **Core plugins** are bundled with the distribution under `src/plugins/<id>/` in the Forge source, like Obsidian's core plugins. They are enabled by default and can be disabled in configuration; see [bundled core plugins](#bundled-core-plugins).
 - **User plugins** live in workspace `bin/plugins/<id>/` with a `manifest.json` and a `main.mjs` ESM entry point or `main.js` CommonJS entry point. They extend the distributed bundle without rebuilding it, and only run when `plugins.enabled` names them.
 
 The host uses Obsidian-inspired packaging and lifecycle conventions; it does not run existing Obsidian plugins unchanged. Plugin authors compile TypeScript and bundle external dependencies before distribution. For installation steps, see [enable a plugin](../how-to/enable-plugins.md).
@@ -41,6 +41,19 @@ A core plugin's manifest also declares `"core": true`. Only bundled plugins may:
 | Registration | Bundle order, before user plugins | After core plugins |
 
 A disabled core plugin contributes nothing: its commands are absent from `help` and `schema`, its skills from `skills` and `setup`, and its services from other plugins. `plugins.disabled` accepts only bundled core plugin ids; anything else fails with `INVALID_PLUGIN_CONFIG`. Disable a user plugin by removing it from `plugins.enabled`.
+
+### Bundled core plugins
+
+In bundle order, which is also their registration and activation order:
+
+| Plugin | Contributes | Settings | Reference |
+| --- | --- | --- | --- |
+| `bases` | `bases` command: native `.base` views as file repositories | none | [Bases queries](bases.md) |
+| `skills` | `skills` command and the bundled agent skills | none | [CLI commands](cli.md#commands) |
+| `search` | `search` command; `INVALID_SEARCH_PATTERN` and `SEARCH_TIMEOUT` codes | `timeoutMs` | [Search](search.md) |
+| `links` | `links` command: outgoing links, backlinks, unresolved links, orphans and dead ends | `roots` | [Links](links.md) |
+
+Each declares German strings for its command and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay.
 
 `node bin/forge.js plugins` lists every plugin, core plugins first: the manifest fields, `core`, `state` and `contributions`. `state` is `enabled` for registered plugins, `disabled` for a core plugin in `plugins.disabled` or an installed user plugin that `plugins.enabled` does not name, and `skipped` for an enabled user plugin that `--no-plugins` left unloaded. `contributions` lists command, generator, event and skill ids, `services.provides` and `services.requires`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run. Invalid manifests in `bin/plugins` are skipped with a warning.
 
@@ -178,7 +191,7 @@ src/plugins/<id>/
 | Kernel layers | Never `src/plugins/` |
 | `src/main.ts` | Each plugin's `plugin.ts` only |
 
-The internal plugin SDK is the kernel's application layer, chiefly `src/application/plugins/`: the contracts (`Command`, `Generator`, `PluginContributions`, `CorePlugin`, `CorePluginHost`), command metadata helpers (`option`), and command input helpers (`arity`, `value`). Plugins never import kernel infrastructure or presentation, or another plugin; they use declared services instead. `src/main.ts` lists the bundled plugins and calls `registerCorePlugins` with a `CorePluginHost` of kernel ports (for example `skills`, the live skill catalog); `create(host)` wires the plugin's adapters to those ports without I/O. When a plugin needs another kernel capability, add a port to `CorePluginHost` and supply its adapter in `src/main.ts`. Architecture tests and `npm run check:structure` enforce the layout and these rules. Tests for a core plugin live in `tests/<id>/`.
+The internal plugin SDK is the kernel's application layer, chiefly `src/application/plugins/`: the contracts (`Command`, `Generator`, `PluginContributions`, `CorePlugin`, `CorePluginHost`), command metadata helpers (`option`), and command input helpers (`arity`, `value`). Plugins never import kernel infrastructure or presentation, or another plugin; they use declared services instead. `src/main.ts` lists the bundled plugins and calls `registerCorePlugins` with a `CorePluginHost` of kernel ports (`skills`, the live skill catalog, and `fileDates`, which reads file sizes and filesystem dates below a command root for Bases); `create(host)` wires the plugin's adapters to those ports without I/O. When a plugin needs another kernel capability, add a port to `CorePluginHost` and supply its adapter in `src/main.ts`. Architecture tests and `npm run check:structure` enforce the layout and these rules. Tests for a core plugin live in `tests/<id>/`.
 
 ## Reuse Claude lifecycle execution
 

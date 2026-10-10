@@ -55,6 +55,8 @@ Core plugins are bundled and enabled by default. List their ids under `plugins.d
 { "plugins": { "disabled": ["skills"] } }
 ```
 
+The bundled core plugins are `bases`, `skills`, `search` and `links`; see [bundled core plugins](../reference/plugins.md#bundled-core-plugins). For example, disabling `bases` removes the `bases` command while `.base` files stay ordinary documents for `read`, `validate` and `patch`. Core plugins configure through `plugins.settings` like user plugins: `search.timeoutMs` and `links.roots`.
+
 A disabled core plugin contributes nothing: `help` and `schema` no longer list its commands, and its skills and services are gone. `plugins` still lists it with `state: "disabled"`. Remove the id from `plugins.disabled` to restore it; its first activation afterwards runs `onUserEnable` again. Only bundled core plugin ids are accepted there, and `--no-plugins` never disables core plugins.
 
 ## Observe events

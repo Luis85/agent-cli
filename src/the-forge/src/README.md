@@ -30,7 +30,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 - [command-metadata.ts](application/plugins/command-metadata.ts) defines the declarative command metadata (scope, discovery, mutating, options, arguments, actions, errors) and the JSON Schema that `schema` publishes; [invocation-policy.ts](presentation/cli/invocation-policy.ts) derives workspace/project scope, plugin activation and explicit project selection from it before services are bound.
 - [workspace.ts](application/workspace/workspace.ts) owns guarded file mutations, dry-run plans and notifications after persistence.
 - [registry.ts](application/plugins/registry.ts) owns plugin contracts and registered contributions, with [contributions.ts](application/plugins/contributions.ts) validation, [plugin-services.ts](application/plugins/plugin-services.ts) dependency order, [plugin-settings.ts](application/plugins/plugin-settings.ts) config sections and [plugin-catalog.ts](application/plugins/plugin-catalog.ts) strings and error codes; [core-plugins.ts](application/plugins/core-plugins.ts) registers bundled core plugins; [loader.ts](infrastructure/plugins/loader.ts) loads trusted user plugin modules.
-- [plugins/skills/plugin.ts](plugins/skills/plugin.ts) is the first core plugin: the bundled agent skills and the `skills` command.
+- The bundled core plugins, in the order [main.ts](main.ts) registers them: [bases](plugins/bases/plugin.ts) (Bases queries), [skills](plugins/skills/plugin.ts) (the bundled agent skills and the `skills` command), [search](plugins/search/plugin.ts) (text search) and [links](plugins/links/plugin.ts) (link reports).
 
 ## Find the concern
 
@@ -49,6 +49,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Bases queries (`bases` core plugin) | `plugins/bases/` |
 | Generators and templates | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` (`make` routing and the kernel generators) |
 | Agent skills (`skills` core plugin) | `plugins/skills/` |
+| Link reports (`links` core plugin) | `plugins/links/` |
 | Text search (`search` core plugin) | `plugins/search/`; path globs and cursor paging shared with `list` in `domain/documents/path-glob.ts` and `domain/shared/paging.ts` |
 | Plugin contract v2: command metadata, core plugins, services, config sections, strings and error codes | `application/plugins/`, `domain/schema/json-schema.ts`, `presentation/cli/catalog-commands.ts` |
 | Project-owned CI workflows and generated GitHub entrypoints | Matching `workflows/` folders in all four layers; authored workflow sources sit beside the renderer in `infrastructure/workflows/<concern>/` |

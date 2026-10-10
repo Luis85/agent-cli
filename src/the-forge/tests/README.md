@@ -18,6 +18,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
 | [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
+| [links](links/) | The `links` core plugin: link reports over the metadata cache (out, back, unresolved, orphans with roots, dead ends) and its CLI contract |
 | [skills](skills/) | The `skills` core plugin: listing, installation, and disabling it through `plugins.disabled` |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
