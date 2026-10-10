@@ -18,7 +18,6 @@ Tests live under the concern they verify. Every executable test file declares it
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | The shared generation service: review plans, revision manifests, and guarded writes |
 | [scaffolds](scaffolds/) | The `scaffolds` core plugin: code, form and plugin-folder generators, their compiled output, and disabling it (project create and component then fail with `PLUGIN_UNAVAILABLE`) |
-| [interactions](interactions/) | The `ui` core plugin's declarative event/action schemas, component attachment, generated behavior, and portable workflows |
 | [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
 | [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
@@ -29,7 +28,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
 | [templates](templates/) | The `templates` core plugin: template rendering, required inputs, planning-pack installation, its settings section, and disabling it (setup then skips templates) |
-| [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, settings, disabling, and CLI workflows |
+| [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, and CLI workflows |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |
