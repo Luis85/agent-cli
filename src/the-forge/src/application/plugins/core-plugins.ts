@@ -37,25 +37,39 @@ export interface CorePlugin {
  * Registers the bundled core plugins in bundle order. They are enabled by default; ids in `disabled`
  * (`plugins.disabled`) are recorded as disabled and contribute nothing. A core plugin that requires a service no
  * enabled core plugin provides is disabled with it (disabling `bases` disables `backlog`, which requires
- * `bases.query`). Unknown ids are INVALID_PLUGIN_CONFIG.
+ * `bases.query`); it is recorded with the missing service as its reason and with its command ids, so invoking one
+ * reports PLUGIN_UNAVAILABLE. Unknown ids are INVALID_PLUGIN_CONFIG.
  */
 export function registerCorePlugins(registry: Registry, events: EventBus, plugins: readonly CorePlugin[], host: CorePluginHost, disabled: readonly string[]): void {
   const ids = plugins.map(plugin => plugin.manifest.id);
   const unknown = disabled.filter(id => !ids.includes(id));
   ensure(unknown.length === 0, 'INVALID_PLUGIN_CONFIG', `plugins.disabled names only bundled core plugins (${ids.join(', ')}); remove ${unknown.join(', ')}. Disable a user plugin by removing it from plugins.enabled.`);
   const enabled = new Map(plugins.filter(plugin => !disabled.includes(plugin.manifest.id)).map(plugin => [plugin, plugin.create(host)]));
+  const cascaded = new Map<CorePlugin, { reason: string; commands: string[] }>();
   for (let changed = true; changed;) {
     const provided = new Set([...enabled.values()].flatMap(contributions => Object.keys(contributions.provides ?? {})));
     changed = false;
     for (const [plugin, contributions] of enabled) {
-      if ((contributions.requires ?? []).some(service => !provided.has(service))) { enabled.delete(plugin); changed = true; }
+      const missing = (contributions.requires ?? []).find(service => !provided.has(service));
+      if (missing === undefined) continue;
+      enabled.delete(plugin); changed = true;
+      cascaded.set(plugin, { reason: missingServiceReason(missing, plugins, enabled), commands: (contributions.commands ?? []).map(command => command.id) });
     }
   }
   for (const plugin of plugins) {
-    const contributions = enabled.get(plugin);
-    if (contributions === undefined) registry.disable(plugin.manifest);
-    else registry.register({ ...contributions, manifest: plugin.manifest }, events, 'core');
+    const contributions = enabled.get(plugin), cascade = cascaded.get(plugin);
+    if (contributions !== undefined) registry.register({ ...contributions, manifest: plugin.manifest }, events, 'core');
+    else if (cascade !== undefined) registry.disable(plugin.manifest, cascade.reason, cascade.commands);
+    else registry.disable(plugin.manifest, 'Listed in plugins.disabled.');
   }
+}
+
+// Core service ids start with their provider's plugin id (`bases.query`), which names the disabled provider.
+function missingServiceReason(service: string, plugins: readonly CorePlugin[], enabled: ReadonlyMap<CorePlugin, PluginContributions>): string {
+  const provider = plugins.find(plugin => service.startsWith(`${plugin.manifest.id}.`) && !enabled.has(plugin));
+  return provider === undefined
+    ? `Requires service ${service}, which no enabled core plugin provides.`
+    : `Requires service ${service}; its provider ${provider.manifest.id} is disabled.`;
 }
 
 /**

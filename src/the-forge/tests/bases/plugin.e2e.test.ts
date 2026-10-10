@@ -23,7 +23,15 @@ describe('the bases core plugin', () => {
       const dispatched = fixture.cli(['bases', 'list']);
       expect(dispatched.status).toBe(2);
       expect(dispatched.body.error.code).toBe('UNKNOWN_COMMAND');
-      expect(fixture.cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'bases', core: true, state: 'disabled', contributions: null }));
+      const plugins = fixture.cli(['plugins']).body.data.plugins;
+      expect(plugins).toContainEqual(expect.objectContaining({ id: 'bases', core: true, state: 'disabled', reason: 'Listed in plugins.disabled.', contributions: null }));
+      const reason = 'Requires service bases.query; its provider bases is disabled.';
+      expect(plugins).toContainEqual(expect.objectContaining({ id: 'backlog', core: true, state: 'disabled', reason, contributions: null }));
+      for (const args of [['backlog', 'list'], ['help', 'backlog']]) {
+        const cascaded = fixture.cli(args);
+        expect(cascaded.status).toBe(2);
+        expect(cascaded.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason } });
+      }
       // A .base file stays an ordinary document without the plugin.
       expect(fixture.cli(['create', 'tasks.base']).status).toBe(0);
       expect(fixture.cli(['validate', 'tasks.base']).body.data).toMatchObject({ valid: true, kind: 'base' });

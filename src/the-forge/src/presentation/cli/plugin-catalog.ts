@@ -3,7 +3,7 @@ import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts'
 
 /**
  * The `plugins` catalog: bundled core plugins first, then user plugins, with `state` and their contributions.
- * Disabled and unloaded plugins list their manifest only, since their code never ran in this invocation.
+ * Disabled and unloaded plugins list their manifest and a `reason` only, since their code never ran in this invocation.
  */
 export function pluginCatalog(registry: Registry, installed: readonly InstalledPlugin[]) {
   const loaded = registry.plugins.map(plugin => {
@@ -22,9 +22,10 @@ export function pluginCatalog(registry: Registry, installed: readonly InstalledP
       },
     };
   });
-  const disabledCore = registry.disabled.map(manifest => ({ ...manifest, core: true, state: 'disabled' as const, contributions: null }));
+  const disabledCore = registry.disabled.map(manifest => ({ ...manifest, core: true, state: 'disabled' as const, reason: registry.disabledReason(manifest.id) ?? null, contributions: null }));
   const others = installed.filter(entry => !registry.origins.has(entry.manifest.id)).map(entry => ({
-    ...entry.manifest, core: false, state: entry.skipped ? 'skipped' as const : 'disabled' as const, contributions: null,
+    ...entry.manifest, core: false, state: entry.skipped ? 'skipped' as const : 'disabled' as const,
+    reason: entry.skipped ? 'Skipped by --no-plugins.' : 'Not listed in plugins.enabled.', contributions: null,
   }));
   return [...loaded.filter(plugin => plugin.core), ...disabledCore, ...loaded.filter(plugin => !plugin.core), ...others];
 }

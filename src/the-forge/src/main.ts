@@ -129,8 +129,7 @@ async function run(): Promise<void> {
       config.plugins.settings = registry.settings.configure(config.plugins.settings, new Set(registry.origins.keys()));
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
-      const command = registry.commands.get(id);
-      ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${id}. Run help or schema.`);
+      const command = registry.resolveCommand(id);
       const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) });
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.

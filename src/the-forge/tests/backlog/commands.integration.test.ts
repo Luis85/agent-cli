@@ -33,6 +33,9 @@ describe('choosing the backlog', () => {
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates }, ['bases']);
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases', 'backlog']);
     expect(registry.commands.has('backlog')).toBe(false);
+    expect(registry.disabledReason('backlog')).toBe('Requires service bases.query; its provider bases is disabled.');
+    expect(() => registry.resolveCommand('backlog')).toThrow(expect.objectContaining({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason: registry.disabledReason('backlog') } }));
+    expect(() => registry.resolveCommand('bases')).toThrow(expect.objectContaining({ code: 'UNKNOWN_COMMAND' }));
   });
 });
 

@@ -7,7 +7,7 @@ import type { MetadataIndex } from '../metadata/ports.ts';
 import type { App } from '../vault/app.ts';
 import type { GenerationService } from '../generation/plans.ts';
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
-import { ensure, isRecord, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
+import { ensure, forgeError, isRecord, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
 import { publishHostEvent } from './host-events.ts';
 import { ensurePluginNamespace, pluginEvents } from './ownership.ts';
 import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
@@ -93,6 +93,7 @@ export class Registry {
   /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
   readonly origins = new Map<string, PluginOrigin>();
   readonly disabled: PluginManifest[] = [];
+  private readonly disabledReasons = new Map<string, { reason: string; commands: string[] }>();
   readonly catalog = new PluginCatalog();
   readonly settings = new PluginSettings();
   private cleanups: Array<{ pluginId: string; run: () => void | Promise<void> }> = [];
@@ -133,11 +134,29 @@ export class Registry {
     this.plugins.push(plugin);
     this.origins.set(pluginId, origin);
   }
-  /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
-  disable(manifest: PluginManifest): void {
+  /**
+   * A bundled core plugin that contributes nothing: listed by `plugins` with `reason`. `commands` are the command ids
+   * it would have contributed, when known, so invoking one reports PLUGIN_UNAVAILABLE instead of UNKNOWN_COMMAND.
+   */
+  disable(manifest: PluginManifest, reason: string, commands: readonly string[] = []): void {
     validatePluginManifest(manifest, 'core');
     ensure(!this.origins.has(manifest.id) && !this.disabled.some(entry => entry.id === manifest.id), 'DUPLICATE_PLUGIN', manifest.id);
     this.disabled.push(manifest);
+    this.disabledReasons.set(manifest.id, { reason, commands: [...commands] });
+  }
+  /** Why a disabled core plugin contributes nothing. */
+  disabledReason(pluginId: string): string | undefined { return this.disabledReasons.get(pluginId)?.reason; }
+  /**
+   * A registered command. A command a disabled core plugin would have contributed fails with PLUGIN_UNAVAILABLE and
+   * `details` `{command, plugin, reason}`; any other unknown id with UNKNOWN_COMMAND.
+   */
+  resolveCommand(commandId: string): Command {
+    const command = this.commands.get(commandId);
+    if (command) return command;
+    for (const [plugin, { reason, commands }] of this.disabledReasons) {
+      if (commands.includes(commandId)) throw forgeError('PLUGIN_UNAVAILABLE', `Command ${commandId} is unavailable because the core plugin ${plugin} is disabled: ${reason}`, { command: commandId, plugin, reason });
+    }
+    throw forgeError('UNKNOWN_COMMAND', `Unknown command ${commandId}. Run help or schema.`);
   }
   /** The context a plugin's hooks, commands and generators run with. */
   pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext {
