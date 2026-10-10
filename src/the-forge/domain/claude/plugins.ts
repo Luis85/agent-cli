@@ -1,4 +1,4 @@
-import { AppError, ensure, isRecord } from '../shared/errors.ts';
+import { AppError, ensure, forgeError, isRecord } from '../shared/errors.ts';
 import { validateClaudeHooks } from './hooks.ts';
 
 /** Discovery metadata describes Claude's loading behavior, not features executed by Forge. */
@@ -205,7 +205,7 @@ function settings(value: unknown, path: string): void {
 function hooks(value: unknown, path: string): void {
   try { validateClaudeHooks(value); }
   catch (error) {
-    if (error instanceof AppError) throw new AppError('INVALID_CLAUDE_PLUGIN', `${path}: ${error.message}`, 2);
+    if (error instanceof AppError) throw forgeError('INVALID_CLAUDE_PLUGIN', `${path}: ${error.message}`);
     throw error;
   }
 }

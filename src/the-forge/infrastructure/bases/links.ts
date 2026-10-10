@@ -3,7 +3,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { parseFragment, type DefaultTreeAdapterTypes } from 'parse5';
 import type { LinkValueInput } from 'obsidian-bases-expression';
-import { AppError } from '../../domain/shared/errors.ts';
+import { forgeError } from '../../domain/shared/errors.ts';
 
 interface MarkdownNode { type: string; value?: string; url?: string; identifier?: string; children?: MarkdownNode[]; position?: { start: { offset?: number }; end: { offset?: number } } }
 export interface IndexedLinks { links: LinkValueInput[]; embeds: LinkValueInput[]; tags: string[] }
@@ -50,11 +50,11 @@ export function resolveBaseLink(target: string, source: string, index: BaseLinkI
   for (const candidate of candidates) {
     const found = lookup(index, index.lower, candidate);
     if (found.length === 1) return found[0]!;
-    if (found.length > 1) throw new AppError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${found.join(', ')}`, 2);
+    if (found.length > 1) throw forgeError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${found.join(', ')}`);
   }
   if (relative || target.startsWith('../')) return null;
   const matches = lookup(index, index.suffixes, target);
-  if (matches.length > 1) throw new AppError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${matches.join(', ')}`, 2);
+  if (matches.length > 1) throw forgeError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${matches.join(', ')}`);
   return matches[0] ?? null;
 }
 

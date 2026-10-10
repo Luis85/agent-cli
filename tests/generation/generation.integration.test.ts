@@ -66,8 +66,8 @@ describe('generation review and explicit revision authorization', () => {
     await expect(service.check(writes, 'UI_DRIFT')).rejects.toMatchObject({ code: 'UI_DRIFT', exitCode: 5, details: { outputs: [{ path: 'ui/item.ts', status: 'missing' }] } });
     expect(await files.list()).toEqual([]);
     await service.commit(writes);
-    expect((await service.check(writes)).matches).toBe(true);
-    await expect(service.check([write('ui/item.ts', 'changed')])).rejects.toMatchObject({ code: 'GENERATION_DRIFT', exitCode: 5, details: { outputs: [{ path: 'ui/item.ts', status: 'changed' }] } });
+    expect((await service.check(writes, 'UI_DRIFT')).matches).toBe(true);
+    await expect(service.check([write('ui/item.ts', 'changed')], 'DATA_SOURCE_DRIFT')).rejects.toMatchObject({ code: 'DATA_SOURCE_DRIFT', exitCode: 5, details: { outputs: [{ path: 'ui/item.ts', status: 'changed' }] } });
     expect(new TextDecoder().decode((await files.read('ui/item.ts')).bytes)).toBe('content');
   });
 
@@ -79,6 +79,6 @@ describe('generation review and explicit revision authorization', () => {
     expect(Object.keys(plan.revisions)).toEqual(['__proto__', 'toString']);
     expect(JSON.parse(new TextDecoder().decode((await files.read('review.json')).bytes))).toEqual(plan.revisions);
     await service.commit(writes, plan.revisions);
-    expect((await service.check(writes)).matches).toBe(true);
+    expect((await service.check(writes, 'UI_DRIFT')).matches).toBe(true);
   });
 });

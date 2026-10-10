@@ -36,7 +36,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Data sources | Matching `data-sources/` folders in all four layers |
 | Bases queries | `application/bases/`, `infrastructure/bases/`, `presentation/bases/` |
 | Generators, templates and skills | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` / `presentation/skills/` |
-| Shared failures and localized responses | `domain/shared/errors.ts`, `presentation/localization/` |
+| Shared failures, the error catalog and localized responses | `domain/shared/errors.ts`, `domain/shared/error-catalog.ts`, `presentation/localization/` |
 
 Pure interaction analysis belongs in domain. JavaScript, CSS and framework handler emission belongs in infrastructure. Command handlers translate user input and invoke services rather than constructing filesystem/process adapters or duplicating their validation.
 

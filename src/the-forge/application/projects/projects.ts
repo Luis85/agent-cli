@@ -1,4 +1,4 @@
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { vaultPath, type FileSnapshot, type WriteRequest } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import type { Workspace } from '../workspace/workspace.ts';
@@ -36,12 +36,12 @@ export class ProjectService {
     let marker;
     try { marker = await this.files.read(`${directory}/.forge/project.json`); }
     catch (error) {
-      if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError('PROJECT_NOT_FOUND', `No Forge project named ${name} in ${this.projectsDirectory}.`, 3);
+      if (error instanceof AppError && error.code === 'NOT_FOUND') throw forgeError('PROJECT_NOT_FOUND', `No Forge project named ${name} in ${this.projectsDirectory}.`);
       throw error;
     }
     let metadata: unknown;
     try { metadata = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes)); }
-    catch { throw new AppError('INVALID_PROJECT', `Invalid project metadata: ${directory}/.forge/project.json`, 2); }
+    catch { throw forgeError('INVALID_PROJECT', `Invalid project metadata: ${directory}/.forge/project.json`); }
     ensure(isRecord(metadata) && metadata.schemaVersion === 1 && metadata.name === name && metadata.type === 'library', 'INVALID_PROJECT', `Expected schemaVersion 1, matching name and library type in ${directory}/.forge/project.json.`);
     return { schemaVersion: 1, name, type: 'library', directory };
   }
@@ -52,12 +52,12 @@ export class ProjectService {
     if (selection === null) return null;
     const { name, directory } = selection;
     if (directory !== `${this.projectsDirectory}/${name}`) {
-      throw new AppError('STALE_PROJECT_CONTEXT', `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`, 3);
+      throw forgeError('STALE_PROJECT_CONTEXT', `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`);
     }
     try { return await this.inspect(name); }
     catch (error) {
       if (error instanceof AppError && ['PROJECT_NOT_FOUND', 'INVALID_PROJECT'].includes(error.code)) {
-        throw new AppError('STALE_PROJECT_CONTEXT', `Selected project ${name} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`, 3);
+        throw forgeError('STALE_PROJECT_CONTEXT', `Selected project ${name} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`);
       }
       throw error;
     }
@@ -115,7 +115,7 @@ export class ProjectService {
       ensure(typeof context.directory === 'string' && vaultPath(context.directory).endsWith(`/${name}`), 'INVALID_PROJECT_CONTEXT', 'Project selection requires its workspace-relative directory.');
       return { name, directory: context.directory };
     } catch {
-      throw new AppError('INVALID_PROJECT_CONTEXT', 'Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.', 2);
+      throw forgeError('INVALID_PROJECT_CONTEXT', 'Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.');
     }
   }
 

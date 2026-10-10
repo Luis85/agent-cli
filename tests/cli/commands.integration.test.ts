@@ -98,7 +98,7 @@ describe('literal Markdown editing contract', () => {
     const workspace = new Workspace(context.workspace.files, context.workspace.codec, context.events, dryRun);
     await expect(registry.commands.get('edit')!.run(['note.md'], {
       find: 'ana', replace: 'other', 'if-match': snapshot.revision,
-    }, { ...context, workspace })).rejects.toMatchObject({ code: 'AMBIGUOUS_EDIT' });
+    }, { ...context, workspace })).rejects.toMatchObject({ code: 'AMBIGUOUS_EDIT', details: { matches: 2, lines: [1, 1] } });
     expect(await readFile(join(root, 'note.md'), 'utf8')).toBe('banana');
     expect(context.events.history).toEqual([]);
   });

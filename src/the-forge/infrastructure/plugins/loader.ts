@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 import { dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { compileFunction } from 'node:vm';
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { NodeFiles } from '../workspace/files.ts';
 import { validatePluginManifest, type Registry, type Plugin, type PluginManifest } from '../../application/plugins/registry.ts';
 import type { EventBus } from '../../application/plugins/events.ts';
@@ -11,7 +11,7 @@ async function readManifest(path: string, files: NodeFiles): Promise<PluginManif
   const text = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(path)).bytes);
   let value: unknown;
   try { value = JSON.parse(text); }
-  catch { throw new AppError('INVALID_PLUGIN', `Invalid JSON in plugin manifest: ${path}`, 2); }
+  catch { throw forgeError('INVALID_PLUGIN', `Invalid JSON in plugin manifest: ${path}`); }
   validatePluginManifest(value);
   return value;
 }

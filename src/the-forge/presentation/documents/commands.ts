@@ -1,5 +1,6 @@
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { fileKinds, fileKind } from '../../domain/documents/file.ts';
+import { replaceUniqueLiteral } from '../../domain/documents/literal-edit.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import { arity, value } from '../cli/arguments.ts';
 import { encodeText, parseJson, readInputBytes } from '../cli/input.ts';
@@ -29,7 +30,7 @@ function selectedParts(flags: Record<string, string | boolean>, kind: string): S
 }
 function utf8Text(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Edits require valid UTF-8 text; use write for binary content.', 2); }
+  catch { throw forgeError('INVALID_ENCODING', 'Edits require valid UTF-8 text; use write for binary content.'); }
 }
 
 function defaultDocument(kind: ReturnType<typeof fileKind>): Uint8Array {
@@ -78,10 +79,7 @@ export function documentCommands(): Command[] {
         const text = utf8Text(bytes);
         if (flags.append) { ensure(flags.find === undefined && flags.replace === undefined, 'INVALID_INPUT', 'Do not combine append and replace.'); return encodeText(text + value(flags, 'content', true)!); }
         ensure(flags.content === undefined, 'INVALID_INPUT', '--content requires --append.');
-        const find = value(flags, 'find', true)!, replacement = value(flags, 'replace', true)!;
-        const first = text.indexOf(find);
-        ensure(find.length > 0 && first >= 0 && text.indexOf(find, first + 1) < 0, 'AMBIGUOUS_EDIT', 'The find text must match exactly once, including overlapping matches.');
-        return encodeText(text.replace(find, () => replacement));
+        return encodeText(replaceUniqueLiteral(text, value(flags, 'find', true)!, value(flags, 'replace', true)!));
       });
     } },
     { id: 'properties', description: 'Merge YAML frontmatter properties while preserving the Markdown body.', usage: 'properties <note.md> --set JSON --if-match sha256', options: { set: 'string', 'if-match': 'string' }, async run(args, flags, { workspace }) {

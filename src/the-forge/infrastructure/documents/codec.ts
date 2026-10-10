@@ -2,7 +2,8 @@ import { parseDocument, isMap, isScalar, isAlias, visit, type Document } from 'y
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkFrontmatter from 'remark-frontmatter';
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
@@ -10,7 +11,7 @@ import type { DocumentCodec } from '../../application/workspace/ports.ts';
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.', 2); }
+  catch { throw forgeError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.'); }
 }
 function yamlDocument(text: string): Document {
   const document = parseDocument(text, { uniqueKeys: true });
@@ -21,7 +22,7 @@ function yamlDocument(text: string): Document {
   });
   return document;
 }
-function jsonValue(value: unknown, code: string, ancestors = new Set<object>(), depth = 0): void {
+function jsonValue(value: unknown, code: ErrorCode, ancestors = new Set<object>(), depth = 0): void {
   ensure(depth < 100, code, 'Document nesting is too deep.');
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
   if (typeof value === 'number') { ensure(Number.isFinite(value), code, 'Document numbers must be finite.'); return; }
@@ -34,7 +35,7 @@ function jsonValue(value: unknown, code: string, ancestors = new Set<object>(), 
 function yamlValue(document: Document): unknown {
   let value: unknown;
   try { value = document.toJS({ maxAliasCount: 100 }); }
-  catch (error) { throw new AppError('INVALID_YAML', error instanceof Error ? error.message : 'Invalid YAML aliases.', 2); }
+  catch (error) { throw forgeError('INVALID_YAML', error instanceof Error ? error.message : 'Invalid YAML aliases.'); }
   jsonValue(value, 'INVALID_YAML');
   return value;
 }
@@ -96,7 +97,7 @@ export class ObsidianDocuments implements DocumentCodec {
     let data: unknown;
     if (kind === 'canvas') {
       try { data = JSON.parse(text.replace(/^\uFEFF/, '')); }
-      catch { throw new AppError('INVALID_CANVAS', 'Canvas must contain valid JSON.', 2); }
+      catch { throw forgeError('INVALID_CANVAS', 'Canvas must contain valid JSON.'); }
       jsonValue(data, 'INVALID_CANVAS');
     } else data = yamlValue(yamlDocument(text));
     if (kind === 'canvas') validateCanvas(data); else validateBase(data);

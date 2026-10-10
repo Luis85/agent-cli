@@ -1,4 +1,4 @@
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, ensureSeparateDirectories, type WriteRequest } from '../../domain/documents/file.ts';
 import { uiFrameworks, type UiDefinition, type UiFramework } from '../../domain/ui/definition.ts';
 import type { InteractionDefinition } from '../../domain/interactions/definition.ts';
@@ -99,7 +99,7 @@ export class UiLibrary {
     if (options.component) definitions = selectUiComponents(definitions, options.component);
     for (const definition of definitions) if ((options.storybook || options.storiesOnly) && definition.storybook?.extension) {
       try { await this.workspace.files.read(definition.storybook.extension); }
-      catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError('INVALID_UI', `Missing Storybook extension ${definition.storybook.extension}.`, 2); throw error; }
+      catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') throw forgeError('INVALID_UI', `Missing Storybook extension ${definition.storybook.extension}.`); throw error; }
     }
     const ids = new Set(definitions.flatMap(componentInteractionIds));
     const renderOptions: UiRenderOptions = { ...options, interactions: interactions.filter(interaction => ids.has(interaction.id)) };

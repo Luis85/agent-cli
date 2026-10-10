@@ -1,6 +1,6 @@
 import { ensure, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
 import { isStructured, isTextLike, type WriteRequest, type FileChange, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
-import { snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
+import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import { unifiedDiff } from '../../domain/documents/diff.ts';
 import type { FileRepository, DocumentCodec } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
@@ -78,7 +78,7 @@ export class Workspace {
   async edit(path: string, revision: string, transform: (bytes: Uint8Array) => Uint8Array) {
     return this.observe('edit', [path], async () => {
       const file = await this.files.read(path);
-      ensure(file.revision === revision, 'CONFLICT', 'File changed; read again before editing.');
+      ensure(file.revision === revision, 'CONFLICT', `File changed; read again before editing: ${path}`, revisionConflict(path, revision, file.revision));
       return this.guardedWrite([{ path, bytes: transform(file.bytes), expectedRevision: revision }], new Map([[path, file]]));
     }, changeSummary);
   }

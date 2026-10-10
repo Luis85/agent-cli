@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
-import { errorMessage, AppError } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import type { LoadedConfig } from '../../application/workspace/config.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
@@ -33,10 +33,10 @@ export async function loadConfig(options: { defaultPath: string; cwd: string; ro
   try { content = JSON.parse(await readFile(path, 'utf8')) as unknown; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') { content = {}; exists = false; }
-    else throw new AppError('INVALID_CONFIG', `Cannot read configuration ${path}: ${errorMessage(error)}`, 2);
+    else throw forgeError('INVALID_CONFIG', `Cannot read configuration ${path}: ${errorMessage(error)}`);
   }
   const parsed = configSchema.safeParse(content);
-  if (!parsed.success) throw new AppError('INVALID_CONFIG', parsed.error.issues.map(issue => `${issue.path.join('.') || 'config'}: ${issue.message}`).join('; '), 2);
+  if (!parsed.success) throw forgeError('INVALID_CONFIG', parsed.error.issues.map(issue => `${issue.path.join('.') || 'config'}: ${issue.message}`).join('; '));
   const config = parsed.data;
   return { path: exists ? path : null, root, config };
 }

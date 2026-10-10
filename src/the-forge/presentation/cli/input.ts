@@ -1,4 +1,4 @@
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import type { CommandContext } from '../../application/plugins/registry.ts';
 import { value, type ParsedArguments } from './arguments.ts';
 
@@ -13,5 +13,5 @@ export async function readInputBytes(flags: ParsedArguments['flags'], context: P
 
 export function parseJson(text: string): unknown {
   try { return JSON.parse(text) as unknown; }
-  catch { throw new AppError('INVALID_JSON', 'Expected valid JSON input.', 2); }
+  catch { throw forgeError('INVALID_JSON', 'Expected valid JSON input.'); }
 }

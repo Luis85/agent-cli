@@ -1,4 +1,4 @@
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 
@@ -16,7 +16,7 @@ export class GenerationService {
     const plan = writes.map(write => ({ ...write, ...(revisions && Object.hasOwn(revisions, write.path) ? { expectedRevision: revisions[write.path] } : {}) }));
     try { return await this.write(plan); }
     catch (error) {
-      if (error instanceof AppError && error.code === 'CONFLICT') throw new AppError('CONFLICT', 'Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.', error.exitCode);
+      if (error instanceof AppError && error.code === 'CONFLICT') throw forgeError('CONFLICT', 'Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.', error.details);
       throw error;
     }
   }
@@ -47,9 +47,9 @@ export class GenerationService {
     return { matches: outputs.every(output => output.status === 'unchanged'), revisions: orderedRevisions, outputs, ...(manifest ? { manifest } : {}) };
   }
 
-  async check(writes: readonly WriteRequest[], errorCode = 'GENERATION_DRIFT') {
+  async check(writes: readonly WriteRequest[], errorCode: 'UI_DRIFT' | 'DATA_SOURCE_DRIFT') {
     const plan = await this.plan(writes);
-    if (!plan.matches) throw new AppError(errorCode, 'Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.', 5, { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
+    if (!plan.matches) throw forgeError(errorCode, 'Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.', { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
     return plan;
   }
 

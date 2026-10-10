@@ -4,7 +4,7 @@ import {
 } from 'obsidian-bases-expression';
 import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../../application/bases/query.ts';
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
-import { errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { NodeFiles } from '../workspace/files.ts';
 import { BaseRowContexts } from './contexts.ts';
 import { basePropertyTypes, indexBaseFiles } from './index.ts';
@@ -127,7 +127,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
         ensure(evaluationError === undefined, 'BASE_EVALUATION_ERROR', evaluationError ?? 'Expression evaluation failed.');
         rows.push({ path: file.path, sort, group, groupIndex });
       } catch (error) {
-        throw new AppError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`, 2);
+        throw forgeError('BASE_EVALUATION_ERROR', `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error)}`);
       }
     }
     rows.sort((a, b) => {

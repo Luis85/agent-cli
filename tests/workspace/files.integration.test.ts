@@ -22,6 +22,22 @@ describe('guarded filesystem', () => {
     await expect(files.writeBatch([{ ...write('notes/a.md'), expectedRevision: before.revision }], false)).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(await readFile(join(root, 'notes/a.md'), 'utf8')).toBe('Changed');
   });
+  it('reports every conflicting path of a batch before writing any file', async () => {
+    await writeFile(join(root, 'a.md'), 'A');
+    await writeFile(join(root, 'b.md'), 'B');
+    const a = revisionOf(encodeText('A')), b = revisionOf(encodeText('B'));
+    for (const dryRun of [true, false]) {
+      await expect(files.writeBatch([write('a.md'), write('new.md'), { ...write('b.md'), expectedRevision: a }, { ...write('c.md'), expectedRevision: b }], dryRun)).rejects.toMatchObject({
+        code: 'CONFLICT', exitCode: 2,
+        details: { path: 'a.md', expectedRevision: null, currentRevision: a, conflicts: [
+          { path: 'a.md', expectedRevision: null, currentRevision: a },
+          { path: 'b.md', expectedRevision: a, currentRevision: b },
+          { path: 'c.md', expectedRevision: b, currentRevision: null },
+        ] },
+      });
+    }
+    expect((await readdir(root)).sort()).toEqual(['a.md', 'b.md']);
+  });
   it('dry runs leave no files, directories or lock', async () => {
     expect(await files.writeBatch([write('new/deep/note.md')], true)).toMatchObject([{ operation: 'created' }]);
     expect(await readdir(root)).toEqual([]);
@@ -117,7 +133,9 @@ describe('guarded filesystem', () => {
       if (basename(target) === 'existing.md') await writeFile(target, 'External edit');
       await replace(target, ...args);
     });
-    await expect(files.writeBatch([write('created.md'), { ...write('existing.md', 'Changed'), expectedRevision: before.revision }], false)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(files.writeBatch([write('created.md'), { ...write('existing.md', 'Changed'), expectedRevision: before.revision }], false)).rejects.toMatchObject({
+      code: 'CONFLICT', details: { path: 'existing.md', expectedRevision: before.revision, currentRevision: revisionOf(encodeText('External edit')) },
+    });
     expect(await readdir(root)).toEqual(['existing.md']);
     expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('External edit');
   });

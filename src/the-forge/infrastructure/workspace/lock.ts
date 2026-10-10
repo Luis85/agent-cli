@@ -2,7 +2,7 @@ import { constants } from 'node:fs';
 import { lstat, open, rm } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import metadata from '../../../../package.json';
-import { AppError, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, isRecord } from '../../domain/shared/errors.ts';
 import { retryTransient } from './retry.ts';
 
 export const lockName = '.agent-cli.lock';
@@ -87,7 +87,7 @@ async function busy(path: string): Promise<AppError> {
   const details = await inspectLock(path);
   const { lock, stale } = details;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ''})` : '';
-  return new AppError('WORKSPACE_BUSY', `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. `
+  return forgeError('WORKSPACE_BUSY', `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. `
     + 'Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs on this host: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. '
-    + 'If stale is "unknown", verify the recorded pid and host in error.details.lock yourself before deleting it.', 4, details);
+    + 'If stale is "unknown", verify the recorded pid and host in error.details.lock yourself before deleting it.', details);
 }
