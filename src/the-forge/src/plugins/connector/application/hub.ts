@@ -71,7 +71,7 @@ export class Hub implements ConnectorHub {
     const settings = { ...(isRecord(checked.value) ? checked.value : {}), platform: profile.platform, tokenEnv, mappings: profile.mappings };
     const connection: Connection = {
       id: profile.id, platform: profile.platform, tokenEnv,
-      linkProperty: profile.linkProperty ?? description.defaults.linkProperty, effortProperty: profile.effortProperty, settings,
+      linkProperty: profile.linkProperty ?? description.defaults.linkProperty, effortProperty: profile.effortProperty, areaProperty: profile.areaProperty, settings,
       token() {
         const value = environment(tokenEnv)?.trim();
         if (!value) throw connectorError('CONNECTOR_AUTH_FAILED', `Set the environment variable ${tokenEnv} to an access token for connection ${profile.id}.`, { connection: profile.id, tokenEnv });

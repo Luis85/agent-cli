@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canonical, decide, iterationName, localState, localType, priorityLabel, priorityNumber, remoteState, remoteType,
+  canonical, decide, decideDescription, iterationName, localState, localType, priorityLabel, priorityNumber, remoteState, remoteType,
 } from '../../src/plugins/backlog/domain/sync-fields.ts';
 import { emptyState, parseState, pathOfRemote, renameEntries, serializeState } from '../../src/plugins/backlog/domain/sync-state.ts';
-import { noteBody, withBody } from '../../src/plugins/backlog/domain/notes.ts';
+import { comments, noteBody, withBody, withoutComments } from '../../src/plugins/backlog/domain/notes.ts';
 import { processMapping } from '../../src/plugins/connector-azure-devops/domain/processes.ts';
 
 describe('the three-way field decision', () => {
@@ -15,12 +15,29 @@ describe('the three-way field decision', () => {
     expect(decide('b', 'x', 'x')).toBe('converged');
   });
 
-  it('treats a never-synced field as changed on both sides and a side that cannot express it as unchanged', () => {
+  it('never overwrites without a base, or over a side that cannot express the field', () => {
     expect(decide(undefined, 'a', 'a')).toBe('converged');
     expect(decide(undefined, 'a', 'b')).toBe('conflict');
-    expect(decide('b', undefined, 'r')).toBe('pull');
-    expect(decide('b', 'l', undefined)).toBe('push');
-    expect(decide(undefined, undefined, 'r')).toBe('pull');
+    expect(decide(undefined, 'a', undefined)).toBe('skip');
+    expect(decide(undefined, undefined, 'r')).toBe('skip');
+    expect(decide('b', undefined, 'r')).toBe('skip');
+    expect(decide('b', 'l', undefined)).toBe('skip');
+    expect(decide('b', undefined, 'b')).toBe('unchanged');
+    expect(decide('b', 'b', undefined)).toBe('unchanged');
+    expect(decide(undefined, undefined, undefined)).toBe('unchanged');
+  });
+
+  it('compares descriptions per side, pulls only Markdown and conflicts on a first sync with different texts', () => {
+    const sides = (local: string, remote: string, localBase?: string, remoteBase?: string, markdown = false) => ({ local, remote, localBase, remoteBase, same: local === remote, markdown });
+    expect(decideDescription(sides('md', '<p>html</p>'))).toBe('conflict');
+    expect(decideDescription(sides('md', 'md'))).toBe('converged');
+    expect(decideDescription(sides('md', '<p>md</p>', 'md', '<p>md</p>'))).toBe('unchanged');
+    expect(decideDescription(sides('md2', '<p>md</p>', 'md', '<p>md</p>'))).toBe('push');
+    expect(decideDescription(sides('md', '<p>new</p>', 'md', '<p>md</p>'))).toBe('skip');
+    expect(decideDescription(sides('md', 'new', 'md', 'md', true))).toBe('pull');
+    expect(decideDescription(sides('md2', 'new', 'md', 'md', true))).toBe('conflict');
+    expect(decideDescription(sides('same', 'same', 'md', 'md'))).toBe('converged');
+    expect(decideDescription({ ...sides('md', 'x', 'md', 'x'), local: undefined })).toBe('skip');
   });
 
   it('compares canonical values: sanitized titles, case-insensitive sorted tags, trimmed text and normalized newlines', () => {
@@ -44,6 +61,7 @@ describe('name mappings', () => {
     expect(localType(agile, 'User Story', null)).toBe('PBI');
     expect(localType(processMapping('basic'), 'Issue', 'Bug')).toBe('Bug');
     expect(localType(processMapping('basic'), 'Issue', null)).toBe('PBI');
+    expect(localType(agile, 'Risk', 'PBI')).toBeUndefined();
   });
 
   it('maps states with Type:State entries first and reads them back in the view\'s declared vocabulary', () => {
@@ -94,6 +112,12 @@ describe('the sync state file', () => {
 });
 
 describe('note bodies', () => {
+  it('finds and strips Obsidian comments outside fenced code', () => {
+    const body = 'Plan %%private%% it.\n\n%%\nblock\n%%\n\n```\n%%kept%%\n```\nEnd';
+    expect(withoutComments(body)).toBe('Plan  it.\n\n\n\n```\n%%kept%%\n```\nEnd');
+    expect(comments(body)).toEqual(['%%private%%', '%%\nblock\n%%']);
+  });
+
   it('reads and replaces the text after the frontmatter, keeping the frontmatter bytes', () => {
     const text = '---\ntype: "PBI"\n---\n\nOld body\n';
     expect(noteBody(text)).toBe('Old body\n');

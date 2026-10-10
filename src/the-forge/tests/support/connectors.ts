@@ -64,3 +64,15 @@ export async function invocation(root: string, connections: Record<string, unkno
 export async function run(root: string, connections: Record<string, unknown>, command: string, args: string[], flags: Record<string, string | boolean> = {}, options: Invocation = {}) {
   return (await invocation(root, connections, options)).run(command, args, flags);
 }
+
+/** A `.base` with one product-backlog view over `folder`, bound to `connection`. */
+export const boundBase = (folder: string, view: string, connection: string) => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: ${view}\n    homeFolder: ${folder}\n    stateProperty: note.status\n    priorityProperty: note.priority\n    iterationProperty: note.iteration\n    connection: ${connection}\n`;
+/** A note with JSON-quoted frontmatter values and a body. */
+export const noteText = (fields: Record<string, unknown>, body = '') => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n${body}`;
+/** An Epic › Feature › PBI tree in `work/`, bound to `contoso` by `work/Sync.base`. */
+export const planningNotes = () => ({
+  'work/Sync.base': boundBase('work', 'Contoso', 'contoso'),
+  'work/Trip planning.md': noteText({ type: 'Epic', order: 1000, status: 'Active', tags: ['planning'] }),
+  'work/Itinerary builder.md': noteText({ type: 'Feature', parent: '[[Trip planning]]', order: 2000 }),
+  'work/Draft a trip.md': noteText({ type: 'PBI', parent: '[[Itinerary builder]]', order: 3000, status: 'Open', priority: '1 - Must' }, 'Plan the **stops**.\n'),
+});

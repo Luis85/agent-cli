@@ -9,7 +9,7 @@ let fake: FakeAzureDevOps;
 const sleeps: number[] = [];
 const connector = () => new AzureDevOpsConnector(new FetchHttpClient({ sleep: async milliseconds => { sleeps.push(milliseconds); } }));
 const connection = (settings: Record<string, unknown> = {}, token = PAT): Connection => ({
-  id: 'contoso', platform: 'azure-devops', tokenEnv: 'PAT', linkProperty: 'azure-devops', effortProperty: 'effort',
+  id: 'contoso', platform: 'azure-devops', tokenEnv: 'PAT', linkProperty: 'azure-devops', effortProperty: 'effort', areaProperty: 'area',
   settings: { organization: fake.organization('contoso'), project: 'Trailhead', process: 'agile', descriptionFormat: 'markdown', mappings: {}, ...settings },
   token: () => token,
 });
@@ -26,18 +26,52 @@ describe('the Azure DevOps connector against the recorded API', () => {
     await expect(connector().test(connection({}, 'bad-token-value'))).rejects.toMatchObject({ code: 'CONNECTOR_AUTH_FAILED', details: { status: 401, tokenEnv: 'PAT' } });
   });
 
-  it('creates, reads by id and by change date, and links items to their web URL', async () => {
+  it('creates, reads by id and links items to their web URL, with the default area for items without one', async () => {
     const azure = connector();
     const parent = await azure.create(connection(), { type: 'Epic', title: 'Plan', tags: ['x'] });
-    const child = await azure.create(connection({ areaPath: 'Trailhead\\Web' }), { type: 'User Story', title: 'Draft', parentId: parent.id, iteration: null, description: 'Text' });
-    expect(child).toMatchObject({ parentId: parent.id, iteration: 'Trailhead', area: 'Trailhead\\Web', description: 'Text', url: `${fake.organization('contoso')}/Trailhead/_workitems/edit/${child.id}` });
-    expect((await azure.query(connection(), { ids: [child.id, parent.id] })).map(item => item.title)).toEqual(['Draft', 'Plan']);
-    const changed = String(fake.item('contoso', Number(parent.id)).fields['System.ChangedDate']);
-    expect((await azure.query(connection({ areaPath: 'Trailhead\\Web' }), { changedSince: changed })).map(item => item.id)).toEqual([child.id]);
-    expect(fake.requests.at(-2)!.path).toContain('/_apis/wit/wiql?timePrecision=true&api-version=7.1');
+    const child = await azure.create(connection({ areaPath: 'Trailhead\\Web' }), { type: 'User Story', title: 'Draft', parentId: parent.id, iteration: null, area: null, description: 'Text' });
+    expect(child).toMatchObject({ parentId: parent.id, iteration: 'Trailhead', area: null, description: 'Text', descriptionMarkdown: false, url: `${fake.organization('contoso')}/Trailhead/_workitems/edit/${child.id}` });
+    expect(fake.item('contoso', Number(child.id)).fields['System.AreaPath']).toBe('Trailhead\\Web');
+    expect(parent.area).toBeNull();
+    expect((await azure.query(connection(), [child.id, parent.id, '999999'])).map(item => item.title)).toEqual(['Draft', 'Plan']);
+    expect((await azure.update(connection(), child.id, { area: 'Trailhead\\Mobile' }, child.rev)).area).toBe('Trailhead\\Mobile');
     expect(azure.idFromLink(connection(), child.url)).toBe(child.id);
     expect(azure.idFromLink(connection(), child.url.replace('contoso', 'fabrikam'))).toBeNull();
     expect(azure.idFromLink(connection(), 'https://example.com/x')).toBeNull();
+  });
+
+  it('reads descriptions as raw text, Markdown only when the service declares the format', async () => {
+    const azure = connector();
+    const item = await azure.create(connection(), { type: 'Task', title: 'Notes', description: '**Plan**' });
+    expect(fake.item('contoso', Number(item.id)).multilineFieldsFormat).toEqual({ 'System.Description': 'markdown' });
+    expect((await azure.query(connection(), [item.id]))[0]).toMatchObject({ description: '**Plan**', descriptionMarkdown: false });
+    fake.returnsFormats = true;
+    try { expect((await azure.query(connection(), [item.id]))[0]).toMatchObject({ description: '**Plan**', descriptionMarkdown: true }); }
+    finally { fake.returnsFormats = false; }
+    const html = await azure.create(connection({ descriptionFormat: 'html' }), { type: 'Task', title: 'Html', description: '# Head' });
+    expect(html).toMatchObject({ description: '<h1>Head</h1>', descriptionMarkdown: false });
+  });
+
+  it('creates items in the initial state and then moves them to the drafted state', async () => {
+    const azure = connector();
+    fake.initialStateOnly = true;
+    try {
+      const item = await azure.create(connection(), { type: 'User Story', title: 'Started', state: 'Active' });
+      expect(item).toMatchObject({ state: 'Active', rev: '2' });
+      const writes = fake.writes().slice(-2);
+      expect(writes.map(write => write.method)).toEqual(['POST', 'PATCH']);
+      expect(JSON.stringify(writes[0]!.body)).not.toContain('System.State');
+      const fresh = await azure.create(connection(), { type: 'User Story', title: 'Fresh', state: 'New' });
+      expect(fresh.rev).toBe('1');
+      // A follow-up the service refuses still returns the created item, so its id is never lost.
+      const refusing = new AzureDevOpsConnector({
+        request: async request => {
+          const response = await new FetchHttpClient().request(request);
+          return request.method === 'PATCH' ? { status: 400, headers: {}, body: JSON.stringify({ message: 'TF401320: Rule Error for field State.' }) } : response;
+        },
+      });
+      expect(await refusing.create(connection(), { type: 'User Story', title: 'Stays new', state: 'Resolved' })).toMatchObject({ title: 'Stays new', state: 'New' });
+    } finally { fake.initialStateOnly = false; }
   });
 
   it('guards updates with the revision and reports a stale one', async () => {

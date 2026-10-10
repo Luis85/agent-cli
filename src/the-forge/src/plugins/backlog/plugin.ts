@@ -17,7 +17,7 @@ const events: EventDefinition[] = [
   { id: 'backlog.item-moved', description: 'An item was reparented or reordered: {path, parent, order, previousParent, previousOrder}.', validate: payload(['path']) },
   { id: 'backlog.state-changed', description: 'An item changed its workflow state: {path, title, from, to, started?, finished?}.', validate: payload(['path', 'title']) },
   { id: 'backlog.released', description: 'A release was marked released: {path, name, status, released}.', validate: payload(['path', 'name', 'status', 'released']) },
-  { id: 'backlog.synced', description: 'A bound view finished syncing with its connection: {base, view, connection, created, updated, pulled, conflicts, left, failed}.', validate: payload(['base', 'view', 'connection']) },
+  { id: 'backlog.synced', description: 'A bound view finished syncing with its connection: {base, view, connection, created, updated, pulled, conflicts, left (notes that left the sync set of the connection), failed}.', validate: payload(['base', 'view', 'connection']) },
 ];
 
 const today = () => { const now = new Date(); return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }; };
@@ -52,7 +52,7 @@ export const backlogPlugin: CorePlugin = {
     id: 'backlog', name: 'Backlog', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Plan a product backlog compatible with the Obsidian Product Backlog view: hierarchy, ranks, states, iterations, releases and dependencies.',
   },
-  create: () => {
+  create: host => {
     const activity: SyncActivity = { syncing: false };
     return {
       requires: ['bases.query'],
@@ -60,7 +60,7 @@ export const backlogPlugin: CorePlugin = {
       commands: [backlogCommand(context => {
         const { services } = context as PluginContext;
         const ports = { stringifyYaml, editFrontmatter, today, hash: hashText };
-        return { bases: services.get<BasesQueryService>('bases.query'), ports, sync: () => ({ bases: services.get<BasesQueryService>('bases.query'), ports, hub: services.get<ConnectorHub>('connectors'), activity }) };
+        return { bases: services.get<BasesQueryService>('bases.query'), ports, sync: () => ({ bases: services.get<BasesQueryService>('bases.query'), ports, hub: services.get<ConnectorHub>('connectors'), activity, lock: host.locks(context.root) }) };
       })],
       // Sync state files stay keyed by note path when notes or folders are renamed through Forge.
       onload(context) {

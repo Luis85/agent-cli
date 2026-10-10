@@ -7,10 +7,14 @@ import { PARENT_LINK, PREDECESSOR_LINK } from './processes.ts';
 export interface PatchOperation { op: 'add' | 'remove' | 'replace' | 'test'; path: string; value?: unknown }
 export type DescriptionFormat = 'markdown' | 'html';
 
-/** What a patch needs of the connection: the mapping, the description format and the work item API base. */
-export interface PatchContext { mapping: ConnectorMapping; descriptionFormat: DescriptionFormat; organization: string }
+/**
+ * What a patch needs of the connection: the mapping, the description format, the work item API base and the
+ * default area (an item there reads as having no area).
+ */
+export interface PatchContext { mapping: ConnectorMapping; descriptionFormat: DescriptionFormat; organization: string; defaultArea: string }
 
 const field = (reference: string, value: unknown): PatchOperation => (value === null ? { op: 'remove', path: `/fields/${reference}` } : { op: 'add', path: `/fields/${reference}`, value });
+const AREA_PATH = 'System.AreaPath';
 /** The relation URL of a work item, as Azure DevOps stores it in links. */
 const workItemApiUrl = (organization: string, id: string) => `${organization}/_apis/wit/workItems/${id}`;
 const lastSegment = (url: unknown) => (typeof url === 'string' ? /\/(\d+)$/.exec(url)?.[1] ?? null : null);
@@ -19,7 +23,7 @@ const lastSegment = (url: unknown) => (typeof url === 'string' ? /\/(\d+)$/.exec
 function fieldOperations(change: RemotePatch, context: PatchContext): PatchOperation[] {
   const { fields } = context.mapping;
   const operations: PatchOperation[] = [];
-  const scalar: Array<[keyof RemotePatch, string | null]> = [['type', fields.type], ['title', fields.title], ['state', fields.state], ['iteration', fields.iteration], ['priority', fields.priority], ['effort', fields.effort]];
+  const scalar: Array<[keyof RemotePatch, string | null]> = [['type', fields.type], ['title', fields.title], ['state', fields.state], ['iteration', fields.iteration], ['area', fields.area], ['priority', fields.priority], ['effort', fields.effort]];
   for (const [key, reference] of scalar) if (reference !== null && change[key] !== undefined) operations.push(field(reference, change[key]));
   if (fields.tags !== null && change.tags !== undefined) operations.push(field(fields.tags, change.tags.join('; ')));
   if (fields.description !== null && change.description !== undefined) {
@@ -34,13 +38,13 @@ function fieldOperations(change: RemotePatch, context: PatchContext): PatchOpera
   return operations;
 }
 
-/** The JSON Patch document that creates a work item, including its area and its parent link. */
+/** The JSON Patch document that creates a work item, including its area (even when area does not sync) and its parent link. */
 export function createOperations(draft: RemoteDraft, context: PatchContext): PatchOperation[] {
   const { type: _type, ...rest } = draft;
   // A new item has no value to clear: null and empty values are left out.
   const set = Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0)));
   const operations = fieldOperations({ ...set, ...(rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value]) => value !== null)) } : {}) }, context);
-  if (draft.area) operations.push(field('System.AreaPath', draft.area));
+  if (draft.area && context.mapping.fields.area === null) operations.push(field(AREA_PATH, draft.area));
   if (draft.parentId && context.mapping.fields.parent !== null) operations.push({ op: 'add', path: '/relations/-', value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
   return operations;
 }
@@ -70,31 +74,20 @@ export function remoteItem(json: unknown, context: PatchContext, url: (id: strin
   const { fields } = context.mapping;
   const id = String(item.id);
   const read = (reference: string | null) => (reference === null ? undefined : values[reference]);
+  // Reads are not documented to carry multilineFieldsFormat: only an explicit Markdown format marks the text as Markdown.
   const formats = isRecord(item.multilineFieldsFormat) ? item.multilineFieldsFormat : {};
-  let description: string | null | undefined;
-  if (fields.description !== null) {
-    const raw = text(read(fields.description));
-    const markdown = String(formats[fields.description] ?? '').toLowerCase() === 'markdown';
-    description = raw === null ? null : markdown ? raw : undefined;
-  }
+  const description = fields.description === null ? undefined : text(read(fields.description));
+  const markdown = fields.description !== null && String(formats[fields.description] ?? '').toLowerCase() === 'markdown';
+  const area = text(values[fields.area ?? AREA_PATH]);
   return {
     id, rev: String(item.rev), url: url(id),
     type: String(values['System.WorkItemType'] ?? ''), title: String(read(fields.title) ?? ''), state: text(read(fields.state)),
     parentId: lastSegment(relations.find(relation => relation.rel === PARENT_LINK)?.url),
-    iteration: text(read(fields.iteration)), area: text(values['System.AreaPath']),
+    iteration: text(read(fields.iteration)), area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
     priority: number(read(fields.priority)), effort: number(read(fields.effort)),
     tags: (text(read(fields.tags)) ?? '').split(';').map(tag => tag.trim()).filter(Boolean),
-    ...(description === undefined && fields.description !== null ? {} : { description: description ?? null }),
+    ...(description === undefined ? {} : { description, descriptionMarkdown: markdown }),
     links: { predecessors: relations.filter(relation => relation.rel === PREDECESSOR_LINK).map(relation => lastSegment(relation.url)).filter((value): value is string => value !== null) },
     fields: Object.fromEntries(Object.values(context.mapping.properties).map(reference => [reference, values[reference] ?? null])),
   };
-}
-
-/** A WIQL literal: single quotes doubled. */
-export const wiqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
-
-/** The WIQL query of items changed since a timestamp, optionally under an area path. */
-export function changedSinceQuery(changedSince: string, areaPath?: string): string {
-  const area = areaPath ? ` AND [System.AreaPath] UNDER ${wiqlString(areaPath)}` : '';
-  return `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.ChangedDate] >= ${wiqlString(changedSince)}${area} ORDER BY [System.Id]`;
 }

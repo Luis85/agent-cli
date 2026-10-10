@@ -10,7 +10,8 @@ const actions = ['list', 'inspect', 'test'];
 function connectionJson({ connection, connector }: BoundConnection, environment: (name: string) => string | undefined) {
   return {
     id: connection.id, platform: connection.platform, tokenEnv: connection.tokenEnv, tokenSet: tokenSet(connection, environment),
-    linkProperty: connection.linkProperty, effortProperty: connection.effortProperty, ...connector.describe().summary(connection),
+    linkProperty: connection.linkProperty, effortProperty: connection.effortProperty, areaProperty: connection.areaProperty, ...connector.describe().summary(connection),
+    warnings: connector.describe().warnings(connection),
   };
 }
 
@@ -22,7 +23,7 @@ export function connectorsCommand(hub: Hub, environment: (name: string) => strin
     usage: 'connectors list | inspect <id> | test <id>',
     scope: 'workspace', discovery: false, mutating: false, defaultAction: 'list',
     actions: {
-      list: { description: 'Every connection with its platform, validity and whether its token variable is set.' },
+      list: { description: 'Every connection with its platform, validity, warnings and whether its token variable is set.' },
       inspect: { description: 'One connection with its resolved type, state and field mappings.' },
       test: { description: 'An authenticated, read-only probe of one connection.' },
     },

@@ -39,7 +39,7 @@ const effort: Record<Process, string> = {
 
 function fields(process: Process): Record<SyncField, string | null> {
   return {
-    title: 'System.Title', type: 'System.WorkItemType', state: 'System.State', parent: PARENT_LINK, iteration: 'System.IterationPath',
+    title: 'System.Title', type: 'System.WorkItemType', state: 'System.State', parent: PARENT_LINK, iteration: 'System.IterationPath', area: 'System.AreaPath',
     priority: 'Microsoft.VSTS.Common.Priority', effort: effort[process], tags: 'System.Tags', description: 'System.Description',
   };
 }

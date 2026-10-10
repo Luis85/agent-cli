@@ -30,15 +30,25 @@ describe('connection profiles', () => {
   it('names unknown connections, unavailable platforms and invalid profiles', () => {
     const { instance } = hub({
       plain: azure({ organization: 'http://dev.azure.com/contoso' }), typo: azure({ proces: 'agile' }), jira: { platform: 'jira' }, Upper: azure(),
-      local: azure({ organization: 'http://127.0.0.1:8080/contoso' }),
+      local: azure({ organization: 'http://127.0.0.1:8080/contoso' }), userinfo: azure({ organization: 'https://user:secret@dev.azure.com/contoso' }),
     });
-    expect(() => instance.connection('missing')).toThrow(expect.objectContaining({ code: 'CONNECTOR_NOT_FOUND', details: { connection: 'missing', connections: ['plain', 'typo', 'jira', 'Upper', 'local'] } }));
+    expect(() => instance.connection('missing')).toThrow(expect.objectContaining({ code: 'CONNECTOR_NOT_FOUND', details: { connection: 'missing', connections: ['plain', 'typo', 'jira', 'Upper', 'local', 'userinfo'] } }));
+    expect(() => instance.connection('userinfo')).toThrow(expect.objectContaining({ code: 'CONNECTION_INVALID', details: { connection: 'userinfo', issues: [expect.stringContaining('organization: must match')] } }));
     expect(() => instance.connection('jira')).toThrow(expect.objectContaining({ code: 'CONNECTOR_NOT_FOUND', details: { connection: 'jira', platform: 'jira', platforms: ['azure-devops'] } }));
     expect(() => instance.connection('plain')).toThrow(expect.objectContaining({ code: 'CONNECTION_INVALID', details: { connection: 'plain', issues: [expect.stringContaining('organization: must match')] } }));
     expect(() => instance.connection('typo')).toThrow(expect.objectContaining({ code: 'CONNECTION_INVALID', details: { connection: 'typo', issues: ['plugins.settings.connector.connections.typo.proces: is not allowed'] } }));
     expect(() => instance.connection('Upper')).toThrow(expect.objectContaining({ code: 'CONNECTION_INVALID' }));
     expect(instance.connection('local').connection.id).toBe('local');
-    expect(instance.statuses().map(status => [status.profile.id, status.issues.length === 0])).toEqual([['plain', false], ['typo', false], ['jira', false], ['Upper', false], ['local', true]]);
+    expect(instance.statuses().map(status => [status.profile.id, status.issues.length === 0])).toEqual([['plain', false], ['typo', false], ['jira', false], ['Upper', false], ['local', true], ['userinfo', false]]);
+  });
+
+  it('warns when the organization is not an Azure DevOps Services host, since the token is sent there', () => {
+    const { instance } = hub({ cloud: azure(), legacy: azure({ organization: 'https://contoso.visualstudio.com' }), server: azure({ organization: 'https://tfs.example.com/DefaultCollection' }) });
+    const warnings = (id: string) => { const { connection, connector } = instance.connection(id); return connector.describe().warnings(connection); };
+    expect(warnings('cloud')).toEqual([]);
+    expect(warnings('legacy')).toEqual([]);
+    expect(warnings('server')).toEqual([expect.stringContaining('organization host tfs.example.com is neither dev.azure.com nor *.visualstudio.com; the token in AZURE_DEVOPS_EXT_PAT is sent there')]);
+    expect(instance.connection('cloud').connection.areaProperty).toBe('area');
   });
 
   it('reads the token only when a request needs it and reports a missing variable by name', async () => {

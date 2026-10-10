@@ -75,9 +75,12 @@ export async function editNotes(session: BacklogSession, edits: readonly NoteEdi
   return session.context.workspace.write(requests, { diff: true });
 }
 
-/** One item write as a note edit through backlog-view's live-note refusal rules. */
-export function itemEdit(session: BacklogSession, write: ItemWrite): NoteEdit {
-  const env = { settings: session.settings, wikilink: (target: string, source: string) => wikilink(session, target, source), resolve: (linkpath: string, source: string) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
+/**
+ * One item write as a note edit through backlog-view's live-note refusal rules. `links` overrides how a link to a
+ * target is written (a dry run linking a note it only plans to rename).
+ */
+export function itemEdit(session: BacklogSession, write: ItemWrite, links?: (target: string, source: string) => string): NoteEdit {
+  const env = { settings: session.settings, wikilink: links ?? ((target: string, source: string) => wikilink(session, target, source)), resolve: (linkpath: string, source: string) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
   return {
     path: write.path,
     edit: frontmatter => { const refusal = applyItemWrite(frontmatter, write, env); return refusal ? refused(refusal, `${write.path}: ${messages[refusal]}`, { path: write.path }) : null; },

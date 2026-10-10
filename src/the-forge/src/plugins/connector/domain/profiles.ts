@@ -2,7 +2,7 @@ import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 
 /** Profile keys every platform shares; the rest of a profile belongs to the platform's own schema. */
-const SHARED_KEYS = ['platform', 'tokenEnv', 'linkProperty', 'effortProperty', 'mappings'] as const;
+const SHARED_KEYS = ['platform', 'tokenEnv', 'linkProperty', 'effortProperty', 'areaProperty', 'mappings'] as const;
 export const CONNECTION_ID = /^[a-z][a-z0-9-]*$/;
 
 const nameMap = (description: string): JsonSchema => ({ type: 'object', description, additionalProperties: { type: 'string' } });
@@ -20,9 +20,10 @@ export const connectorSettings: JsonSchema = {
         type: 'object', required: ['platform'], additionalProperties: true,
         properties: {
           platform: { type: 'string', pattern: '^[a-z][a-z0-9-]*$', description: 'The connector platform, for example azure-devops.' },
-          tokenEnv: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$', description: 'The environment variable holding the access token; the platform default when omitted.' },
+          tokenEnv: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$', description: 'The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.' },
           linkProperty: { type: 'string', minLength: 1, description: 'The frontmatter key that links a note to its remote item; the platform default when omitted.' },
           effortProperty: { type: 'string', minLength: 1, default: 'effort', description: 'The frontmatter key of the effort or story points.' },
+          areaProperty: { type: 'string', minLength: 1, default: 'area', description: 'The frontmatter key of the area path; a note without it uses the connection\'s default area.' },
           mappings: {
             type: 'object', additionalProperties: false, default: {},
             properties: {
@@ -40,7 +41,7 @@ export const connectorSettings: JsonSchema = {
 
 /** One profile split into its shared fields and its platform fields. */
 export interface Profile {
-  id: string; platform: string; tokenEnv?: string; linkProperty?: string; effortProperty: string;
+  id: string; platform: string; tokenEnv?: string; linkProperty?: string; effortProperty: string; areaProperty: string;
   mappings: { types: Record<string, string>; states: Record<string, string>; fields: Record<string, string>; properties: Record<string, string> };
   specific: Record<string, unknown>;
 }
@@ -57,6 +58,7 @@ export function profiles(settings: Readonly<Record<string, unknown>> | null): Pr
       ...(typeof raw.tokenEnv === 'string' ? { tokenEnv: raw.tokenEnv } : {}),
       ...(typeof raw.linkProperty === 'string' ? { linkProperty: raw.linkProperty } : {}),
       effortProperty: typeof raw.effortProperty === 'string' ? raw.effortProperty : 'effort',
+      areaProperty: typeof raw.areaProperty === 'string' ? raw.areaProperty : 'area',
       mappings: { types: strings(mappings.types), states: strings(mappings.states), fields: strings(mappings.fields), properties: strings(mappings.properties) },
       specific: Object.fromEntries(Object.entries(raw).filter(([key]) => !(SHARED_KEYS as readonly string[]).includes(key))),
     };

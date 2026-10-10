@@ -8,7 +8,7 @@ import { sanitizeTitle } from './notes.ts';
  */
 export type FieldValue = string | number | boolean | string[] | null;
 export type FieldKey = string;
-export type Decision = 'unchanged' | 'push' | 'pull' | 'conflict' | 'converged';
+export type Decision = 'unchanged' | 'push' | 'pull' | 'conflict' | 'converged' | 'skip';
 /** The name mappings of a connection: local type and state names to remote names (`Type:State` keys qualify a state). */
 export interface NameMappings { types: Record<string, string>; states: Record<string, string> }
 
@@ -26,14 +26,48 @@ export function canonical(field: FieldKey, value: FieldValue): string {
 
 /**
  * The three-way decision for one field. `base` is the hash both sides held after the last sync (absent when the
- * item was never synced); `local` or `remote` is absent when that side cannot express the field. A field changed on
- * one side syncs from it; changed on both sides to different values it is a conflict; to the same value it converged.
+ * field was never synced); `local` or `remote` is absent when that side cannot express or read the field. A field
+ * changed on one side syncs from it; changed on both sides to different values it is a conflict, to the same value
+ * it converged. Without a base, differing values are a conflict, so a first sync (or a relink) never overwrites
+ * either side. A side that cannot express the field is never overwritten: once the other side differs from the
+ * base, or there is no base, the field is skipped.
  */
 export function decide(base: string | undefined, local: string | undefined, remote: string | undefined): Decision {
-  if (base === undefined && local !== undefined && remote !== undefined) return local === remote ? 'converged' : 'conflict';
-  const localChanged = local !== undefined && local !== base, remoteChanged = remote !== undefined && remote !== base;
+  if (local === undefined && remote === undefined) return 'unchanged';
+  if (local === undefined || remote === undefined) return base === undefined || (local ?? remote) !== base ? 'skip' : 'unchanged';
+  if (base === undefined) return local === remote ? 'converged' : 'conflict';
+  const localChanged = local !== base, remoteChanged = remote !== base;
   if (localChanged && remoteChanged) return local === remote ? 'converged' : 'conflict';
   return localChanged ? 'push' : remoteChanged ? 'pull' : 'unchanged';
+}
+
+/**
+ * The hashes of a description: the note body (Markdown) and the remote text exactly as read (Markdown or HTML),
+ * each with its own base, since an HTML description never equals the Markdown it was converted from.
+ */
+export interface DescriptionSides {
+  local: string | undefined; remote: string | undefined; localBase: string | undefined; remoteBase: string | undefined;
+  /** Both texts are equal. */
+  same: boolean;
+  /** The remote text is known to be Markdown (or empty), so it can land in the note. */
+  markdown: boolean;
+}
+
+/**
+ * The decision for the description. Changes are detected per side against its own base. A remote change pulls only
+ * when the remote text is known to be Markdown; otherwise it is skipped (and conflicts once the note changed too).
+ * Without both bases, differing texts are a conflict.
+ */
+export function decideDescription(sides: DescriptionSides): Decision {
+  const { local, remote, localBase, remoteBase } = sides;
+  if (local === undefined || remote === undefined) return local === remote ? 'unchanged' : 'skip';
+  if (localBase === undefined || remoteBase === undefined) return sides.same ? 'converged' : 'conflict';
+  const localChanged = local !== localBase, remoteChanged = remote !== remoteBase;
+  if (sides.same) return localChanged || remoteChanged ? 'converged' : 'unchanged';
+  if (localChanged && remoteChanged) return 'conflict';
+  if (localChanged) return 'push';
+  if (remoteChanged) return sides.markdown ? 'pull' : 'skip';
+  return 'unchanged';
 }
 
 /** A local type's remote type, by canonical name; undefined when the mapping has none. */
@@ -41,10 +75,10 @@ export function remoteType(mapping: NameMappings, localType: string): string | u
   return Object.entries(mapping.types).find(([local]) => sameValue(local, localType))?.[1];
 }
 
-/** The local type for a remote type: the first local type mapped to it, else the remote name. */
-export function localType(mapping: NameMappings, remote: string, current: string | null): string {
+/** The local type for a remote type: the current type when it maps there, else the first local type mapped to it; undefined when none is. */
+export function localType(mapping: NameMappings, remote: string, current: string | null): string | undefined {
   if (current !== null && sameValue(remoteType(mapping, current) ?? null, remote)) return current;
-  return Object.entries(mapping.types).find(([, value]) => sameValue(value, remote))?.[0] ?? remote;
+  return Object.entries(mapping.types).find(([, value]) => sameValue(value, remote))?.[0];
 }
 
 const stateEntries = (mapping: NameMappings, type: string | null) => {

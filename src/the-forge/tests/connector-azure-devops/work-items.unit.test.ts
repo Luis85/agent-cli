@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { markdownToHtml } from '../../src/plugins/connector-azure-devops/domain/markdown-html.ts';
 import { processMapping, unknownFields } from '../../src/plugins/connector-azure-devops/domain/processes.ts';
-import { changedSinceQuery, createOperations, remoteItem, updateOperations, wiqlString } from '../../src/plugins/connector-azure-devops/domain/work-items.ts';
+import { createOperations, remoteItem, updateOperations } from '../../src/plugins/connector-azure-devops/domain/work-items.ts';
 
 const organization = 'https://dev.azure.com/contoso';
-const context = (descriptionFormat: 'markdown' | 'html' = 'markdown', process: 'agile' | 'scrum' = 'agile') => ({ mapping: processMapping(process), descriptionFormat, organization });
+const context = (descriptionFormat: 'markdown' | 'html' = 'markdown', process: 'agile' | 'scrum' = 'agile') => ({ mapping: processMapping(process), descriptionFormat, organization, defaultArea: 'Trailhead\\Default' });
 
 describe('process mappings', () => {
   it('defaults types, states and the effort field per process and merges connection overrides', () => {
@@ -24,16 +24,18 @@ describe('JSON Patch documents', () => {
       { op: 'add', path: '/fields/System.Title', value: 'Draft' },
       { op: 'add', path: '/fields/System.State', value: 'New' },
       { op: 'add', path: '/fields/System.IterationPath', value: 'Trailhead\\Sprint 1' },
+      { op: 'add', path: '/fields/System.AreaPath', value: 'Trailhead\\Web' },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: 1 },
       { op: 'add', path: '/fields/Microsoft.VSTS.Scheduling.StoryPoints', value: 3 },
       { op: 'add', path: '/fields/System.Tags', value: 'a; b' },
       { op: 'add', path: '/fields/System.Description', value: '**Plan**' },
       { op: 'add', path: '/multilineFieldsFormat/System.Description', value: 'Markdown' },
       { op: 'add', path: '/fields/Microsoft.VSTS.Common.Risk', value: '2 - Medium' },
-      { op: 'add', path: '/fields/System.AreaPath', value: 'Trailhead\\Web' },
       { op: 'add', path: '/relations/-', value: { rel: 'System.LinkTypes.Hierarchy-Reverse', url: `${organization}/_apis/wit/workItems/7` } },
     ]);
     expect(createOperations({ type: 'Task', title: 'T', description: '# Head' }, context('html'))).toContainEqual({ op: 'add', path: '/fields/System.Description', value: '<h1>Head</h1>' });
+    const unsyncedArea = { ...context(), mapping: processMapping('agile', { fields: { area: '' } }) };
+    expect(createOperations({ type: 'Task', title: 'T', area: 'Trailhead\\Web' }, unsyncedArea)).toContainEqual({ op: 'add', path: '/fields/System.AreaPath', value: 'Trailhead\\Web' });
   });
 
   it('guards an update with a test of the revision, clears null fields and swaps the parent relation by index', () => {
@@ -57,18 +59,15 @@ describe('reading work items', () => {
     ...(formats ? { multilineFieldsFormat: formats } : {}),
   });
 
-  it('maps fields, parent and predecessor links into a neutral item and hides descriptions it cannot read back', () => {
+  it('maps fields, parent and predecessor links into a neutral item with the raw description and its declared format', () => {
     const item = remoteItem(json(), context(), id => `link/${id}`);
     expect(item).toEqual({
       id: '12', rev: '5', url: 'link/12', type: 'User Story', title: 'Draft', state: 'Active', parentId: '3', iteration: 'Trailhead\\Sprint 1', area: 'Trailhead',
-      priority: 2, effort: 5, tags: ['web', 'ux'], links: { predecessors: ['8'] }, fields: {},
+      priority: 2, effort: 5, tags: ['web', 'ux'], description: '<p>Html</p>', descriptionMarkdown: false, links: { predecessors: ['8'] }, fields: {},
     });
-    expect(remoteItem(json({ 'System.Description': 'Markdown' }), context(), id => id).description).toBe('<p>Html</p>');
-  });
-
-  it('builds WIQL change queries with quoted literals', () => {
-    expect(wiqlString("O'Brien")).toBe("'O''Brien'");
-    expect(changedSinceQuery('2026-10-01T00:00:00Z', 'Trailhead\\Web')).toBe("SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.ChangedDate] >= '2026-10-01T00:00:00Z' AND [System.AreaPath] UNDER 'Trailhead\\Web' ORDER BY [System.Id]");
+    expect(remoteItem(json({ 'System.Description': 'Markdown' }), context(), id => id)).toMatchObject({ description: '<p>Html</p>', descriptionMarkdown: true });
+    const unmapped = { ...context(), mapping: processMapping('agile', { fields: { description: '' } }) };
+    expect(remoteItem(json(), unmapped, id => id)).not.toHaveProperty('description');
   });
 });
 

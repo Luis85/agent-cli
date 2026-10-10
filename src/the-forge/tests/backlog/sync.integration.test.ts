@@ -3,18 +3,12 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { backlogVault } from '../support/backlog.ts';
 import { FakeAzureDevOps } from '../support/azure-devops.ts';
-import { TOKEN_ENV, azureConnection, invocation, run } from '../support/connectors.ts';
+import { TOKEN_ENV, azureConnection, invocation, noteText, planningNotes, run } from '../support/connectors.ts';
 
 const PAT = 'pat-secret-value-0123456789';
 const env = { [TOKEN_ENV]: PAT };
-const base = (folder: string, view: string, connection: string) => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: ${view}\n    homeFolder: ${folder}\n    stateProperty: note.status\n    priorityProperty: note.priority\n    iterationProperty: note.iteration\n    connection: ${connection}\n`;
-const note = (fields: Record<string, unknown>, body = '') => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n${body}`;
-const planning = {
-  'work/Sync.base': base('work', 'Contoso', 'contoso'),
-  'work/Trip planning.md': note({ type: 'Epic', order: 1000, status: 'Active', tags: ['planning'] }),
-  'work/Itinerary builder.md': note({ type: 'Feature', parent: '[[Trip planning]]', order: 2000 }),
-  'work/Draft a trip.md': note({ type: 'PBI', parent: '[[Itinerary builder]]', order: 3000, status: 'Open', priority: '1 - Must' }, 'Plan the **stops**.\n'),
-};
+const note = noteText;
+const planning = planningNotes();
 
 let fake: FakeAzureDevOps;
 let vault: Awaited<ReturnType<typeof backlogVault>> | undefined;
@@ -31,7 +25,10 @@ describe('pushing a new backlog', () => {
     vault = await backlogVault(planning);
     const before = fake.list('contoso').length;
     const result = await sync();
-    expect(result.data.counts).toMatchObject({ created: 3, updated: 0, pulled: 0, conflicts: 0, failed: 0 });
+    // The platform starts the Feature, which has no state, in New: the value it applied lands in the note.
+    expect(result.data.counts).toMatchObject({ created: 3, updated: 0, pulled: 1, conflicts: 0, failed: 0, left: 0 });
+    expect(result.data.views[0].pulled).toEqual([expect.objectContaining({ path: 'work/Itinerary builder.md', fields: ['state'] })]);
+    expect(await vault.read('work/Itinerary builder.md')).toContain('status: New');
     const created = fake.list('contoso').slice(before);
     expect(created.map(item => [item.fields['System.WorkItemType'], item.fields['System.Title']])).toEqual([['Epic', 'Trip planning'], ['Feature', 'Itinerary builder'], ['User Story', 'Draft a trip']]);
     const [epic, feature, story] = created;
@@ -44,7 +41,7 @@ describe('pushing a new backlog', () => {
     const state = JSON.parse(await vault.read('.forge/sync/contoso.json'));
     expect(Object.keys(state.items)).toEqual(['work/Draft a trip.md', 'work/Itinerary builder.md', 'work/Trip planning.md']);
     expect(state.items['work/Draft a trip.md']).toMatchObject({ id: String(story!.id), rev: String(story!.rev), fields: { title: expect.stringMatching(/^[0-9a-f]{16}$/) } });
-    expect(result.events.filter(record => record.id.startsWith('connector.') || record.id === 'backlog.synced').map(record => record.id)).toEqual(['connector.pushed', 'connector.pushed', 'connector.pushed', 'backlog.synced']);
+    expect(result.events.filter(record => record.id.startsWith('connector.') || record.id === 'backlog.synced').map(record => record.id)).toEqual(['connector.pushed', 'connector.pushed', 'connector.pushed', 'connector.pulled', 'backlog.synced']);
     const writes = fake.writes().length;
     const again = await sync();
     expect(again.data.counts).toMatchObject({ created: 0, updated: 0, pulled: 0, conflicts: 0 });
