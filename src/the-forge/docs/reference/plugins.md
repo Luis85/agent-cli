@@ -21,7 +21,7 @@ A manifest contains:
 }
 ```
 
-All fields are required. IDs use lowercase kebab-case and cannot be a host event namespace (`command`, `operation`, `claude`, `vault`, `workspace`, `plugin`), which fails with `PLUGIN_NAMESPACE`; versions use numeric `major.minor.patch` without prerelease identifiers or leading zeros. The host rejects unsupported `minAppVersion` before executing plugins. Every enabled manifest is validated before the first entry point is loaded. `main.mjs` takes precedence; `main.js` uses CommonJS even inside an ESM project.
+All fields are required. IDs use lowercase kebab-case and cannot be a host event namespace (`command`, `operation`, `claude`, `vault`, `metadataCache`, `workspace`, `plugin`), which fails with `PLUGIN_NAMESPACE`; versions use numeric `major.minor.patch` without prerelease identifiers or leading zeros. The host rejects unsupported `minAppVersion` before executing plugins. Every enabled manifest is validated before the first entry point is loaded. `main.mjs` takes precedence; `main.js` uses CommonJS even inside an ESM project.
 
 ## Contract
 
