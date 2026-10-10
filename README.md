@@ -1,6 +1,8 @@
 # The Forge workspace
 
-This repository is a Forge workspace: a thin root that ships the portable CLI and holds self-contained managed projects under `src/`. The Forge is a portable Node CLI for AI-assisted engineering, TypeScript projects and Obsidian-compatible files; it runs without Obsidian, npm installation or runtime packages in your project.
+This repository is a Forge workspace: a thin root that ships the portable CLI and holds self-contained managed projects under `src/`.
+
+The Forge is a terminal project companion for AI-assisted project and product development. The user lives in Obsidian, where design, concepts, specifications, documentation and code are managed. The AI agent gets its own CLI to the same vault. With it, the agent can do anything the user can do in Obsidian, without Obsidian running or installed. Everything is stored as Markdown, Canvas and Bases, linked into one knowledge graph. Git backs it, and every write can be verified deterministically. Read the [product vision](src/the-forge/docs/explanation/product-vision.md).
 
 | Path | Contents |
 | --- | --- |
