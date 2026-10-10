@@ -52,10 +52,38 @@ it('allows the CLI parser, package metadata, and deeply nested inward dependenci
   expect(boundaryViolations(resolve('src/application/deep/concern/example.ts'), "export type { FileSnapshot } from '../../../domain/documents/file.ts';")).toEqual([]);
 });
 
-it('lets infrastructure use libraries/assets while rejecting presentation and composition dependencies', () => {
+it('lets infrastructure use libraries and approved asset roots while rejecting presentation and composition dependencies', () => {
   const file = resolve('src/infrastructure/plugins/loader.ts');
-  expect(boundaryViolations(file, "import 'node:fs'; import 'yaml'; import asset from '../../../../templates/note.md?raw'; const module = import(path);")).toEqual([]);
+  expect(boundaryViolations(file, "import 'node:fs'; import 'yaml'; import asset from '../../../docs/templates/note.md?raw'; import config from '../../../configs/lint/oxlintrc.json?raw'; const module = import(path);")).toEqual([]);
   expect(boundaryViolations(file, "import '../../presentation/cli/commands.ts'; import '../../main.ts'; import '../../sdk.ts';")).toHaveLength(3);
+});
+
+it.each([
+  "import note from '../../../../templates/note.md?raw';",
+  "import helper from '../../../tests/support/workspace.ts';",
+  "import release from '../../../scripts/release.mjs?raw';",
+  "import readme from '../../../../../README.md?raw';",
+])('rejects relative paths that escape src outside the approved asset roots: %s', source => {
+  expect(boundaryViolations(resolve('src/infrastructure/templates/example.ts'), source)).toHaveLength(1);
+});
+
+it.each([
+  ['src/infrastructure/workspace/files.ts', 'const module = await import(path);'],
+  ['src/infrastructure/workspace/files.ts', 'const module = require(name);'],
+  ['src/plugins/search/infrastructure/index.ts', 'const module = await import(`./${name}.ts`);'],
+  ['src/plugins/search/presentation/command.ts', 'const module = await import(path);'],
+])('allows computed imports only in the plugin loader: %s', (file, source) => {
+  expect(boundaryViolations(resolve(file), source)).toEqual([expect.stringContaining('computed module dependencies')]);
+});
+
+it('inspects import.meta.glob patterns like imports', () => {
+  const plugin = resolve('src/plugins/skills/infrastructure/bundled-skills.ts');
+  expect(boundaryViolations(plugin, "const skills = import.meta.glob('../../../../skills/*.md', { query: '?raw' });")).toEqual([]);
+  expect(boundaryViolations(plugin, "const skills = import.meta.glob(['../../../../skills/*.md', '!../../../../skills/draft-*.md']);")).toEqual([]);
+  expect(boundaryViolations(plugin, "const all = import.meta.glob('../../links/**/*.ts');")).toHaveLength(1);
+  expect(boundaryViolations(plugin, "const all = import.meta.glob('/tests/**/*.ts');")).toHaveLength(1);
+  expect(boundaryViolations(plugin, 'const all = import.meta.glob(patterns);')).toHaveLength(1);
+  expect(boundaryViolations(resolve('src/application/plugins/example.ts'), "const all = import.meta.glob('../../infrastructure/**/*.ts');")).toHaveLength(1);
 });
 
 describe('core plugin boundaries', () => {
