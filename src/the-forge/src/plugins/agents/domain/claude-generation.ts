@@ -4,10 +4,13 @@ import { claudeName, permissionRules } from './claude-vocabulary.ts';
 import { claudeAgent, type ClaudeAgentDraft } from './claude-agent.ts';
 import { commandSkills, type CommandSkill } from './claude-commands.ts';
 import type { ModelStyle } from './claude-models.ts';
+import { completeAgent, type McpMode } from './claude-execution.ts';
 
 export interface ClaudeGenerationOptions {
-  /** `inline` puts MCP servers in agent frontmatter; `project` merges them into `.mcp.json`. */
-  mcp: 'inline' | 'project';
+  /** `none` (the default) writes no MCP servers; `inline` puts them in agent frontmatter; `project` merges them into `.mcp.json`. */
+  mcp: McpMode;
+  /** Emit agent hooks, which run commands. */
+  hooks: boolean;
   /** Merge permissions and the main agent into `.claude/settings.json`. */
   settings: boolean;
   /** Generate `.claude/skills/<name>/SKILL.md` from commands. */
@@ -38,16 +41,10 @@ const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.st
 
 /** Project `.mcp.json` names are shared by every agent: equal servers merge, different ones get a numbered name. */
 function projectServers(drafts: ClaudeAgentDraft[], servers: Record<string, Record<string, unknown>>) {
-  for (const draft of drafts) {
-    const names: string[] = [];
-    for (const server of draft.servers) {
-      let name = server.name;
-      for (let index = 2; servers[name] && !same(servers[name], server.config); index++) name = `${server.name}-${index}`;
-      servers[name] = server.config;
-      names.push(name);
-      if (name !== server.name) draft.metadata.tools = String(draft.metadata.tools).replaceAll(`mcp__${server.name}__`, `mcp__${name}__`);
-    }
-    if (names.length > 0) draft.metadata.mcpServers = names;
+  for (const server of drafts.flatMap(draft => draft.servers)) {
+    const base = server.name;
+    for (let index = 2; servers[server.name] && !same(servers[server.name], server.config); index++) server.name = `${base}-${index}`;
+    servers[server.name] = server.config;
   }
 }
 
@@ -78,7 +75,6 @@ function generateSource(source: DefinitionSource, names: ReadonlyMap<string, str
   }
   for (const key of unsupportedTopLevel) if (source.config[key] !== undefined) diagnostics.push(diagnostic('info', 'setting-unsupported', pointer(key), `The top-level ${key} section has no Claude equivalent and is not emitted.`, 'U'));
   if (!options.settings && source.config.permissions !== undefined) diagnostics.push(diagnostic('info', 'permissions-not-generated', '/permissions', 'Permissions become project settings rules with --settings.', 'U'));
-  if (options.mcp === 'inline') for (const draft of drafts) if (draft.servers.length > 0) draft.metadata.mcpServers = draft.servers.map(server => ({ [server.name]: server.config }));
   return { drafts, skills, diagnostics, permissions: options.settings ? settingsPermissions(source, drafts, diagnostics) : undefined };
 }
 
@@ -118,7 +114,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
     const generated = generateSource(source, names, options);
     if (options.mcp === 'project') projectServers(generated.drafts, output.mcpServers);
     for (const draft of generated.drafts) {
-      const metadata = ordered({ ...draft.metadata, 'x-forge-source': { path: source.path, sha256: source.sha256, agent: draft.agent } });
+      const metadata = ordered({ ...completeAgent(draft, options, generated.diagnostics), 'x-forge-source': { path: source.path, sha256: source.sha256, agent: draft.agent } });
       validateClaudeAgent(metadata, draft.prompt);
       output.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source.path, metadata, body: draft.prompt });
     }

@@ -1,15 +1,19 @@
 import { diagnostic, instructionText, isObject, pointer, record, stringList, text, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
 import { isExternalReference } from './references.ts';
 import { claudeModel, type ModelStyle } from './claude-models.ts';
-import { claudeTools } from './claude-tools.ts';
-import { claudeHooks } from './claude-hooks.ts';
+import { claudeTools, type ToolGrant } from './claude-tools.ts';
+import { claudeHooks, type HookCommand } from './claude-hooks.ts';
 import type { McpServer } from './claude-mcp.ts';
 import { templateExpressions } from './templating.ts';
 
-/** One generated Claude agent before rendering: frontmatter in emission order and the Markdown prompt. */
+/**
+ * One generated Claude agent before rendering: frontmatter and the Markdown prompt. Tool grants, MCP servers and hooks
+ * stay separate until generation applies the `--mcp` and `--hooks` opt-ins.
+ */
 export interface ClaudeAgentDraft {
   agent: string; name: string; metadata: Record<string, unknown>; prompt: string;
-  servers: McpServer[]; permissions: { allow: string[]; deny: string[] };
+  grants: ToolGrant[]; disallowed: string[]; servers: McpServer[]; permissions: { allow: string[]; deny: string[] };
+  hooks?: Record<string, unknown[]>; hookCommands: HookCommand[];
 }
 
 /** Agent fields with no Claude agent equivalent: runtime limits, compaction, caching, safety and output shaping. */
@@ -73,21 +77,20 @@ export function claudeAgent(config: AgentConfigDocument, name: string, instructi
   const model = claudeModel(config, name, agent, style), tools = claudeTools(config, name, agent), hooks = claudeHooks(name, agent.hooks);
   const delegates = delegation(name, agent, names), preloaded = skills(name, agent);
   diagnostics.push(...model.diagnostics, ...tools.diagnostics, ...hooks.diagnostics, ...delegates.diagnostics, ...preloaded.diagnostics);
-  const granted = [...tools.tools, ...delegates.agents.map(agentName => `Agent(${agentName})`)];
-  if (granted.length === 0) diagnostics.push(diagnostic('warning', 'tools-inherited', `${at}/toolsets`, 'No toolset maps to a Claude tool, so tools is omitted and the Claude agent inherits every tool of the session.', 'A'));
+  const granted: ToolGrant[] = [...tools.tools, ...delegates.agents.map(agentName => `Agent(${agentName})`)];
   const maxTurns = agent.max_iterations;
   if (typeof maxTurns === 'number' && maxTurns > 0) diagnostics.push(diagnostic('warning', 'max-iterations-approximated', `${at}/max_iterations`, `max_iterations is emitted as maxTurns: ${maxTurns}; Claude counts agentic turns, not model calls.`, 'A'));
   for (const field of unsupportedFields) if (agent[field] !== undefined) diagnostics.push(diagnostic('info', 'setting-unsupported', `${at}/${field}`, `${field} has no Claude agent equivalent and is not emitted.`, 'U'));
   const metadata: Record<string, unknown> = {
     name: claude, description,
-    ...(granted.length > 0 ? { tools: granted.join(', ') } : {}),
-    ...(tools.disallowedTools.length > 0 ? { disallowedTools: tools.disallowedTools.join(', ') } : {}),
     model: model.model, ...(model.effort ? { effort: model.effort } : {}),
     ...(typeof maxTurns === 'number' && maxTurns > 0 ? { maxTurns } : {}),
     ...(preloaded.skills.length > 0 ? { skills: preloaded.skills } : {}),
     ...(tools.memory ? { memory: 'project' } : {}),
-    ...(hooks.hooks ? { hooks: hooks.hooks } : {}),
   };
   const prompt = instruction === '' || instruction.endsWith('\n') ? instruction : `${instruction}\n`;
-  return { draft: { agent: name, name: claude, metadata, prompt, servers: tools.servers, permissions: tools.permissions }, diagnostics };
+  return {
+    draft: { agent: name, name: claude, metadata, prompt, grants: granted, disallowed: tools.disallowedTools, servers: tools.servers, permissions: tools.permissions, ...(hooks.hooks ? { hooks: hooks.hooks } : {}), hookCommands: hooks.commands },
+    diagnostics,
+  };
 }

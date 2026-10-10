@@ -145,6 +145,27 @@
     },
     {
       "severity": "warning",
+      "code": "executes-command",
+      "pointer": "/agents/root/toolsets/4/ref",
+      "message": "MCP server context7 in .claude/agents/root.md runs the command: docker mcp gateway run --servers context7",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "executes-command",
+      "pointer": "/agents/designer/toolsets/3/ref",
+      "message": "MCP server context7 in .claude/agents/designer.md runs the command: docker mcp gateway run --servers context7",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
+      "code": "executes-command",
+      "pointer": "/agents/awesome_engineer/toolsets/4/ref",
+      "message": "MCP server context7 in .claude/agents/awesome-engineer.md runs the command: docker mcp gateway run --servers context7",
+      "path": "agents/dev-team.yaml"
+    },
+    {
+      "severity": "warning",
       "code": "main-agent-approximated",
       "pointer": "/agents/root",
       "message": "The default agent root becomes the project's main agent (\"agent\": \"root\").",

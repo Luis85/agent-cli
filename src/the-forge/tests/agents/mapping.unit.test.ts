@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { generateClaude, type ClaudeGenerationOptions } from '../../src/plugins/agents/domain/claude-generation.ts';
 import { claudeModel } from '../../src/plugins/agents/domain/claude-models.ts';
-import { claudeTools } from '../../src/plugins/agents/domain/claude-tools.ts';
+import { claudeTools, toolName } from '../../src/plugins/agents/domain/claude-tools.ts';
 import { claudeHooks } from '../../src/plugins/agents/domain/claude-hooks.ts';
 import { commandArguments, mcpVariables, templateExpressions } from '../../src/plugins/agents/domain/templating.ts';
 import { claudeName, permissionRules, translateMatcher } from '../../src/plugins/agents/domain/claude-vocabulary.ts';
 
-const options: ClaudeGenerationOptions = { mcp: 'inline', settings: false, commands: false, modelStyle: 'id' };
+const options: ClaudeGenerationOptions = { mcp: 'inline', hooks: false, settings: false, commands: false, modelStyle: 'id' };
 const source = (config: Record<string, unknown>) => ({ path: 'agents/team.yaml', sha256: 'a'.repeat(64), config, instructions: {} });
 const generate = (config: Record<string, unknown>, extra: Partial<ClaudeGenerationOptions> = {}) => generateClaude([source(config)], { ...options, ...extra });
 const agent = (extra: Record<string, unknown> = {}) => ({ model: 'anthropic/claude-sonnet-5', description: 'Helps.', instruction: 'Help.', ...extra });
@@ -25,7 +25,7 @@ describe('agent identity and prompt', () => {
     const output = generate({ agents: { a: { model: 'anthropic/x', instruction: 'Hi ${env.USER || "you"} ${shell({cmd: "ls"})}', add_date: true, add_environment_info: true, add_prompt_files: ['AGENTS.md'], welcome_message: 'Hello' } } });
     expect(output.agents[0]!.metadata.description).toBe('The a agent.');
     expect(output.agents[0]!.body).toBe('Hi ${env.USER || "you"} ${shell({cmd: "ls"})}\n');
-    expect(codes(output.diagnostics)).toEqual(expect.arrayContaining(['description-synthesized:A', 'template-literal:A', 'template-literal:U', 'prompt-option-approximated:A', 'prompt-option-unsupported:U', 'tools-inherited:A']));
+    expect(codes(output.diagnostics)).toEqual(expect.arrayContaining(['description-synthesized:A', 'template-literal:A', 'template-literal:U', 'prompt-option-approximated:A', 'prompt-option-unsupported:U', 'tools-none:E']));
   });
 
   it('uses resolved instruction files', () => {
@@ -96,12 +96,12 @@ describe('toolsets', () => {
       { type: 'mcp', command: './server.sh', env: { X: '${env.A ? "b" : "c"}' } },
     ]);
     expect(mapped.servers).toEqual([
-      { name: 'github', config: { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { TOKEN: '${GH_TOKEN}', MODE: '${MODE:-ro}', RAW: '${LEGACY}' } } },
-      { name: 'notion', config: { type: 'sse', url: 'https://mcp.notion.com/mcp', headers: { Authorization: 'Bearer ${NOTION}' }, oauth: { clientId: 'id', callbackPort: 8080 } } },
-      { name: 'context7', config: { type: 'stdio', command: 'docker', args: ['mcp', 'gateway', 'run', '--servers', 'context7'] } },
-      { name: 'server', config: { type: 'stdio', command: './server.sh', env: { X: '${env.A ? "b" : "c"}' } } },
+      { name: 'github', declared: 'github', at: '/agents/a/toolsets/0', commandLine: 'npx -y @modelcontextprotocol/server-github', config: { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { TOKEN: '${GH_TOKEN}', MODE: '${MODE:-ro}', RAW: '${LEGACY}' } } },
+      { name: 'notion', declared: 'notion', at: '/agents/a/toolsets/1', config: { type: 'sse', url: 'https://mcp.notion.com/mcp', headers: { Authorization: 'Bearer ${NOTION}' }, oauth: { clientId: 'id', callbackPort: 8080 } } },
+      { name: 'context7', declared: 'context7', at: '/agents/a/toolsets/2/ref', commandLine: 'docker mcp gateway run --servers context7', config: { type: 'stdio', command: 'docker', args: ['mcp', 'gateway', 'run', '--servers', 'context7'] } },
+      { name: 'server', declared: 'server', at: '/agents/a/toolsets/3', commandLine: './server.sh', config: { type: 'stdio', command: './server.sh', env: { X: '${env.A ? "b" : "c"}' } } },
     ]);
-    expect(mapped.tools).toEqual(['mcp__github__list_issues', 'mcp__notion__*', 'mcp__context7__*', 'mcp__server__*']);
+    expect(mapped.tools.map(toolName)).toEqual(['mcp__github__list_issues', 'mcp__notion__*', 'mcp__context7__*', 'mcp__server__*']);
     expect(codes(mapped.diagnostics)).toEqual(['mcp-oauth-unsupported:U', 'toolset-field-unsupported:U', 'mcp-docker-gateway:A', 'template-literal:U']);
   });
 
@@ -155,9 +155,10 @@ describe('commands, skills, hooks, permissions and delegation', () => {
     const mapped = claudeHooks('a', hooks);
     expect(mapped.hooks).toEqual({
       PreToolUse: [{ matcher: 'Bash|Edit|custom', hooks: [{ type: 'command', command: './guard.sh', timeout: 5 }] }],
-      SessionStart: [{ hooks: [{ type: 'command', command: 'echo start', args: ['x'] }] }],
+      SessionStart: [{ hooks: [{ type: 'command', command: 'echo start' }] }],
     });
-    expect(codes(mapped.diagnostics)).toEqual(['hook-field-unsupported:U', 'hook-unsupported:U', 'hook-matcher-approximated:A', 'hook-approximated:A', 'hook-approximated:A', 'hook-unsupported:U']);
+    expect(mapped.commands).toEqual([{ at: '/agents/a/hooks/pre_tool_use/0/hooks/0', event: 'PreToolUse', command: './guard.sh' }, { at: '/agents/a/hooks/session_start/0', event: 'SessionStart', command: 'echo start' }]);
+    expect(codes(mapped.diagnostics)).toEqual(['hook-field-unsupported:U', 'hook-unsupported:U', 'hook-matcher-approximated:A', 'hook-approximated:A', 'hook-field-unsupported:U', 'hook-approximated:A', 'hook-unsupported:U']);
     expect(translateMatcher('*')).toEqual({ matcher: '*', unknown: [] });
   });
 

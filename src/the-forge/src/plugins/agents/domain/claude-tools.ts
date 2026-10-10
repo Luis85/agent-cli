@@ -2,9 +2,14 @@ import { diagnostic, isObject, pointer, record, stringList, type AgentConfigDocu
 import { claudeToolsFor, filesystemTools, readOnlyFilesystemTools, taskTools, writeTools } from './claude-vocabulary.ts';
 import { mcpServer, type McpServer } from './claude-mcp.ts';
 
+/** A Claude tool: a built-in tool name, or one tool (`*` for all) of an MCP server whose generated name is final later. */
+export type ToolGrant = string | { server: McpServer; tool: string };
+/** The `tools` entry of a grant. */
+export const toolName = (grant: ToolGrant) => typeof grant === 'string' ? grant : `mcp__${grant.server.name}__${grant.tool}`;
+
 /** What an agent's toolsets grant in Claude Code. `permissions` become project settings rules with `--settings`. */
 export interface ClaudeTools {
-  tools: string[]; disallowedTools: string[]; memory: boolean; servers: McpServer[];
+  tools: ToolGrant[]; disallowedTools: string[]; memory: boolean; servers: McpServer[];
   permissions: { allow: string[]; deny: string[] };
   diagnostics: AgentDiagnostic[];
 }
@@ -95,8 +100,8 @@ export function claudeTools(config: AgentConfigDocument, name: string, agent: Re
       result.diagnostics.push(...server.diagnostics);
       if (server.server) {
         result.servers.push(server.server);
-        const tools = stringList(toolset.tools);
-        result.tools.push(...(tools.length > 0 ? tools.map(tool => `mcp__${server.server!.name}__${tool}`) : [`mcp__${server.server.name}__*`]));
+        const tools = stringList(toolset.tools), mapped = server.server;
+        result.tools.push(...(tools.length > 0 ? tools : ['*']).map(tool => ({ server: mapped, tool })));
         if (readonly) warn('readonly-approximated', at, `Claude cannot select read-only tools of MCP server ${server.server.name}; every granted tool is emitted.`);
       }
     } else {

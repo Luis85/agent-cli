@@ -35,7 +35,7 @@ export class AgentGeneration {
 
   async run(request: GenerateRequest) {
     const sources = await this.sources(request);
-    const generated = generateClaude(sources, { mcp: request.mcp, settings: request.settings, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
+    const generated = generateClaude(sources, { mcp: request.mcp, hooks: request.hooks, settings: request.settings, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
     if (hasErrors(generated.diagnostics)) {
       throw agentError('INVALID_AGENT_DEFINITION', 'The definitions cannot be generated together; see details.diagnostics.', { diagnostics: generated.diagnostics.filter(entry => entry.severity === 'error') });
     }

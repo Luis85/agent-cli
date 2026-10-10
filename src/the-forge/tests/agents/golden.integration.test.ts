@@ -15,7 +15,7 @@ import { example } from './agents-workspace.ts';
  */
 const golden = join(import.meta.dirname, 'golden');
 const update = process.env.UPDATE_GOLDEN === '1';
-const options: ClaudeGenerationOptions = { mcp: 'inline', settings: true, commands: true, modelStyle: 'id' };
+const options: ClaudeGenerationOptions = { mcp: 'inline', hooks: true, settings: true, commands: true, modelStyle: 'id' };
 const sha256 = '0'.repeat(64);
 
 async function expectGolden(path: string, content: string) {

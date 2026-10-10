@@ -1,8 +1,17 @@
 import { diagnostic, isObject, record, stringList, text, type AgentDiagnostic } from './config.ts';
 import { mcpVariables } from './templating.ts';
 
-/** One MCP server as Claude Code configures it inline on an agent or in the project's `.mcp.json`. */
-export interface McpServer { name: string; config: Record<string, unknown> }
+/**
+ * One MCP server as Claude Code configures it inline on an agent or in the project's `.mcp.json`. `declared` is the
+ * name docker-agent knows it by (`mcp:<declared>:<tool>` permissions), `name` the generated Claude server name, `at`
+ * the toolset's JSON pointer and `commandLine` the process a stdio server starts.
+ */
+export interface McpServer { name: string; declared: string; at: string; config: Record<string, unknown>; commandLine?: string }
+
+/** A command and its arguments as one shell-readable line; arguments with other characters are double-quoted. */
+function commandLine(command: string, args: readonly string[] = []): string {
+  return [command, ...args].map(part => /^[\w@%+=:,./${}~-]+$/.test(part) ? part : JSON.stringify(part)).join(' ');
+}
 
 const launchers = ['npx', 'uvx', 'bunx', 'pnpx', 'pipx'];
 const unsupported: Readonly<Record<string, string>> = {
@@ -54,20 +63,22 @@ function remoteServer(remote: Record<string, unknown>, at: string, diagnostics: 
  * `docker:<name>` ref runs through the Docker MCP Gateway. `taken` lists names already used by the same agent.
  */
 export function mcpServer(toolset: Record<string, unknown>, at: string, taken: readonly string[]): { server?: McpServer; diagnostics: AgentDiagnostic[] } {
-  const diagnostics: AgentDiagnostic[] = [];
-  let name = serverName(derivedName(toolset));
-  for (let index = 2; taken.includes(name); index++) name = `${serverName(derivedName(toolset))}-${index}`;
+  const diagnostics: AgentDiagnostic[] = [], declared = derivedName(toolset);
+  let name = serverName(declared);
+  for (let index = 2; taken.includes(name); index++) name = `${serverName(declared)}-${index}`;
   for (const [field, label] of Object.entries(unsupported)) if (toolset[field] !== undefined) {
     diagnostics.push(diagnostic('info', 'toolset-field-unsupported', `${at}/${field}`, `MCP ${label} (${field}) have no Claude equivalent and are not emitted.`, 'U'));
   }
   const env = variableMap(toolset.env, `${at}/env`, diagnostics);
   const args = stringList(toolset.args).map((arg, index) => variables(arg, `${at}/args/${index}`, diagnostics));
   const remote = record(toolset.remote);
-  if (text(remote.url)) return { server: { name, config: remoteServer(remote, at, diagnostics) }, diagnostics };
+  if (text(remote.url)) return { server: { name, declared, at, config: remoteServer(remote, at, diagnostics) }, diagnostics };
   if (typeof toolset.ref === 'string' && toolset.ref.startsWith('docker:')) {
-    diagnostics.push(diagnostic('warning', 'mcp-docker-gateway', `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: docker mcp gateway run --servers ${toolset.ref.slice('docker:'.length)}.`, 'A'));
-    return { server: { name, config: { type: 'stdio', command: 'docker', args: ['mcp', 'gateway', 'run', '--servers', toolset.ref.slice('docker:'.length)], ...(env ? { env } : {}) } }, diagnostics };
+    const gateway = ['mcp', 'gateway', 'run', '--servers', toolset.ref.slice('docker:'.length)];
+    diagnostics.push(diagnostic('warning', 'mcp-docker-gateway', `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: ${commandLine('docker', gateway)}.`, 'A'));
+    return { server: { name, declared, at: `${at}/ref`, config: { type: 'stdio', command: 'docker', args: gateway, ...(env ? { env } : {}) }, commandLine: commandLine('docker', gateway) }, diagnostics };
   }
   if (!text(toolset.command)) return { diagnostics: [...diagnostics, diagnostic('warning', 'toolset-unsupported', at, 'The MCP toolset has no command, remote URL or Docker ref and is not emitted.', 'U')] };
-  return { server: { name, config: { type: 'stdio', command: variables(toolset.command, `${at}/command`, diagnostics), ...(args.length > 0 ? { args } : {}), ...(env ? { env } : {}) } }, diagnostics };
+  const command = variables(toolset.command, `${at}/command`, diagnostics);
+  return { server: { name, declared, at, config: { type: 'stdio', command, ...(args.length > 0 ? { args } : {}), ...(env ? { env } : {}) }, commandLine: commandLine(command, args) }, diagnostics };
 }
