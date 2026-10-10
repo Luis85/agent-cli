@@ -8,6 +8,26 @@ const explorations = {
   orphans: ['links', 'orphans', '--path', 'docs/**'],
 };
 
+/** The final verification of the finished project: no `vault check` finding of severity error. */
+const verification = ['vault', 'check', '--strict'];
+
+/**
+ * Record the verification in the build log before the log and README are written, so it can check them too.
+ * @param {import('./cli.mjs').ForgeCli} cli
+ */
+export function planVerification(cli) {
+  cli.begin('Verification');
+  cli.record(verification);
+}
+
+/**
+ * Run the recorded verification over the finished project; generation fails on any error finding.
+ * @param {import('./cli.mjs').ForgeCli} cli
+ */
+export function verifyVault(cli) {
+  cli.run(verification, { record: false });
+}
+
 /**
  * @typedef {{ path: string, line: number, column: number, snippet: string }} Hit
  * @typedef {{ source: string, kind: string, line?: number, key?: string, node?: string, original: string, reason?: string, candidates?: string[] }} Link
@@ -31,7 +51,7 @@ const command = args => `node bin/forge.js ${args.map(arg => /^[\w./=-]+$/.test(
 /** @param {Link} link */
 const where = link => link.line !== undefined ? `line ${link.line}` : link.key !== undefined ? `property \`${link.key}\`` : `Canvas node \`${link.node}\``;
 /** @param {string} title @param {string[]} args @param {string} summary @param {string[]} items */
-const section = (title, args, summary, items) => [`### ${title}`, '', '```sh', command(args), '```', '', summary, '', ...items, ''].join('\n');
+const section = (title, args, summary, items) => [`### ${title}`, '', '```sh', command(args), '```', '', summary, ...(items.length > 0 ? ['', ...items] : []), ''].join('\n');
 
 /** @param {Link[]} links */
 function unresolvedSummary(links) {
@@ -53,5 +73,6 @@ export function explorationSection(result) {
       result.unresolved.map(link => `- \`${link.source}\`, ${where(link)}: \`${link.original}\` (${link.reason}${link.candidates ? `: ${link.candidates.join(', ')}` : ''})`)),
     section('Orphaned documents', explorations.orphans, result.orphans.length === 0 ? 'None: every document under `docs` is linked from another file.' : `${count(result.orphans.length, 'document')} under \`docs\` that no other file links to:`,
       result.orphans.map(path => `- \`${path}\``)),
-  ].join('\n');
+    section('Vault check', verification, 'The `vault-check` core plugin runs last, after this README and the build log are written. Generation fails unless it passes, so the project has no broken link or embed, unparseable note and invalid Canvas or Base; warnings, such as conflicting property types, would not fail it.', []),
+  ].join('\n') + '\n';
 }
