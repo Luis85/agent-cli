@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fileToLinktext, joinPath, linkIndex, resolveLinkpath, type LinkResolution } from '../../src/domain/metadata/link-resolution.ts';
+import { closestCandidate, closestDestination, fileToLinktext, joinPath, linkIndex, resolveLinkpath, type LinkResolution } from '../../src/domain/metadata/link-resolution.ts';
 
 // Reference rules as a direct scan over every path: exact spelling, then one case-insensitive match,
 // then (for wiki-style targets) one case-insensitive `/`-suffix match.
@@ -104,6 +104,20 @@ describe('shortest link text', () => {
     expect(fileToLinktext(index, 'Assets/image.png', 'Root.md')).toBe('Assets/image.png');
     expect(fileToLinktext(index, 'Notes/IDEAS.MD', 'Root.md')).toBe('Notes/IDEAS.MD');
     expect(fileToLinktext(index, 'README.md', 'Notes/Today.md', false)).toBe('README.md');
+  });
+
+  it('opens the closest candidate of an ambiguous path and leaves missing and alias matches unresolved', () => {
+    const readmes = ['archive/README.md', 'docs/README.md'];
+    expect(closestCandidate(readmes, 'docs/sub/Source.md')).toBe('docs/README.md');
+    expect(closestCandidate(readmes, 'archive/old/x/Note.md')).toBe('archive/README.md');
+    expect(closestCandidate(readmes, 'outside/Note.md')).toBe('archive/README.md');
+    expect(closestCandidate(['a/b/Plan.md', 'c/Plan.md', 'Plan.md'], 'a/Note.md')).toBe('Plan.md');
+    expect(closestCandidate(['a/b/Plan.md', 'c/d/Plan.md'], 'a/Note.md')).toBe('a/b/Plan.md');
+    expect(closestCandidate(['x/y/Plan.md', 'z/Plan.md'], 'Root.md')).toBe('z/Plan.md');
+    expect(closestDestination(resolveLinkpath(index, 'plan', 'Archive/Notes/Log.md'), 'Archive/Notes/Log.md')).toBe('Archive/Notes/Plan.md');
+    expect(closestDestination(resolveLinkpath(index, 'plan', 'Root.md'), 'Root.md')).toBe('Archive/plan.md');
+    expect(closestDestination(resolveLinkpath(index, 'Missing', 'Root.md'), 'Root.md')).toBeNull();
+    expect(closestDestination({ status: 'unresolved', reason: 'ambiguous', via: 'alias', linkpath: 'Al', candidates: ['A.md', 'B.md'] }, 'Root.md')).toBeNull();
   });
 
   it('always produces link text that resolves to the file from every source', () => {

@@ -39,6 +39,11 @@ export interface MetadataCache {
   getFileCache(path: string): CachedMetadata | null;
   /** The file that link text resolves to from `sourcePath`, ignoring any subpath; null when missing or ambiguous. */
   getFirstLinkpathDest(linkpath: string, sourcePath: string): string | null;
+  /**
+   * Like `getFirstLinkpathDest`, but a link text whose path matches several files opens the closest one, as
+   * Obsidian does (`closestCandidate`); null only when no file matches.
+   */
+  getClosestLinkpathDest(linkpath: string, sourcePath: string): string | null;
   /** The shortest link text that resolves from `sourcePath` to `path`. */
   fileToLinktext(path: string, sourcePath: string, omitMdExtension?: boolean): string;
   readonly resolvedLinks: LinkCounts;

@@ -1,6 +1,6 @@
 import { formatCivil, type CivilDate, type FieldReading } from '../domain/fields.ts';
 import { requirementsBoard } from '../domain/board.ts';
-import { checkBacklog } from '../domain/check.ts';
+import { checkBacklog, type CheckProblem } from '../domain/check.ts';
 import { displayType, type BacklogItem } from '../domain/model.ts';
 import { membershipTarget } from '../domain/releases.ts';
 import { configProblems } from '../domain/settings.ts';
@@ -71,6 +71,17 @@ export function showItem(session: BacklogSession, reference: string) {
   };
 }
 
+/**
+ * The Bases index warnings about notes the backlog reads (results and context rows), as `check` warnings: an
+ * unparseable note is read without properties, and an ambiguous link resolves to the closest candidate.
+ */
+function indexProblems(session: BacklogSession): CheckProblem[] {
+  const read = new Set([...session.results, ...session.model.byPath.keys()]);
+  return session.warnings.filter(warning => read.has(warning.path)).map(warning => ({
+    code: warning.code, severity: 'warning' as const, path: warning.path, ...(warning.link === undefined ? {} : { value: warning.link }), message: warning.message,
+  }));
+}
+
 /** `backlog check`: problems found reading the backlog; `ok` is false when any is an error. */
 export function check(session: BacklogSession) {
   const release = session.releaseView;
@@ -79,7 +90,10 @@ export function check(session: BacklogSession) {
     ? session.model.items.filter(item => !item.outsideFilter && membershipTarget(session.source, item, releasePaths, release.settings) === 'unresolved').map(item => item.path)
     : [];
   const releaseProblems = release ? [...releaseNoteProblems(release.settings), ...[membershipCollision(release.settings, session.settings)].filter((problem): problem is string => problem !== null)] : [];
-  const problems = checkBacklog({ model: session.model, settings: session.settings, releaseProblems, unresolvedMemberships: memberships, typeOf: path => typeOf(session, path) });
+  const problems = [
+    ...checkBacklog({ model: session.model, settings: session.settings, releaseProblems, unresolvedMemberships: memberships, typeOf: path => typeOf(session, path) }),
+    ...indexProblems(session),
+  ];
   return {
     ...header(session), ok: !problems.some(problem => problem.severity === 'error'),
     counts: { items: session.model.items.filter(item => !item.outsideFilter).length, context: session.model.items.filter(item => item.outsideFilter).length, ignored: session.model.ignored.length, errors: problems.filter(problem => problem.severity === 'error').length, warnings: problems.filter(problem => problem.severity === 'warning').length },

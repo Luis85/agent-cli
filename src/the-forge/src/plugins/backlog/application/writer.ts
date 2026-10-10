@@ -66,7 +66,7 @@ export async function editNotes(session: BacklogSession, edits: readonly NoteEdi
 /** Item writes through the write gate: configuration problems and context rows refuse the batch. */
 export async function writeItems(session: BacklogSession, writes: readonly ItemWrite[], ifMatch?: string): Promise<WriteResult> {
   ensureWritable(session);
-  const env = { settings: session.settings, wikilink: (target: string, source: string) => wikilink(session, target, source), resolve: (linkpath: string, source: string) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
+  const env = { settings: session.settings, wikilink: (target: string, source: string) => wikilink(session, target, source), resolve: (linkpath: string, source: string) => session.cache.getClosestLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
   for (const write of writes) ensureInFilter(session, write.path);
   return editNotes(session, writes.map(write => ({
     path: write.path,

@@ -65,8 +65,6 @@ export const errorCatalog = {
   BASE_EVALUATION_ERROR: entry('input', 'A Bases expression failed while evaluating a file.', 'Check the view, file and expression named in the message.'),
   BASE_VIEW_NOT_FOUND: entry('input', 'The requested Bases view does not exist.', 'Run bases inspect <file.base> and pass an existing --view.'),
   BASE_CONTEXT_NOT_FOUND: entry('input', 'The context file is not an indexed vault file.', 'Pass an existing vault file to --context.'),
-  BASE_INDEX_ERROR: entry('input', 'A vault file could not be indexed.', 'Fix or validate the file named in the message.'),
-  AMBIGUOUS_BASE_LINK: entry('input', 'An internal link matches several files.', 'Use a longer link path that identifies one file.'),
   INVALID_BASE_PROPERTY_TYPES: entry('input', 'The Obsidian property type registry is invalid.', 'Fix .obsidian/types.json so it is a JSON object of property types.'),
   UNSUPPORTED_BASE_PROPERTY_TYPE: entry('input', 'An Obsidian property type is not supported.', 'Use a supported type in .obsidian/types.json.'),
   // Configuration, setup and projects

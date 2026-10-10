@@ -1,12 +1,23 @@
-import { isMap, isScalar, parseDocument, stringify } from 'yaml';
+import { isAlias, isMap, isScalar, parseDocument, stringify, visit, type Document } from 'yaml';
 
 /**
  * Edits a note's frontmatter the way backlog-view's `processFrontMatter` callbacks change it (changed keys set in
  * place, removed keys deleted, new keys appended) while keeping every other byte: each changed top-level entry is
  * rewritten as Obsidian's `stringifyYaml` writes it (`"[[Note]]"`, `""`, block lists), and untouched entries,
- * comments, folding and the body stay as they are. A note without frontmatter gains a block; a flow-style block is
- * rewritten whole. `frontmatter` is the complete new property set.
+ * comments, folding and the body stay as they are. A note without frontmatter gains a block; a flow-style block, or
+ * one with anchors or aliases, is rewritten whole, with every alias resolved to its value as Obsidian's own whole
+ * rewrite does. `frontmatter` is the complete new property set.
  */
+/** Whether nodes are shared through anchors and aliases, which a rewrite of single entries could break apart. */
+function sharesNodes(document: Document): boolean {
+  let shared = false;
+  visit(document, (_key, node) => {
+    if (isAlias(node) || (node !== null && typeof node === 'object' && 'anchor' in node && node.anchor)) { shared = true; return visit.BREAK; }
+    return undefined;
+  });
+  return shared;
+}
+
 export function editFrontmatter(text: string, frontmatter: Record<string, unknown>, changes: Record<string, unknown>, removed: readonly string[]): string {
   const bom = text.startsWith('﻿') ? '﻿' : '';
   const source = text.slice(bom.length);
@@ -19,7 +30,7 @@ export function editFrontmatter(text: string, frontmatter: Record<string, unknow
   const yaml = source.slice(start, end);
   const document = parseDocument(yaml);
   const whole = () => `${bom}---${newline}${lines(Object.keys(frontmatter).length > 0 ? stringify(frontmatter) : '')}${source.slice(end)}`;
-  if (document.errors.length > 0 || (document.contents !== null && (!isMap(document.contents) || document.contents.flow))) return whole();
+  if (document.errors.length > 0 || (document.contents !== null && (!isMap(document.contents) || document.contents.flow)) || sharesNodes(document)) return whole();
   const spans = new Map<string, [number, number]>();
   for (const pair of isMap(document.contents) ? document.contents.items : []) {
     if (!isScalar(pair.key) || !pair.key.range) return whole();

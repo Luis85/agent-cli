@@ -49,8 +49,6 @@ export const germanErrors = {
   BASE_EVALUATION_ERROR: { summary: 'Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.', hint: 'Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck.' },
   BASE_VIEW_NOT_FOUND: { summary: 'Die angeforderte Bases-Ansicht existiert nicht.', hint: 'Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view.' },
   BASE_CONTEXT_NOT_FOUND: { summary: 'Die Kontextdatei ist keine indexierte Tresordatei.', hint: 'Übergeben Sie eine vorhandene Tresordatei an --context.' },
-  BASE_INDEX_ERROR: { summary: 'Eine Tresordatei konnte nicht indexiert werden.', hint: 'Korrigieren oder prüfen Sie die in der Meldung genannte Datei.' },
-  AMBIGUOUS_BASE_LINK: { summary: 'Ein interner Link passt auf mehrere Dateien.', hint: 'Verwenden Sie einen längeren Linkpfad, der genau eine Datei bezeichnet.' },
   INVALID_BASE_PROPERTY_TYPES: { summary: 'Das Register der Obsidian-Eigenschaftstypen ist ungültig.', hint: 'Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen.' },
   UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: 'Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.', hint: 'Verwenden Sie in .obsidian/types.json einen unterstützten Typ.' },
   // Konfiguration, Installation und Projekte

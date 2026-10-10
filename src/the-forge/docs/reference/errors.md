@@ -107,8 +107,6 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `BASE_EVALUATION_ERROR` | 2 | input | no | A Bases expression failed while evaluating a file. | Check the view, file and expression named in the message. |
 | `BASE_VIEW_NOT_FOUND` | 2 | input | no | The requested Bases view does not exist. | Run `bases inspect <file.base>` and pass an existing `--view`. |
 | `BASE_CONTEXT_NOT_FOUND` | 2 | input | no | The context file is not an indexed vault file. | Pass an existing vault file to `--context`. |
-| `BASE_INDEX_ERROR` | 2 | input | no | A vault file could not be indexed. | Fix or validate the file named in the message. |
-| `AMBIGUOUS_BASE_LINK` | 2 | input | no | An internal link matches several files. | Use a longer link path that identifies one file. |
 | `INVALID_BASE_PROPERTY_TYPES` | 2 | input | no | The Obsidian property type registry is invalid. | Fix `.obsidian/types.json` so it is a JSON object of property types. |
 | `UNSUPPORTED_BASE_PROPERTY_TYPE` | 2 | input | no | An Obsidian property type is not supported. | Use a supported type in `.obsidian/types.json`. |
 | `INVALID_CONFIG` | 2 | input | no | The configuration is invalid or unreadable. | Fix `bin/config.json` at the location named in the message, then run config. |
