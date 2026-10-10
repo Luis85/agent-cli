@@ -4,13 +4,15 @@ import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { hostIdentity } from '../../src/the-forge/infrastructure/workspace/lock.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
 
 it('reports a stale writer lock with its holder and leaves the lock for an explicit recovery', async () => {
   const pid = spawnSync(process.execPath, ['-e', '']).pid!;
-  const holder = JSON.stringify({ pid, hostname: hostname(), startedAt: '2026-10-10T08:00:00.000Z', command: 'create', operationId: 1, forgeVersion: '0.1.0' });
+  // Stale diagnosis compares the pid namespace and boot the lock records with this host's.
+  const holder = JSON.stringify({ pid, hostname: hostname(), startedAt: '2026-10-10T08:00:00.000Z', command: 'create', operationId: 1, forgeVersion: '0.1.0', ...(await hostIdentity()) });
   const lock = join(fixture.project, '.agent-cli.lock');
   await writeFile(lock, holder);
   const busy = cli(['create', 'note.md', '--content', '# Note']);

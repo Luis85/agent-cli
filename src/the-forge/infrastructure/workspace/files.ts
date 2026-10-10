@@ -6,7 +6,7 @@ import { vaultPath, type WriteRequest, type FileChange } from '../../domain/docu
 import { revisionConflict, snapshotWriteRequests, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { FileRepository } from '../../application/workspace/ports.ts';
 import { syncDirectory } from './durable.ts';
-import { acquireLock, lockName, releaseLock, type LockOwner } from './lock.ts';
+import { acquireLock, lockName, releaseLock, type LockOwner, type LockRelease } from './lock.ts';
 import { retryTransient } from './retry.ts';
 
 export const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -72,9 +72,9 @@ export class NodeFiles implements FileRepository {
     path = vaultPath(path);
     const guarded = typeof expectedRevision === 'string' && expectedRevision.length > 0;
     const lock = join(this.root, lockName);
-    let locked = false;
+    let token: string | undefined;
     try {
-      if (!dryRun) { await acquireLock(lock, this.owner); locked = true; }
+      if (!dryRun) token = await acquireLock(lock, this.owner);
       const target = await this.resolvePath(path);
       const before = await this.stored(path);
       if (before === undefined) throw forgeError('NOT_FOUND', `File not found: ${path}`);
@@ -87,21 +87,21 @@ export class NodeFiles implements FileRepository {
         await this.syncDirectories([dirname(target)]);
       }
       return { path, revision: before.revision, operation: 'deleted', bytes: before.bytes.length };
-    } finally { if (locked) await this.cleanupLock(lock); }
+    } finally { if (token !== undefined) await this.cleanupLock(lock, token); }
   }
   async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
     const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0 && new Set(requests.map(w => w.path)).size === requests.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
     ensure(!requests.some(a => requests.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
     const lock = join(this.root, lockName);
-    let locked = false;
+    let token: string | undefined;
     const createdDirectories: string[] = [];
     const committed: FilePlan[] = [];
     const staged: string[] = [];
     // Each changed directory entry is fsynced once, after all renames and before events.
     const touched = new Set<string>();
     try {
-      if (!dryRun) { await acquireLock(lock, this.owner); locked = true; }
+      if (!dryRun) token = await acquireLock(lock, this.owner);
       const plans: FilePlan[] = [];
       const conflicts: RevisionConflict[] = [];
       for (const write of requests) {
@@ -155,17 +155,23 @@ export class NodeFiles implements FileRepository {
       }
       if (failures.length) throw forgeError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
       throw error;
-    } finally { if (locked) await this.cleanupLock(lock); }
+    } finally { if (token !== undefined) await this.cleanupLock(lock, token); }
   }
-  private async cleanupLock(lock: string): Promise<void> {
-    try { await this.releaseLock(lock); }
-    catch (error) {
+  private async cleanupLock(lock: string, token: string): Promise<void> {
+    let warning: string | undefined;
+    try {
+      const outcome = await this.releaseLock(lock, token);
+      if (outcome === 'foreign') warning = `Left ${lockName} in place: it no longer carries this writer's token, so another writer may hold it.`;
+      else if (outcome === 'missing') warning = `${lockName} was removed by someone else while this writer held it; inspect concurrent changes.`;
+    } catch (error) {
       // A cleanup failure cannot erase committed changes or the primary error.
-      try { this.warn(`Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error)}`); }
-      catch { /* Diagnostics must not change the write outcome. */ }
+      warning = `Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error)}`;
     }
+    if (warning === undefined) return;
+    try { this.warn(warning); }
+    catch { /* Diagnostics must not change the write outcome. */ }
   }
-  private async releaseLock(lock: string): Promise<void> { await releaseLock(lock); }
+  private async releaseLock(lock: string, token: string): Promise<LockRelease> { return releaseLock(lock, token); }
   private async syncDirectories(directories: Iterable<string>): Promise<void> {
     for (const directory of new Set(directories)) await syncDirectory(directory);
   }
