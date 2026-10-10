@@ -64,6 +64,11 @@ export interface MetadataIndex {
    */
   vaultFiles(): Promise<readonly string[]>;
   /**
+   * One file's metadata from content the caller already read, without building or changing the index: what
+   * `getFileCache` would hold for these bytes, or null for files the index does not parse or that fail to parse.
+   */
+  parseFile(path: string, bytes: Uint8Array): CachedMetadata | null;
+  /**
    * Re-indexes committed changes and re-resolves affected sources. Before the first load it changes nothing and
    * returns null, because the later load reads the current files.
    */

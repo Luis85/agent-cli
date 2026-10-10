@@ -79,6 +79,12 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     return (await this.repository.list()).filter(this.member);
   }
 
+  parseFile(path: string, bytes: Uint8Array): CachedMetadata | null {
+    if (!this.member(path) || !this.parser.indexes(path)) return null;
+    try { return this.parser.parse(path, bytes); }
+    catch { return null; }
+  }
+
   update(changes: readonly MetadataChange[]): Promise<MetadataUpdate | null> {
     if (!this.loading) return Promise.resolve(null);
     const result = this.pending.then(() => this.loading).then(() => this.apply(changes));
