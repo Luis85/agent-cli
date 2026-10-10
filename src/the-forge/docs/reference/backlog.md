@@ -93,12 +93,12 @@ Mutating actions accept `--dry-run` (planned changes with unified diffs, nothing
 | --- | --- |
 | `backlog.item-created` | `{path, title, type, id, parent?, order?}` for `add`, `iteration add` and `release add` |
 | `backlog.item-moved` | `{path, parent, order, previousParent, previousOrder}` |
-| `backlog.state-changed` | `{path, title, from, to, started?, finished?}` (`finished: null` when leaving done) |
+| `backlog.state-changed` | `{path, title, from, to, started?, finished?}`: `from` and `to` are values of the item's own workflow (requirements, deliverable or test); `started` and `finished` belong to the requirements workflow (`finished: null` when leaving done) |
 | `backlog.released` | `{path, name, status, released}` |
 
 ## New notes
 
-A new note is one file holding only frontmatter, `---\n<yaml>---\n`, with keys in backlog-view's order: `pbl-id`, type, parent (`""` for a root in folder mode, otherwise absent), order, goal, iteration, release, then horizon, start and target. Forge appends the optional `--state` (with its stamps), `--assignee` and `--tags` after them, in the order a later edit would add them.
+A new note is one file holding only frontmatter, `---\n<yaml>---\n`, with keys in backlog-view's order: `pbl-id`, type, parent (`""` for a root in folder mode, otherwise absent), order, goal, iteration, release, then horizon, start and target. Forge appends the optional `--state` (in its [workflow's spelling](#state-writes), with its stamps), `--assignee` and `--tags` after them, in the order a later edit would add them. `--tags` is read like a frontmatter tags string, split on commas and whitespace with a leading `#` optional, and each tag is normalized as the plugin's tag editor writes it: characters Obsidian does not allow are trimmed at the edges and become `-` inside (`needs-review!` gives `needs-review`, `a!b` gives `a-b`), tags without a non-digit character such as `2026` are dropped, and duplicates are removed case-insensitively.
 
 - **Name.** The title passes `sanitizeTitle`: `\ / : * ? " < > | # ^ [ ]` become `-`, whitespace collapses, leading `-`, space and `.` and trailing `-` and space are trimmed, and an empty result is `Untitled`. A taken name gets ` 1`, ` 2`… (compared case-insensitively). The basename is the title; no title property is written.
 - **Folder.** In folder mode, beside the parent; otherwise `typeFolder.<type>`, else `homeFolder`, else the folder most results live in. `--folder` overrides.
@@ -115,7 +115,7 @@ Releases get `pbl-id`, type and the stated version, target date, status and desc
 
 ## State writes
 
-A state write uses the item's own workflow. In the requirements workflow, `startedDateProperty` is stamped with `--today` when the state actually changes into a `startedStates` value and the key is empty; `finishedDateProperty` is stamped when crossing into a done value and deleted when crossing out; done to done writes nothing. Dates are `YYYY-MM-DD`; an existing time suffix on a planned date is kept, and an equal date is left alone.
+A state write uses the item's own workflow: Deliverables use the deliverable workflow, test-ladder items the test workflow, everything else the requirements workflow. A typed state that matches one of the workflow's declared values (its state values and done values) case-insensitively is written in the declared spelling (`--state "in progress"` writes `In Progress`), as a board column writes it; other values are written as typed. `--horizon`, `--priority` and `--risk` match `horizonValues`, `priorityValues` and `riskValues` the same way. Setting the state the item already holds, in any case, writes nothing. In the requirements workflow, `startedDateProperty` is stamped with `--today` when the state actually changes into a `startedStates` value and the key is empty; `finishedDateProperty` is stamped when crossing into a done value and deleted when crossing out; done to done writes nothing. Dates are `YYYY-MM-DD`; an existing time suffix on a planned date is kept, and an equal date is left alone.
 
 ## Refusals and the write gate
 

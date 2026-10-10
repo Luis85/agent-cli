@@ -39,6 +39,11 @@ export function sameValue(a: string | null, b: string | null): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
 
+/** A declared value in its declared spelling (matched like `sameValue`), or the value as given. */
+export function declaredSpelling(values: readonly string[], value: string): string {
+  return values.find(entry => sameValue(entry, value)) ?? value;
+}
+
 /** Link text from a raw frontmatter value: `[[Note#Heading|Alias]]` and bare `Note` both give `Note`. */
 export function linkpathFromRawValue(raw: string): string {
   let linkpath = raw.trim();
@@ -71,6 +76,17 @@ export function normalizeTag(input: string): string {
     .replace(/\/{2,}/g, '/')
     .replace(/^\/+|\/+$/g, '');
   return /[^\p{N}]/u.test(tag) ? tag : '';
+}
+
+/**
+ * Tags typed by a user, read like a frontmatter tags string (split on commas and whitespace, leading `#`
+ * stripped) and then `normalizeTag`ged as backlog-view's tag editor writes them; tags Obsidian would not read
+ * (such as all-digit ones) are dropped and duplicates removed case-insensitively, keeping the first spelling.
+ */
+export function typedTags(entries: readonly string[]): string[] {
+  const tags: string[] = [];
+  for (const tag of readTags([...entries]).map(normalizeTag)) if (tag.length > 0 && !hasTag(tags, tag)) tags.push(tag);
+  return tags;
 }
 
 /** A horizon-like label: empty values are absent, other non-text values unreadable. */

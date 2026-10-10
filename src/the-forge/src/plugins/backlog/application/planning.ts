@@ -1,13 +1,13 @@
 import { ensure } from '../../../domain/shared/errors.ts';
 import { backlogError, refused } from '../domain/errors.ts';
-import { formatCivil, setOwn, type Frontmatter } from '../domain/fields.ts';
+import { declaredSpelling, formatCivil, setOwn, typedTags, type Frontmatter } from '../domain/fields.ts';
 import { vaultFolder } from '../domain/settings-resolve.ts';
 import type { BacklogItem } from '../domain/model.ts';
 import { ITEM_ID_KEY, newItemFrontmatter, nextItemId, uniqueNotePath } from '../domain/notes.ts';
 import { dropPlacement, rankablePeers, spreadAround, unchangedPlacement, type DropTarget, type RankResult } from '../domain/ranks.ts';
-import { folderForType, isDoneValue, isStartedValue } from '../domain/settings.ts';
+import { folderForType, isDoneValue, isStartedValue, workflowKey, workflowOf, workflowValues, type Workflow } from '../domain/settings.ts';
 import {
-  ABSENCE_TYPE, RELEASE_TYPE, RESOURCE_TYPE, canonicalType, isMarkerType, isReleaseType, keepsProjection, mayHoldField, sameType,
+  ABSENCE_TYPE, RELEASE_TYPE, RESOURCE_TYPE, canonicalType, isMarkerType, isReleaseType, keepsProjection, ladderFor, mayHoldField, sameType,
 } from '../domain/vocabulary.ts';
 import { announce, createNotes, ensureWritable, newNoteText, writeItems, type WriteResult } from './writer.ts';
 import { findItem, pathTaken, typeOf, wikilink, type BacklogSession } from './session.ts';
@@ -46,7 +46,9 @@ function folderFor(session: BacklogSession, type: string, parent: BacklogItem | 
 
 export interface AddRequest {
   type: string; title: string; parent?: string; folder?: string; state?: string;
-  iteration?: string; release?: string; assignee?: string; tags?: string[];
+  iteration?: string; release?: string; assignee?: string;
+  /** Typed tags; each entry may hold several, separated by commas or whitespace. */
+  tags?: string[];
 }
 
 /**
@@ -82,21 +84,26 @@ export async function addItem(session: BacklogSession, request: AddRequest): Pro
     id: nextItemId(session.cache.files().map(file => session.cache.getFileCache(file)?.frontmatter)), typeName, order,
     parentLink: parent ? link(parent.path) : null, ...(iteration ? { iterationLink: link(iteration.path), axis } : {}), ...(release ? { releaseLink: link(release.path) } : {}),
   });
-  appendFields(session, frontmatter, path, request);
+  appendFields(session, frontmatter, path, request, workflowOf(typeName, ladderFor(typeName, parent?.ladder ?? null)));
   const result = await createNotes(session, [{ path, text: newNoteText(session, frontmatter) }]);
   const item = { path, title: path.slice(path.lastIndexOf('/') + 1, -3), type: typeName, id: frontmatter[ITEM_ID_KEY], parent: parent?.path ?? null, order };
   await announce(session, result, 'backlog.item-created', item);
   return { ...result, item };
 }
 
-/** State (with the start/finish stamps), assignee and tags, appended in the order later edits would add them. */
-function appendFields(session: BacklogSession, frontmatter: Frontmatter, path: string, request: AddRequest): void {
+/**
+ * State (in its workflow's declared spelling, with the requirements workflow's start/finish stamps), assignee and
+ * tags, appended in the order later edits would add them.
+ */
+function appendFields(session: BacklogSession, frontmatter: Frontmatter, path: string, request: AddRequest, workflow: Workflow): void {
   const { settings } = session;
   if (request.state !== undefined) {
-    if (!settings.stateKey) throw refused('unbound-property', 'Bind stateProperty in the backlog view to track states.', { option: 'stateProperty' });
-    setOwn(frontmatter, settings.stateKey, request.state);
-    if (settings.startedDateKey && isStartedValue(settings, request.state)) setOwn(frontmatter, settings.startedDateKey, formatCivil(session.today));
-    if (settings.finishedDateKey && isDoneValue(settings, request.state)) setOwn(frontmatter, settings.finishedDateKey, formatCivil(session.today));
+    const key = workflowKey(settings, workflow);
+    if (!key) throw refused('unbound-property', 'Bind stateProperty in the backlog view to track states.', { option: 'stateProperty' });
+    const state = declaredSpelling(workflowValues(settings, workflow), request.state.trim());
+    setOwn(frontmatter, key, state);
+    if (workflow === 'requirements' && settings.startedDateKey && isStartedValue(settings, state)) setOwn(frontmatter, settings.startedDateKey, formatCivil(session.today));
+    if (workflow === 'requirements' && settings.finishedDateKey && isDoneValue(settings, state)) setOwn(frontmatter, settings.finishedDateKey, formatCivil(session.today));
   }
   if (request.assignee !== undefined) {
     if (!settings.assigneeKey) throw refused('unbound-property', 'Bind assigneeProperty in the backlog view to assign work.', { option: 'assigneeProperty' });
@@ -104,7 +111,8 @@ function appendFields(session: BacklogSession, frontmatter: Frontmatter, path: s
     if (target === null || !sameType(typeOf(session, target), RESOURCE_TYPE)) throw refused('not-a-resource', `${request.assignee} is not a Resource note.`, { assignee: request.assignee });
     setOwn(frontmatter, settings.assigneeKey, wikilink(session, target, path));
   }
-  if (request.tags && request.tags.length > 0 && settings.tagsKey) setOwn(frontmatter, settings.tagsKey, request.tags);
+  const tags = typedTags(request.tags ?? []);
+  if (tags.length > 0 && settings.tagsKey) setOwn(frontmatter, settings.tagsKey, tags);
 }
 
 export interface MoveRequest { item: string; parent?: string; top?: boolean; before?: string; after?: string; first?: boolean; last?: boolean; ifMatch?: string }

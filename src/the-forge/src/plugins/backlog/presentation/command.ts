@@ -42,7 +42,7 @@ const options: Readonly<Record<string, CommandOption>> = {
   due: option.string('set/iteration add: the planned target date.'),
   assignee: option.string('add/set: a Resource note.'),
   type: option.string('set: the new type (canonical spelling is written).'),
-  tags: option.string('add: comma-separated tags.'),
+  tags: option.string('add: tags separated by commas or spaces; a leading # is optional.'),
   iteration: option.string('add: the iteration to plan the item in.'),
   release: option.string('add: the release the item ships in.'),
   on: option.string('depend/undepend: the prerequisite item.'),
@@ -120,8 +120,8 @@ export function backlogCommand(ports: (context: CommandContext) => { bases: Base
         case 'check': arity(rest, 0); return check(session);
         case 'add': {
           arity(rest, 2);
-          const tags = value(flags, 'tags')?.split(',').map(tag => tag.trim()).filter(Boolean);
-          return addItem(session, { type: rest[0]!, title: rest[1]!, parent: value(flags, 'parent'), folder: value(flags, 'folder'), state: value(flags, 'state'), iteration: value(flags, 'iteration'), release: value(flags, 'release'), assignee: value(flags, 'assignee'), ...(tags ? { tags } : {}) });
+          const tags = value(flags, 'tags');
+          return addItem(session, { type: rest[0]!, title: rest[1]!, parent: value(flags, 'parent'), folder: value(flags, 'folder'), state: value(flags, 'state'), iteration: value(flags, 'iteration'), release: value(flags, 'release'), assignee: value(flags, 'assignee'), ...(tags === undefined ? {} : { tags: [tags] }) });
         }
         case 'move': {
           arity(rest, 1);

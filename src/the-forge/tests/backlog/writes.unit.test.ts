@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveSettings } from '../../src/plugins/backlog/domain/settings-resolve.ts';
 import { applyItemWrite, type ItemWrite, type WriteEnv } from '../../src/plugins/backlog/domain/writes.ts';
-import { linkpathFromRawValue, readTags, normalizeTag, readDate } from '../../src/plugins/backlog/domain/fields.ts';
+import { linkpathFromRawValue, readTags, normalizeTag, readDate, typedTags } from '../../src/plugins/backlog/domain/fields.ts';
 
 const settings = resolveSettings({
   stateProperty: 'note.status', stateValues: 'Open, Active, Done', startedStates: 'Active', startedDateProperty: 'note.started', finishedDateProperty: 'note.finished',
@@ -80,6 +80,7 @@ describe('links, dates and lists', () => {
     expect(readTags(['#a, b', 'A c', 3])).toEqual(['a', 'b', 'c']);
     expect(normalizeTag(' #needs review! ')).toBe('needs-review');
     expect(normalizeTag('2026')).toBe('');
+    expect(typedTags(['#Sprint-12!, sprint-12 2026-07', '2026 ##x//y/ release--candidate'])).toEqual(['Sprint-12', '2026-07', 'x/y', 'release--candidate']);
     expect(readDate('2026-02-30')).toEqual({ value: null, invalid: true });
     expect(readDate('2026-2-3 10:00')).toEqual({ value: { year: 2026, month: 2, day: 3 }, invalid: false });
     expect(readDate(20261001)).toEqual({ value: null, invalid: true });
