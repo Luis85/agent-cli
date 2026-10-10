@@ -18,7 +18,7 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
  */
 export type CommandScope = 'workspace' | 'project';
-export const unknownActionCodes = ['UNKNOWN_GENERATOR', 'INVALID_ARGUMENT'] as const;
+const unknownActionCodes = ['UNKNOWN_GENERATOR', 'INVALID_ARGUMENT'] as const;
 export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
 export interface CommandOption {
