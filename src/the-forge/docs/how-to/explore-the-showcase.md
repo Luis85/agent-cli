@@ -26,6 +26,16 @@ node bin/forge.js project open the-forge
 
 The README's "Search and link reports" section records these results from generation; in the committed vault `links unresolved` and `links orphans --path "docs/**"` report none.
 
+The showcase's agent team is docker-agent YAML in `agents/trailhead-team.yaml`: a lead with two sub-agents, a GitHub MCP server and a `/trace` command. Its Claude Code agents in `.claude/agents/` and the `trace` skill in `.claude/skills/` were generated from it; with the showcase selected, check that they still match, and read the mapping diagnostics:
+
+```sh
+node bin/forge.js agents validate
+node bin/forge.js agents generate --target claude --commands --check
+node bin/forge.js agents generate --target claude --commands --plan
+```
+
+The README's "Agent definitions" section counts the diagnostics by code; see [manage agent definitions](manage-agents.md).
+
 UI and data-source drift checks accept `--project` and leave the selection unchanged:
 
 ```sh
