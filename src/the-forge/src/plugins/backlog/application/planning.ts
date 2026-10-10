@@ -1,3 +1,4 @@
+import { ensure } from '../../../domain/shared/errors.ts';
 import { backlogError, refused } from '../domain/errors.ts';
 import { formatCivil, setOwn, type Frontmatter } from '../domain/fields.ts';
 import { vaultFolder } from '../domain/settings-resolve.ts';
@@ -116,7 +117,7 @@ function moveTarget(session: BacklogSession, moved: BacklogItem, request: MoveRe
   if (anchorRef !== undefined) {
     const anchor = findItem(session, anchorRef);
     ensureResult(anchor, 'a move anchor');
-    if (anchor === moved) throw backlogError('BACKLOG_NO_GAP', 'An item cannot be placed next to itself.', { reason: 'self' });
+    ensure(anchor !== moved, 'INVALID_ARGUMENT', 'An item cannot be placed before or after itself.');
     if (request.parent !== undefined || request.top) {
       const wanted = request.top ? null : findItem(session, request.parent!);
       if (anchor.parent !== wanted) throw refused('projection', `${anchor.title} is not a child of the requested parent.`, { anchor: anchor.path });

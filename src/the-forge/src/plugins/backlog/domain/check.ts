@@ -1,7 +1,7 @@
 import { reversedSpan } from './fields.ts';
 import type { BacklogItem, BacklogModel } from './model.ts';
 import { configProblems, type BacklogSettings } from './settings.ts';
-import { isIterationType, isResourceType, mayHoldField, placementEnds, type HeldField } from './vocabulary.ts';
+import { isIterationType, isReleaseType, isResourceType, mayHoldField, placementEnds, type HeldField } from './vocabulary.ts';
 
 /** One finding of `backlog check`. `path` names the note; `value` the raw text or key at fault. */
 export interface CheckProblem { code: string; severity: 'error' | 'warning'; path?: string; key?: string; value?: string; paths?: string[]; message: string }
@@ -73,7 +73,8 @@ export function checkBacklog(input: CheckInput): CheckProblem[] {
   const byOrder = new Map<number, string[]>();
   for (const item of results) if (item.order !== null) byOrder.set(item.order, [...(byOrder.get(item.order) ?? []), item.path]);
   for (const [order, paths] of byOrder) if (paths.length > 1) problems.push(warning('rank-tie', `${paths.length} items share rank ${order}; ties follow result order.`, { value: String(order), paths }));
-  const unranked = results.filter(item => item.order === null).map(item => item.path);
+  // Releases are created without a rank (`createRelease`), so only other unranked results are reported.
+  const unranked = results.filter(item => item.order === null && !isReleaseType(item.typeName)).map(item => item.path);
   if (unranked.length > 0) problems.push(warning('unranked', `${unranked.length} items have no rank and sort last; run backlog ranks seed.`, { paths: unranked }));
   return problems;
 }

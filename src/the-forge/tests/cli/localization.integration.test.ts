@@ -18,6 +18,7 @@ import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
+import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
@@ -57,7 +58,7 @@ describe('built-in localization catalog coverage', () => {
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin];
+    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, backlogPlugin];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }, []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));

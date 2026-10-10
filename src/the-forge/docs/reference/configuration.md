@@ -78,7 +78,7 @@ The `plugins` section has three keys:
 | --- | --- | --- |
 | `plugins.enabled` | `[]` | User plugin ids that load from `bin/plugins`, in load order. Installing a directory does not enable it |
 | `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; only their ids are accepted (`INVALID_PLUGIN_CONFIG` otherwise) |
-| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety) and `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends). See [config sections](plugins.md#config-sections) |
+| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety) `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), and `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog). See [config sections](plugins.md#config-sections) |
 
 Use `node bin/forge.js --no-plugins <command>` to skip user plugins for one invocation, including recovery from a broken plugin; core plugins still load. `node bin/forge.js plugins` lists every plugin with its state.
 

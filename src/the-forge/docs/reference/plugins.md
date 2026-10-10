@@ -48,12 +48,13 @@ In bundle order, which is also their registration and activation order:
 
 | Plugin | Contributes | Settings | Reference |
 | --- | --- | --- | --- |
-| `bases` | `bases` command: native `.base` views as file repositories | none | [Bases queries](bases.md) |
+| `bases` | `bases` command: native `.base` views as file repositories; provides the `bases.query` service | none | [Bases queries](bases.md) |
 | `skills` | `skills` command and the bundled agent skills | none | [CLI commands](cli.md#commands) |
 | `search` | `search` command; `INVALID_SEARCH_PATTERN` and `SEARCH_TIMEOUT` codes | `timeoutMs` | [Search](search.md) |
 | `links` | `links` command: outgoing links, backlinks, unresolved links, orphans and dead ends | `roots` | [Links](links.md) |
+| `backlog` | `backlog` command for backlog-view compatible product backlogs; `backlog.*` events; the `forge-backlog` skill; `BACKLOG_*` codes; requires `bases.query` | `base`, `view` | [Backlog](backlog.md) |
 
-Each declares German strings for its command and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay.
+Each declares German strings for its command and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay. A core plugin that requires a service no enabled core plugin provides is disabled with it: disabling `bases` also disables `backlog`, and `plugins` lists both as `disabled`.
 
 `node bin/forge.js plugins` lists every plugin, core plugins first: the manifest fields, `core`, `state` and `contributions`. `state` is `enabled` for registered plugins, `disabled` for a core plugin in `plugins.disabled` or an installed user plugin that `plugins.enabled` does not name, and `skipped` for an enabled user plugin that `--no-plugins` left unloaded. `contributions` lists command, generator, event and skill ids, `services.provides` and `services.requires`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run. Invalid manifests in `bin/plugins` are skipped with a warning.
 
