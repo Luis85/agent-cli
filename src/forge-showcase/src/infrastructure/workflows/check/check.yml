@@ -1,12 +1,13 @@
 # Quality gate for the forge-showcase project, authored inside the project.
-# Assumption: this workflow runs with defaults.run.working-directory set to the
-# project directory (src/forge-showcase in The Forge repository). Synchronizing it
-# into the repository's .github/workflows adds that working directory and path
-# filters for the project; the file itself stays independent of its location.
+# The file stays independent of its location: `node bin/forge.js workflows sync` in the
+# containing workspace generates .github/workflows/forge-showcase--check.yml from it,
+# runs its steps in the project directory, limits push and pull_request triggers to
+# the project's files and sets env.FORGE_PROJECT_PATH for action inputs such as the cache path.
 name: forge-showcase check
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -15,14 +16,23 @@ permissions:
 
 jobs:
   check:
-    name: Install, check and test
+    name: Install, check and test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.12.0', 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Actions are pinned to full commit SHAs; the comment names the release.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          node-version: 22.12
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: ${{ env.FORGE_PROJECT_PATH }}/package-lock.json
       - name: Install locked dependencies
         run: npm ci
       - name: Structure, lint, analysis, types, builds and tests

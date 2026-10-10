@@ -3,7 +3,7 @@ name: forge-vault
 description: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.
 ---
 
-Run `node bin/app.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.
+Run `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.
 
 Inspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.
 

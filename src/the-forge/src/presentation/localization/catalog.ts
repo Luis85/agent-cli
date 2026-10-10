@@ -1,0 +1,52 @@
+export const germanCommands = {
+  help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
+  schema: 'Maschinenlesbarer Katalog der verfügbaren Funktionen.',
+  config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
+  setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
+  templates: 'Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.',
+  project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
+  components: 'Markdown-Komponenten verwalten, prüfen, importieren und exportieren.',
+  'data-sources': 'Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.',
+  interactions: 'Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.',
+  workflows: 'Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.',
+  claude: 'Native Claude-Code-Agenten, Hooks und Plugins mit Revisionsschutz und installiertem CLI verwalten.',
+  bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.',
+  formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
+  list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.',
+  read: 'Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.',
+  validate: 'Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.',
+  create: 'Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.',
+  write: 'Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.',
+  edit: 'Markdown oder UTF-8-Text ergänzen oder genau einen wörtlichen Treffer ersetzen.',
+  properties: 'YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.',
+  patch: 'Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.',
+  make: 'Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.',
+  events: 'Ereignisverträge des Aufrufs auflisten.',
+  plugins: 'Explizit geladene Plugin-Manifeste auflisten.',
+  skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.',
+} satisfies Record<string, string>;
+
+export const germanGenerators = {
+  form: 'Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.',
+  entity: 'Domain-Entität mit Identität und Prüfung von Invarianten.',
+  'value-object': 'Unveränderliches Wertobjekt mit Gleichheitsprüfung und Validierung.',
+  'use-case': 'Anwendungsfall mit injiziertem Repository-Port.',
+  event: 'Typisierte Ereignisdaten mit Laufzeitbeschreibung.',
+  plugin: 'Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.',
+  document: 'Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.',
+  ui: 'Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.',
+  stories: 'Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren.',
+  'data-source': 'Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren.',
+} satisfies Record<string, string>;
+
+export const germanGuidance = {
+  attachments: 'Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.',
+  otherFiles: 'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
+  textFiles: 'UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.',
+  delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Lebenszyklus-Ereignisse begleiten Befehle, Workspace-Vorgänge, Claude und Plugins. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur Dateiänderungen; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
+  setup: {
+    'node bin/forge.js templates list': 'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',
+    'node bin/forge.js templates inspect workflow/prd.md': 'Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.',
+    'node bin/forge.js project list': 'Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen.',
+  },
+};

@@ -1,7 +1,6 @@
 {
   "schemaVersion": 1,
   "files": [
-    "app.js",
     "config/default.json",
     "data/LICENSE",
     "data/README.md",
@@ -30,6 +29,7 @@
     "data/docs/explanation/architecture.md",
     "data/docs/explanation/deterministic-ui.md",
     "data/docs/explanation/product-review.md",
+    "data/docs/explanation/product-vision.md",
     "data/docs/how-to/develop-and-test.md",
     "data/docs/how-to/enable-plugins.md",
     "data/docs/how-to/explore-the-showcase.md",
@@ -56,6 +56,7 @@
     "data/docs/reference/storybook.md",
     "data/docs/reference/templates.md",
     "data/docs/reference/ui-components.md",
+    "data/docs/reference/workflows.md",
     "data/docs/templates/projects/form-model.ts",
     "data/docs/templates/projects/form-view.ts",
     "data/docs/templates/projects/project-demo.css",
@@ -151,6 +152,7 @@
     "data/types/domain/shared/error-catalog.d.ts",
     "data/types/domain/shared/errors.d.ts",
     "data/types/sdk.d.ts",
+    "forge.js",
     "package.json",
     "skills/forge-development.md",
     "skills/forge-vault.md",

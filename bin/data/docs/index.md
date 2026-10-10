@@ -1,6 +1,6 @@
 # The Forge documentation
 
-The Forge is a portable CLI for maintaining engineering workspaces, safely editing files and generating project/UI boilerplate. Start with the task you need to complete. These docs follow [Diátaxis](https://diataxis.fr/): tutorials teach through a concrete exercise, how-to guides solve a task, references define exact contracts, and explanations describe the reasoning behind the design.
+The Forge is a terminal project companion for AI-assisted project and product development. The user works in Obsidian; the agent uses this CLI to create, edit and verify the same vault from the terminal. The [product vision](explanation/product-vision.md) explains the goals. Start with the task you need to complete. These docs follow [Diátaxis](https://diataxis.fr/): tutorials teach through a concrete exercise, how-to guides solve a task, references define exact contracts, and explanations describe the reasoning behind the design.
 
 ## Tutorials — learn by doing
 
@@ -53,13 +53,15 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Plugins and events](reference/plugins.md) | Manifests, contributions, lifecycle and delivery semantics |
 | [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
+| [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 
-Run `node bin/app.js schema --json` for the installed executable's command catalog, and `node bin/app.js config --json` for its effective settings. The installed version is the authority for available commands.
+Run `node bin/forge.js schema --json` for the installed executable's command catalog, and `node bin/forge.js config --json` for its effective settings. The installed version is the authority for available commands.
 
 ## Explanation — understand the design
 
 For contributors and teams deciding how to use The Forge within their architecture.
 
+- [Product vision](explanation/product-vision.md): the terminal project companion, the two interfaces to one vault, the knowledge graph, core plugins and the roadmap.
 - [Architecture and boundaries](explanation/architecture.md): domain/application ports, storage ownership, project scope and extension lifecycle.
 - [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
 - [Product review](explanation/product-review.md): existing workflow findings, polishing changes, research and verification limits.

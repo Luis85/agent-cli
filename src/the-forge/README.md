@@ -1,49 +1,147 @@
-# Source map
+# The Forge
 
-This directory is the Forge project's runtime source root, `src/the-forge`. It uses layer directories with concern folders inside each layer. Start with the responsibility of a change, then choose the concern that owns it. Add a concern only to layers that need it. The [architecture explanation](../../docs/explanation/architecture.md) describes the contracts and their limits; the [development guide](../../docs/how-to/develop-and-test.md) describes verification.
+A terminal project companion for AI-assisted project and product development. The user works in Obsidian. The AI agent uses this portable Node CLI to create, edit and verify the same Markdown, Canvas and Bases files, without Obsidian running or installed. Specifications, design, documentation, the backlog and code form one Git-backed knowledge graph. See the [product vision](docs/explanation/product-vision.md).
 
-The repository's `bin/app.js` selects this project through tracked workspace configuration and context. `read README.md` therefore reads this file. Inspect `project current` before editing, and use an explicit output such as `make entity SourceProbe --out domain/example --dry-run`; the generic `src/domain` default would nest another source directory here. The project marker is `.forge/project.json`. Package installation, builds and tests still run from the repository root, two directories above this file; this source project does not duplicate that toolchain.
+The CLI is built with strict TypeScript, Vite and Vitest. It needs no npm installation and no runtime packages in your project.
 
-| Layer | Put here | Dependencies |
-| --- | --- | --- |
-| `domain/` | Pure definitions, validation, path rules and analysis | Domain only; no Node or external packages |
-| `application/` | Use cases, ports, orchestration and extension contracts | Application and domain; no Node or external packages |
-| `infrastructure/` | Filesystem and process adapters, codecs, rendering and generation implementations | Infrastructure, application and domain |
-| `presentation/` | CLI parsing, command handlers, input/output translation and scope policy | Presentation, application and domain; Commander owns CLI grammar |
+## Use the committed bundle
 
-Import the concrete module you need. Do not add layer barrels, re-export chains or compatibility files at previous locations. Infrastructure and presentation do not import one another: application ports and [main.ts](main.ts) connect them. Presentation's package metadata import supports version/discovery output; it does not grant access to arbitrary external modules.
+Requires **Node 22.12 or newer**. Extract a release into a new workspace, or copy the complete repository `bin` folder and reset its checkout-specific configuration as shown below. Run `node bin/forge.js`; the executable contains all runtime dependencies. Keep `bin/package.json` beside it so the app runs in ESM and CommonJS parent projects. Packaged process skills live in `bin/skills`; packaged documentation, type declarations and notices live in `bin/data`. Shipped defaults live in `bin/config/default.json`; active workspace settings remain in `bin/config.json`.
 
-## Entry points
+The following quickstart assumes a new portable workspace. This source checkout instead selects its own `src/the-forge` project; see [source organization](#source-organization) before running file or generation commands here.
 
-- [main.ts](main.ts) composes adapters and application services, creates invocation contexts, loads enabled plugins and owns cleanup and response serialization.
-- [sdk.ts](sdk.ts) exports application/domain types for plugin authors. It contains no runtime behavior; packaging generates the distributable declarations.
-- [cli/commands.ts](presentation/cli/commands.ts) assembles command families; [catalog-commands.ts](presentation/cli/catalog-commands.ts) handles discovery.
-- [invocation-policy.ts](presentation/cli/invocation-policy.ts) decides workspace/project scope, whether plugins should activate and explicit project selection before services are bound.
-- [workspace.ts](application/workspace/workspace.ts) owns guarded file mutations, dry-run plans and notifications after persistence.
-- [registry.ts](application/plugins/registry.ts) owns plugin contracts and registered contributions; [loader.ts](infrastructure/plugins/loader.ts) loads trusted modules.
+```sh
+node bin/forge.js --help
+node bin/forge.js schema --json
+node bin/forge.js setup --dry-run
+node bin/forge.js setup
+node bin/forge.js project create knowledge-core --dry-run
+node bin/forge.js project create knowledge-core
+node bin/forge.js project open knowledge-core
+node bin/forge.js project current --json
+node bin/forge.js project component WorkItem --kind domain
+node bin/forge.js make form Contact --dry-run
+node bin/forge.js make form Contact
+node bin/forge.js make entity Decision --out src/domain --dry-run
+node bin/forge.js make entity Decision --out src/domain
+node bin/forge.js create notes/plan.md --content '# Development plan'
+node bin/forge.js read notes/plan.md --json
+node bin/forge.js project close
+node bin/forge.js components init
+node bin/forge.js make ui page --framework react --stories --dry-run
+```
 
-## Find the concern
+`setup` initializes missing app/config files, shared `bin/plugins` and `bin/templates`, packaged assets in `bin/data`, process skills and a lean `AGENTS.md`. It preserves existing files. Configure the projects directory, component-library/UI/story/import/export paths, formatting, template dates and enabled plugins in `bin/config.json`; the `bin` layout is fixed.
 
-| Concern | Starting points |
-| --- | --- |
-| File formats and editing | `domain/documents/`, `application/workspace/`, `infrastructure/documents/`, `presentation/documents/` |
-| Workspace configuration and setup | `application/workspace/`, `infrastructure/workspace/`, `presentation/workspace/` |
-| Projects and scaffolding | `application/projects/`, `infrastructure/projects/`, `presentation/workspace/` |
-| Plugins and event delivery | `application/plugins/`, `infrastructure/plugins/`, `presentation/cli/catalog-commands.ts` |
-| Claude definitions and installed CLI | Matching `claude/` folders in all four layers |
-| UI and interaction definitions | `domain/ui/`, `domain/interactions/` and matching application/infrastructure/presentation concerns |
-| Framework output | `infrastructure/ui/renderers/` and `infrastructure/ui/interactions/` |
-| Data sources | Matching `data-sources/` folders in all four layers |
-| Bases queries | `application/bases/`, `infrastructure/bases/`, `presentation/bases/` |
-| Generators, templates and skills | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` / `presentation/skills/` |
-| Shared failures, the error catalog and localized responses | `domain/shared/errors.ts`, `domain/shared/error-catalog.ts`, `presentation/localization/` |
+`project open` persists the selected project across invocations. File commands and code/document generators use that project's root until `project close`. Templates and plugins stay shared in the workspace. Responses include `context` so an agent can verify the target. Generated projects include a Vite form showcase: run `npm install` and `npm run dev` inside the project, then open its local URL. See [form generation and rendering](docs/reference/forms.md). The CLI never prompts or starts an interactive shell. All responses are JSON; `--json` makes them compact. Put routing options before the command: `node bin/forge.js --root /path/to/workspace setup`. See [configuration](docs/reference/configuration.md) and [project workflows](docs/how-to/manage-projects.md).
 
-Pure interaction analysis belongs in domain. JavaScript, CSS and framework handler emission belongs in infrastructure. Command handlers translate user input and invoke services rather than constructing filesystem/process adapters or duplicating their validation.
+To download the committed distribution from the repository into a new, empty workspace, reset the copied settings and selection in that new destination:
 
-## Templates, tooling and checks
+```sh
+curl -fL https://github.com/Luis85/agent-cli/archive/refs/heads/main.tar.gz -o agent-cli-source.tar.gz
+tar -xzf agent-cli-source.tar.gz
+cp -R agent-cli-main/bin ./bin
+cp bin/config/default.json bin/config.json
+rm -f bin/data/context.json
+node bin/forge.js --version
+node bin/forge.js setup
+```
 
-[docs/templates/projects/](../../docs/templates/projects/) contains generated-project source and static assets consumed by [scaffolds.ts](infrastructure/projects/scaffolds.ts). [Workflow templates](../../docs/templates/workflow/) and [examples](../../docs/examples/) are also authored under `docs/`. Template code describes a generated application; it is not a Forge domain object or a second runtime entry point. Editable workspace templates remain under root `bin/templates/`.
+This URL serves the latest `main` branch. For a fixed version, use a reviewed commit archive instead. The reset commands apply only to the new copy: the repository itself intentionally selects `the-forge`, and `setup` preserves existing settings and selection. Maintainers can produce `src/the-forge/release/forge-0.1.0.tar.gz` with `npm run release` from `src/the-forge`; its `bin` already contains generic defaults and no selected project. Releases are not automatically published. For an existing installation, extract separately and preserve configuration, shared plugins/templates and project selection when updating the executable and packaged assets.
 
-Repository build/release/quality programs live in [../../scripts/](../../scripts/). Versioned tooling and distribution policies live in [../../configs/](../../configs/). Configuration and the portable distribution live under root `bin/`; update source and regenerate owned distribution files without replacing active settings. This checkout tracks a configuration with `paths.projects: "src"` and a saved `the-forge` selection. Release packaging uses generic defaults and excludes that selection.
+## Capabilities
 
-`configs/quality/source.json` at the repository root selects `src/the-forge` as Forge's source inventory and `docs/examples` / `docs/templates` as additional authored-code roots. Other managed projects under `src` are not swept into its checks. `npm run check:structure` enables `--source-layout forge` to enforce layers and concern directories within that source root. Generated projects use the same checker without that option and retain their own `src` inventory and scaffold layout. Architecture tests independently check inward imports across all four layers and the SDK's type-only boundary. Use the focused tests for a change, then follow the repository's complete development check sequence before finishing.
+- `make`: TypeScript entity, value object, use case and event scaffolds; typed form definitions with validation and HTML rendering; Obsidian-inspired plugin directories; Markdown documents from frontmatter-aware templates. Plugins contribute more generators without rebuilding the CLI.
+- `components`, `interactions`, `make ui`, `make stories`: maintain Markdown/frontmatter component libraries and generate deterministic HTML, HTMX, vanilla JS, Vue, Svelte, React or Angular boilerplate with Storybook CSF stories and native extension modules. Shared interaction definitions generate typed local state and executable browser-event actions across all seven targets; see [interactions](docs/reference/interactions.md) and [UI components](docs/reference/ui-components.md).
+- `templates`, `config`: inspect template inputs and effective configuration; install editable PRD, use-case, build-spec, design, implementation, test and release templates.
+- `data-sources`, `make data-source`: manage Markdown-defined REST/local JSON data sources and generate deterministic TypeScript adapters; see [data sources](docs/reference/data-sources.md).
+- `setup`, `project`: initialize a workspace, discover and select independent TypeScript libraries, and add domain or application components.
+- `workflows`: keep each project's CI inside the project under `src/infrastructure/workflows/<concern>/`, generate prefixed, path-scoped `.github/workflows` entrypoints with `workflows sync`, and fail CI on drift with `workflows sync --check`. See [workflows](docs/reference/workflows.md).
+- `create`, `read`, `write`, `edit`, `properties`, `patch`, `validate`, `list`: Markdown/YAML properties, JSON Canvas graphs, Bases YAML, UTF-8 source and data files, and lossless attachment handling.
+- `schema`, `help`, `formats`, `events`, `plugins`: discover the installed contracts and capabilities.
+- `skills`: inspect and install agent workflows for safe file editing, feature development and verification.
+- Explicit runtime plugins: manifest discovery, `onload`/`onunload`, commands, generators, validated events and skills.
+- `claude`: maintain native Claude Code agents, hooks and plugin assets with revision guards, and manage installed plugins/marketplaces through the Claude CLI. See [Claude Code management](docs/reference/claude.md).
+- `bases`: query a native `.base` view as a repository definition and return its matching files without installing Obsidian. See [Bases queries](docs/reference/bases.md).
+- SHA-256 revision checks, dry-run previews, contained paths, collision checks and notifications after successful commits.
+
+Markdown syntax (wikilinks, embeds, callouts, code, math) remains intact and generated Markdown can be edited in Obsidian Source mode. Canvas receives structural graph validation. Bases queries evaluate saved filters, formulas and view ordering through a bundled standalone expression engine; `bases capabilities` describes its compatibility profile. Images, audio, video and PDF are read, copied, replaced and exported as bytes/base64. Rendering, media transformations, PDF text editing and community-plugin semantics require extensions. See the precise [format contract](docs/reference/formats.md).
+
+## Edit safely
+
+Confirm the selection with `project current`, then read the file and verify its response's `context.root`. Copy `data.revision` into `--if-match`:
+
+```sh
+node bin/forge.js properties notes/plan.md --set '{"status":"draft","tags":["engineering"]}' --if-match YOUR_REVISION --dry-run
+node bin/forge.js properties notes/plan.md --set '{"status":"draft","tags":["engineering"]}' --if-match YOUR_REVISION
+```
+
+Use `--stdin` for multiline text or binary input. For example:
+
+```sh
+node bin/forge.js write assets/diagram.png --stdin < diagram.png
+node bin/forge.js create plan.canvas
+node bin/forge.js create tasks.base
+```
+
+Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input, check `--if-match` like the real write, and report planned hashes, paths and a unified `diff` per text file without writing files or emitting file events. Responses carry only committed file-change events by default; add `--events all` for the full lifecycle history. See [dry-run diffs](docs/reference/cli.md#dry-run-diffs).
+
+If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. `error.details.lock` names the holder's pid, host, start time and command, and `error.details.stale` reports `active`, `likely` or `unknown`. Forge never removes the lock itself; follow the [write and recovery contract](docs/reference/cli.md#write-contract) before deleting it.
+
+## Documentation
+
+Use the [documentation hub](docs/index.md) to choose a learning path or find an exact contract. The docs follow Diátaxis:
+
+- **Tutorials:** [getting started](docs/tutorials/getting-started.md), [your first UI](docs/tutorials/first-ui.md), and [idea to production](docs/tutorials/idea-to-production.md).
+- **How-to guides:** [manage projects](docs/how-to/manage-projects.md), [regenerate components](docs/how-to/manage-components.md), [develop and test](docs/how-to/develop-and-test.md), and [build a release](docs/how-to/release.md).
+- **Reference:** [CLI](docs/reference/cli.md), [configuration](docs/reference/configuration.md), [component definitions](docs/reference/ui-components.md), [Storybook](docs/reference/storybook.md), and [plugins](docs/reference/plugins.md).
+- **Explanation:** [architecture](docs/explanation/architecture.md) and [deterministic generation](docs/explanation/deterministic-ui.md).
+
+The [idea-to-production example pack](docs/examples/idea-to-production/README.md) includes filled-in discovery, requirements, design, implementation, testing and production artifacts. [Agent skills](skills/forge-workflow.md) and the [runnable example plugin](docs/examples/plugins/quality/main.mjs) support day-to-day use.
+
+## Showcase
+
+The repository commits `src/forge-showcase`, a fully generated managed project for Trailhead, a small fictional trip-planning web app. It shows the capabilities above working together: workflow documents linked into an Obsidian knowledge graph with Canvas and Bases, components and interactions generated for all seven UI targets with Storybook stories, data sources with adapters and fixtures, domain and application code, forms, a Claude agent, agent skills and the project's own toolchain and CI workflow. Open `src/forge-showcase` as an Obsidian vault and start at `docs/Trailhead.md`; its `README.md` maps each folder to the commands that produced it.
+
+Run these from `src/the-forge`; the showcase stays a sibling project at `<workspace>/src/forge-showcase`:
+
+```sh
+npm run showcase        # regenerate src/forge-showcase through the workspace's bundled CLI
+npm run showcase:check  # regenerate in a temporary workspace and report drift
+```
+
+See [explore the showcase](docs/how-to/explore-the-showcase.md) for browsing, the project's own checks and the lockfile step.
+
+## Source organization
+
+The repository is a thin Forge workspace. Its root holds only the shipped `bin/` distribution, generated `.github/workflows/`, the workspace `README.md`, `AGENTS.md`, `LICENSE` and Git settings. Every managed project under `src` is self-contained, with its own toolchain, tests and CI workflows.
+
+The Forge itself is the project `src/the-forge`. It owns `package.json`, the lockfile, TypeScript/Vite/Vitest configuration, `scripts/`, `configs/`, `tests/`, these Diátaxis `docs/` and the authored agent `skills/`. Runtime source lives in `src/the-forge/src`, using domain, application, infrastructure and presentation layers divided into concern folders: `src/main.ts` composes the runtime and `src/sdk.ts` exposes plugin types. Examples live in `docs/examples`, and authored workflow/project templates in `docs/templates`; editable runtime templates remain in the workspace's `bin/templates`. Run npm commands from `src/the-forge`. Its `src/README.md` maps entry points; the [architecture](docs/explanation/architecture.md) explains dependency rules.
+
+`npm run build` writes the executable and packaged assets into the workspace `bin/` named by `config.distribution` in `package.json` (`../../bin`). Forge's own CI is authored in `src/infrastructure/workflows/<concern>/`, like every managed project's workflows; `node bin/forge.js workflows sync` generates the workspace `.github/workflows` entrypoints from them. See [workflows](docs/reference/workflows.md).
+
+This checkout manages its own source as a Forge project. Tracked `bin/config.json` sets `paths.projects` to `src`, `src/the-forge/.forge/project.json` identifies the project, and `bin/data/context.json` selects `the-forge`. Verify it from the workspace root before using project-relative paths:
+
+```sh
+node bin/forge.js project current --json
+node bin/forge.js project open the-forge
+node bin/forge.js read src/main.ts --json
+node bin/forge.js make entity SourceProbe --out src/domain/example --dry-run
+```
+
+File commands resolve relative to the project root `src/the-forge`, so `read README.md` reads this file and `read src/main.ts` reads the runtime entry. Generators use the same project-relative paths as any generated project: `--out src/domain/<concern>` targets a source layer concern. `project close` returns file commands to the workspace root; `project open the-forge` restores project scope. Builds preserve this checkout configuration and selection. Released bundles keep generic `projects` defaults and no saved selection. Forge's quality checks cover only this project, leaving sibling managed projects under `src` to their own toolchains.
+
+## Develop
+
+```sh
+cd src/the-forge
+npm ci
+npm run check:fast
+npm run check
+npm run release
+```
+
+`check:fast` checks source/test structure, then runs Oxlint, fallow and TypeScript checks during development. `check` adds a fresh build and the labeled unit, integration and end-to-end tests. Fix the cause of a failing stage, rerun it, then finish with `check`; see the [development feedback loop](docs/how-to/develop-and-test.md#agent-feedback-loop). Commit source and the rebuilt workspace `bin` distribution together. The checkout tracks its self-management configuration and selection; installed plugins, editable templates and other workspaces' local context remain operating data. The CLI bundle needs only Node; developing The Forge or a generated project requires its development dependencies, including native Oxlint/fallow binaries.
+
+MIT licensed. This is an independent tool, not an official Obsidian CLI.
+

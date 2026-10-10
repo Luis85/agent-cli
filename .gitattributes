@@ -1,7 +1,7 @@
 # Check out text with LF on every platform, regardless of core.autocrlf.
 # Revisions are SHA-256 hashes of raw bytes, and tests compare packaged copies byte for byte.
 * text=auto eol=lf
-bin/app.js text eol=lf
+bin/forge.js text eol=lf
 
 # Binary fixtures and media never receive line-ending conversion.
 *.avif binary
@@ -30,7 +30,7 @@ bin/app.js text eol=lf
 *.woff binary
 *.woff2 binary
 
-bin/app.js linguist-generated=true
+bin/forge.js linguist-generated=true
 bin/data/** linguist-generated=true
 # Preserve upstream license notices verbatim, including whitespace and Markdown rulers.
 bin/data/licenses/** -diff

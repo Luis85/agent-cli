@@ -1,5 +1,0 @@
-{
-  "schemaVersion": 1,
-  "requiredAssets": ["app.js", "package.json", "config/default.json", "data/distribution.json"],
-  "ownedAssetPattern": "^(?:app\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$"
-}
