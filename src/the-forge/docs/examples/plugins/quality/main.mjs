@@ -63,7 +63,7 @@ export default {
     },
   }],
   events: [{ id: 'quality.checked', description: 'The quality command counted Markdown notes.', validate: value => value !== null && typeof value === 'object' && Number.isInteger(value.count) }],
-  skills: [{ id: 'quality.review', content: '---\nname: quality-review\ndescription: Review an engineering change against a checklist.\n---\n\nRead the acceptance criteria, inspect the diff, test invariants and record the evidence.\n' }],
+  skills: [{ id: 'quality-review', content: '---\nname: quality-review\ndescription: Review an engineering change against a checklist. Use when a change is ready for review.\n---\n\nRead the acceptance criteria, inspect the diff, test invariants and record the evidence.\n' }],
   async onload(context) {
     // Replay is an explicit snapshot of this invocation, not persistent history.
     const observe = record => {

@@ -1,6 +1,11 @@
 ---
 name: forge-vault
-description: Search, link-check, create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.
+description: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.
+license: MIT
+compatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.
+metadata:
+  author: The Forge
+  version: "0.1.0"
 ---
 
 Run `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.

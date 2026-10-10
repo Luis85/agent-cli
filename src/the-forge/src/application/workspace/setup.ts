@@ -3,6 +3,7 @@ import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
 import type { AppConfig } from './config.ts';
 import type { Skill } from '../plugins/registry.ts';
 import type { Workspace } from './workspace.ts';
+import { skillPaths, skillTargets } from '../../domain/skills/skill.ts';
 
 export interface SetupArtifact { path: string; bytes: Uint8Array }
 /** An editable Markdown template; `path` is relative to the workspace's `bin/templates`. */
@@ -31,7 +32,7 @@ preview mutations with --dry-run, and supply the current revision with --if-matc
 Treat conflicts as a request to reread and reconcile. Verify changes with the project's checks.
 Keep domain invariants explicit, application use cases dependent on injected ports, and adapters at the edges.
 Use clear names and focused functions; verify acceptance criteria and failure behavior with meaningful tests.
-Use the installed agent skills for the development and file-editing workflows.
+Use the installed agent skills in .claude/skills or .agents/skills for the development and file-editing workflows.
 Enable only reviewed plugins: plugins execute with Node's permissions.
 `;
 /** Idempotent installation: existing project files always remain owned by the user. */
@@ -50,7 +51,8 @@ export class SetupService {
     const candidates: WriteRequest[] = [
       ...this.artifacts.map(artifact => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: 'bin/config.json', bytes: encode(JSON.stringify(this.config, null, 2) + '\n') },
-      ...this.skills.map(skill => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode(skill.content) })),
+      // Every skill goes to both agent skill roots: .claude/skills for Claude Code and .agents/skills for other agents.
+      ...this.skills.flatMap(skill => skillPaths(vaultPath(skill.id), Object.values(skillTargets)).map(path => ({ path, bytes: encode(skill.content) }))),
       ...(this.templates ?? []).map(template => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode(template.content) })),
       { path: 'bin/plugins/.gitkeep', bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },

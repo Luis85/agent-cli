@@ -35,7 +35,8 @@ A core plugin's manifest also declares `"core": true`. Only bundled plugins may:
 | Location | `src/plugins/<id>/plugin.ts` in the Forge source, bundled into `bin/forge.js` | Workspace `bin/plugins/<id>/` |
 | Enabled | By default; `plugins.disabled: ["<id>"]` disables one | Only when `plugins.enabled` lists it, in that load order |
 | `--no-plugins` | Still loaded: they are part of the product | Skipped for the invocation |
-| Command, generator and skill ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
+| Command and generator ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
+| Skill ids | May be bare (`forge-vault`) | Must start with `<id>-` (`quality-review`): skill ids are Agent Skills folder names, which allow no dots |
 | Service ids | `<id>.*` only (`bases.query`), so a service names its provider | `<id>.*` only |
 | Event ids | `<id>.*` only, so a core plugin owns its namespace (`bases.*`) | `<id>.*` only |
 | Error codes | Any code outside the built-in catalog | Must start with the id in UPPER_SNAKE_CASE (`QUALITY_`) and stay outside a longer registered prefix; see [strings and error codes](#strings-and-error-codes) |
@@ -107,7 +108,7 @@ Invalid contributions or duplicate IDs reject the complete plugin registration, 
 
 - **Commands:** `id`, `description`, `usage`, `run(args, flags, context)` and the [command metadata](#command-metadata). Return JSON-serializable data; never log to stdout. Send diagnostic messages to `context.events.warn`.
 - **Generators:** see [generators](#generators).
-- **Skills:** `id`, `content` containing a Markdown SKILL.md with frontmatter. They appear in `skills list/show/install` and `setup`.
+- **Skills:** [Agent Skills](https://agentskills.io/specification): `id`, the skill's folder name (1–64 lowercase letters, digits and single hyphens), and `content`, the SKILL.md text, whose YAML frontmatter has `name` equal to the id and a `description` of what the skill does and when to use it (optional `license`, `compatibility`, `metadata`, `allowed-tools`). Registration rejects other shapes with `INVALID_PLUGIN`. They appear in `skills list/show/install` and `setup`, which install `<root>/<id>/SKILL.md` into `.claude/skills` and `.agents/skills`.
 - **Events:** `id`, optional nonempty `description`, and `validate(payload)` synchronous runtime type guard returning a boolean. Segments start with a lowercase letter and may use camelCase or kebab-case. `context.events.on<T>(id, callback)` supports typed callbacks; callers remain responsible for the name/type pairing, and emit validates data at runtime. Descriptions appear in event discovery. A plugin may emit only events in its own `<plugin-id>.*` namespace; see [event ownership](#event-ownership).
 - **Services:** `provides: {serviceId: implementation}`, `requires: [serviceId]` and `optional: [serviceId]`; see [services](#services).
 - **Settings:** `settings`, a JSON Schema of the plugin's config section, and optional `validateSettings`; see [config sections](#config-sections).
@@ -129,15 +130,17 @@ One declaration drives argument parsing, the invocation policy, `help` and `sche
 | `scope` | `project`: the selected project's root, or the workspace when none is selected. `workspace`: always the workspace root | `project` |
 | `discovery` | A discovery or recovery command: workspace scope, no plugin activation, so a stale selection or a failing `onload` cannot block it | `false` |
 | `mutating` | Whether the command (or an action) can change files or external state | `true` |
+| `destructive` | Whether a mutating command or action can replace or remove existing content; `false` for commands that only add files or change a selection | `true` when mutating |
+| `idempotent` | Whether repeating the identical invocation has no further effect | `true` when read-only or when it declares `--if-match` |
 | `options` | `{flag: {type: 'string' \| 'boolean', description, enum?, default?, required?}}`. Global options are reserved. The parser enforces types; the command validates values, `enum`, `default` and `required` are published for agents | `{}` |
 | `args` | Positional arguments after the command id: `[{name, description, required?, enum?, variadic?}]`; only the last may be variadic | `[]` |
-| `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, usage?, scope?, discovery?, mutating?, projectOption?, options?}`; `defaultAction` applies when the first argument is omitted. An action's `options` are accepted only with that action and cannot repeat a command option | none |
+| `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, usage?, scope?, discovery?, mutating?, destructive?, idempotent?, projectOption?, options?, output?}`; `defaultAction` applies when the first argument is omitted. An action's `options` are accepted only with that action and cannot repeat a command option | none |
 | `unknownAction` | `UNKNOWN_GENERATOR` or `INVALID_ARGUMENT`. When options fail to parse and the first argument names no declared action, the invocation fails with this code instead, so options after an unknown action never read as `UNKNOWN_OPTION`; otherwise the command reports the unknown action itself (`make` declares `UNKNOWN_GENERATOR`) | none |
 | `projectOption` | A declared string option that selects the project for this invocation (`make ui --project web`) | none |
-| `output` | Optional JSON Schema of `data` in a successful response | none |
+| `output` | Optional JSON Schema of `data` in a successful response; an action's own `output` replaces it for that action | none |
 | `errors` | Codes the command reports itself (built-in or the plugin's registered codes) | `[]` |
 
-Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the catalog; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, outputSchema?, globalOptions}`. `schema` returns the same entry for every command plus `inputSchema`, a JSON Schema 2020-12 document of one invocation. For a command without actions it describes `args` and `options` directly:
+Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the catalog; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, outputSchema?, globalOptions}`. `schema` returns the same entry for every command plus `inputSchema`, a JSON Schema 2020-12 document of one invocation; `schema <command>` returns one. Declared output schemas are published as standalone documents with `$schema` and a `title` such as `read output`. The [schema contract](schema.md) describes the complete document, the envelope schema and how the annotations are derived. For a command without actions it describes `args` and `options` directly:
 
 ```json
 {
@@ -152,7 +155,7 @@ Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the ca
 
 A command with actions publishes `{"$schema", "title", "type": "object", "required": ["args", "options"], "oneOf": [...]}` with one branch per action: the branch pins the first argument with `const` (`"prefixItems": [{"type": "string", "const": "install"}, …]`) and lists the command's options plus that action's own, with only that action's `required` options. When the first argument is optional, a first branch without arguments covers the default action (or, for `make`, the generator listing). `make document` therefore requires `--template`, while `make entity` accepts only `--out`.
 
-`annotations` holds the default mode's `scope` and `discovery`, `mutating` and `readOnlyHint` for the whole command, the `defaultAction`, and each action's resolved mode with its `usage` and `options` when it declares them. `mutating` is `true` when any mode of the command mutates, so `readOnlyHint` is `true` only for commands whose every action is read-only; each action's `mutating` and `readOnlyHint` describe that action alone (`skills list` is read-only, `skills install` is not). Global options are described once in `globalOptions` with the same option shape. The schema subset Forge emits and accepts covers `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `oneOf`, `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `title` and `description`; other keywords are rejected rather than ignored. A `oneOf` value must match exactly one branch, whose defaults complete it.
+`annotations` holds the default mode's `scope` and `discovery`, `mutating`, `readOnlyHint`, `destructiveHint` and `idempotentHint` for the whole command, the `defaultAction`, and each action's resolved mode and hints with its `usage`, `options` and `outputSchema` when it declares them. `mutating` is `true` when any mode of the command mutates, so `readOnlyHint` is `true` only for commands whose every action is read-only; each action's `mutating` and `readOnlyHint` describe that action alone (`skills list` is read-only, `skills install` is not). Global options are described once in `globalOptions` with the same option shape. The schema subset Forge emits and accepts covers `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `oneOf`, `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `title` and `description`; other keywords are rejected rather than ignored. A `oneOf` value must match exactly one branch, whose defaults complete it.
 
 ## Generators
 

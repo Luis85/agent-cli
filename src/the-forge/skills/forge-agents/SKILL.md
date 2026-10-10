@@ -1,6 +1,11 @@
 ---
 name: forge-agents
-description: Maintain docker-agent agent definitions in agents/*.yaml and generate, check and import Claude Code agents from them.
+description: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.
+license: MIT
+compatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.
+metadata:
+  author: The Forge
+  version: "0.1.0"
 ---
 
 Agent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope's `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.

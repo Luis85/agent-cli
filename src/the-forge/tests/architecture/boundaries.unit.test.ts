@@ -78,8 +78,8 @@ it.each([
 
 it('inspects import.meta.glob patterns like imports', () => {
   const plugin = resolve('src/plugins/skills/infrastructure/bundled-skills.ts');
-  expect(boundaryViolations(plugin, "const skills = import.meta.glob('../../../../skills/*.md', { query: '?raw' });")).toEqual([]);
-  expect(boundaryViolations(plugin, "const skills = import.meta.glob(['../../../../skills/*.md', '!../../../../skills/draft-*.md']);")).toEqual([]);
+  expect(boundaryViolations(plugin, "const skills = import.meta.glob('../../../../skills/*/SKILL.md', { query: '?raw' });")).toEqual([]);
+  expect(boundaryViolations(plugin, "const skills = import.meta.glob(['../../../../skills/*/SKILL.md', '!../../../../skills/draft-*/SKILL.md']);")).toEqual([]);
   expect(boundaryViolations(plugin, "const all = import.meta.glob('../../links/**/*.ts');")).toHaveLength(1);
   expect(boundaryViolations(plugin, "const all = import.meta.glob('/tests/**/*.ts');")).toHaveLength(1);
   expect(boundaryViolations(plugin, 'const all = import.meta.glob(patterns);')).toHaveLength(1);
@@ -112,7 +112,7 @@ describe('core plugin boundaries', () => {
       "import { search } from '../application/search.ts';",
       "import type { Hit } from '../domain/hit.ts';",
     ].join('\n'))).toEqual([]);
-    expect(boundaryViolations(resolve('src/plugins/search/infrastructure/index.ts'), "import { parse } from 'yaml'; import skill from '../../../../skills/forge-search.md?raw'; import '../application/ports.ts';")).toEqual([]);
+    expect(boundaryViolations(resolve('src/plugins/search/infrastructure/index.ts'), "import { parse } from 'yaml'; import skill from '../../../../skills/forge-search/SKILL.md?raw'; import '../application/ports.ts';")).toEqual([]);
     expect(boundaryViolations(resolve('src/plugins/search/plugin.ts'), "import '../../application/plugins/core-plugins.ts'; import './infrastructure/index.ts'; import './presentation/commands.ts';")).toEqual([]);
   });
 

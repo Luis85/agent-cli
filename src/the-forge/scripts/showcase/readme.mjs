@@ -34,8 +34,8 @@ const folders = [
   ['tests', 'Generated tests plus authored adapter, model and knowledge-graph tests run by this project\'s Vitest', '`project create`, `project component`, `make form`, `create`'],
   [agentTeam.file, 'docker-agent team: a lead with two sub-agents, a GitHub MCP toolset and a `/trace` command, authored with comments and completed with `agents create`', '`create`, `agents create --if-match`, `edit`, `agents validate`, `agents list`'],
   ['.claude/agents', 'Claude Code agents generated from the team with provenance, plus a native reviewer agent', '`agents generate --target claude --commands --mcp inline` (`--plan`, `--check`), `claude agents create`, `claude agents list`'],
-  ['.claude/skills', 'The team\'s `/trace` command as a Claude skill', '`agents generate --commands`'],
-  ['.agents/skills', 'Forge process skills installed into the project', '`skills install`'],
+  ['.claude/skills', 'The team\'s `/trace` command as a Claude skill, plus the Forge process skills as Agent Skills folders for Claude Code', '`agents generate --commands`, `skills install`'],
+  ['.agents/skills', 'The same Forge process skills for other agents that read the cross-agent `.agents/skills` root', '`skills install`'],
   ['src/index.ts', 'Library public API exporting the Trailhead model, form and adapters', '`write --if-match`'],
   ['package.json, configs, scripts', 'Independent toolchain: structure, Oxlint, fallow, TypeScript, Vite and Vitest. `configs/quality/fallow.json` also ignores `ui/**`, whose framework sources belong to downstream applications', '`project create`, `write --if-match`'],
 ];

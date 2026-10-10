@@ -41,7 +41,7 @@ async function fixture(dryRun = false) {
 it('installs fixed environment directories and configured projects through workspace writes', async () => {
   const { root, setup, events, config } = await fixture();
   const result = await setup.run();
-  expect(result.dryRun).toBe(false); expect(result.skipped).toEqual([]); expect(result.changes).toHaveLength(11);
+  expect(result.dryRun).toBe(false); expect(result.skipped).toEqual([]); expect(result.changes).toHaveLength(12);
   const installed = JSON.parse(await readFile(join(root, 'bin/config.json'), 'utf8'));
   expect(installed).toEqual(config);
   expect(installed.paths).toEqual(config.paths);
@@ -49,12 +49,13 @@ it('installs fixed environment directories and configured projects through works
   expect(await readFile(join(root, 'bin/data/docs/reference/cli.md'), 'utf8')).toBe('# Commands\n');
   expect(await readFile(join(root, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
   expect(await readFile(join(root, 'bin/plugins/.gitkeep'))).toHaveLength(0);
+  for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(root, skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('name: forge-workflow');
   const guidance = await readFile(join(root, 'AGENTS.md'), 'utf8');
   for (const command of ['--if-match', 'node bin/forge.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
   expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge.js', 'package.json', 'plugins', 'templates']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
-  expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(11);
-  expect(events.history).toHaveLength(23);
+  expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(12);
+  expect(events.history).toHaveLength(27);
 });
 it('preserves existing configuration, bundle, template, skill and agent instructions on repeated setup', async () => {
   const { root, setup, events } = await fixture();
@@ -63,21 +64,21 @@ it('preserves existing configuration, bundle, template, skill and agent instruct
   for (const path of edited) await writeFile(join(root, path), `User content for ${path}`);
   const count = events.history.length;
   const result = await setup.run();
-  expect(result.changes).toEqual([]); expect(result.skipped).toHaveLength(11);
+  expect(result.changes).toEqual([]); expect(result.skipped).toHaveLength(12);
   expect(events.history).toHaveLength(count);
   for (const path of edited) expect(await readFile(join(root, path), 'utf8')).toBe(`User content for ${path}`);
 });
 it('previews every new destination without creating directories or publishing events', async () => {
   const { root, setup, events } = await fixture(true);
   const result = await setup.run();
-  expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(11);
+  expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(12);
   expect(await readdir(root)).toEqual([]); expect(events.history).toEqual([]);
 });
 it('fills missing setup files while retaining an existing AGENTS.md', async () => {
   const { root, setup } = await fixture();
   await writeFile(join(root, 'AGENTS.md'), 'Existing project instructions');
   const result = await setup.run();
-  expect(result.skipped).toEqual(['AGENTS.md']); expect(result.changes).toHaveLength(10);
+  expect(result.skipped).toEqual(['AGENTS.md']); expect(result.changes).toHaveLength(11);
   expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe('Existing project instructions');
 });
 it('copies only distribution assets and excludes environment data from its fixed snapshot', async () => {

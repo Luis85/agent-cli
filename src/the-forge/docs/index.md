@@ -27,6 +27,8 @@ For users who already know their goal. Each guide states the needed context and 
 | Generate editable discovery and delivery documents | [Use workflow templates](how-to/use-workflow-templates.md) |
 | Define REST or local JSON sources and generate adapters | [Manage data sources](how-to/manage-data-sources.md) |
 | Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
+| Give Claude Code and other agents the Forge skills | [Install agent skills](how-to/install-agent-skills.md) |
+| Measure whether agents complete Forge tasks | [Evaluate agents](how-to/evaluate-agents.md) |
 | Extend the CLI with trusted Node modules | [Enable or disable plugins](how-to/enable-plugins.md) |
 | Maintain native Claude agents, hooks and plugin installations | [Manage Claude Code](how-to/manage-claude.md) |
 | Keep agents as docker-agent YAML and generate Claude Code agents from them | [Manage agent definitions](how-to/manage-agents.md) |
@@ -43,6 +45,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | Reference | Contents |
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
+| [Schema contract](reference/schema.md) | JSON Schema 2020-12 input and output schemas, behavior annotations and the response envelope that `schema` publishes |
 | [Error catalog](reference/errors.md) | Every error code with its exit status, hint, retryability and recovery details |
 | [CLI language](reference/language.md) | English/German selection, translated guidance and stable machine output |
 | [Configuration](reference/configuration.md) | Defaults, precedence, paths and workspace/project scope |
@@ -64,7 +67,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
 | [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 
-Run `node bin/forge.js schema --json` for the installed executable's command catalog, and `node bin/forge.js config --json` for its effective settings. The installed version is the authority for available commands.
+Run `node bin/forge.js schema --json` for the installed executable's command contract (see the [schema contract](reference/schema.md)), and `node bin/forge.js config --json` for its effective settings. The installed version is the authority for available commands.
 
 ## Explanation — understand the design
 
@@ -75,4 +78,4 @@ For contributors and teams deciding how to use The Forge within their architectu
 - [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
 - [Product review](explanation/product-review.md): existing workflow findings, polishing changes, research and verification limits.
 
-Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../skills/forge-workflow.md), [development skill](../skills/forge-development.md), [file-editing skill](../skills/forge-vault.md) and [agent definitions skill](../skills/forge-agents.md).
+Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../skills/forge-workflow/SKILL.md), [development skill](../skills/forge-development/SKILL.md), [file-editing skill](../skills/forge-vault/SKILL.md), [agent definitions skill](../skills/forge-agents/SKILL.md) and [backlog skill](../skills/forge-backlog/SKILL.md); [install them](how-to/install-agent-skills.md) into `.claude/skills` and `.agents/skills`.

@@ -18,7 +18,7 @@ Failures have `ok:false` and `error:{code,message,hint?,retryable?,details?}`. A
 
 `context` identifies the executed scope, rather than just the saved selection: `workspaceRoot` is the environment root, `root` is the root used for this command, and `project` is the selected project metadata or `null` for workspace scope. Check it before interpreting relative paths in changes or events. `project current` reports the saved selection in `data.project`; workspace commands can have `context.project:null` while a project is open. Version output and failures before scope resolution may have no context.
 
-A listener warning does not make a committed write fail. Check the original `error`, result details and committed `vault.*` events before retrying after a warning or failure: activation, execution or result serialization can fail after earlier work changed state. Reread affected files and their revisions rather than assuming failure rolled everything back. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope schema is versioned by `schema.data.apiVersion` (currently 1).
+A listener warning does not make a committed write fail. Check the original `error`, result details and committed `vault.*` events before retrying after a warning or failure: activation, execution or result serialization can fail after earlier work changed state. Reread affected files and their revisions rather than assuming failure rolled everything back. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope is published as a JSON Schema at `schema` `data.envelope` and versioned by `data.apiVersion` (currently 1); see the [schema contract](schema.md).
 
 `events` in the envelope is selected by `--events` or `settings.events`, with the flag taking precedence:
 
@@ -34,8 +34,8 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 
 | Command | Arguments/options | Behavior |
 | --- | --- | --- |
-| `help` | `[command]` | The catalog, or one command's description, usage, described options and arguments, annotations (scope, discovery, mutating, readOnlyHint, actions) and error codes; see [command metadata](plugins.md#command-metadata) |
-| `schema` | none | Machine-readable catalog: every command with a JSON Schema 2020-12 `inputSchema`, annotations and error codes; generator and skill IDs; built-in and plugin error codes |
+| `help` | `[command]` | The catalog, or one command's description, usage, described options and arguments, annotations (scope, discovery, mutating, readOnlyHint, destructiveHint, idempotentHint, actions), error codes and output schema; see [command metadata](plugins.md#command-metadata) |
+| `schema` | `[command]` | Machine-readable contract: every command (or one) with a JSON Schema 2020-12 `inputSchema`, its `outputSchema` where declared, annotations and error codes; the response `envelope` schema; generator and skill IDs; built-in and plugin error codes. See the [schema contract](schema.md) |
 | `config` | none | Effective validated configuration and selected paths, with plugin config sections in `config.plugins.settings` and their schemas in `sections` |
 | `templates` | `[list / inspect <template.md> / install [workflow]]` | Discover template inputs or install missing editable workflow templates |
 | `formats` | none | Native extension inventory and processing limits |
@@ -69,8 +69,8 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `plugins` | none | Core and user plugins with `core`, `state` (`enabled`, `unavailable`, `disabled`, `skipped`, `rejected`), a `reason` for every state but `enabled`, and contributions; see [core and user plugins](plugins.md#core-and-user-plugins) |
 | `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
 | `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md). Contributed by the `bases` core plugin |
-| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope. Contributed by the `skills` core plugin |
-| `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
+| `skills` | `[list / show <id> / install [--target both / claude / agents / --out directory]]` | List/read [Agent Skills](../how-to/install-agent-skills.md) or install each as `<root>/<id>/SKILL.md` in the active scope: into `.claude/skills` and `.agents/skills` by default, one of them with `--target`, or a custom `--out` directory; existing files are refused. Contributed by the `skills` core plugin |
+| `setup` | none | Initialize missing app/config, skills (in `.claude/skills` and `.agents/skills`), example template and lean AGENTS.md; report existing destinations as skipped |
 | `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |
 | `project open` | `<id>` | Persist a managed project as the active scope |
 | `project current` | none | Report the selected project, or `null` |

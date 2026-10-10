@@ -8,13 +8,33 @@ import { loadEnabledPlugins } from '../../src/infrastructure/plugins/loader.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Registry, type CommandContext, type Plugin } from '../../src/application/plugins/registry.ts';
+const skill = (name: string, description = 'Check a change. Use before merging.') => `---\nname: ${name}\ndescription: ${description}\n---\nSteps.\n`;
 const plugin = (id: string): Plugin => ({ manifest: { id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Test plugin', author: 'Test' } });
 it('rejects namespace theft, duplicate plugins and reserved global options', () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registry.register(plugin('one'), events);
   expect(() => registry.register(plugin('one'), events)).toThrow();
-  expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'one.skill', content: 'bad' }] }, events)).toThrow();
+  expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'one-skill', content: skill('one-skill') }] }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+  // Skill ids are Agent Skills folder names: user plugins prefix them with <id>- because dots are not allowed.
+  expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'two.skill', content: skill('two.skill') }] }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
   expect(() => registry.register({ ...plugin('two'), commands: [{ id: 'two.run', description: 'Run', usage: 'two.run', options: { root: { type: 'string', description: 'Root' } }, run() {} }] }, events)).toThrow();
+});
+it.each([
+  ['no frontmatter', 'Steps.', 'must start with YAML frontmatter'],
+  ['a different name', skill('two-other'), 'frontmatter name must be two-review'],
+  ['no description', '---\nname: two-review\n---\nSteps.\n', 'needs a description'],
+  ['an empty description', skill('two-review', '""'), 'needs a description'],
+])('rejects a skill with %s', (_case, content, message) => {
+  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'two-review', content }] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining(message) }));
+  registry.register({ ...plugin('two'), skills: [{ id: 'two-review', content: skill('two-review') }, { id: 'two-folded', content: '---\nname: "two-folded"\ndescription: >-\n  Folded text.\n---\n' }] }, events);
+  expect([...registry.skills.keys()]).toEqual(['two-review', 'two-folded']);
+});
+it('rejects skill ids that are not Agent Skills names', () => {
+  for (const id of ['two-Review', 'two--review', 'two-review-', `two-${'a'.repeat(61)}`]) {
+    const registry = new Registry(), events = new EventBus(new NodeEventScope());
+    expect(() => registry.register({ ...plugin('two'), skills: [{ id, content: skill(id) }] }, events), id).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('lowercase letters, digits and single hyphens') }));
+  }
 });
 it('disposes successful activations in reverse order after a later activation fails', async () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope()), calls: string[] = [];
@@ -33,7 +53,7 @@ it('publishes no contributions when any registration fails', () => {
   const candidate: Plugin = { ...plugin('atomic'),
     commands: [{ id: 'atomic.run', description: 'Run', usage: 'atomic.run', run() {} }],
     events: [{ id: 'atomic.changed', validate: (_v): _v is unknown => true }],
-    skills: [{ id: 'atomic.skill', content: 42 as unknown as string }],
+    skills: [{ id: 'atomic-skill', content: 42 as unknown as string }],
   };
   expect(() => registry.register(candidate, events)).toThrow();
   expect(registry.commands.size).toBe(0); expect(events.ids()).toEqual([]); expect(registry.plugins).toEqual([]);
