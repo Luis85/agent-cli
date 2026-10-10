@@ -45,6 +45,24 @@ The event bus receives an `EventDeliveryScope` port rather than importing Node's
 
 Installed Claude execution is an application service behind the `ClaudeRuntime` port. Built-in commands and ordinary namespaced Forge plugin commands share `ClaudeLifecycle`, exposed through the typed `context.claude` client. The composition root binds it to the same selected root, dry-run setting and event bus as the command; plugins supply native arguments and response parsing preferences without reconstructing CLI routing or importing infrastructure. Dry runs return redacted plans without constructing a process adapter. Real execution preserves native status and diagnostics, parses requested output even when Claude returns a nonzero status, and emits `claude.executed` only after receiving an exit status. Native process changes remain external operations rather than revision-guarded Workspace transactions.
 
+## Kernel metadata cache
+
+The metadata cache is the kernel's single index of what vault files reference. It follows Obsidian's `MetadataCache` so that features and, later, plugins can reason about a vault the way Obsidian does without running it. It has three parts:
+
+| Part | Location | Responsibility |
+| --- | --- | --- |
+| Model and resolution | `src/domain/metadata/` | JSON-serializable `CachedMetadata` with `{line, col, offset}` positions, link text helpers, tag and alias rules, and the indexed link resolver with `fileToLinktext` |
+| Index and port | `src/application/metadata/` | The `MetadataCache` read port, the `MetadataIndex` lifecycle port, the `MetadataParser` port, and `VaultMetadata`, which builds `resolvedLinks`, `unresolvedLinks`, references and backlinks over a `FileRepository` |
+| Parser | `src/infrastructure/metadata/` | `ObsidianMetadataParser`: Markdown through the document codec and remark/parse5, and Canvas file nodes |
+
+The composition root creates one `VaultMetadata` per invocation over the selected scope's repository and exposes it as `context.metadata`. Nothing is read until a command calls `load()`. The first load lists visible files, parses Markdown and Canvas files with bounded concurrency and resolves every reference through hash lookups, so a build is linear in vault size. There is no persistent index.
+
+Link resolution has one implementation. It tries exact spellings with or without `.md`, then a single case-insensitive match, then for vault-style links a single case-insensitive path-suffix match, and finally a single note alias. Relative Markdown and HTML targets resolve from the source folder first and never match suffixes or aliases. When several files match equally well, the cache does not choose one. It records the link as unresolved, with reason `ambiguous` and the candidates in path order, and counts it in `unresolvedLinks`. Obsidian would choose the closest file instead; Forge reports the ambiguity rather than guess.
+
+`update(changes)` and `invalidate(paths)` keep a loaded cache current after committed writes. They re-read and re-parse only the named files. When the set of paths or any alias changes, they re-resolve every source, which needs no parsing; otherwise they re-resolve only the changed files. The returned `{changed, deleted, resolved}` lists name the paths that Obsidian's `metadataCache` `changed`, `deleted` and `resolve` events would report, followed by one `resolved`. The composition root currently applies each committed `file.*` record to the index; publishing metadata events from those reports belongs to the event model. An update before the first load does nothing, because the later load reads the current files.
+
+Bases is the first consumer. `src/infrastructure/bases/index.ts` adapts cached frontmatter, references, tags and resolutions to the expression engine's file inputs and adds file sizes and dates. It keeps Bases' stricter rules: a link with an ambiguous path still fails the query with `AMBIGUOUS_BASE_LINK`, links resolved only through an alias stay unresolved, and Canvas file nodes are not Bases links. The `MetadataCache` types are designed to be exported through the SDK, but the SDK does not export them yet; an Obsidian-shaped `app.metadataCache` facade is planned separately. See [what the index understands](../reference/formats.md#metadata-index).
+
 ## Declarative UI generation
 
 `src/domain/ui/definition.ts` defines framework-neutral elements, scalar props, component references, child slots and Storybook metadata. `src/domain/ui/library.ts` owns graph invariants and reference selection; `src/domain/ui/syntax.ts` defines shared binding and element syntax. They reject duplicate IDs, missing references, cycles and invalid prop bindings before generation. `src/application/ui/library.ts` orchestrates library initialization, import/export and generation through injected codec/renderer ports. The Markdown codec and framework renderers live in infrastructure; composition stays in `src/main.ts`.

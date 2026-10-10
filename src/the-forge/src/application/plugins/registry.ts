@@ -3,10 +3,15 @@ import type { ProjectInfo } from '../projects/projects.ts';
 import type { EventBus, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
 import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
+import type { MetadataIndex } from '../metadata/ports.ts';
 import { ensure, isRecord, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
 import { publishHostEvent } from './host-events.ts';
 
-export interface CommandContext { workspace: Workspace; events: EventBus; claude: ClaudeLifecycleClient; workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array> }
+/** `metadata` is the lazily built metadata index of the same root as `workspace`. */
+export interface CommandContext {
+  workspace: Workspace; events: EventBus; claude: ClaudeLifecycleClient; metadata: MetadataIndex;
+  workspaceRoot: string; root: string; project: ProjectInfo | null; input: () => Promise<Uint8Array>;
+}
 export interface Command {
   id: string; description: string; usage: string;
   options?: Record<string, 'string' | 'boolean'>;

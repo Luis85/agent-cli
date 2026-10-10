@@ -4,9 +4,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stringify } from 'yaml';
 import { Bases } from '../../src/application/bases/query.ts';
-import { NodeBasesQueryEngine } from '../../src/infrastructure/bases/engine.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { basesEngine } from '../support/metadata.ts';
 
 let root: string, bases: Bases;
 async function put(path: string, source: string): Promise<void> {
@@ -19,7 +17,7 @@ async function query(filters: unknown, extra: Record<string, unknown> = {}, cont
 }
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-bases-conformance-'));
-  bases = new Bases(new NodeBasesQueryEngine(await NodeFiles.at(root), new ObsidianDocuments()));
+  bases = new Bases(await basesEngine(root));
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 

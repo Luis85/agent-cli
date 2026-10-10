@@ -3,9 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Bases } from '../../src/application/bases/query.ts';
-import { NodeBasesQueryEngine } from '../../src/infrastructure/bases/engine.ts';
-import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { basesEngine } from '../support/metadata.ts';
 import { syntheticBase, writeSyntheticVault } from '../support/bases-vault.ts';
 
 // Every vault file is a query row, while only notes are parsed. On one busy 4-core machine this query took
@@ -21,7 +19,7 @@ afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 describe('Bases query scaling', () => {
   it(`evaluates formulas, filters, sorting and groups over ${vault.notes + vault.attachments} files within ${budgetMs / 1000} s`, async () => {
     await writeSyntheticVault(root, vault);
-    const bases = new Bases(new NodeBasesQueryEngine(await NodeFiles.at(root), new ObsidianDocuments()));
+    const bases = new Bases(await basesEngine(root));
     const started = performance.now();
     const result = await bases.query(syntheticBase, {});
     const elapsed = performance.now() - started;
