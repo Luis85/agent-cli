@@ -153,7 +153,7 @@ async function run(): Promise<void> {
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
       const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
-      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec));
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), { workspaceRoot: project === null });
       // Commits keep a loaded cache current and publish metadataCache.* events; workspace-scope commits while a
       // project is selected reach the project's index only inside its directory, with project-relative paths.
       const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);

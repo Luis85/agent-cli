@@ -18,7 +18,8 @@ const query = (pattern: string, extra: Partial<SearchQuery> = {}): SearchQuery =
 async function search(pattern: string, extra: Partial<SearchQuery> = {}, page: PageRequest = {}, timeoutMs = 10_000): Promise<SearchResult> {
   const files = await NodeFiles.at(root);
   let loads = 0;
-  const result = await searchFiles({ files, metadata: () => { loads++; return metadataIndex(files).load(); }, budget: vmSearchBudget(timeoutMs) }, query(pattern, extra), page);
+  const index = metadataIndex(files, { workspaceRoot: true });
+  const result = await searchFiles({ files, paths: () => index.vaultFiles(), metadata: () => { loads++; return index.load(); }, budget: vmSearchBudget(timeoutMs) }, query(pattern, extra), page);
   if (extra.tag === undefined && extra.property === undefined && !extra.skipCode) expect(loads).toBe(0);
   return result;
 }
@@ -32,6 +33,8 @@ beforeEach(async () => {
   await put('src/plan.ts', 'export const plan = "PLAN";\n');
   await put('assets/plan.png', 'plan bytes are never searched');
   await put('.obsidian/plan.json', '{"plan":true}');
+  // The workspace's own distribution is not vault content at the workspace root.
+  await put('bin/data/docs/plan.md', 'plan in the distribution');
   await put('notes/binary.md', new Uint8Array([0x70, 0x6c, 0x61, 0x6e, 0xff, 0xfe]));
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });

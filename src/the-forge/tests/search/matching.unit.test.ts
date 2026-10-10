@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { clipAround, clipLine, frontmatterRange, matchLines, searchExpression, searchedLines, splitLines } from '../../src/plugins/search/domain/matching.ts';
-import { metadataMatches, propertyFilter, visiblePath } from '../../src/plugins/search/domain/query.ts';
+import { metadataMatches, propertyFilter } from '../../src/plugins/search/domain/query.ts';
 import type { CachedMetadata } from '../../src/domain/metadata/cache.ts';
 
 const expression = (pattern: string, regex = false, caseSensitive = false) => searchExpression({ pattern, regex, caseSensitive });
@@ -77,9 +77,5 @@ describe('metadata filters', () => {
     expect(['status=Done', 'empty', 'missing', 'labels=c', 'points=03'].map(matches)).toEqual([false, false, false, false, false]);
     expect(metadataMatches(null, {})).toBe(true);
     expect(metadataMatches(null, { tag: 'x' })).toBe(false);
-  });
-
-  it('treats dot-prefixed paths as hidden', () => {
-    expect(['a.md', 'notes/.draft.md', '.obsidian/app.json', 'x/y.md'].filter(visiblePath)).toEqual(['a.md', 'x/y.md']);
   });
 });

@@ -50,7 +50,7 @@ Hits are ordered by path (code-unit order, as `list` reports), then line, then c
 
 ## What is searched
 
-Search reads visible files of the kinds `markdown`, `canvas`, `base` and `text` (the [text extensions](formats.md#utf-8-text)). It never reads attachments, files below a dot-prefixed folder or with a dot-prefixed name (`.obsidian`, `.trash`, `.forge`), `.git` or `node_modules`, and it skips files whose bytes are not valid UTF-8. Canvas and Bases files are searched as their JSON or YAML text. Tag, property and `--skip-code` filters load the metadata cache; a note that cannot be parsed has no metadata, so it fails tag and property filters and its code blocks are not skipped.
+Search reads visible files of the kinds `markdown`, `canvas`, `base` and `text` (the [text extensions](formats.md#utf-8-text)). It never reads attachments, files below a dot-prefixed folder or with a dot-prefixed name (`.obsidian`, `.trash`, `.forge`), `.git` or `node_modules`, or, at the workspace root, the workspace's own `bin/` distribution (the [vault rule](formats.md#metadata-index)), and it skips files whose bytes are not valid UTF-8. Canvas and Bases files are searched as their JSON or YAML text. Tag, property and `--skip-code` filters load the metadata cache; a note that cannot be parsed has no metadata, so it fails tag and property filters and its code blocks are not skipped.
 
 Searching reads files through the repository port: it publishes no `vault.*`, `workspace.file-open` or `operation.*` records and takes no writer lock. Each invocation reads the current files; there is no persistent index.
 

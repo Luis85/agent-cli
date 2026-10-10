@@ -5,7 +5,7 @@ import { pathGlob } from '../../../domain/documents/path-glob.ts';
 import { AppError } from '../../../domain/shared/errors.ts';
 import { Pager, type PageRequest } from '../../../domain/shared/paging.ts';
 import { clipAround, clipLine, matchLines, searchExpression, searchedLines, splitLines } from '../domain/matching.ts';
-import { metadataMatches, searchKinds, visiblePath, type SearchKind, type SearchQuery } from '../domain/query.ts';
+import { metadataMatches, searchKinds, type SearchKind, type SearchQuery } from '../domain/query.ts';
 
 /** One match: 1-based line and UTF-16 column, the matched text, a clipped snippet and the file's revision. */
 export interface SearchHit {
@@ -20,6 +20,8 @@ export interface SearchBudget { run<T>(task: () => T): T }
 export interface SearchSources {
   /** The command scope's repository. */
   files: FileRepository;
+  /** The scope's vault paths, as the metadata index enumerates them (`MetadataIndex.vaultFiles`). */
+  paths(): Promise<readonly string[]>;
   /** The scope's metadata cache, loaded only for tag, property and code filters. */
   metadata(): Promise<MetadataCache>;
   budget: SearchBudget;
@@ -57,9 +59,9 @@ export async function searchFiles(sources: SearchSources, query: SearchQuery, pa
   const pager = new Pager<SearchHit>(page, { command: 'search', ...ordering }, hit => [hit.path, hit.line, hit.column]);
   const inPath = query.path === undefined ? () => true : pathGlob(query.path);
   const kinds: readonly string[] = query.kind ? [query.kind] : searchKinds;
-  const listed = await sources.files.list();
+  const listed = await sources.paths();
   // Path filtering spends the same budget as matching, so no part of a search runs unbounded.
-  const candidates = sources.budget.run(() => listed.filter(path => visiblePath(path) && kinds.includes(fileKind(path)) && inPath(path)));
+  const candidates = sources.budget.run(() => listed.filter(path => kinds.includes(fileKind(path)) && inPath(path)));
   const cache = query.tag !== undefined || query.property !== undefined || query.skipCode ? await sources.metadata() : undefined;
   const selected = cache ? candidates.filter(path => metadataMatches(cache.getFileCache(path), query)) : candidates;
   for (let start = 0; start < selected.length; start += batchSize) {

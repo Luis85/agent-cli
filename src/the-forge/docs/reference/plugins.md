@@ -272,7 +272,7 @@ Like Obsidian's MetadataCache, the kernel index publishes its events after the v
 | `app.vault.append(path, data, {ifMatch?})` | Append UTF-8 text |
 | `app.vault.rename(path, newPath, {ifMatch?})` | Move without link updates, like Obsidian's `Vault.rename` |
 | `app.vault.trash(path, {ifMatch?})` / `delete(path, {ifMatch?})` | Move to `.trash` or remove permanently (folders recursively) without checking links, like Obsidian's `Vault.trash`/`delete` |
-| `app.vault.getMarkdownFiles()` / `getFiles()` | Visible paths in path order, as indexed by the metadata cache (dot-prefixed files and folders are omitted) |
+| `app.vault.getMarkdownFiles()` / `getFiles()` | Vault paths in path order, as indexed by the metadata cache: dot-prefixed files and folders and, at the workspace root, the workspace's `bin/` distribution are omitted (see the [vault rule](formats.md#metadata-index)) |
 | `app.vault.on('create' \| 'modify' \| 'delete' \| 'rename', callback)` | Subscribes to `vault.*`; the callback receives the record payload with `path` (and `oldPath` for renames). Returns an unsubscribe function |
 | `app.metadataCache.getFileCache(path)` | A copy of the file's `CachedMetadata`, or `null` |
 | `app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath)` / `fileToLinktext(path, sourcePath, omitMdExtension?)` | Link resolution and shortest link text |
