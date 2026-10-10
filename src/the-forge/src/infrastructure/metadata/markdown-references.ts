@@ -62,8 +62,9 @@ export function markdownReferences(value: string, tree: MarkdownNode, inlineTags
     const visible = slice.includes('$') ? slice.replace(math, blank) : slice;
     for (const match of visible.matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
       if (escaped(match.index + match[1]!.length)) continue;
+      // In tables the display separator is escaped as `\|`; the backslash belongs to neither the path nor the display text.
       const inner = match[2]!, pipe = inner.indexOf('|');
-      add(pipe < 0 ? inner : inner.slice(0, pipe), match[1] === '!', 'wikilink', {
+      add(pipe < 0 ? inner : inner.slice(0, pipe).replace(/\\$/, ''), match[1] === '!', 'wikilink', {
         original: match[0], start: base + match.index, end: base + match.index + match[0].length,
         ...(pipe < 0 ? {} : { displayText: inner.slice(pipe + 1) }),
       });
