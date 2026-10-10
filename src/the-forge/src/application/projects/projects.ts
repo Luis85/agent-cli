@@ -9,10 +9,17 @@ export type ComponentKind = 'domain' | 'application';
 export interface ProjectMetadata { schemaVersion: 1; name: string; type: 'library' }
 export interface ProjectInfo extends ProjectMetadata { directory: string }
 interface ProjectSelection { name: string; directory: string }
+/**
+ * The files of a new project and of a project component. The `scaffolds` core plugin provides it as the service
+ * `scaffolds.projects`; `project create` and `project component` fail with PLUGIN_UNAVAILABLE without it.
+ */
 export interface ProjectScaffolder {
   project(name: string, projectsDirectory: string): readonly WriteRequest[];
   component(projectName: string, componentName: string, projectsDirectory: string, kind: ComponentKind): readonly WriteRequest[];
 }
+export const projectScaffolderService = 'scaffolds.projects';
+/** Resolves the scaffolder when a `project create` or `project component` action needs it. */
+export type ProjectScaffolderLookup = (action: 'create' | 'component') => ProjectScaffolder;
 
 export function projectName(name: string): string {
   ensure(typeof name === 'string' && name.length <= 214 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name), 'INVALID_PROJECT_NAME', 'Use a lowercase kebab-case project name, for example billing-service.');
@@ -21,7 +28,7 @@ export function projectName(name: string): string {
 
 /** Owns project discovery and mutation policy; scaffolding and persistence are injected. */
 export class ProjectService {
-  constructor(private readonly files: FileRepository, private readonly workspace: Workspace, readonly projectsDirectory: string, private readonly scaffolder: ProjectScaffolder, private readonly events: EventBus) {
+  constructor(private readonly files: FileRepository, private readonly workspace: Workspace, readonly projectsDirectory: string, private readonly scaffolder: ProjectScaffolderLookup, private readonly events: EventBus) {
     vaultPath(projectsDirectory);
   }
 
@@ -82,7 +89,7 @@ export class ProjectService {
   async create(name: string) {
     const directory = `${this.projectsDirectory}/${projectName(name)}`;
     ensure(!(await this.files.list()).some(path => path === directory || path.startsWith(directory + '/')), 'PROJECT_EXISTS', `Project directory already contains files: ${directory}`);
-    const plan = this.scaffolder.project(name, this.projectsDirectory);
+    const plan = this.scaffolder('create').project(name, this.projectsDirectory);
     const result = await this.workspace.write(plan);
     return { project: { schemaVersion: 1, name, type: 'library', directory }, ...result, ...this.preview(plan), nextSteps: [
       { scope: 'workspace', command: `node bin/forge.js project open ${name}` },
@@ -95,7 +102,7 @@ export class ProjectService {
   async component(name: string, componentName: string, kind: ComponentKind = 'domain') {
     ensure(kind === 'domain' || kind === 'application', 'INVALID_COMPONENT_KIND', 'Component kind must be domain or application.');
     const project = await this.inspect(name);
-    const plan = this.scaffolder.component(name, componentName, this.projectsDirectory, kind);
+    const plan = this.scaffolder('component').component(name, componentName, this.projectsDirectory, kind);
     const result = await this.workspace.write(plan);
     return { project, component: { name: componentName, kind }, ...result, ...this.preview(plan) };
   }

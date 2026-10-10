@@ -7,13 +7,14 @@ Tests live under the concern they verify. Every executable test file declares it
 | [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
 | [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
-| [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
+| [claude](claude/) | The `claude` core plugin: native agents, hooks, plugin assets, guarded removal, installed CLI invocation, its `claude.*` events and the `claude.lifecycle` service for trusted plugins, and disabling it |
 | [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |
 | [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
-| [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
+| [generation](generation/) | The shared generation service: review plans, revision manifests, and guarded writes |
+| [scaffolds](scaffolds/) | The `scaffolds` core plugin: code, form and plugin-folder generators, their compiled output, and disabling it (project create and component then fail with `PLUGIN_UNAVAILABLE`) |
 | [interactions](interactions/) | The `ui` core plugin's declarative event/action schemas, component attachment, generated behavior, and portable workflows |
 | [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
@@ -24,7 +25,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
-| [templates](templates/) | Template rendering, required inputs, planning-pack installation, and project workflows |
+| [templates](templates/) | The `templates` core plugin: template rendering, required inputs, planning-pack installation, its settings section, and disabling it (setup then skips templates) |
 | [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, settings, disabling, and CLI workflows |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |

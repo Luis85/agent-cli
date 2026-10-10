@@ -2,7 +2,6 @@ import type { Workspace } from '../workspace/workspace.ts';
 import type { ProjectInfo } from '../projects/projects.ts';
 import type { EventBus, EventChannel, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
-import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 import type { App } from '../vault/app.ts';
 import type { GenerationService } from '../generation/plans.ts';
@@ -13,7 +12,7 @@ import { ensurePluginNamespace, pluginEvents } from './ownership.ts';
 import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
 import type { CommandFlags, CommandMetadata, CommandMode, CommandOption } from './command-metadata.ts';
 import { validateContributions, type PluginOrigin } from './contributions.ts';
-import { activationOrder, pluginServices, serviceProviders, type PluginServices } from './plugin-services.ts';
+import { activationOrder, pluginServices, serviceProviders, serviceView, type PluginServices } from './plugin-services.ts';
 import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
 
@@ -23,7 +22,7 @@ import { PluginSettings } from './plugin-settings.ts';
  * root as `workspace`; `app` is the Obsidian-shaped facade (vault, metadataCache, fileManager, workspace) over it.
  */
 export interface CommandContext {
-  workspace: Workspace; environment: Workspace; events: EventChannel; claude: ClaudeLifecycleClient; metadata: MetadataIndex; app: App;
+  workspace: Workspace; environment: Workspace; events: EventChannel; metadata: MetadataIndex; app: App;
   workspaceRoot: string; root: string; project: ProjectInfo | null; language: Language; input: () => Promise<Uint8Array>;
 }
 /** What a plugin's hooks, commands and generators receive: the command context plus its own settings, services and strings. */
@@ -187,6 +186,26 @@ export class Registry {
     const unknown = foreign.filter(id => !present.has(id)).sort();
     if (unknown.length > 0) warn(`plugins.settings names no installed plugin: ${unknown.join(', ')}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.`);
     return report.effective;
+  }
+  /**
+   * A plugin service for a kernel command (`setup` uses `templates.installer`): the provider's read-only view, or
+   * undefined when no registered plugin provides it or its provider is unavailable. Call it after `configure`.
+   */
+  service<T>(id: string): T | undefined {
+    const provider = serviceProviders(this.plugins).get(id);
+    return provider === undefined || this.unavailable.has(provider.manifest.id) ? undefined : serviceView<T>(provider, id);
+  }
+  /**
+   * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
+   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+   */
+  requireService<T>(id: string, command: string): T {
+    const service = this.service<T>(id);
+    if (service !== undefined) return service;
+    const pluginId = id.split('.')[0]!;
+    const unavailable = this.unavailable.get(pluginId);
+    const reason = unavailable?.reason ?? (this.disabled.some(manifest => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id}.`);
+    throw forgeError('PLUGIN_UNAVAILABLE', `Command ${command} is unavailable because it needs service ${id} of plugin ${pluginId}: ${reason}`, { command, plugin: pluginId, service: id, reason, issues: unavailable?.issues ?? [] });
   }
   /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
   private cascadeUnavailable(): void {

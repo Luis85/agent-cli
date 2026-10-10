@@ -3,10 +3,8 @@ export const germanCommands = {
   schema: 'Maschinenlesbarer Katalog der verfügbaren Funktionen.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
-  templates: 'Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.',
   project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
   workflows: 'Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.',
-  claude: 'Native Claude-Code-Agenten, Hooks und Plugins mit Revisionsschutz und installiertem CLI verwalten.',
   formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
   list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.',
   read: 'Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.',
@@ -26,9 +24,6 @@ export const germanCommands = {
 
 /** German descriptions of kernel command actions, keyed `<command> <action>`; `make` actions use the generator catalog. */
 export const germanActions: Record<string, string> = {
-  'templates list': 'Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.',
-  'templates inspect': 'Die erforderlichen und optionalen Werte einer Vorlage melden.',
-  'templates install': 'Das Vorlagenpaket für den Planungsablauf in bin/templates installieren.',
   'project list': 'Die verwalteten Projekte auflisten.',
   'project create': 'Ein eigenständiges TypeScript-Projekt erstellen.',
   'project open': 'Ein Projekt für Dateibefehle und Generatoren auswählen.',
@@ -38,29 +33,13 @@ export const germanActions: Record<string, string> = {
   'project component': 'Einem Projekt eine getestete Domain- oder Anwendungskomponente hinzufügen.',
   'workflows list': 'Die erstellten Workflows jedes verwalteten Projekts und ihre generierten Einstiegspunkte auflisten.',
   'workflows sync': 'Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben.',
-  'claude capabilities': 'Unterstützte Formate, Bereiche und Vorgänge beschreiben.',
-  'claude agents': 'Native Agenten auflisten, prüfen, erstellen, aktualisieren, entfernen, aktivieren, deaktivieren oder exportieren.',
-  'claude hooks': 'Die native Hook-Konfiguration prüfen, kontrollieren und bearbeiten.',
-  'claude plugins': 'Claude-Plugin-Bestandteile erstellen oder den Plugin-Lebenszyklus des installierten CLI ausführen.',
-  'claude marketplaces': 'Plugin-Marktplätze über das installierte CLI hinzufügen, auflisten, entfernen oder aktualisieren.',
-  'claude runtime': 'Das installierte Claude-Code-CLI melden, diagnostizieren, installieren oder aktualisieren.',
 };
-
-export const germanGenerators = {
-  form: 'Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.',
-  entity: 'Domain-Entität mit Identität und Prüfung von Invarianten.',
-  'value-object': 'Unveränderliches Wertobjekt mit Gleichheitsprüfung und Validierung.',
-  'use-case': 'Anwendungsfall mit injiziertem Repository-Port.',
-  event: 'Typisierte Ereignisdaten mit Laufzeitbeschreibung.',
-  plugin: 'Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.',
-  document: 'Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.',
-} satisfies Record<string, string>;
 
 export const germanGuidance = {
   attachments: 'Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.',
   otherFiles: 'Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.',
   textFiles: 'UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.',
-  delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*-, claude.*- und plugin.*-Ereignisse sind Lebenszyklusphasen; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
+  delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
   eventChanges: 'Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.',
   setup: {
     'node bin/forge.js templates list': 'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',
@@ -77,10 +56,6 @@ export const germanEvents = {
   'operation.started': 'Ein geschützter Workspace-Vorgang hat begonnen, auch bei Probeläufen.',
   'operation.succeeded': 'Ein geschützter Workspace-Vorgang wurde abgeschlossen, auch bei Probeläufen.',
   'operation.failed': 'Ein geschützter Workspace-Vorgang ist fehlgeschlagen.',
-  'claude.started': 'Ein Claude-Aufruf hat mit Prüfung oder Vorschau begonnen.',
-  'claude.succeeded': 'Ein Claude-Aufruf oder eine geprüfte Vorschau wurde abgeschlossen.',
-  'claude.failed': 'Prüfung, Ausführung oder Ausgabeverarbeitung von Claude ist fehlgeschlagen.',
-  'claude.executed': 'Der Claude-Prozess hat einen Exit-Status geliefert, auch einen von null verschiedenen.',
   'vault.create': 'Ein erfolgreicher Schreibvorgang hat eine Datei oder einen Ordner angelegt.',
   'vault.modify': 'Ein erfolgreicher Schreibvorgang hat eine vorhandene Datei ersetzt.',
   'vault.delete': 'Eine Datei oder ein Ordner wurde entfernt; Revision und Bytes einer Datei beschreiben ihren vorherigen Inhalt.',

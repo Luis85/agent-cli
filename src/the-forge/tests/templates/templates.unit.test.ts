@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
+import { MarkdownTemplates } from '../../src/plugins/templates/infrastructure/markdown.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
 
-const templates = new MarkdownTemplates();
 const documents = new ObsidianDocuments();
+const templates = new MarkdownTemplates(text => documents.markdownParts(text));
 const options = { title: 'Work item', date: '2026-10-07T14:05:06Z' };
 const text = (bytes: Uint8Array) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
 const properties = (bytes: Uint8Array) => (documents.inspect('note.md', bytes) as { properties: unknown }).properties;

@@ -5,7 +5,6 @@ import { hostEventNamespaces, publishHostEvent, registerHostEvents, type HostEve
 
 const command = { operationId: 1, command: 'write', root: '/vault', workspaceRoot: '/workspace', dryRun: false };
 const workspace = { operationId: 2, operation: 'write' as const, root: '/vault', paths: ['note.md'], dryRun: false };
-const claude = { operationId: 3, executable: 'claude', cwd: '/vault', dryRun: false };
 const plugin = { pluginId: 'quality' };
 const error = { code: 'TEST_FAILURE', exitCode: 2 };
 const change = { path: 'note.md', revision: 'abc', bytes: 5 };
@@ -13,8 +12,6 @@ const file = { ...change, kind: 'file' as const };
 const samples: HostEventMap = {
   'command.started': command, 'command.succeeded': command, 'command.failed': { ...command, error },
   'operation.started': workspace, 'operation.succeeded': { ...workspace, changes: [{ ...change, operation: 'created' }], bytes: 5 }, 'operation.failed': { ...workspace, error },
-  'claude.started': claude, 'claude.succeeded': { ...claude, exitCode: 0 }, 'claude.failed': { ...claude, error, exitCode: 2 },
-  'claude.executed': { executable: 'claude', cwd: '/vault', exitCode: 2 },
   'vault.create': { ...file, operation: 'created' }, 'vault.modify': { ...file, operation: 'updated' }, 'vault.delete': { ...file, operation: 'deleted' },
   'vault.rename': { path: 'new.md', oldPath: 'old.md', kind: 'file', revision: 'abc' },
   'metadataCache.changed': { path: 'note.md', cache: { links: [], frontmatter: { status: 'draft' } } }, 'metadataCache.deleted': { path: 'note.md', prevCache: null },
@@ -32,7 +29,7 @@ describe('typed host process catalog', () => {
     expect(bus.ids()).toEqual(Object.keys(samples).sort());
     expect(bus.catalog().every(entry => Boolean(entry.description))).toBe(true);
     for (const [id, payload] of Object.entries(samples)) await bus.emit(id, payload);
-    expect(bus.history).toHaveLength(30);
+    expect(bus.history).toHaveLength(26);
   });
 
   it('rejects malformed host payloads and does not deliver or record them', async () => {
@@ -42,9 +39,6 @@ describe('typed host process catalog', () => {
       ['command.failed', { ...command, error: { code: 'MISSING_STATUS' } }],
       ['operation.started', { ...workspace, operation: 'erase' }],
       ['operation.succeeded', { ...workspace, changes: [{ ...change, operation: 'updated', bytes: -1 }] }],
-      ['claude.started', { ...claude, dryRun: 'yes' }],
-      ['claude.failed', { ...claude, error, exitCode: null }],
-      ['claude.executed', { executable: 'claude', cwd: '/vault', exitCode: 1.5 }],
       ['vault.create', { ...file, operation: 'deleted' }],
       ['vault.create', { ...change, operation: 'created' }],
       ['vault.create', { path: 'folder', kind: 'folder', operation: 'created', bytes: 0 }],

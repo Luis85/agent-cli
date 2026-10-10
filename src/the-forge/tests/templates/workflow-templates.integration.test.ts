@@ -4,27 +4,27 @@ import { mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SetupService } from '../../src/application/workspace/setup.ts';
-import { TemplateInstaller } from '../../src/application/templates/templates.ts';
+import { TemplateInstaller } from '../../src/plugins/templates/application/templates.ts';
 import type { AppConfig } from '../../src/application/workspace/config.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
-import { workflowTemplates } from '../../src/infrastructure/templates/workflows.ts';
+import { MarkdownTemplates } from '../../src/plugins/templates/infrastructure/markdown.ts';
+import { setupTemplates, workflowTemplates } from '../../src/plugins/templates/infrastructure/pack.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
-const documents = new ObsidianDocuments(), templates = new MarkdownTemplates();
+const documents = new ObsidianDocuments(), templates = new MarkdownTemplates(text => documents.markdownParts(text));
 const config: AppConfig = {
   schemaVersion: 1,
   paths: { projects: 'projects' },
-  settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [], disabled: [], settings: {} },
+  settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, plugins: { enabled: [], disabled: [], settings: {} },
 };
 const workspace = (dryRun = false) => new Workspace(files, documents, events, dryRun);
-const setup = (dryRun = false) => new SetupService(workspace(dryRun), config, [
+const setup = (dryRun = false): SetupService => new SetupService(workspace(dryRun), config, [
   { path: 'forge.js', bytes: encodeText('/* executable fixture */') },
   { path: 'package.json', bytes: encodeText('{"type":"commonjs"}') },
-], [], workflowTemplates);
+], [], setupTemplates);
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-workflow-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());
   for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (_value): _value is unknown => true });
@@ -56,6 +56,15 @@ describe('editable idea-to-production planning templates', () => {
     const owner = 'team\nstatus: shipped\n---\nInjected';
     const rendered = templates.render(bytes, { title: 'PRD', date: '2026-10-07', values: { owner } });
     expect(documents.inspect('output.md', rendered)).toMatchObject({ properties: { owner, status: 'draft' } });
+  });
+  it('installs a starter entity template that renders arbitrary titles as YAML data', async () => {
+    await setup().run();
+    const source = (await files.read('bin/templates/entity.md')).bytes;
+    const title = "Engineer's Work: Item";
+    const rendered = templates.render(source, { title, date: '2026-10-07' });
+    documents.validate('entity.md', rendered);
+    expect(documents.inspect('entity.md', rendered)).toMatchObject({ properties: { type: 'entity', title, created: '2026-10-07' } });
+    expect(new TextDecoder().decode(rendered)).toContain(`# ${title}`);
   });
   it('installs the standalone pack without setup and preserves customized planning sources', async () => {
     const installer = new TemplateInstaller(workspace(), workflowTemplates);

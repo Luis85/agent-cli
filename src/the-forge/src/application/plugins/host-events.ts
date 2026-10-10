@@ -5,7 +5,6 @@ import type { EventBus, EventDefinition } from './events.ts';
 interface HostError { code: string; exitCode: number }
 interface CommandOperation { operationId: number; command: string; root: string; workspaceRoot: string; dryRun: boolean }
 interface WorkspaceOperation { operationId: number; operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete'; root: string | null; paths: string[]; dryRun: boolean }
-interface ClaudeOperation { operationId: number; executable: string; cwd: string; dryRun: boolean }
 interface PluginOperation { pluginId: string }
 type Empty = Record<string, never>;
 /** Obsidian's `CachedMetadata` shape as a JSON object; the kernel MetadataCache defines its fields. */
@@ -24,10 +23,6 @@ export interface HostEventMap {
   'operation.started': WorkspaceOperation;
   'operation.succeeded': WorkspaceOperation & { changes?: FileChange[]; bytes?: number; renames?: Array<{ from: string; to: string; kind: 'file' | 'folder' }> };
   'operation.failed': WorkspaceOperation & { error: HostError };
-  'claude.started': ClaudeOperation;
-  'claude.succeeded': ClaudeOperation & { exitCode?: number };
-  'claude.failed': ClaudeOperation & { error: HostError; exitCode?: number };
-  'claude.executed': { executable: string; cwd: string; exitCode: number };
   'vault.create': VaultChange & { operation: 'created' };
   'vault.modify': VaultFileChange & { operation: 'updated' };
   'vault.delete': VaultChange & { operation: 'deleted' };
@@ -53,7 +48,7 @@ export type HostEventId = keyof HostEventMap;
 export type HostEventRecord = { [Id in HostEventId]: { id: Id; payload: HostEventMap[Id] } }[HostEventId];
 
 /** Namespaces owned by the host. Plugins cannot use them as ids and cannot emit their events. */
-export const hostEventNamespaces = ['command', 'operation', 'claude', 'vault', 'metadataCache', 'workspace', 'plugin'] as const;
+export const hostEventNamespaces = ['command', 'operation', 'vault', 'metadataCache', 'workspace', 'plugin'] as const;
 
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
@@ -63,12 +58,10 @@ const operation = (value: Record<string, unknown>) => count(value.operationId) &
 const error = (value: unknown) => isRecord(value) && text(value.code) && status(value.exitCode);
 const command = (value: Record<string, unknown>) => operation(value) && text(value.command) && text(value.root) && text(value.workspaceRoot);
 const workspace = (value: Record<string, unknown>) => operation(value) && ['read', 'write', 'edit', 'remove', 'move', 'delete'].includes(String(value.operation)) && (value.root === null || text(value.root)) && Array.isArray(value.paths) && value.paths.every(text);
-const claude = (value: Record<string, unknown>) => operation(value) && text(value.executable) && text(value.cwd);
 const plugin = (value: Record<string, unknown>) => text(value.pluginId);
 const changeOperations = ['created', 'updated', 'deleted'];
 const change = (value: unknown): value is FileChange => isRecord(value) && text(value.path) && text(value.revision) && count(value.bytes) && changeOperations.includes(String(value.operation));
 const moved = (value: unknown) => isRecord(value) && text(value.from) && text(value.to) && ['file', 'folder'].includes(String(value.kind));
-const optionalStatus = (value: Record<string, unknown>) => value.exitCode === undefined || status(value.exitCode);
 const project = (value: unknown) => value === null || text(value);
 /** Files carry revision and bytes; folders carry neither. */
 const vault = (expected: string, kinds: readonly string[]) => (value: Record<string, unknown>) => value.operation === expected && kinds.includes(String(value.kind))
@@ -88,10 +81,6 @@ const hostEventDefinitions: readonly EventDefinition[] = [
   definition('operation.succeeded', 'A guarded workspace operation completed, including previews.', value => workspace(value) && (value.bytes === undefined || count(value.bytes)) && (value.changes === undefined || (Array.isArray(value.changes) && value.changes.every(change)))
     && (value.renames === undefined || (Array.isArray(value.renames) && value.renames.every(moved)))),
   definition('operation.failed', 'A guarded workspace operation failed.', value => workspace(value) && error(value.error)),
-  definition('claude.started', 'A Claude invocation began validation or preview.', claude),
-  definition('claude.succeeded', 'A Claude invocation or validated preview completed.', value => claude(value) && optionalStatus(value)),
-  definition('claude.failed', 'Claude validation, execution or output processing failed.', value => claude(value) && error(value.error) && optionalStatus(value)),
-  definition('claude.executed', 'The Claude process returned an exit status, including nonzero status.', value => text(value.executable) && text(value.cwd) && status(value.exitCode)),
   definition('vault.create', 'A file or folder was created by a committed write.', vault('created', ['file', 'folder'])),
   definition('vault.modify', 'An existing file was replaced by a committed write.', vault('updated', ['file'])),
   definition('vault.delete', 'A file or folder was removed; a file\'s revision and bytes describe its prior content.', vault('deleted', ['file', 'folder'])),

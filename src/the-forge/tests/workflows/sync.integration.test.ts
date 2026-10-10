@@ -9,7 +9,7 @@ import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { WorkflowSync } from '../../src/application/workflows/workflows.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
-import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
+import { componentScaffold, projectScaffold } from '../../src/plugins/scaffolds/infrastructure/projects.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { yamlWorkflowRenderer } from '../../src/infrastructure/workflows/renderer.ts';
 import { committedEvents } from '../support/events.ts';
@@ -27,7 +27,7 @@ async function service(dryRun = false) {
   const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   const workspace = new Workspace(files, new ObsidianDocuments(), events, dryRun, root);
-  return { events, sync: new WorkflowSync(workspace, new ProjectService(files, workspace, 'src', { project: projectScaffold, component: componentScaffold }, events), yamlWorkflowRenderer) };
+  return { events, sync: new WorkflowSync(workspace, new ProjectService(files, workspace, 'src', () => ({ project: projectScaffold, component: componentScaffold }), events), yamlWorkflowRenderer) };
 }
 const read = (path: string) => readFile(join(root, path), 'utf8');
 

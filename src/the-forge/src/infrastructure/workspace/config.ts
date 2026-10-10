@@ -16,7 +16,6 @@ const configSchema = z.strictObject({
     projects: relativePath.refine(value => value.toLowerCase() !== 'bin' && !value.toLowerCase().startsWith('bin/'), 'Projects must be outside the fixed bin directory.').default('projects'),
   }).prefault({}),
   settings: z.strictObject({ language: z.enum(['en', 'de']).default('en'), json: z.boolean().default(false), dryRun: z.boolean().default(false), events: z.enum(eventOutputLevels).default('changes') }).prefault({}),
-  templates: z.strictObject({ dateFormat: z.string().min(1).default('YYYY-MM-DD'), timeFormat: z.string().min(1).default('HH:mm') }).prefault({}),
   // Plugin sections are validated against the schemas that registered plugins declare once they load.
   plugins: z.strictObject({
     enabled: pluginIds, disabled: pluginIds,

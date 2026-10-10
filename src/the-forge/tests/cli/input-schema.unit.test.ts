@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { commandInputSchema } from '../../src/application/plugins/command-metadata.ts';
 import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
@@ -8,7 +9,7 @@ import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 
-const host = { skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) };
+const host = testHost({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) });
 const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin];
 const { commands } = builtinCommands();
 for (const plugin of [searchPlugin, linksPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);

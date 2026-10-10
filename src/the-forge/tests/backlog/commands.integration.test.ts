@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
@@ -30,7 +31,7 @@ describe('choosing the backlog', () => {
   it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates }, ['bases']);
+    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates }), ['bases']);
     const warnings: string[] = [];
     await registry.configure({}, async () => [], message => warnings.push(message));
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);

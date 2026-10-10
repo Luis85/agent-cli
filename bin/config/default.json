@@ -9,10 +9,6 @@
     "dryRun": false,
     "events": "changes"
   },
-  "templates": {
-    "dateFormat": "YYYY-MM-DD",
-    "timeFormat": "HH:mm"
-  },
   "plugins": {
     "enabled": [],
     "disabled": [],

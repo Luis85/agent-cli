@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudePluginService } from '../../src/application/claude/plugins.ts';
+import { ClaudePluginService } from '../../src/plugins/claude/application/plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
+import { claudeAgentCodec } from '../../src/plugins/claude/infrastructure/agents.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
@@ -15,7 +15,7 @@ const directory = 'claude-plugins/review-kit';
 const manifest = { name: 'review-kit', version: 'rolling', metadata: { owner: 'team' }, future: { preserve: true } };
 const encode = (value: string) => new TextEncoder().encode(value);
 const encodeJson = (value: unknown) => encode(JSON.stringify(value));
-const service = (dryRun = false) => new ClaudePluginService(new Workspace(files, new ObsidianDocuments(), events, dryRun), { parse: parseClaudeAgent, render: renderClaudeAgent });
+const service = (dryRun = false) => new ClaudePluginService(new Workspace(files, new ObsidianDocuments(), events, dryRun), claudeAgentCodec(new ObsidianDocuments()));
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-plugin-'));
   files = await NodeFiles.at(root);

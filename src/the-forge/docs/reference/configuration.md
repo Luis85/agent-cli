@@ -18,10 +18,6 @@ The shipped configuration is:
     "dryRun": false,
     "events": "changes"
   },
-  "templates": {
-    "dateFormat": "YYYY-MM-DD",
-    "timeFormat": "HH:mm"
-  },
   "plugins": {
     "enabled": [],
     "disabled": [],
@@ -64,7 +60,7 @@ The `plugins` section has three keys:
 | --- | --- | --- |
 | `plugins.enabled` | `[]` | User plugin ids that load from `bin/plugins`, in load order. Installing a directory does not enable it |
 | `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; other ids are ignored with a warning. A plugin that requires a service of a disabled core plugin becomes unavailable (`backlog` without `bases`) |
-| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), `ui` holds the UI framework and folders described above, and `data-sources` the data-source folders described below. See [config sections](plugins.md#config-sections) |
+| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), `templates.dateFormat`/`templates.timeFormat` (defaults `YYYY-MM-DD` and `HH:mm`) set the dayjs formats of [template](templates.md) `{{date}}` and `{{time}}` placeholders without their own format, `ui` holds the UI framework and folders described above, and `data-sources` the data-source folders described below. See [config sections](plugins.md#config-sections) |
 
 Use `node bin/forge.js --no-plugins <command>` to skip user plugins for one invocation, including recovery from a broken plugin; core plugins still load. `node bin/forge.js plugins` lists every plugin with its state.
 

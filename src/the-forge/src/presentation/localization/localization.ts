@@ -1,5 +1,5 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
-import { germanActions, germanCommands, germanEvents, germanGenerators, germanGuidance } from './catalog.ts';
+import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -21,8 +21,9 @@ export class Localizer {
   constructor(readonly language: Language = 'en', private readonly plugins?: PluginCatalog) {}
 
   private german(kind: 'commands' | 'generators' | 'events', id: string): string | undefined {
-    const kernel = kind === 'commands' ? germanCommands : kind === 'generators' ? germanGenerators : germanEvents;
-    return translated(kernel, id) ?? this.plugins?.text('de', kind, id);
+    // Every generator comes from a plugin, so only commands and events have kernel catalogs.
+    const kernel = kind === 'commands' ? germanCommands : kind === 'events' ? germanEvents : undefined;
+    return (kernel && translated(kernel, id)) ?? this.plugins?.text('de', kind, id);
   }
 
   /**

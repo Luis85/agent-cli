@@ -11,10 +11,9 @@ import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
+import { componentScaffold, projectScaffold } from '../../src/plugins/scaffolds/infrastructure/projects.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
-import { claudeBytes, claudeInput } from '../../src/presentation/claude/input.ts';
+import { claudeBytes, claudeInput } from '../../src/plugins/claude/presentation/input.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 
 let root: string, registry: Registry, context: CommandContext, events: EventBus;
@@ -25,14 +24,13 @@ beforeEach(async () => {
   events.define({ id: 'vault.modify', validate: (value): value is object => typeof value === 'object' });
   events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
-  context = { workspace, events, root, workspaceRoot: root, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
+  context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
   registry = new Registry();
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
-    loaded, files, templates: new MarkdownTemplates(),
-    projects: new ProjectService(files, workspace, 'projects', { project: projectScaffold, component: componentScaffold }, events),
+    loaded, files,
+    projects: new ProjectService(files, workspace, 'projects', () => ({ project: projectScaffold, component: componentScaffold }), events),
     get workflows(): never { throw new Error('Document commands must not access workflows'); },
-    async installTemplates() { throw new Error('Document commands must not install templates'); },
     setup: async () => undefined,
     configSections: () => registry.settings.sections(),
     installedPlugins: async () => [],
@@ -41,7 +39,7 @@ beforeEach(async () => {
 
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
-    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'workflows',
+    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'project', 'workflows',
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
