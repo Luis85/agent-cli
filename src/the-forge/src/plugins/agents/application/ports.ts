@@ -17,8 +17,11 @@ export interface DefinitionCodec {
   render(document: AgentConfigDocument): string;
 }
 
-/** Validation against the vendored docker-agent JSON Schema (draft-07). */
-export interface DefinitionSchema { validate(value: unknown): AgentDiagnostic[] }
+/**
+ * Validation against the vendored docker-agent JSON Schema (draft-07). `configVersion` is the configuration version
+ * the schema describes, which Forge reads and writes.
+ */
+export interface DefinitionSchema { readonly configVersion: string; validate(value: unknown): AgentDiagnostic[] }
 
 /** Markdown with YAML frontmatter, as Claude agents and skills use it. `parse` fails on missing frontmatter. */
 export interface FrontmatterCodec {

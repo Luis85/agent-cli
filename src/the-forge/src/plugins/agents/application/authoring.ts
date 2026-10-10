@@ -3,7 +3,7 @@ import { vaultPath, type FileSnapshot } from '../../../domain/documents/file.ts'
 import { revisionConflict } from '../../../domain/documents/write-plan.ts';
 import { validateClaudeAgent } from '../../../domain/claude/agents.ts';
 import { AppError, ensure } from '../../../domain/shared/errors.ts';
-import { hasErrors, record, supportedConfigVersion, type AgentDiagnostic } from '../domain/config.ts';
+import { hasErrors, record, type AgentDiagnostic } from '../domain/config.ts';
 import { importClaudeAgent } from '../domain/claude-import.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentDefinitions } from './definitions.ts';
@@ -21,7 +21,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
 export class AgentAuthoring {
   constructor(
     private readonly workspace: Workspace, private readonly definitions: AgentDefinitions,
-    private readonly ports: Pick<AgentPorts, 'codec' | 'markdown'>, private readonly defaultModel: string,
+    private readonly ports: AgentPorts, private readonly defaultModel: string,
   ) {}
 
   /** `agents create`: a valid docker-agent agent in a new file, or added to an existing team file. */
@@ -74,7 +74,7 @@ export class AgentAuthoring {
       text = this.ports.codec.addAgent(existing, name, agent);
     } else {
       ensure(ifMatch === undefined, 'CONFLICT', `${path} does not exist; omit --if-match to create it.`, revisionConflict(path, ifMatch, null));
-      text = this.ports.codec.render({ version: supportedConfigVersion, agents: { [name]: agent } });
+      text = this.ports.codec.render({ version: this.ports.schema.configVersion, agents: { [name]: agent } });
     }
     const checked = this.definitions.check(text);
     if (hasErrors(checked.diagnostics)) {

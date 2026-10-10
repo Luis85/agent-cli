@@ -3,13 +3,13 @@ import { semanticDiagnostics } from '../../src/plugins/agents/domain/semantics.t
 import { externalAgentReference, isExternalReference } from '../../src/plugins/agents/domain/references.ts';
 
 const agent = (extra: Record<string, unknown> = {}) => ({ model: 'anthropic/claude-sonnet-5', description: 'd', instruction: 'i', ...extra });
-const codes = (config: Record<string, unknown>) => semanticDiagnostics(config).map(entry => [entry.code, entry.pointer]);
+const codes = (config: Record<string, unknown>) => semanticDiagnostics(config, '16').map(entry => [entry.code, entry.pointer]);
 
 describe('docker-agent semantic validation', () => {
   it('accepts version 16 or none and reports every other version without migrating', () => {
     expect(codes({ agents: { root: agent() } })).toEqual([]);
     expect(codes({ version: '16', agents: { root: agent() } })).toEqual([]);
-    expect(semanticDiagnostics({ version: '2', agents: { root: agent() } })).toEqual([expect.objectContaining({ severity: 'error', code: 'unsupported-version', pointer: '/version' })]);
+    expect(semanticDiagnostics({ version: '2', agents: { root: agent() } }, '16')).toEqual([expect.objectContaining({ severity: 'error', code: 'unsupported-version', pointer: '/version' })]);
   });
 
   it('resolves sub-agent and handoff references locally or as external references without name clashes', () => {

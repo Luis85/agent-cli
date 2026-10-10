@@ -39,6 +39,23 @@ describe('docker-agent YAML codec', () => {
     expect(Object.keys(parse(edited).agents)).toEqual(['root', 'helper']);
   });
 
+  it('keeps CRLF line endings when adding an agent', () => {
+    const crlf = team.replaceAll('\n', '\r\n');
+    const edited = yamlDefinitions.addAgent(crlf, 'helper', { model: 'claude', instruction: 'Help.\nThen stop.\n' });
+    expect(edited.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(parse(edited).agents.helper).toEqual({ model: 'claude', instruction: 'Help.\nThen stop.\n' });
+    const flow = yamlDefinitions.addAgent('# keep\r\nagents: {root: {model: auto}}\r\n', 'b', { model: 'auto' });
+    expect(flow.replaceAll('\r\n', '')).not.toContain('\n');
+  });
+
+  it('reports YAML whose aliases expand too far as a diagnostic of that file', () => {
+    const bomb = ['a: &a [x, x, x, x, x, x, x, x, x]', ...['b', 'c', 'd', 'e', 'f', 'g'].map((key, index) => `${key}: &${key} [${Array(9).fill(`*${'abcdef'[index]}`).join(', ')}]`), 'agents: {root: {model: auto}}', ''].join('\n');
+    const parsed = yamlDefinitions.parse(bomb);
+    expect(parsed.value).toBeUndefined();
+    expect(parsed.diagnostics).toEqual([expect.objectContaining({ severity: 'error', code: 'yaml-syntax', message: expect.stringContaining('cannot be expanded') })]);
+    expect(() => yamlDefinitions.addAgent(bomb, 'x', { model: 'auto' })).toThrow(expect.objectContaining({ code: 'INVALID_YAML' }));
+  });
+
   it('rewrites flow-style agents maps through the Document API and keeps comments', () => {
     const edited = yamlDefinitions.addAgent('# keep\nagents: {root: {model: auto}}\n', 'b', { model: 'auto' });
     expect(edited).toContain('# keep');

@@ -1,5 +1,5 @@
 import {
-  agentEntries, diagnostic, instructionFiles, isObject, pointer, record, stringList, supportedConfigVersion, text,
+  agentEntries, diagnostic, instructionFiles, isObject, localPath, pointer, record, stringList, text,
   type AgentConfigDocument, type AgentDiagnostic,
 } from './config.ts';
 import { expandModelReference, externalAgentReference, isExternalReference, modelResolves } from './references.ts';
@@ -8,12 +8,13 @@ import { harnessDiagnostics, modelDiagnostics, toolsetDiagnostics } from './tool
 /**
  * docker-agent's semantic checks after decoding (`validateConfig`, `ensureModelsExist`, `resolveInstructionFiles`
  * and the definition resolvers in `pkg/config` at the vendored commit), reported as diagnostics instead of the first
- * failure. Forge reads configuration version 16 only: other versions get a diagnostic and are never migrated.
+ * failure. Forge reads the configuration version of its vendored schema (`version`) only: other versions get a
+ * diagnostic and are never migrated.
  */
-export function semanticDiagnostics(config: AgentConfigDocument): AgentDiagnostic[] {
+export function semanticDiagnostics(config: AgentConfigDocument, version: string): AgentDiagnostic[] {
   const agents = agentEntries(config);
   return [
-    ...versionDiagnostics(config),
+    ...versionDiagnostics(config, version),
     ...(agents.length === 0 ? [diagnostic('error', 'no-agents', '/agents', "At least one agent must be configured (add an entry under 'agents').")] : []),
     ...providerDiagnostics(config),
     ...Object.entries(record(config.models)).flatMap(([name, model]) => modelDiagnostics(model, pointer('models', name))),
@@ -30,9 +31,9 @@ export function semanticDiagnostics(config: AgentConfigDocument): AgentDiagnosti
   ];
 }
 
-function versionDiagnostics(config: AgentConfigDocument): AgentDiagnostic[] {
-  if (config.version === undefined || config.version === supportedConfigVersion) return [];
-  return [diagnostic('error', 'unsupported-version', '/version', `Forge reads docker-agent configuration version ${supportedConfigVersion}; version ${JSON.stringify(config.version)} is not migrated. Update the file to version ${supportedConfigVersion} syntax (docker-agent migrates older files when it loads them) or remove the version key.`)];
+function versionDiagnostics(config: AgentConfigDocument, version: string): AgentDiagnostic[] {
+  if (config.version === undefined || config.version === version) return [];
+  return [diagnostic('error', 'unsupported-version', '/version', `Forge reads docker-agent configuration version ${version}; version ${JSON.stringify(config.version)} is not migrated. Update the file to version ${version} syntax (docker-agent migrates older files when it loads them) or remove the version key.`)];
 }
 
 function providerDiagnostics(config: AgentConfigDocument): AgentDiagnostic[] {
@@ -89,8 +90,6 @@ function skillsDiagnostics(skills: unknown, at: string, label: string): AgentDia
   });
 }
 
-const localPath = (path: string) => path.trim() !== '' && !/^(?:[\\/]|[A-Za-z]:)/.test(path) && !path.split(/[\\/]/).includes('..');
-
 function referenceDiagnostics(config: AgentConfigDocument, name: string, agent: Record<string, unknown>): AgentDiagnostic[] {
   const names = new Set(Object.keys(record(config.agents)));
   return (['sub_agents', 'handoffs'] as const).flatMap(field => stringList(agent[field]).flatMap((reference, index) => {
@@ -128,7 +127,7 @@ function agentDiagnostics(config: AgentConfigDocument, name: string, agent: Reco
     problems.push(diagnostic('error', 'instruction-conflict', `${at}/instruction_file`, `agent '${name}': 'instruction' and 'instruction_file' are mutually exclusive, set only one.`));
   }
   instructionFiles(agent).forEach((path, index) => {
-    if (!localPath(path)) problems.push(diagnostic('error', 'invalid-instruction-file', typeof agent.instruction_file === 'string' ? `${at}/instruction_file` : `${at}/instruction_file/${index}`, `instruction_file "${path}" must be a local relative path inside the config directory.`));
+    if (localPath(path) === undefined) problems.push(diagnostic('error', 'invalid-instruction-file', typeof agent.instruction_file === 'string' ? `${at}/instruction_file` : `${at}/instruction_file/${index}`, `instruction_file "${path}" must be a relative path to a file in the definition file's folder or below it.`));
   });
   for (const budget of stringList(agent.budgets)) if (!Object.hasOwn(record(config.budgets), budget)) {
     problems.push(diagnostic('error', 'unknown-budget', `${at}/budgets`, `agents.${name}: budgets: unknown budget "${budget}"; define it under the top-level 'budgets'.`));

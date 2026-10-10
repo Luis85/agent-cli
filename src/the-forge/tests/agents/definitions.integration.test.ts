@@ -42,6 +42,26 @@ describe('listing, inspecting and validating definitions', () => {
     await scope.put('agents/missing-file.yaml', 'agents:\n  root:\n    model: auto\n    instruction_file: nowhere.md\n');
     expect(await failure(scope.run(['validate', 'missing-file.yaml']))).toMatchObject({ details: { files: [{ diagnostics: [expect.objectContaining({ code: 'instruction-file-missing', line: 4 })] }] } });
   });
+
+
+  it('accepts what docker-agent loads: a numeric version and lexically local instruction files', async () => {
+    await scope.put('agents/team.yaml', 'version: 16\nagents:\n  root:\n    model: auto\n    instruction_file: ./prompts/../root.md\n  helper:\n    model: auto\n    instruction_file: [./prompts/helper.md]\n');
+    await scope.put('agents/root.md', 'Lead.\n');
+    await scope.put('agents/prompts/helper.md', 'Help.\n');
+    expect((await scope.run(['validate'])).data).toMatchObject({ valid: true, files: [{ path: 'agents/team.yaml', diagnostics: [] }] });
+    expect((await scope.run(['inspect', 'team.yaml#helper'])).data).toMatchObject({ instruction: 'Help.\n' });
+    expect((await scope.run(['list'])).data).toMatchObject({ files: [{ version: '16', valid: true }] });
+    await scope.put('agents/team.yaml', 'agents:\n  root:\n    model: auto\n    instruction_file: prompts/../../outside.md\n');
+    expect(await failure(scope.run(['validate']))).toMatchObject({ details: { files: [{ diagnostics: [expect.objectContaining({ code: 'invalid-instruction-file', message: expect.stringContaining("in the definition file's folder") })] }] } });
+  });
+
+  it('lists every other file when one expands aliases too far', async () => {
+    await scope.put('agents/dev-team.yaml', await example('dev-team.yaml'));
+    await scope.put('agents/bomb.yaml', ['a: &a [x, x, x, x, x, x, x, x, x]', ...['b', 'c', 'd', 'e', 'f', 'g'].map((key, index) => `${key}: &${key} [${Array(9).fill(`*${'abcdef'[index]}`).join(', ')}]`), 'agents: {root: {model: auto}}', ''].join('\n'));
+    const list = (await scope.run(['list'])).data as { files: Array<{ path: string; valid: boolean; errors: number }> };
+    expect(list.files.map(file => [file.path, file.valid, file.errors])).toEqual([['agents/bomb.yaml', false, 1], ['agents/dev-team.yaml', true, 0]]);
+    expect(await failure(scope.run(['validate']))).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', details: { files: [{ path: 'agents/bomb.yaml', diagnostics: [expect.objectContaining({ code: 'yaml-syntax' })] }] } });
+  });
 });
 
 describe('creating and importing agents', () => {

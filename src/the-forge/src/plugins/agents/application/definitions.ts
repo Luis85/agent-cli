@@ -2,7 +2,7 @@ import type { FileRepository } from '../../../application/workspace/ports.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 import { AppError, errorMessage } from '../../../domain/shared/errors.ts';
 import {
-  agentEntries, defaultAgent, diagnostic, hasErrors, instructionFiles, isObject, pointer, record,
+  agentEntries, defaultAgent, diagnostic, hasErrors, instructionFiles, isObject, localPath, normalizedDocument, pointer, record,
   type AgentConfigDocument, type AgentDiagnostic,
 } from '../domain/config.ts';
 import { semanticDiagnostics } from '../domain/semantics.ts';
@@ -49,9 +49,10 @@ export class AgentDefinitions {
   check(text: string): { config?: AgentConfigDocument; diagnostics: AgentDiagnostic[]; locate: ParsedDefinition['locate'] } {
     const parsed = this.ports.codec.parse(text);
     if (parsed.value === undefined) return { diagnostics: parsed.diagnostics, locate: parsed.locate };
-    const schema = this.ports.schema.validate(parsed.value);
-    const config = isObject(parsed.value) ? parsed.value : undefined;
-    const semantic = config ? semanticDiagnostics(config) : [];
+    const value = normalizedDocument(parsed.value);
+    const schema = this.ports.schema.validate(value);
+    const config = isObject(value) ? value : undefined;
+    const semantic = config ? semanticDiagnostics(config, this.ports.schema.configVersion) : [];
     const diagnostics = [...schema, ...semantic].map(entry => ({ ...entry, ...parsed.locate(entry.pointer) }));
     return { ...(config ? { config } : {}), diagnostics: diagnostics.sort(byPosition), locate: parsed.locate };
   }
@@ -70,9 +71,9 @@ export class AgentDefinitions {
         const parts: string[] = [];
         for (const [index, file] of files.entries()) {
           const at = typeof agent.instruction_file === 'string' ? pointer('agents', name, 'instruction_file') : pointer('agents', name, 'instruction_file', index);
-          try { parts.push(decoder.decode((await this.files.read(vaultPath(`${parent(path)}${file}`))).bytes)); }
+          try { parts.push(decoder.decode((await this.files.read(vaultPath(`${parent(path)}${localPath(file)!}`))).bytes)); }
           catch (error) {
-            const reason = error instanceof AppError && error.code === 'NOT_FOUND' ? 'does not exist' : `cannot be read: ${errorMessage(error)}`;
+            const reason = error instanceof AppError && error.code === 'NOT_FOUND' ? 'does not exist' : `cannot be read: ${errorMessage(error).replace(/\.$/, '')}`;
             missing.push({ ...diagnostic('error', 'instruction-file-missing', at, `instruction_file "${file}" ${reason}.`), ...checked.locate(at) });
           }
         }

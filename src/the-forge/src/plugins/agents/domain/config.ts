@@ -16,9 +16,6 @@ export interface AgentDiagnostic {
   line?: number; column?: number;
 }
 
-/** The docker-agent configuration version this Forge release reads; absent means this version. */
-export const supportedConfigVersion = '16';
-
 export const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 export const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
@@ -55,6 +52,30 @@ export function instructionText(value: unknown): string | undefined {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return stringList(value).join('\n\n');
   return undefined;
+}
+
+/**
+ * A definition document as docker-agent's loader reads it: an unquoted numeric `version` (`version: 16`) is the
+ * version string. Other values are returned unchanged.
+ */
+export function normalizedDocument(value: unknown): unknown {
+  return isObject(value) && typeof value.version === 'number' && Number.isFinite(value.version) ? { ...value, version: String(value.version) } : value;
+}
+
+/**
+ * The lexically cleaned form of a relative POSIX path when it stays inside its base folder, like Go's
+ * `filepath.IsLocal` after `path.Clean` (`./prompt.md` → `prompt.md`, `prompts/../x.md` → `x.md`). Absolute paths,
+ * Windows drive or backslash roots, paths that leave the folder, and paths naming the folder itself are not local.
+ */
+export function localPath(path: string): string | undefined {
+  if (path.trim() === '' || /^(?:[\\/]|[A-Za-z]:)/.test(path)) return undefined;
+  const parts: string[] = [];
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment !== '..') parts.push(segment);
+    else if (parts.pop() === undefined) return undefined;
+  }
+  return parts.length > 0 ? parts.join('/') : undefined;
 }
 
 /** `instruction_file` as a list of relative paths. */

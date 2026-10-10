@@ -38,6 +38,7 @@ function message(error: ErrorObject): string {
 
 /** Validates a parsed definition against the vendored docker-agent JSON Schema (draft-07, strict object keys). */
 export const ajvDefinitionSchema: DefinitionSchema = {
+  configVersion: source.configVersion,
   validate(value: unknown): AgentDiagnostic[] {
     const validate = validator();
     if (validate(value)) return [];

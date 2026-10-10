@@ -32,7 +32,7 @@ describe('importing Claude agents into docker-agent definitions', () => {
       'hook-approximated:A', 'hook-unsupported:U', 'field-unsupported:U', 'max-iterations-approximated:A', 'skills-approximated:A',
     ]));
     const config = { agents: { helper: { model: 'auto' }, [imported.name]: imported.agent } };
-    expect([...ajvDefinitionSchema.validate(config), ...semanticDiagnostics(config)]).toEqual([]);
+    expect([...ajvDefinitionSchema.validate(config), ...semanticDiagnostics(config, ajvDefinitionSchema.configVersion)]).toEqual([]);
   });
 
   it('approximates inherited tools and models, aliases and generated provenance', () => {

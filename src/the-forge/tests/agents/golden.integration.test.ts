@@ -28,7 +28,7 @@ describe.each(['dev-team.yaml', 'mcp-definitions.yaml', 'agent_switching_command
   it('produces stable files and a stable diagnostic set that pass the Claude agent validation', async () => {
     const parsed = yamlDefinitions.parse(await example(name));
     const config = parsed.value as Record<string, unknown>;
-    expect([...ajvDefinitionSchema.validate(config), ...semanticDiagnostics(config)]).toEqual([]);
+    expect([...ajvDefinitionSchema.validate(config), ...semanticDiagnostics(config, ajvDefinitionSchema.configVersion)]).toEqual([]);
     const output = generateClaude([{ path: `agents/${name}`, sha256, config, instructions: {} }], options);
     const directory = name.replace(/\.yaml$/, '');
     for (const file of [...output.agents, ...output.skills]) {
