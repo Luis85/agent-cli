@@ -30,9 +30,9 @@ describe('the templates core plugin', () => {
       expect(ids(schema.commands)).not.toContain('templates');
       expect(ids(schema.generators)).not.toContain('document');
       expect(cli(['templates']).body.error.code).toBe('UNKNOWN_COMMAND');
-      // Without the generator, make knows neither its id nor its options.
+      // Without the generator, its id is unknown, and that outranks its options.
       expect(cli(['make', 'document', 'Plan']).body.error.code).toBe('UNKNOWN_GENERATOR');
-      expect(cli(['make', 'document', 'Plan', '--template', 'entity.md']).body.error.code).toBe('UNKNOWN_OPTION');
+      expect(cli(['make', 'document', 'Plan', '--template', 'entity.md']).body.error).toMatchObject({ code: 'UNKNOWN_GENERATOR', message: 'document' });
       const setup = cli(['setup', '--dry-run']);
       expect(setup.status).toBe(0);
       expect(paths(setup.body.data.changes).filter(path => path.startsWith('bin/templates/'))).toEqual([]);

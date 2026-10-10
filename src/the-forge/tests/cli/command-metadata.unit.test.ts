@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandAnnotations, commandInputSchema, commandMode, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
+import { commandAnnotations, commandInputSchema, commandMode, ensureKnownAction, hasActionOptions, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
 import { jsonSchemaDialect, schemaIssues, validateJsonValue, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
@@ -90,7 +90,19 @@ describe('command modes', () => {
     expect(commandMode(command, ['constructor'])).toEqual({ scope: 'project', discovery: false, mutating: true });
   });
 
+  it('reports an unknown action with the declared code and resolves the action before options', () => {
+    const closed: CommandMetadata = { id: 'reports', description: 'Reports', usage: 'reports', actions: command.actions!, unknownAction: 'UNKNOWN_GENERATOR' };
+    expect(hasActionOptions(closed)).toBe(true);
+    expect(hasActionOptions(command)).toBe(false);
+    expect(() => ensureKnownAction(closed, ['missing', 'Name'])).toThrow(expect.objectContaining({ code: 'UNKNOWN_GENERATOR', message: 'missing' }));
+    for (const args of [[], ['publish'], ['--template', 'x.md']]) expect(() => ensureKnownAction(closed, args)).not.toThrow();
+    expect(() => ensureKnownAction(command, ['missing'])).not.toThrow();
+    expect(commands.get('make')!.unknownAction).toBe('UNKNOWN_GENERATOR');
+  });
+
   it.each([
+    [{ unknownAction: 'UNKNOWN_GENERATOR' }, 'unknownAction must be a built-in error code of a command with actions'],
+    [{ actions: { list: { description: 'List' } }, unknownAction: 'QUALITY_MISSING' }, 'unknownAction must be a built-in error code'],
     [{ scope: 'global' }, 'scope must be workspace or project'],
     [{ options: { label: 'string' } }, 'requires type string or boolean and a description'],
     [{ options: { label: { type: 'string', description: 'L', default: true } } }, 'default must match its type'],

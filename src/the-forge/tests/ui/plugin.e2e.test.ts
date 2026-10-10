@@ -56,7 +56,10 @@ describe('the ui core plugin', () => {
       expect(ids(schema.generators)).not.toContain('ui');
       expect(ids(schema.generators)).not.toContain('stories');
       expect(Object.keys(fixture.cli(['help', 'make']).body.data.annotations.actions)).not.toContain('ui');
-      for (const generator of ['ui', 'stories']) expect(fixture.cli(['make', generator, 'page']).body.error.code).toBe('UNKNOWN_GENERATOR');
+      for (const generator of ['ui', 'stories']) {
+        expect(fixture.cli(['make', generator, 'page']).body.error.code).toBe('UNKNOWN_GENERATOR');
+        expect(fixture.cli(['make', generator, 'page', '--framework', 'react', '--plan']).body.error.code).toBe('UNKNOWN_GENERATOR');
+      }
       expect(fixture.cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'ui', core: true, state: 'disabled', reason: 'Listed in plugins.disabled.', contributions: null }));
       expect(fixture.cli(['config']).body.data.config.plugins.settings).not.toHaveProperty('ui');
     } finally { await reset(); }

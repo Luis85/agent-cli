@@ -34,6 +34,8 @@ it.each([
     ['UNKNOWN_OPTION', 'make', 'entity', 'Order', '--template', 'entity.md'],
     ['UNKNOWN_OPTION', 'make', 'plugin', 'quality', '--out', 'elsewhere'],
     ['UNKNOWN_OPTION', 'make', '--framework', 'react', 'ui', 'button'],
+    ['UNKNOWN_GENERATOR', 'make', 'missing', 'Order', '--template', 'entity.md'],
+    ['UNKNOWN_GENERATOR', 'make', 'missing', 'Order', '--out'],
     ['INVALID_ARGUMENT', 'skills', '--out', 'ignored'],
     ['INVALID_ARGUMENT', 'skills', 'list', '--out', 'ignored'],
     ['INVALID_ARGUMENT', 'skills', 'show', 'forge-workflow', '--out', 'ignored'],

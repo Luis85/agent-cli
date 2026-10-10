@@ -29,6 +29,7 @@ export function generationCommand(registry: Registry): Command {
       { name: 'generator', description: 'A generator id; without one, make lists the generators.' },
       { name: 'name', description: 'The name or id the generator creates from.' },
     ],
+    unknownAction: 'UNKNOWN_GENERATOR',
     errors: ['UNKNOWN_GENERATOR', 'INVALID_NAME', 'CONFLICT', 'GENERATION_DRIFT', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS', 'PROJECT_REQUIRED'],
     get actions() {
       return Object.fromEntries([...registry.generators.values()].map((generator): [string, CommandAction] => [generator.id, {

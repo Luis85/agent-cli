@@ -1,4 +1,5 @@
 import { ensure, isRecord } from '../../domain/shared/errors.ts';
+import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 
 /**
@@ -13,6 +14,8 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  * - `actions`: refinements keyed by the first positional argument (`skills install`), with `defaultAction` used
  *   when it is omitted. A refinement inherits every field it does not set and may add its own `options`, which
  *   the parser accepts only for that action (`make <generator>`).
+ * - `unknownAction`: a built-in error code for a first argument that names no declared action. It is reported
+ *   before any option parses, so options of an unknown action never read as `UNKNOWN_OPTION`.
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
  */
 export type CommandScope = 'workspace' | 'project';
@@ -34,6 +37,7 @@ export interface CommandMetadata extends CommandMode {
   args?: readonly CommandArgument[];
   actions?: Readonly<Record<string, CommandAction>>;
   defaultAction?: string;
+  unknownAction?: ErrorCode;
   /** Optional JSON Schema of `data` in a successful response. */
   output?: JsonSchema;
   /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
@@ -72,9 +76,16 @@ export function commandOptions(command: CommandMetadata, args: readonly string[]
   return { ...command.options, ...selectedAction(command, args)?.options };
 }
 
-/** Whether some action declares its own options, so parsing must resolve the action first. */
+/** Whether parsing must resolve the action first: some action declares its own options, or unknown actions fail. */
 export function hasActionOptions(command: CommandMetadata): boolean {
-  return Object.values(command.actions ?? {}).some(action => Object.keys(action.options ?? {}).length > 0);
+  return command.unknownAction !== undefined || Object.values(command.actions ?? {}).some(action => Object.keys(action.options ?? {}).length > 0);
+}
+
+/** Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action. */
+export function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void {
+  const action = args[0];
+  if (command.unknownAction === undefined || action === undefined || action.startsWith('-')) return;
+  ensure(command.actions !== undefined && Object.hasOwn(command.actions, action), command.unknownAction, action);
 }
 
 /** Option types for the argument parser. */
@@ -192,6 +203,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
     validateMode(action, `${where} action ${id}`, { ...options, ...(action.options as object | undefined) } as CommandMetadata['options']);
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
+  ensure(command.unknownAction === undefined || (typeof command.unknownAction === 'string' && isRecord(command.actions) && errorDefinition(command.unknownAction) !== undefined), 'INVALID_PLUGIN', `${where} unknownAction must be a built-in error code of a command with actions.`);
   ensure(command.output === undefined || schemaIssues(command.output).length === 0, 'INVALID_PLUGIN', `${where} output must be a supported JSON Schema: ${schemaIssues(command.output).join('; ')}`);
   ensure(command.errors === undefined || (Array.isArray(command.errors) && command.errors.every(code => typeof code === 'string' && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))), 'INVALID_PLUGIN', `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }

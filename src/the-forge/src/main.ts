@@ -22,7 +22,7 @@ import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
-import { commandOptions, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
+import { commandOptions, ensureKnownAction, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
 import { globalOptions, value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
@@ -124,7 +124,14 @@ async function run(): Promise<void> {
       // An action's own options (make <generator>) parse only once the action is known: the first argument after
       // the command id, unless an option precedes it.
       const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
-      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) });
+      const parsed = (() => {
+        try { return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) }); }
+        catch (error) {
+          // An unknown action outranks its options: make <unknown> --template fails with UNKNOWN_GENERATOR.
+          ensureKnownAction(command, actionArgs);
+          throw error;
+        }
+      })();
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.
       localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
