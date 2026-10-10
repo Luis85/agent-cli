@@ -127,6 +127,31 @@ describe('incremental metadata updates', () => {
     expect(cache.backlinks('Notes/Plan.md').map(item => item.source)).toEqual(['Bad.md', 'Board.canvas', 'Notes/Ideas.md']);
     expect(metadataState(cache)).toEqual(metadataState(await metadataIndex(files).load()));
   });
+
+  it('forks a loaded index into an independent copy over another repository without reading it again', async () => {
+    const files = vault(), index = metadataIndex(files);
+    expect(await (await index.fork(files)).update([])).toBeNull();
+    const cache = await index.load();
+    const staged = new MemoryFiles(Object.fromEntries(files.files));
+    const reads: string[] = [], read = staged.read.bind(staged);
+    staged.read = async path => { reads.push(path); return read(path); };
+    const fork = await index.fork(staged);
+    expect(metadataState(await fork.load())).toEqual(metadataState(cache));
+    staged.files.set('Notes/Plan.md', 'No links.');
+    await fork.update([{ path: 'Notes/Plan.md', operation: 'updated' }]);
+    expect(reads).toEqual(['Notes/Plan.md']);
+    expect((await fork.load()).backlinks('Notes/Ideas.md')).toEqual([]);
+    expect(cache.backlinks('Notes/Ideas.md').map(item => item.source)).toEqual(['Notes/Plan.md', 'Notes/Plan.md', 'Notes/Plan.md']);
+    expect(metadataState(cache)).toEqual(metadataState(await metadataIndex(files).load()));
+  });
+
+  it('parses content at any path and reports its parse errors', () => {
+    const index = metadataIndex(vault());
+    expect(index.parseContent('.trash/Note.md', new TextEncoder().encode('# Kept\n'))?.headings?.map(item => item.heading)).toEqual(['Kept']);
+    expect(index.parseFile('.trash/Note.md', new TextEncoder().encode('# Kept\n'))).toBeNull();
+    expect(index.parseContent('image.png', new Uint8Array())).toBeNull();
+    expect(() => index.parseContent('Bad.md', new TextEncoder().encode('---\nx: [\n---\n'))).toThrow(expect.objectContaining({ code: 'INVALID_YAML' }));
+  });
 });
 
 describe('the vault rule of enumeration', () => {
