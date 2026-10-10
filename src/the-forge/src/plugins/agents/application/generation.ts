@@ -35,9 +35,10 @@ export class AgentGeneration {
 
   async run(request: GenerateRequest) {
     const sources = await this.sources(request);
-    const generated = generateClaude(sources, { mcp: request.mcp, hooks: request.hooks, settings: request.settings, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
+    const generated = generateClaude(sources, { mcp: request.mcp, hooks: request.hooks, settings: request.settings, allowBroadPermissions: request.allowBroadPermissions === true, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
     if (hasErrors(generated.diagnostics)) {
-      throw agentError('INVALID_AGENT_DEFINITION', 'The definitions cannot be generated together; see details.diagnostics.', { diagnostics: generated.diagnostics.filter(entry => entry.severity === 'error') });
+      const errors = generated.diagnostics.filter(entry => entry.severity === 'error');
+      throw agentError('INVALID_AGENT_DEFINITION', `Generation stopped on ${[...new Set(errors.map(entry => entry.code))].join(', ')} errors; see details.diagnostics.`, { diagnostics: errors });
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.markdown.render(file.metadata, file.body)) }));

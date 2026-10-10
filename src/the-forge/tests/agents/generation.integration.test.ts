@@ -80,4 +80,15 @@ describe('generating Claude agents in a workspace', () => {
     expect(await failure(scope.run(['generate'], { target: 'claude', file: 'team.yaml', plan: true, check: true }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
     expect(await failure(scope.run(['list'], { model: 'x' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
+
+  it('refuses broad allow rules unless --allow-broad-permissions is passed, and lists every written rule', async () => {
+    await scope.put('agents/team.yaml', 'permissions:\n  allow: [shell, "shell:cmd=git status"]\nagents:\n  root:\n    model: auto\n    instruction: Hi.\n');
+    const refused = await failure(generate({ settings: true, plan: true }));
+    expect(refused).toMatchObject({ code: 'INVALID_AGENT_DEFINITION', message: expect.stringContaining('broad-permission'), details: { diagnostics: [expect.objectContaining({ code: 'broad-permission', pointer: '/permissions/allow/0' })] } });
+    expect(await failure(generate({ 'allow-broad-permissions': true }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
+    const plan = await generate({ settings: true, 'allow-broad-permissions': true, plan: true });
+    expect((plan.data.diagnostics as Array<{ code: string; message: string }>).filter(entry => entry.code === 'grants-permission').map(entry => entry.message)).toEqual([
+      '.claude/settings.json permissions.allow gets the rule Bash (broad, allowed by --allow-broad-permissions).', '.claude/settings.json permissions.allow gets the rule Bash(git status).',
+    ]);
+  });
 });

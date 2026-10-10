@@ -10,7 +10,7 @@ export const taskTools = ['TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate'] as 
 /** docker-agent built-in tool name → Claude Code tool. */
 const builtinTools: Readonly<Record<string, string>> = {
   read_file: 'Read', read_multiple_files: 'Read', write_file: 'Write', edit_file: 'Edit',
-  list_directory: 'Glob', directory_tree: 'Glob', search_files_content: 'Grep', create_directory: 'Bash', remove_directory: 'Bash',
+  list_directory: 'Glob', directory_tree: 'Glob', search_files_content: 'Grep',
   shell: 'Bash', fetch: 'WebFetch', user_prompt: 'AskUserQuestion',
   create_todo: 'TaskCreate', create_todos: 'TaskCreate', update_todos: 'TaskUpdate', list_todos: 'TaskList',
   create_task: 'TaskCreate', get_task: 'TaskGet', list_tasks: 'TaskList', update_task: 'TaskUpdate', next_task: 'TaskGet', delete_task: 'TaskUpdate',
@@ -64,17 +64,4 @@ export function translateMatcher(matcher: string): { matcher: string; unknown: s
     else translated.push(...tools);
   }
   return { matcher: [...new Set(translated)].join('|'), unknown };
-}
-
-/**
- * A Claude permission rule for a docker-agent permission pattern: `shell:cmd=git *` → `Bash(git *)`,
- * `mcp:github:get_*` → `mcp__github__get_*`, `mcp:github:*` → `mcp__github`, and built-in tool names or globs.
- */
-export function permissionRules(pattern: string): string[] {
-  const shell = /^shell:cmd=(.+)$/.exec(pattern);
-  if (shell) return [`Bash(${shell[1]})`];
-  const mcp = /^mcp:([^:]+):(.+)$/.exec(pattern);
-  if (mcp) return [mcp[2] === '*' ? `mcp__${mcp[1]}` : `mcp__${mcp[1]}__${mcp[2]}`];
-  if (pattern.includes(':')) return [];
-  return claudeToolsFor(pattern);
 }

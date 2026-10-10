@@ -4,7 +4,7 @@ import { claudeModel } from '../../src/plugins/agents/domain/claude-models.ts';
 import { claudeTools, toolName } from '../../src/plugins/agents/domain/claude-tools.ts';
 import { claudeHooks } from '../../src/plugins/agents/domain/claude-hooks.ts';
 import { commandArguments, mcpVariables, templateExpressions } from '../../src/plugins/agents/domain/templating.ts';
-import { claudeName, permissionRules, translateMatcher } from '../../src/plugins/agents/domain/claude-vocabulary.ts';
+import { claudeName, translateMatcher } from '../../src/plugins/agents/domain/claude-vocabulary.ts';
 
 const options: ClaudeGenerationOptions = { mcp: 'inline', hooks: false, settings: false, commands: false, modelStyle: 'id' };
 const source = (config: Record<string, unknown>) => ({ path: 'agents/team.yaml', sha256: 'a'.repeat(64), config, instructions: {} });
@@ -81,11 +81,10 @@ describe('toolsets', () => {
     expect(mapped.diagnostics).toEqual([expect.objectContaining({ severity: 'warning', code: 'toolset-unsupported', fidelity: 'U', pointer: '/agents/a/toolsets/0' })]);
   });
 
-  it('applies readonly, tool filters and allow/deny lists as permission rules', () => {
-    const readonly = tools([{ type: 'filesystem', allow_list: ['docs', '/tmp/x'] }, { type: 'shell' }], { readonly: true });
-    expect(readonly).toMatchObject({ tools: ['Read', 'Glob', 'Grep'], disallowedTools: ['Write', 'Edit', 'NotebookEdit'], permissions: { allow: ['Read(./docs/**)', 'Edit(./docs/**)', 'Read(//tmp/x/**)', 'Edit(//tmp/x/**)'] } });
+  it('applies readonly and tool filters', () => {
+    const readonly = tools([{ type: 'filesystem' }, { type: 'shell' }], { readonly: true });
+    expect(readonly).toMatchObject({ tools: ['Read', 'Glob', 'Grep'], disallowedTools: ['Write', 'Edit', 'NotebookEdit'] });
     expect(tools([{ type: 'filesystem', tools: ['read_file', 'search_files_content'] }]).tools).toEqual(['Read', 'Grep']);
-    expect(tools([{ type: 'fetch', allowed_domains: ['*.docker.com', '10.0.0.0/8'] }]).permissions.allow).toEqual(['WebFetch(domain:*.docker.com)']);
   });
 
   it('maps stdio, remote and Docker MCP servers with tool grants and Claude variables', () => {
@@ -162,14 +161,12 @@ describe('commands, skills, hooks, permissions and delegation', () => {
     expect(translateMatcher('*')).toEqual({ matcher: '*', unknown: [] });
   });
 
-  it('maps top-level permissions and the main agent into settings with --settings', () => {
-    expect(['shell:cmd=git *', 'mcp:github:get_*', 'mcp:github:*', 'read_*', 'think', 'fetch:url=x'].map(permissionRules)).toEqual([['Bash(git *)'], ['mcp__github__get_*'], ['mcp__github'], ['Read'], [], []]);
-    const config = { permissions: { allow: ['shell:cmd=ls*'], deny: ['think'] }, agents: { lead: agent(), root: agent({ sub_agents: ['lead', 'acme/remote'], handoffs: ['lead'] }) } };
+  it('maps delegation and the main agent into settings with --settings', () => {
+    const config = { agents: { lead: agent(), root: agent({ sub_agents: ['lead', 'acme/remote'], handoffs: ['lead'] }) } };
     const output = generate(config, { settings: true });
-    expect(output.settings).toEqual({ permissions: { allow: ['Bash(ls*)'], ask: [], deny: [] }, agent: 'root' });
+    expect(output.settings).toEqual({ permissions: { allow: [], ask: [], deny: [] }, agent: 'root' });
     expect(output.agents[1]!.metadata.tools).toBe('Agent(lead)');
-    expect(codes(output.diagnostics)).toEqual(expect.arrayContaining(['permission-unsupported:U', 'permission-approximated:A', 'delegation-unsupported:U', 'delegation-approximated:A', 'main-agent-approximated:A']));
-    expect(codes(generate(config).diagnostics)).toContain('permissions-not-generated:U');
+    expect(codes(output.diagnostics)).toEqual(expect.arrayContaining(['delegation-unsupported:U', 'delegation-approximated:A', 'main-agent-approximated:A']));
   });
 
   it('maps max_iterations, preloaded skills and reports unsupported settings and name collisions', () => {

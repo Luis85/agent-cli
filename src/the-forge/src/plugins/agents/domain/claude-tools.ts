@@ -1,16 +1,17 @@
 import { diagnostic, isObject, pointer, record, stringList, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
 import { claudeToolsFor, filesystemTools, readOnlyFilesystemTools, taskTools, writeTools } from './claude-vocabulary.ts';
 import { mcpServer, type McpServer } from './claude-mcp.ts';
+import type { PermissionRule } from './claude-permissions.ts';
 
 /** A Claude tool: a built-in tool name, or one tool (`*` for all) of an MCP server whose generated name is final later. */
 export type ToolGrant = string | { server: McpServer; tool: string };
 /** The `tools` entry of a grant. */
 export const toolName = (grant: ToolGrant) => typeof grant === 'string' ? grant : `mcp__${grant.server.name}__${grant.tool}`;
 
-/** What an agent's toolsets grant in Claude Code. `permissions` become project settings rules with `--settings`. */
+/** What an agent's toolsets grant in Claude Code. `permissions` (deny rules) become project settings rules with `--settings`. */
 export interface ClaudeTools {
   tools: ToolGrant[]; disallowedTools: string[]; memory: boolean; servers: McpServer[];
-  permissions: { allow: string[]; deny: string[] };
+  permissions: PermissionRule[];
   diagnostics: AgentDiagnostic[];
 }
 interface ResolvedToolset { toolset: Record<string, unknown>; at: string }
@@ -30,11 +31,18 @@ function resolvedToolsets(config: AgentConfigDocument, name: string, agent: Reco
   });
 }
 
-/** Path rules for a filesystem allow or deny list entry. */
+/** Path rules for a filesystem deny list entry. */
 function pathRules(entry: string): string[] {
   const root = entry.startsWith('/') ? `/${entry}` : entry.startsWith('~') ? entry : `./${entry.replace(/^\.\/?/, '')}`;
   const glob = `${root.replace(/\/+$/, '')}/**`;
   return [`Read(${glob})`, `Edit(${glob})`];
+}
+
+/** Deny rules for a docker-agent domain pattern: a bare host also matches its subdomains, `.x` and `*.x` only subdomains. */
+function domainRules(domain: string): string[] {
+  const host = domain.toLowerCase();
+  if (host.startsWith('*.') || host.startsWith('.')) return [`WebFetch(domain:*.${host.replace(/^\*?\./, '')})`];
+  return [`WebFetch(domain:${host})`, `WebFetch(domain:*.${host})`];
 }
 
 const ignoredFields: Readonly<Record<string, string>> = {
@@ -56,9 +64,10 @@ function filtered(granted: readonly string[], toolset: Record<string, unknown>, 
  * servers have equivalents; think is covered by `effort`; every other toolset type is not emitted.
  */
 export function claudeTools(config: AgentConfigDocument, name: string, agent: Record<string, unknown>): ClaudeTools {
-  const result: ClaudeTools = { tools: [], disallowedTools: [], memory: false, servers: [], permissions: { allow: [], deny: [] }, diagnostics: [] };
+  const result: ClaudeTools = { tools: [], disallowedTools: [], memory: false, servers: [], permissions: [], diagnostics: [] };
   const warn = (code: string, at: string, message: string, fidelity: 'A' | 'U' = 'A') => result.diagnostics.push(diagnostic(fidelity === 'A' ? 'warning' : 'info', code, at, message, fidelity));
   const agentReadonly = agent.readonly === true;
+  const restriction = (at: string, message: string) => result.diagnostics.push(diagnostic('warning', 'restriction-unsupported', at, message, 'U'));
   for (const { toolset, at } of resolvedToolsets(config, name, agent)) {
     const type = String(toolset.type), readonly = agentReadonly || toolset.readonly === true;
     for (const [field, label] of Object.entries(ignoredFields)) if (toolset[field] !== undefined && !(type === 'mcp' && (field === 'env' || field === 'headers'))) {
@@ -67,22 +76,22 @@ export function claudeTools(config: AgentConfigDocument, name: string, agent: Re
     if (type === 'filesystem') {
       result.tools.push(...filtered(readonly ? readOnlyFilesystemTools : filesystemTools, toolset, at, result.diagnostics));
       warn('toolset-approximated', at, `The filesystem toolset is approximated by the Claude tools ${(readonly ? readOnlyFilesystemTools : filesystemTools).join(', ')}.`);
-      for (const [field, list] of [['allow_list', result.permissions.allow], ['deny_list', result.permissions.deny]] as const) {
-        const entries = stringList(toolset[field]);
-        if (entries.length === 0) continue;
-        list.push(...entries.flatMap(pathRules));
-        warn('permission-approximated', `${at}/${field}`, `${field} becomes Read and Edit permission rules in project settings with --settings.`);
+      if (stringList(toolset.allow_list).length > 0) restriction(`${at}/allow_list`, 'allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent\'s file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).');
+      const denied = stringList(toolset.deny_list);
+      if (denied.length > 0) {
+        result.permissions.push(...denied.flatMap(pathRules).map(rule => ({ list: 'deny' as const, rule, at: `${at}/deny_list` })));
+        warn('permission-approximated', `${at}/deny_list`, 'deny_list becomes Read and Edit deny rules in project settings with --settings.');
       }
     } else if (type === 'shell') {
       if (readonly) warn('readonly-approximated', at, 'A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.');
       else result.tools.push(...filtered(['Bash'], toolset, at, result.diagnostics));
     } else if (type === 'fetch') {
       result.tools.push(...filtered(['WebFetch'], toolset, at, result.diagnostics));
-      for (const [field, list] of [['allowed_domains', result.permissions.allow], ['blocked_domains', result.permissions.deny]] as const) {
-        const domains = stringList(toolset[field]);
-        if (domains.length === 0) continue;
-        list.push(...domains.filter(domain => !domain.includes('/')).map(domain => `WebFetch(domain:${domain.replace(/^\*\./, '*.')})`));
-        warn('permission-approximated', `${at}/${field}`, `${field} becomes WebFetch(domain:…) permission rules in project settings with --settings; CIDR ranges are not emitted.`);
+      if (stringList(toolset.allowed_domains).length > 0) restriction(`${at}/allowed_domains`, 'allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.');
+      const blocked = stringList(toolset.blocked_domains);
+      if (blocked.length > 0) {
+        result.permissions.push(...blocked.filter(domain => !domain.includes('/')).flatMap(domainRules).map(rule => ({ list: 'deny' as const, rule, at: `${at}/blocked_domains` })));
+        warn('permission-approximated', `${at}/blocked_domains`, 'blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.');
       }
     } else if (type === 'todo' || type === 'tasks') {
       result.tools.push(...filtered(taskTools, toolset, at, result.diagnostics));

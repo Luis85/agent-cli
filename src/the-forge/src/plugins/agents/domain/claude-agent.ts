@@ -4,6 +4,7 @@ import { claudeModel, type ModelStyle } from './claude-models.ts';
 import { claudeTools, type ToolGrant } from './claude-tools.ts';
 import { claudeHooks, type HookCommand } from './claude-hooks.ts';
 import type { McpServer } from './claude-mcp.ts';
+import type { PermissionRule } from './claude-permissions.ts';
 import { templateExpressions } from './templating.ts';
 
 /**
@@ -12,7 +13,7 @@ import { templateExpressions } from './templating.ts';
  */
 export interface ClaudeAgentDraft {
   agent: string; name: string; metadata: Record<string, unknown>; prompt: string;
-  grants: ToolGrant[]; disallowed: string[]; servers: McpServer[]; permissions: { allow: string[]; deny: string[] };
+  grants: ToolGrant[]; disallowed: string[]; servers: McpServer[]; permissions: PermissionRule[];
   hooks?: Record<string, unknown[]>; hookCommands: HookCommand[];
 }
 

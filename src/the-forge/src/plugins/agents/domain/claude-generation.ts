@@ -1,10 +1,11 @@
 import { validateClaudeAgent } from '../../../domain/claude/agents.ts';
-import { agentEntries, defaultAgent, diagnostic, pointer, record, stringList, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
-import { claudeName, permissionRules } from './claude-vocabulary.ts';
+import { agentEntries, defaultAgent, diagnostic, pointer, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
+import { claudeName } from './claude-vocabulary.ts';
 import { claudeAgent, type ClaudeAgentDraft } from './claude-agent.ts';
 import { commandSkills, type CommandSkill } from './claude-commands.ts';
 import type { ModelStyle } from './claude-models.ts';
 import { completeAgent, type McpMode } from './claude-execution.ts';
+import { reviewedRules, serverNames, topLevelRules, type PermissionRule } from './claude-permissions.ts';
 
 export interface ClaudeGenerationOptions {
   /** `none` (the default) writes no MCP servers; `inline` puts them in agent frontmatter; `project` merges them into `.mcp.json`. */
@@ -13,6 +14,8 @@ export interface ClaudeGenerationOptions {
   hooks: boolean;
   /** Merge permissions and the main agent into `.claude/settings.json`. */
   settings: boolean;
+  /** Write broad allow rules (`Bash`, `Edit`, `WebFetch`, a whole MCP server, …); without it they are errors. */
+  allowBroadPermissions?: boolean;
   /** Generate `.claude/skills/<name>/SKILL.md` from commands. */
   commands: boolean;
   modelStyle: ModelStyle;
@@ -48,20 +51,6 @@ function projectServers(drafts: ClaudeAgentDraft[], servers: Record<string, Reco
   }
 }
 
-function settingsPermissions(source: DefinitionSource, drafts: ClaudeAgentDraft[], diagnostics: AgentDiagnostic[]) {
-  const permissions = { allow: drafts.flatMap(draft => draft.permissions.allow), ask: [] as string[], deny: drafts.flatMap(draft => draft.permissions.deny) };
-  for (const list of ['allow', 'ask', 'deny'] as const) {
-    const patterns = stringList(record(source.config.permissions)[list]);
-    patterns.forEach((pattern, index) => {
-      const rules = permissionRules(pattern);
-      if (rules.length === 0) diagnostics.push(diagnostic('info', 'permission-unsupported', pointer('permissions', list, index), `The permission pattern ${pattern} has no Claude rule and is not emitted.`, 'U'));
-      permissions[list].push(...rules);
-    });
-    if (patterns.length > 0) diagnostics.push(diagnostic('warning', 'permission-approximated', pointer('permissions', list), `permissions.${list} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.`, 'A'));
-  }
-  return permissions;
-}
-
 function generateSource(source: DefinitionSource, names: ReadonlyMap<string, string>, options: ClaudeGenerationOptions) {
   const diagnostics: AgentDiagnostic[] = [], drafts: ClaudeAgentDraft[] = [], skills: CommandSkill[] = [];
   const selected = agentEntries(source.config).filter(([name]) => !options.agents || options.agents.includes(name));
@@ -75,7 +64,14 @@ function generateSource(source: DefinitionSource, names: ReadonlyMap<string, str
   }
   for (const key of unsupportedTopLevel) if (source.config[key] !== undefined) diagnostics.push(diagnostic('info', 'setting-unsupported', pointer(key), `The top-level ${key} section has no Claude equivalent and is not emitted.`, 'U'));
   if (!options.settings && source.config.permissions !== undefined) diagnostics.push(diagnostic('info', 'permissions-not-generated', '/permissions', 'Permissions become project settings rules with --settings.', 'U'));
-  return { drafts, skills, diagnostics, permissions: options.settings ? settingsPermissions(source, drafts, diagnostics) : undefined };
+  return { drafts, skills, diagnostics };
+}
+
+/** The settings rules of one definition file: its agents' deny rules and its top-level permissions, reviewed. */
+function settingsRules(source: DefinitionSource, drafts: readonly ClaudeAgentDraft[], options: ClaudeGenerationOptions, diagnostics: AgentDiagnostic[]): PermissionRule[] {
+  const top = topLevelRules(source.config, serverNames(drafts), options.mcp);
+  diagnostics.push(...top.diagnostics);
+  return reviewedRules([...drafts.flatMap(draft => draft.permissions), ...top.rules], options.allowBroadPermissions === true, diagnostics);
 }
 
 /** Skills share one namespace: identical skills merge, conflicting names are prefixed with their agent. */
@@ -119,7 +115,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
       output.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source.path, metadata, body: draft.prompt });
     }
     skills.push(...generated.skills.map(skill => ({ ...skill, source })));
-    for (const list of ['allow', 'ask', 'deny'] as const) permissions[list].push(...(generated.permissions?.[list] ?? []));
+    if (options.settings) for (const rule of settingsRules(source, generated.drafts, options, generated.diagnostics)) permissions[rule.list].push(rule.rule);
     diagnostics.push(...generated.diagnostics.map(entry => ({ ...entry, path: source.path })));
   }
   output.skills = uniqueSkills(skills, diagnostics);

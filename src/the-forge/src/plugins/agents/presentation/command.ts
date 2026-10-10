@@ -31,7 +31,8 @@ const options = {
   agent: option.string('generate: only this docker-agent agent.'),
   mcp: option.string('generate: MCP servers start processes or reach remote services, so none are written by default; inline writes them in agent frontmatter, project merges them into the project .mcp.json.', { enum: ['none', 'inline', 'project'], default: 'none' }),
   hooks: option.boolean('generate: write agent hooks, which run commands; without it hooks are reported and skipped.'),
-  settings: option.boolean('generate: merge permission rules and the main agent into .claude/settings.json.'),
+  settings: option.boolean('generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic.'),
+  'allow-broad-permissions': option.boolean('generate --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors.'),
   commands: option.boolean('generate: generate commands as .claude/skills/<name>/SKILL.md.'),
   'model-style': option.string('generate: emit Anthropic model ids, or Claude aliases (opus, sonnet, haiku, fable).', { enum: ['id', 'alias'], default: 'id' }),
   ...Object.fromEntries(Object.entries(reviewOptions).map(([key, schema]) => [key, { ...schema, description: `generate: ${schema.description}` }])),
@@ -40,7 +41,7 @@ const accepted: Record<Action, readonly string[]> = {
   list: [], inspect: [], validate: [],
   create: ['file', 'model', 'description', 'instruction', 'toolset', 'if-match'],
   import: ['from', 'file', 'if-match'],
-  generate: ['target', 'file', 'agent', 'mcp', 'hooks', 'settings', 'commands', 'model-style', ...Object.keys(reviewOptions)],
+  generate: ['target', 'file', 'agent', 'mcp', 'hooks', 'settings', 'allow-broad-permissions', 'commands', 'model-style', ...Object.keys(reviewOptions)],
 };
 
 function choice<T extends string>(flags: CommandFlags, key: string, allowed: readonly T[], fallback: T): T {
@@ -59,7 +60,7 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
   return {
     id: 'agents',
     description: 'Manage docker-agent definitions (list, inspect, validate, create, import) and generate Claude Code agents from them.',
-    usage: 'agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project] [--hooks] [--settings] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
+    usage: 'agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
     scope: 'project', discovery: false, mutating: false, defaultAction: 'list',
     actions: {
       list: { description: 'List definition files with their agents, default agent and diagnostic counts.' },
@@ -96,11 +97,12 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       }
       arity(args, 1);
       ensure(value(flags, 'target', true) === 'claude', 'INVALID_ARGUMENT', '--target must be claude.');
+      ensure(flags['allow-broad-permissions'] === undefined || flags.settings === true, 'INVALID_ARGUMENT', '--allow-broad-permissions applies to the rules --settings writes; pass --settings too.');
       const controls = await generationControls(flags, context.workspace.files);
       const file = value(flags, 'file'), agent = value(flags, 'agent');
       return agents.generate({
         ...(file ? { file } : {}), ...(agent ? { agent } : {}),
-        mcp: choice(flags, 'mcp', ['none', 'inline', 'project'], 'none'), hooks: flags.hooks === true, settings: flags.settings === true, commands: flags.commands === true,
+        mcp: choice(flags, 'mcp', ['none', 'inline', 'project'], 'none'), hooks: flags.hooks === true, settings: flags.settings === true, allowBroadPermissions: flags['allow-broad-permissions'] === true, commands: flags.commands === true,
         modelStyle: choice(flags, 'model-style', ['id', 'alias'], 'id'),
         mode: controls.mode, ...(controls.manifestPath ? { manifestPath: controls.manifestPath } : {}), ...(controls.revisions ? { revisions: controls.revisions } : {}),
       });
