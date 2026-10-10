@@ -27,6 +27,8 @@ export class StagedFiles implements FileRepository {
   /** The plan operation the next commits belong to. */
   operation = -1;
   readonly folderMoves: StagedFolderMove[] = [];
+  /** The operation that first moved each original file away from its original path. */
+  readonly movedBy = new Map<string, number>();
   private readonly staged = new Map<string, StagedFile>();
   /** Paths whose original file left them; the underlying file is no longer visible there. */
   private readonly vacated = new Set<string>();
@@ -144,6 +146,7 @@ export class StagedFiles implements FileRepository {
 
   private async moveFile(from: string, to: string): Promise<FileRename & { kind: 'file' }> {
     const file = (await this.current(from))!;
+    if (file.origin && !this.movedBy.has(file.origin.path)) this.movedBy.set(file.origin.path, this.operation);
     this.staged.delete(from);
     this.vacated.add(from);
     this.staged.set(to, { ...file, operation: this.operation });

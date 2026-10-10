@@ -131,6 +131,31 @@ describe('apply plans', () => {
     expect(changing.records()).toEqual([]);
   });
 
+  it('names the operation whose moved, trashed or folder-moved source changed between planning and commit', async () => {
+    const cases: [unknown[], string, number, string][] = [
+      [[{ op: 'write', path: 'specs/README.md', content: 'specs' }, { op: 'move', from: 'notes/Plan.md', to: 'specs/Plan.md' }], 'notes/Plan.md', 1, 'notes/Plan.md'],
+      [[{ op: 'edit', path: 'Index.md', append: 'x\n' }, { op: 'delete', path: 'notes/Scratch.md', allowBrokenLinks: true }], 'notes/Scratch.md', 1, 'notes/Scratch.md'],
+      [[{ op: 'write', path: 'specs/README.md', content: 'specs' }, { op: 'move', from: 'notes', to: 'archive/notes' }], 'notes/Old.md', 1, 'notes'],
+    ];
+    for (const [operations, changed, operation, path] of cases) {
+      await rm(root, { recursive: true, force: true });
+      await writeVault(root, vault);
+      const scope = await runner();
+      // The test hook: another writer changes the source after the plan was built, just before it commits.
+      const commit = scope.workspace.commit.bind(scope.workspace);
+      vi.spyOn(scope.workspace, 'commit').mockImplementation(async (...args) => {
+        await writeFile(join(root, changed), 'changed elsewhere\n');
+        return commit(...args);
+      });
+      const failure = await scope.run(operations).then(() => undefined, (error: unknown) => error as { code: string; message: string; details: Record<string, unknown> });
+      expect(failure, path).toMatchObject({ code: 'CONFLICT', details: { operation, path } });
+      expect(failure!.message).toMatch(new RegExp(`^Operation ${operation} \\(\\w+\\): .*ifMatch`));
+      expect(failure!.message).not.toContain('--if-match');
+      expect(await text(changed)).toBe('changed elsewhere\n');
+      vi.restoreAllMocks();
+    }
+  });
+
   it('commits a moved folder as one folder rename and refuses to reuse a vacated path', async () => {
     await writeVault(root, vault);
     const { run, records } = await runner();

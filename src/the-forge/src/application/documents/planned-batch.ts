@@ -5,7 +5,8 @@ import type { StagedFile, StagedFiles } from './staged-files.ts';
 
 /**
  * The planned state as one guarded batch: `previous` holds the original of each written file for dry-run diffs,
- * `trash` the trash destinations among the renames, and `operations` the plan operation behind each batch path.
+ * `trash` the trash destinations among the renames, and `operations` the plan operation behind each batch path: the
+ * one that placed or wrote a destination, and the one that moved a rename's source (a file or folder) away.
  */
 export interface PlannedBatch { batch: Required<Pick<FileBatch, 'renames' | 'writes'>>; previous: Map<string, FileSnapshot>; trash: string[]; operations: Map<string, number> }
 
@@ -75,6 +76,11 @@ export async function plannedBatch(staged: StagedFiles, trashDestinations: reado
     if (source === undefined) continue;
     const operation = operations.get(path)!;
     throw forgeError('INVALID_PLAN', `Operation ${operation} places ${path} where the same plan moves or deletes ${source}; one batch cannot reuse a vacated path. Split the plan in two.`, { operation, path, vacated: source });
+  }
+  // A commit conflict on a rename names its source, the path the original file or folder had.
+  for (const rename of renames) {
+    const mover = staged.movedBy.get(rename.from) ?? staged.folderMoves.find(move => move.from === rename.from)?.operation;
+    if (mover !== undefined && !operations.has(rename.from)) operations.set(rename.from, mover);
   }
   const trash = trashDestinations.filter(path => renames.some(rename => within(rename.to, path)));
   return { batch: { renames, writes }, previous, trash, operations };
