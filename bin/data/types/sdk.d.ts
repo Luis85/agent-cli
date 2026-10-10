@@ -16,3 +16,6 @@ export type { FileManager, MoveOptions, DeleteOptions, BrokenLink } from './appl
 export type { UnrewrittenLink } from './application/vault/link-plan.ts';
 export type { CachedMetadata } from './domain/metadata/cache.ts';
 export type { LinkCounts } from './application/metadata/ports.ts';
+export type { BacklogConnector, BoundConnection, Connection, ConnectorDescription, ConnectorEventPayloads, ConnectorHub, ProbeResult } from './application/connectors/contract.ts';
+export type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch, RemoteQuery, SyncField } from './domain/connectors/items.ts';
+export type { HttpClient, HttpRequest, HttpResponse } from './application/connectors/http.ts';

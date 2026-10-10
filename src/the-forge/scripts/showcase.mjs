@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBacklog } from './showcase/backlog.mjs';
+import { buildSync, showcaseConnections } from './showcase/sync.mjs';
 import { forgeCli } from './showcase/cli.mjs';
 import { buildAutomation, buildCode, buildProject } from './showcase/code.mjs';
 import { buildDataSources } from './showcase/data.mjs';
@@ -33,8 +34,11 @@ const workspaceRoot = dirname(bin);
 const target = join(workspaceRoot, 'src', 'forge-showcase');
 const executable = join(bin, 'forge.js');
 
-/** A generic workspace configuration: independent of local settings, with projects under src like this checkout. */
-const workspaceConfig = { schemaVersion: 1, paths: { projects: 'src' }, settings: { language: 'en' } };
+/**
+ * A generic workspace configuration: independent of local settings, with projects under src like this checkout, and
+ * the showcase's two backlog connections (the token variables stay unset, so nothing reaches the network).
+ */
+const workspaceConfig = { schemaVersion: 1, paths: { projects: 'src' }, settings: { language: 'en' }, plugins: { settings: { connector: { connections: showcaseConnections } } } };
 
 function options() {
   const args = process.argv.slice(2);
@@ -59,12 +63,13 @@ async function generate(workspace) {
   const exploration = await exploreVault(cli);
   // After the vault reports: backlog leaves have no inbound links by design and live outside docs.
   const backlog = buildBacklog(cli);
+  const sync = buildSync(cli);
   buildAutomation(cli);
   configureToolchain(cli);
   cli.begin('Documentation');
   const log = [...cli.log];
   cli.create(buildLogPath, buildLog(log));
-  cli.replace('README.md', readme(queries, exploration, backlog));
+  cli.replace('README.md', readme(queries, exploration, backlog, sync));
   assertContained(workspace);
   return join(workspace, project.directory);
 }

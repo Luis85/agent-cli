@@ -282,6 +282,14 @@ node bin/forge.js backlog release list --today 2026-10-20
 node bin/forge.js backlog check
 ```
 
+## Backlog sync
+
+```sh
+node bin/forge.js create 'backlog/Azure DevOps sync.base' --stdin < input
+node bin/forge.js connectors list
+node bin/forge.js backlog sync --base 'backlog/Azure DevOps sync.base' --dry-run
+```
+
 ## Project CI workflow
 
 ```sh
