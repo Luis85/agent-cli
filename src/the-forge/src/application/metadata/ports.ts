@@ -33,7 +33,7 @@ export interface MetadataUpdate { changed: string[]; deleted: string[]; resolved
 
 /** Read access to a loaded vault metadata index. Paths are relative to the bound workspace or project root. */
 export interface MetadataCache {
-  /** Visible vault paths in repository order; dot-prefixed files and folders are excluded. */
+  /** Visible vault paths in repository order; dot-prefixed files and folders are excluded. The same array is returned until an update, which replaces it. */
   files(): readonly string[];
   /** The parsed metadata of a Markdown or Canvas file, or null for other, unknown or unparseable files. */
   getFileCache(path: string): CachedMetadata | null;

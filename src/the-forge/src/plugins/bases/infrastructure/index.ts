@@ -80,7 +80,7 @@ function baseFile(path: string, cache: MetadataCache, problems: ReadonlyMap<stri
  * Adapts the kernel metadata cache to the evaluator's file inputs, adding filesystem sizes and dates. A note that
  * cannot be fully indexed degrades on its own and is reported in `warnings`, in vault path order.
  */
-export async function indexBaseFiles(cache: MetadataCache, dates: (path: string) => Promise<FileDates>): Promise<BaseIndex> {
+async function indexBaseFiles(cache: MetadataCache, dates: (path: string) => Promise<FileDates>): Promise<BaseIndex> {
   const problems = new Map(cache.issues().map(issue => [issue.path, issue.message]));
   const warnings: BaseIndexWarning[] = [];
   const indexed = cache.files().map(path => baseFile(path, cache, problems, warnings));
@@ -95,6 +95,21 @@ export async function indexBaseFiles(cache: MetadataCache, dates: (path: string)
     }
   }
   return { files, warnings };
+}
+
+const indexes = new WeakMap<MetadataCache, { files: readonly string[]; index: Promise<BaseIndex> }>();
+/**
+ * `indexBaseFiles`, shared by every query over the same, unchanged metadata cache: the backlog's view and its
+ * release view in one invocation index the vault once. Any metadata update replaces `cache.files()`, which starts
+ * a new index.
+ */
+export function sharedBaseIndex(cache: MetadataCache, dates: (path: string) => Promise<FileDates>): Promise<BaseIndex> {
+  const cached = indexes.get(cache);
+  if (cached !== undefined && cached.files === cache.files()) return cached.index;
+  const index = indexBaseFiles(cache, dates);
+  indexes.set(cache, { files: cache.files(), index });
+  index.catch(() => { if (indexes.get(cache)?.index === index) indexes.delete(cache); });
+  return index;
 }
 
 export async function basePropertyTypes(files: FileRepository): Promise<Record<string, PropertyValueType>> {

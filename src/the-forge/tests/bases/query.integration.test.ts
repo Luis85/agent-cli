@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stringify } from 'yaml';
 import { Bases } from '../../src/plugins/bases/application/query.ts';
-import { basesEngine } from '../support/metadata.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
+import { NodeBasesQueryEngine } from '../../src/plugins/bases/infrastructure/engine.ts';
+import { basesEngine, metadataIndex } from '../support/metadata.ts';
 
 let root: string, bases: Bases;
 const put = async (path: string, content: string | Uint8Array) => {
@@ -132,6 +136,21 @@ describe('native Bases repository queries without Obsidian', () => {
     ]);
     // An exact path beats closeness: Linker.md links the root Plan.md, so nothing links to docs/Plan.md.
     expect((await bases.query(path, { view: 'Backlinked' })).files).toEqual(['docs/README.md']);
+  });
+
+  it('indexes once per metadata state and again after the metadata changes', async () => {
+    await put('A.md', '---\nstatus: open\n---\n');
+    const path = await definition({ filters: 'status == "open"' });
+    const files = await NodeFiles.at(root), metadata = metadataIndex(files), dates = nodeFileDates(files.root);
+    let reads = 0;
+    const shared = new Bases(new NodeBasesQueryEngine(files, new ObsidianDocuments(), () => metadata.load(), path => { reads++; return dates(path); }));
+    expect((await shared.query(path)).files).toEqual(['A.md']);
+    expect((await shared.query(path, { limit: 5 })).files).toEqual(['A.md']);
+    expect(reads).toBe(2);
+    await put('B.md', '---\nstatus: open\n---\n');
+    await metadata.update([{ path: 'B.md', operation: 'created' }]);
+    expect((await shared.query(path)).files).toEqual(['A.md', 'B.md']);
+    expect(reads).toBe(5);
   });
 
   it('publishes the pinned evaluator and its oracle limitations', () => {

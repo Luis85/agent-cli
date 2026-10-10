@@ -8,7 +8,7 @@ import type { MetadataCache } from '../../../application/metadata/ports.ts';
 import { forgeError, errorMessage, ensure, isRecord } from '../../../domain/shared/errors.ts';
 import type { FileDates } from '../../../application/plugins/core-plugins.ts';
 import { BaseRowContexts } from './contexts.ts';
-import { basePropertyTypes, indexBaseFiles } from './index.ts';
+import { basePropertyTypes, sharedBaseIndex } from './index.ts';
 import { baseExpression, baseFilter, internalContext, internalFormula, internalTag, internalGuard } from './expressions.ts';
 
 interface Ordering { property: string; direction: 'ASC' | 'DESC'; expression: CompiledExpression }
@@ -72,7 +72,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
         'Links resolve by path through the kernel metadata cache; an ambiguous link path resolves to the closest candidate with a warning, and alias-only links stay unresolved.',
         'A note that cannot be parsed is indexed without properties, links or tags and reported in warnings.',
         'Rows sort by typed values with host-locale natural string collation; equal keys use file path.',
-        'The filesystem is indexed once per invocation, without a transactional snapshot or live refresh.',
+        'The filesystem is indexed once per invocation and metadata state, without a transactional snapshot or live refresh.',
       ],
     };
   }
@@ -93,7 +93,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
     const grouping = view.groupBy === undefined ? undefined : ordering(view.groupBy);
     ensure(view.groupOrder === undefined || (grouping !== undefined && Array.isArray(view.groupOrder)), 'INVALID_BASE_QUERY', 'groupOrder requires groupBy and a list of visible group values.');
     const groupOrder = view.groupOrder as unknown[] | undefined;
-    const { files: indexed, warnings } = await indexBaseFiles(await this.metadata(), this.dates);
+    const { files: indexed, warnings } = await sharedBaseIndex(await this.metadata(), this.dates);
     const contextPath = options.context ?? path;
     const thisFile = indexed.find(file => file.path === contextPath);
     ensure(thisFile, 'BASE_CONTEXT_NOT_FOUND', `Base context is not an indexed vault file: ${contextPath}`);
