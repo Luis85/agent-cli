@@ -1,5 +1,5 @@
 import { ensure, summarizeError, errorMessage } from '../../domain/shared/errors.ts';
-import { isStructured, isTextLike, type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
+import { isInTrash, isStructured, isTextLike, type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import { unifiedDiff } from '../../domain/documents/diff.ts';
 import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
@@ -22,8 +22,6 @@ export interface WriteOptions { diff?: boolean }
  * run diffs each write against, keyed by the written path; without it dry runs carry no diffs.
  */
 export interface CommitOptions { operation: 'move' | 'delete'; trash?: boolean; previous?: ReadonlyMap<string, FileSnapshot> }
-const trashFolder = '.trash';
-const inTrash = (path: string) => path === trashFolder || path.startsWith(`${trashFolder}/`);
 const utf8 = (bytes: Uint8Array): string | undefined => {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { return undefined; }
@@ -44,7 +42,6 @@ export class Workspace {
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
-  // fallow-ignore-next-line unused-class-member
   async read(path: string) {
     return this.observe('read', [path], async () => {
       const file = await this.files.read(path);
@@ -115,7 +112,7 @@ export class Workspace {
       for (const { path, operation, bytes } of changes) await publishHostEvent(this.events, 'workspace.quick-preview', { path, operation, bytes });
       return;
     }
-    for (const path of folders) if (!(trash && inTrash(path))) await this.notify(path, 'vault.create', { path, kind: 'folder', operation: 'created' });
+    for (const path of folders) if (!(trash && isInTrash(path))) await this.notify(path, 'vault.create', { path, kind: 'folder', operation: 'created' });
     if (trash) {
       for (const rename of renames) if (rename.kind === 'file') await this.notify(rename.from, 'vault.delete', { path: rename.from, kind: 'file', revision: rename.revision, bytes: rename.bytes, operation: 'deleted' });
       for (const rename of [...renames].reverse()) if (rename.kind === 'folder') await this.notify(rename.from, 'vault.delete', { path: rename.from, kind: 'folder', operation: 'deleted' });

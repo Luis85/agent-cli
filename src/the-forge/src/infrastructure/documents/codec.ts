@@ -106,7 +106,7 @@ export class ObsidianDocuments implements DocumentCodec {
   validate(path: string, bytes: Uint8Array): void {
     if (fileKind(path) === 'text') textOf(bytes); else this.inspect(path, bytes);
   }
-  properties(bytes: Uint8Array, changes: Record<string, unknown>): Uint8Array {
+  properties(bytes: Uint8Array, changes: Record<string, unknown>, remove: readonly string[] = []): Uint8Array {
     const parts = parseMarkdownParts(textOf(bytes));
     const doc = yamlDocument(parts.yaml || '{}');
     yamlValue(doc);
@@ -117,6 +117,7 @@ export class ObsidianDocuments implements DocumentCodec {
       ensure(!['__proto__', 'constructor', 'prototype'].includes(key), 'INVALID_KEY', key);
       doc.set(key, value);
     }
+    for (const key of remove) doc.delete(key);
     const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
     const result = encode(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate('note.md', result);

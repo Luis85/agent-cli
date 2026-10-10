@@ -53,6 +53,18 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 
 **`WORKSPACE_BUSY`** (exit 4, retryable): see the [write contract](cli.md#write-contract) for `details.lock` and `details.stale`.
 
+## Recovering moves and deletions
+
+**`HAS_BACKLINKS`** (exit 2): `delete` found files outside the deleted path that link into it. `details.backlinks` lists each link as `{source, target, kind, line, original}`: `kind` is `link`, `embed`, `frontmatter` or `canvas`, `line` is the 1-based line of a body link and `null` otherwise, and frontmatter and Canvas links add the property `key` or Canvas `node`. Dry runs refuse the same way. Rewrite the links (or `move` the file, which rewrites them), or pass `--allow-broken-links` to delete anyway; the result then lists them in `data.brokenLinks`.
+
+**`DESTINATION_EXISTS`** (exit 2): `move` or `rename` never replaces an existing file or folder. `details` is `{path, from}`. Choose another destination, or move or delete the existing entry first. A rename that only changes letter case is allowed, including on case-insensitive filesystems.
+
+**`PROTECTED_PATH`** (exit 2): `move` and `delete` refuse the scope's `.obsidian` and `.forge` folders, `bin` at workspace scope, and folders that contain a `.git` repository. `.git` itself and the scope root are invalid paths. `details` names the `path` and the `protected` root.
+
+**`INVALID_MOVE`** (exit 2): the destination equals the source, lies inside the moved folder, or a `rename` name contains `/`.
+
+A stale `--if-match` for the moved or deleted path, or a referring file that changed while links were planned, fails with `CONFLICT`; reread with `read` (files) or `delete --dry-run`/`move --dry-run` and retry.
+
 ## Codes
 
 | Code | Exit | Category | Retryable | Summary | Hint |
@@ -80,6 +92,10 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `UNSUPPORTED_EDIT` | 2 | input | no | This edit is not supported for the file kind. | Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments. |
 | `INVALID_PLAN` | 2 | input | no | The write batch contains duplicate or overlapping paths. | Write each path once and do not write a file where another write needs a directory. |
 | `WORKSPACE_BUSY` | 4 | busy | yes | Another Forge writer holds the workspace lock. | Wait and retry. If `error.details.stale` is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in `error.details.lock` yourself first. |
+| `DESTINATION_EXISTS` | 2 | conflict | no | The move or rename destination already exists. | Choose a destination that does not exist (`error.details.path`), or move or delete the existing file first; Forge never overwrites a destination. |
+| `PROTECTED_PATH` | 2 | input | no | The path is protected from moves and deletion. | Do not move or delete the scope root, `.git`, `.obsidian` or, at workspace scope, `bin`; a folder holding a `.git` repository is protected too. |
+| `INVALID_MOVE` | 2 | input | no | The move or rename is not possible. | Use a destination that differs from the source and is not inside it; rename takes a new name without slashes. |
+| `HAS_BACKLINKS` | 2 | conflict | no | Other notes still link to the file or folder. | Update or remove the links in `error.details.backlinks` first, move the file instead, or pass `--allow-broken-links` to delete anyway. |
 | `ROLLBACK_FAILED` | 1 | runtime | no | A failed write could not restore every file. | Inspect the files named in the message and repair them before retrying. |
 | `INVALID_FRONTMATTER` | 2 | input | no | The YAML frontmatter is invalid. | Fix the frontmatter so it is a YAML mapping, then validate the note. |
 | `INVALID_YAML` | 2 | input | no | The YAML document is invalid. | Fix the YAML syntax, keys or aliases named in the message. |

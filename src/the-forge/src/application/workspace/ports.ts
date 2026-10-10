@@ -38,6 +38,7 @@ export interface CommitObserver { committed(batch: CommittedBatch): Promise<void
 export interface DocumentCodec {
   inspect(path: string, bytes: Uint8Array): unknown;
   validate(path: string, bytes: Uint8Array): void;
-  properties(bytes: Uint8Array, changes: Record<string, unknown>): Uint8Array;
+  /** Sets each top-level frontmatter property in `changes` and deletes each key in `remove`, preserving the body and YAML formatting. */
+  properties(bytes: Uint8Array, changes: Record<string, unknown>, remove?: readonly string[]): Uint8Array;
   patch(path: string, bytes: Uint8Array, pointer: string, value: unknown): Uint8Array;
 }

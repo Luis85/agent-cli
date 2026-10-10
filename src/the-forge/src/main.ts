@@ -47,6 +47,7 @@ import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
+import { createApp } from './application/vault/app.ts';
 import { basesCommand } from './presentation/bases/commands.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/cli/arguments.ts';
@@ -141,7 +142,8 @@ async function run(): Promise<void> {
       const workspace = project ? environment.within(scopedFiles, resolve(files.root, project.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
-      const context: CommandContext = { workspace, events, claude, metadata: vaultMetadata, ...activeContext, input: async () => {
+      const app = createApp({ workspace, metadata: vaultMetadata, events, project });
+      const context: CommandContext = { workspace, events, claude, metadata: vaultMetadata, app, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));

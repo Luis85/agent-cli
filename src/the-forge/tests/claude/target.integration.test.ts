@@ -1,6 +1,6 @@
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { metadataIndex } from '../support/metadata.ts';
+import { scopeServices } from '../support/metadata.ts';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +19,7 @@ beforeEach(async () => {
   events = new EventBus(new NodeEventScope());
   events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
-  context = { root, workspaceRoot: root, workspace, events, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, metadata: metadataIndex(workspace.files), input: async () => new Uint8Array() };
+  context = { root, workspaceRoot: root, workspace, events, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
 });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 

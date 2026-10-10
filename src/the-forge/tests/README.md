@@ -22,6 +22,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
 | [templates](templates/) | Template rendering, required inputs, planning-pack installation, and project workflows |
 | [ui](ui/) | Component definitions, composition, renderers, Storybook, real framework compilation, and CLI workflows |
+| [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |
 | [support](support/) | Shared fixtures, including the copied portable CLI harness and the workspace distribution location |

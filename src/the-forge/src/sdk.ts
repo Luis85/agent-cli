@@ -5,3 +5,8 @@ export type { FileSnapshot, FileChange, FileRename, FileStat, PlannedChange, Rem
 export type { CommitOptions, WriteOptions } from './application/workspace/workspace.ts';
 export type { BatchResult, CommittedBatch, FileBatch, FileRepository, DocumentCodec, WriteBatchResult } from './application/workspace/ports.ts';
 export type { ClaudeLifecycleClient, ClaudeLifecycleRequest, ClaudeLifecycleResult, ClaudeLifecyclePlan, ClaudeOutput } from './application/claude/lifecycle.ts';
+export type { App, Guard, VaultFacade, MetadataCacheFacade, WorkspaceFacade } from './application/vault/app.ts';
+export type { FileManager, MoveOptions, DeleteOptions, BrokenLink } from './application/vault/file-manager.ts';
+export type { UnrewrittenLink } from './application/vault/link-plan.ts';
+export type { CachedMetadata } from './domain/metadata/cache.ts';
+export type { LinkCounts } from './application/metadata/ports.ts';

@@ -1,6 +1,9 @@
 import type { BatchResult, FileRepository, WriteBatchResult } from '../../src/application/workspace/ports.ts';
 import type { MetadataCache } from '../../src/application/metadata/ports.ts';
 import { VaultMetadata } from '../../src/application/metadata/vault-metadata.ts';
+import type { EventChannel } from '../../src/application/plugins/events.ts';
+import type { Workspace } from '../../src/application/workspace/workspace.ts';
+import { createApp, type App } from '../../src/application/vault/app.ts';
 import type { FileChange, FileStat } from '../../src/domain/documents/file.ts';
 import { forgeError } from '../../src/domain/shared/errors.ts';
 import { NodeBasesQueryEngine } from '../../src/infrastructure/bases/engine.ts';
@@ -11,6 +14,12 @@ import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 /** The composed kernel metadata index over a repository, as `main.ts` binds it. */
 export function metadataIndex(files: FileRepository): VaultMetadata {
   return new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()));
+}
+
+/** The scope services of a command context, as `main.ts` binds them: the metadata index and the `app` facade over the workspace. */
+export function scopeServices(workspace: Workspace, events: EventChannel): { metadata: VaultMetadata; app: App } {
+  const metadata = metadataIndex(workspace.files);
+  return { metadata, app: createApp({ workspace, metadata, events, project: null }) };
 }
 
 /** A Bases engine whose every query loads a fresh metadata cache, so tests may change files between queries. */

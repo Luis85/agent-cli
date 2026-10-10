@@ -7,6 +7,7 @@ import { dataSourceCommands } from '../data-sources/commands.ts';
 import { interactionCommands } from '../interactions/commands.ts';
 import { workflowsCommands } from '../workflows/commands.ts';
 import { documentCommands } from '../documents/commands.ts';
+import { vaultCommands } from '../documents/vault-commands.ts';
 import { generationCommand } from '../generation/commands.ts';
 import { skillsCommand } from '../skills/commands.ts';
 
@@ -19,6 +20,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
     ...workflowsCommands(services),
     ...catalogCommands(registry),
     ...documentCommands(),
+    ...vaultCommands(),
     generationCommand(registry, services),
     ...extensionCommands(registry),
     skillsCommand(registry),
