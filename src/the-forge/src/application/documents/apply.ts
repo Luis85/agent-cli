@@ -79,7 +79,7 @@ export class PlanRunner {
       if (owner === undefined) throw error;
       // The commit's own message names the CLI's --if-match; a plan guards with ifMatch.
       const changed = error instanceof AppError && error.code === 'CONFLICT'
-        ? new AppError(error.code, `${String(path)} changed after the plan read it; read it again, rebuild the operation from its current content and use its current revision as ifMatch.`, error.exitCode, error.details)
+        ? forgeError('CONFLICT', `${String(path)} changed after the plan read it; read it again, rebuild the operation from its current content and use its current revision as ifMatch.`, error.details)
         : error;
       throw located(changed, owner, plan.operations[owner]!.op);
     }
