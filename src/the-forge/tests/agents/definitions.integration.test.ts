@@ -84,6 +84,25 @@ describe('creating and importing agents', () => {
     expect(await scope.read('team/agents/solo.yaml')).toContain('model: auto');
   });
 
+  it('creates valid docker-agent agents from the bundled templates', async () => {
+    for (const template of ['basic', 'team', 'mcp']) {
+      expect((await scope.run(['create', template], { 'from-template': template })).data).toMatchObject({ path: `agents/${template}.yaml`, agent: template, created: true });
+    }
+    expect((await scope.run(['validate'])).data).toMatchObject({ valid: true, files: [{ diagnostics: [] }, { diagnostics: [] }, { diagnostics: [] }] });
+    expect((await scope.run(['inspect', 'team.yaml'])).data).toMatchObject({ default: 'team', config: { agents: { team: { sub_agents: ['team-researcher', 'team-writer'] }, 'team-researcher': {}, 'team-writer': {} } } });
+    expect((await scope.run(['inspect', 'mcp.yaml#mcp'])).data).toMatchObject({ definition: { toolsets: [{ type: 'mcp', ref: 'docker:duckduckgo' }, { type: 'think' }] } });
+    const revision = ((await scope.run(['inspect', 'basic.yaml'])).data as { revision: string }).revision;
+    const added = await scope.run(['create', 'crew'], { 'from-template': 'team', file: 'basic.yaml', 'if-match': revision, description: 'Runs the crew.', model: 'anthropic/claude-opus-5' });
+    expect(added.data).toMatchObject({ agent: 'crew', agents: ['crew', 'crew-researcher', 'crew-writer'], created: false });
+    expect((await scope.run(['inspect', 'basic.yaml#crew'])).data).toMatchObject({ definition: { model: 'anthropic/claude-opus-5', description: 'Runs the crew.', instruction: 'Runs the crew.\n' } });
+    const current = ((await scope.run(['inspect', 'basic.yaml'])).data as { revision: string }).revision;
+    expect(await failure(scope.run(['create', 'basic'], { 'from-template': 'team', file: 'basic.yaml', 'if-match': current }))).toMatchObject({ code: 'AGENT_EXISTS', details: { agent: 'basic' } });
+    expect(await failure(scope.run(['create', 'x'], { 'from-template': 'basic', toolset: 'shell' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(await failure(scope.run(['create', 'x'], { 'from-template': 'huge' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
+    const generated = (await scope.run(['generate'], { target: 'claude', file: 'mcp.yaml', plan: true })).data as { diagnostics: Array<{ code: string }> };
+    expect(generated.diagnostics.map(entry => entry.code)).toContain('mcp-not-generated');
+  });
+
   it('rejects invalid names, toolsets and results that would be invalid', async () => {
     expect(await failure(scope.run(['create', 'bad name']))).toMatchObject({ code: 'INVALID_NAME' });
     expect(await failure(scope.run(['create', 'x'], { toolset: 'mcp' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });

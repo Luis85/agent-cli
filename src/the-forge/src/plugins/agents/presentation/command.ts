@@ -4,6 +4,7 @@ import { arity, value } from '../../../application/plugins/command-input.ts';
 import { generationControls, reviewOptions } from '../../../application/generation/controls.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { simpleToolsets, type AgentAuthoring, type CreateRequest } from '../application/authoring.ts';
+import { agentTemplates } from '../domain/templates.ts';
 import type { AgentDefinitions } from '../application/definitions.ts';
 import type { AgentGeneration, GenerateRequest } from '../application/generation.ts';
 
@@ -25,6 +26,7 @@ const options = {
   description: option.string('create: the agent description.'),
   instruction: option.string('create: the agent instruction (system prompt); defaults to the description.'),
   toolset: option.string(`create: comma-separated toolset types without required settings (${simpleToolsets.join(', ')}).`),
+  'from-template': option.string('create: start from a bundled template: basic (one read-only agent), team (a coordinator with <name>-researcher and <name>-writer sub-agents) or mcp (an agent with a Docker MCP Gateway server).', { enum: [...agentTemplates] }),
   'if-match': option.string('create and import: the current revision of an existing team file, required to add an agent to it.'),
   from: option.string('import: the agent format to convert from.', { enum: ['claude'] }),
   target: option.string('generate: the agent format to generate.', { enum: ['claude'] }),
@@ -40,7 +42,7 @@ const options = {
 };
 const accepted: Record<Action, readonly string[]> = {
   list: [], inspect: [], validate: [],
-  create: ['file', 'model', 'description', 'instruction', 'toolset', 'if-match'],
+  create: ['file', 'model', 'description', 'instruction', 'toolset', 'from-template', 'if-match'],
   import: ['from', 'file', 'if-match'],
   generate: ['target', 'file', 'agent', 'mcp', 'hooks', 'settings', 'allow-broad-permissions', 'rename-conflicts', 'commands', 'model-style', ...Object.keys(reviewOptions)],
 };
@@ -61,13 +63,13 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
   return {
     id: 'agents',
     description: 'Manage docker-agent definitions (list, inspect, validate, create, import) and generate Claude Code agents from them.',
-    usage: 'agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
+    usage: 'agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
     scope: 'project', discovery: false, mutating: false, defaultAction: 'list',
     actions: {
       list: { description: 'List definition files with their agents, default agent and diagnostic counts.' },
       inspect: { description: 'Return one definition file, or one agent with file#agent, with diagnostics.' },
       validate: { description: 'Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION.' },
-      create: { description: 'Add a docker-agent agent to a new or existing team file, preserving comments.', mutating: true },
+      create: { description: 'Add a docker-agent agent, or a bundled template\'s agents, to a new or existing team file, preserving comments.', mutating: true },
       import: { description: 'Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.', mutating: true },
       generate: { description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true },
     },
@@ -88,7 +90,12 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       if (action === 'create') {
         arity(args, 2);
         const [file, model, description, instruction, ifMatch, types] = [value(flags, 'file'), value(flags, 'model'), value(flags, 'description'), value(flags, 'instruction'), value(flags, 'if-match'), toolsets(flags)];
-        return agents.create({ name: args[1]!, ...(file ? { file } : {}), ...(model ? { model } : {}), ...(description ? { description } : {}), ...(instruction ? { instruction } : {}), ...(types ? { toolsets: types } : {}), ...(ifMatch ? { ifMatch } : {}) });
+        const template = flags['from-template'] === undefined ? undefined : choice(flags, 'from-template', agentTemplates, 'basic');
+        ensure(template === undefined || types === undefined, 'INVALID_ARGUMENT', '--from-template sets the toolsets; omit --toolset or edit the YAML afterwards.');
+        return agents.create({
+          name: args[1]!, ...(file ? { file } : {}), ...(model ? { model } : {}), ...(description ? { description } : {}), ...(instruction ? { instruction } : {}),
+          ...(types ? { toolsets: types } : {}), ...(template ? { template } : {}), ...(ifMatch ? { ifMatch } : {}),
+        });
       }
       if (action === 'import') {
         arity(args, 2);
