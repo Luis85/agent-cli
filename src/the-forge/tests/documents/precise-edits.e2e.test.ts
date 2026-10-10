@@ -70,7 +70,7 @@ describe('precise edits through the portable CLI', () => {
     expect(ids.filter((id: string) => id.startsWith('operation.'))).toEqual(['operation.started', 'operation.succeeded']);
     expect(ids.filter((id: string) => id.startsWith('vault.'))).toEqual(['vault.create', 'vault.rename', 'vault.delete', 'vault.modify', 'vault.create', 'vault.modify']);
     expect(ids.filter((id: string) => id === 'metadataCache.resolved')).toHaveLength(1);
-    expect(await text('specs/Roadmap.md')).toBe('---\nstatus: active\n---\n# Plan\n\n## Risks\n\n- Scope\n\n## Goals\n\nShip it soon. ^ship\nShip v2 later.\n');
+    expect(await text('specs/Roadmap.md')).toBe('---\nstatus: active\n---\n# Plan\n\n## Risks\n\n- Scope\n\n## Goals\n\nShip it soon. ^ship\n\nShip v2 later.\n');
     expect(await text('Index.md')).toBe('# Index\n\nSee [[Roadmap]] and [[Roadmap#^ship|shipping]].\n');
     expect(await text('.trash/notes/Scratch.md')).toBe('scratch\n');
 

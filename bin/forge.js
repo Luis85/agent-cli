@@ -64633,6 +64633,7 @@ function encodeText(text2) {
 }
 const rangeEditModes = ["replace", "append", "prepend"];
 const reportedHeadings = 50;
+const blockIdEnding = /(?:^|\s)\^[A-Za-z0-9-]+\s*$/;
 function lineBreak(text2) {
   return /\r?\n/.exec(text2)?.[0] ?? "\n";
 }
@@ -64701,7 +64702,9 @@ function editSection(text2, metadata2, heading, mode, content2, line) {
   const last = text2.slice(start2, section2.end).trimEnd().length;
   const end2 = last === 0 ? start2 : Math.min(nextLine(text2, start2 + last - 1), section2.end);
   if (mode === "prepend") return insertLines(text2, start2, content2, newline);
-  if (mode === "append") return insertLines(text2, end2, content2, newline);
+  const endsInBlockId = last > 0 && blockIdEnding.test(text2.slice(lineStart(text2, start2 + last), start2 + last));
+  if (mode === "append") return insertLines(text2, end2, endsInBlockId ? `
+${content2}` : content2, newline);
   const lead = start2 > 0 && text2[start2 - 1] !== "\n" ? newline : "";
   return text2.slice(0, start2) + lead + asLines(content2, newline) + text2.slice(end2);
 }
