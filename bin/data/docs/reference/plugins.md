@@ -2,13 +2,16 @@
 
 [Documentation](../index.md) · Reference
 
-Plugins extend the distributed bundle without rebuilding it. Each enabled plugin has its own directory, a `manifest.json`, and a `main.mjs` ESM entry point or `main.js` CommonJS entry point. The host uses Obsidian-inspired packaging and lifecycle conventions; it does not provide Obsidian's runtime API or run existing Obsidian plugins unchanged. Plugin authors compile TypeScript and bundle external dependencies before distribution.
+Plugins extend The Forge. There are two kinds, with one contract (plugin contract v2):
 
-For installation steps, see [enable a plugin](../how-to/enable-plugins.md).
+- **Core plugins** are bundled with the distribution under `src/plugins/<id>/` in the Forge source, like Obsidian's core plugins. They are enabled by default and can be disabled in configuration. `skills` is the first core plugin; `search`, `links` and `bases` follow.
+- **User plugins** live in workspace `bin/plugins/<id>/` with a `manifest.json` and a `main.mjs` ESM entry point or `main.js` CommonJS entry point. They extend the distributed bundle without rebuilding it, and only run when `plugins.enabled` names them.
+
+The host uses Obsidian-inspired packaging and lifecycle conventions; it does not run existing Obsidian plugins unchanged. Plugin authors compile TypeScript and bundle external dependencies before distribution. For installation steps, see [enable a plugin](../how-to/enable-plugins.md).
 
 ## Manifest
 
-A manifest contains:
+A user plugin's manifest contains:
 
 ```json
 {
@@ -21,11 +24,29 @@ A manifest contains:
 }
 ```
 
-All fields are required. IDs use lowercase kebab-case and cannot be a host event namespace (`command`, `operation`, `claude`, `vault`, `workspace`, `plugin`), which fails with `PLUGIN_NAMESPACE`; versions use numeric `major.minor.patch` without prerelease identifiers or leading zeros. The host rejects unsupported `minAppVersion` before executing plugins. Every enabled manifest is validated before the first entry point is loaded. `main.mjs` takes precedence; `main.js` uses CommonJS even inside an ESM project.
+All fields are required. IDs use lowercase kebab-case and cannot be a host event namespace (`command`, `operation`, `claude`, `vault`, `metadataCache`, `workspace`, `plugin`), which fails with `PLUGIN_NAMESPACE`; versions use numeric `major.minor.patch` without prerelease identifiers or leading zeros. The host rejects unsupported `minAppVersion` before executing plugins. Every enabled manifest is validated before the first entry point is loaded. `main.mjs` takes precedence; `main.js` uses CommonJS even inside an ESM project.
+
+A core plugin's manifest also declares `"core": true`. Only bundled plugins may: a user manifest that declares `core` fails with `PLUGIN_NAMESPACE`, and a user plugin cannot reuse a core plugin's id (`DUPLICATE_PLUGIN`).
+
+## Core and user plugins
+
+| | Core plugins | User plugins |
+| --- | --- | --- |
+| Location | `src/plugins/<id>/plugin.ts` in the Forge source, bundled into `bin/forge.js` | Workspace `bin/plugins/<id>/` |
+| Enabled | By default; `plugins.disabled: ["<id>"]` disables one | Only when `plugins.enabled` lists it, in that load order |
+| `--no-plugins` | Still loaded: they are part of the product | Skipped for the invocation |
+| Command, generator, skill and service ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
+| Event ids | `<id>.*` only, so a core plugin owns its namespace (`bases.*`) | `<id>.*` only |
+| Error codes | Any code outside the built-in catalog | Must start with the id in UPPER_SNAKE_CASE (`QUALITY_`) |
+| Registration | Bundle order, before user plugins | After core plugins |
+
+A disabled core plugin contributes nothing: its commands are absent from `help` and `schema`, its skills from `skills` and `setup`, and its services from other plugins. `plugins.disabled` accepts only bundled core plugin ids; anything else fails with `INVALID_PLUGIN_CONFIG`. Disable a user plugin by removing it from `plugins.enabled`.
+
+`node bin/forge.js plugins` lists every plugin, core plugins first: the manifest fields, `core`, `state` and `contributions`. `state` is `enabled` for registered plugins, `disabled` for a core plugin in `plugins.disabled` or an installed user plugin that `plugins.enabled` does not name, and `skipped` for an enabled user plugin that `--no-plugins` left unloaded. `contributions` lists command, generator, event and skill ids, `services.provides` and `services.requires`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run. Invalid manifests in `bin/plugins` are skipped with a warning.
 
 ## Contract
 
-The shipped type-only SDK is `bin/data/types/sdk.d.ts`. The module exports an object or a class instantiated with its manifest; the loader supplies the manifest to the resulting instance. A TypeScript module can declare contributions as follows:
+The shipped type-only SDK is `bin/data/types/sdk.d.ts`. A user plugin module exports an object or a class instantiated with its manifest; the loader supplies the manifest to the resulting instance. A TypeScript module can declare contributions as follows:
 
 ```ts
 import type { Plugin } from '../bin/data/types/sdk.js';
@@ -33,26 +54,131 @@ const plugin = {
   commands: [{
     id: 'quality.status',
     description: 'Report readiness',
-    usage: 'quality.status',
-    run() { return { ready: true }; },
+    usage: 'quality.status [--verbose]',
+    scope: 'project',
+    mutating: false,
+    options: { verbose: { type: 'boolean', description: 'Include every check.' } },
+    errors: ['QUALITY_NOT_READY'],
+    run(_args, flags, context) { return { ready: true, verbose: flags.verbose === true, threshold: context.settings?.threshold }; },
   }],
+  settings: { type: 'object', additionalProperties: false, properties: { threshold: { type: 'integer', minimum: 1, default: 3 } } },
+  errors: [{ code: 'QUALITY_NOT_READY', category: 'drift', summary: 'The workspace is not ready.', hint: 'Run quality.status --verbose and fix the failing checks.' }],
+  strings: { de: { commands: { 'quality.status': 'Bereitschaft melden' } } },
 } satisfies Omit<Plugin, 'manifest'>;
 export default plugin;
 ```
 
-Contributions must be namespaced with the manifest ID, such as `quality.status`, `quality.fixture`, `quality.checked`, and `quality.review`. Invalid contributions or duplicate IDs reject the complete plugin registration, leaving no partially registered capabilities. All contributions register before lifecycle activation.
+Invalid contributions or duplicate IDs reject the complete plugin registration, leaving no partially registered capabilities. All contributions register before lifecycle activation.
 
-- **Commands:** `id`, `description`, `usage`, optional `options:{flag:'string'|'boolean'}`, `run(args, flags, context)`. Global options are reserved. Return JSON-serializable data; never log to stdout. Send diagnostic messages to `context.events.warn`.
-- **Generators:** `id`, `description`, `generate(name, directory)`. Return `{path,bytes,expectedRevision?}[]`. The host validates documents and destinations, previews or writes the plan, and emits committed `vault.*` events. Encode text with `new TextEncoder().encode(text)`. Generators should be pure and perform no direct writes.
+- **Commands:** `id`, `description`, `usage`, `run(args, flags, context)` and the [command metadata](#command-metadata). Return JSON-serializable data; never log to stdout. Send diagnostic messages to `context.events.warn`.
+- **Generators:** see [generators](#generators).
 - **Skills:** `id`, `content` containing a Markdown SKILL.md with frontmatter. They appear in `skills list/show/install` and `setup`.
 - **Events:** `id`, optional nonempty `description`, and `validate(payload)` synchronous runtime type guard returning a boolean. Segments start with a lowercase letter and may use camelCase or kebab-case. `context.events.on<T>(id, callback)` supports typed callbacks; callers remain responsible for the name/type pairing, and emit validates data at runtime. Descriptions appear in event discovery. A plugin may emit only events in its own `<plugin-id>.*` namespace; see [event ownership](#event-ownership).
-- **Lifecycle:** optional `onload(context)` runs in configured order; `onunload()` runs in reverse order after success or failure, including partial loading. Optional `onUserEnable(context)` and `onExternalSettingsChange(context)` run right after `onload`; see [lifecycle hooks](#lifecycle-hooks-layout-ready-and-quit). The existing cleanup hook is captured before `onload` and retains its plugin receiver, so release partially acquired resources safely. Replacing `onunload` during activation does not replace the captured cleanup. Cleanup errors become warnings. Returning a function from `onload` is not a cleanup contract; implement `onunload` explicitly.
+- **Services:** `provides: {serviceId: implementation}` and `requires: [serviceId]`; see [services](#services).
+- **Settings:** `settings`, a JSON Schema of the plugin's config section; see [config sections](#config-sections).
+- **Strings and error codes:** `strings: {en?, de?}` and `errors: [...]`; see [strings and error codes](#strings-and-error-codes).
+- **Lifecycle:** optional `onload(context)` runs in activation order; `onunload()` runs in reverse order after success or failure, including partial loading. Optional `onUserEnable(context)` and `onExternalSettingsChange(context)` run right after `onload`; see [lifecycle hooks](#lifecycle-hooks-layout-ready-and-quit). The existing cleanup hook is captured before `onload` and retains its plugin receiver, so release partially acquired resources safely. Replacing `onunload` during activation does not replace the captured cleanup. Cleanup errors become warnings. Returning a function from `onload` is not a cleanup contract; implement `onunload` explicitly.
 
-`context` supplies `workspaceRoot`, `root`, `project`, `workspace`, `events`, `claude`, `metadata`, `app` and a lazy `input()` reader. `app` is the Obsidian-shaped [facade](#the-app-facade) over the same scope; prefer it. `metadata` is the invocation's lazily built [metadata index](../explanation/architecture.md#kernel-metadata-cache) for the same root as `workspace`, which `app.metadataCache` wraps. A plugin's `onload`, activation hooks and commands receive `events` as that plugin's `EventChannel` (exported by the SDK): it observes every event and exposes `ids`, `catalog`, `on`, `once`, `onAny`, `replay`, `emit`, `warn`, `onLayoutReady` and `onQuit`. `workspaceRoot` always identifies the environment; `project` is the active project metadata or null. For plugin commands, `root` and `workspace` refer to the active project, or the workspace when none is selected; plugin loading still uses shared workspace `bin/plugins`. `workspace.read`, `workspace.edit`, `workspace.write`, `workspace.remove` and `workspace.commit` (a batch of renames, writes and removals) apply their validation, revision, dry-run and event contracts. In a dry run, `workspace.edit` returns each change with a unified `diff`; pass `workspace.write(writes, { diff: true })` for the same preview on writes (`diff: null` for binary content). The SDK types these as `WriteOptions` and `PlannedChange` (a `FileChange` with `diff`). `workspace.read` and `workspace.codec.inspect` return the complete Markdown document including `body`; only the CLI `read` response omits it unless `--parts body` is given. `workspace.files` is a low-level repository port; its direct reads/listings produce neither `operation.*` phases nor `workspace.file-open`. Use workspace methods for writes so validation and notifications remain consistent. `workspace.dryRun` describes the invocation.
+`context` supplies `workspaceRoot`, `root`, `project`, `workspace`, `environment`, `events`, `claude`, `metadata`, `app`, `language` and a lazy `input()` reader; a plugin's hooks, commands and generators additionally receive `settings`, `services` and `t(key)`. `app` is the Obsidian-shaped [facade](#the-app-facade) over the same scope; prefer it. `metadata` is the invocation's lazily built [metadata index](../explanation/architecture.md#kernel-metadata-cache) for the same root as `workspace`, which `app.metadataCache` wraps. A plugin's `onload`, activation hooks and commands receive `events` as that plugin's `EventChannel` (exported by the SDK): it observes every event and exposes `ids`, `catalog`, `on`, `once`, `onAny`, `replay`, `emit`, `warn`, `onLayoutReady` and `onQuit`. `workspaceRoot` always identifies the environment; `project` is the active project metadata or null. `root` and `workspace` are the command's scope: the active project for a project-scoped command (the workspace when none is selected), and the workspace for a workspace-scoped command. `environment` is always the workspace-root scope, so a plugin reaches workspace files explicitly, never through the selection. `language` is the response language (`en` or `de`). `workspace.read`, `workspace.edit`, `workspace.write`, `workspace.remove` and `workspace.commit` (a batch of renames, writes and removals) apply their validation, revision, dry-run and event contracts. In a dry run, `workspace.edit` returns each change with a unified `diff`; pass `workspace.write(writes, { diff: true })` for the same preview on writes (`diff: null` for binary content). The SDK types these as `WriteOptions` and `PlannedChange` (a `FileChange` with `diff`). `workspace.read` and `workspace.codec.inspect` return the complete Markdown document including `body`; only the CLI `read` response omits it unless `--parts body` is given. `workspace.files` is the repository port, with `read`, `list`, `stat` (a file's revision and size, or a folder's revision, files and folders) and the guarded `commit` batch of renames, writes and removals; its direct reads and listings produce neither `operation.*` phases nor `workspace.file-open`. Use workspace methods for writes so validation and notifications remain consistent. `workspace.dryRun` describes the invocation.
 
-Help, schema, configuration, formats, events, plugin listing, Claude capability discovery and setup register contributions without calling `onload`. Their module imports still execute top-level code, so entry points must avoid top-level side effects. Other commands run the lifecycle; respect dry-run and avoid unrelated writes. `--no-plugins` skips plugin loading entirely.
+Discovery commands (`help`, `schema`, `config`, `formats`, `events`, `plugins`, `setup` and `claude capabilities`) and `--help` register contributions without calling `onload`. Their module imports still execute top-level code, so entry points must avoid top-level side effects. Other commands run the lifecycle; respect dry-run and avoid unrelated writes. `--no-plugins` skips loading user plugins entirely.
 
-The [quality example](../examples/plugins/quality/main.mjs) includes commands, a generator, event listeners and a skill, and uses the [app facade](#the-app-facade): `app.vault.on('rename')` warns about moved notes and `quality.mark-reviewed <note.md>` edits frontmatter with `app.fileManager.processFrontMatter`. Copy its `quality` directory to workspace `bin/plugins/quality`, review it, and enable `quality` in `bin/config.json`. Then run `node bin/forge.js quality.check`. The distribution also includes the example under `bin/data/docs/examples/plugins/quality`.
+The [quality example](../examples/plugins/quality/main.mjs) includes commands, a generator, event listeners, a skill, a config section, German strings and an error code, and uses the [app facade](#the-app-facade): `app.vault.on('rename')` warns about moved notes in the response language, `quality.mark-reviewed <note.md>` edits frontmatter with `app.fileManager.processFrontMatter`, and `quality.owners` reads `app.metadataCache.getFileCache` and fails with `QUALITY_UNOWNED` for notes without the configured owner property. Copy its `quality` directory to workspace `bin/plugins/quality`, review it, and enable `quality` in `bin/config.json`. Then run `node bin/forge.js quality.check`. The distribution also includes the example under `bin/data/docs/examples/plugins/quality`.
+
+## Command metadata
+
+One declaration drives argument parsing, the invocation policy, `help` and `schema`. Every built-in command declares it, and the policy that chooses scope and plugin activation reads nothing else.
+
+| Field | Meaning | Default for plugin commands |
+| --- | --- | --- |
+| `scope` | `project`: the selected project's root, or the workspace when none is selected. `workspace`: always the workspace root | `project` |
+| `discovery` | A discovery or recovery command: workspace scope, no plugin activation, so a stale selection or a failing `onload` cannot block it | `false` |
+| `mutating` | Whether the command can change files or external state; `schema` reports `readOnlyHint: !mutating` | `true` |
+| `options` | `{flag: {type: 'string' \| 'boolean', description, enum?, default?, required?}}`. Global options are reserved. The parser enforces types; the command validates values, `enum`, `default` and `required` are published for agents | `{}` |
+| `args` | Positional arguments after the command id: `[{name, description, required?, enum?, variadic?}]`; only the last may be variadic | `[]` |
+| `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, scope?, discovery?, mutating?, projectOption?}`; `defaultAction` applies when the first argument is omitted | none |
+| `projectOption` | A declared string option that selects the project for this invocation (`make ui --project web`) | none |
+| `output` | Optional JSON Schema of `data` in a successful response | none |
+| `errors` | Codes the command reports itself (built-in or the plugin's registered codes) | `[]` |
+
+Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the catalog; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, outputSchema?, globalOptions}`. `schema` returns the same entry for every command plus `inputSchema`, a JSON Schema 2020-12 document of one invocation:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skills", "type": "object", "additionalProperties": false, "required": ["args", "options"],
+  "properties": {
+    "args": { "type": "array", "items": { "type": "string" }, "prefixItems": [{ "type": "string", "enum": ["list", "show", "install"] }, { "type": "string" }], "minItems": 0, "maxItems": 2 },
+    "options": { "type": "object", "additionalProperties": false, "properties": { "out": { "type": "string", "default": ".agents/skills" } } }
+  }
+}
+```
+
+`annotations` holds the resolved `scope`, `discovery`, `mutating` and `readOnlyHint`, the `defaultAction`, and each action's resolved mode. Global options are described once in `globalOptions` with the same option shape. The schema subset Forge emits and accepts covers `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `title` and `description`; other keywords are rejected rather than ignored.
+
+## Generators
+
+`make <generator> <Name>` routes to every registered generator by id: kernel generators (`entity`, `form`, `document`, `ui`, …), core plugin generators and user plugin generators alike. A generator declares `id`, `description`, optional `usage`, the mode fields `scope` (default `project`), `mutating` and `projectOption`, `options` with the command option shape, an optional default output `directory` (default `src/domain`) and `fixedDirectory` to reject `--out`, and exactly one of:
+
+- `generate(request)`: returns the write plan `{path, bytes, expectedRevision?}[]`. The host validates documents and destinations and previews (`--dry-run`) or writes the plan, emitting committed `vault.*` events. With `review: true`, the host also accepts `--plan`, `--plan-out`, `--check` and `--revisions-from` and runs the plan through the shared generation service: `--plan` reports each output's status, `--check` fails with `GENERATION_DRIFT` when outputs differ, and `--revisions-from` authorizes regeneration of reviewed files.
+- `run(request)`: returns its own result, for generators that need full control.
+
+`request` is `{name, directory, flags, context, generation}`: the name argument, the resolved output directory (`--out`, else `directory`), the invocation's flags, the plugin context and the `GenerationService` with `plan(writes, manifestPath?)`, `check(writes, code)` and `commit(writes, revisions?)`. Generators should be pure and never write directly. Encode text with `new TextEncoder().encode(text)`. `make` accepts only the global options, `--out` (unless `fixedDirectory`), the generator's options and, with `review`, the review options; anything else is `INVALID_ARGUMENT`. Two generators that declare one option name must agree on its type. `make` without arguments lists the generators, and `help make` lists each generator's mode under `annotations.actions`.
+
+## Services
+
+A plugin offers named services with `provides: {serviceId: implementation}` and declares what it needs with `requires: [serviceId]`. Services replace imports between plugins: a core plugin never imports another plugin's code, and a user plugin cannot.
+
+- Activation follows the dependency order: every plugin activates after the providers of the services it requires; unrelated plugins keep their order. A required service without an enabled provider fails activation with `PLUGIN_SERVICE_MISSING` (`details: {plugin, service}`), and a dependency cycle with `PLUGIN_SERVICE_CYCLE` (`details.plugins` names the cycle), before any `onload` runs.
+- `context.services.get<T>(id)` returns a provider's implementation. A plugin may get only services it declared in `requires` or provides itself; an undeclared lookup is `PLUGIN_SERVICE_MISSING`.
+- User plugin service ids start with `<id>.`; core plugins may use bare ids. A second provider of one id fails registration with `DUPLICATE_OR_INVALID_ID`.
+
+## Config sections
+
+A plugin declares its settings as a JSON Schema of type `object` in `settings`. Users configure them in `bin/config.json` under `plugins.settings.<id>`, for core and user plugins alike:
+
+```json
+{ "plugins": { "enabled": ["quality"], "settings": { "quality": { "ownerProperty": "maintainer" } } } }
+```
+
+After plugins register, the host validates each declared section, fills `default`s and hands the result to the plugin as `context.settings` (`null` without a schema). Problems fail every command with `INVALID_CONFIG`, naming each path such as `plugins.settings.quality.ownerProperty: must have at least 1 characters` in `error.details.issues`. A section for a loaded plugin that declares no settings is rejected, catching misspelled ids; sections of disabled or uninstalled plugins are kept unchanged. `config` shows the effective sections in `data.config.plugins.settings` and their schemas in `data.sections` (`[{plugin, path, schema}]`). Changing a section triggers [`onExternalSettingsChange`](#lifecycle-hooks-layout-ready-and-quit) once.
+
+## Strings and error codes
+
+`strings` contributes localized text per language, `en` and `de`: `commands`, `generators` and `events` map the plugin's own ids to descriptions; `errors` maps its registered codes to `{summary, hint}`; `messages` holds free-form guidance that plugin code reads with `context.t(key)` in the response language, falling back to English and then to the key. Keys must name the plugin's own contributions (`PLUGIN_NAMESPACE` otherwise). The localizer merges them after the kernel catalogs, so `--lang de` describes plugin commands, generators and events in German.
+
+`errors` registers catalog entries `{code, category, summary, hint, retryable?}`, with the categories and exit statuses of the [error catalog](errors.md). Plugin code cannot construct host errors, so it throws an `Error` with a registered `code` and optional `details`:
+
+```js
+throw Object.assign(new Error('2 notes have no owner.'), { code: 'QUALITY_UNOWNED', details: { notes } });
+```
+
+The host turns it into a failure with the category's exit status, the catalog `hint` and `retryable`, and with `--lang de` the German summary and hint, keeping the original message in `details.localization.originalMessage`. `schema` lists registered codes after the built-in ones with their `plugin`. Unregistered codes keep the plain `{code, message, details?}` shape.
+
+## Source layout and layering
+
+A core plugin is a self-contained slice of the Forge source with the same layers as the kernel:
+
+```text
+src/plugins/<id>/
+  plugin.ts                 # the CorePlugin: manifest (core: true) and create(host) wiring its own layers
+  domain/…                  # pure rules and values
+  application/…             # use cases and ports
+  infrastructure/…          # adapters, codecs, bundled assets
+  presentation/…            # command definitions and input translation
+```
+
+| From | May import |
+| --- | --- |
+| `src/plugins/<id>/domain/` | Its own `domain/`, kernel `src/domain/` |
+| `src/plugins/<id>/application/` | Its own `domain/` and `application/`, kernel `src/domain/` and `src/application/` |
+| `src/plugins/<id>/infrastructure/` | Its own `domain/`, `application/` and `infrastructure/`, kernel domain and application, external packages and assets |
+| `src/plugins/<id>/presentation/` | Its own `domain/`, `application/` and `presentation/`, kernel domain and application |
+| `src/plugins/<id>/plugin.ts` | Its own four layers, kernel domain and application |
+| Kernel layers | Never `src/plugins/` |
+| `src/main.ts` | Each plugin's `plugin.ts` only |
+
+The internal plugin SDK is the kernel's application layer, chiefly `src/application/plugins/`: the contracts (`Command`, `Generator`, `PluginContributions`, `CorePlugin`, `CorePluginHost`), command metadata helpers (`option`), and command input helpers (`arity`, `value`). Plugins never import kernel infrastructure or presentation, or another plugin; they use declared services instead. `src/main.ts` lists the bundled plugins and calls `registerCorePlugins` with a `CorePluginHost` of kernel ports (for example `skills`, the live skill catalog); `create(host)` wires the plugin's adapters to those ports without I/O. When a plugin needs another kernel capability, add a port to `CorePluginHost` and supply its adapter in `src/main.ts`. Architecture tests and `npm run check:structure` enforce the layout and these rules. Tests for a core plugin live in `tests/<id>/`.
 
 ## Reuse Claude lifecycle execution
 
@@ -164,14 +290,14 @@ export default {
 
 ## Event ownership
 
-Host namespaces (`vault`, `metadataCache`, `workspace`, `operation`, `command`, `plugin`, `claude`) are host-owned; `events --json` lists them in `data.hostNamespaces`. A plugin's channel may observe any event, but `context.events.emit(id, payload)` accepts only ids starting with `<plugin-id>.`. Emitting a host event or another plugin's event rejects with `EVENT_OWNERSHIP` before validation, delivery or history; an unknown id in the plugin's own namespace remains `UNKNOWN_EVENT`. Plugin ids cannot be host namespaces. Host-built commands receive the invocation bus itself. Plugins are trusted code, not a sandbox: ownership protects the event contract, not the process.
+Host namespaces (`vault`, `metadataCache`, `workspace`, `operation`, `command`, `plugin`, `claude`) are host-owned; `events --json` lists them in `data.hostNamespaces`. A plugin's channel may observe any event, but `context.events.emit(id, payload)` accepts only ids starting with `<plugin-id>.`. Emitting a host event or another plugin's event rejects with `EVENT_OWNERSHIP` before validation, delivery or history; an unknown id in the plugin's own namespace remains `UNKNOWN_EVENT`. Plugin ids cannot be host namespaces. Core plugins follow the same rule, so a core plugin owns its id's namespace (`bases.*`, `backlog.*`) exactly like a user plugin. Host-built commands receive the invocation bus itself. Plugins are trusted code, not a sandbox: ownership protects the event contract, not the process.
 
 ## Lifecycle hooks, layout ready and quit
 
-Activation runs, per plugin in configured order: `plugin.activating`, `onload(context)`, then at most one activation hook, then `plugin.activated`.
+Activation runs, per plugin in [service dependency order](#services) (otherwise core plugins in bundle order, then user plugins in configured order): `plugin.activating`, `onload(context)`, then at most one activation hook, then `plugin.activated`.
 
-- `onUserEnable(context)` runs once, on the first activation after the plugin id was added to `plugins.enabled`. Use it for one-time setup.
-- `onExternalSettingsChange(context)` runs on a later activation when the plugin's settings revision differs from the one recorded at its previous activation. Plugin settings arrive with plugin config sections; until then a plugin has no settings source, so this hook is defined and validated but not yet triggered by the CLI.
+- `onUserEnable(context)` runs once, on the first activation after the plugin was enabled (added to `plugins.enabled`, or a core plugin removed from `plugins.disabled`). Use it for one-time setup.
+- `onExternalSettingsChange(context)` runs on a later activation when the plugin's settings revision differs from the one recorded at its previous activation. The revision is the SHA-256 of the plugin's effective [config section](#config-sections) in canonical JSON, or `null` for a plugin without one, so editing `plugins.settings.<id>` in `bin/config.json` triggers it once. `context.settings` already holds the new values.
 
 Both hooks must return nothing; a throw is an activation failure. The host records the state of plugins that implement either hook in workspace data `bin/data/plugins-state.json` (`{schemaVersion: 1, plugins: {<id>: {settings}}}`) after activation, through a guarded workspace write whose `vault.*` records appear in the response, relative to the workspace root. A dry run calls the hooks but persists nothing, so the real run calls `onUserEnable` again. Entries for disabled plugins are dropped when the state is next written, so enabling a plugin again triggers `onUserEnable` again; a disable and re-enable between two activating invocations is not observed. Plugins that completed activation are recorded even when a later plugin fails. An unreadable state file is treated as empty, with a warning, and a failed state write is a warning, not a command failure. `--no-plugins` and discovery commands leave the state untouched. Release archives omit this file.
 

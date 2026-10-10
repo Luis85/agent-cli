@@ -2,8 +2,17 @@
 
 [Documentation](../index.md) · How-to guide
 
-Use this guide to scaffold, review and activate a trusted plugin in an existing workspace. For contribution types and lifecycle behavior, see the [plugin API](../reference/plugins.md).
+Use this guide to scaffold, review and activate a trusted user plugin, to configure a plugin's settings, and to turn a bundled core plugin off or on. For contribution types and lifecycle behavior, see the [plugin API](../reference/plugins.md).
 
+## List the plugins
+
+```sh
+node bin/forge.js plugins --json
+```
+
+Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `disabled` or `skipped`, and `contributions` lists what each enabled plugin adds.
+
+## Enable a user plugin
 
 ```sh
 node bin/forge.js make plugin Quality
@@ -24,10 +33,34 @@ node bin/forge.js plugins --json
 node bin/forge.js quality.hello
 ```
 
-Only IDs in `plugins.enabled` execute; directory scanning never enables unreviewed code. Put `--no-plugins` before the command to skip them for one invocation, including when an enabled plugin fails to load. IDs must match their directory and manifest. Plugins load from workspace `bin/plugins` and are shared across its projects. Symlink modules are rejected. Plugins are trusted Node code with the process's permissions and can bypass workspace guards; review modules and dependencies before enabling them.
+Only IDs in `plugins.enabled` execute; directory scanning never enables unreviewed code, and `plugins` lists an installed but unlisted plugin as `disabled` without running it. Put `--no-plugins` before the command to skip user plugins for one invocation, including when an enabled plugin fails to load. IDs must match their directory and manifest. Plugins load from workspace `bin/plugins` and are shared across its projects. Symlink modules are rejected. Plugins are trusted Node code with the process's permissions and can bypass workspace guards; review modules and dependencies before enabling them.
+
+To disable a user plugin, remove its id from `plugins.enabled`.
+
+## Configure a plugin's settings
+
+A plugin that declares a config section reads it from `plugins.settings.<id>`. Run `config` to see each section's schema in `data.sections` and its effective values, defaults included, in `data.config.plugins.settings`:
+
+```json
+{ "plugins": { "enabled": ["quality"], "settings": { "quality": { "ownerProperty": "maintainer" } } } }
+```
+
+An invalid value fails every command with `INVALID_CONFIG` and names its path, such as `plugins.settings.quality.ownerProperty`. After a change, the plugin's `onExternalSettingsChange` hook runs on its next activation.
+
+## Disable or re-enable a core plugin
+
+Core plugins are bundled and enabled by default. List their ids under `plugins.disabled` to turn them off:
+
+```json
+{ "plugins": { "disabled": ["skills"] } }
+```
+
+A disabled core plugin contributes nothing: `help` and `schema` no longer list its commands, and its skills and services are gone. `plugins` still lists it with `state: "disabled"`. Remove the id from `plugins.disabled` to restore it; its first activation afterwards runs `onUserEnable` again. Only bundled core plugin ids are accepted there, and `--no-plugins` never disables core plugins.
+
+## Observe events
 
 Inspect available notifications with `node bin/forge.js events --json`. Event discovery includes descriptions for the host's Obsidian-style `vault.*`, `metadataCache.*` and `workspace.*` events, the `command.*`, `operation.*`, Claude and plugin lifecycle phases, and plugin-defined events. `data.hostNamespaces` lists the namespaces only the host may emit. Discovery registers contributions without running `onload`; it does not test a plugin's observers.
 
 The [quality example](../examples/plugins/quality/main.mjs) demonstrates named listeners, `onAny` for future notifications and awaited `replay` for the retained history of the current invocation. Register observers in `onload` and release subscriptions in `onunload`. Command start and registration can precede activation, so use replay explicitly if you need those earlier records. Replay is bounded and does not load events from an earlier CLI run.
 
-After an operation, inspect the response's original error, warnings and events together. Observers cannot veto work: a warning can follow a committed write, and a command can fail after changing state. Responses include only committed `vault.*` records by default; rerun with `--events all` to see lifecycle, workspace and plugin records in the envelope. Match started/terminal phase records by `operationId` and inspect `root` or `cwd` before interpreting paths. Check committed `vault.*` records and reread affected files before retrying. Low-level repository calls and arbitrary plugin code do not automatically produce operation phases; see the [event contract](../reference/plugins.md#host-events-and-correlation).
+After an operation, inspect the response's original error, warnings and events together. Observers cannot veto work: a warning can follow a committed write, and a command can fail after changing state. Responses include only committed `vault.*` records by default; rerun with `--events all` to see lifecycle, workspace and plugin records in the envelope, including those of core plugins. Match started/terminal phase records by `operationId` and inspect `root` or `cwd` before interpreting paths. Check committed `vault.*` records and reread affected files before retrying. Low-level repository calls and arbitrary plugin code do not automatically produce operation phases; see the [event contract](../reference/plugins.md#host-events-and-correlation).

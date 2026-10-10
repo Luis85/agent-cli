@@ -85,6 +85,7 @@ export declare const errorCatalog: {
     readonly INVALID_GENERATION_REVISIONS: ErrorDefinition;
     readonly UI_DRIFT: ErrorDefinition;
     readonly DATA_SOURCE_DRIFT: ErrorDefinition;
+    readonly GENERATION_DRIFT: ErrorDefinition;
     readonly INVALID_WORKFLOW: ErrorDefinition;
     readonly WORKFLOW_DRIFT: ErrorDefinition;
     readonly INVALID_UI: ErrorDefinition;
@@ -109,6 +110,8 @@ export declare const errorCatalog: {
     readonly INCOMPATIBLE_PLUGIN: ErrorDefinition;
     readonly DUPLICATE_PLUGIN: ErrorDefinition;
     readonly PLUGIN_NAMESPACE: ErrorDefinition;
+    readonly PLUGIN_SERVICE_MISSING: ErrorDefinition;
+    readonly PLUGIN_SERVICE_CYCLE: ErrorDefinition;
     readonly PLUGIN_LIFECYCLE: ErrorDefinition;
     readonly DUPLICATE_OR_INVALID_ID: ErrorDefinition;
     readonly UNKNOWN_SKILL: ErrorDefinition;

@@ -4,7 +4,7 @@
 
 Run `node bin/forge.js [routing options] <command> [options]`. Routing options `--root <directory>` and `--no-plugins` must precede the command because they select the workspace and loaded command catalog. For example, `node bin/forge.js --root /path/to/workspace --no-plugins setup --dry-run`.
 
-Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events none|changes|all`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/forge.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md) and [language selection](language.md).
+Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events none|changes|all`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/forge.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` skips configured user plugins for one invocation; bundled core plugins still load. See [configuration precedence](configuration.md) and [language selection](language.md).
 
 ## Output and errors
 
@@ -34,9 +34,9 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 
 | Command | Arguments/options | Behavior |
 | --- | --- | --- |
-| `help` | `[command]` | Descriptions, options, usage |
-| `schema` | none | Machine-readable catalog, generator and skill IDs |
-| `config` | none | Effective validated configuration and selected paths |
+| `help` | `[command]` | The catalog, or one command's description, usage, described options and arguments, annotations (scope, discovery, mutating, readOnlyHint, actions) and error codes; see [command metadata](plugins.md#command-metadata) |
+| `schema` | none | Machine-readable catalog: every command with a JSON Schema 2020-12 `inputSchema`, annotations and error codes; generator and skill IDs; built-in and plugin error codes |
+| `config` | none | Effective validated configuration and selected paths, with plugin config sections in `config.plugins.settings` and their schemas in `sections` |
 | `templates` | `[list / inspect <template.md> / install [workflow]]` | Discover template inputs or install missing editable workflow templates |
 | `formats` | none | Native extension inventory and processing limits |
 | `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / text / attachment]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files |
@@ -50,7 +50,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `move` | `<from> <to> --if-match hash [--no-update-links]` | Move or rename a file or folder and rewrite every link to it in the same batch; see [moving and deleting](#moving-and-deleting) |
 | `rename` | `<path> <new-name> --if-match hash [--no-update-links]` | `move` within the same folder; a file keeps its extension when `<new-name>` omits it |
 | `delete` | `<path> --if-match hash [--recursive] [--permanent] [--allow-broken-links]` | Move a file, or a folder with `--recursive`, to `.trash/`; `--permanent` removes it. Refuses with `HAS_BACKLINKS` while other files link into it |
-| `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; defaults to `src/domain` in the active scope, `src/presentation/forms` for `form`, or workspace `bin/plugins` for `plugin` (`--out` is not allowed for plugins); dry-run includes generated text |
+| `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; defaults to `src/domain` in the active scope, `src/presentation/forms` for `form`, or workspace `bin/plugins` for `plugin` (`--out` is not allowed for plugins); dry-run includes generated text. Each generator accepts only its declared options; see [generators](plugins.md#generators) |
 | `make form` | `<PascalCaseName> [--out directory]` | Create a typed form definition and unit test in the open Forge project; default `src/presentation/forms`, with real HTML preview from the same definition |
 | `make document` | `<Title> --template <template.md> [--out directory] [--values JSON / --values-from path] [--date ISO]` | Render Markdown/frontmatter template to a new `<Title>.md` in active-scope `notes`, or `--out` |
 | `components` | `init / list / inspect <id> / validate / create <id> / import / export [--library directory]` | Manage workspace Markdown component definitions; `create` accepts `--tag`, import accepts `--from`, export accepts `--out` |
@@ -61,10 +61,10 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `make data-source` | `<id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from file.json / --plan / --plan-out file.json / --check]` | Generate TypeScript adapters and deterministic test data with guarded regeneration and drift checks; see [data-source reference](data-sources.md) |
 | `workflows` | `list / sync [--check] [--dry-run]` | Workspace scope. Discover each managed project's authored CI under `src/infrastructure/workflows/<concern>/` and generate prefixed, path-scoped `.github/workflows` entrypoints; `--check` exits 5 with `WORKFLOW_DRIFT`; see [workflows](workflows.md) |
 | `events` | none | Registered event IDs, descriptions and invocation delivery/replay semantics |
-| `plugins` | none | Enabled manifests loaded from shared workspace `bin/plugins` |
+| `plugins` | none | Core and user plugins with `core`, `state` (`enabled`, `disabled`, `skipped`) and contributions; see [core and user plugins](plugins.md#core-and-user-plugins) |
 | `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
 | `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md) |
-| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope |
+| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope. Contributed by the `skills` core plugin |
 | `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
 | `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |
 | `project open` | `<id>` | Persist a managed project as the active scope |

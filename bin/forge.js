@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 "use strict";
 const minpath = require("node:path");
+const node_crypto = require("node:crypto");
 const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
-const node_crypto = require("node:crypto");
 const promises$1 = require("node:fs/promises");
 const promises = require("node:timers/promises");
 const fs = require("node:fs");
@@ -121,6 +121,7 @@ const errorCatalog = {
   INVALID_GENERATION_REVISIONS: entry("input", "The revision approval does not match the reviewed plan.", "Create a new plan with --plan-out and pass that file to --revisions-from."),
   UI_DRIFT: entry("drift", "Generated UI files are missing or differ from their definitions.", "Run the same command with --plan to review, then regenerate."),
   DATA_SOURCE_DRIFT: entry("drift", "Generated data-source files are missing or differ from their definitions.", "Run the same command with --plan to review, then regenerate."),
+  GENERATION_DRIFT: entry("drift", "Generated files are missing or differ from what the generator produces.", "Run the same make command with --plan to review, then regenerate."),
   // Project workflows
   INVALID_WORKFLOW: entry("input", "An authored project workflow is invalid or two workflows generate the same file.", "Fix or rename the workflow under src/infrastructure/workflows/<concern>/ named in the message, then run workflows sync."),
   WORKFLOW_DRIFT: entry("drift", "Generated GitHub workflows are missing, changed or stale.", "Run workflows sync, review the changes in .github/workflows and commit them with their sources."),
@@ -144,10 +145,12 @@ const errorCatalog = {
   DATA_SOURCE_RENDERER_UNAVAILABLE: entry("input", "No generator is available for this data source.", "Use a supported data-source kind; run help make for data-source generation."),
   // Plugins, skills and events
   INVALID_PLUGIN: entry("input", "A plugin manifest or implementation is invalid.", "Fix the plugin named in the message, or disable it with --no-plugins."),
-  INVALID_PLUGIN_CONFIG: entry("input", "The enabled plugin list is invalid.", "List unique lowercase kebab-case plugin ids in plugins.enabled in bin/config.json."),
+  INVALID_PLUGIN_CONFIG: entry("input", "The plugin configuration is invalid.", "List unique lowercase kebab-case user plugin ids in plugins.enabled and only bundled core plugin ids in plugins.disabled in bin/config.json; run plugins to list them."),
   INCOMPATIBLE_PLUGIN: entry("input", "The plugin requires a newer Forge version.", "Update The Forge or disable the plugin."),
   DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
-  PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (command, operation, claude, vault, workspace, plugin) as the plugin id."),
+  PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix user plugin command, generator, skill, event and service ids with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle."),
+  PLUGIN_SERVICE_MISSING: entry("input", "A plugin requires a service that no enabled plugin provides, or uses one it did not declare.", "Enable the plugin that provides the service named in error.details.service (plugins lists providers), or declare it in the plugin's requires."),
+  PLUGIN_SERVICE_CYCLE: entry("input", "Plugin service requirements form a cycle.", "Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
   UNKNOWN_SKILL: entry("input", "The skill is not registered.", "Run skills list."),
@@ -198,6 +201,9 @@ class AppError extends Error {
   details;
 }
 function forgeError(code2, message, details, exitCode = errorCatalog[code2].exitCode) {
+  return new AppError(code2, message, exitCode, details);
+}
+function codedError(code2, message, exitCode, details) {
   return new AppError(code2, message, exitCode, details);
 }
 function summarizeError(error2) {
@@ -392,23 +398,23 @@ class EventBus {
   }
 }
 const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
-const text$5 = (value2) => typeof value2 === "string" && value2.length > 0;
-const count = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
+const text$7 = (value2) => typeof value2 === "string" && value2.length > 0;
+const count$1 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
 const empty = (value2) => Object.keys(value2).length === 0;
-const operation$1 = (value2) => count(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$1 = (value2) => isRecord(value2) && text$5(value2.code) && status(value2.exitCode);
-const command = (value2) => operation$1(value2) && text$5(value2.command) && text$5(value2.root) && text$5(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$5(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$5);
-const claude = (value2) => operation$1(value2) && text$5(value2.executable) && text$5(value2.cwd);
-const plugin = (value2) => text$5(value2.pluginId);
+const operation$1 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
+const error$1 = (value2) => isRecord(value2) && text$7(value2.code) && status(value2.exitCode);
+const command = (value2) => operation$1(value2) && text$7(value2.command) && text$7(value2.root) && text$7(value2.workspaceRoot);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$7(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$7);
+const claude = (value2) => operation$1(value2) && text$7(value2.executable) && text$7(value2.cwd);
+const plugin = (value2) => text$7(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change = (value2) => isRecord(value2) && text$5(value2.path) && text$5(value2.revision) && count(value2.bytes) && changeOperations.includes(String(value2.operation));
-const moved = (value2) => isRecord(value2) && text$5(value2.from) && text$5(value2.to) && ["file", "folder"].includes(String(value2.kind));
+const change = (value2) => isRecord(value2) && text$7(value2.path) && text$7(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$7(value2.from) && text$7(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
-const project = (value2) => value2 === null || text$5(value2);
-const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$5(value2.path) && Object.keys(value2).length === 3);
-const rename = (value2) => text$5(value2.path) && text$5(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$5(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
+const project = (value2) => value2 === null || text$7(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$7(value2.path) && Object.keys(value2).length === 3);
+const rename = (value2) => text$7(value2.path) && text$7(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$7(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$1(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
 }
@@ -417,22 +423,22 @@ const hostEventDefinitions = [
   definition$1("command.succeeded", "A routed command returned successfully.", command),
   definition$1("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$1(value2.error)),
   definition$1("operation.started", "A guarded workspace operation started, including previews.", workspace),
-  definition$1("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
+  definition$1("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$1(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
   definition$1("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$1(value2.error)),
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$1(value2.error) && optionalStatus(value2)),
-  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$5(value2.executable) && text$5(value2.cwd) && status(value2.exitCode)),
+  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$7(value2.executable) && text$7(value2.cwd) && status(value2.exitCode)),
   definition$1("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
   definition$1("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
   definition$1("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
   definition$1("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
-  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$5(value2.path) && isRecord(value2.cache)),
-  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$5(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
-  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$5(value2.path) && Object.keys(value2).length === 1),
+  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$7(value2.path) && isRecord(value2.cache)),
+  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$7(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
+  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$7(value2.path) && Object.keys(value2).length === 1),
   definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty),
-  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$5(value2.path) && Object.keys(value2).length === 1),
-  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$5(value2.path) && changeOperations.includes(String(value2.operation)) && count(value2.bytes) && Object.keys(value2).length === 3),
+  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$7(value2.path) && Object.keys(value2).length === 1),
+  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$7(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
   definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty),
   definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty),
   definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
@@ -1110,11 +1116,396 @@ function pluginEvents(bus, pluginId) {
     }
   };
 }
+const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
+const types = ["object", "array", "string", "number", "integer", "boolean", "null"];
+const record$3 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+const count = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
+const keywords = {
+  $schema: (value2, path) => value2 === jsonSchemaDialect ? [] : [`${path}.$schema must be ${jsonSchemaDialect}`],
+  title: (value2, path) => typeof value2 === "string" ? [] : [`${path}.title must be a string`],
+  description: (value2, path) => typeof value2 === "string" ? [] : [`${path}.description must be a string`],
+  type: (value2, path) => types.includes(value2) ? [] : [`${path}.type must be one of ${types.join(", ")}`],
+  properties: (value2, path) => record$3(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path}.properties.${key}`)) : [`${path}.properties must be an object`],
+  required: (value2, path) => Array.isArray(value2) && value2.every((item) => typeof item === "string") && new Set(value2).size === value2.length ? [] : [`${path}.required must list unique property names`],
+  additionalProperties: (value2, path) => typeof value2 === "boolean" ? [] : schemaIssues(value2, `${path}.additionalProperties`),
+  items: (value2, path) => schemaIssues(value2, `${path}.items`),
+  prefixItems: (value2, path) => Array.isArray(value2) ? value2.flatMap((schema2, index2) => schemaIssues(schema2, `${path}.prefixItems[${index2}]`)) : [`${path}.prefixItems must be an array`],
+  minItems: (value2, path) => count(value2) ? [] : [`${path}.minItems must be a nonnegative integer`],
+  maxItems: (value2, path) => count(value2) ? [] : [`${path}.maxItems must be a nonnegative integer`],
+  minLength: (value2, path) => count(value2) ? [] : [`${path}.minLength must be a nonnegative integer`],
+  maxLength: (value2, path) => count(value2) ? [] : [`${path}.maxLength must be a nonnegative integer`],
+  minimum: (value2, path) => Number.isFinite(value2) ? [] : [`${path}.minimum must be a number`],
+  maximum: (value2, path) => Number.isFinite(value2) ? [] : [`${path}.maximum must be a number`],
+  enum: (value2, path) => Array.isArray(value2) && value2.length > 0 ? [] : [`${path}.enum must be a nonempty array`],
+  const: () => [],
+  default: () => [],
+  pattern: (value2, path) => {
+    if (typeof value2 !== "string") return [`${path}.pattern must be a string`];
+    try {
+      new RegExp(value2, "u");
+      return [];
+    } catch {
+      return [`${path}.pattern must be a valid regular expression`];
+    }
+  }
+};
+function schemaIssues(schema2, path = "schema") {
+  if (!record$3(schema2)) return [`${path} must be a schema object`];
+  return Object.entries(schema2).flatMap(([key, value2]) => Object.hasOwn(keywords, key) ? keywords[key](value2, path) : [`${path} uses unsupported keyword ${key}`]);
+}
+function typeMatches(type2, value2) {
+  if (type2 === "object") return record$3(value2);
+  if (type2 === "array") return Array.isArray(value2);
+  if (type2 === "integer") return Number.isSafeInteger(value2);
+  if (type2 === "number") return typeof value2 === "number" && Number.isFinite(value2);
+  if (type2 === "null") return value2 === null;
+  return typeof value2 === type2;
+}
+const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const copy$1 = (value2) => value2 === void 0 ? value2 : JSON.parse(JSON.stringify(value2));
+function validateJsonValue(schema2, value2, path) {
+  const issues = [];
+  const visit2 = (node2, current, at) => {
+    if (node2.type !== void 0 && !typeMatches(node2.type, current)) {
+      issues.push(`${at}: must be ${node2.type}`);
+      return current;
+    }
+    if (node2.enum !== void 0 && !node2.enum.some((item) => same(item, current))) issues.push(`${at}: must be one of ${node2.enum.map((item) => JSON.stringify(item)).join(", ")}`);
+    if (Object.hasOwn(node2, "const") && !same(node2.const, current)) issues.push(`${at}: must equal ${JSON.stringify(node2.const)}`);
+    if (typeof current === "string") {
+      if (node2.minLength !== void 0 && current.length < node2.minLength) issues.push(`${at}: must have at least ${node2.minLength} characters`);
+      if (node2.maxLength !== void 0 && current.length > node2.maxLength) issues.push(`${at}: must have at most ${node2.maxLength} characters`);
+      if (node2.pattern !== void 0 && !new RegExp(node2.pattern, "u").test(current)) issues.push(`${at}: must match ${node2.pattern}`);
+    }
+    if (typeof current === "number") {
+      if (node2.minimum !== void 0 && current < node2.minimum) issues.push(`${at}: must be at least ${node2.minimum}`);
+      if (node2.maximum !== void 0 && current > node2.maximum) issues.push(`${at}: must be at most ${node2.maximum}`);
+    }
+    if (Array.isArray(current)) {
+      if (node2.minItems !== void 0 && current.length < node2.minItems) issues.push(`${at}: must have at least ${node2.minItems} items`);
+      if (node2.maxItems !== void 0 && current.length > node2.maxItems) issues.push(`${at}: must have at most ${node2.maxItems} items`);
+      return current.map((item, index2) => {
+        const itemSchema = node2.prefixItems?.[index2] ?? node2.items;
+        return itemSchema ? visit2(itemSchema, item, `${at}[${index2}]`) : item;
+      });
+    }
+    if (!record$3(current)) return current;
+    const result = {};
+    for (const key of node2.required ?? []) if (!Object.hasOwn(current, key) && node2.properties?.[key]?.default === void 0) issues.push(`${at}.${key}: is required`);
+    for (const [key, child] of Object.entries(node2.properties ?? {})) {
+      if (Object.hasOwn(current, key)) result[key] = visit2(child, current[key], `${at}.${key}`);
+      else if (child.default !== void 0) result[key] = copy$1(child.default);
+    }
+    for (const [key, item] of Object.entries(current)) {
+      if (node2.properties && Object.hasOwn(node2.properties, key)) continue;
+      if (node2.additionalProperties === false) issues.push(`${at}.${key}: is not allowed`);
+      else result[key] = typeof node2.additionalProperties === "object" ? visit2(node2.additionalProperties, item, `${at}.${key}`) : item;
+    }
+    return result;
+  };
+  const completed = visit2(schema2, value2 === void 0 && schema2.default !== void 0 ? copy$1(schema2.default) : value2, path);
+  return { value: completed, issues };
+}
+const option = {
+  string: (description2, extra = {}) => ({ type: "string", description: description2, ...extra }),
+  boolean: (description2, extra = {}) => ({ type: "boolean", description: description2, ...extra })
+};
+function commandMode(command2, args) {
+  const action2 = args[0] ?? command2.defaultAction;
+  const refined = action2 !== void 0 && command2.actions && Object.hasOwn(command2.actions, action2) ? command2.actions[action2] : void 0;
+  const projectOption = refined?.projectOption ?? command2.projectOption;
+  return {
+    ...refined ? { action: action2 } : {},
+    scope: refined?.scope ?? command2.scope ?? "project",
+    discovery: refined?.discovery ?? command2.discovery ?? false,
+    mutating: refined?.mutating ?? command2.mutating ?? true,
+    ...projectOption === void 0 ? {} : { projectOption }
+  };
+}
+function optionTypes(options) {
+  return Object.fromEntries(Object.entries(options ?? {}).map(([key, schema2]) => [key, schema2.type]));
+}
+function optionSchema(schema2) {
+  return { type: schema2.type, description: schema2.description, ...schema2.enum ? { enum: [...schema2.enum] } : {}, ...schema2.default === void 0 ? {} : { default: schema2.default } };
+}
+function commandInputSchema(command2) {
+  const args = command2.args ?? [];
+  const required2 = Object.entries(command2.options ?? {}).filter(([, schema2]) => schema2.required).map(([key]) => key);
+  const variadic = args.at(-1)?.variadic === true;
+  const positional = args.map((arg) => ({ type: "string", description: arg.description, ...arg.enum ? { enum: [...arg.enum] } : {} }));
+  return {
+    $schema: jsonSchemaDialect,
+    title: command2.id,
+    description: command2.description,
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      args: {
+        type: "array",
+        description: command2.usage,
+        items: variadic ? positional.at(-1) : { type: "string" },
+        ...positional.length > 0 ? { prefixItems: positional } : {},
+        minItems: args.filter((arg) => arg.required).length,
+        ...variadic ? {} : { maxItems: args.length }
+      },
+      options: {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(Object.entries(command2.options ?? {}).map(([key, schema2]) => [key, optionSchema(schema2)])),
+        ...required2.length > 0 ? { required: required2 } : {}
+      }
+    },
+    required: ["args", "options"]
+  };
+}
+function commandAnnotations(command2) {
+  const { scope, discovery: discovery2, mutating } = commandMode(command2, []);
+  return {
+    scope,
+    discovery: discovery2,
+    mutating,
+    readOnlyHint: !mutating,
+    ...command2.defaultAction === void 0 ? {} : { defaultAction: command2.defaultAction },
+    ...command2.actions ? { actions: Object.fromEntries(Object.entries(command2.actions).map(([id2, action2]) => {
+      const mode = commandMode(command2, [id2]);
+      return [id2, { description: action2.description, scope: mode.scope, discovery: mode.discovery, mutating: mode.mutating, readOnlyHint: !mode.mutating, ...mode.projectOption ? { projectOption: mode.projectOption } : {} }];
+    })) } : {}
+  };
+}
+const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
+const flag = /^[a-z][a-z0-9-]*$/;
+const text$6 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+function validateMode(mode, where, options) {
+  ensure(mode.scope === void 0 || mode.scope === "workspace" || mode.scope === "project", "INVALID_PLUGIN", `${where} scope must be workspace or project.`);
+  for (const key of ["discovery", "mutating"]) ensure(mode[key] === void 0 || typeof mode[key] === "boolean", "INVALID_PLUGIN", `${where} ${key} must be a boolean.`);
+  ensure(mode.projectOption === void 0 || typeof mode.projectOption === "string" && options?.[mode.projectOption]?.type === "string", "INVALID_PLUGIN", `${where} projectOption must name a declared string option.`);
+}
+function validateCommandMetadata(command2) {
+  const where = `Command ${String(command2.id)}`;
+  ensure(text$6(command2.description) && text$6(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
+  ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", `${where} options must be an object.`);
+  const options = command2.options ?? {};
+  for (const [key, schema2] of Object.entries(options)) {
+    ensure(flag.test(key) && !reservedOptions.includes(key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
+    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$6(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
+    ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
+    ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
+  }
+  validateMode(command2, where, options);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$6(arg.name) && text$6(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
+  ensure(command2.actions === void 0 || isRecord(command2.actions), "INVALID_PLUGIN", `${where} actions must be an object.`);
+  for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
+    ensure(isRecord(action2) && text$6(action2.description), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
+    validateMode(action2, `${where} action ${id2}`, options);
+  }
+  ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where} defaultAction must name a declared action.`);
+  ensure(command2.output === void 0 || schemaIssues(command2.output).length === 0, "INVALID_PLUGIN", `${where} output must be a supported JSON Schema: ${schemaIssues(command2.output).join("; ")}`);
+  ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where} errors must list UPPER_SNAKE_CASE codes.`);
+}
+const languages = ["en", "de"];
+const text$5 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const errorCode$2 = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+class PluginCatalog {
+  tables = /* @__PURE__ */ new Map();
+  codes = /* @__PURE__ */ new Map();
+  /** Validates one plugin's contributions; `prefix` restricts user plugin codes to `<ID>_…`. */
+  static validate(pluginId, strings2, errors2, owned, prefix) {
+    ensure(errors2 === void 0 || Array.isArray(errors2), "INVALID_PLUGIN", "errors must be an array.");
+    const codes = /* @__PURE__ */ new Set();
+    for (const entry2 of errors2 ?? []) {
+      ensure(isRecord(entry2) && typeof entry2.code === "string" && errorCode$2.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
+      ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
+      ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$5(entry2.summary) && text$5(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
+      codes.add(entry2.code);
+    }
+    ensure(strings2 === void 0 || isRecord(strings2), "INVALID_PLUGIN", "strings must map languages to string tables.");
+    for (const [language2, table] of Object.entries(strings2 ?? {})) {
+      ensure(languages.includes(language2) && isRecord(table), "INVALID_PLUGIN", `strings.${language2} is not a supported language table (en, de).`);
+      for (const [kind, entries] of Object.entries(table)) {
+        ensure(["commands", "generators", "events", "errors", "messages"].includes(kind) && isRecord(entries), "INVALID_PLUGIN", `strings.${language2}.${kind} is not a string table.`);
+        for (const [id2, entry2] of Object.entries(entries)) {
+          const known = kind === "messages" || (kind === "errors" ? codes.has(id2) : owned[kind].includes(id2));
+          ensure(known, "PLUGIN_NAMESPACE", `strings.${language2}.${kind}.${id2} does not name a contribution of plugin ${pluginId}.`);
+          ensure(kind === "errors" ? isRecord(entry2) && text$5(entry2.summary) && text$5(entry2.hint) : text$5(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
+        }
+      }
+    }
+  }
+  add(pluginId, strings2, errors2) {
+    for (const entry2 of errors2 ?? []) ensure(!this.codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
+    if (strings2) this.tables.set(pluginId, strings2);
+    for (const entry2 of errors2 ?? []) {
+      this.codes.set(entry2.code, { pluginId, code: entry2.code, exitCode: categoryExitCodes[entry2.category], category: entry2.category, summary: entry2.summary, hint: entry2.hint, retryable: entry2.retryable ?? false });
+    }
+  }
+  /** Contributed text for a command, generator or event id in `language`, if any. */
+  text(language2, kind, id2) {
+    for (const table of this.tables.values()) {
+      const entries = table[language2]?.[kind];
+      if (entries && Object.hasOwn(entries, id2)) return entries[id2];
+    }
+    return void 0;
+  }
+  /** A plugin message in `language`, falling back to English and then to the key itself. */
+  message(pluginId, language2, key) {
+    const table = this.tables.get(pluginId);
+    const pick2 = (tableLanguage) => {
+      const messages = table?.[tableLanguage]?.messages;
+      return messages && Object.hasOwn(messages, key) ? messages[key] : void 0;
+    };
+    return pick2(language2) ?? pick2("en") ?? key;
+  }
+  error(code2) {
+    return this.codes.get(code2);
+  }
+  localizedError(code2, language2) {
+    const entry2 = this.codes.get(code2);
+    const localized = entry2 ? this.tables.get(entry2.pluginId)?.[language2]?.errors?.[code2] : void 0;
+    return localized ?? (entry2 && language2 === "en" ? { summary: entry2.summary, hint: entry2.hint } : void 0);
+  }
+  errors() {
+    return [...this.codes.values()];
+  }
+  /**
+   * Plugin code cannot construct host errors, so it throws an `Error` with a registered `code` (and optional
+   * `details`). This turns it into a coded failure with the category's exit status; anything else is unchanged.
+   */
+  normalize(error2) {
+    if (error2 instanceof AppError || !(error2 instanceof Error) || !("code" in error2) || typeof error2.code !== "string") return error2;
+    const entry2 = this.codes.get(error2.code);
+    if (!entry2) return error2;
+    const details = "details" in error2 && isRecord(error2.details) ? error2.details : void 0;
+    return codedError(entry2.code, error2.message, entry2.exitCode, details);
+  }
+}
 const hooks$1 = ["onload", "onUserEnable", "onExternalSettingsChange", "onunload"];
+const lists = ["commands", "generators", "events", "skills"];
+const id$1 = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
+function validateContributions(plugin2, pluginId, origin) {
+  const inNamespace = (value2) => value2.startsWith(pluginId + ".");
+  for (const hook of hooks$1) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
+  for (const key of lists) {
+    ensure(plugin2[key] === void 0 || Array.isArray(plugin2[key]), "INVALID_PLUGIN", `${key} must be an array.`);
+    for (const contribution of plugin2[key] ?? []) {
+      ensure(isRecord(contribution) && typeof contribution.id === "string", "INVALID_PLUGIN", `Invalid ${key} contribution.`);
+      const bare = origin === "core" && key !== "events";
+      ensure(bare || inNamespace(contribution.id), "PLUGIN_NAMESPACE", `Contribution ${contribution.id} must start with ${pluginId}.`);
+    }
+  }
+  for (const command2 of plugin2.commands ?? []) {
+    ensure(typeof command2.run === "function", "INVALID_PLUGIN", "Invalid command.");
+    validateCommandMetadata(command2);
+  }
+  for (const generator of plugin2.generators ?? []) validateGenerator(generator);
+  for (const skill of plugin2.skills ?? []) ensure(typeof skill.content === "string", "INVALID_PLUGIN", "Invalid skill.");
+  ensure(plugin2.provides === void 0 || isRecord(plugin2.provides), "INVALID_PLUGIN", "provides must map service ids to implementations.");
+  ensure(plugin2.requires === void 0 || Array.isArray(plugin2.requires) && plugin2.requires.every((service) => typeof service === "string" && id$1.test(service)), "INVALID_PLUGIN", "requires must list service ids.");
+  for (const service of Object.keys(plugin2.provides ?? {})) {
+    ensure(id$1.test(service), "DUPLICATE_OR_INVALID_ID", service);
+    ensure(origin === "core" || inNamespace(service), "PLUGIN_NAMESPACE", `Service ${service} must start with ${pluginId}.`);
+  }
+  ensure(plugin2.settings === void 0 || isRecord(plugin2.settings) && plugin2.settings.type === "object" && schemaIssues(plugin2.settings).length === 0, "INVALID_PLUGIN", `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin2.settings).join("; ")}`);
+  const owned = (key) => (plugin2[key] ?? []).map((item) => item.id);
+  PluginCatalog.validate(pluginId, plugin2.strings, plugin2.errors, { commands: owned("commands"), generators: owned("generators"), events: owned("events") }, origin === "core" ? null : `${pluginId.replaceAll("-", "_").toUpperCase()}_`);
+}
+function validateGenerator(generator) {
+  const run2 = typeof generator.run === "function", generate = typeof generator.generate === "function";
+  ensure(run2 !== generate && typeof generator.description === "string", "INVALID_PLUGIN", "A generator requires a description and exactly one of generate or run.");
+  ensure(generator.directory === void 0 || typeof generator.directory === "string", "INVALID_PLUGIN", "Generator directory must be a string.");
+  for (const key of ["fixedDirectory", "review"]) ensure(generator[key] === void 0 || typeof generator[key] === "boolean", "INVALID_PLUGIN", `Generator ${key} must be a boolean.`);
+  validateCommandMetadata({ ...generator, usage: generator.usage ?? `make ${String(generator.id)} <Name>` });
+}
+function serviceProviders(nodes) {
+  const providers = /* @__PURE__ */ new Map();
+  for (const node2 of nodes) for (const id2 of Object.keys(node2.provides ?? {})) {
+    ensure(!providers.has(id2), "DUPLICATE_OR_INVALID_ID", `Service ${id2} is provided by ${providers.get(id2)?.manifest.id} and ${node2.manifest.id}.`);
+    providers.set(id2, node2);
+  }
+  return providers;
+}
+function activationOrder(nodes) {
+  const providers = serviceProviders(nodes);
+  for (const node2 of nodes) for (const id2 of node2.requires ?? []) {
+    if (!providers.has(id2)) throw forgeError("PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} requires service ${id2}, which no enabled plugin provides.`, { plugin: node2.manifest.id, service: id2 });
+  }
+  const ordered2 = [], state2 = /* @__PURE__ */ new Map();
+  const visit2 = (node2, path) => {
+    if (state2.get(node2) === "done") return;
+    if (state2.get(node2) === "visiting") {
+      const cycle = [...path.slice(path.indexOf(node2.manifest.id)), node2.manifest.id];
+      throw forgeError("PLUGIN_SERVICE_CYCLE", `Plugin services form a cycle: ${cycle.join(" -> ")}.`, { plugins: cycle });
+    }
+    state2.set(node2, "visiting");
+    for (const id2 of node2.requires ?? []) {
+      const provider = providers.get(id2);
+      if (provider !== node2) visit2(provider, [...path, node2.manifest.id]);
+    }
+    state2.set(node2, "done");
+    ordered2.push(node2);
+  };
+  for (const node2 of nodes) visit2(node2, []);
+  return ordered2;
+}
+function pluginServices(node2, providers) {
+  return {
+    get(id2) {
+      const declared = (node2.requires ?? []).includes(id2) || Object.hasOwn(node2.provides ?? {}, id2);
+      ensure(declared, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} must declare service ${id2} in requires before using it.`, { plugin: node2.manifest.id, service: id2 });
+      const provider = providers.get(id2);
+      ensure(provider, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} requires service ${id2}, which no enabled plugin provides.`, { plugin: node2.manifest.id, service: id2 });
+      return provider.provides[id2];
+    }
+  };
+}
+class PluginSettings {
+  schemas = /* @__PURE__ */ new Map();
+  values = /* @__PURE__ */ new Map();
+  declare(pluginId, schema2) {
+    this.schemas.set(pluginId, schema2);
+  }
+  /** Validates every declared section and returns the effective `plugins.settings` object. INVALID_CONFIG on failure. */
+  configure(sections, loaded) {
+    const issues = [];
+    const effective = { ...sections };
+    for (const pluginId of Object.keys(sections)) {
+      if (loaded.has(pluginId) && !this.schemas.has(pluginId)) issues.push(`plugins.settings.${pluginId}: plugin ${pluginId} declares no settings`);
+    }
+    for (const [pluginId, schema2] of this.schemas) {
+      const result = validateJsonValue(schema2, Object.hasOwn(sections, pluginId) ? sections[pluginId] : {}, `plugins.settings.${pluginId}`);
+      issues.push(...result.issues);
+      if (result.issues.length === 0 && isRecord(result.value)) {
+        this.values.set(pluginId, result.value);
+        effective[pluginId] = result.value;
+      }
+    }
+    if (issues.length > 0) throw forgeError("INVALID_CONFIG", issues.join("; "), { issues });
+    return Object.fromEntries(Object.keys(effective).sort().map((id2) => [id2, effective[id2]]));
+  }
+  value(pluginId) {
+    return this.values.get(pluginId) ?? null;
+  }
+  /** Canonical JSON of the effective section, which the settings revision hashes; null without a section. */
+  canonical(pluginId) {
+    const value2 = this.values.get(pluginId);
+    return value2 === void 0 ? null : canonicalJson$1(value2);
+  }
+  sections() {
+    return [...this.schemas].map(([plugin2, schema2]) => ({ plugin: plugin2, path: `plugins.settings.${plugin2}`, schema: schema2 }));
+  }
+}
+function canonicalJson$1(value2) {
+  if (Array.isArray(value2)) return `[${value2.map(canonicalJson$1).join(",")}]`;
+  if (isRecord(value2)) return `{${Object.keys(value2).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson$1(value2[key])}`).join(",")}}`;
+  return JSON.stringify(value2);
+}
 const appVersion = [0, 1, 0];
-function validatePluginManifest(value2) {
+function validatePluginManifest(value2, origin = "user") {
   ensure(isRecord(value2) && typeof value2.id === "string" && /^[a-z][a-z0-9-]*$/.test(value2.id), "INVALID_PLUGIN", "Plugin manifest requires a lowercase kebab-case id.");
   ensurePluginNamespace(value2.id);
+  ensure(origin === "core" ? value2.core === true : value2.core === void 0, "PLUGIN_NAMESPACE", origin === "core" ? `Bundled plugin ${value2.id} must declare core: true.` : `Plugin ${value2.id} cannot declare core; only bundled core plugins are core plugins.`);
   for (const key of ["name", "description", "author"]) ensure(typeof value2[key] === "string" && value2[key].trim().length > 0, "INVALID_PLUGIN", `Plugin manifest requires ${key}.`);
   for (const key of ["version", "minAppVersion"]) ensure(typeof value2[key] === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value2[key]), "INVALID_PLUGIN", `Plugin manifest requires a numeric ${key}.`);
   const minimum = value2.minAppVersion.split(".").map(Number);
@@ -1126,6 +1517,11 @@ class Registry {
   generators = /* @__PURE__ */ new Map();
   skills = /* @__PURE__ */ new Map();
   plugins = [];
+  /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
+  origins = /* @__PURE__ */ new Map();
+  disabled = [];
+  catalog = new PluginCatalog();
+  settings = new PluginSettings();
   cleanups = [];
   published = /* @__PURE__ */ new Set();
   state = "registering";
@@ -1133,40 +1529,50 @@ class Registry {
     ensure(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(item.id) && !map2.has(item.id), "DUPLICATE_OR_INVALID_ID", item.id);
     map2.set(item.id, item);
   }
-  register(plugin2, events) {
+  register(plugin2, events, origin = "user") {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins must register before activation.");
     ensure(isRecord(plugin2), "INVALID_PLUGIN", "Plugin must export an object or class.");
-    validatePluginManifest(plugin2.manifest);
-    ensure(!this.plugins.some((p) => p.manifest.id === plugin2.manifest.id), "DUPLICATE_PLUGIN", plugin2.manifest.id);
-    for (const hook of hooks$1) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
-    for (const key of ["commands", "generators", "events", "skills"]) {
-      ensure(plugin2[key] === void 0 || Array.isArray(plugin2[key]), "INVALID_PLUGIN", `${key} must be an array.`);
-      for (const contribution of plugin2[key] ?? []) {
-        ensure(isRecord(contribution) && typeof contribution.id === "string", "INVALID_PLUGIN", `Invalid ${key} contribution.`);
-        ensure(contribution.id.startsWith(plugin2.manifest.id + "."), "PLUGIN_NAMESPACE", `Contribution ${contribution.id} must start with ${plugin2.manifest.id}.`);
-      }
-    }
+    validatePluginManifest(plugin2.manifest, origin);
+    const pluginId = plugin2.manifest.id;
+    ensure(!this.origins.has(pluginId) && !this.disabled.some((manifest) => manifest.id === pluginId), "DUPLICATE_PLUGIN", pluginId);
+    validateContributions(plugin2, pluginId, origin);
     const commands2 = new Map(this.commands), generators2 = new Map(this.generators), skills = new Map(this.skills);
-    for (const command2 of plugin2.commands ?? []) {
-      ensure(typeof command2.run === "function" && typeof command2.description === "string" && typeof command2.usage === "string", "INVALID_PLUGIN", "Invalid command.");
-      ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", "Command options must be an object.");
-      for (const [key, type2] of Object.entries(command2.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-      this.add(commands2, command2);
-    }
+    for (const command2 of plugin2.commands ?? []) this.add(commands2, command2);
     for (const generator of plugin2.generators ?? []) {
-      ensure(typeof generator.generate === "function" && typeof generator.description === "string", "INVALID_PLUGIN", "Invalid generator.");
+      for (const [key, option2] of Object.entries(generator.options ?? {})) {
+        const clash = [...generators2.values()].find((other) => other.options?.[key] !== void 0 && other.options[key].type !== option2.type);
+        ensure(!clash, "INVALID_PLUGIN", `Generator ${generator.id} declares --${key} as ${option2.type}, but ${clash?.id} declares it as ${clash?.options?.[key]?.type}.`);
+      }
       this.add(generators2, generator);
     }
-    for (const skill of plugin2.skills ?? []) {
-      ensure(typeof skill.content === "string", "INVALID_PLUGIN", "Invalid skill.");
-      this.add(skills, skill);
-    }
+    for (const skill of plugin2.skills ?? []) this.add(skills, skill);
+    serviceProviders([...this.plugins, plugin2]);
+    for (const entry2 of plugin2.errors ?? []) ensure(!this.catalog.error(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
     events.defineAll(plugin2.events ?? []);
-    const channel = pluginEvents(events, plugin2.manifest.id);
-    for (const command2 of plugin2.commands ?? []) this.commands.set(command2.id, ownedCommand(command2, channel));
-    for (const generator of plugin2.generators ?? []) this.generators.set(generator.id, generator);
+    this.catalog.add(pluginId, plugin2.strings, plugin2.errors);
+    if (plugin2.settings) this.settings.declare(pluginId, plugin2.settings);
+    for (const command2 of plugin2.commands ?? []) this.commands.set(command2.id, this.ownedCommand(plugin2, command2, events));
+    for (const generator of plugin2.generators ?? []) this.generators.set(generator.id, this.ownedGenerator(plugin2, generator, events));
     for (const skill of plugin2.skills ?? []) this.skills.set(skill.id, skill);
     this.plugins.push(plugin2);
+    this.origins.set(pluginId, origin);
+  }
+  /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
+  disable(manifest) {
+    validatePluginManifest(manifest, "core");
+    ensure(!this.origins.has(manifest.id) && !this.disabled.some((entry2) => entry2.id === manifest.id), "DUPLICATE_PLUGIN", manifest.id);
+    this.disabled.push(manifest);
+  }
+  /** The context a plugin's hooks, commands and generators run with. */
+  pluginContext(plugin2, context, events) {
+    const pluginId = plugin2.manifest.id;
+    return {
+      ...context,
+      events: pluginEvents(events, pluginId),
+      settings: this.settings.value(pluginId),
+      services: pluginServices(plugin2, serviceProviders(this.plugins)),
+      t: (key) => this.catalog.message(pluginId, context.language, key)
+    };
   }
   async publishRegistered(events) {
     ensure(this.state !== "disposed", "PLUGIN_LIFECYCLE", "Cannot publish registrations after disposal.");
@@ -1177,17 +1583,21 @@ class Registry {
       await publishHostEvent(events, "plugin.registered", { pluginId });
     }
   }
-  /** Each plugin's hooks receive `context` with its own event channel. `state` enables onUserEnable/onExternalSettingsChange. */
+  /**
+   * Activates plugins after the providers of their required services. Each plugin's hooks receive its own
+   * context. `state` enables onUserEnable/onExternalSettingsChange.
+   */
   async activate(events, context, state2) {
     ensure(this.state === "registering", "PLUGIN_LIFECYCLE", "Plugins can activate only once per invocation.");
     this.state = "activating";
     let tracker;
     try {
       await this.publishRegistered(events);
+      const order2 = activationOrder(this.plugins);
       if (state2 && this.plugins.length > 0) tracker = await ActivationTracker.load(state2);
-      for (const plugin2 of this.plugins) {
+      for (const plugin2 of order2) {
         const pluginId = plugin2.manifest.id, onunload = plugin2.onunload;
-        const pluginContext = { ...context, events: pluginEvents(events, pluginId) };
+        const pluginContext = this.pluginContext(plugin2, context, events);
         this.cleanups.unshift({ pluginId, run: () => onunload?.call(plugin2) });
         await publishHostEvent(events, "plugin.activating", { pluginId });
         try {
@@ -1196,8 +1606,9 @@ class Registry {
           await tracker?.activated(plugin2, pluginContext);
           await publishHostEvent(events, "plugin.activated", { pluginId });
         } catch (error2) {
-          await publishHostEvent(events, "plugin.activation-failed", { pluginId, error: summarizeError(error2) });
-          throw error2;
+          const failure2 = this.catalog.normalize(error2);
+          await publishHostEvent(events, "plugin.activation-failed", { pluginId, error: summarizeError(failure2) });
+          throw failure2;
         }
       }
       this.state = "active";
@@ -1225,15 +1636,34 @@ class Registry {
     }
     events.dispose();
   }
-}
-function ownedCommand(command2, events) {
-  return {
-    id: command2.id,
-    description: command2.description,
-    usage: command2.usage,
-    ...command2.options === void 0 ? {} : { options: command2.options },
-    run: (args, flags, context) => command2.run(args, flags, { ...context, events })
-  };
+  /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
+  ownedCommand(plugin2, command2, events) {
+    return {
+      ...command2,
+      run: async (args, flags, context) => {
+        try {
+          return await command2.run(args, flags, this.pluginContext(plugin2, context, events));
+        } catch (error2) {
+          throw this.catalog.normalize(error2);
+        }
+      }
+    };
+  }
+  ownedGenerator(plugin2, generator, events) {
+    const owned = (call) => async (request) => {
+      try {
+        return await call({ ...request, context: this.pluginContext(plugin2, request.context, events) });
+      } catch (error2) {
+        throw this.catalog.normalize(error2);
+      }
+    };
+    const { generate, run: run2 } = generator;
+    return {
+      ...generator,
+      ...generate ? { generate: owned((request) => generate.call(generator, request)) } : {},
+      ...run2 ? { run: owned((request) => run2.call(generator, request)) } : {}
+    };
+  }
 }
 function projectName(name2) {
   ensure(typeof name2 === "string" && name2.length <= 214 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name2), "INVALID_PROJECT_NAME", "Use a lowercase kebab-case project name, for example billing-service.");
@@ -9788,8 +10218,8 @@ class Transaction {
     const existing = await exists(target);
     if (!existing) return false;
     const original = await promises$1.lstat(source);
-    const same = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
-    ensure(same, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
+    const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
+    ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
     return true;
   }
   /** The path a write's current content comes from once the batch's renames apply. */
@@ -18948,8 +19378,8 @@ function toMatters(options) {
   }
   return result;
 }
-function matter(option) {
-  let result = option;
+function matter(option2) {
+  let result = option2;
   if (typeof result === "string") {
     if (!own$1.call(markers, result)) {
       throw fault("Missing matter definition for `%s`", result);
@@ -19465,6 +19895,28 @@ async function loadModule(directory, files) {
   );
   return loaded.default;
 }
+async function installedPlugins(directory, enabled, skipped, files, warn) {
+  let folder;
+  try {
+    folder = await files.stat(directory);
+  } catch (error2) {
+    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return [];
+    throw error2;
+  }
+  if (folder.kind !== "folder") return [];
+  const ids = folder.files.map((path) => /^([^/]+)\/manifest\.json$/.exec(path)?.[1]).filter((id2) => id2 !== void 0);
+  const installed = [];
+  for (const id2 of ids) {
+    try {
+      const manifest = await readManifest(`${directory}/${id2}/manifest.json`, files);
+      ensure(manifest.id === id2, "INVALID_PLUGIN", `Manifest id must match plugin directory ${id2}.`);
+      installed.push({ manifest, skipped: skipped && enabled.includes(id2) });
+    } catch (error2) {
+      warn(`Ignored plugin directory ${directory}/${id2}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    }
+  }
+  return installed;
+}
 async function loadEnabledPlugins(directory, ids, files, registry2, events) {
   ensure(Array.isArray(ids) && ids.every((id2) => typeof id2 === "string" && /^[a-z][a-z0-9-]*$/.test(id2)) && new Set(ids).size === ids.length, "INVALID_PLUGIN_CONFIG", "Enabled plugins must contain unique lowercase kebab-case IDs.");
   const manifests = [];
@@ -19479,6 +19931,488 @@ async function loadEnabledPlugins(directory, ids, files, registry2, events) {
     ensure(isRecord(instance), "INVALID_PLUGIN", `Plugin ${manifest.id} must export an object or class.`);
     registry2.register(Object.assign(instance, { manifest }), events);
   }
+}
+function registerCorePlugins(registry2, events, plugins, host, disabled) {
+  const ids = plugins.map((plugin2) => plugin2.manifest.id);
+  const unknown2 = disabled.filter((id2) => !ids.includes(id2));
+  ensure(unknown2.length === 0, "INVALID_PLUGIN_CONFIG", `plugins.disabled names only bundled core plugins (${ids.join(", ")}); remove ${unknown2.join(", ")}. Disable a user plugin by removing it from plugins.enabled.`);
+  for (const plugin2 of plugins) {
+    if (disabled.includes(plugin2.manifest.id)) registry2.disable(plugin2.manifest);
+    else registry2.register({ ...plugin2.create(host), manifest: plugin2.manifest }, events, "core");
+  }
+}
+function registrySkills(registry2) {
+  return { list: () => [...registry2.skills.values()], get: (id2) => registry2.skills.get(id2) };
+}
+function value$2(flags, key, required2 = false) {
+  const result = flags[key];
+  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
+  return typeof result === "string" ? result : void 0;
+}
+function arity(args, min, max = min) {
+  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
+}
+const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
+const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected (`PROTECTED_PATH`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`) so `help`, `schema` and the invocation policy describe it; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for one-time setup after enabling and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
+const bundledSkills = [
+  { id: "forge-workflow", content: workflow },
+  { id: "forge-vault", content: vault },
+  { id: "forge-development", content: development }
+];
+function skillsCommand(skills) {
+  return {
+    id: "skills",
+    description: "List, read or install bundled and plugin agent skills.",
+    usage: "skills [list | show <id> | install] [--out .agents/skills]",
+    scope: "workspace",
+    discovery: false,
+    mutating: false,
+    defaultAction: "list",
+    actions: {
+      list: { description: "List the ids of every registered skill." },
+      show: { description: "Return one skill with its Markdown content." },
+      install: { description: "Write every skill to <out>/<id>/SKILL.md in the selected project; existing files are refused.", scope: "project", mutating: true }
+    },
+    args: [
+      { name: "action", description: "list (default), show or install.", enum: ["list", "show", "install"] },
+      { name: "id", description: "The skill id for show." }
+    ],
+    options: { out: option.string("Installation directory for skills install.", { default: ".agents/skills" }) },
+    errors: ["UNKNOWN_SKILL", "CONFLICT"],
+    async run(args, flags, { workspace: workspace2 }) {
+      const action2 = args[0] ?? "list";
+      if (action2 !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        return { skills: skills.list().map((skill) => skill.id) };
+      }
+      if (action2 === "show") {
+        arity(args, 2);
+        const skill = skills.get(args[1]);
+        ensure(skill, "UNKNOWN_SKILL", args[1]);
+        return skill;
+      }
+      ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
+      arity(args, 1);
+      const directory = value$2(flags, "out") ?? ".agents/skills";
+      return workspace2.write(skills.list().map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: new TextEncoder().encode(skill.content) })));
+    }
+  };
+}
+const skillsPlugin = {
+  manifest: {
+    id: "skills",
+    name: "Agent skills",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Bundled agent skills and the skills command to list, read and install them."
+  },
+  create: (host) => ({
+    skills: bundledSkills,
+    commands: [skillsCommand(host.skills)],
+    strings: { de: { commands: { skills: "Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren." } } }
+  })
+};
+function encodeText(text2) {
+  return new TextEncoder().encode(text2);
+}
+async function readInputBytes(flags, context, message) {
+  const from = value$2(flags, "from"), content2 = value$2(flags, "content");
+  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message);
+  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : encodeText(content2);
+}
+function parseJson(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
+  }
+}
+const discovery$1 = { scope: "workspace", discovery: true };
+async function makeDocument(title, flags, context, services) {
+  ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
+  const template = value$2(flags, "template", true);
+  ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+  const source = await services.files.read(`bin/templates/${vaultPath(template)}`);
+  const inline = value$2(flags, "values"), from = value$2(flags, "values-from");
+  ensure(inline === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
+  const data = from === void 0 ? parseJson(inline ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
+  ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
+  const bytes = services.templates.render(source.bytes, { title, values: data, date: value$2(flags, "date"), ...services.loaded.config.templates });
+  const path = `${value$2(flags, "out") ?? "notes"}/${title}.md`;
+  const result = await context.workspace.write([{ path, bytes }]);
+  return { generator: "document", template: source.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
+}
+function workflowCommands(services) {
+  const config2 = services.loaded.config;
+  return [
+    {
+      id: "config",
+      description: "Inspect the validated effective configuration and its source path.",
+      usage: "config",
+      ...discovery$1,
+      mutating: false,
+      errors: ["INVALID_CONFIG"],
+      run(args) {
+        arity(args, 0);
+        return { ...services.loaded, sections: services.configSections() };
+      }
+    },
+    {
+      id: "setup",
+      description: "Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.",
+      usage: "[--root project] setup [--dry-run]",
+      ...discovery$1,
+      mutating: true,
+      errors: ["INVALID_SETUP"],
+      run(args) {
+        arity(args, 0);
+        return services.setup();
+      }
+    },
+    {
+      id: "templates",
+      description: "Discover Markdown templates, required placeholders, and install the planning workflow pack.",
+      usage: "templates [list | inspect <template.md> | install [workflow]]",
+      scope: "workspace",
+      discovery: false,
+      mutating: true,
+      defaultAction: "list",
+      errors: ["INVALID_TEMPLATE", "INVALID_TEMPLATE_PACK", "NOT_FOUND", "CONFLICT"],
+      actions: {
+        list: { description: "List the editable Markdown templates in bin/templates.", mutating: false },
+        inspect: { description: "Report a template's required and optional values.", mutating: false },
+        install: { description: "Install the planning workflow template pack into bin/templates." }
+      },
+      args: [{ name: "action", description: "list (default), inspect or install.", enum: ["list", "inspect", "install"] }, { name: "target", description: "The template for inspect, or the pack (workflow) for install." }],
+      async run(args) {
+        const action2 = args[0] ?? "list";
+        if (action2 === "install") {
+          arity(args, 1, 2);
+          ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
+          return services.installTemplates();
+        }
+        if (action2 === "list") {
+          arity(args, 0, 1);
+          const prefix = "bin/templates/";
+          return { directory: "bin/templates", templates: (await services.files.list()).filter((path2) => path2.startsWith(prefix) && path2.toLowerCase().endsWith(".md")).map((path2) => path2.slice(prefix.length)) };
+        }
+        ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
+        arity(args, 2);
+        ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+        const path = `bin/templates/${vaultPath(args[1])}`;
+        return { path, ...services.templates.inspect((await services.files.read(path)).bytes) };
+      }
+    },
+    {
+      id: "project",
+      description: "Manage TypeScript library projects and add tested domain/application components.",
+      usage: "project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]",
+      scope: "workspace",
+      discovery: false,
+      mutating: true,
+      defaultAction: "list",
+      errors: ["INVALID_PROJECT", "INVALID_PROJECT_NAME", "INVALID_PROJECT_CONTEXT", "PROJECT_EXISTS", "PROJECT_NOT_FOUND", "PROJECT_REQUIRED", "STALE_PROJECT_CONTEXT", "INVALID_NAME"],
+      actions: {
+        list: { description: "List managed projects.", mutating: false },
+        create: { description: "Create a self-contained TypeScript project." },
+        open: { description: "Select a project for file commands and generators." },
+        current: { description: "Report the selected project.", mutating: false },
+        close: { description: "Clear the project selection." },
+        inspect: { description: "Describe a project, or the selected one.", mutating: false },
+        component: { description: "Add a tested domain or application component to a project." }
+      },
+      args: [{ name: "action", description: "list (default), create, open, current, close, inspect or component.", enum: ["list", "create", "open", "current", "close", "inspect", "component"] }, { name: "target", description: "A project id, or the component name." }, { name: "name", description: "The component name when a project id precedes it." }],
+      options: { kind: option.string("Component kind for project component.", { enum: ["domain", "application"], default: "domain" }) },
+      async run(args, flags) {
+        const action2 = args[0] ?? "list";
+        if (action2 !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
+        if (action2 === "list") {
+          arity(args, 0, 1);
+          return { directory: config2.paths.projects, projects: await services.projects.list() };
+        }
+        if (action2 === "current") {
+          arity(args, 1);
+          return { project: await services.projects.current() };
+        }
+        if (action2 === "open") {
+          arity(args, 2);
+          return services.projects.open(args[1]);
+        }
+        if (action2 === "close") {
+          arity(args, 1);
+          return services.projects.close();
+        }
+        if (action2 === "inspect") {
+          arity(args, 1, 2);
+          return args[1] ? services.projects.inspect(args[1]) : services.projects.requireCurrent();
+        }
+        if (action2 === "create") {
+          arity(args, 2);
+          return services.projects.create(args[1]);
+        }
+        ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
+        arity(args, 2, 3);
+        const kind = value$2(flags, "kind") ?? "domain";
+        ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
+        const name2 = args.length === 3 ? args[1] : (await services.projects.requireCurrent()).name;
+        return services.projects.component(name2, args.length === 3 ? args[2] : args[1], kind);
+      }
+    }
+  ];
+}
+const reviewOptions = {
+  "revisions-from": option.string("JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out)."),
+  plan: option.boolean("Report planned outputs and their status without writing."),
+  "plan-out": option.string("Write the plan's revision manifest to this path."),
+  check: option.boolean("Fail with a drift code when outputs are missing or differ.")
+};
+const libraryGenerationOptions = {
+  project: option.string("Generate into this project instead of the selected one."),
+  library: option.string("Definition library directory; defaults to the configured path."),
+  ...reviewOptions
+};
+function generationOutputPath(path, project2) {
+  const relative = vaultPath(path);
+  return project2 ? `${project2.directory}/${relative}` : relative;
+}
+async function generationControls(flags, files) {
+  const revisionsPath = value$2(flags, "revisions-from"), manifestPath2 = value$2(flags, "plan-out");
+  const planning = flags.plan === true || manifestPath2 !== void 0;
+  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
+  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
+  let revisions;
+  if (revisionsPath !== void 0) {
+    const parsed = parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes));
+    ensure(isRecord(parsed) && Object.values(parsed).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
+    revisions = parsed;
+  }
+  const mode = flags.check ? "check" : planning ? "plan" : "generate";
+  return { mode, manifestPath: manifestPath2, revisions };
+}
+function libraryMetadata(noun) {
+  const actions = {
+    list: { description: `List the ${noun} definitions in the library.`, mutating: false },
+    init: { description: `Create the library with starter ${noun} definitions.` },
+    inspect: { description: `Return one parsed ${noun} definition.`, mutating: false },
+    validate: { description: `Validate every ${noun} definition.`, mutating: false },
+    create: { description: `Create a new ${noun} definition.` },
+    import: { description: `Copy ${noun} definitions from the import directory into the library.` },
+    export: { description: `Copy the library's ${noun} definitions to the export directory.` }
+  };
+  const args = [
+    { name: "action", description: "list (default), init, inspect, validate, create, import or export.", enum: Object.keys(actions) },
+    { name: "id", description: "The definition id for inspect and create." }
+  ];
+  return { scope: "workspace", discovery: false, mutating: true, defaultAction: "list", actions, args };
+}
+const libraryOptions = {
+  library: option.string("Library directory, relative to the workspace; defaults to the configured path."),
+  from: option.string("Import source directory for import."),
+  out: option.string("Export destination directory for export.")
+};
+const uiGenerationOptions = {
+  framework: option.string("UI target; defaults to ui.framework.", { enum: uiFrameworks }),
+  stories: option.boolean("Also generate Storybook stories (make ui)."),
+  "stories-out": option.string("Stories output directory; defaults to paths.stories."),
+  "interactions-library": option.string("Interaction library directory; defaults to paths.interactions.")
+};
+async function makeUi(kind, id2, flags, context, services) {
+  const config2 = services.loaded.config;
+  const framework = value$2(flags, "framework") ?? config2.ui.framework;
+  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `--framework must be one of: ${uiFrameworks.join(", ")}.`);
+  const storybook2 = kind === "stories" || flags.stories === true;
+  ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
+  ensure(kind !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
+  const scoped = (path) => generationOutputPath(path, context.project);
+  const directory = value$2(flags, "library") ?? config2.paths.components;
+  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
+  const options = {
+    component: id2,
+    framework,
+    interactionDirectory: value$2(flags, "interactions-library") ?? config2.paths.interactions,
+    outputDirectory: scoped(value$2(flags, "out") ?? config2.paths.ui),
+    ...storybook2 ? { storiesDirectory: scoped(value$2(flags, "stories-out") ?? config2.paths.stories) } : {},
+    storybook: storybook2,
+    storiesOnly: kind === "stories",
+    ...revisions ? { revisions } : {}
+  };
+  if (mode !== "generate") {
+    const result = mode === "check" ? await services.uiLibrary.check(directory, options) : await services.uiLibrary.plan(directory, options, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
+    return { generator: kind, library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+  }
+  return { generator: kind, library: directory, ...await services.uiLibrary.generate(directory, options) };
+}
+function uiCommands(services) {
+  const config2 = services.loaded.config;
+  return [{
+    id: "components",
+    description: "Manage and validate a shared Markdown UI component library.",
+    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
+    ...libraryMetadata("component"),
+    options: { ...libraryOptions, tag: option.string("Root element tag for create.", { default: "div" }), "interactions-library": option.string("Interaction library directory used to validate component interactions.") },
+    errors: ["INVALID_UI", "INVALID_UI_LIBRARY", "DUPLICATE_UI_COMPONENT", "UNKNOWN_UI_COMPONENT", "CYCLIC_UI_COMPONENT", "UNKNOWN_INTERACTION", "CONFLICT"],
+    async run(args, flags) {
+      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? config2.paths.components;
+      const interactionDirectory = value$2(flags, "interactions-library") ?? config2.paths.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
+      ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
+      const library = services.uiLibrary;
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions = await library.list(directory, interactionDirectory);
+        return { directory, count: definitions.length, status: definitions.length ? "ready" : "empty", ...!definitions.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions.map((definition2) => ({
+          id: definition2.id,
+          name: definition2.name,
+          sourcePath: definition2.sourcePath,
+          descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? "",
+          propNames: Object.keys(definition2.props).sort(),
+          dependencies: componentDependencies(definition2.root)
+        })) };
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory, interactionDirectory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1], interactionDirectory);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return library.validate(directory, interactionDirectory);
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        return library.create(directory, args[1], value$2(flags, "tag") ?? "div", interactionDirectory);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value$2(flags, "from") ?? config2.paths.componentImports, directory, interactionDirectory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value$2(flags, "out") ?? config2.paths.componentExports, interactionDirectory);
+    }
+  }];
+}
+const dataSourceGenerationOptions = { "test-data-out": option.string("Test-data output directory; defaults to paths.dataFixtures.") };
+async function makeDataSource(id2, flags, context, services) {
+  const config2 = services.loaded.config;
+  const scoped = (path) => generationOutputPath(path, context.project);
+  const directory = value$2(flags, "library") ?? config2.paths.dataSources;
+  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
+  const options = {
+    source: id2,
+    outputDirectory: scoped(value$2(flags, "out") ?? config2.paths.dataGenerated),
+    testDataDirectory: scoped(value$2(flags, "test-data-out") ?? config2.paths.dataFixtures),
+    ...revisions ? { revisions } : {}
+  };
+  if (mode !== "generate") {
+    const result = mode === "check" ? await services.dataSources.check(directory, options) : await services.dataSources.plan(directory, options, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
+    return { generator: "data-source", library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+  }
+  return { generator: "data-source", library: directory, ...await services.dataSources.generate(directory, options) };
+}
+function dataSourceCommands(services) {
+  const config2 = services.loaded.config;
+  return [{
+    id: "data-sources",
+    description: "Manage Markdown REST/local-JSON definitions for typed adapters and deterministic test data.",
+    usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
+    ...libraryMetadata("data-source"),
+    options: { ...libraryOptions, kind: option.string("Data-source kind for create.", { enum: ["rest", "json"], default: "rest" }) },
+    errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "CONFLICT"],
+    async run(args, flags) {
+      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? config2.paths.dataSources;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
+      ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
+      const library = services.dataSources;
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions = await library.list(directory);
+        return {
+          directory,
+          count: definitions.length,
+          status: definitions.length ? "ready" : "empty",
+          ...!definitions.length ? { nextStep: `Run data-sources init --library ${directory}, or add a Markdown data-source definition.` } : {},
+          sources: definitions.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
+        };
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1]);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return library.validate(directory);
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        const kind = value$2(flags, "kind") ?? "rest";
+        ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
+        return library.create(directory, args[1], kind);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value$2(flags, "from") ?? config2.paths.dataImports, directory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value$2(flags, "out") ?? config2.paths.dataExports);
+    }
+  }];
+}
+function libraryGenerators(services) {
+  const library = { projectOption: "project", options: { ...libraryGenerationOptions } };
+  return [
+    {
+      id: "document",
+      description: "Render an Obsidian Markdown/frontmatter template with typed values.",
+      usage: "make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]",
+      directory: "notes",
+      options: {
+        template: option.string("Markdown template under bin/templates.", { required: true }),
+        values: option.string("Template values as a JSON object."),
+        "values-from": option.string("Read template values from a JSON file."),
+        date: option.string("ISO date used for template dates; defaults to today.")
+      },
+      run: ({ name: name2, flags, context }) => makeDocument(name2, flags, context, services)
+    },
+    {
+      id: "ui",
+      description: "Generate deterministic UI code from Markdown component definitions.",
+      usage: "make ui <component-id> [--framework target] [--stories] [--project id] [--out directory]",
+      ...library,
+      options: { ...library.options, ...uiGenerationOptions },
+      run: ({ name: name2, flags, context }) => makeUi("ui", name2, flags, context, services)
+    },
+    {
+      id: "stories",
+      description: "Generate native Storybook CSF stories for existing UI components.",
+      usage: "make stories <component-id> [--framework target] [--project id] [--stories-out directory]",
+      ...library,
+      options: { ...library.options, ...uiGenerationOptions },
+      run: ({ name: name2, flags, context }) => makeUi("stories", name2, flags, context, services)
+    },
+    {
+      id: "data-source",
+      description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.",
+      usage: "make data-source <id> [--project id] [--out directory] [--test-data-out directory]",
+      ...library,
+      options: { ...library.options, ...dataSourceGenerationOptions },
+      run: ({ name: name2, flags, context }) => makeDataSource(name2, flags, context, services)
+    }
+  ];
 }
 function getEnumValues(entries) {
   const numericValues = Object.values(entries).filter((v) => typeof v === "number");
@@ -21783,7 +22717,7 @@ const $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
   defineLazyInternal(inst, "optout", (zod) => zod.def.options.some((o) => o._zod.optout === "optional") ? "optional" : void 0);
   defineLazyInternal(inst, "values", (zod) => {
     if (zod.def.options.every((o) => o._zod.values)) {
-      return new Set(zod.def.options.flatMap((option) => Array.from(option._zod.values)));
+      return new Set(zod.def.options.flatMap((option2) => Array.from(option2._zod.values)));
     }
     return void 0;
   });
@@ -21801,8 +22735,8 @@ const $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
     }
     let async = false;
     const results = [];
-    for (const option of def.options) {
-      const result = option._zod.run({
+    for (const option2 of def.options) {
+      const result = option2._zod.run({
         value: payload.value,
         issues: []
       }, ctx);
@@ -23562,24 +24496,24 @@ function compactTypeUnion(schema2) {
   const options = schema2.anyOf;
   if (!Array.isArray(options) || options.length === 0 || schema2.type !== void 0)
     return;
-  const types = [];
-  for (const option of options) {
-    if (!option || typeof option !== "object")
+  const types2 = [];
+  for (const option2 of options) {
+    if (!option2 || typeof option2 !== "object")
       return;
-    compactTypeUnion(option);
-    const keys = Object.keys(option);
+    compactTypeUnion(option2);
+    const keys = Object.keys(option2);
     if (keys.length !== 1 || keys[0] !== "type")
       return;
-    const type2 = option.type;
+    const type2 = option2.type;
     for (const member of Array.isArray(type2) ? type2 : [type2]) {
       if (typeof member !== "string")
         return;
-      if (!types.includes(member))
-        types.push(member);
+      if (!types2.includes(member))
+        types2.push(member);
     }
   }
   delete schema2.anyOf;
-  schema2.type = types.length === 1 ? types[0] : types;
+  schema2.type = types2.length === 1 ? types2[0] : types2;
 }
 const FOLDABLE_KEYS = /* @__PURE__ */ new Set(["type", "properties", "required", "additionalProperties"]);
 const UNION_KEYS = ["oneOf", "anyOf"];
@@ -23859,8 +24793,8 @@ function isTransforming(_schema, _ctx) {
     return false;
   }
   if (def.type === "union") {
-    for (const option of def.options) {
-      if (isTransforming(option, ctx))
+    for (const option2 of def.options) {
+      if (isTransforming(option2, ctx))
         return true;
     }
     return false;
@@ -23883,8 +24817,8 @@ const createToJSONSchemaMethod = (schema2, processors = {}) => (params) => {
   return finalize(ctx, schema2);
 };
 const createStandardJSONSchemaMethod = (schema2, io, processors = {}) => (params) => {
-  const { libraryOptions, target } = params ?? {};
-  const ctx = initializeContext({ ...libraryOptions ?? {}, target, io, processors });
+  const { libraryOptions: libraryOptions2, target } = params ?? {};
+  const ctx = initializeContext({ ...libraryOptions2 ?? {}, target, io, processors });
   processSchema(schema2, ctx);
   extractDefs(ctx, schema2);
   return finalize(ctx, schema2);
@@ -24252,8 +25186,8 @@ function stringifyKeyNames(bySchema, json2, visited) {
     if (mapped.some((branch, i) => branch !== branches[i]))
       json2 = { ...json2, [keyword]: mapped };
   }
-  const types = Array.isArray(json2.type) ? json2.type : [json2.type];
-  const numericType = !types.includes("string") && types.some((t) => t === "number" || t === "integer");
+  const types2 = Array.isArray(json2.type) ? json2.type : [json2.type];
+  const numericType = !types2.includes("string") && types2.some((t) => t === "number" || t === "integer");
   const values2 = json2.enum ?? (json2.const !== void 0 ? [json2.const] : void 0);
   if (!numericType && !values2?.some((v) => typeof v === "number"))
     return json2;
@@ -24266,7 +25200,7 @@ function stringifyKeyNames(bySchema, json2, visited) {
     return rest;
   rest.type = "string";
   if (!values2)
-    rest.pattern = (types.includes("number") ? number$1 : integer).source;
+    rest.pattern = (types2.includes("number") ? number$1 : integer).source;
   return rest;
 }
 const pendingRecords = /* @__PURE__ */ new WeakMap();
@@ -25363,11 +26297,11 @@ const ZodPipe = /* @__PURE__ */ $constructor("ZodPipe", (inst, def) => {
   inst.in = def.in;
   inst.out = def.out;
 });
-function pipe(in_, out) {
+function pipe(in_, out2) {
   return new ZodPipe({
     type: "pipe",
     in: in_,
-    out
+    out: out2
     // ...util.normalizeParams(params),
   });
 }
@@ -25414,6 +26348,7 @@ const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\
     return false;
   }
 }, "Must be a contained workspace-relative path.");
+const pluginIds = array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
 const configSchema = strictObject({
   schemaVersion: literal$1(1).default(1),
   paths: strictObject({
@@ -25434,7 +26369,12 @@ const configSchema = strictObject({
   }).prefault({}),
   settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
   templates: strictObject({ dateFormat: string$1().min(1).default("YYYY-MM-DD"), timeFormat: string$1().min(1).default("HH:mm") }).prefault({}),
-  plugins: strictObject({ enabled: array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]) }).prefault({}),
+  // Plugin sections are validated against the schemas that registered plugins declare once they load.
+  plugins: strictObject({
+    enabled: pluginIds,
+    disabled: pluginIds,
+    settings: record$1(string$1().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
+  }).prefault({}),
   ui: strictObject({ framework: _enum(["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"]).default("html") }).prefault({})
 });
 async function loadConfig(options) {
@@ -26131,7 +27071,7 @@ it('reports invalid required fields without submitting data', () => {
 });
 `;
 }
-const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {\n      if (!/^src\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path)) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/...; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
+const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {\n      // Kernel source is grouped by layer, then concern; a bundled core plugin owns its layers under src/plugins/<id>/.\n      const kernel = /^src\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path);\n      const corePlugin = /^src\\/plugins\\/[a-z][a-z0-9-]*\\/(?:plugin\\.ts|(?:domain|application|infrastructure|presentation)\\/.+)$/.test(path);\n      if (!kernel && !corePlugin) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/... for the kernel and src/plugins/<id>/plugin.ts or src/plugins/<id>/<layer>/... for core plugins; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
 const testConfig = "import { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Classification patterns define the full scope; Vitest defaults hide cypress/dist directories.\n    projects: [\n      { test: { name: 'unit', environment: 'node', exclude: [], include: ['tests/**/*.unit.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'integration', environment: 'node', exclude: [], include: ['tests/**/*.integration.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'e2e', environment: 'node', exclude: [], include: ['tests/**/*.e2e.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n    ],\n  },\n});\n";
 const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
 const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  // The inventory uses POSIX separators on every platform; compare Windows reports the same way.\n  const discovered = new Set(discovery.report.files.map(file => String(file).replaceAll('\\\\', '/')));\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
@@ -26373,7 +27313,9 @@ function names(name2, directory) {
   return { name: name2, directory, file: name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase() };
 }
 const generators = [
-  { id: "form", description: "Typed form definition with Zod validation and HTML preview in a Forge project.", generate(input, dir) {
+  { id: "form", description: "Typed form definition with Zod validation and HTML preview in a Forge project.", directory: "src/presentation/forms", async generate({ name: input, directory: dir, context }) {
+    ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
+    await context.workspace.files.read("src/presentation/forms/form-model.ts");
     const { name: name2, directory, file } = names(input, dir);
     const relative = minpath.posix.relative(directory, "src/presentation/forms/form-model.js");
     const runtimeImport = relative.startsWith(".") ? relative : `./${relative}`;
@@ -26384,7 +27326,7 @@ const generators = [
       { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText$1(formDefinitionTestSource(name2, testImport.startsWith(".") ? testImport : `./${testImport}`, "../src/presentation/forms/form-model.js")) }
     ];
   } },
-  { id: "entity", description: "Domain entity with identity and invariant enforcement.", generate(input, dir) {
+  { id: "entity", description: "Domain entity with identity and invariant enforcement.", generate({ name: input, directory: dir }) {
     const { name: name2, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
   private constructor(readonly id: string) {}
@@ -26396,7 +27338,7 @@ const generators = [
 }
 `) }];
   } },
-  { id: "value-object", description: "Immutable value object with equality and validation.", generate(input, dir) {
+  { id: "value-object", description: "Immutable value object with equality and validation.", generate({ name: input, directory: dir }) {
     const { name: name2, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
   private constructor(readonly value: string) { globalThis.Object.freeze(this); }
@@ -26410,7 +27352,7 @@ const generators = [
 }
 `) }];
   } },
-  { id: "use-case", description: "Application use case with an injected repository port.", generate(input, dir) {
+  { id: "use-case", description: "Application use case with an injected repository port.", generate({ name: input, directory: dir }) {
     const { name: name2, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2}Input { readonly id: string }
 export interface ${name2}Repository { exists(id: string): globalThis.Promise<boolean> }
@@ -26425,7 +27367,7 @@ export class ${name2} {
 }
 `) }];
   } },
-  { id: "event", description: "Typed event payload and runtime descriptor.", generate(input, dir) {
+  { id: "event", description: "Typed event payload and runtime descriptor.", generate({ name: input, directory: dir }) {
     const { name: name2, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2} { readonly id: string }
 export const ${name2}Event = {
@@ -26436,7 +27378,7 @@ export const ${name2}Event = {
 };
 `) }];
   } },
-  { id: "plugin", description: "Installable plugin folder with a manifest, namespaced command and lifecycle hooks.", generate(input, dir) {
+  { id: "plugin", description: "Installable plugin folder with a manifest, namespaced command and lifecycle hooks.", scope: "workspace", directory: "bin/plugins", fixedDirectory: true, generate({ name: input, directory: dir }) {
     const { name: name2, directory, file } = names(input, dir);
     const manifest = {
       id: file,
@@ -26466,18 +27408,18 @@ export default {
 const reserved$1 = new Set("arguments await break case catch children class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
 const identifier$2 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
 const id = string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
-const value$2 = union([string$1(), number().finite(), boolean(), _null()]);
-const json$3 = lazy(() => union([value$2, array(json$3), record$1(string$1(), json$3)]));
-const values = record$1(identifier$2, value$2);
-const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
+const value$1 = union([string$1(), number().finite(), boolean(), _null()]);
+const json$3 = lazy(() => union([value$1, array(json$3), record$1(string$1(), json$3)]));
+const values = record$1(identifier$2, value$1);
+const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$1.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
   if (property.default !== void 0 && typeof property.default !== property.type) context.addIssue({ code: "custom", message: "Prop default must match its declared type." });
 });
-const state = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2 }).superRefine((field2, context) => {
+const state = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$1 }).superRefine((field2, context) => {
   if (typeof field2.default !== field2.type) context.addIssue({ code: "custom", message: "State default must match its declared type." });
 });
 const attribute = string$1().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/).refine((name2) => !/^on|^v-/i.test(name2) && !["innerHTML", "dangerouslySetInnerHTML", "ref", "key"].includes(name2), "Event handlers and framework runtime attributes belong in native code");
 const node = lazy(() => union([
-  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record$1(attribute, value$2).optional(), text: string$1().optional(), children: array(node).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
+  strictObject({ tag: string$1().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/), attrs: record$1(attribute, value$1).optional(), text: string$1().optional(), children: array(node).optional(), interactions: array(id).min(1).refine((ids) => new Set(ids).size === ids.length, "Interaction attachments must be unique.").optional() }).superRefine((element2, context) => {
     if (element2.tag === "svg" || element2.tag === "math") context.addIssue({ code: "custom", message: "SVG and MathML namespaces are unsupported in portable definitions; use native components or image assets." });
     if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
   }),
@@ -26719,8 +27661,8 @@ function renderInteractionHandlers(definition2, interactions, options) {
       } else if (action2.type === "navigate") {
         lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${currentTarget}, ${value2(action2.url)});`);
       } else {
-        const option = action2.type === "save-form" ? action2.key : action2.type === "upload-form" ? action2.url : action2.filename;
-        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$2(action2.type)}, ${value2(option)})) return;`);
+        const option2 = action2.type === "save-form" ? action2.key : action2.type === "upload-form" ? action2.url : action2.filename;
+        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$2(action2.type)}, ${value2(option2)})) return;`);
       }
     }
     lines2.push("}");
@@ -27248,7 +28190,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
 }
 const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
 const identifier$1 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
-const value$1 = union([string$1(), number().finite(), boolean(), _null()]);
+const value = union([string$1(), number().finite(), boolean(), _null()]);
 function matches(field2, item) {
   return item === null ? field2.nullable === true : typeof item === field2.type;
 }
@@ -27256,8 +28198,8 @@ const field = strictObject({
   type: _enum(["string", "number", "boolean"]),
   optional: boolean().optional(),
   nullable: boolean().optional(),
-  enum: array(value$1).min(1).max(100).optional(),
-  example: value$1.optional()
+  enum: array(value).min(1).max(100).optional(),
+  example: value.optional()
 }).superRefine((property, context) => {
   if (property.enum?.some((item) => !matches(property, item))) context.addIssue({ code: "custom", message: "Enum values must match the field type and nullability." });
   if (property.enum && new Set(property.enum).size !== property.enum.length) context.addIssue({ code: "custom", message: "Enum values must be unique." });
@@ -27276,7 +28218,7 @@ const schema$1 = strictObject({
   model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record$1(identifier$1, field) }),
   rest: strictObject({ baseUrl: string$1().url(), operations }).optional(),
   json: strictObject({ path: string$1().min(1) }).optional(),
-  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record$1(identifier$1, value$1)).min(1).max(100).optional() }).optional()
+  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record$1(identifier$1, value)).min(1).max(100).optional() }).optional()
 }).superRefine((definition2, context) => {
   const issue2 = (message) => context.addIssue({ code: "custom", message });
   const fields = definition2.model.fields, primary = fields[definition2.model.idField];
@@ -27586,14 +28528,6 @@ ${description2}`);
     return bytes;
   }
 }
-const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
-const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected (`PROTECTED_PATH`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for one-time setup after enabling and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
-const builtinSkills = [
-  { id: "forge-workflow", content: workflow },
-  { id: "forge-vault", content: vault },
-  { id: "forge-development", content: development }
-];
 const execution = ["command", "http", "mcp_tool"];
 const evaluation = [...execution, "prompt", "agent"];
 const claudeHookEvents = {
@@ -28337,8 +29271,8 @@ class Help {
    * @returns {number}
    */
   compareOptions(a, b) {
-    const getSortKey = (option) => {
-      return option.short ? option.short.replace(/^-/, "") : option.long.replace(/^--/, "");
+    const getSortKey = (option2) => {
+      return option2.short ? option2.short.replace(/^-/, "") : option2.long.replace(/^--/, "");
     };
     return getSortKey(a).localeCompare(getSortKey(b));
   }
@@ -28349,7 +29283,7 @@ class Help {
    * @returns {Option[]}
    */
   visibleOptions(cmd) {
-    const visibleOptions = cmd.options.filter((option) => !option.hidden);
+    const visibleOptions = cmd.options.filter((option2) => !option2.hidden);
     const helpOption = cmd._getHelpOption();
     if (helpOption && !helpOption.hidden) {
       const removeShort = helpOption.short && cmd._findOption(helpOption.short);
@@ -28382,7 +29316,7 @@ class Help {
     const globalOptions2 = [];
     for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
       const visibleOptions = ancestorCmd.options.filter(
-        (option) => !option.hidden
+        (option2) => !option2.hidden
       );
       globalOptions2.push(...visibleOptions);
     }
@@ -28425,8 +29359,8 @@ class Help {
    * @param {Option} option
    * @returns {string}
    */
-  optionTerm(option) {
-    return option.flags;
+  optionTerm(option2) {
+    return option2.flags;
   }
   /**
    * Get the argument term to show in the list of arguments.
@@ -28462,10 +29396,10 @@ class Help {
    * @returns {number}
    */
   longestOptionTermLength(cmd, helper) {
-    return helper.visibleOptions(cmd).reduce((max, option) => {
+    return helper.visibleOptions(cmd).reduce((max, option2) => {
       return Math.max(
         max,
-        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option)))
+        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option2)))
       );
     }, 0);
   }
@@ -28477,10 +29411,10 @@ class Help {
    * @returns {number}
    */
   longestGlobalOptionTermLength(cmd, helper) {
-    return helper.visibleGlobalOptions(cmd).reduce((max, option) => {
+    return helper.visibleGlobalOptions(cmd).reduce((max, option2) => {
       return Math.max(
         max,
-        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option)))
+        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option2)))
       );
     }, 0);
   }
@@ -28543,36 +29477,36 @@ class Help {
    * @param {Option} option
    * @return {string}
    */
-  optionDescription(option) {
+  optionDescription(option2) {
     const extraInfo = [];
-    if (option.argChoices) {
+    if (option2.argChoices) {
       extraInfo.push(
         // use stringify to match the display of the default value
-        `choices: ${option.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
+        `choices: ${option2.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
       );
     }
-    if (option.defaultValue !== void 0) {
-      const showDefault = option.required || option.optional || option.isBoolean() && typeof option.defaultValue === "boolean";
+    if (option2.defaultValue !== void 0) {
+      const showDefault = option2.required || option2.optional || option2.isBoolean() && typeof option2.defaultValue === "boolean";
       if (showDefault) {
         extraInfo.push(
-          `default: ${option.defaultValueDescription || JSON.stringify(option.defaultValue)}`
+          `default: ${option2.defaultValueDescription || JSON.stringify(option2.defaultValue)}`
         );
       }
     }
-    if (option.presetArg !== void 0 && option.optional) {
-      extraInfo.push(`preset: ${JSON.stringify(option.presetArg)}`);
+    if (option2.presetArg !== void 0 && option2.optional) {
+      extraInfo.push(`preset: ${JSON.stringify(option2.presetArg)}`);
     }
-    if (option.envVar !== void 0) {
-      extraInfo.push(`env: ${option.envVar}`);
+    if (option2.envVar !== void 0) {
+      extraInfo.push(`env: ${option2.envVar}`);
     }
     if (extraInfo.length > 0) {
       const extraDescription = `(${extraInfo.join(", ")})`;
-      if (option.description) {
-        return `${option.description} ${extraDescription}`;
+      if (option2.description) {
+        return `${option2.description} ${extraDescription}`;
       }
       return extraDescription;
     }
-    return option.description;
+    return option2.description;
   }
   /**
    * Get the argument description to show in the list of arguments.
@@ -28676,22 +29610,22 @@ class Help {
     const optionGroups = this.groupItems(
       cmd.options,
       helper.visibleOptions(cmd),
-      (option) => option.helpGroupHeading ?? "Options:"
+      (option2) => option2.helpGroupHeading ?? "Options:"
     );
     optionGroups.forEach((options, group) => {
-      const optionList = options.map((option) => {
+      const optionList = options.map((option2) => {
         return callFormatItem(
-          helper.styleOptionTerm(helper.optionTerm(option)),
-          helper.styleOptionDescription(helper.optionDescription(option))
+          helper.styleOptionTerm(helper.optionTerm(option2)),
+          helper.styleOptionDescription(helper.optionDescription(option2))
         );
       });
       output = output.concat(this.formatItemList(group, optionList, helper));
     });
     if (helper.showGlobalOptions) {
-      const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
+      const globalOptionList = helper.visibleGlobalOptions(cmd).map((option2) => {
         return callFormatItem(
-          helper.styleOptionTerm(helper.optionTerm(option)),
-          helper.styleOptionDescription(helper.optionDescription(option))
+          helper.styleOptionTerm(helper.optionTerm(option2)),
+          helper.styleOptionDescription(helper.optionDescription(option2))
         );
       });
       output = output.concat(
@@ -29112,11 +30046,11 @@ class DualOptions {
     this.positiveOptions = /* @__PURE__ */ new Map();
     this.negativeOptions = /* @__PURE__ */ new Map();
     this.dualOptions = /* @__PURE__ */ new Set();
-    options.forEach((option) => {
-      if (option.negate) {
-        this.negativeOptions.set(option.attributeName(), option);
+    options.forEach((option2) => {
+      if (option2.negate) {
+        this.negativeOptions.set(option2.attributeName(), option2);
       } else {
-        this.positiveOptions.set(option.attributeName(), option);
+        this.positiveOptions.set(option2.attributeName(), option2);
       }
     });
     this.negativeOptions.forEach((value2, key) => {
@@ -29132,12 +30066,12 @@ class DualOptions {
    * @param {Option} option
    * @returns {boolean}
    */
-  valueFromOption(value2, option) {
-    const optionKey = option.attributeName();
+  valueFromOption(value2, option2) {
+    const optionKey = option2.attributeName();
     if (!this.dualOptions.has(optionKey)) return true;
     const preset = this.negativeOptions.get(optionKey).presetArg;
     const negativeValue = preset !== void 0 ? preset : false;
-    return option.negate === (negativeValue === value2);
+    return option2.negate === (negativeValue === value2);
   }
 }
 function camelcase(str) {
@@ -29768,15 +30702,15 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} option
    * @private
    */
-  _registerOption(option) {
-    const matchingOption = option.short && this._findOption(option.short) || option.long && this._findOption(option.long);
+  _registerOption(option2) {
+    const matchingOption = option2.short && this._findOption(option2.short) || option2.long && this._findOption(option2.long);
     if (matchingOption) {
-      const matchingFlag = option.long && this._findOption(option.long) ? option.long : option.short;
-      throw new Error(`Cannot add option '${option.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
+      const matchingFlag = option2.long && this._findOption(option2.long) ? option2.long : option2.short;
+      throw new Error(`Cannot add option '${option2.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
 -  already used by option '${matchingOption.flags}'`);
     }
-    this._initOptionGroup(option);
-    this.options.push(option);
+    this._initOptionGroup(option2);
+    this.options.push(option2);
   }
   /**
    * Check for command name and alias conflicts with existing commands.
@@ -29808,27 +30742,27 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} option
    * @return {Command} `this` command for chaining
    */
-  addOption(option) {
-    this._registerOption(option);
-    const oname = option.name();
-    const name2 = option.attributeName();
-    if (option.defaultValue !== void 0) {
-      this.setOptionValueWithSource(name2, option.defaultValue, "default");
+  addOption(option2) {
+    this._registerOption(option2);
+    const oname = option2.name();
+    const name2 = option2.attributeName();
+    if (option2.defaultValue !== void 0) {
+      this.setOptionValueWithSource(name2, option2.defaultValue, "default");
     }
     const handleOptionValue = (val, invalidValueMessage, valueSource) => {
-      if (val == null && option.presetArg !== void 0) {
-        val = option.presetArg;
+      if (val == null && option2.presetArg !== void 0) {
+        val = option2.presetArg;
       }
       const oldValue = this.getOptionValue(name2);
-      if (val !== null && option.parseArg) {
-        val = this._callParseArg(option, val, oldValue, invalidValueMessage);
-      } else if (val !== null && option.variadic) {
-        val = option._collectValue(val, oldValue);
+      if (val !== null && option2.parseArg) {
+        val = this._callParseArg(option2, val, oldValue, invalidValueMessage);
+      } else if (val !== null && option2.variadic) {
+        val = option2._collectValue(val, oldValue);
       }
       if (val == null) {
-        if (option.negate) {
+        if (option2.negate) {
           val = false;
-        } else if (option.isBoolean() || option.optional) {
+        } else if (option2.isBoolean() || option2.optional) {
           val = true;
         } else {
           val = "";
@@ -29837,12 +30771,12 @@ Expecting one of '${allowedValues.join("', '")}'`);
       this.setOptionValueWithSource(name2, val, valueSource);
     };
     this.on("option:" + oname, (val) => {
-      const invalidValueMessage = `error: option '${option.flags}' argument '${val}' is invalid.`;
+      const invalidValueMessage = `error: option '${option2.flags}' argument '${val}' is invalid.`;
       handleOptionValue(val, invalidValueMessage, "cli");
     });
-    if (option.envVar) {
+    if (option2.envVar) {
       this.on("optionEnv:" + oname, (val) => {
-        const invalidValueMessage = `error: option '${option.flags}' value '${val}' from env '${option.envVar}' is invalid.`;
+        const invalidValueMessage = `error: option '${option2.flags}' value '${val}' from env '${option2.envVar}' is invalid.`;
         handleOptionValue(val, invalidValueMessage, "env");
       });
     }
@@ -29860,21 +30794,21 @@ Expecting one of '${allowedValues.join("', '")}'`);
         "To add an Option object use addOption() instead of option() or requiredOption()"
       );
     }
-    const option = this.createOption(flags, description2);
-    option.makeOptionMandatory(!!config2.mandatory);
+    const option2 = this.createOption(flags, description2);
+    option2.makeOptionMandatory(!!config2.mandatory);
     if (typeof fn === "function") {
-      option.default(defaultValue).argParser(fn);
+      option2.default(defaultValue).argParser(fn);
     } else if (fn instanceof RegExp) {
       const regex = fn;
       fn = (val, def) => {
         const m = regex.exec(val);
         return m ? m[0] : def;
       };
-      option.default(defaultValue).argParser(fn);
+      option2.default(defaultValue).argParser(fn);
     } else {
-      option.default(fn);
+      option2.default(fn);
     }
-    return this.addOption(option);
+    return this.addOption(option2);
   }
   /**
    * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
@@ -30188,12 +31122,12 @@ Expecting one of '${allowedValues.join("', '")}'`);
   _prepareForParse() {
     if (this._savedState === null) {
       this.options.filter(
-        (option) => option.negate && option.defaultValue === void 0 && this.getOptionValue(option.attributeName()) === void 0
-      ).forEach((option) => {
-        const positiveLongFlag = option.long.replace(/^--no-/, "--");
+        (option2) => option2.negate && option2.defaultValue === void 0 && this.getOptionValue(option2.attributeName()) === void 0
+      ).forEach((option2) => {
+        const positiveLongFlag = option2.long.replace(/^--no-/, "--");
         if (!this._findOption(positiveLongFlag)) {
           this.setOptionValueWithSource(
-            option.attributeName(),
+            option2.attributeName(),
             true,
             "default"
           );
@@ -30635,7 +31569,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @package
    */
   _findOption(arg) {
-    return this.options.find((option) => option.is(arg));
+    return this.options.find((option2) => option2.is(arg));
   }
   /**
    * Display an error message if a mandatory option does not have a value.
@@ -30658,22 +31592,22 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @private
    */
   _checkForConflictingLocalOptions() {
-    const definedNonDefaultOptions = this.options.filter((option) => {
-      const optionKey = option.attributeName();
+    const definedNonDefaultOptions = this.options.filter((option2) => {
+      const optionKey = option2.attributeName();
       if (this.getOptionValue(optionKey) === void 0) {
         return false;
       }
       return this.getOptionValueSource(optionKey) !== "default";
     });
     const optionsWithConflicting = definedNonDefaultOptions.filter(
-      (option) => option.conflictsWith.length > 0
+      (option2) => option2.conflictsWith.length > 0
     );
-    optionsWithConflicting.forEach((option) => {
+    optionsWithConflicting.forEach((option2) => {
       const conflictingAndDefined = definedNonDefaultOptions.find(
-        (defined) => option.conflictsWith.includes(defined.attributeName())
+        (defined) => option2.conflictsWith.includes(defined.attributeName())
       );
       if (conflictingAndDefined) {
-        this._conflictingOption(option, conflictingAndDefined);
+        this._conflictingOption(option2, conflictingAndDefined);
       }
     });
   }
@@ -30735,32 +31669,32 @@ Expecting one of '${allowedValues.join("', '")}'`);
       }
       activeVariadicOption = null;
       if (maybeOption(arg)) {
-        const option = this._findOption(arg);
-        if (option) {
-          if (option.required) {
+        const option2 = this._findOption(arg);
+        if (option2) {
+          if (option2.required) {
             const value2 = args[i++];
-            if (value2 === void 0) this.optionMissingArgument(option);
-            this.emit(`option:${option.name()}`, value2);
-          } else if (option.optional) {
+            if (value2 === void 0) this.optionMissingArgument(option2);
+            this.emit(`option:${option2.name()}`, value2);
+          } else if (option2.optional) {
             let value2 = null;
             if (i < args.length && (!maybeOption(args[i]) || negativeNumberArg(args[i]))) {
               value2 = args[i++];
             }
-            this.emit(`option:${option.name()}`, value2);
+            this.emit(`option:${option2.name()}`, value2);
           } else {
-            this.emit(`option:${option.name()}`);
+            this.emit(`option:${option2.name()}`);
           }
-          activeVariadicOption = option.variadic ? option : null;
+          activeVariadicOption = option2.variadic ? option2 : null;
           continue;
         }
       }
       if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
-        const option = this._findOption(`-${arg[1]}`);
-        if (option) {
-          if (option.required || option.optional && this._combineFlagAndOptionalValue) {
-            this.emit(`option:${option.name()}`, arg.slice(2));
+        const option2 = this._findOption(`-${arg[1]}`);
+        if (option2) {
+          if (option2.required || option2.optional && this._combineFlagAndOptionalValue) {
+            this.emit(`option:${option2.name()}`, arg.slice(2));
           } else {
-            this.emit(`option:${option.name()}`);
+            this.emit(`option:${option2.name()}`);
             activeGroup = `-${arg.slice(2)}`;
           }
           continue;
@@ -30768,9 +31702,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
       }
       if (/^--[^=]+=/.test(arg)) {
         const index2 = arg.indexOf("=");
-        const option = this._findOption(arg.slice(0, index2));
-        if (option && (option.required || option.optional)) {
-          this.emit(`option:${option.name()}`, arg.slice(index2 + 1));
+        const option2 = this._findOption(arg.slice(0, index2));
+        if (option2 && (option2.required || option2.optional)) {
+          this.emit(`option:${option2.name()}`, arg.slice(index2 + 1));
           continue;
         }
       }
@@ -30859,16 +31793,16 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @private
    */
   _parseOptionsEnv() {
-    this.options.forEach((option) => {
-      if (option.envVar && option.envVar in process$1.env) {
-        const optionKey = option.attributeName();
+    this.options.forEach((option2) => {
+      if (option2.envVar && option2.envVar in process$1.env) {
+        const optionKey = option2.attributeName();
         if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
           this.getOptionValueSource(optionKey)
         )) {
-          if (option.required || option.optional) {
-            this.emit(`optionEnv:${option.name()}`, process$1.env[option.envVar]);
+          if (option2.required || option2.optional) {
+            this.emit(`optionEnv:${option2.name()}`, process$1.env[option2.envVar]);
           } else {
-            this.emit(`optionEnv:${option.name()}`);
+            this.emit(`optionEnv:${option2.name()}`);
           }
         }
       }
@@ -30885,15 +31819,15 @@ Expecting one of '${allowedValues.join("', '")}'`);
       return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
     };
     this.options.filter(
-      (option) => option.implied !== void 0 && hasCustomOptionValue(option.attributeName()) && dualHelper.valueFromOption(
-        this.getOptionValue(option.attributeName()),
-        option
+      (option2) => option2.implied !== void 0 && hasCustomOptionValue(option2.attributeName()) && dualHelper.valueFromOption(
+        this.getOptionValue(option2.attributeName()),
+        option2
       )
-    ).forEach((option) => {
-      Object.keys(option.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
+    ).forEach((option2) => {
+      Object.keys(option2.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
         this.setOptionValueWithSource(
           impliedKey,
-          option.implied[impliedKey],
+          option2.implied[impliedKey],
           "implied"
         );
       });
@@ -30915,8 +31849,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} option
    * @private
    */
-  optionMissingArgument(option) {
-    const message = `error: option '${option.flags}' argument missing`;
+  optionMissingArgument(option2) {
+    const message = `error: option '${option2.flags}' argument missing`;
     this.error(message, { code: "commander.optionMissingArgument" });
   }
   /**
@@ -30925,8 +31859,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} option
    * @private
    */
-  missingMandatoryOptionValue(option) {
-    const message = `error: required option '${option.flags}' not specified`;
+  missingMandatoryOptionValue(option2) {
+    const message = `error: required option '${option2.flags}' not specified`;
     this.error(message, { code: "commander.missingMandatoryOptionValue" });
   }
   /**
@@ -30936,9 +31870,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} conflictingOption
    * @private
    */
-  _conflictingOption(option, conflictingOption) {
-    const findBestOptionFromValue = (option2) => {
-      const optionKey = option2.attributeName();
+  _conflictingOption(option2, conflictingOption) {
+    const findBestOptionFromValue = (option3) => {
+      const optionKey = option3.attributeName();
       const optionValue = this.getOptionValue(optionKey);
       const negativeOption = this.options.find(
         (target) => target.negate && optionKey === target.attributeName()
@@ -30949,10 +31883,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
       if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
         return negativeOption;
       }
-      return positiveOption || option2;
+      return positiveOption || option3;
     };
-    const getErrorMessage = (option2) => {
-      const bestOption = findBestOptionFromValue(option2);
+    const getErrorMessage = (option3) => {
+      const bestOption = findBestOptionFromValue(option3);
       const optionKey = bestOption.attributeName();
       const source = this.getOptionValueSource(optionKey);
       if (source === "env") {
@@ -30960,7 +31894,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
       }
       return `option '${bestOption.flags}'`;
     };
-    const message = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
+    const message = `error: ${getErrorMessage(option2)} cannot be used with ${getErrorMessage(conflictingOption)}`;
     this.error(message, { code: "commander.conflictingOption" });
   }
   /**
@@ -30969,20 +31903,20 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {string} flag
    * @private
    */
-  unknownOption(flag) {
+  unknownOption(flag2) {
     if (this._allowUnknownOption) return;
     let suggestion = "";
-    if (flag.startsWith("--") && this._showSuggestionAfterError) {
+    if (flag2.startsWith("--") && this._showSuggestionAfterError) {
       let candidateFlags = [];
       let command2 = this;
       do {
-        const moreFlags = command2.createHelp().visibleOptions(command2).filter((option) => option.long).map((option) => option.long);
+        const moreFlags = command2.createHelp().visibleOptions(command2).filter((option2) => option2.long).map((option2) => option2.long);
         candidateFlags = candidateFlags.concat(moreFlags);
         command2 = command2.parent;
       } while (command2 && !command2._enablePositionalOptions);
-      suggestion = suggestSimilar(flag, candidateFlags);
+      suggestion = suggestSimilar(flag2, candidateFlags);
     }
-    const message = `error: unknown option '${flag}'${suggestion}`;
+    const message = `error: unknown option '${flag2}'${suggestion}`;
     this.error(message, { code: "commander.unknownOption" });
   }
   /**
@@ -31196,9 +32130,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} option
    * @private
    */
-  _initOptionGroup(option) {
-    if (this._defaultOptionGroup && !option.helpGroupHeading)
-      option.helpGroup(this._defaultOptionGroup);
+  _initOptionGroup(option2) {
+    if (this._defaultOptionGroup && !option2.helpGroupHeading)
+      option2.helpGroup(this._defaultOptionGroup);
   }
   /**
    * @param {Command} cmd
@@ -31378,9 +32312,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {Option} option
    * @return {Command} `this` command for chaining
    */
-  addHelpOption(option) {
-    this._helpOption = option;
-    this._initOptionGroup(option);
+  addHelpOption(option2) {
+    this._helpOption = option2;
+    this._initOptionGroup(option2);
     return this;
   }
   /**
@@ -31501,6 +32435,18 @@ const globalOptions = {
   help: "boolean",
   version: "boolean"
 };
+const globalOptionMetadata = {
+  root: option.string("Workspace root to load bin/config.json from; must precede the command."),
+  lang: option.string("Response language for descriptions, hints and summaries.", { enum: ["en", "de"], default: "en" }),
+  events: option.string("Events included in the response; delivery to listeners is unaffected.", { enum: ["none", "changes", "all"], default: "changes" }),
+  json: option.boolean("Compact JSON output."),
+  "no-json": option.boolean("Indented JSON output."),
+  "dry-run": option.boolean("Validate and preview writes without changing files."),
+  "no-dry-run": option.boolean("Write even when settings.dryRun is true."),
+  "no-plugins": option.boolean("Skip loading user plugins; core plugins stay. Must precede the command."),
+  help: option.boolean("Describe the command instead of running it."),
+  version: option.boolean("Report the Forge version; used without a command.")
+};
 function parseBootstrap(tokens) {
   let end2 = 0;
   while (end2 < tokens.length) {
@@ -31524,12 +32470,12 @@ function parseArguments(tokens, options, allowUnknown = false) {
   const descriptors = [];
   for (const [key, type2] of Object.entries(options)) {
     const short = key === "help" ? "-h, " : key === "version" ? "-V, " : "";
-    const option = new Option(`${short}--${key}${type2 === "string" ? " <value>" : ""}`);
-    if (type2 === "string") option.negate = false;
-    descriptors.push({ key, option });
-    command2.addOption(option);
-    command2.on(`option:${option.name()}`, () => {
-      const attribute2 = option.attributeName();
+    const option2 = new Option(`${short}--${key}${type2 === "string" ? " <value>" : ""}`);
+    if (type2 === "string") option2.negate = false;
+    descriptors.push({ key, option: option2 });
+    command2.addOption(option2);
+    command2.on(`option:${option2.name()}`, () => {
+      const attribute2 = option2.attributeName();
       ensure(!seen.has(attribute2), "DUPLICATE_OPTION", `Repeated or contradictory option --${key}.`);
       seen.add(attribute2);
     });
@@ -31542,37 +32488,14 @@ function parseArguments(tokens, options, allowUnknown = false) {
     throw forgeError(code2, error2.message.replace(/^error: /, ""));
   }
   const flags = /* @__PURE__ */ Object.create(null);
-  for (const { key, option } of descriptors) {
-    if (!seen.has(option.attributeName())) continue;
-    const parsed = command2.getOptionValue(option.attributeName());
-    if (option.negate) {
+  for (const { key, option: option2 } of descriptors) {
+    if (!seen.has(option2.attributeName())) continue;
+    const parsed = command2.getOptionValue(option2.attributeName());
+    if (option2.negate) {
       if (parsed === false) flags[key] = true;
     } else if (typeof parsed === "string" || parsed === true) flags[key] = parsed;
   }
   return { args: command2.args, flags };
-}
-function value(flags, key, required2 = false) {
-  const result = flags[key];
-  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
-  return typeof result === "string" ? result : void 0;
-}
-function arity(args, min, max = min) {
-  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
-}
-function encodeText(text2) {
-  return new TextEncoder().encode(text2);
-}
-async function readInputBytes(flags, context, message) {
-  const from = value(flags, "from"), content2 = value(flags, "content");
-  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message);
-  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : encodeText(content2);
-}
-function parseJson(text2) {
-  try {
-    return JSON.parse(text2);
-  } catch {
-    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
-  }
 }
 function claudeOptions(flags, allowed) {
   const unexpected = Object.keys(flags).filter((key) => !Object.hasOwn(globalOptions, key) && !allowed.includes(key));
@@ -31587,23 +32510,23 @@ async function claudeBytes(flags, context) {
 const claudeInputOptions = ["from", "content", "stdin"];
 const claudeScopeOptions = ["scope", "directory", "claude-dir"];
 async function agentSource(flags, context, services) {
-  const metadata2 = value(flags, "metadata");
+  const metadata2 = value$2(flags, "metadata");
   if (metadata2 === void 0) {
     ensure(flags.prompt === void 0, "INVALID_INPUT", "--prompt requires --metadata.");
     return claudeInput(flags, context);
   }
   ensure(claudeInputOptions.every((key) => flags[key] === void 0), "INVALID_INPUT", "--metadata/--prompt cannot be combined with file or text input.");
-  return services.agentCodec.render({ metadata: parseJson(metadata2), prompt: value(flags, "prompt", true) });
+  return services.agentCodec.render({ metadata: parseJson(metadata2), prompt: value$2(flags, "prompt", true) });
 }
 async function exportAgent(agent, flags, context, services) {
   const content2 = services.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt });
   const result = { ...agent, content: content2, session: { [String(agent.metadata.name)]: { ...agent.metadata, prompt: agent.prompt } } };
-  const out = value(flags, "out");
-  ensure(out !== void 0 || flags["if-match"] === void 0, "INVALID_ARGUMENT", "--if-match requires --out for agent export.");
-  if (out === void 0) return result;
-  ensure(out.endsWith(".md"), "INVALID_ARGUMENT", "Agent exports use a .md destination.");
-  const written = await context.workspace.write([{ path: out, bytes: new TextEncoder().encode(content2), expectedRevision: value(flags, "if-match") }]);
-  return { ...result, outputRoot: context.root, ...written, ...context.workspace.dryRun ? { preview: [{ path: out, content: content2 }] } : {} };
+  const out2 = value$2(flags, "out");
+  ensure(out2 !== void 0 || flags["if-match"] === void 0, "INVALID_ARGUMENT", "--if-match requires --out for agent export.");
+  if (out2 === void 0) return result;
+  ensure(out2.endsWith(".md"), "INVALID_ARGUMENT", "Agent exports use a .md destination.");
+  const written = await context.workspace.write([{ path: out2, bytes: new TextEncoder().encode(content2), expectedRevision: value$2(flags, "if-match") }]);
+  return { ...result, outputRoot: context.root, ...written, ...context.workspace.dryRun ? { preview: [{ path: out2, content: content2 }] } : {} };
 }
 async function agentCommands(args, flags, context, services) {
   const action2 = args[0] ?? "list";
@@ -31632,15 +32555,15 @@ async function agentCommands(args, flags, context, services) {
         result = await agents.create(id2, await agentSource(flags, context, services));
         break;
       case "update":
-        result = await agents.update(id2, await agentSource(flags, context, services), value(flags, "if-match", true));
+        result = await agents.update(id2, await agentSource(flags, context, services), value$2(flags, "if-match", true));
         break;
       case "remove":
-        result = await agents.remove(id2, value(flags, "if-match", true));
+        result = await agents.remove(id2, value$2(flags, "if-match", true));
         break;
       default: {
         ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use agents list, inspect, create, update, remove, enable, disable, or export.");
         const agent = await agents.inspect(id2);
-        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value(flags, "if-match"));
+        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value$2(flags, "if-match"));
       }
     }
   }
@@ -31657,7 +32580,7 @@ async function hookCommands(args, flags, context, services) {
   claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "remove" ? ["index"] : []]);
   const target = await services.target(context, flags);
   const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
-  const revision = value(flags, "if-match");
+  const revision = value$2(flags, "if-match");
   let result;
   switch (action2) {
     case "inspect":
@@ -31678,8 +32601,8 @@ async function hookCommands(args, flags, context, services) {
       break;
     case "remove": {
       arity(args, 2);
-      const index2 = value(flags, "index");
-      result = await settings2.remove(args[1], value(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
+      const index2 = value$2(flags, "index");
+      result = await settings2.remove(args[1], value$2(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
       break;
     }
     default:
@@ -31851,25 +32774,25 @@ function lspServers(value2, path) {
 }
 function userConfig(value2, path) {
   object(value2, path);
-  for (const [name2, option] of Object.entries(value2)) {
+  for (const [name2, option2] of Object.entries(value2)) {
     const location = `${path}.${name2}`;
     check(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name2), location, "option keys must be identifiers and cannot start with a digit.");
-    object(option, location);
-    check(typeof option.type === "string" && ["string", "number", "boolean", "directory", "file"].includes(option.type), `${location}.type`, "must be string, number, boolean, directory, or file.");
-    text(option.title, `${location}.title`);
-    text(option.description, `${location}.description`);
-    optionalBooleans(option, ["required", "multiple", "sensitive"], location);
-    for (const key of ["min", "max"]) if (option[key] !== void 0) check(typeof option[key] === "number" && Number.isFinite(option[key]), `${location}.${key}`, "must be a finite number.");
-    if (option.min !== void 0 && option.max !== void 0) check(Number(option.min) <= Number(option.max), location, "min cannot exceed max.");
-    if (option.default !== void 0) {
-      const initial = option.default;
+    object(option2, location);
+    check(typeof option2.type === "string" && ["string", "number", "boolean", "directory", "file"].includes(option2.type), `${location}.type`, "must be string, number, boolean, directory, or file.");
+    text(option2.title, `${location}.title`);
+    text(option2.description, `${location}.description`);
+    optionalBooleans(option2, ["required", "multiple", "sensitive"], location);
+    for (const key of ["min", "max"]) if (option2[key] !== void 0) check(typeof option2[key] === "number" && Number.isFinite(option2[key]), `${location}.${key}`, "must be a finite number.");
+    if (option2.min !== void 0 && option2.max !== void 0) check(Number(option2.min) <= Number(option2.max), location, "min cannot exceed max.");
+    if (option2.default !== void 0) {
+      const initial = option2.default;
       check(typeof initial === "string" || typeof initial === "boolean" || typeof initial === "number" && Number.isFinite(initial) || Array.isArray(initial) && initial.every((item) => typeof item === "string"), `${location}.default`, "must be a string, finite number, boolean, or string array.");
     }
-    if (option.options !== void 0) {
-      strings(option.options, `${location}.options`);
-      check(option.type === "string" && option.multiple !== true && option.sensitive !== true, location, "options require a single, non-sensitive string.");
-      check(option.options.length > 0 && option.options.every((item) => item.length >= 1 && item.length <= 64), `${location}.options`, "must contain labels of 1 to 64 characters.");
-      check(option.default === void 0 ? option.required === true : typeof option.default === "string" && option.options.includes(option.default), location, "options require a listed default or required: true.");
+    if (option2.options !== void 0) {
+      strings(option2.options, `${location}.options`);
+      check(option2.type === "string" && option2.multiple !== true && option2.sensitive !== true, location, "options require a single, non-sensitive string.");
+      check(option2.options.length > 0 && option2.options.every((item) => item.length >= 1 && item.length <= 64), `${location}.options`, "must contain labels of 1 to 64 characters.");
+      check(option2.default === void 0 ? option2.required === true : typeof option2.default === "string" && option2.options.includes(option2.default), location, "options require a listed default or required: true.");
     }
   }
 }
@@ -32159,12 +33082,12 @@ async function nativePlugin(args, flags, context, services) {
   arity(args, ["asset", "write-asset", "remove-asset"].includes(action2) ? 3 : 2);
   const plugins = new ClaudePluginService(context.workspace, services.agentCodec);
   if (action2 === "create") return plugins.create(directory, parseJson(await claudeInput(flags, context)));
-  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value(flags, "if-match", true));
+  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value$2(flags, "if-match", true));
   if (action2 === "inspect") return plugins.inspect(directory);
   if (action2 === "check") return plugins.validate(directory);
   if (action2 === "asset") return plugins.asset(directory, path);
-  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value(flags, "if-match", true));
-  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value(flags, "if-match"));
+  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value$2(flags, "if-match", true));
+  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value$2(flags, "if-match"));
 }
 const acceptance = { yes: "boolean", "accept-command": "hash" };
 const commands$1 = {
@@ -32222,9 +33145,20 @@ const commands$1 = {
     update: { min: 0 }
   }
 };
-const claudeRuntimeOptions = Object.fromEntries(
-  Object.values(commands$1).flatMap((section) => Object.values(section).flatMap((command2) => Object.entries(command2.options ?? {}).map(([name2, kind]) => [name2, kind === "boolean" ? "boolean" : "string"])))
-);
+const claudeRuntimeOptions = (() => {
+  const uses = /* @__PURE__ */ new Map();
+  for (const [section, actions] of Object.entries(commands$1)) for (const [action2, command2] of Object.entries(actions)) {
+    for (const [name2, kind] of Object.entries(command2.options ?? {})) {
+      const entry2 = uses.get(name2) ?? { kind, actions: [] };
+      entry2.actions.push(`claude ${section} ${action2}`);
+      uses.set(name2, entry2);
+    }
+  }
+  return Object.fromEntries([...uses].map(([name2, { kind, actions }]) => [name2, {
+    type: kind === "boolean" ? "boolean" : "string",
+    description: `Passed to the native Claude Code CLI as --${name2}${kind === "list" || kind === "repeat" ? " (one string or a JSON array)" : ""} by ${actions.join(", ")}.`
+  }]));
+})();
 function actionArgs(section, args) {
   const nested = section === "plugins" && args[0] === "eval" && args[1] === "init";
   return { action: nested ? "eval init" : args[0] ?? "", operands: args.slice(nested ? 2 : 1) };
@@ -32247,45 +33181,45 @@ function claudeRuntimeOutput(section, args, flags) {
 function claudeRuntimeNeedsInput(section, args, flags) {
   return section === "plugins" && args[0] === "configure" && flags["values-stdin"] === true;
 }
-function stringValue$1(value2, flag) {
-  ensure(typeof value2 === "string" && value2.length > 0 && !value2.includes("\0"), "INVALID_CLAUDE_OPTION", `--${flag} requires a nonempty string without null bytes.`);
+function stringValue$1(value2, flag2) {
+  ensure(typeof value2 === "string" && value2.length > 0 && !value2.includes("\0"), "INVALID_CLAUDE_OPTION", `--${flag2} requires a nonempty string without null bytes.`);
 }
-function listValue$1(value2, flag) {
-  stringValue$1(value2, flag);
+function listValue$1(value2, flag2) {
+  stringValue$1(value2, flag2);
   let result = value2;
   if (value2.trimStart().startsWith("[")) {
     try {
       result = JSON.parse(value2);
     } catch {
-      ensure(false, "INVALID_CLAUDE_OPTION", `--${flag} must be a string or a JSON array of strings.`);
+      ensure(false, "INVALID_CLAUDE_OPTION", `--${flag2} must be a string or a JSON array of strings.`);
     }
   }
   const list2 = Array.isArray(result) ? result : [result];
-  ensure(list2.length > 0 && list2.every((item) => typeof item === "string" && item.trim().length > 0 && !item.startsWith("-") && !item.includes("\0")), "INVALID_CLAUDE_OPTION", `--${flag} requires nonempty strings that do not start with a dash or contain null bytes.`);
+  ensure(list2.length > 0 && list2.every((item) => typeof item === "string" && item.trim().length > 0 && !item.startsWith("-") && !item.includes("\0")), "INVALID_CLAUDE_OPTION", `--${flag2} requires nonempty strings that do not start with a dash or contain null bytes.`);
   return list2;
 }
-function optionArgs(flag, kind, value2) {
+function optionArgs(flag2, kind, value2) {
   if (kind === "boolean") {
-    ensure(typeof value2 === "boolean", "INVALID_CLAUDE_OPTION", `--${flag} is a boolean option.`);
-    return value2 ? [`--${flag}`] : [];
+    ensure(typeof value2 === "boolean", "INVALID_CLAUDE_OPTION", `--${flag2} is a boolean option.`);
+    return value2 ? [`--${flag2}`] : [];
   }
-  if (kind === "optional-string" && (value2 === true || value2 === "")) return [`--${flag}`];
+  if (kind === "optional-string" && (value2 === true || value2 === "")) return [`--${flag2}`];
   if (kind === "list" || kind === "repeat") {
-    const list2 = listValue$1(value2, flag);
-    if (flag === "with") ensure(list2.every((item) => ["skills", "agents", "hooks", "mcp", "lsp", "output-style", "channel"].includes(item)), "INVALID_CLAUDE_OPTION", "--with must name skills, agents, hooks, mcp, lsp, output-style, or channel.");
-    if (flag === "config") ensure(list2.every((item) => /^[^=\s]+=/.test(item)), "INVALID_CLAUDE_OPTION", "--config entries must use key=value.");
-    return kind === "repeat" ? list2.flatMap((item) => [`--${flag}`, item]) : [`--${flag}`, ...list2];
+    const list2 = listValue$1(value2, flag2);
+    if (flag2 === "with") ensure(list2.every((item) => ["skills", "agents", "hooks", "mcp", "lsp", "output-style", "channel"].includes(item)), "INVALID_CLAUDE_OPTION", "--with must name skills, agents, hooks, mcp, lsp, output-style, or channel.");
+    if (flag2 === "config") ensure(list2.every((item) => /^[^=\s]+=/.test(item)), "INVALID_CLAUDE_OPTION", "--config entries must use key=value.");
+    return kind === "repeat" ? list2.flatMap((item) => [`--${flag2}`, item]) : [`--${flag2}`, ...list2];
   }
-  stringValue$1(value2, flag);
+  stringValue$1(value2, flag2);
   if (kind === "hash") ensure(/^[a-fA-F0-9]{64}$/.test(value2), "INVALID_CLAUDE_OPTION", "--accept-command requires the displayed command SHA-256 hash.");
-  if (kind === "integer") ensure(/^\d+$/.test(value2) && Number.isSafeInteger(Number(value2)) && Number(value2) >= 1, "INVALID_CLAUDE_OPTION", `--${flag} must be a positive integer.`);
-  if (kind === "number") ensure(value2.trim().length > 0 && Number.isFinite(Number(value2)) && Number(value2) >= 0, "INVALID_CLAUDE_OPTION", `--${flag} must be a finite nonnegative number.`);
-  if (flag === "concurrency") ensure(Number(value2) <= 8, "INVALID_CLAUDE_OPTION", "--concurrency must be between 1 and 8.");
-  if (flag === "threshold") ensure(Number(value2) <= 1, "INVALID_CLAUDE_OPTION", "--threshold must be between 0 and 1.");
-  if (flag === "ablation") ensure(["none", "with-without"].includes(value2), "INVALID_CLAUDE_OPTION", "--ablation must be none or with-without.");
-  if (flag === "mocks") ensure(["record", "off"].includes(value2), "INVALID_CLAUDE_OPTION", "--mocks must be record or off.");
-  if (flag === "native-json-output") ensure(value2.endsWith(".json"), "INVALID_CLAUDE_OPTION", "--native-json-output must name a .json file.");
-  return value2.startsWith("-") ? [`--${flag}=${value2}`] : [`--${flag}`, value2];
+  if (kind === "integer") ensure(/^\d+$/.test(value2) && Number.isSafeInteger(Number(value2)) && Number(value2) >= 1, "INVALID_CLAUDE_OPTION", `--${flag2} must be a positive integer.`);
+  if (kind === "number") ensure(value2.trim().length > 0 && Number.isFinite(Number(value2)) && Number(value2) >= 0, "INVALID_CLAUDE_OPTION", `--${flag2} must be a finite nonnegative number.`);
+  if (flag2 === "concurrency") ensure(Number(value2) <= 8, "INVALID_CLAUDE_OPTION", "--concurrency must be between 1 and 8.");
+  if (flag2 === "threshold") ensure(Number(value2) <= 1, "INVALID_CLAUDE_OPTION", "--threshold must be between 0 and 1.");
+  if (flag2 === "ablation") ensure(["none", "with-without"].includes(value2), "INVALID_CLAUDE_OPTION", "--ablation must be none or with-without.");
+  if (flag2 === "mocks") ensure(["record", "off"].includes(value2), "INVALID_CLAUDE_OPTION", "--mocks must be record or off.");
+  if (flag2 === "native-json-output") ensure(value2.endsWith(".json"), "INVALID_CLAUDE_OPTION", "--native-json-output must name a .json file.");
+  return value2.startsWith("-") ? [`--${flag2}=${value2}`] : [`--${flag2}`, value2];
 }
 function commandRules(section, action2, operands, flags) {
   ensure(!(flags.yes === true && flags["accept-command"] !== void 0), "INVALID_CLAUDE_OPTION", "Choose --yes or --accept-command, not both.");
@@ -32310,10 +33244,10 @@ function buildClaudeRuntimeArgs(section, args, flags) {
     );
   }
   const options = [], input = claudeRuntimeNeedsInput(section, args, flags);
-  for (const [flag, value2] of Object.entries(flags)) {
-    if (Object.hasOwn(globalOptions, flag) || flag === "claude-bin" || flag === "timeout") continue;
-    if (input && ["content", "from", "stdin"].includes(flag)) continue;
-    if (flag === "scope" && command2.scope) {
+  for (const [flag2, value2] of Object.entries(flags)) {
+    if (Object.hasOwn(globalOptions, flag2) || flag2 === "claude-bin" || flag2 === "timeout") continue;
+    if (input && ["content", "from", "stdin"].includes(flag2)) continue;
+    if (flag2 === "scope" && command2.scope) {
       ensure(
         typeof value2 === "string" && ["user", "project", "local", ...command2.managed ? ["managed"] : []].includes(value2),
         "INVALID_CLAUDE_SCOPE",
@@ -32321,10 +33255,10 @@ function buildClaudeRuntimeArgs(section, args, flags) {
       );
       continue;
     }
-    const kind = command2.options && Object.hasOwn(command2.options, flag) ? command2.options[flag] : void 0;
-    ensure(kind, "INVALID_CLAUDE_OPTION", `--${flag} is not supported by Claude ${section} ${action2}.`);
-    const translated2 = optionArgs(flag, kind, value2);
-    if (!["native-json", "native-json-output"].includes(flag)) options.push(...translated2);
+    const kind = command2.options && Object.hasOwn(command2.options, flag2) ? command2.options[flag2] : void 0;
+    ensure(kind, "INVALID_CLAUDE_OPTION", `--${flag2} is not supported by Claude ${section} ${action2}.`);
+    const translated2 = optionArgs(flag2, kind, value2);
+    if (!["native-json", "native-json-output"].includes(flag2)) options.push(...translated2);
   }
   commandRules(section, action2, operands, flags);
   if (section === "runtime") return [action2 === "version" ? "--version" : action2, ...operands];
@@ -32342,7 +33276,41 @@ function claudeCommand(services) {
     id: "claude",
     description: "Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.",
     usage: "claude capabilities | agents list|inspect|create|update|remove|enable|disable|export [id] | hooks inspect|check|set|add|remove|configure|enable|disable [event] | plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory> [path] | plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval [id] | marketplaces add|list|remove|update [source] | runtime version|doctor|install|update",
-    options: { ...claudeRuntimeOptions, scope: "string", directory: "string", "claude-dir": "string", ...Object.fromEntries(claudeInputOptions.map((key) => [key, key === "stdin" ? "boolean" : "string"])), metadata: "string", prompt: "string", "if-match": "string", out: "string", index: "string", "claude-bin": "string", timeout: "string", available: "boolean", strict: "boolean" },
+    scope: "project",
+    discovery: false,
+    mutating: true,
+    defaultAction: "capabilities",
+    actions: {
+      capabilities: { description: "Describe supported formats, scopes and operations.", scope: "workspace", discovery: true, mutating: false },
+      agents: { description: "List, inspect, create, update, remove, enable, disable or export native agents." },
+      hooks: { description: "Inspect, check and edit native hook configuration." },
+      plugins: { description: "Author Claude plugin assets, or run the installed CLI's plugin lifecycle." },
+      marketplaces: { description: "Add, list, remove or update plugin marketplaces through the installed CLI." },
+      runtime: { description: "Report, diagnose, install or update the installed Claude Code CLI." }
+    },
+    args: [
+      { name: "section", description: "capabilities (default), agents, hooks, plugins, marketplaces or runtime.", enum: ["capabilities", "agents", "hooks", "plugins", "marketplaces", "runtime"] },
+      { name: "operands", description: "The section action and its operands; see usage.", variadic: true }
+    ],
+    errors: ["INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_HOOKS", "INVALID_CLAUDE_PLUGIN", "INVALID_CLAUDE_SETTINGS", "INVALID_CLAUDE_COMMAND", "INVALID_CLAUDE_ARGUMENT", "INVALID_CLAUDE_OPTION", "INVALID_CLAUDE_SCOPE", "INVALID_CLAUDE_INPUT", "CLAUDE_NOT_INSTALLED", "CLAUDE_COMMAND_FAILED", "CLAUDE_COMMAND_TIMEOUT", "CLAUDE_RUNTIME_FAILED", "CLAUDE_INVALID_OUTPUT", "CONFLICT"],
+    options: {
+      ...claudeRuntimeOptions,
+      scope: option.string("Claude configuration scope of the action.", { enum: ["project", "local", "user", "plugin"] }),
+      directory: option.string("Plugin directory for plugin-scoped agents and hooks."),
+      "claude-dir": option.string("Claude user configuration directory for user scope."),
+      from: option.string("Read native input from a file."),
+      content: option.string("Native input as literal text."),
+      stdin: option.boolean("Read native input from piped standard input."),
+      metadata: option.string("JSON metadata for agent create or update."),
+      prompt: option.string("Agent system prompt for create or update."),
+      "if-match": option.string("SHA-256 revision the native file must still have."),
+      out: option.string("Destination path for export."),
+      index: option.string("Hook entry index for hooks remove."),
+      "claude-bin": option.string("Path of the Claude Code executable; defaults to claude on PATH."),
+      timeout: option.string("Native process timeout in milliseconds (1 to 3600000)."),
+      available: option.boolean("Passed to the native Claude Code CLI as --available by claude plugins list."),
+      strict: option.boolean("Passed to the native Claude Code CLI as --strict by claude plugins validate.")
+    },
     async run(args, flags, context) {
       const [section, action2] = args;
       if (!section || section === "capabilities") {
@@ -32363,10 +33331,10 @@ function claudeCommand(services) {
       if (section === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services);
       ensure(section === "plugins" || section === "marketplaces" || section === "runtime", "INVALID_ARGUMENT", "Use claude agents, hooks, plugins, marketplaces, runtime, or capabilities.");
       const command2 = buildClaudeRuntimeArgs(section, args.slice(1), flags);
-      const timeout = value(flags, "timeout");
+      const timeout = value$2(flags, "timeout");
       const timeoutMs = timeout === void 0 ? void 0 : Number(timeout);
       ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_ARGUMENT", "--timeout must be milliseconds from 1 to 3600000.");
-      const executable = value(flags, "claude-bin");
+      const executable = value$2(flags, "claude-bin");
       let input;
       if (claudeRuntimeNeedsInput(section, args.slice(1), flags)) {
         const values2 = parseJson(await claudeInput(flags, context));
@@ -36656,11 +37624,11 @@ function requireMoment() {
         if (index2 != null) {
           return get$1(format3, index2, field2, "month");
         }
-        var i, out = [];
+        var i, out2 = [];
         for (i = 0; i < 12; i++) {
-          out[i] = get$1(format3, i, field2, "month");
+          out2[i] = get$1(format3, i, field2, "month");
         }
-        return out;
+        return out2;
       }
       function listWeekdaysImpl(localeSorted, format3, index2, field2) {
         if (typeof localeSorted === "boolean") {
@@ -36679,14 +37647,14 @@ function requireMoment() {
           }
           format3 = format3 || "";
         }
-        var locale2 = getLocale(), shift = localeSorted ? locale2._week.dow : 0, i, out = [];
+        var locale2 = getLocale(), shift = localeSorted ? locale2._week.dow : 0, i, out2 = [];
         if (index2 != null) {
           return get$1(format3, (index2 + shift) % 7, field2, "day");
         }
         for (i = 0; i < 7; i++) {
-          out[i] = get$1(format3, (i + shift) % 7, field2, "day");
+          out2[i] = get$1(format3, (i + shift) % 7, field2, "day");
         }
-        return out;
+        return out2;
       }
       function listMonths(format3, index2) {
         return listMonthsImpl(format3, index2, "months");
@@ -37191,11 +38159,11 @@ function fromJs(value2, typeHint) {
   if (Array.isArray(value2))
     return listValue(value2.map((item) => fromJs(item)));
   if (typeof value2 === "object") {
-    const out = {};
+    const out2 = {};
     for (const [key, item] of Object.entries(value2)) {
-      out[key] = fromJs(item);
+      out2[key] = fromJs(item);
     }
-    return objectValue(out);
+    return objectValue(out2);
   }
   return stringValue(String(value2));
 }
@@ -47636,7 +48604,26 @@ function basesCommand(service) {
     id: "bases",
     description: "Query native Obsidian Bases views as file repositories without running Obsidian.",
     usage: "bases list | inspect <path.base> | query <path.base> [--view name] [--context note.md] [--limit count] | capabilities",
-    options: { view: "string", context: "string", limit: "string" },
+    scope: "project",
+    discovery: false,
+    mutating: false,
+    defaultAction: "list",
+    actions: {
+      list: { description: "List visible .base files in the command scope." },
+      inspect: { description: "Return a .base definition and its views." },
+      query: { description: "Evaluate a view and return its matching files." },
+      capabilities: { description: "Describe the standalone Bases compatibility profile." }
+    },
+    args: [
+      { name: "action", description: "list (default), inspect, query or capabilities.", enum: ["list", "inspect", "query", "capabilities"] },
+      { name: "path", description: "The .base file for inspect and query." }
+    ],
+    options: {
+      view: option.string("View name for query; the first view when omitted."),
+      context: option.string("Note used as this file in query expressions."),
+      limit: option.string("Maximum number of rows for query.")
+    },
+    errors: ["INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "BASE_INDEX_ERROR", "AMBIGUOUS_BASE_LINK", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       const allowed = /* @__PURE__ */ new Set([...Object.keys(globalOptions), ...action2 === "query" ? ["view", "context", "limit"] : []]);
@@ -47658,308 +48645,110 @@ function basesCommand(service) {
         const document2 = context.workspace.codec.inspect(path, file.bytes);
         return { path, revision: file.revision, definition: document2.data, views: document2.data.views ?? [], repository: { path, viewSelection: "name; first view when omitted" } };
       }
-      const limit = value(flags, "limit");
-      const result = await (await service(context)).query(path, { view: value(flags, "view"), context: value(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
+      const limit = value$2(flags, "limit");
+      const result = await (await service(context)).query(path, { view: value$2(flags, "view"), context: value$2(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
       return { ...result, repository: { path: result.path, view: result.view }, scope: context.root };
     }
   };
 }
-async function makeDocument(title, flags, context, services) {
-  ensure(title.trim() === title && title.length > 0 && !/[/\\:]/.test(title), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
-  const template = value(flags, "template", true);
-  ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
-  const source = await services.files.read(`bin/templates/${vaultPath(template)}`);
-  const inline = value(flags, "values"), from = value(flags, "values-from");
-  ensure(inline === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
-  const data = from === void 0 ? parseJson(inline ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
-  ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
-  const bytes = services.templates.render(source.bytes, { title, values: data, date: value(flags, "date"), ...services.loaded.config.templates });
-  const path = `${value(flags, "out") ?? "notes"}/${title}.md`;
-  const result = await context.workspace.write([{ path, bytes }]);
-  return { generator: "document", template: source.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
+const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 }));
+const out = { out: option.string("Output directory; each generator documents its default.") };
+function generatorOptions(generator) {
+  return { ...generator.fixedDirectory ? {} : out, ...generator.options, ...generator.review ? reviewOptions : {} };
 }
-function workflowCommands(services) {
-  const config2 = services.loaded.config;
-  return [
-    { id: "config", description: "Inspect the validated effective configuration and its source path.", usage: "config", run(args) {
-      arity(args, 0);
-      return services.loaded;
-    } },
-    { id: "setup", description: "Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.", usage: "[--root project] setup [--dry-run]", run(args) {
-      arity(args, 0);
-      return services.setup();
-    } },
-    { id: "templates", description: "Discover Markdown templates, required placeholders, and install the planning workflow pack.", usage: "templates [list | inspect <template.md> | install [workflow]]", async run(args) {
-      const action2 = args[0] ?? "list";
-      if (action2 === "install") {
-        arity(args, 1, 2);
-        ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
-        return services.installTemplates();
-      }
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        const prefix = "bin/templates/";
-        return { directory: "bin/templates", templates: (await services.files.list()).filter((path2) => path2.startsWith(prefix) && path2.toLowerCase().endsWith(".md")).map((path2) => path2.slice(prefix.length)) };
-      }
-      ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
-      arity(args, 2);
-      ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
-      const path = `bin/templates/${vaultPath(args[1])}`;
-      return { path, ...services.templates.inspect((await services.files.read(path)).bytes) };
-    } },
-    { id: "project", description: "Manage TypeScript library projects and add tested domain/application components.", usage: "project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]", options: { kind: "string" }, async run(args, flags) {
-      const action2 = args[0] ?? "list";
-      if (action2 !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        return { directory: config2.paths.projects, projects: await services.projects.list() };
-      }
-      if (action2 === "current") {
-        arity(args, 1);
-        return { project: await services.projects.current() };
-      }
-      if (action2 === "open") {
-        arity(args, 2);
-        return services.projects.open(args[1]);
-      }
-      if (action2 === "close") {
-        arity(args, 1);
-        return services.projects.close();
-      }
-      if (action2 === "inspect") {
-        arity(args, 1, 2);
-        return args[1] ? services.projects.inspect(args[1]) : services.projects.requireCurrent();
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        return services.projects.create(args[1]);
-      }
-      ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
-      arity(args, 2, 3);
-      const kind = value(flags, "kind") ?? "domain";
-      ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
-      const name2 = args.length === 3 ? args[1] : (await services.projects.requireCurrent()).name;
-      return services.projects.component(name2, args.length === 3 ? args[2] : args[1], kind);
-    } }
-  ];
-}
-const libraryGenerationOptions = {
-  project: "string",
-  library: "string",
-  "revisions-from": "string",
-  plan: "boolean",
-  "plan-out": "string",
-  check: "boolean"
-};
-function generationOutputPath(path, project2) {
-  const relative = vaultPath(path);
-  return project2 ? `${project2.directory}/${relative}` : relative;
-}
-async function generationControls(flags, files) {
-  const revisionsPath = value(flags, "revisions-from"), manifestPath2 = value(flags, "plan-out");
-  const planning = flags.plan === true || manifestPath2 !== void 0;
-  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
-  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
-  let revisions;
-  if (revisionsPath !== void 0) {
-    const parsed = parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes));
-    ensure(isRecord(parsed) && Object.values(parsed).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
-    revisions = parsed;
-  }
-  const mode = flags.check ? "check" : planning ? "plan" : "generate";
-  return { mode, manifestPath: manifestPath2, revisions };
-}
-const uiGenerationOptions = { framework: "string", stories: "boolean", "stories-out": "string", "interactions-library": "string" };
-async function makeUi(kind, id2, flags, context, services) {
-  const config2 = services.loaded.config;
-  const framework = value(flags, "framework") ?? config2.ui.framework;
-  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `--framework must be one of: ${uiFrameworks.join(", ")}.`);
-  const storybook2 = kind === "stories" || flags.stories === true;
-  ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
-  ensure(kind !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
-  const scoped = (path) => generationOutputPath(path, context.project);
-  const directory = value(flags, "library") ?? config2.paths.components;
-  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
-  const options = {
-    component: id2,
-    framework,
-    interactionDirectory: value(flags, "interactions-library") ?? config2.paths.interactions,
-    outputDirectory: scoped(value(flags, "out") ?? config2.paths.ui),
-    ...storybook2 ? { storiesDirectory: scoped(value(flags, "stories-out") ?? config2.paths.stories) } : {},
-    storybook: storybook2,
-    storiesOnly: kind === "stories",
-    ...revisions ? { revisions } : {}
-  };
-  if (mode !== "generate") {
-    const result = mode === "check" ? await services.uiLibrary.check(directory, options) : await services.uiLibrary.plan(directory, options, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
-    return { generator: kind, library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
-  }
-  return { generator: kind, library: directory, ...await services.uiLibrary.generate(directory, options) };
-}
-function uiCommands(services) {
-  const config2 = services.loaded.config;
-  return [{
-    id: "components",
-    description: "Manage and validate a shared Markdown UI component library.",
-    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
-    options: { library: "string", from: "string", out: "string", tag: "string", "interactions-library": "string" },
-    async run(args, flags) {
-      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.components;
-      const interactionDirectory = value(flags, "interactions-library") ?? config2.paths.interactions;
-      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
-      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
-      ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
-      const library = services.uiLibrary;
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        const definitions = await library.list(directory, interactionDirectory);
-        return { directory, count: definitions.length, status: definitions.length ? "ready" : "empty", ...!definitions.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions.map((definition2) => ({
-          id: definition2.id,
-          name: definition2.name,
-          sourcePath: definition2.sourcePath,
-          descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? "",
-          propNames: Object.keys(definition2.props).sort(),
-          dependencies: componentDependencies(definition2.root)
-        })) };
-      }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory, interactionDirectory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1], interactionDirectory);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return library.validate(directory, interactionDirectory);
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        return library.create(directory, args[1], value(flags, "tag") ?? "div", interactionDirectory);
-      }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value(flags, "from") ?? config2.paths.componentImports, directory, interactionDirectory);
-      }
-      ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
-      return library.export(directory, value(flags, "out") ?? config2.paths.componentExports, interactionDirectory);
-    }
-  }];
-}
-const dataSourceGenerationOptions = { "test-data-out": "string" };
-async function makeDataSource(id2, flags, context, services) {
-  const config2 = services.loaded.config;
-  const scoped = (path) => generationOutputPath(path, context.project);
-  const directory = value(flags, "library") ?? config2.paths.dataSources;
-  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
-  const options = {
-    source: id2,
-    outputDirectory: scoped(value(flags, "out") ?? config2.paths.dataGenerated),
-    testDataDirectory: scoped(value(flags, "test-data-out") ?? config2.paths.dataFixtures),
-    ...revisions ? { revisions } : {}
-  };
-  if (mode !== "generate") {
-    const result = mode === "check" ? await services.dataSources.check(directory, options) : await services.dataSources.plan(directory, options, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
-    return { generator: "data-source", library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
-  }
-  return { generator: "data-source", library: directory, ...await services.dataSources.generate(directory, options) };
-}
-function dataSourceCommands(services) {
-  const config2 = services.loaded.config;
-  return [{
-    id: "data-sources",
-    description: "Manage Markdown REST/local-JSON definitions for typed adapters and deterministic test data.",
-    usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
-    options: { library: "string", from: "string", out: "string", kind: "string" },
-    async run(args, flags) {
-      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.dataSources;
-      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
-      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
-      ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
-      const library = services.dataSources;
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        const definitions = await library.list(directory);
-        return {
-          directory,
-          count: definitions.length,
-          status: definitions.length ? "ready" : "empty",
-          ...!definitions.length ? { nextStep: `Run data-sources init --library ${directory}, or add a Markdown data-source definition.` } : {},
-          sources: definitions.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
-        };
-      }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1]);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return library.validate(directory);
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        const kind = value(flags, "kind") ?? "rest";
-        ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
-        return library.create(directory, args[1], kind);
-      }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value(flags, "from") ?? config2.paths.dataImports, directory);
-      }
-      ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
-      return library.export(directory, value(flags, "out") ?? config2.paths.dataExports);
-    }
-  }];
-}
-const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 })).concat([
-  { id: "document", description: "Render an Obsidian Markdown/frontmatter template with typed values." },
-  { id: "ui", description: "Generate deterministic UI code from Markdown component definitions." },
-  { id: "stories", description: "Generate native Storybook CSF stories for existing UI components." },
-  { id: "data-source", description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown." }
-]);
-function generationCommand(registry2, services) {
+function generationCommand(registry2) {
   return {
     id: "make",
     description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.",
     usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]",
-    options: { out: "string", template: "string", values: "string", "values-from": "string", date: "string", ...libraryGenerationOptions, ...uiGenerationOptions, ...dataSourceGenerationOptions },
+    scope: "workspace",
+    discovery: false,
+    mutating: false,
+    args: [
+      { name: "generator", description: "A generator id; without one, make lists the generators." },
+      { name: "name", description: "The name or id the generator creates from." }
+    ],
+    errors: ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"],
+    get options() {
+      return Object.assign({}, ...[...registry2.generators.values()].map(generatorOptions));
+    },
+    get actions() {
+      return Object.fromEntries([...registry2.generators.values()].map((generator) => [generator.id, {
+        description: generator.description,
+        scope: generator.scope ?? "project",
+        discovery: false,
+        mutating: generator.mutating ?? true,
+        ...generator.projectOption ? { projectOption: generator.projectOption } : {}
+      }]));
+    },
     async run(args, flags, context) {
+      const own2 = Object.keys(flags).filter((key) => !Object.hasOwn(globalOptions, key));
       if (args.length === 0) {
-        ensure(["out", "template", "values", "values-from", "date", ...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions), ...Object.keys(dataSourceGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
+        ensure(own2.length === 0, "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
         return { generators: generatorCatalog(registry2) };
       }
       arity(args, 2);
-      if (args[0] === "data-source") {
-        ensure(["template", "values", "values-from", "date", ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Data-source generation accepts library/project/output/test-data/plan/revision options.");
-        return makeDataSource(args[1], flags, context, services);
-      }
-      ensure(flags["test-data-out"] === void 0, "INVALID_ARGUMENT", "--test-data-out requires make data-source.");
-      if (args[0] === "ui" || args[0] === "stories") {
-        ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
-        return makeUi(args[0], args[1], flags, context, services);
-      }
-      ensure([...Object.keys(libraryGenerationOptions), ...Object.keys(uiGenerationOptions)].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Library generation options require make ui, make stories, or make data-source.");
-      if (args[0] === "document") return makeDocument(args[1], flags, context, services);
-      ensure(["template", "values", "values-from", "date"].every((key) => flags[key] === void 0), "INVALID_ARGUMENT", "Template options require make document.");
       const generator = registry2.generators.get(args[0]);
       ensure(generator, "UNKNOWN_GENERATOR", args[0]);
-      ensure(generator.id !== "plugin" || flags.out === void 0, "INVALID_ARGUMENT", "Plugins are generated in the fixed bin/plugins directory; --out is not supported.");
-      if (generator.id === "form") {
-        ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
-        await context.workspace.files.read("src/presentation/forms/form-model.ts");
+      const accepted = generatorOptions(generator);
+      for (const key of own2) ensure(Object.hasOwn(accepted, key), "INVALID_ARGUMENT", `--${key} is not supported by make ${generator.id}; run help make for each generator's options.`);
+      const directory = generator.fixedDirectory ? generator.directory : value$2(flags, "out") ?? generator.directory ?? "src/domain";
+      const generation = new GenerationService(context.workspace);
+      const request = { name: args[1], directory, flags, context, generation };
+      if (generator.run) return generator.run(request);
+      const writes = await generator.generate(request);
+      if (generator.review) {
+        const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
+        if (mode === "check") return { generator: generator.id, check: true, ...await generation.check(writes, "GENERATION_DRIFT") };
+        if (mode === "plan") return { generator: generator.id, plan: true, ...await generation.plan(writes, manifestPath2) };
+        return { generator: generator.id, ...await generation.commit(writes, revisions) };
       }
-      const directory = generator.id === "plugin" ? "bin/plugins" : value(flags, "out") ?? (generator.id === "form" ? "src/presentation/forms" : "src/domain");
-      const writes = await generator.generate(args[1], directory);
       const result = await context.workspace.write(writes);
-      return { generator: generator.id, ...result, ...context.workspace.dryRun ? { preview: writes.map((w) => ({ path: w.path, content: Buffer.from(w.bytes).toString("utf8") })) } : {} };
+      return { generator: generator.id, ...result, ...context.workspace.dryRun ? { preview: writes.map((w) => ({ path: w.path, content: new TextDecoder().decode(w.bytes) })) } : {} };
     }
+  };
+}
+function pluginCatalog(registry2, installed) {
+  const loaded = registry2.plugins.map((plugin2) => {
+    const services = { provides: Object.keys(plugin2.provides ?? {}), requires: [...plugin2.requires ?? []] };
+    return {
+      ...plugin2.manifest,
+      core: registry2.origins.get(plugin2.manifest.id) === "core",
+      state: "enabled",
+      contributions: {
+        commands: (plugin2.commands ?? []).map((command2) => command2.id),
+        generators: (plugin2.generators ?? []).map((generator) => generator.id),
+        events: (plugin2.events ?? []).map((event) => event.id),
+        skills: (plugin2.skills ?? []).map((skill) => skill.id),
+        services,
+        settings: plugin2.settings ? `plugins.settings.${plugin2.manifest.id}` : null,
+        strings: Object.keys(plugin2.strings ?? {}).sort(),
+        errors: (plugin2.errors ?? []).map((error2) => error2.code)
+      }
+    };
+  });
+  const disabledCore = registry2.disabled.map((manifest) => ({ ...manifest, core: true, state: "disabled", contributions: null }));
+  const others = installed.filter((entry2) => !registry2.origins.has(entry2.manifest.id)).map((entry2) => ({
+    ...entry2.manifest,
+    core: false,
+    state: entry2.skipped ? "skipped" : "disabled",
+    contributions: null
+  }));
+  return [...loaded.filter((plugin2) => plugin2.core), ...disabledCore, ...loaded.filter((plugin2) => !plugin2.core), ...others];
+}
+const discovery = { scope: "workspace", discovery: true, mutating: false };
+const commandArgument = [{ name: "command", description: "A command id from the catalog." }];
+function describe(command2) {
+  const { id: id2, description: description2, usage, options, args, output, errors: errors2 } = command2;
+  return {
+    id: id2,
+    description: description2,
+    usage,
+    options: options ?? {},
+    args: args ?? [],
+    annotations: commandAnnotations(command2),
+    errors: errors2 ?? [],
+    ...output ? { outputSchema: output } : {}
   };
 }
 function catalogCommands(registry2) {
@@ -47968,30 +48757,32 @@ function catalogCommands(registry2) {
     version: metadata$1.version,
     apiVersion: 1,
     node: metadata$1.engines.node,
-    globalOptions,
+    globalOptions: globalOptionMetadata,
     output: "{ ok, data?, error?: {code,message,hint?,retryable?,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
     eventOutput: { option: "--events", setting: "settings.events", levels: eventOutputLevels, default: "changes", changes: "Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders." },
-    commands: [...registry2.commands.values()].map(({ id: id2, description: description2, usage, options }) => ({ id: id2, description: description2, usage, options: options ?? {} })),
+    commands: [...registry2.commands.values()].map(describe),
     generators: generatorCatalog(registry2),
     skills: [...registry2.skills.keys()]
   });
   return [
-    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", run(args) {
+    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery, args: commandArgument, errors: ["UNKNOWN_COMMAND"], run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
       const command2 = registry2.commands.get(args[0]);
       ensure(command2, "UNKNOWN_COMMAND", args[0]);
-      const { id: id2, description: description2, usage, options } = command2;
-      return { id: id2, description: description2, usage, options: options ?? {}, globalOptions };
+      return { ...describe(command2), globalOptions: globalOptionMetadata };
     } },
-    { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", run(args) {
+    { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", ...discovery, run(args) {
       arity(args, 0);
-      return { ...catalog(), errors: errorCodes.map((code2) => {
+      const builtIn = errorCodes.map((code2) => {
         const { exitCode, category, retryable, summary } = errorCatalog[code2];
         return { code: code2, exitCode, category, retryable, summary };
-      }) };
+      });
+      const contributed = registry2.catalog.errors().map(({ code: code2, exitCode, category, retryable, summary, pluginId }) => ({ code: code2, exitCode, category, retryable, summary, plugin: pluginId }));
+      const { commands: commands2, ...rest } = catalog();
+      return { ...rest, commands: [...registry2.commands.values()].map((command2, index2) => ({ ...commands2[index2], inputSchema: commandInputSchema(command2) })), errors: [...builtIn, ...contributed] };
     } },
-    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", run(args) {
+    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery, run(args) {
       arity(args, 0);
       return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } }
@@ -47999,15 +48790,15 @@ function catalogCommands(registry2) {
 }
 const hostNamespaces = [...hostEventNamespaces];
 const eventDelivery = "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.*, claude.* and plugin.* records are lifecycle phases; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.";
-function extensionCommands(registry2) {
+function extensionCommands(registry2, services) {
   return [
-    { id: "events", description: "List invocation event contracts.", usage: "events", run(args, _, { events }) {
+    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery, run(args, _, { events }) {
       arity(args, 0);
       return { events: events.ids(), contracts: events.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
-    { id: "plugins", description: "List explicitly loaded plugin manifests.", usage: "plugins", run(args) {
+    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery, async run(args) {
       arity(args, 0);
-      return { plugins: registry2.plugins.map((p) => p.manifest) };
+      return { plugins: pluginCatalog(registry2, await services.installedPlugins()) };
     } }
   ];
 }
@@ -48017,9 +48808,11 @@ function interactionCommands(services) {
     id: "interactions",
     description: "Manage reusable Markdown interaction definitions for executable UI behavior.",
     usage: "interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]",
-    options: { library: "string", from: "string", out: "string", event: "string" },
+    ...libraryMetadata("interaction"),
+    options: { ...libraryOptions, event: option.string("Browser event for create.", { enum: interactionEvents }) },
+    errors: ["INVALID_INTERACTION", "DUPLICATE_INTERACTION", "UNKNOWN_INTERACTION", "CONFLICT"],
     async run(args, flags) {
-      const action2 = args[0] ?? "list", directory = value(flags, "library") ?? config2.paths.interactions;
+      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? config2.paths.interactions;
       ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires interactions import.");
       ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires interactions export.");
       ensure(flags.event === void 0 || action2 === "create", "INVALID_ARGUMENT", "--event requires interactions create.");
@@ -48056,17 +48849,17 @@ function interactionCommands(services) {
       }
       if (action2 === "create") {
         arity(args, 2);
-        const event = value(flags, "event");
+        const event = value$2(flags, "event");
         ensure(event === void 0 || interactionEvents.includes(event), "INVALID_ARGUMENT", `--event must be one of: ${interactionEvents.join(", ")}.`);
         return library.create(directory, args[1], event);
       }
       if (action2 === "import") {
         arity(args, 1);
-        return library.import(value(flags, "from") ?? config2.paths.interactionImports, directory);
+        return library.import(value$2(flags, "from") ?? config2.paths.interactionImports, directory);
       }
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
       arity(args, 1);
-      return library.export(directory, value(flags, "out") ?? config2.paths.interactionExports);
+      return library.export(directory, value$2(flags, "out") ?? config2.paths.interactionExports);
     }
   }];
 }
@@ -48075,7 +48868,17 @@ function workflowsCommands(services) {
     id: "workflows",
     description: "Discover project-owned CI workflows and synchronize their generated GitHub entrypoints; --check reports drift.",
     usage: "workflows [list | sync [--check] [--dry-run]]",
-    options: { check: "boolean" },
+    scope: "workspace",
+    discovery: false,
+    mutating: true,
+    defaultAction: "list",
+    actions: {
+      list: { description: "List every managed project's authored workflows and their generated entrypoints.", mutating: false },
+      sync: { description: "Write the generated .github/workflows entrypoints; with --check, report drift without writing." }
+    },
+    args: [{ name: "action", description: "list (default) or sync.", enum: ["list", "sync"] }],
+    options: { check: option.boolean("With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.") },
+    errors: ["INVALID_WORKFLOW", "WORKFLOW_DRIFT", "CONFLICT"],
     async run(args, flags) {
       const action2 = args[0] ?? "list";
       ensure(flags.check === void 0 || action2 === "sync", "INVALID_ARGUMENT", "--check requires workflows sync.");
@@ -48121,7 +48924,7 @@ function replaceUniqueLiteral(text2, find, replacement2) {
 }
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
-  const encoding = value(flags, "encoding") ?? "utf8";
+  const encoding = value$2(flags, "encoding") ?? "utf8";
   ensure(["utf8", "base64"].includes(encoding), "INVALID_ENCODING", "Use utf8 or base64. --from copies raw bytes by default.");
   if (encoding === "base64") {
     const text2 = Buffer.from(bytes).toString("utf8").trim();
@@ -48130,10 +48933,19 @@ async function content(flags, context) {
   }
   return bytes;
 }
-const contentOptions = { content: "string", from: "string", stdin: "boolean", encoding: "string" };
+const contentOptions = {
+  content: option.string("Literal content."),
+  from: option.string("Copy the bytes of another file in the same scope."),
+  stdin: option.boolean("Read the content from piped standard input."),
+  encoding: option.string("Decode --content, --from or --stdin input; base64 writes binary content.", { enum: ["utf8", "base64"], default: "utf8" })
+};
+const ifMatch$1 = (required2 = false) => option.string("SHA-256 revision the file must still have (from read).", { required: required2 });
+const pathArgument = (description2 = "Vault path relative to the command scope.") => ({ name: "path", description: description2, required: true });
+const reading = { scope: "project", discovery: false, mutating: false };
+const writing = { scope: "project", discovery: false, mutating: true };
 const readParts = ["body"];
 function selectedParts(flags, kind) {
-  const requested = value(flags, "parts");
+  const requested = value$2(flags, "parts");
   if (requested === void 0) return /* @__PURE__ */ new Set();
   const parts = requested.split(",").map((part) => part.trim());
   ensure(parts.every((part) => readParts.includes(part)), "INVALID_ARGUMENT", `--parts accepts a comma-separated list of: ${readParts.join(", ")}.`);
@@ -48155,118 +48967,183 @@ function defaultDocument(kind) {
 const defaultable = ["markdown", "canvas", "base", "text"];
 function documentCommands() {
   return [
-    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment]", options: { kind: "string" }, async run(args, flags, { workspace: workspace2 }) {
-      arity(args, 0);
-      const kind = value(flags, "kind");
-      ensure(kind === void 0 || fileKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${fileKinds.join(", ")}.`);
-      return { files: (await workspace2.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
-    } },
-    { id: "read", description: "Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.", usage: "read <path> [--parts body]", options: { parts: "string" }, async run(args, flags, { workspace: workspace2 }) {
-      arity(args, 1);
-      const parts = selectedParts(flags, fileKind(args[0]));
-      const result = await workspace2.read(args[0]);
-      if (!isRecord(result.document) || result.document.kind !== "markdown" || parts.has("body")) return result;
-      const { body: _body, ...document2 } = result.document;
-      return { ...result, document: document2 };
-    } },
-    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.", usage: "validate <path>", async run(args, _, { workspace: workspace2 }) {
+    {
+      id: "list",
+      description: "List regular files in stable path order; skip symlinks, Git and node_modules.",
+      usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment]",
+      ...reading,
+      options: { kind: option.string("Only files of this kind.", { enum: fileKinds }) },
+      async run(args, flags, { workspace: workspace2 }) {
+        arity(args, 0);
+        const kind = value$2(flags, "kind");
+        ensure(kind === void 0 || fileKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${fileKinds.join(", ")}.`);
+        return { files: (await workspace2.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
+      }
+    },
+    {
+      id: "read",
+      description: "Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.",
+      usage: "read <path> [--parts body]",
+      ...reading,
+      args: [pathArgument()],
+      errors: ["NOT_FOUND", "INVALID_FRONTMATTER"],
+      options: { parts: option.string("Comma-separated optional parts of a Markdown read.", { enum: readParts }) },
+      async run(args, flags, { workspace: workspace2 }) {
+        arity(args, 1);
+        const parts = selectedParts(flags, fileKind(args[0]));
+        const result = await workspace2.read(args[0]);
+        if (!isRecord(result.document) || result.document.kind !== "markdown" || parts.has("body")) return result;
+        const { body: _body, ...document2 } = result.document;
+        return { ...result, document: document2 };
+      }
+    },
+    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.", usage: "validate <path>", ...reading, args: [pathArgument()], errors: ["NOT_FOUND", "INVALID_FRONTMATTER", "INVALID_YAML", "INVALID_CANVAS", "INVALID_BASE", "INVALID_ENCODING"], async run(args, _, { workspace: workspace2 }) {
       arity(args, 1);
       const file = await workspace2.files.read(args[0]);
       workspace2.codec.validate(file.path, file.bytes);
       const kind = fileKind(file.path);
       return { path: file.path, valid: true, kind, validation: ["markdown", "canvas", "base"].includes(kind) ? "structure" : kind === "text" ? "utf8" : "opaque-bytes" };
     } },
-    { id: "create", description: "Create a note, Canvas, Base, or file. Existing files are refused.", usage: "create <path> [--content text | --from path | --stdin] [--encoding base64]", options: contentOptions, async run(args, flags, context) {
-      arity(args, 1);
-      const path = args[0];
-      const hasInput = flags.content !== void 0 || flags.from !== void 0 || flags.stdin === true;
-      const kind = fileKind(path);
-      ensure(hasInput || flags.encoding === void 0, "INVALID_INPUT", "--encoding requires an input source.");
-      ensure(hasInput || defaultable.includes(kind), "INVALID_INPUT", "Attachments require content, from, or stdin.");
-      const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
-      return context.workspace.write([{ path, bytes }], { diff: true });
-    } },
-    { id: "write", description: "Create or replace a file; replacement requires its current revision.", usage: "write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]", options: { ...contentOptions, "if-match": "string" }, async run(args, flags, context) {
-      arity(args, 1);
-      return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value(flags, "if-match") }], { diff: true });
-    } },
-    { id: "edit", description: "Append to Markdown or UTF-8 text, or replace exactly one literal match.", usage: "edit <note.md|text-file> --if-match sha256 (--append --content text | --find text --replace text)", options: { "if-match": "string", append: "boolean", content: "string", find: "string", replace: "string" }, async run(args, flags, { workspace: workspace2 }) {
-      arity(args, 1);
-      const path = args[0];
-      ensure(["markdown", "text"].includes(fileKind(path)), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
-      const revision = value(flags, "if-match", true);
-      return workspace2.edit(path, revision, (bytes) => {
-        const text2 = utf8Text(bytes);
-        if (flags.append) {
-          ensure(flags.find === void 0 && flags.replace === void 0, "INVALID_INPUT", "Do not combine append and replace.");
-          return encodeText(text2 + value(flags, "content", true));
-        }
-        ensure(flags.content === void 0, "INVALID_INPUT", "--content requires --append.");
-        return encodeText(replaceUniqueLiteral(text2, value(flags, "find", true), value(flags, "replace", true)));
-      });
-    } },
-    { id: "properties", description: "Merge YAML frontmatter properties while preserving the Markdown body.", usage: "properties <note.md> --set JSON --if-match sha256", options: { set: "string", "if-match": "string" }, async run(args, flags, { workspace: workspace2 }) {
-      arity(args, 1);
-      ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
-      const changes = parseJson(value(flags, "set", true));
-      ensure(isRecord(changes), "INVALID_INPUT", "--set must be a JSON object.");
-      return workspace2.edit(args[0], value(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
-    } },
-    { id: "patch", description: "Set a Canvas/Base JSON Pointer; - appends to an existing array.", usage: "patch <path> --pointer /nodes/- --value JSON --if-match sha256", options: { pointer: "string", value: "string", "if-match": "string" }, async run(args, flags, { workspace: workspace2 }) {
-      arity(args, 1);
-      const pointer = value(flags, "pointer", true), data = parseJson(value(flags, "value", true));
-      return workspace2.edit(args[0], value(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer, data));
-    } }
+    {
+      id: "create",
+      description: "Create a note, Canvas, Base, or file. Existing files are refused.",
+      usage: "create <path> [--content text | --from path | --stdin] [--encoding base64]",
+      ...writing,
+      args: [pathArgument("New vault path.")],
+      options: contentOptions,
+      errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
+      async run(args, flags, context) {
+        arity(args, 1);
+        const path = args[0];
+        const hasInput = flags.content !== void 0 || flags.from !== void 0 || flags.stdin === true;
+        const kind = fileKind(path);
+        ensure(hasInput || flags.encoding === void 0, "INVALID_INPUT", "--encoding requires an input source.");
+        ensure(hasInput || defaultable.includes(kind), "INVALID_INPUT", "Attachments require content, from, or stdin.");
+        const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
+        return context.workspace.write([{ path, bytes }], { diff: true });
+      }
+    },
+    {
+      id: "write",
+      description: "Create or replace a file; replacement requires its current revision.",
+      usage: "write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]",
+      ...writing,
+      args: [pathArgument()],
+      options: { ...contentOptions, "if-match": ifMatch$1() },
+      errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
+      async run(args, flags, context) {
+        arity(args, 1);
+        return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value$2(flags, "if-match") }], { diff: true });
+      }
+    },
+    {
+      id: "edit",
+      description: "Append to Markdown or UTF-8 text, or replace exactly one literal match.",
+      usage: "edit <note.md|text-file> --if-match sha256 (--append --content text | --find text --replace text)",
+      ...writing,
+      args: [pathArgument()],
+      errors: ["CONFLICT", "NO_MATCH", "AMBIGUOUS_EDIT", "UNSUPPORTED_EDIT", "INVALID_INPUT", "INVALID_ENCODING"],
+      options: { "if-match": ifMatch$1(true), append: option.boolean("Append --content to the end of the file."), content: option.string("Text to append with --append."), find: option.string("Exact literal text that must occur once."), replace: option.string("Replacement for the --find match.") },
+      async run(args, flags, { workspace: workspace2 }) {
+        arity(args, 1);
+        const path = args[0];
+        ensure(["markdown", "text"].includes(fileKind(path)), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
+        const revision = value$2(flags, "if-match", true);
+        return workspace2.edit(path, revision, (bytes) => {
+          const text2 = utf8Text(bytes);
+          if (flags.append) {
+            ensure(flags.find === void 0 && flags.replace === void 0, "INVALID_INPUT", "Do not combine append and replace.");
+            return encodeText(text2 + value$2(flags, "content", true));
+          }
+          ensure(flags.content === void 0, "INVALID_INPUT", "--content requires --append.");
+          return encodeText(replaceUniqueLiteral(text2, value$2(flags, "find", true), value$2(flags, "replace", true)));
+        });
+      }
+    },
+    {
+      id: "properties",
+      description: "Merge YAML frontmatter properties while preserving the Markdown body.",
+      usage: "properties <note.md> --set JSON --if-match sha256",
+      ...writing,
+      args: [pathArgument("Markdown note path.")],
+      errors: ["CONFLICT", "UNSUPPORTED_EDIT", "INVALID_JSON", "INVALID_INPUT", "INVALID_KEY", "INVALID_FRONTMATTER"],
+      options: { set: option.string("JSON object of properties to set.", { required: true }), "if-match": ifMatch$1(true) },
+      async run(args, flags, { workspace: workspace2 }) {
+        arity(args, 1);
+        ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
+        const changes = parseJson(value$2(flags, "set", true));
+        ensure(isRecord(changes), "INVALID_INPUT", "--set must be a JSON object.");
+        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
+      }
+    },
+    {
+      id: "patch",
+      description: "Set a Canvas/Base JSON Pointer; - appends to an existing array.",
+      usage: "patch <path> --pointer /nodes/- --value JSON --if-match sha256",
+      ...writing,
+      args: [pathArgument("Canvas or Base path.")],
+      errors: ["CONFLICT", "INVALID_POINTER", "INVALID_JSON", "INVALID_CANVAS", "INVALID_BASE", "UNSUPPORTED_EDIT"],
+      options: { pointer: option.string("JSON Pointer to set; /- appends to an existing array.", { required: true }), value: option.string("JSON value to set.", { required: true }), "if-match": ifMatch$1(true) },
+      async run(args, flags, { workspace: workspace2 }) {
+        arity(args, 1);
+        const pointer = value$2(flags, "pointer", true), data = parseJson(value$2(flags, "value", true));
+        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer, data));
+      }
+    }
   ];
 }
-const linkOptions = { "if-match": "string", "no-update-links": "boolean" };
-const guard = (flags, dryRun) => value(flags, "if-match", !dryRun);
+const ifMatch = option.string("SHA-256 revision of the source file (from read); required unless --dry-run.");
+const linkOptions = { "if-match": ifMatch, "no-update-links": option.boolean("Move without rewriting links to the moved files.") };
+const vaultWrite = { scope: "project", discovery: false, mutating: true };
+const moveErrors = ["NOT_FOUND", "CONFLICT", "DESTINATION_EXISTS", "PROTECTED_PATH", "INVALID_MOVE"];
+const guard = (flags, dryRun) => value$2(flags, "if-match", !dryRun);
 function vaultCommands() {
   return [
-    { id: "delete", description: "Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.", usage: "delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]", options: { "if-match": "string", recursive: "boolean", permanent: "boolean", "allow-broken-links": "boolean" }, async run(args, flags, { app, workspace: workspace2 }) {
-      arity(args, 1);
-      return app.fileManager.delete(args[0], {
-        ifMatch: guard(flags, workspace2.dryRun),
-        recursive: flags.recursive === true,
-        permanent: flags.permanent === true,
-        allowBrokenLinks: flags["allow-broken-links"] === true
-      });
-    } },
-    { id: "move", description: "Move or rename a file or folder and rewrite every link to it in one guarded batch.", usage: "move <from> <to> --if-match sha256 [--no-update-links]", options: linkOptions, async run(args, flags, { app, workspace: workspace2 }) {
-      arity(args, 2);
-      return app.fileManager.move(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
-    } },
-    { id: "rename", description: "Rename a file or folder in place and rewrite every link to it; a file keeps its extension.", usage: "rename <path> <new-name> --if-match sha256 [--no-update-links]", options: linkOptions, async run(args, flags, { app, workspace: workspace2 }) {
-      arity(args, 2);
-      return app.fileManager.rename(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
-    } }
-  ];
-}
-function skillsCommand(registry2) {
-  return {
-    id: "skills",
-    description: "List, read or install bundled and plugin agent skills.",
-    usage: "skills [list | show <id> | install] [--out .agents/skills]",
-    options: { out: "string" },
-    async run(args, flags, { workspace: workspace2 }) {
-      const action2 = args[0] ?? "list";
-      if (action2 !== "install") ensure(flags.out === void 0, "INVALID_ARGUMENT", "--out is only valid with skills install.");
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        return { skills: [...registry2.skills.keys()] };
+    {
+      id: "delete",
+      description: "Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.",
+      usage: "delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]",
+      ...vaultWrite,
+      args: [{ name: "path", description: "File or folder to delete.", required: true }],
+      errors: ["NOT_FOUND", "CONFLICT", "PROTECTED_PATH", "HAS_BACKLINKS"],
+      options: { "if-match": ifMatch, recursive: option.boolean("Required to delete a folder."), permanent: option.boolean("Remove instead of moving to .trash."), "allow-broken-links": option.boolean("Delete even while other files link to it.") },
+      async run(args, flags, { app, workspace: workspace2 }) {
+        arity(args, 1);
+        return app.fileManager.delete(args[0], {
+          ifMatch: guard(flags, workspace2.dryRun),
+          recursive: flags.recursive === true,
+          permanent: flags.permanent === true,
+          allowBrokenLinks: flags["allow-broken-links"] === true
+        });
       }
-      if (action2 === "show") {
+    },
+    {
+      id: "move",
+      description: "Move or rename a file or folder and rewrite every link to it in one guarded batch.",
+      usage: "move <from> <to> --if-match sha256 [--no-update-links]",
+      options: linkOptions,
+      ...vaultWrite,
+      errors: moveErrors,
+      args: [{ name: "from", description: "File or folder to move.", required: true }, { name: "to", description: "New path; it must not exist.", required: true }],
+      async run(args, flags, { app, workspace: workspace2 }) {
         arity(args, 2);
-        const skill = registry2.skills.get(args[1]);
-        ensure(skill, "UNKNOWN_SKILL", args[1]);
-        return skill;
+        return app.fileManager.move(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
       }
-      ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
-      arity(args, 1);
-      const directory = value(flags, "out") ?? ".agents/skills";
-      return workspace2.write([...registry2.skills.values()].map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: encodeText(skill.content) })));
+    },
+    {
+      id: "rename",
+      description: "Rename a file or folder in place and rewrite every link to it; a file keeps its extension.",
+      usage: "rename <path> <new-name> --if-match sha256 [--no-update-links]",
+      options: linkOptions,
+      ...vaultWrite,
+      errors: moveErrors,
+      args: [{ name: "path", description: "File or folder to rename.", required: true }, { name: "new-name", description: "New name without slashes; a file keeps its extension.", required: true }],
+      async run(args, flags, { app, workspace: workspace2 }) {
+        arity(args, 2);
+        return app.fileManager.rename(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
+      }
     }
-  };
+  ];
 }
 function commands(registry2, services) {
   return [
@@ -48278,19 +49155,17 @@ function commands(registry2, services) {
     ...catalogCommands(registry2),
     ...documentCommands(),
     ...vaultCommands(),
-    generationCommand(registry2, services),
-    ...extensionCommands(registry2),
-    skillsCommand(registry2)
+    generationCommand(registry2),
+    ...extensionCommands(registry2, services)
   ];
 }
-function invocationPolicy(id2, args, flags) {
-  const discovery = ["help", "schema", "config", "formats", "events", "plugins", "setup"].includes(id2);
-  const claudeCapabilities = id2 === "claude" && (args.length === 0 || args[0] === "capabilities");
-  const workspace2 = flags.help === true || discovery || claudeCapabilities || ["project", "templates", "components", "data-sources", "interactions", "workflows"].includes(id2) || id2 === "make" && (args.length === 0 || args[0] === "plugin") || id2 === "skills" && args[0] !== "install";
-  const requestedProject = id2 === "make" && ["ui", "stories", "data-source"].includes(args[0] ?? "") ? value(flags, "project") : void 0;
+function invocationPolicy(command2, args, flags) {
+  const mode = commandMode(command2, args);
+  const help = flags.help === true;
+  const requestedProject = mode.projectOption === void 0 ? void 0 : value$2(flags, mode.projectOption);
   return {
-    scope: workspace2 ? "workspace" : "project",
-    activatePlugins: flags.help !== true && !discovery && !claudeCapabilities,
+    scope: help || mode.discovery || mode.scope === "workspace" ? "workspace" : "project",
+    activatePlugins: !help && !mode.discovery,
     ...requestedProject === void 0 ? {} : { requestedProject }
   };
 }
@@ -48321,8 +49196,7 @@ const germanCommands = {
   rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
   make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
   events: "Ereignisverträge des Aufrufs auflisten.",
-  plugins: "Explizit geladene Plugin-Manifeste auflisten.",
-  skills: "Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren."
+  plugins: "Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten."
 };
 const germanGenerators = {
   form: "Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.",
@@ -48452,6 +49326,7 @@ const germanErrors = {
   INVALID_GENERATION_REVISIONS: { summary: "Die Revisionsfreigabe passt nicht zum geprüften Plan.", hint: "Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from." },
   UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
   DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
+  GENERATION_DRIFT: { summary: "Generierte Dateien fehlen oder weichen von der Ausgabe des Generators ab.", hint: "Führen Sie denselben make-Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu." },
   // Projekt-Workflows
   INVALID_WORKFLOW: { summary: "Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.", hint: "Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus." },
   WORKFLOW_DRIFT: { summary: "Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.", hint: "Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen." },
@@ -48475,10 +49350,12 @@ const germanErrors = {
   DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: "Für diese Datenquelle ist kein Generator verfügbar.", hint: "Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make." },
   // Plugins, Skills und Ereignisse
   INVALID_PLUGIN: { summary: "Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.", hint: "Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins." },
-  INVALID_PLUGIN_CONFIG: { summary: "Die Liste aktivierter Plugins ist ungültig.", hint: "Tragen Sie in plugins.enabled in bin/config.json eindeutige Kebab-Case-Plugin-IDs ein." },
+  INVALID_PLUGIN_CONFIG: { summary: "Die Plugin-Konfiguration ist ungültig.", hint: "Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs von Benutzer-Plugins und unter plugins.disabled nur IDs mitgelieferter Kern-Plugins ein; plugins listet sie auf." },
   INCOMPATIBLE_PLUGIN: { summary: "Das Plugin benötigt eine neuere Forge-Version.", hint: "Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin." },
   DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
-  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, workspace, plugin) als Plugin-ID." },
+  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill-, Ereignis- und Dienst-IDs eines Benutzer-Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID und beanspruchen Sie core: true nicht außerhalb des Bundles." },
+  PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen Dienst, den kein aktiviertes Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt (plugins zeigt die Anbieter), oder deklarieren Sie ihn in requires des Plugins." },
+  PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
   UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." },
@@ -48521,34 +49398,33 @@ function translated(catalog, id2) {
   return Object.hasOwn(catalog, id2) ? catalog[id2] : void 0;
 }
 class Localizer {
-  constructor(language2 = "en") {
+  constructor(language2 = "en", plugins) {
     this.language = language2;
+    this.plugins = plugins;
   }
   language;
+  plugins;
+  german(kind, id2) {
+    const kernel = kind === "commands" ? germanCommands : kind === "generators" ? germanGenerators : germanEvents;
+    return translated(kernel, id2) ?? this.plugins?.text("de", kind, id2);
+  }
   command(command2) {
-    const description2 = this.language === "de" ? translated(germanCommands, command2.id) : void 0;
+    const description2 = this.language === "de" ? this.german("commands", command2.id) : void 0;
     return description2 ? { ...command2, description: description2 } : command2;
   }
-  generators(items) {
+  described(kind, items) {
     if (!Array.isArray(items)) return items;
     return items.map((item) => {
       if (!isRecord(item) || typeof item.id !== "string") return item;
-      const description2 = translated(germanGenerators, item.id);
+      const description2 = this.german(kind, item.id);
       return description2 ? { ...item, description: description2 } : item;
     });
   }
   errors(items) {
     return items.map((item) => {
-      if (!isRecord(item) || typeof item.code !== "string" || !errorDefinition(item.code)) return item;
-      return { ...item, summary: germanErrors[item.code].summary };
-    });
-  }
-  contracts(items) {
-    if (!Array.isArray(items)) return items;
-    return items.map((item) => {
-      if (!isRecord(item) || typeof item.id !== "string") return item;
-      const description2 = translated(germanEvents, item.id);
-      return description2 ? { ...item, description: description2 } : item;
+      if (!isRecord(item) || typeof item.code !== "string") return item;
+      const summary = errorDefinition(item.code) ? germanErrors[item.code].summary : this.plugins?.localizedError(item.code, "de")?.summary;
+      return summary ? { ...item, summary } : item;
     });
   }
   eventOutput(value2) {
@@ -48556,13 +49432,13 @@ class Localizer {
   }
   result(command2, data) {
     if (this.language === "en" || !isRecord(data)) return data;
-    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.generators(data.generators), errors: this.errors(data.errors) };
-    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, generators: this.generators(data.generators) };
+    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.described("generators", data.generators), errors: this.errors(data.errors) };
+    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, generators: this.described("generators", data.generators) };
     if (["components", "data-sources", "interactions"].includes(command2) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
       return { ...data, nextStep: `Führen Sie ${command2} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
     if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command2 === "events") return { ...data, contracts: this.contracts(data.contracts), delivery: germanGuidance.delivery };
+    if (command2 === "events") return { ...data, contracts: this.described("events", data.contracts), delivery: germanGuidance.delivery };
     if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
       ...data,
       nextSteps: data.nextSteps.map((step) => {
@@ -48573,7 +49449,7 @@ class Localizer {
     };
     return data;
   }
-  /** Built-in codes add a catalog hint and retryability; plugin-defined codes keep their own shape. */
+  /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
   error(error2) {
     const code2 = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
     const diagnostic = errorMessage(error2);
@@ -48585,13 +49461,15 @@ class Localizer {
         details = { diagnostic: "Error details were not JSON-serializable." };
       }
     }
-    const definition2 = errorDefinition(code2);
+    const builtIn = errorDefinition(code2), contributed = builtIn ? void 0 : this.plugins?.error(code2);
+    const definition2 = builtIn ?? contributed;
     if (!definition2) return { code: code2, message: diagnostic, ...details ? { details } : {} };
-    const german = this.language === "de" ? germanErrors[code2] : void 0;
+    const german = this.language !== "de" ? void 0 : builtIn ? germanErrors[code2] : this.plugins?.localizedError(code2, "de");
     if (!german) return { code: code2, message: diagnostic, hint: definition2.hint, retryable: definition2.retryable, ...details ? { details } : {} };
     return { code: code2, message: german.summary, hint: german.hint, retryable: definition2.retryable, details: { ...details, localization: { originalMessage: diagnostic, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
+const corePlugins = [skillsPlugin];
 async function run() {
   const tokens = process.argv.slice(2);
   const registry2 = new Registry(), events = new EventBus(new NodeEventScope());
@@ -48602,16 +49480,16 @@ async function run() {
   let eventLevel = "changes";
   try {
     const bootstrap = parseBootstrap(tokens);
-    const requestedLanguage = value(bootstrap.flags, "lang");
+    const requestedLanguage = value$2(bootstrap.flags, "lang");
     if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
-    const requestedEvents = value(bootstrap.flags, "events");
+    const requestedEvents = value$2(bootstrap.flags, "events");
     if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
     if (bootstrap.flags.version) {
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
       result = { ok: true, data: { name: "The Forge", version: metadata$1.version, apiVersion: 1 } };
     } else {
-      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value(bootstrap.flags, "root") });
+      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$2(bootstrap.flags, "root") });
       const config2 = loaded.config;
       localizer = new Localizer(requestedLanguage !== void 0 ? language(requestedLanguage) : config2.settings.language);
       config2.settings.language = localizer.language;
@@ -48628,9 +49506,8 @@ async function run() {
         lockOwner = { command: command22, operationId };
       });
       let environment;
-      for (const generator of generators) registry2.add(registry2.generators, generator);
-      for (const skill of builtinSkills) registry2.add(registry2.skills, skill);
-      for (const command22 of commands(registry2, {
+      const skipUserPlugins = bootstrap.flags["no-plugins"] === true;
+      const services = {
         loaded,
         files,
         templates: new MarkdownTemplates(),
@@ -48656,24 +49533,30 @@ async function run() {
           }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config2.paths.interactions);
         },
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
-        setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run()
-      })) registry2.add(registry2.commands, command22);
+        setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run(),
+        configSections: () => registry2.settings.sections(),
+        installedPlugins: () => installedPlugins("bin/plugins", config2.plugins.enabled, skipUserPlugins, files, (message) => events.warn(message))
+      };
+      for (const generator of [...generators, ...libraryGenerators(services)]) registry2.add(registry2.generators, generator);
+      for (const command22 of commands(registry2, services)) registry2.add(registry2.commands, command22);
       registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       registry2.add(registry2.commands, basesCommand(async (context2) => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context2.root), context2.workspace.codec, () => context2.metadata.load()))));
-      if (!bootstrap.flags["no-plugins"]) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events);
+      registerCorePlugins(registry2, events, corePlugins, { skills: registrySkills(registry2) }, config2.plugins.disabled);
+      if (!skipUserPlugins) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events);
+      config2.plugins.settings = registry2.settings.configure(config2.plugins.settings, new Set(registry2.origins.keys()));
       await registry2.publishRegistered(events);
       const id2 = bootstrap.args[0] ?? "help";
       const command2 = registry2.commands.get(id2);
       ensure(command2, "UNKNOWN_COMMAND", `Unknown command ${id2}. Run help or schema.`);
-      const parsed = parseArguments(tokens, { ...globalOptions, ...command2.options });
-      const parsedLanguage = value(parsed.flags, "lang");
-      if (parsedLanguage !== void 0) localizer = new Localizer(language(parsedLanguage));
+      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(command2.options) });
+      const parsedLanguage = value$2(parsed.flags, "lang");
+      localizer = new Localizer(parsedLanguage !== void 0 ? language(parsedLanguage) : localizer.language, registry2.catalog);
       config2.settings.language = localizer.language;
-      const parsedEvents = value(parsed.flags, "events");
+      const parsedEvents = value$2(parsed.flags, "events");
       if (parsedEvents !== void 0) eventLevel = config2.settings.events = eventOutput(parsedEvents);
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
-      for (const option of ["root", "no-plugins"]) ensure(parsed.flags[option] === bootstrap.flags[option], "INVALID_ARGUMENT", `--${option} must precede the command.`);
+      for (const option2 of ["root", "no-plugins"]) ensure(parsed.flags[option2] === bootstrap.flags[option2], "INVALID_ARGUMENT", `--${option2} must precede the command.`);
       config2.settings.json = parsed.flags["no-json"] ? false : parsed.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = parsed.flags["no-dry-run"] ? false : parsed.flags["dry-run"] ? true : config2.settings.dryRun;
       compact = config2.settings.json;
@@ -48681,7 +49564,7 @@ async function run() {
       environment = new Workspace(files, new ObsidianDocuments(), events, config2.settings.dryRun, files.root, { committed: async (changes) => {
         await metadataCommits?.committed(changes);
       } });
-      const policy = invocationPolicy(id2, parsed.args.slice(1), parsed.flags);
+      const policy = invocationPolicy(command2, parsed.args.slice(1), parsed.flags);
       const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects.inspect(policy.requestedProject) : await projects.current();
       const scopedFiles = project2 ? new ScopedFiles(files, project2.directory) : files;
@@ -48692,7 +49575,7 @@ async function run() {
       activeContext = { workspaceRoot: files.root, root: project2 ? minpath.resolve(files.root, project2.directory) : files.root, project: project2 };
       const claude2 = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace2.dryRun }, events);
       const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events, project: project2 });
-      const context = { workspace: workspace2, events, claude: claude2, metadata: vaultMetadata, app, ...activeContext, input: async () => {
+      const context = { workspace: workspace2, environment, events, claude: claude2, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
@@ -48706,7 +49589,11 @@ async function run() {
         dryRun: workspace2.dryRun
       }, async () => {
         if (!policy.activatePlugins) return;
-        await registry2.activate(events, context, bootstrap.flags["no-plugins"] ? void 0 : new WorkspacePluginState(environment, (message) => events.warn(message)));
+        const settingsRevision = async (pluginId) => {
+          const canonical = registry2.settings.canonical(pluginId);
+          return canonical === null ? null : node_crypto.createHash("sha256").update(canonical).digest("hex");
+        };
+        await registry2.activate(events, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message) => events.warn(message), settingsRevision));
         await announceLayoutReady(events);
       }, async () => {
         const output = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed.args.slice(1), parsed.flags, context);
@@ -48715,8 +49602,9 @@ async function run() {
       result = { ok: true, data };
     }
   } catch (error2) {
-    process.exitCode = error2 instanceof AppError ? error2.exitCode : 1;
-    result = { ok: false, error: localizer.error(error2) };
+    const failure2 = registry2.catalog.normalize(error2);
+    process.exitCode = failure2 instanceof AppError ? failure2.exitCode : 1;
+    result = { ok: false, error: localizer.error(failure2) };
   } finally {
     await quitInvocation(events);
     await registry2.dispose(events);

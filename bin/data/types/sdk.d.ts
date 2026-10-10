@@ -1,4 +1,10 @@
-export type { Plugin, PluginManifest, PluginContributions, Command, CommandContext, Generator, Skill } from './application/plugins/registry.ts';
+export type { Plugin, PluginManifest, PluginContributions, PluginContext, Command, CommandContext, Generator, GeneratorRequest, Skill } from './application/plugins/registry.ts';
+export type { CommandMetadata, CommandOption, CommandArgument, CommandAction, CommandMode, CommandScope, CommandFlags } from './application/plugins/command-metadata.ts';
+export type { PluginServices } from './application/plugins/plugin-services.ts';
+export type { PluginStrings, PluginStringTable, PluginErrorDefinition, Language } from './application/plugins/plugin-catalog.ts';
+export type { JsonSchema, JsonSchemaType } from './domain/schema/json-schema.ts';
+export type { ErrorCategory } from './domain/shared/error-catalog.ts';
+export type { GenerationService } from './application/generation/plans.ts';
 export type { EventDefinition, EventRecord, EventChannel } from './application/plugins/events.ts';
 export type { HostEventMap, HostEventId, HostEventRecord, VaultChange, VaultFileChange, VaultFolderChange, VaultRename, CachedMetadataRecord } from './application/plugins/host-events.ts';
 export type { FileSnapshot, FileChange, FileRename, FileStat, PlannedChange, RemoveRequest, RenameRequest, WriteRequest } from './domain/documents/file.ts';
