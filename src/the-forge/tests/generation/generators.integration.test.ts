@@ -69,7 +69,7 @@ it('generates an installable plugin with a validated manifest and runnable lifec
     const command = registry.commands.get('http-tools.hello')!;
     expect(command).toBeDefined();
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: false });
-    await registry.activate(context);
+    await registry.activate(events, context);
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: true });
     await registry.dispose(events);
     expect(await command.run([], {}, context)).toEqual({ plugin: 'http-tools', ready: false });

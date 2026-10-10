@@ -2,6 +2,8 @@ import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/erro
 import { vaultPath, type FileSnapshot, type WriteRequest } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import type { Workspace } from '../workspace/workspace.ts';
+import type { EventBus } from '../plugins/events.ts';
+import { publishHostEvent } from '../plugins/host-events.ts';
 
 export type ComponentKind = 'domain' | 'application';
 export interface ProjectMetadata { schemaVersion: 1; name: string; type: 'library' }
@@ -19,7 +21,7 @@ export function projectName(name: string): string {
 
 /** Owns project discovery and mutation policy; scaffolding and persistence are injected. */
 export class ProjectService {
-  constructor(private readonly files: FileRepository, private readonly workspace: Workspace, readonly projectsDirectory: string, private readonly scaffolder: ProjectScaffolder) {
+  constructor(private readonly files: FileRepository, private readonly workspace: Workspace, readonly projectsDirectory: string, private readonly scaffolder: ProjectScaffolder, private readonly events: EventBus) {
     vaultPath(projectsDirectory);
   }
 
@@ -119,12 +121,14 @@ export class ProjectService {
     }
   }
 
+  /** A committed selection change emits `workspace.project-change` with the previous and new project names. */
   private async select(project: ProjectInfo | null) {
     const current = await this.contextSnapshot();
-    let unchanged = current === null && project === null;
+    let unchanged = current === null && project === null, from: string | null = null;
     if (current) {
       try {
         const selection = this.contextProject(current);
+        from = selection?.name ?? null;
         unchanged = project === null ? selection === null : selection?.name === project.name && selection.directory === project.directory;
       }
       catch (error) {
@@ -137,6 +141,8 @@ export class ProjectService {
       ...(current ? { expectedRevision: current.revision } : {}),
     }];
     const result = unchanged ? { dryRun: this.workspace.dryRun, changes: [] } : await this.workspace.write(plan);
+    const to = project?.name ?? null;
+    if (!unchanged && !this.workspace.dryRun && from !== to) await publishHostEvent(this.events, 'workspace.project-change', { from, to });
     return { project, ...result, ...this.preview(plan) };
   }
 

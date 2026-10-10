@@ -10,9 +10,9 @@ export function eventOutput(value: string): EventOutput {
   return value as EventOutput;
 }
 
-/** The single definition of a committed file-change record in response output. */
+/** The single definition of a committed change record in response output: every `vault.*` record. */
 export function isChangeRecord(record: EventRecord): boolean {
-  return record.id === 'file.created' || record.id === 'file.updated' || record.id === 'file.deleted';
+  return record.id.startsWith('vault.');
 }
 
 export function selectEventOutput(history: readonly EventRecord[], level: EventOutput): EventRecord[] {

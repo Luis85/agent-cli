@@ -26,8 +26,8 @@ async function vault(directory: string) {
   const files = directory ? new ScopedFiles(nodeFiles, directory) : nodeFiles;
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   const index = metadataIndex(files), reports: unknown[] = [];
-  for (const id of ['file.created', 'file.updated', 'file.deleted'] as const) {
-    events.on<HostEventMap[typeof id]>(id, async change => { reports.push(await index.update([change])); });
+  for (const id of ['vault.create', 'vault.modify', 'vault.delete'] as const) {
+    events.on<HostEventMap[typeof id]>(id, async change => { if (change.kind === 'file') reports.push(await index.update([change])); });
   }
   return { workspace, index, files, reports };
 }

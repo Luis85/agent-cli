@@ -1,4 +1,4 @@
-import type { FileRepository } from '../../src/application/workspace/ports.ts';
+import type { FileRepository, WriteBatchResult } from '../../src/application/workspace/ports.ts';
 import type { MetadataCache } from '../../src/application/metadata/ports.ts';
 import { VaultMetadata } from '../../src/application/metadata/vault-metadata.ts';
 import type { FileChange } from '../../src/domain/documents/file.ts';
@@ -29,7 +29,7 @@ export class MemoryFiles implements FileRepository {
     return { path, bytes: new TextEncoder().encode(text), revision: String(text.length) };
   }
   async list(): Promise<string[]> { return [...this.files.keys()].sort(); }
-  async writeBatch(): Promise<FileChange[]> { throw new Error('MemoryFiles is read-only.'); }
+  async writeBatch(): Promise<WriteBatchResult> { throw new Error('MemoryFiles is read-only.'); }
   async remove(): Promise<FileChange> { throw new Error('MemoryFiles is read-only.'); }
 }
 

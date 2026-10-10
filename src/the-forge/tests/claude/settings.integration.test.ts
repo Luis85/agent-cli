@@ -25,7 +25,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-settings-'));
   files = await NodeFiles.at(root);
   events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
+  for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
@@ -46,7 +46,7 @@ describe('guarded Claude settings updates', () => {
     revision = (await service().inspect()).revision!;
     await service().remove('PostToolUse', revision);
     expect(await saved()).toEqual({ ...other, hooks: {} });
-    expect(events.history.map(entry => entry.id)).toEqual(Array(6).fill('file.updated'));
+    expect(events.history.map(entry => entry.id)).toEqual(Array(6).fill('vault.modify'));
   });
 
   it('toggles global hook execution without deleting handlers or unrelated flags', async () => {

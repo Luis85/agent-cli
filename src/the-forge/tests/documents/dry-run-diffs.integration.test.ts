@@ -63,7 +63,7 @@ describe('dry-run unified diffs', () => {
       expect.objectContaining({ path: 'data.json', operation: 'created', bytes: 1, diff: null }),
     ]);
     expect(JSON.stringify(events.history)).not.toContain('"diff"');
-    expect(events.history.map(record => record.id)).not.toContain('file.created');
+    expect(events.history.map(record => record.id)).not.toContain('vault.create');
   });
 
   it('keeps ordinary writes and real commits free of preview diffs', async () => {

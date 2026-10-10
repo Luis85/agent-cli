@@ -1,4 +1,4 @@
-import { committedEvents } from '../support/events.ts';
+import { committedEvents, committedFileEvents } from '../support/events.ts';
 import { describe, expect, it } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -57,7 +57,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     await expect(readFile(join(fixture.project, paths[0]!))).rejects.toThrow();
     const generated = cli(args);
     expect(generated.status, generated.stdout).toBe(0);
-    expect(committedEvents(generated.body.events)).toHaveLength(paths.length);
+    expect(committedFileEvents(generated.body.events)).toHaveLength(paths.length);
     expect(cli(args).body.error.code).toBe('CONFLICT');
   });
 
@@ -86,7 +86,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     expect(committedEvents(preview.body.events)).toEqual([]);
     const updated = cli(guarded);
     expect(updated.status, updated.stdout).toBe(0);
-    expect(committedEvents(updated.body.events).map(event => event.id)).toEqual(updated.body.data.changes.map(() => 'file.updated'));
+    expect(committedEvents(updated.body.events).map(event => event.id)).toEqual(updated.body.data.changes.map(() => 'vault.modify'));
     expect(committedEvents(updated.body.events).length).toBeGreaterThan(0);
     expect(await readFile(join(fixture.project, 'maintained-ui/greeting.tsx'), 'utf8')).toContain('Updated');
     const stale = cli(guarded);
@@ -118,7 +118,7 @@ describe('portable Markdown component library and deterministic UI generation', 
     const planned = cli([...args, '--plan-out', 'reviews/reviewed.json']);
     expect(planned.status, planned.stdout).toBe(0);
     expect(planned.body.data.outputs[0]).toMatchObject({ status: 'changed', currentContent: '// User customization\n' });
-    expect(committedEvents(planned.body.events)).toHaveLength(1);
+    expect(committedFileEvents(planned.body.events)).toHaveLength(1);
     expect(await readFile(join(fixture.project, 'review-ui/greeting.tsx'), 'utf8')).toBe('// User customization\n');
     expect(JSON.parse(await readFile(join(fixture.project, 'reviews/reviewed.json'), 'utf8'))).toEqual(planned.body.data.revisions);
     expect(cli([...args, '--plan-out', 'reviews/reviewed.json']).body.error.code).toBe('CONFLICT');

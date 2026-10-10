@@ -3,6 +3,7 @@ import { ensure } from '../../domain/shared/errors.ts';
 import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
 import { nativeFormats, textExtensions } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
+import { hostEventNamespaces } from '../../application/plugins/host-events.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
 import { arity, globalOptions } from './arguments.ts';
 import { generatorCatalog } from '../generation/commands.ts';
@@ -11,7 +12,7 @@ export function catalogCommands(registry: Registry): Command[] {
   const catalog = () => ({
     name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node,
     globalOptions, output: '{ ok, data?, error?: {code,message,hint?,retryable?,details?}, context?: {workspaceRoot,root,project}, events, warnings }',
-    eventOutput: { option: '--events', setting: 'settings.events', levels: eventOutputLevels, default: 'changes', changes: 'Only committed file.created, file.updated and file.deleted records.' },
+    eventOutput: { option: '--events', setting: 'settings.events', levels: eventOutputLevels, default: 'changes', changes: 'Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders.' },
     commands: [...registry.commands.values()].map(({ id, description, usage, options }) => ({ id, description, usage, options: options ?? {} })),
     generators: generatorCatalog(registry),
     skills: [...registry.skills.keys()],
@@ -34,9 +35,15 @@ export function catalogCommands(registry: Registry): Command[] {
   ];
 }
 
+const hostNamespaces = [...hostEventNamespaces];
+const eventDelivery = 'Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. metadataCache.* contracts are reserved for the kernel index. operation.*, command.*, claude.* and plugin.* records are lifecycle phases; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.';
+
 export function extensionCommands(registry: Registry): Command[] {
   return [
-    { id: 'events', description: 'List invocation event contracts.', usage: 'events', run(args, _, { events }) { arity(args, 0); return { events: events.ids(), contracts: events.catalog(), delivery: 'Ordered, awaited, per-listener snapshots; failures become warnings. Lifecycle phases cover commands, workspace operations, Claude execution and plugins. File events follow commits. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only file-change records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.' }; } },
+    { id: 'events', description: 'List invocation event contracts.', usage: 'events', run(args, _, { events }) {
+      arity(args, 0);
+      return { events: events.ids(), contracts: events.catalog(), hostNamespaces, delivery: eventDelivery };
+    } },
     { id: 'plugins', description: 'List explicitly loaded plugin manifests.', usage: 'plugins', run(args) { arity(args, 0); return { plugins: registry.plugins.map(p => p.manifest) }; } },
   ];
 }

@@ -1,5 +1,5 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
-import { germanCommands, germanGenerators, germanGuidance } from './catalog.ts';
+import { germanCommands, germanEvents, germanGenerators, germanGuidance } from './catalog.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 
@@ -38,15 +38,28 @@ export class Localizer {
     });
   }
 
+  private contracts(items: unknown): unknown {
+    if (!Array.isArray(items)) return items;
+    return items.map((item: unknown) => {
+      if (!isRecord(item) || typeof item.id !== 'string') return item;
+      const description = translated(germanEvents, item.id);
+      return description ? { ...item, description } : item;
+    });
+  }
+
+  private eventOutput(value: unknown): unknown {
+    return isRecord(value) && typeof value.changes === 'string' ? { ...value, changes: germanGuidance.eventChanges } : value;
+  }
+
   result(command: string, data: unknown): unknown {
     if (this.language === 'en' || !isRecord(data)) return data;
-    if (command === 'schema' && Array.isArray(data.errors)) return { ...data, generators: this.generators(data.generators), errors: this.errors(data.errors) };
-    if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
+    if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.generators(data.generators), errors: this.errors(data.errors) };
+    if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), generators: this.generators(data.generators) };
     if (['components', 'data-sources', 'interactions'].includes(command) && data.status === 'empty' && typeof data.directory === 'string' && typeof data.nextStep === 'string') {
       return { ...data, nextStep: `Führen Sie ${command} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
     if (command === 'formats') return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command === 'events') return { ...data, delivery: germanGuidance.delivery };
+    if (command === 'events') return { ...data, contracts: this.contracts(data.contracts), delivery: germanGuidance.delivery };
     if (command === 'setup' && Array.isArray(data.nextSteps)) return {
       ...data, nextSteps: data.nextSteps.map((step: unknown) => {
         if (!isRecord(step) || typeof step.command !== 'string') return step;

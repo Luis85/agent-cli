@@ -13,11 +13,11 @@ import { claudeTarget } from '../../src/infrastructure/claude/target.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
-let root: string, context: CommandContext;
+let root: string, context: CommandContext, events: EventBus;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-target-'));
-  const events = new EventBus(new NodeEventScope());
-  events.define({ id: 'file.created', validate: (value): value is object => typeof value === 'object' });
+  events = new EventBus(new NodeEventScope());
+  events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
   context = { root, workspaceRoot: root, workspace, events, project: null, claude: { execute: async () => { throw new Error('Unexpected Claude invocation'); } }, metadata: metadataIndex(workspace.files), input: async () => new Uint8Array() };
 });
@@ -37,7 +37,7 @@ describe('explicit native Claude targets', () => {
     await mkdir(join(root, 'projects/selected'), { recursive: true });
     const selected: CommandContext = { ...context, root: join(root, 'projects/selected'),
       project: { schemaVersion: 1, name: 'selected', type: 'library', directory: 'projects/selected' },
-      workspace: new Workspace(new ScopedFiles(context.workspace.files, 'projects/selected'), context.workspace.codec, context.events, false) };
+      workspace: context.workspace.within(new ScopedFiles(context.workspace.files, 'projects/selected'), null) };
     const scopes: Record<string, string | boolean>[] = [{}, { scope: 'local' }, { scope: 'plugin', directory: 'plugins/team' }];
     for (const flags of scopes) {
       const target = await claudeTarget(selected, flags);
@@ -49,13 +49,13 @@ describe('explicit native Claude targets', () => {
 
   it('previews missing user configuration descendants without making any directory', async () => {
     const directory = join(root, 'missing-parent/custom-claude');
-    const preview = { ...context, workspace: new Workspace(context.workspace.files, context.workspace.codec, context.events, true) };
+    const preview = { ...context, workspace: new Workspace(context.workspace.files, context.workspace.codec, events, true) };
     const target = await claudeTarget(preview, { scope: 'user', 'claude-dir': directory });
     expect(target).toMatchObject({ scope: 'user', directory, agentsDirectory: 'agents', settingsPath: 'settings.json' });
     const result = await new ClaudeSettings(target.workspace, target.settingsPath).set({});
     expect(result.dryRun).toBe(true);
     expect(await readdir(root)).toEqual([]);
-    expect(context.events.history).toEqual([]);
+    expect(events.history).toEqual([]);
   });
 
   it('keeps first-write previews and subsequent inspections relative to the explicit user directory', async () => {
@@ -109,6 +109,6 @@ describe('explicit native Claude targets', () => {
     const result = await new ClaudeSettings(target.workspace, target.settingsPath).set({});
     expect(result.changes).toMatchObject([{ operation: 'created' }]);
     expect(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8'))).toEqual({ hooks: {} });
-    expect(context.events.warnings).toEqual([expect.stringContaining('Cleanup failed')]);
+    expect(events.warnings).toEqual([expect.stringContaining('Cleanup failed')]);
   });
 });

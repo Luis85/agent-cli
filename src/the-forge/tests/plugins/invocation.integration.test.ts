@@ -49,7 +49,7 @@ describe('command invocation outcomes', () => {
     })).rejects.toMatchObject({ code: 'INVALID_RESULT', exitCode: 1 });
     expect(await readFile(join(root, 'committed.md'), 'utf8')).toBe('Committed private content');
     expect(events.history.map(record => record.id)).toEqual([
-      'command.started', 'workspace.started', 'file.created', 'workspace.succeeded', 'command.failed',
+      'command.started', 'operation.started', 'vault.create', 'operation.succeeded', 'command.failed',
     ]);
     expect(events.history.at(-1)!.payload).toEqual({ ...metadata(), operationId: 1, error: { code: 'INVALID_RESULT', exitCode: 1 } });
     expect(JSON.stringify(events.history)).not.toMatch(/Committed private content|Secret getter input|Secret serializer input/);

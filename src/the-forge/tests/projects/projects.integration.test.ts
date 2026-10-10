@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { generators } from '../../src/infrastructure/generation/generators.ts';
 import { ProjectService } from '../../src/application/projects/projects.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
+import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
@@ -21,8 +22,8 @@ const shell = promisify(exec);
 beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'forge-projects-'))); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 function service(directory = 'projects', dryRun = false, events = new EventBus(new NodeEventScope())) {
-  events.defineAll(['file.created', 'file.updated'].map(id => ({ id, validate: (value): value is object => typeof value === 'object' })));
-  return new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, dryRun), directory, { project: projectScaffold, component: componentScaffold });
+  events.defineAll(['vault.create', 'vault.modify'].map(id => ({ id, validate: (value): value is object => typeof value === 'object' })));
+  return new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, dryRun), directory, { project: projectScaffold, component: componentScaffold }, events);
 }
 
 describe('Forge project management', () => {
@@ -113,11 +114,12 @@ describe('Forge project management', () => {
     expect(opened.project).toEqual(await projects.inspect('billing'));
     expect(opened.changes).toMatchObject([{ path: 'bin/data/context.json', operation: 'created' }]);
     expect(await service('src').requireCurrent()).toEqual(opened.project);
-    expect(events.history.map(event => event.id)).toEqual(['file.created']);
+    // The first selection creates bin and bin/data before the context file.
+    expect(events.history.map(event => (event.payload as { path: string }).path)).toEqual(['bin', 'bin/data', 'bin/data/context.json']);
     const writes = vi.spyOn(files, 'writeBatch');
     expect((await projects.open('billing')).changes).toEqual([]);
     expect(writes).not.toHaveBeenCalled();
-    expect(events.history).toHaveLength(1);
+    expect(events.history).toHaveLength(3);
     await projects.open('accounts');
     expect(await service('src').current()).toMatchObject({ name: 'accounts', directory: 'src/accounts' });
     expect((await projects.close()).changes).toMatchObject([{ operation: 'updated' }]);
@@ -126,7 +128,26 @@ describe('Forge project management', () => {
     writes.mockClear();
     expect((await projects.close()).changes).toEqual([]);
     expect(writes).not.toHaveBeenCalled();
-    expect(events.history.map(event => event.id)).toEqual(['file.created', 'file.updated', 'file.updated']);
+    expect(events.history.map(event => event.id)).toEqual(['vault.create', 'vault.create', 'vault.create', 'vault.modify', 'vault.modify']);
+  });
+
+  it('emits workspace.project-change after each committed selection change, but not for unchanged or previewed selections', async () => {
+    await service('src').create('billing');
+    await service('src').create('accounts');
+    const events = new EventBus(new NodeEventScope());
+    registerHostEvents(events);
+    const projects = new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, false), 'src', { project: projectScaffold, component: componentScaffold }, events);
+    const preview = new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, true), 'src', { project: projectScaffold, component: componentScaffold }, events);
+    await projects.open('billing');
+    await projects.open('billing');
+    await preview.open('accounts');
+    await projects.open('accounts');
+    await projects.close();
+    await projects.close();
+    const changes = events.history.filter(record => record.id === 'workspace.project-change').map(record => record.payload);
+    expect(changes).toEqual([{ from: null, to: 'billing' }, { from: 'billing', to: 'accounts' }, { from: 'accounts', to: null }]);
+    const order = events.history.map(record => record.id).filter(id => id === 'workspace.project-change' || id === 'operation.succeeded');
+    expect(order.slice(0, 2)).toEqual(['operation.succeeded', 'workspace.project-change']);
   });
 
   it('previews opening and closing without changing the persisted selection or emitting events', async () => {

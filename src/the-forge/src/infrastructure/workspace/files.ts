@@ -4,7 +4,7 @@ import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests, type RevisionConflict } from '../../domain/documents/write-plan.ts';
-import type { FileRepository } from '../../application/workspace/ports.ts';
+import type { FileRepository, WriteBatchResult } from '../../application/workspace/ports.ts';
 import { syncDirectory } from './durable.ts';
 import { acquireLock, lockName, releaseLock, type LockOwner, type LockRelease } from './lock.ts';
 import { retryTransient } from './retry.ts';
@@ -89,13 +89,15 @@ export class NodeFiles implements FileRepository {
       return { path, revision: before.revision, operation: 'deleted', bytes: before.bytes.length };
     } finally { if (token !== undefined) await this.cleanupLock(lock, token); }
   }
-  async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<FileChange[]> {
+  async writeBatch(writes: readonly WriteRequest[], dryRun: boolean): Promise<WriteBatchResult> {
     const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0 && new Set(requests.map(w => w.path)).size === requests.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
     ensure(!requests.some(a => requests.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
     const lock = join(this.root, lockName);
     let token: string | undefined;
     const createdDirectories: string[] = [];
+    // Vault paths of the created directories, parent before child, for post-commit folder events.
+    const folders: string[] = [];
     const committed: FilePlan[] = [];
     const staged: string[] = [];
     // Each changed directory entry is fsynced once, after all renames and before events.
@@ -117,9 +119,10 @@ export class NodeFiles implements FileRepository {
       if (!dryRun) {
         for (const plan of plans) {
           let directory = this.root;
-          for (const part of plan.write.path.split('/').slice(0, -1)) {
+          const parts = plan.write.path.split('/');
+          for (const [index, part] of parts.slice(0, -1).entries()) {
             directory = join(directory, part);
-            try { await mkdir(directory); createdDirectories.push(directory); touched.add(dirname(directory)); }
+            try { await mkdir(directory); createdDirectories.push(directory); folders.push(parts.slice(0, index + 1).join('/')); touched.add(dirname(directory)); }
             catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
           }
         }
@@ -132,7 +135,8 @@ export class NodeFiles implements FileRepository {
         }
         await this.syncDirectories(touched);
       }
-      return plans.map(({ write, before }) => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === undefined ? 'created' : 'updated', bytes: write.bytes.length }));
+      const changes = plans.map(({ write, before }): FileChange => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === undefined ? 'created' : 'updated', bytes: write.bytes.length }));
+      return { changes, folders };
     } catch (error) {
       // Renamed temporaries no longer exist; the rest must go before directories are removed.
       for (const temp of staged) if (temp) await retryTransient(() => rm(temp, { force: true })).catch(() => {});

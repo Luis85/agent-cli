@@ -138,7 +138,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `INVALID_PLUGIN_CONFIG` | 2 | input | no | The enabled plugin list is invalid. | List unique lowercase kebab-case plugin ids in plugins.enabled in `bin/config.json`. |
 | `INCOMPATIBLE_PLUGIN` | 2 | input | no | The plugin requires a newer Forge version. | Update The Forge or disable the plugin. |
 | `DUPLICATE_PLUGIN` | 2 | input | no | The plugin is registered twice. | Enable each plugin once. |
-| `PLUGIN_NAMESPACE` | 2 | input | no | A plugin contribution is outside its namespace. | Prefix plugin command, generator, skill and event ids with the plugin id and a dot. |
+| `PLUGIN_NAMESPACE` | 2 | input | no | A plugin id or contribution is outside its namespace. | Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (`command`, `operation`, `claude`, `vault`, `workspace`, `plugin`) as the plugin id. |
 | `PLUGIN_LIFECYCLE` | 2 | input | no | A plugin used the host outside its lifecycle. | Register contributions before activation and stop using the host after disposal. |
 | `DUPLICATE_OR_INVALID_ID` | 2 | input | no | A contribution id is invalid or already registered. | Use a unique lowercase dotted id. |
 | `UNKNOWN_SKILL` | 2 | input | no | The skill is not registered. | Run skills list. |
@@ -148,6 +148,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `DUPLICATE_EVENT` | 2 | input | no | The event id is already registered. | Use a unique event id. |
 | `UNKNOWN_EVENT` | 2 | input | no | The event is not registered. | Run events to list registered event ids. |
 | `EVENT_RECURSION` | 2 | input | no | Event handlers recursed too deeply. | Stop handlers from emitting the events that trigger them. |
+| `EVENT_OWNERSHIP` | 2 | input | no | A plugin tried to emit an event it does not own. | Emit only events in your plugin's own namespace; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) are emitted by the host. |
 | `INVALID_CLAUDE_AGENT` | 2 | input | no | The Claude agent definition is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_HOOKS` | 2 | input | no | The Claude hook configuration is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_PLUGIN` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. | Fix the field named in the message, then rerun the command. |

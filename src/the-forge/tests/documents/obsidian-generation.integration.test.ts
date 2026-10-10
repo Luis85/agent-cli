@@ -28,7 +28,7 @@ const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-obsidian-generation-'));
   const events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
+  for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
   workspace = new Workspace(await NodeFiles.at(root), documents, events, false);
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });

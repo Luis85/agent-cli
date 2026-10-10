@@ -20,7 +20,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-plugin-'));
   files = await NodeFiles.at(root);
   events = new EventBus(new NodeEventScope());
-  for (const id of ['file.created', 'file.updated', 'file.deleted']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
+  for (const id of ['vault.create', 'vault.modify', 'vault.delete']) events.define({ id, validate: (value): value is object => typeof value === 'object' });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
@@ -34,7 +34,7 @@ describe('native Claude plugin assets', () => {
     await plugins.update(directory, { ...manifest, description: 'Review changes' }, before.revision!);
     await expect(plugins.update(directory, manifest, before.revision!)).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(plugins.create(directory, manifest)).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect(events.history.map(event => event.id)).toEqual(['file.created', 'file.updated']);
+    expect(events.history.filter(event => (event.payload as { kind: string }).kind === 'file').map(event => event.id)).toEqual(['vault.create', 'vault.modify']);
   });
 
   it('previews manifests and assets without writing or emitting events', async () => {
@@ -75,7 +75,7 @@ describe('native Claude plugin assets', () => {
     await service(true).removeAsset(directory, 'skills/review/SKILL.md', current.revision);
     expect(await plugins.asset(directory, 'skills/review/SKILL.md')).toMatchObject({ content: '# Changed' });
     await plugins.removeAsset(directory, 'skills/review/SKILL.md', current.revision);
-    expect(events.history.at(-1)?.id).toBe('file.deleted');
+    expect(events.history.at(-1)?.id).toBe('vault.delete');
     await expect(plugins.asset(directory, 'skills/review/SKILL.md')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 

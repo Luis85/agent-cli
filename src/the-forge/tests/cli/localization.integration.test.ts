@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
 import { describe, expect, it } from 'vitest';
-import { germanCommands, germanGenerators } from '../../src/presentation/localization/catalog.ts';
+import { germanCommands, germanEvents, germanGenerators } from '../../src/presentation/localization/catalog.ts';
+import { EventBus } from '../../src/application/plugins/events.ts';
+import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
+import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { basesCommand } from '../../src/presentation/bases/commands.ts';
 import { claudeCommand } from '../../src/presentation/claude/commands.ts';
@@ -36,6 +39,9 @@ describe('built-in localization catalog coverage', () => {
       })];
       const ids = [...commands(registry, services), ...management].map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);
+      const bus = new EventBus(new NodeEventScope());
+      registerHostEvents(bus);
+      expect(Object.keys(germanEvents).sort()).toEqual(bus.ids());
       expect(Object.keys(germanGenerators).sort()).toEqual([...generators.map(generator => generator.id), 'document', 'ui', 'stories', 'data-source'].sort());
     } finally { await rm(root, { recursive: true, force: true }); }
   });

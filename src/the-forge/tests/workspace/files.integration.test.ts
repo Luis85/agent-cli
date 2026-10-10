@@ -39,7 +39,7 @@ describe('guarded filesystem', () => {
     expect((await readdir(root)).sort()).toEqual(['a.md', 'b.md']);
   });
   it('dry runs leave no files, directories or lock', async () => {
-    expect(await files.writeBatch([write('new/deep/note.md')], true)).toMatchObject([{ operation: 'created' }]);
+    expect(await files.writeBatch([write('new/deep/note.md')], true)).toMatchObject({ changes: [{ operation: 'created' }], folders: [] });
     expect(await readdir(root)).toEqual([]);
   });
   it('preflights all collisions before writing a batch', async () => {
@@ -65,13 +65,13 @@ describe('guarded filesystem', () => {
   });
   it('retains committed evidence and notifications when removing the lock fails', async () => {
     const events = new EventBus(new NodeEventScope());
-    events.define({ id: 'file.created', validate: (_value): _value is unknown => true });
+    events.define({ id: 'vault.create', validate: (_value): _value is unknown => true });
     files = await NodeFiles.at(root, message => events.warn(message));
     const adapter = files as unknown as { releaseLock(lock: string): Promise<void> };
     vi.spyOn(adapter, 'releaseLock').mockRejectedValue(new Error('Cleanup denied'));
     const result = await new Workspace(files, new ObsidianDocuments(), events, false).write([write('committed.md')]);
     expect(result.changes).toMatchObject([{ path: 'committed.md', operation: 'created' }]);
-    expect(events.history).toMatchObject([{ id: 'file.created', payload: { path: 'committed.md' } }]);
+    expect(events.history).toMatchObject([{ id: 'vault.create', payload: { path: 'committed.md' } }]);
     expect(events.warnings).toEqual([expect.stringContaining('Cleanup denied')]);
     expect(await readFile(join(root, 'committed.md'), 'utf8')).toBe('Hello');
     expect(await readdir(root)).toEqual(['.agent-cli.lock', 'committed.md']);
@@ -93,7 +93,7 @@ describe('guarded filesystem', () => {
     request.path = 'changed.md';
     request.bytes.fill(0);
     requests.push(write('extra.md'));
-    expect(await operation).toEqual([{ path: 'original.md', revision: revisionOf(encodeText('Original')), operation: 'created', bytes: 8 }]);
+    expect(await operation).toEqual({ changes: [{ path: 'original.md', revision: revisionOf(encodeText('Original')), operation: 'created', bytes: 8 }], folders: [] });
     expect(await files.list()).toEqual(['original.md']);
     expect(await readFile(join(root, 'original.md'), 'utf8')).toBe('Original');
   });
@@ -157,9 +157,9 @@ describe('guarded filesystem', () => {
   });
   it('publishes only committed changes, and no event on validation/write failure or dry run', async () => {
     const events = new EventBus(new NodeEventScope());
-    events.define({ id: 'file.created', validate: (v): v is object => typeof v === 'object' });
+    events.define({ id: 'vault.create', validate: (v): v is object => typeof v === 'object' });
     const listener = vi.fn(async () => { expect(await readFile(join(root, 'note.md'), 'utf8')).toBe('Hello'); });
-    events.on('file.created', listener);
+    events.on('vault.create', listener);
     await new Workspace(files, new ObsidianDocuments(), events, true).write([write('note.md')]);
     expect(listener).not.toHaveBeenCalled();
     const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
@@ -186,11 +186,11 @@ it.each([false, true])('rejects malformed plugin byte plans without coercing dat
 });
 it('returns committed changes when recursive file notifications exceed the delivery limit', async () => {
   const events = new EventBus(new NodeEventScope());
-  events.define({ id: 'file.created', validate: (v): v is object => typeof v === 'object' });
+  events.define({ id: 'vault.create', validate: (v): v is object => typeof v === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   let count = 0;
   const failedWrites: unknown[] = [];
-  events.on('file.created', async () => {
+  events.on('vault.create', async () => {
     try { await workspace.write([write(`derived-${++count}.md`)]); }
     catch (error) { failedWrites.push(error); }
   });

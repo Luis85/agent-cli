@@ -21,7 +21,7 @@ export default {
   async onload(context) {
     // Replay is an explicit snapshot of this invocation, not persistent history.
     const observe = record => {
-      if (record.id === 'workspace.failed' || record.id === 'claude.failed') {
+      if (record.id === 'operation.failed' || record.id === 'claude.failed') {
         context.events.warn(`Quality observed ${record.id}: ${record.payload.error.code}. Inspect the original error and committed state before retrying.`);
       }
     };

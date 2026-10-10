@@ -58,7 +58,7 @@ This URL serves the latest `main` branch. For a fixed version, use a reviewed co
 - `create`, `read`, `write`, `edit`, `properties`, `patch`, `validate`, `list`: Markdown/YAML properties, JSON Canvas graphs, Bases YAML, UTF-8 source and data files, and lossless attachment handling.
 - `schema`, `help`, `formats`, `events`, `plugins`: discover the installed contracts and capabilities.
 - `skills`: inspect and install agent workflows for safe file editing, feature development and verification.
-- Explicit runtime plugins: manifest discovery, `onload`/`onunload`, commands, generators, validated events and skills.
+- Explicit runtime plugins: manifest discovery, `onload`/`onunload`/`onUserEnable`, `onLayoutReady` and quit tasks, commands, generators, validated events with host-owned Obsidian-style `vault.*`, `metadataCache.*` and `workspace.*` namespaces, and skills.
 - `claude`: maintain native Claude Code agents, hooks and plugin assets with revision guards, and manage installed plugins/marketplaces through the Claude CLI. See [Claude Code management](docs/reference/claude.md).
 - `bases`: query a native `.base` view as a repository definition and return its matching files without installing Obsidian. See [Bases queries](docs/reference/bases.md).
 - SHA-256 revision checks, dry-run previews, contained paths, collision checks and notifications after successful commits.
@@ -82,7 +82,7 @@ node bin/forge.js create plan.canvas
 node bin/forge.js create tasks.base
 ```
 
-Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input, check `--if-match` like the real write, and report planned hashes, paths and a unified `diff` per text file without writing files or emitting file events. Responses carry only committed file-change events by default; add `--events all` for the full lifecycle history. See [dry-run diffs](docs/reference/cli.md#dry-run-diffs).
+Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input, check `--if-match` like the real write, and report planned hashes, paths and a unified `diff` per text file without writing files or emitting `vault.*` events. Responses carry only committed Obsidian-style `vault.*` change events by default; add `--events all` for the full lifecycle history, including `workspace.*` analogues such as `workspace.quick-preview`. See [dry-run diffs](docs/reference/cli.md#dry-run-diffs).
 
 If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. `error.details.lock` names the holder's pid, host, start time and command, and `error.details.stale` reports `active`, `likely` or `unknown`. Forge never removes the lock itself; follow the [write and recovery contract](docs/reference/cli.md#write-contract) before deleting it.
 

@@ -35,13 +35,13 @@ describe('portable host lifecycle observation', () => {
     const configured = await plugin('observe-success'), result = configured.run();
     expect(result.status, result.stdout).toBe(0);
     expect(result.body.data.replayed).toEqual(['plugin.registered', 'command.started', 'plugin.activating']);
-    expect(result.body.data.live).toEqual(['plugin.activated', 'workspace.started', 'file.created', 'workspace.succeeded']);
+    expect(result.body.data.live).toEqual(['plugin.activated', 'workspace.layout-ready', 'operation.started', 'vault.create', 'operation.succeeded']);
     expect(result.body.events.map((event: EventRecord) => event.id)).toEqual([
-      'plugin.registered', 'command.started', 'plugin.activating', 'plugin.activated',
-      'workspace.started', 'file.created', 'workspace.succeeded', 'command.succeeded',
+      'plugin.registered', 'command.started', 'plugin.activating', 'plugin.activated', 'workspace.layout-ready',
+      'operation.started', 'vault.create', 'operation.succeeded', 'command.succeeded', 'workspace.quit',
       'plugin.unloading', 'plugin.unload-failed',
     ]);
-    expect(result.body.events.find((event: EventRecord) => event.id === 'workspace.started')?.payload).toMatchObject({ root: configured.root, paths: ['result.md'], dryRun: false });
+    expect(result.body.events.find((event: EventRecord) => event.id === 'operation.started')?.payload).toMatchObject({ root: configured.root, paths: ['result.md'], dryRun: false });
     expect(JSON.stringify(result.body.events)).not.toMatch(/private body|private-argument/);
     expect(result.body.warnings).toContain('cleanup observed');
     expect(result.body.warnings).toContain('Plugin cleanup: Operation failed with an unreadable error.');
@@ -51,7 +51,7 @@ describe('portable host lifecycle observation', () => {
     const result = (await plugin('observe-invalid-result', true)).run();
     expect(result.status).toBe(1);
     expect(result.body.error.code).toBe('INVALID_RESULT');
-    expect(result.body.events).toContainEqual(expect.objectContaining({ id: 'file.created' }));
+    expect(result.body.events).toContainEqual(expect.objectContaining({ id: 'vault.create' }));
     expect(result.body.events).toContainEqual(expect.objectContaining({ id: 'command.failed', payload: expect.objectContaining({ error: { code: 'INVALID_RESULT', exitCode: 1 } }) }));
     expect(result.body.events.some((event: EventRecord) => event.id === 'command.succeeded')).toBe(false);
     expect(result.body.warnings).toContain('failure observed: INVALID_RESULT');
