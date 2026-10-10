@@ -31,7 +31,10 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
   for (const generator of (plugin.generators ?? []) as Record<string, unknown>[]) validateGenerator(generator);
   for (const skill of (plugin.skills ?? []) as Record<string, unknown>[]) ensure(typeof skill.content === 'string', 'INVALID_PLUGIN', 'Invalid skill.');
   ensure(plugin.provides === undefined || isRecord(plugin.provides), 'INVALID_PLUGIN', 'provides must map service ids to implementations.');
-  ensure(plugin.requires === undefined || (Array.isArray(plugin.requires) && plugin.requires.every(service => typeof service === 'string' && id.test(service))), 'INVALID_PLUGIN', 'requires must list service ids.');
+  for (const key of ['requires', 'optional']) {
+    const services = plugin[key];
+    ensure(services === undefined || (Array.isArray(services) && services.every(service => typeof service === 'string' && id.test(service))), 'INVALID_PLUGIN', `${key} must list service ids.`);
+  }
   for (const service of Object.keys((plugin.provides ?? {}) as object)) {
     ensure(id.test(service), 'DUPLICATE_OR_INVALID_ID', service);
     // Core plugins too: a service id names its provider, so a disabled provider is known without running it.

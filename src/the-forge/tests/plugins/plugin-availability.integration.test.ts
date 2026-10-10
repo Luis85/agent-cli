@@ -36,6 +36,20 @@ describe('plugins with invalid settings', () => {
     await registry.dispose(events);
   });
 
+  it('keep plugins that only optionally use their services available, without those services', async () => {
+    const { registry, events } = setup();
+    let available: boolean | undefined;
+    registry.register({ manifest: manifest('catalog'), settings: limit, provides: { 'catalog.items': { list: () => [] } } }, events);
+    registry.register({ manifest: manifest('board'), optional: ['catalog.items'], onload(pluginContext) { available = pluginContext.services.has('catalog.items'); } }, events);
+    await registry.configure({ catalog: { limit: 0 } }, async () => [], () => undefined);
+    expect([...registry.unavailable.keys()]).toEqual(['catalog']);
+    await registry.activate(events, context);
+    expect(available).toBe(false);
+    const board = registry.pluginContext(registry.plugins[1]!, context, events);
+    expect(() => board.services.get('catalog.items')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'board', service: 'catalog.items' } }));
+    await registry.dispose(events);
+  });
+
   it('warns about sections that name no registered, disabled or installed plugin and keeps them unchanged', async () => {
     const { registry, events } = setup(), warnings: string[] = [];
     registry.register({ manifest: manifest('search'), settings: limit }, events);

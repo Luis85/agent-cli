@@ -7,9 +7,14 @@ import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
+import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
+import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
+import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
+import { offlineHost } from '../support/core-plugins.ts';
 
-const host = { skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) };
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin];
+const host = { skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')), ...offlineHost };
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin];
 const { commands } = builtinCommands();
 for (const plugin of [searchPlugin, linksPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);
 /**

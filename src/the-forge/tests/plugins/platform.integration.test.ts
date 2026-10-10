@@ -7,6 +7,7 @@ import { AppError } from '../../src/domain/shared/errors.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
+import { offlineHost } from '../support/core-plugins.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
@@ -38,6 +39,29 @@ describe('plugin services', () => {
     cyclic.registry.register({ manifest: manifest('alpha'), provides: { 'alpha.api': {} }, requires: ['beta.api'] }, cyclic.events);
     cyclic.registry.register({ manifest: manifest('beta'), provides: { 'beta.api': {} }, requires: ['alpha.api'] }, cyclic.events);
     await expect(cyclic.registry.activate(cyclic.events, context)).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_CYCLE', details: { plugins: ['alpha', 'beta', 'alpha'] } });
+  });
+
+  it('orders optional services like required ones when a provider is enabled and reports their absence through has', async () => {
+    const { registry, events } = setup(), order: string[] = [];
+    let available: boolean[] = [];
+    registry.register({ manifest: manifest('backlog'), optional: ['sync.hub', 'other.hub'], onload(context) { order.push('backlog'); available = [context.services.has('sync.hub'), context.services.has('other.hub')]; } }, events);
+    registry.register({ manifest: manifest('sync'), provides: { 'sync.hub': {} }, onload() { order.push('sync'); } }, events);
+    await registry.activate(events, context);
+    expect(order).toEqual(['sync', 'backlog']);
+    expect(available).toEqual([true, false]);
+    const pluginContext = registry.pluginContext(registry.plugins[0]!, context, events);
+    expect(() => pluginContext.services.get('other.hub')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'other.hub' } }));
+    expect(() => pluginContext.services.has('undeclared.hub')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING' }));
+    expect(() => setup().registry.register({ manifest: manifest('bad'), optional: ['Not An Id'] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: 'optional must list service ids.' }));
+    await registry.dispose(events);
+  });
+
+  it('keeps a core plugin whose optional service provider is disabled', () => {
+    const { registry, events } = setup();
+    const core = (id: string, contributions: Partial<Plugin> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
+    registerCorePlugins(registry, events, [core('hub', { provides: { 'hub.api': {} } }), core('user', { optional: ['hub.api'] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['hub']);
+    expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['user']);
+    expect(registry.disabled.map(plugin => plugin.id)).toEqual(['hub']);
   });
 
   it('rejects service ids outside the provider\'s namespace, for core plugins too, so providers never collide', () => {
@@ -154,6 +178,21 @@ describe('plugin strings and error catalog', () => {
     expect(await failure('quality.check')).toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5 });
   });
 
+  it('maps a code of a plugin that provides a service the thrower declares, since its failures surface through the consumer', async () => {
+    const { registry, events } = setup();
+    const fail = () => { throw Object.assign(new Error('Owners unknown.'), { code: 'QUALITY_UNOWNED' }); };
+    registry.register({ ...localized, provides: { 'quality.owners': { check: fail } } }, events);
+    const consumer = (id: string, key: 'requires' | 'optional') => ({
+      manifest: manifest(id), [key]: ['quality.owners'],
+      commands: [{ id: `${id}.run`, description: 'Run', usage: `${id}.run`, run: (_args: string[], _flags: unknown, pluginContext: PluginContext) => pluginContext.services.get<{ check(): void }>('quality.owners').check() }],
+    });
+    registry.register(consumer('board', 'requires'), events);
+    registry.register(consumer('report', 'optional'), events);
+    for (const id of ['board.run', 'report.run']) {
+      await expect(Promise.resolve(registry.commands.get(id)!.run([], {}, context))).rejects.toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5, message: 'Owners unknown.' });
+    }
+  });
+
   it('gives a user plugin error code to the plugin with the longest matching prefix, whatever the load order', () => {
     const error = (code: string) => ({ code, category: 'input' as const, summary: 'S', hint: 'H' });
     const outer = setup();
@@ -186,7 +225,7 @@ describe('core plugins', () => {
 
   it('registers bundled plugins enabled by default with bare command ids and records disabled ones without contributions', () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [core('search'), core('links')], { skills: registrySkills(registry), fileDates: unusedFileDates }, ['links']);
+    registerCorePlugins(registry, events, [core('search'), core('links')], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['links']);
     expect([...registry.commands.keys()]).toEqual(['search']);
     expect(registry.origins.get('search')).toBe('core');
     expect(registry.disabled.map(entry => entry.id)).toEqual(['links']);
@@ -195,7 +234,7 @@ describe('core plugins', () => {
 
   it('ignores unknown ids in plugins.disabled with a warning and rejects core claims from user plugins', () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates }, ['serach']);
+    registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['serach']);
     expect([...registry.commands.keys()]).toEqual(['search']);
     expect(events.warnings).toEqual([expect.stringContaining('ignored serach')]);
     expect(() => registry.register({ manifest: { ...manifest('quality'), core: true } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
@@ -206,18 +245,18 @@ describe('core plugins', () => {
   it('keeps core plugin events in their own namespace', () => {
     const { registry, events } = setup();
     const event = { id: 'indexed', validate: (value: unknown): value is object => typeof value === 'object' };
-    expect(() => registerCorePlugins(registry, events, [core('search', { events: [event] })], { skills: registrySkills(registry), fileDates: unusedFileDates }, [])).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    expect(() => registerCorePlugins(registry, events, [core('search', { events: [event] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, [])).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
   });
 
   it('migrates the skills command and bundled skills into the skills core plugin with German strings', async () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [skillsPlugin], { skills: registrySkills(registry), fileDates: unusedFileDates }, []);
+    registerCorePlugins(registry, events, [skillsPlugin], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, []);
     registry.register({ manifest: manifest('quality'), skills: [{ id: 'quality.review', content: 'Review.' }] }, events);
     expect([...registry.skills.keys()]).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'quality.review']);
     expect(await registry.commands.get('skills')!.run([], {}, context as PluginContext)).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'quality.review'] });
     expect(new Localizer('de', registry.catalog).command(registry.commands.get('skills')!).description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');
     const disabled = setup();
-    registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], { skills: registrySkills(disabled.registry), fileDates: unusedFileDates }, ['skills']);
+    registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], { skills: registrySkills(disabled.registry), fileDates: unusedFileDates, ...offlineHost }, ['skills']);
     expect(disabled.registry.commands.has('skills')).toBe(false);
     expect(disabled.registry.skills.size).toBe(0);
   });

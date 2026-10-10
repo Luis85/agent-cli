@@ -71,9 +71,10 @@ export declare class PluginCatalog {
     /**
      * Plugin code cannot construct host errors, so it throws an `Error` with a `code` (and optional `details`). This
      * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
-     * category's exit status. Another plugin's code stays an uncoded error: a plugin cannot borrow a code it does not
-     * own. Anything else is unchanged.
+     * category's exit status. A code of one of `providers`, the plugins providing services that `pluginId` declared,
+     * maps too, since their failures surface through their consumer's calls. Any other plugin's code stays an uncoded
+     * error: a plugin cannot borrow a code it does not own. Anything else is unchanged.
      */
-    normalize(error: unknown, pluginId: string): unknown;
+    normalize(error: unknown, pluginId: string, providers?: readonly string[]): unknown;
 }
 export {};

@@ -49,7 +49,7 @@ const categoryExitCodes = {
   external: 1,
   interrupted: 130
 };
-const entry = (category, summary, hint, retryable = false) => ({ exitCode: categoryExitCodes[category], category, summary, hint, retryable });
+const entry = (category, summary, hint, retryable2 = false) => ({ exitCode: categoryExitCodes[category], category, summary, hint, retryable: retryable2 });
 const claudeDefinitionHint$1 = "Fix the field named in the message, then rerun the command.";
 const argumentsHint$1 = "Correct the arguments named in the message; run help <command> for usage.";
 const errorCatalog = {
@@ -77,7 +77,7 @@ const errorCatalog = {
   AMBIGUOUS_EDIT: entry("input", "The --find text occurs more than once, counting overlapping matches.", "Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines."),
   UNSUPPORTED_EDIT: entry("input", "This edit is not supported for the file kind.", "Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments."),
   INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
-  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
+  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
   DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
   PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
   INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
@@ -397,23 +397,23 @@ class EventBus {
   }
 }
 const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
-const text$a = (value2) => typeof value2 === "string" && value2.length > 0;
+const text$c = (value2) => typeof value2 === "string" && value2.length > 0;
 const count$1 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
-const empty = (value2) => Object.keys(value2).length === 0;
+const empty$1 = (value2) => Object.keys(value2).length === 0;
 const operation$1 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$2 = (value2) => isRecord(value2) && text$a(value2.code) && status(value2.exitCode);
-const command = (value2) => operation$1(value2) && text$a(value2.command) && text$a(value2.root) && text$a(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$a(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$a);
-const claude = (value2) => operation$1(value2) && text$a(value2.executable) && text$a(value2.cwd);
-const plugin = (value2) => text$a(value2.pluginId);
+const error$2 = (value2) => isRecord(value2) && text$c(value2.code) && status(value2.exitCode);
+const command = (value2) => operation$1(value2) && text$c(value2.command) && text$c(value2.root) && text$c(value2.workspaceRoot);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$c(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$c);
+const claude = (value2) => operation$1(value2) && text$c(value2.executable) && text$c(value2.cwd);
+const plugin = (value2) => text$c(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change = (value2) => isRecord(value2) && text$a(value2.path) && text$a(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
-const moved = (value2) => isRecord(value2) && text$a(value2.from) && text$a(value2.to) && ["file", "folder"].includes(String(value2.kind));
+const change = (value2) => isRecord(value2) && text$c(value2.path) && text$c(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$c(value2.from) && text$c(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
-const project = (value2) => value2 === null || text$a(value2);
-const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$a(value2.path) && Object.keys(value2).length === 3);
-const rename = (value2) => text$a(value2.path) && text$a(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$a(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
+const project = (value2) => value2 === null || text$c(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$c(value2.path) && Object.keys(value2).length === 3);
+const rename = (value2) => text$c(value2.path) && text$c(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$c(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$1(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
 }
@@ -427,19 +427,19 @@ const hostEventDefinitions = [
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$2(value2.error) && optionalStatus(value2)),
-  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$a(value2.executable) && text$a(value2.cwd) && status(value2.exitCode)),
+  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$c(value2.executable) && text$c(value2.cwd) && status(value2.exitCode)),
   definition$1("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
   definition$1("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
   definition$1("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
   definition$1("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
-  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$a(value2.path) && isRecord(value2.cache)),
-  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$a(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
-  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$a(value2.path) && Object.keys(value2).length === 1),
-  definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty),
-  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$a(value2.path) && Object.keys(value2).length === 1),
-  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$a(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
-  definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty),
-  definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty),
+  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$c(value2.path) && isRecord(value2.cache)),
+  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$c(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
+  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$c(value2.path) && Object.keys(value2).length === 1),
+  definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty$1),
+  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$c(value2.path) && Object.keys(value2).length === 1),
+  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$c(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
+  definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
+  definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
   definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
   definition$1("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
   definition$1("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
@@ -523,27 +523,27 @@ class WorkspacePluginState {
     try {
       const value2 = JSON.parse(text2);
       ensure(isRecord(value2) && value2.schemaVersion === 1 && isRecord(value2.plugins), "INVALID_PLUGIN", "Unexpected plugin state shape.");
-      const states = {};
+      const states2 = {};
       for (const [id2, entry2] of Object.entries(value2.plugins)) {
         ensure(isRecord(entry2) && (entry2.settings === null || typeof entry2.settings === "string"), "INVALID_PLUGIN", `Unexpected state for plugin ${id2}.`);
-        states[id2] = { settings: entry2.settings };
+        states2[id2] = { settings: entry2.settings };
       }
-      this.stored = serialize(states);
-      return states;
+      this.stored = serialize(states2);
+      return states2;
     } catch {
       this.warn(`Ignored invalid ${pluginStatePath}; plugins with activation hooks are treated as newly enabled.`);
       return {};
     }
   }
-  async save(states) {
-    const content2 = serialize(states);
-    if (this.workspace.dryRun || content2 === this.stored || this.revision === void 0 && Object.keys(states).length === 0) return;
+  async save(states2) {
+    const content2 = serialize(states2);
+    if (this.workspace.dryRun || content2 === this.stored || this.revision === void 0 && Object.keys(states2).length === 0) return;
     await this.workspace.write([{ path: pluginStatePath, bytes: new TextEncoder().encode(content2), ...this.revision === void 0 ? {} : { expectedRevision: this.revision } }]);
     this.stored = content2;
   }
 }
-function serialize(states) {
-  const plugins = Object.fromEntries(Object.keys(states).sort().map((id2) => [id2, states[id2]]));
+function serialize(states2) {
+  const plugins = Object.fromEntries(Object.keys(states2).sort().map((id2) => [id2, states2[id2]]));
   return JSON.stringify({ schemaVersion: 1, plugins }, null, 2) + "\n";
 }
 class ActivationTracker {
@@ -571,7 +571,7 @@ class ActivationTracker {
    * did not activate, and retries once. A failed save is a warning.
    */
   async save(plugins, warn) {
-    const states = (current) => {
+    const states2 = (current) => {
       const result = {};
       for (const plugin2 of plugins.filter(tracked)) {
         const id2 = plugin2.manifest.id, entry2 = this.next[id2] ?? current[id2] ?? this.previous[id2];
@@ -581,10 +581,10 @@ class ActivationTracker {
     };
     try {
       try {
-        await this.store.save(states({}));
+        await this.store.save(states2({}));
       } catch (error2) {
         if (!(error2 instanceof AppError && error2.code === "CONFLICT")) throw error2;
-        await this.store.save(states(await this.store.load()));
+        await this.store.save(states2(await this.store.load()));
       }
     } catch (error2) {
       try {
@@ -681,12 +681,12 @@ class ClaudeLifecycle {
     ensure(["text", "json", "json-last-line"].includes(output2), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
     const sensitive = request.sensitiveArgs ?? [];
     ensure(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
-    const redact = new Set(sensitive);
-    for (const [index2, argument] of args.entries()) if (argument === "--config" && index2 + 1 < args.length) redact.add(index2 + 1);
-    else if (argument.startsWith("--config=")) redact.add(index2);
+    const redact2 = new Set(sensitive);
+    for (const [index2, argument] of args.entries()) if (argument === "--config" && index2 + 1 < args.length) redact2.add(index2 + 1);
+    else if (argument.startsWith("--config=")) redact2.add(index2);
     const plan = {
       executable,
-      args: args.map((argument, index2) => redact.has(index2) ? "<redacted>" : argument),
+      args: args.map((argument, index2) => redact2.has(index2) ? "<redacted>" : argument),
       cwd: this.scope.cwd,
       ...timeoutMs === void 0 ? {} : { timeoutMs },
       ...inputBytes === void 0 ? {} : { inputBytes }
@@ -1128,14 +1128,14 @@ function pluginEvents(bus, pluginId) {
   };
 }
 const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
-const types$1 = ["object", "array", "string", "number", "integer", "boolean", "null"];
+const types$2 = ["object", "array", "string", "number", "integer", "boolean", "null"];
 const record$4 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 const count = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const keywords = {
   $schema: (value2, path) => value2 === jsonSchemaDialect ? [] : [`${path}.$schema must be ${jsonSchemaDialect}`],
   title: (value2, path) => typeof value2 === "string" ? [] : [`${path}.title must be a string`],
   description: (value2, path) => typeof value2 === "string" ? [] : [`${path}.description must be a string`],
-  type: (value2, path) => types$1.includes(value2) ? [] : [`${path}.type must be one of ${types$1.join(", ")}`],
+  type: (value2, path) => types$2.includes(value2) ? [] : [`${path}.type must be one of ${types$2.join(", ")}`],
   properties: (value2, path) => record$4(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path}.properties.${key}`)) : [`${path}.properties must be an object`],
   required: (value2, path) => Array.isArray(value2) && value2.every((item) => typeof item === "string") && new Set(value2).size === value2.length ? [] : [`${path}.required must list unique property names`],
   additionalProperties: (value2, path) => typeof value2 === "boolean" ? [] : schemaIssues(value2, `${path}.additionalProperties`),
@@ -1349,11 +1349,11 @@ function commandAnnotations(command2) {
 }
 const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
 const flag = /^[a-z][a-z0-9-]*$/;
-const text$9 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$b = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateOptions(options2, shared = {}) {
   for (const [key, schema2] of Object.entries(options2)) {
     ensure(flag.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$9(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$b(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
@@ -1366,15 +1366,15 @@ function validateMode(mode, where, options2) {
 }
 function validateCommandMetadata(command2) {
   const where = `Command ${String(command2.id)}`;
-  ensure(text$9(command2.description) && text$9(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
+  ensure(text$b(command2.description) && text$b(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
   ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", `${where} options must be an object.`);
   const options2 = command2.options ?? {};
   validateOptions(options2);
   validateMode(command2, where, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$9(arg.name) && text$9(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$b(arg.name) && text$b(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord(command2.actions), "INVALID_PLUGIN", `${where} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
-    ensure(isRecord(action2) && text$9(action2.description) && (action2.usage === void 0 || text$9(action2.usage)), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
+    ensure(isRecord(action2) && text$b(action2.description) && (action2.usage === void 0 || text$b(action2.usage)), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
     ensure(action2.options === void 0 || isRecord(action2.options), "INVALID_PLUGIN", `${where} action ${id2} options must be an object.`);
     validateOptions(action2.options ?? {}, options2);
     validateMode(action2, `${where} action ${id2}`, { ...options2, ...action2.options });
@@ -1384,7 +1384,7 @@ function validateCommandMetadata(command2) {
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
-const text$8 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$a = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const errorCode$2 = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const errorPrefix = (pluginId) => `${pluginId.replaceAll("-", "_").toUpperCase()}_`;
 class PluginCatalog {
@@ -1400,7 +1400,7 @@ class PluginCatalog {
       ensure(isRecord(entry2) && typeof entry2.code === "string" && errorCode$2.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
       ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
       ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$8(entry2.summary) && text$8(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$a(entry2.summary) && text$a(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
       ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
       codes.add(entry2.code);
     }
@@ -1412,7 +1412,7 @@ class PluginCatalog {
         for (const [id2, entry2] of Object.entries(entries2)) {
           const known2 = kind === "messages" || (kind === "errors" ? codes.has(id2) : owned[kind].includes(id2));
           ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind}.${id2} does not name a contribution of plugin ${pluginId}.`);
-          ensure(kind === "errors" ? isRecord(entry2) && text$8(entry2.summary) && text$8(entry2.hint) : text$8(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
+          ensure(kind === "errors" ? isRecord(entry2) && text$a(entry2.summary) && text$a(entry2.hint) : text$a(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
         }
       }
     }
@@ -1476,16 +1476,17 @@ class PluginCatalog {
   /**
    * Plugin code cannot construct host errors, so it throws an `Error` with a `code` (and optional `details`). This
    * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
-   * category's exit status. Another plugin's code stays an uncoded error: a plugin cannot borrow a code it does not
-   * own. Anything else is unchanged.
+   * category's exit status. A code of one of `providers`, the plugins providing services that `pluginId` declared,
+   * maps too, since their failures surface through their consumer's calls. Any other plugin's code stays an uncoded
+   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged.
    */
-  normalize(error2, pluginId) {
+  normalize(error2, pluginId, providers = []) {
     if (error2 instanceof AppError || !(error2 instanceof Error) || !("code" in error2) || typeof error2.code !== "string") return error2;
     const details = "details" in error2 && isRecord(error2.details) ? error2.details : void 0;
     const builtIn = errorDefinition(error2.code);
     if (builtIn) return codedError(error2.code, error2.message, builtIn.exitCode, details);
     const entry2 = this.codes.get(error2.code);
-    if (!entry2 || entry2.pluginId !== pluginId) return error2;
+    if (!entry2 || entry2.pluginId !== pluginId && !providers.includes(entry2.pluginId)) return error2;
     return codedError(entry2.code, error2.message, entry2.exitCode, details);
   }
 }
@@ -1510,7 +1511,10 @@ function validateContributions(plugin2, pluginId, origin) {
   for (const generator of plugin2.generators ?? []) validateGenerator(generator);
   for (const skill of plugin2.skills ?? []) ensure(typeof skill.content === "string", "INVALID_PLUGIN", "Invalid skill.");
   ensure(plugin2.provides === void 0 || isRecord(plugin2.provides), "INVALID_PLUGIN", "provides must map service ids to implementations.");
-  ensure(plugin2.requires === void 0 || Array.isArray(plugin2.requires) && plugin2.requires.every((service) => typeof service === "string" && id$2.test(service)), "INVALID_PLUGIN", "requires must list service ids.");
+  for (const key of ["requires", "optional"]) {
+    const services = plugin2[key];
+    ensure(services === void 0 || Array.isArray(services) && services.every((service) => typeof service === "string" && id$2.test(service)), "INVALID_PLUGIN", `${key} must list service ids.`);
+  }
   for (const service of Object.keys(plugin2.provides ?? {})) {
     ensure(id$2.test(service), "DUPLICATE_OR_INVALID_ID", service);
     ensure(inNamespace(service), "PLUGIN_NAMESPACE", `Service ${service} must start with ${pluginId}.`);
@@ -1551,9 +1555,9 @@ function activationOrder(nodes) {
       throw forgeError("PLUGIN_SERVICE_CYCLE", `Plugin services form a cycle: ${cycle.join(" -> ")}.`, { plugins: cycle });
     }
     state2.set(node2, "visiting");
-    for (const id2 of node2.requires ?? []) {
+    for (const id2 of [...node2.requires ?? [], ...node2.optional ?? []]) {
       const provider = providers.get(id2);
-      if (provider !== node2) visit2(provider, [...path, node2.manifest.id]);
+      if (provider !== void 0 && provider !== node2) visit2(provider, [...path, node2.manifest.id]);
     }
     state2.set(node2, "done");
     ordered2.push(node2);
@@ -1590,13 +1594,20 @@ function readOnly(implementation, id2) {
   return view;
 }
 function pluginServices(node2, providers) {
+  const declared = (id2) => {
+    const known2 = (node2.requires ?? []).includes(id2) || (node2.optional ?? []).includes(id2) || Object.hasOwn(node2.provides ?? {}, id2);
+    ensure(known2, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} must declare service ${id2} in requires or optional before using it.`, { plugin: node2.manifest.id, service: id2 });
+  };
   return {
     get(id2) {
-      const declared = (node2.requires ?? []).includes(id2) || Object.hasOwn(node2.provides ?? {}, id2);
-      ensure(declared, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} must declare service ${id2} in requires before using it.`, { plugin: node2.manifest.id, service: id2 });
+      declared(id2);
       const provider = providers.get(id2);
-      ensure(provider, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} requires service ${id2}, which no enabled plugin provides.`, { plugin: node2.manifest.id, service: id2 });
+      ensure(provider, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} uses service ${id2}, which no enabled plugin provides.`, { plugin: node2.manifest.id, service: id2 });
       return readOnly(provider.provides[id2], id2);
+    },
+    has(id2) {
+      declared(id2);
+      return providers.has(id2);
     }
   };
 }
@@ -1781,14 +1792,17 @@ class Registry {
       }
     }
   }
-  /** The context a plugin's hooks, commands and generators run with. */
+  /**
+   * The context a plugin's hooks, commands and generators run with. Unavailable plugins provide no services, so an
+   * optional service whose provider is unavailable reads as absent (`services.has` is false).
+   */
   pluginContext(plugin2, context, events2) {
     const pluginId = plugin2.manifest.id;
     return {
       ...context,
       events: pluginEvents(events2, pluginId),
       settings: this.settings.value(pluginId),
-      services: pluginServices(plugin2, serviceProviders(this.plugins)),
+      services: pluginServices(plugin2, this.availableProviders()),
       t: (key) => this.catalog.message(pluginId, context.language, key)
     };
   }
@@ -1824,7 +1838,7 @@ class Registry {
           await tracker?.activated(plugin2, pluginContext);
           await publishHostEvent(events2, "plugin.activated", { pluginId });
         } catch (error2) {
-          const failure2 = this.catalog.normalize(error2, pluginId);
+          const failure2 = this.catalog.normalize(error2, pluginId, this.serviceProviderIds(plugin2));
           await publishHostEvent(events2, "plugin.activation-failed", { pluginId, error: summarizeError(failure2) });
           throw failure2;
         }
@@ -1854,6 +1868,15 @@ class Registry {
     }
     events2.dispose();
   }
+  /** Service providers by service id among available plugins: an unavailable plugin provides nothing. */
+  availableProviders() {
+    return serviceProviders(this.plugins.filter((entry2) => !this.unavailable.has(entry2.manifest.id)));
+  }
+  /** The available plugins providing services that `plugin` requires or optionally uses; their error codes surface through it. */
+  serviceProviderIds(plugin2) {
+    const providers = this.availableProviders();
+    return [...plugin2.requires ?? [], ...plugin2.optional ?? []].map((id2) => providers.get(id2)?.manifest.id).filter((id2) => id2 !== void 0);
+  }
   /** PLUGIN_UNAVAILABLE, with `details` `{command|generator, plugin, reason, issues}`, when the plugin cannot run. */
   ensureAvailable(plugin2, contribution) {
     const unavailable = this.unavailable.get(plugin2.manifest.id);
@@ -1870,7 +1893,7 @@ class Registry {
         try {
           return await command2.run(args, flags, this.pluginContext(plugin2, context, events2));
         } catch (error2) {
-          throw this.catalog.normalize(error2, plugin2.manifest.id);
+          throw this.catalog.normalize(error2, plugin2.manifest.id, this.serviceProviderIds(plugin2));
         }
       }
     };
@@ -1881,7 +1904,7 @@ class Registry {
       try {
         return await call({ ...request, context: this.pluginContext(plugin2, request.context, events2) });
       } catch (error2) {
-        throw this.catalog.normalize(error2, plugin2.manifest.id);
+        throw this.catalog.normalize(error2, plugin2.manifest.id, this.serviceProviderIds(plugin2));
       }
     };
     const { generate, run: run2 } = generator;
@@ -2163,9 +2186,9 @@ function uiHasMalformedBinding(value2) {
   return typeof value2 === "string" && uiBindingParts(value2).some((part) => "literal" in part && /\{\{|\}\}/.test(part.literal));
 }
 function uiBindingSource(definition2, name2) {
-  const fields = name2.startsWith("state.") ? definition2.state ?? {} : definition2.props;
+  const fields2 = name2.startsWith("state.") ? definition2.state ?? {} : definition2.props;
   const key = name2.startsWith("state.") ? name2.slice(6) : name2;
-  return Object.hasOwn(fields, key) ? fields[key] : void 0;
+  return Object.hasOwn(fields2, key) ? fields2[key] : void 0;
 }
 function validateUiBindings(definition2, value2) {
   for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
@@ -5572,12 +5595,12 @@ ${cn.comment}` : item.comment;
           } else
             throw new TypeError(`Expected [key, value] tuple: ${it}`);
         } else if (it && it instanceof Object) {
-          const keys = Object.keys(it);
-          if (keys.length === 1) {
-            key = keys[0];
+          const keys2 = Object.keys(it);
+          if (keys2.length === 1) {
+            key = keys2[0];
             value2 = it[key];
           } else {
-            throw new TypeError(`Expected tuple with one key, not ${keys.length} keys`);
+            throw new TypeError(`Expected tuple with one key, not ${keys2.length} keys`);
           }
         } else {
           key = it;
@@ -6121,8 +6144,8 @@ function requireTags() {
       if (Array.isArray(customTags))
         tags2 = [];
       else {
-        const keys = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
-        throw new Error(`Unknown schema "${schemaName}"; use one of ${keys} or define customTags array`);
+        const keys2 = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
+        throw new Error(`Unknown schema "${schemaName}"; use one of ${keys2} or define customTags array`);
       }
     }
     if (Array.isArray(customTags)) {
@@ -6137,8 +6160,8 @@ function requireTags() {
       const tagObj = typeof tag === "string" ? tagsByName[tag] : tag;
       if (!tagObj) {
         const tagName = JSON.stringify(tag);
-        const keys = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
-        throw new Error(`Unknown custom tag ${tagName}; use one of ${keys}`);
+        const keys2 = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
+        throw new Error(`Unknown custom tag ${tagName}; use one of ${keys2}`);
       }
       if (!tags3.includes(tagObj))
         tags3.push(tagObj);
@@ -10350,12 +10373,12 @@ const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSY
 const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
 const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
-const text$7 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const text$9 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
 const errorCode = (error2) => error2.code ?? "";
 function ownerDetails(owner) {
   try {
     const { command: command2, operationId } = owner();
-    return { ...text$7(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
+    return { ...text$9(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
   } catch {
     return {};
   }
@@ -10365,11 +10388,11 @@ function hostIdentity() {
   identity ??= (async () => {
     const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
     const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
-    return { ...text$7(pidNamespace) ? { pidNamespace } : {}, ...text$7(bootId) ? { bootId } : {} };
+    return { ...text$9(pidNamespace) ? { pidNamespace } : {}, ...text$9(bootId) ? { bootId } : {} };
   })();
   return identity;
 }
-async function acquireLock(path, owner) {
+async function acquireLock(path, owner, label2 = `Workspace lock ${lockName}`) {
   const token = node_crypto.randomUUID();
   const record2 = {
     pid: process.pid,
@@ -10388,13 +10411,13 @@ async function acquireLock(path, owner) {
     await retryTransient(() => promises$1.link(temporary2, path), { codes: ["EBUSY"] });
     linked = true;
   } catch (error2) {
-    if (errorCode(error2) === "EEXIST") throw await busy(path);
+    if (errorCode(error2) === "EEXIST") throw await busy(path, label2);
     if (!linkUnsupported.has(errorCode(error2))) throw error2;
   } finally {
     await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
     });
   }
-  if (!linked) await createExclusively(path, content2);
+  if (!linked) await createExclusively(path, content2, label2);
   heldTokens.add(token);
   return token;
 }
@@ -10409,12 +10432,12 @@ async function record$3(handle, content2) {
 async function writeDurably(path, content2) {
   await record$3(await retryTransient(() => promises$1.open(path, "wx")), content2);
 }
-async function createExclusively(path, content2) {
+async function createExclusively(path, content2, label2) {
   let handle;
   try {
     handle = await retryTransient(() => promises$1.open(path, "wx"));
   } catch (error2) {
-    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path);
+    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path, label2);
     throw error2;
   }
   try {
@@ -10451,17 +10474,17 @@ function parseMetadata(content2) {
   } catch {
     return null;
   }
-  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$7(value2.hostname) || !text$7(value2.startedAt)) return null;
+  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$9(value2.hostname) || !text$9(value2.startedAt)) return null;
   const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
   return {
     pid,
     hostname: host,
     startedAt,
-    ...text$7(command2) ? { command: command2 } : {},
+    ...text$9(command2) ? { command: command2 } : {},
     ...positiveInteger(operationId) ? { operationId } : {},
-    ...text$7(forgeVersion) ? { forgeVersion } : {},
-    ...text$7(pidNamespace) ? { pidNamespace } : {},
-    ...text$7(bootId) ? { bootId } : {}
+    ...text$9(forgeVersion) ? { forgeVersion } : {},
+    ...text$9(pidNamespace) ? { pidNamespace } : {},
+    ...text$9(bootId) ? { bootId } : {}
   };
 }
 async function readLock(path) {
@@ -10504,11 +10527,11 @@ async function inspectLock(path) {
   const alive = processAlive(lock.pid);
   return { lock, stale: alive === void 0 ? "unknown" : alive ? "active" : "likely" };
 }
-async function busy(path) {
+async function busy(path, label2) {
   const details = await inspectLock(path);
   const { lock, stale } = details;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
-  return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
+  return forgeError("WORKSPACE_BUSY", `${label2} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
 }
 const missing$2 = (error2) => error2.code === "ENOENT";
 const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
@@ -10550,7 +10573,7 @@ function validatePlan(renames, writes, removes) {
 class Transaction {
   constructor(host, batch) {
     this.host = host;
-    const valid2 = (request, keys) => request !== null && typeof request === "object" && keys.every((key) => typeof request[key] === "string");
+    const valid2 = (request, keys2) => request !== null && typeof request === "object" && keys2.every((key) => typeof request[key] === "string");
     ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every((r) => valid2(r, ["from", "to", "expectedRevision"])), "INVALID_PLAN", "Renames need from, to and expectedRevision strings.");
     ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every((r) => valid2(r, ["path", "expectedRevision"])), "INVALID_PLAN", "Removals need path and expectedRevision strings.");
     this.renames = (batch.renames ?? []).map((r) => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
@@ -18125,7 +18148,7 @@ const resolver = {
   resolveAll: createResolver()
 };
 const string$3 = initializeFactory("string");
-const text$6 = initializeFactory("text");
+const text$8 = initializeFactory("text");
 function initializeFactory(field2) {
   return {
     resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
@@ -18299,7 +18322,7 @@ const string$2 = {
   [38]: characterReference,
   [92]: characterEscape
 };
-const text$5 = {
+const text$7 = {
   [-5]: lineEnding,
   [-4]: lineEnding,
   [-3]: lineEnding,
@@ -18332,7 +18355,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flowInitial,
   insideSpan,
   string: string$2,
-  text: text$5
+  text: text$7
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
   let point2 = {
@@ -18452,8 +18475,8 @@ function createTokenizer(parser2, initialize, from) {
     }
     context.previous = code2;
   }
-  function enter(type2, fields) {
-    const token = fields || {};
+  function enter(type2, fields2) {
+    const token = fields2 || {};
     token.type = type2;
     token.start = now();
     context.events.push(["enter", token, context]);
@@ -18472,7 +18495,7 @@ function createTokenizer(parser2, initialize, from) {
   function onsuccessfulcheck(_, info) {
     info.restore();
   }
-  function constructFactory(onreturn, fields) {
+  function constructFactory(onreturn, fields2) {
     return hook;
     function hook(constructs2, returnState, bogusState) {
       let listOfConstructs;
@@ -18526,7 +18549,7 @@ function createTokenizer(parser2, initialize, from) {
             // If we do have fields, create an object w/ `context` as its
             // prototype.
             // This allows a “live binding”, which is needed for `interrupt`.
-            fields ? Object.assign(Object.create(context), fields) : context,
+            fields2 ? Object.assign(Object.create(context), fields2) : context,
             effects,
             ok,
             nok
@@ -18665,7 +18688,7 @@ function parse$1(options2) {
     flow: create2(flow$1),
     lazy: {},
     string: create2(string$3),
-    text: create2(text$6)
+    text: create2(text$8)
   };
   return parser2;
   function create2(initial) {
@@ -20049,8 +20072,8 @@ function candidates$2(node2, source2, value2, pairs2) {
 }
 function replaceInYamlStrings(yaml, document2, replacements) {
   const targets = [];
-  for (const [node2, { path, keys }] of stringScalars(document2)) {
-    const indexes2 = replacements.flatMap((replacement2, index2) => keys.includes(replacement2.key) ? [index2] : []);
+  for (const [node2, { path, keys: keys2 }] of stringScalars(document2)) {
+    const indexes2 = replacements.flatMap((replacement2, index2) => keys2.includes(replacement2.key) ? [index2] : []);
     if (indexes2.length) targets.push({ path, node: node2, replacements: indexes2 });
   }
   const expected = document2.clone();
@@ -20218,15 +20241,15 @@ class ObsidianDocuments {
     const parsed2 = this.inspect(path, bytes);
     jsonValue$2(value2, kind === "canvas" ? "INVALID_CANVAS" : "INVALID_BASE");
     ensure(pointer2.startsWith("/") && !/~(?![01])/g.test(pointer2), "INVALID_POINTER", "Use a JSON Pointer such as /views/0/name.");
-    const keys = pointer2.slice(1).split("/").map((k) => k.replace(/~1/g, "/").replace(/~0/g, "~"));
-    ensure(keys.every((k) => !["__proto__", "constructor", "prototype"].includes(k)), "INVALID_POINTER", "Unsafe pointer segment.");
+    const keys2 = pointer2.slice(1).split("/").map((k) => k.replace(/~1/g, "/").replace(/~0/g, "~"));
+    ensure(keys2.every((k) => !["__proto__", "constructor", "prototype"].includes(k)), "INVALID_POINTER", "Unsafe pointer segment.");
     let parent2 = parsed2.data;
-    for (const key2 of keys.slice(0, -1)) {
+    for (const key2 of keys2.slice(0, -1)) {
       ensure(parent2 !== null && typeof parent2 === "object" && Object.hasOwn(parent2, key2), "INVALID_POINTER", `Missing parent ${key2}.`);
       parent2 = parent2[key2];
     }
     ensure(parent2 !== null && typeof parent2 === "object", "INVALID_POINTER", "Pointer parent is not a container.");
-    const key = keys.at(-1);
+    const key = keys2.at(-1);
     if (Array.isArray(parent2)) {
       ensure(key === "-" || /^(0|[1-9]\d*)$/.test(key) && Number(key) < parent2.length, "INVALID_POINTER", "Use an existing index or - to append.");
       if (key === "-") parent2.push(value2);
@@ -20237,7 +20260,7 @@ class ObsidianDocuments {
       const doc = yamlDocument(textOf$1(bytes));
       const pathKeys = [];
       let cursor = this.inspect(path, bytes).data;
-      for (const segment2 of keys) {
+      for (const segment2 of keys2) {
         ensure(!distExports.isAlias(doc.getIn(pathKeys, true)), "INVALID_POINTER", "Cannot edit through a YAML alias; replace the alias value or edit its anchor.");
         const part = Array.isArray(cursor) ? segment2 === "-" ? cursor.length : Number(segment2) : segment2;
         pathKeys.push(part);
@@ -22120,11 +22143,11 @@ function requireMoment() {
           this.set(config2);
         }
       }
-      var keys;
+      var keys2;
       if (Object.keys) {
-        keys = Object.keys;
+        keys2 = Object.keys;
       } else {
-        keys = function(obj) {
+        keys2 = function(obj) {
           var i, res = [];
           for (i in obj) {
             if (hasOwnProp(obj, i)) {
@@ -22624,7 +22647,7 @@ function requireMoment() {
         return chooseLocale(key);
       }
       function listLocales() {
-        return keys(locales);
+        return keys2(locales);
       }
       function checkOverflow(m) {
         var overflow, a = m._a;
@@ -25109,7 +25132,7 @@ function fileValue(value2) {
     }
   };
 }
-function linkValue(path, display, resolvedPath) {
+function linkValue$1(path, display, resolvedPath) {
   const input = { path };
   if (display !== void 0)
     input.display = display;
@@ -25141,7 +25164,7 @@ function fromJs(value2, typeHint) {
   if (value2 && typeof value2 === "object" && "type" in value2 && "value" in value2) {
     const runtimeValue = value2;
     if (runtimeValue.type === "Link") {
-      return linkValue(runtimeValue.value.path, runtimeValue.value.display, runtimeValue.value.resolvedPath);
+      return linkValue$1(runtimeValue.value.path, runtimeValue.value.display, runtimeValue.value.resolvedPath);
     }
     if (runtimeValue.type === "File") {
       return fileValue(runtimeValue.value);
@@ -25378,7 +25401,7 @@ function normalizeFrontmatterValue(value2, type2, linkResolutions = {}) {
   return frontmatterLink(parsed2.target, parsed2.display, resolveFromTable(parsed2.target, linkResolutions));
 }
 function frontmatterLink(target, display, resolvedPath) {
-  return linkValue(target, display === void 0 ? void 0 : fromJs(display), resolvedPath);
+  return linkValue$1(target, display === void 0 ? void 0 : fromJs(display), resolvedPath);
 }
 function createLinkResolutionMap(files = [], entries2 = []) {
   const map2 = {};
@@ -25397,8 +25420,8 @@ function addLinkResolution(map2, target, resolvedPath) {
 }
 function addFileResolution(map2, file) {
   const normalized = createFileContext(file);
-  const keys = [normalized.path, withoutMarkdownExtension$1(normalized.path), normalized.name, normalized.basename].filter((key) => Boolean(key));
-  for (const key of keys) {
+  const keys2 = [normalized.path, withoutMarkdownExtension$1(normalized.path), normalized.name, normalized.basename].filter((key) => Boolean(key));
+  for (const key of keys2) {
     map2[key] = normalized.path;
     map2[key.toLowerCase()] = normalized.path;
   }
@@ -25817,7 +25840,7 @@ class Evaluator {
   callFile(value2, name2, args) {
     switch (name2) {
       case "asLink":
-        return linkValue(value2.path, args[0]);
+        return linkValue$1(value2.path, args[0]);
       case "hasLink": {
         const target = args[0] ?? nullValue();
         return boolValue(value2.links.some((link2) => this.linkMatchesTarget(link2, target)));
@@ -25975,7 +25998,7 @@ class Evaluator {
   }
   makeLink(target, display) {
     const parsed2 = parseLinkText(target);
-    return linkValue(parsed2.target, display ?? (parsed2.display === void 0 ? void 0 : stringValue$1(parsed2.display)), this.resolveLinkPath(parsed2.target));
+    return linkValue$1(parsed2.target, display ?? (parsed2.display === void 0 ? void 0 : stringValue$1(parsed2.display)), this.resolveLinkPath(parsed2.target));
   }
   fileFromTarget(target) {
     const parsed2 = parseLinkText(target);
@@ -26423,13 +26446,13 @@ class BaseRowContexts {
     this.table = createLinkResolutionMap(this.contexts);
     const writers = /* @__PURE__ */ new Map();
     this.writtenKeys = this.contexts.map((file) => {
-      const keys = Object.keys(createLinkResolutionMap([file]));
-      for (const key of keys) {
+      const keys2 = Object.keys(createLinkResolutionMap([file]));
+      for (const key of keys2) {
         const previous2 = writers.get(key);
         if (previous2 !== void 0) this.shadowed.set(key, previous2);
         writers.set(key, file.path);
       }
-      return keys;
+      return keys2;
     });
     this.thisFile = createFileContext({ ...shared.thisFile, path: shared.thisFile.path ?? "" });
     this.dateTypes = Object.keys(shared.propertyTypes).filter((name2) => shared.propertyTypes[name2] === "date");
@@ -26545,8 +26568,8 @@ function joinPath(folder, target) {
   const joined = parts.join("/") || ".";
   return target.endsWith("/") ? `${joined}/` : joined;
 }
-function lookup(index2, keys, spelling) {
-  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
+function lookup(index2, keys2, spelling) {
+  const positions2 = /* @__PURE__ */ new Set([...keys2.get(spelling.toLowerCase()) ?? [], ...keys2.get(`${spelling}.md`.toLowerCase()) ?? []]);
   return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
 }
 function matched(found, linkpath, via) {
@@ -27419,10 +27442,10 @@ function clipAround(text2, start2, end2, radius = snippetRadius) {
 }
 const clipLine = (text2) => text2.length <= maxLineText ? text2 : `${text2.slice(0, maxLineText)}…`;
 const batchSize = 32;
-const decoder$3 = new TextDecoder("utf-8", { fatal: true });
+const decoder$5 = new TextDecoder("utf-8", { fatal: true });
 function decode$4(bytes) {
   try {
-    return decoder$3.decode(bytes);
+    return decoder$5.decode(bytes);
   } catch {
     return void 0;
   }
@@ -27508,8 +27531,8 @@ function vmSearchBudget(milliseconds) {
   };
 }
 const defaultSearchLimit = 100;
-const text$4 = { type: "string" };
-const lines = { type: "array", items: text$4 };
+const text$6 = { type: "string" };
+const lines = { type: "array", items: text$6 };
 const output = {
   type: "object",
   required: ["hits", "total"],
@@ -27518,18 +27541,18 @@ const output = {
       type: "object",
       required: ["path", "line", "column", "match", "snippet", "revision"],
       properties: {
-        path: text$4,
+        path: text$6,
         line: { type: "integer", minimum: 1 },
         column: { type: "integer", minimum: 1 },
-        match: text$4,
-        snippet: text$4,
+        match: text$6,
+        snippet: text$6,
         before: lines,
         after: lines,
-        revision: text$4
+        revision: text$6
       }
     } },
     total: { type: "integer", minimum: 0 },
-    nextCursor: text$4
+    nextCursor: text$6
   }
 };
 function searchCommand(service) {
@@ -27687,7 +27710,7 @@ function deadendNotes(cache, include) {
   const files = cache.files().filter((path) => isNote(path) && include(path) && cache.getFileCache(path) !== null && !cache.references(path).some((reference) => outbound(path, reference)));
   return { files, issues: cache.issues() };
 }
-const actions$2 = ["out", "back", "unresolved", "orphans", "deadends"];
+const actions$3 = ["out", "back", "unresolved", "orphans", "deadends"];
 const noteActions = ["out", "back"];
 function linksCommand(service) {
   return {
@@ -27705,14 +27728,14 @@ function linksCommand(service) {
       deadends: { description: "Markdown and Canvas notes without a link to another file." }
     },
     args: [
-      { name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$2 },
+      { name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$3 },
       { name: "note", description: "The vault path of the file for out and back." }
     ],
     options: { path: option$1.string("For unresolved, orphans and deadends: only files whose root-relative path matches this glob.") },
     errors: ["NOT_FOUND"],
     async run(args, flags, context) {
       const action2 = args[0];
-      ensure(actions$2.includes(action2), "INVALID_ARGUMENT", `Use links ${actions$2.join(", links ")}.`);
+      ensure(actions$3.includes(action2), "INVALID_ARGUMENT", `Use links ${actions$3.join(", links ")}.`);
       const links = service(context);
       if (noteActions.includes(action2)) {
         ensure(flags.path === void 0, "INVALID_ARGUMENT", `--path is not supported by links ${action2}; pass the note path as an argument.`);
@@ -27785,7 +27808,7 @@ const linksPlugin = {
   })
 };
 const isObject$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
-const text$3 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$5 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const stringList = (value2) => Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
 const record$2 = (value2) => isObject$1(value2) ? value2 : {};
 function pointer(...segments2) {
@@ -27936,8 +27959,8 @@ function oauth(remote, at) {
   const settings2 = record$2(remote.oauth);
   const where = `${at}/remote/oauth`;
   if (!isObject$1(remote.oauth)) return [];
-  if (!text$3(remote.url)) return [diagnostic("error", "invalid-toolset", where, "oauth requires remote url to be set.")];
-  if (!text$3(settings2.clientId) && text$3(settings2.clientSecret)) return [diagnostic("error", "invalid-toolset", where, "oauth clientSecret requires clientId to be set.")];
+  if (!text$5(remote.url)) return [diagnostic("error", "invalid-toolset", where, "oauth requires remote url to be set.")];
+  if (!text$5(settings2.clientId) && text$5(settings2.clientSecret)) return [diagnostic("error", "invalid-toolset", where, "oauth clientSecret requires clientId to be set.")];
   if (typeof settings2.callbackRedirectURL === "string" && settings2.callbackRedirectURL !== "") {
     let url2;
     try {
@@ -27954,16 +27977,16 @@ function typeRequirements(toolset, at) {
   const type2 = toolset.type, remote = record$2(toolset.remote);
   const fail = (message2, field2 = "") => [diagnostic("error", "invalid-toolset", `${at}${field2}`, message2)];
   if (type2 === "mcp") {
-    const sources = [text$3(toolset.command), text$3(remote.url), text$3(toolset.ref)].filter(Boolean).length;
+    const sources = [text$5(toolset.command), text$5(remote.url), text$5(toolset.ref)].filter(Boolean).length;
     if (sources !== 1) return fail(sources === 0 ? "either command, remote or ref must be set." : "either command, remote or ref must be set, but only one of those.");
-    if (enabled(toolset.allow_private_ips) && !text$3(remote.url) && !text$3(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
-    if (present(toolset.working_dir) && text$3(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
+    if (enabled(toolset.allow_private_ips) && !text$5(remote.url) && !text$5(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
+    if (present(toolset.working_dir) && text$5(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
     return oauth(remote, at);
   }
   const required2 = { a2a: "url", lsp: "command", openapi: "url", open_url: "url" };
-  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$3(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
+  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$5(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
   if (type2 === "model_picker" && !present(toolset.models)) return fail("model_picker toolset requires at least one model in the 'models' list.");
-  if (type2 === "rag" && !text$3(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
+  if (type2 === "rag" && !text$5(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
   return [];
 }
 function toolsetDiagnostics(toolset, at) {
@@ -27987,10 +28010,10 @@ function harnessDiagnostics(agent, at) {
   const harness = agent.harness, where = `${at}/harness`;
   const fail = (message2, field2 = "") => diagnostic("error", "invalid-harness", `${where}${field2}`, message2);
   const problems = [];
-  if (text$3(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
+  if (text$5(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
   if (record$2(agent.structured_output).mode === "tool") problems.push(diagnostic("error", "invalid-harness", `${at}/structured_output/mode`, "structured_output.mode 'tool' cannot be used with a harness; use mode 'native'."));
-  if (text$3(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
-  if (text$3(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
+  if (text$5(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
+  if (text$5(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
   if (harness.thinking === true && harness.type !== "opencode") problems.push(fail("harness.thinking can only be used with harness.type 'opencode'.", "/thinking"));
   return problems;
 }
@@ -28063,7 +28086,7 @@ function providerDiagnostics(config2) {
     const apiType = provider.api_type ?? "";
     if (!["", "openai_chatcompletions", "openai_responses"].includes(String(apiType))) return fail(`invalid api_type '${String(apiType)}' (must be one of: openai_chatcompletions, openai_responses)`, "/api_type");
     const openAiCompatible = apiType !== "" || provider.provider === void 0 || provider.provider === "" || provider.provider === "openai";
-    if (!text$3(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
+    if (!text$5(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
     return [];
   });
 }
@@ -28088,8 +28111,8 @@ function skillsDiagnostics(skills2, at, label2) {
     const skill = record$2(entry2), name2 = typeof skill.name === "string" ? skill.name : "";
     if (name2.trim() === "") return fail("has an inline skill with no name.");
     if (/\s/.test(name2)) return fail(`inline skill '${name2}' must not have whitespace in its name: it doubles as the /${name2} command.`);
-    if (!text$3(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
-    if (!text$3(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
+    if (!text$5(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
+    if (!text$5(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
     if (skill.context !== void 0 && skill.context !== "fork") return fail(`inline skill '${name2}' has invalid context '${String(skill.context)}' (only 'fork' is supported).`);
     if (skill.context !== "fork" && stringList(skill.toolsets).length > 0) return fail(`inline skill '${name2}' declares toolsets but is not a fork skill (set context: fork).`);
     if (skill.context !== "fork" && stringList(skill.allowed_tools).length > 0) return fail(`inline skill '${name2}' declares allowed_tools but is not a fork skill (set context: fork).`);
@@ -28120,8 +28143,8 @@ function definitionDiagnostics(config2, name2, agent) {
     if (type2 === "mcp" && !ref2.startsWith("docker:") && !Object.hasOwn(record$2(config2.mcps), ref2)) problems.push(diagnostic("error", "unknown-mcp-definition", pointer("agents", name2, "toolsets", index2, "ref"), `agent '${name2}' references non-existent MCP definition '${ref2}'.`));
     if (type2 === "rag" && !Object.hasOwn(record$2(config2.rag), ref2)) problems.push(diagnostic("error", "unknown-rag-definition", pointer("agents", name2, "toolsets", index2, "ref"), `agent '${name2}' references non-existent RAG definition '${ref2}'.`));
   });
-  const inline = [agent.skills, ...stringList(agent.use_skills).map((group) => record$2(config2.skills)[group])].flatMap((skills2) => Array.isArray(skills2) ? skills2.filter(isObject$1) : []);
-  for (const skill of inline) for (const ref2 of stringList(skill.toolsets)) if (!Object.hasOwn(record$2(config2.toolsets), ref2)) {
+  const inline2 = [agent.skills, ...stringList(agent.use_skills).map((group) => record$2(config2.skills)[group])].flatMap((skills2) => Array.isArray(skills2) ? skills2.filter(isObject$1) : []);
+  for (const skill of inline2) for (const ref2 of stringList(skill.toolsets)) if (!Object.hasOwn(record$2(config2.toolsets), ref2)) {
     problems.push(diagnostic("error", "unknown-toolset", pointer("agents", name2, "skills"), `agent '${name2}' inline skill '${String(skill.name)}' references non-existent toolset '${ref2}'.`));
   }
   return problems;
@@ -28180,7 +28203,7 @@ function agentError(code2, message2, details) {
   return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
 }
 const definitionFile = /\.ya?ml$/;
-const decoder$2 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
+const decoder$4 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 const byPosition = (left, right) => (left.line ?? 0) - (right.line ?? 0) || (left.column ?? 0) - (right.column ?? 0);
 const parent = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
 class AgentDefinitions {
@@ -28231,7 +28254,7 @@ class AgentDefinitions {
     const snapshot = await this.files.read(path);
     let text2;
     try {
-      text2 = decoder$2.decode(snapshot.bytes);
+      text2 = decoder$4.decode(snapshot.bytes);
     } catch {
       return { path, revision: snapshot.revision, text: "", diagnostics: [diagnostic("error", "encoding", "", "Definition files must be valid UTF-8.")], instructions: {} };
     }
@@ -28245,7 +28268,7 @@ class AgentDefinitions {
         for (const [index2, file] of files.entries()) {
           const at = typeof agent.instruction_file === "string" ? pointer("agents", name2, "instruction_file") : pointer("agents", name2, "instruction_file", index2);
           try {
-            parts.push(decoder$2.decode((await this.files.read(vaultPath(`${parent(path)}${localPath(file)}`))).bytes));
+            parts.push(decoder$4.decode((await this.files.read(vaultPath(`${parent(path)}${localPath(file)}`))).bytes));
           } catch (error2) {
             const reason = error2 instanceof AppError && error2.code === "NOT_FOUND" ? "does not exist" : `cannot be read: ${errorMessage(error2).replace(/\.$/, "")}`;
             missing2.push({ ...diagnostic("error", "instruction-file-missing", at, `instruction_file "${file}" ${reason}.`), ...checked.locate(at) });
@@ -28413,7 +28436,7 @@ function valid(condition, message2) {
 function nonempty(value2) {
   return typeof value2 === "string" && value2.trim().length > 0;
 }
-function strings$2(value2) {
+function strings$3(value2) {
   return Array.isArray(value2) && value2.every(nonempty);
 }
 function nativeValue(value2, ancestors = /* @__PURE__ */ new Set(), depth2 = 0) {
@@ -28456,10 +28479,10 @@ function validateClaudeAgent(metadata2, prompt) {
   valid(nonempty(metadata2.description), "Agent description must be a nonempty string.");
   valid(typeof prompt === "string", "Agent prompt must be Markdown text.");
   for (const field2 of ["tools", "disallowedTools"]) if (metadata2[field2] !== void 0) {
-    valid(typeof metadata2[field2] === "string" || strings$2(metadata2[field2]), `${field2} must be a comma-separated string or a list of tool names.`);
+    valid(typeof metadata2[field2] === "string" || strings$3(metadata2[field2]), `${field2} must be a comma-separated string or a list of tool names.`);
   }
   if (metadata2.model !== void 0) valid(nonempty(metadata2.model), "model must be a model alias, model ID, or inherit.");
-  if (metadata2.skills !== void 0) valid(strings$2(metadata2.skills), "skills must be a list of skill names.");
+  if (metadata2.skills !== void 0) valid(strings$3(metadata2.skills), "skills must be a list of skill names.");
   if (metadata2.maxTurns !== void 0) valid(Number.isSafeInteger(metadata2.maxTurns) && Number(metadata2.maxTurns) > 0, "maxTurns must be a positive integer.");
   for (const field2 of ["background", "omitClaudeMd"]) if (metadata2[field2] !== void 0) valid(typeof metadata2[field2] === "boolean", `${field2} must be a boolean.`);
   const choices = {
@@ -28638,7 +28661,7 @@ function hooks$2(value2, diagnostics2) {
     }
     const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target);
     for (const group of Array.isArray(groups) ? groups.map(record$2) : []) {
-      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$3(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
+      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$5(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
       if (handlers.length === 0) continue;
       const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
       result[target] = [...result[target] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
@@ -28655,7 +28678,7 @@ function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   const name2 = importedName(metadata2.name);
   if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", `Agent ${String(metadata2.name)} is imported as ${name2}.`, "E"));
   const source2 = record$2(metadata2["x-forge-source"]);
-  if (text$3(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
+  if (text$5(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
   const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
   const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
   if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", `Agent(…) entries become sub_agents: ${subAgents.join(", ")}.`, "A"));
@@ -28681,10 +28704,10 @@ function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   return { name: name2, agent, diagnostics: diagnostics2 };
 }
 const agentTemplates = ["basic", "team", "mcp"];
-const text$2 = (value2) => `${value2.trimEnd()}
+const text$4 = (value2) => `${value2.trimEnd()}
 `;
 function templateAgents(template, name2, model2, main) {
-  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$2(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
+  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$4(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
   if (template === "basic") {
     return [[name2, agent(`The ${name2} agent.`, "Read the relevant files, think the task through, track your steps and report what you found.", [{ type: "filesystem", readonly: true }, { type: "think" }, { type: "todo" }])]];
   }
@@ -28694,8 +28717,8 @@ function templateAgents(template, name2, model2, main) {
   const researcher = `${name2}-researcher`, writer = `${name2}-writer`;
   return [
     [name2, agent(`Coordinates the ${name2} team.`, `Plan the work, delegate research to ${researcher} and writing to ${writer}, then review and summarize their results.`, [{ type: "todo" }], { sub_agents: [researcher, writer] })],
-    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$2("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
-    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$2("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
+    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$4("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
+    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$4("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
   ];
 }
 const simpleToolsets = [
@@ -28721,7 +28744,7 @@ const simpleToolsets = [
   "file"
 ];
 const agentName = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-const decoder$1 = new TextDecoder("utf-8", { fatal: true });
+const decoder$3 = new TextDecoder("utf-8", { fatal: true });
 class AgentAuthoring {
   constructor(workspace2, definitions2, ports2, defaultModel) {
     this.workspace = workspace2;
@@ -28759,7 +28782,7 @@ class AgentAuthoring {
   async importClaude(source2, options2) {
     const path = vaultPath(source2.includes("/") || source2.endsWith(".md") ? source2 : `.claude/agents/${source2}.md`);
     const snapshot = await this.workspace.files.read(path);
-    const { metadata: metadata2, body } = this.ports.markdown.parse(decoder$1.decode(snapshot.bytes));
+    const { metadata: metadata2, body } = this.ports.markdown.parse(decoder$3.decode(snapshot.bytes));
     validateClaudeAgent(metadata2, body);
     const file = options2.file ?? `${importedName(metadata2.name)}.yaml`;
     const known2 = await this.knownAgents(this.definitions.target(file));
@@ -28770,7 +28793,7 @@ class AgentAuthoring {
   async knownAgents(path) {
     const current = await this.current(path);
     if (!current) return [];
-    return Object.keys(record$2(this.definitions.check(decoder$1.decode(current.bytes)).config?.agents));
+    return Object.keys(record$2(this.definitions.check(decoder$3.decode(current.bytes)).config?.agents));
   }
   async current(path) {
     try {
@@ -28787,7 +28810,7 @@ class AgentAuthoring {
     if (current) {
       ensure(ifMatch2 !== void 0, "CONFLICT", `${path} exists; pass its current revision with --if-match to add ${names2.join(", ")} to it.`, revisionConflict(path, null, current.revision));
       ensure(ifMatch2 === current.revision, "CONFLICT", `${path} changed; read it again and pass its current revision with --if-match.`, revisionConflict(path, ifMatch2, current.revision));
-      text2 = decoder$1.decode(current.bytes);
+      text2 = decoder$3.decode(current.bytes);
       const defined = record$2(this.definitions.check(text2).config?.agents), existing = names2.find((entry2) => Object.hasOwn(defined, entry2));
       if (existing !== void 0) throw agentError("AGENT_EXISTS", `${path} already defines agent ${existing}.`, { path, agent: existing });
       for (const [entry2, agent] of entries2) text2 = this.ports.codec.addAgent(text2, entry2, agent);
@@ -28813,8 +28836,8 @@ function candidates$1(config2, reference, seen = /* @__PURE__ */ new Set()) {
       if (selector) return seen.has(part) ? [] : selector.flatMap((candidate) => candidates$1(config2, candidate, /* @__PURE__ */ new Set([...seen, part])));
       return [{ reference: part, provider: effectiveProvider(config2, named.provider), id: typeof named.model === "string" ? named.model : void 0, named: part }];
     }
-    const inline = parseModelReference(part);
-    return [{ reference: part, ...inline ? { provider: inline.provider, id: inline.model } : {} }];
+    const inline2 = parseModelReference(part);
+    return [{ reference: part, ...inline2 ? { provider: inline2.provider, id: inline2.model } : {} }];
   });
 }
 function styled(id2, style, at) {
@@ -28822,7 +28845,7 @@ function styled(id2, style, at) {
   const alias = modelAlias(id2);
   return alias ? { model: alias, diagnostics: [diagnostic("warning", "model-alias", at, `Model ${id2} is emitted as the alias ${alias}, which Claude Code resolves to the newest model of that family.`, "A")] } : { model: id2, diagnostics: [diagnostic("info", "model-alias", at, `Model ${id2} has no Claude alias; its id is emitted.`, "A")] };
 }
-function effort(budget, at) {
+function effort$1(budget, at) {
   if (budget === void 0) return { diagnostics: [] };
   const level = typeof budget === "string" ? budget === "adaptive" ? "high" : budget.replace(/^adaptive\//, "") : void 0;
   if (level !== void 0 && efforts.includes(level)) {
@@ -28849,7 +28872,7 @@ function harnessModel(agent, at, style) {
   if (harness.type !== "claude-code") {
     return { model: "inherit", diagnostics: [diagnostic("warning", "harness-unsupported", `${at}/harness`, `The ${String(harness.type)} harness has no Claude agent equivalent; the agent inherits the session model.`, "U")] };
   }
-  const chosen = text$3(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
+  const chosen = text$5(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
   return {
     model: chosen.model,
     ...typeof harness.effort === "string" ? { effort: harness.effort } : {},
@@ -28862,13 +28885,13 @@ function claudeModel(config2, name2, agent, style) {
   const reference = typeof agent.model === "string" ? agent.model.trim() : "";
   if (reference === "") return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, "The agent names no model; the Claude agent inherits the session model.", "A")] };
   const options2 = candidates$1(config2, reference);
-  const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$3(candidate.id));
+  const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$5(candidate.id));
   if (!anthropic) {
     return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, `Model ${reference} has no Anthropic candidate; the Claude agent inherits the session model.`, "A")] };
   }
   const exact = options2.length === 1 && expandModelReference(config2, reference).length === 1 && !firstAvailable(record$2(config2.models)[reference]);
   const chosen = styled(anthropic.id, style, `${at}/model`);
-  const thinking = anthropic.named ? effort(record$2(record$2(config2.models)[anthropic.named]).thinking_budget, pointer("models", anthropic.named, "thinking_budget")) : { diagnostics: [] };
+  const thinking = anthropic.named ? effort$1(record$2(record$2(config2.models)[anthropic.named]).thinking_budget, pointer("models", anthropic.named, "thinking_budget")) : { diagnostics: [] };
   return {
     model: chosen.model,
     ...thinking.effort ? { effort: thinking.effort } : {},
@@ -28952,10 +28975,10 @@ const unsupported = {
 };
 const serverName = (name2) => name2.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
 function derivedName(toolset) {
-  if (text$3(toolset.name)) return toolset.name;
+  if (text$5(toolset.name)) return toolset.name;
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) return toolset.ref.slice("docker:".length);
   const remote = record$2(toolset.remote);
-  if (text$3(remote.url)) {
+  if (text$5(remote.url)) {
     try {
       return new URL(remote.url).hostname.replace(/^(?:www|mcp|api)\./, "").split(".")[0];
     } catch {
@@ -28980,7 +29003,7 @@ function remoteServer(remote, at, diagnostics2) {
   const type2 = remote.transport_type === "sse" ? "sse" : "http";
   const headers = variableMap(remote.headers, `${at}/remote/headers`, diagnostics2);
   const oauth2 = record$2(remote.oauth), mapped = {};
-  if (text$3(oauth2.clientId)) mapped.clientId = oauth2.clientId;
+  if (text$5(oauth2.clientId)) mapped.clientId = oauth2.clientId;
   if (typeof oauth2.callbackPort === "number") mapped.callbackPort = oauth2.callbackPort;
   for (const field2 of ["clientSecret", "scopes", "callbackRedirectURL"]) if (oauth2[field2] !== void 0) {
     diagnostics2.push(diagnostic("warning", "mcp-oauth-unsupported", `${at}/remote/oauth/${field2}`, `OAuth ${field2} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.`, "U"));
@@ -28997,21 +29020,21 @@ function mcpServer(toolset, at, taken) {
   const env = variableMap(toolset.env, `${at}/env`, diagnostics2);
   const args = stringList(toolset.args).map((arg, index2) => variables(arg, `${at}/args/${index2}`, diagnostics2));
   const remote = record$2(toolset.remote);
-  if (text$3(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
+  if (text$5(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) {
     const gateway = ["mcp", "gateway", "run", "--servers", toolset.ref.slice("docker:".length)];
     diagnostics2.push(diagnostic("warning", "mcp-docker-gateway", `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: ${commandLine("docker", gateway)}.`, "A"));
     return { server: { name: name2, declared, at: `${at}/ref`, config: { type: "stdio", command: "docker", args: gateway, ...env ? { env } : {} }, commandLine: commandLine("docker", gateway) }, diagnostics: diagnostics2 };
   }
-  if (!text$3(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
+  if (!text$5(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
   const command2 = variables(toolset.command, `${at}/command`, diagnostics2);
   return { server: { name: name2, declared, at, config: { type: "stdio", command: command2, ...args.length > 0 ? { args } : {}, ...env ? { env } : {} }, commandLine: commandLine(command2, args) }, diagnostics: diagnostics2 };
 }
 const toolName = (grant) => typeof grant === "string" ? grant : `mcp__${grant.server.name}__${grant.tool}`;
 function resolvedToolsets(config2, name2, agent) {
-  const inline = (Array.isArray(agent.toolsets) ? agent.toolsets : []).map((toolset, index2) => ({ toolset: record$2(toolset), at: pointer("agents", name2, "toolsets", index2) }));
+  const inline2 = (Array.isArray(agent.toolsets) ? agent.toolsets : []).map((toolset, index2) => ({ toolset: record$2(toolset), at: pointer("agents", name2, "toolsets", index2) }));
   const shared = stringList(agent.use_toolsets).map((ref2) => ({ toolset: record$2(record$2(config2.toolsets)[ref2]), at: pointer("toolsets", ref2) }));
-  return [...inline, ...shared].map(({ toolset, at }) => {
+  return [...inline2, ...shared].map(({ toolset, at }) => {
     const ref2 = toolset.ref;
     if (toolset.type !== "mcp" || typeof ref2 !== "string" || ref2.startsWith("docker:") || !isObject$1(record$2(config2.mcps)[ref2])) return { toolset, at };
     const definition2 = record$2(record$2(config2.mcps)[ref2]);
@@ -29213,7 +29236,7 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   const diagnostics2 = [];
   if (claude2 !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, `Agent ${name2} is generated as ${claude2}.`, "E"));
   let description2 = typeof agent.description === "string" ? agent.description : "";
-  if (!text$3(description2)) {
+  if (!text$5(description2)) {
     description2 = `The ${name2} agent.`;
     diagnostics2.push(diagnostic("warning", "description-synthesized", `${at}/description`, `The agent has no description; "${description2}" is emitted so Claude Code can delegate to it.`, "A"));
   }
@@ -29576,7 +29599,7 @@ function nextManifest(previous2, text2, files, written) {
 }
 const mcpPath$1 = ".mcp.json", settingsPath = ".claude/settings.json";
 const conflictCodes = ["mcp-server-conflict", "settings-agent-conflict"];
-const decoder = new TextDecoder("utf-8", { fatal: true });
+const decoder$2 = new TextDecoder("utf-8", { fatal: true });
 const encode$2 = (text2) => new TextEncoder().encode(text2);
 class AgentGeneration {
   constructor(workspace2, definitions2, ports2, events2) {
@@ -29706,7 +29729,7 @@ class AgentGeneration {
   }
   async text(path) {
     try {
-      return decoder.decode((await this.workspace.files.read(path)).bytes);
+      return decoder$2.decode((await this.workspace.files.read(path)).bytes);
     } catch (error2) {
       if (error2 instanceof AppError && error2.code === "NOT_FOUND") return void 0;
       if (error2 instanceof TypeError) throw forgeError("INVALID_ENCODING", `${path} is not valid UTF-8.`);
@@ -31833,7 +31856,7 @@ function requireFastDeepEqual() {
     if (a === b) return true;
     if (a && b && typeof a == "object" && typeof b == "object") {
       if (a.constructor !== b.constructor) return false;
-      var length, i, keys;
+      var length, i, keys2;
       if (Array.isArray(a)) {
         length = a.length;
         if (length != b.length) return false;
@@ -31844,13 +31867,13 @@ function requireFastDeepEqual() {
       if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
       if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
       if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
-      keys = Object.keys(a);
-      length = keys.length;
+      keys2 = Object.keys(a);
+      length = keys2.length;
       if (length !== Object.keys(b).length) return false;
       for (i = length; i-- !== 0; )
-        if (!Object.prototype.hasOwnProperty.call(b, keys[i])) return false;
+        if (!Object.prototype.hasOwnProperty.call(b, keys2[i])) return false;
       for (i = length; i-- !== 0; ) {
-        var key = keys[i];
+        var key = keys2[i];
         if (!equal2(a[key], b[key])) return false;
       }
       return true;
@@ -36316,19 +36339,19 @@ function requireDraft7() {
   return draft7;
 }
 var discriminator = {};
-var types = {};
+var types$1 = {};
 var hasRequiredTypes;
 function requireTypes() {
-  if (hasRequiredTypes) return types;
+  if (hasRequiredTypes) return types$1;
   hasRequiredTypes = 1;
-  Object.defineProperty(types, "__esModule", { value: true });
-  types.DiscrError = void 0;
+  Object.defineProperty(types$1, "__esModule", { value: true });
+  types$1.DiscrError = void 0;
   var DiscrError;
   (function(DiscrError2) {
     DiscrError2["Tag"] = "tag";
     DiscrError2["Mapping"] = "mapping";
-  })(DiscrError || (types.DiscrError = DiscrError = {}));
-  return types;
+  })(DiscrError || (types$1.DiscrError = DiscrError = {}));
+  return types$1;
 }
 var hasRequiredDiscriminator;
 function requireDiscriminator() {
@@ -36632,7 +36655,7 @@ async function generationControls(flags, files) {
   const mode = flags.check ? "check" : planning ? "plan" : "generate";
   return { mode, manifestPath: manifestPath2, revisions };
 }
-const actions$1 = ["list", "inspect", "validate", "create", "import", "generate"];
+const actions$2 = ["list", "inspect", "validate", "create", "import", "generate"];
 const options$1 = {
   file: option$1.string("create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file."),
   model: option$1.string("create: the model reference, such as anthropic/claude-sonnet-5 or a named model; defaults to plugins.settings.agents.defaultModel."),
@@ -36689,14 +36712,14 @@ function agentsCommand(services) {
       generate: { description: "Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.", mutating: true }
     },
     args: [
-      { name: "action", description: "list (default), inspect, validate, create, import or generate.", enum: actions$1 },
+      { name: "action", description: "list (default), inspect, validate, create, import or generate.", enum: actions$2 },
       { name: "target", description: "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path." }
     ],
     options: options$1,
     errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "AGENT_MERGE_CONFLICT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_PATH", "INVALID_YAML", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
-      ensure(actions$1.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions$1.join(", agents ")}.`);
+      ensure(actions$2.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions$2.join(", agents ")}.`);
       for (const key of Object.keys(options$1)) ensure(flags[key] === void 0 || accepted$1[action2].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by agents ${action2}.`);
       const agents = services(context);
       if (action2 === "list") {
@@ -36758,7 +36781,7 @@ function agentsCommand(services) {
 }
 const defaults$1 = { directory: "agents", defaultModel: "anthropic/claude-sonnet-5" };
 const ports = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
-const strings$1 = (value2) => Array.isArray(value2) && value2.every((item) => typeof item === "string");
+const strings$2 = (value2) => Array.isArray(value2) && value2.every((item) => typeof item === "string");
 const agentsPlugin = {
   manifest: {
     id: "agents",
@@ -36788,7 +36811,7 @@ const agentsPlugin = {
     events: [{
       id: "agents.generated",
       description: "Claude Code files were generated from agent definitions: {target, sources, agents, files}.",
-      validate: (payload2) => isRecord(payload2) && payload2.target === "claude" && strings$1(payload2.sources) && strings$1(payload2.agents) && strings$1(payload2.files)
+      validate: (payload2) => isRecord(payload2) && payload2.target === "claude" && strings$2(payload2.sources) && strings$2(payload2.agents) && strings$2(payload2.files)
     }],
     skills: [agentsSkill],
     settings: {
@@ -36831,6 +36854,146 @@ const agentsPlugin = {
 };
 function stringifyYaml(value2) {
   return distExports.stringify(value2);
+}
+const hashText = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex").slice(0, 16);
+function backlogError(code2, message2, details) {
+  return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
+}
+function refused(reason, message2, details = {}) {
+  return backlogError("BACKLOG_WRITE_REFUSED", message2, { reason, ...details });
+}
+const statePath = (connection) => `.forge/sync/${connection}.json`;
+const lockPath = (connection) => `.forge/sync/${connection}.lock`;
+const REMOTE_BASE = "remote:";
+const UNSETTLED_REV = "0";
+const emptyState = (connection) => ({ version: 1, connection, items: {} });
+const text$3 = (value2) => typeof value2 === "string" && value2.length > 0;
+function parseState(source2, connection) {
+  let json2;
+  try {
+    json2 = JSON.parse(source2);
+  } catch {
+    json2 = null;
+  }
+  const invalid = () => backlogError("BACKLOG_CONFIG_PROBLEM", `${statePath(connection)} is not a readable sync state; restore it from version control, or delete it to relink notes by their link property (a relink reports differing fields as conflicts and never overwrites either side).`, { path: statePath(connection) });
+  if (!isRecord(json2) || json2.version !== 1 || !isRecord(json2.items)) throw invalid();
+  const items2 = {};
+  for (const [path, entry2] of Object.entries(json2.items)) {
+    if (!isRecord(entry2) || !text$3(entry2.id) || !text$3(entry2.url) || !text$3(entry2.rev) || !isRecord(entry2.fields)) throw invalid();
+    items2[path] = { id: entry2.id, url: entry2.url, rev: entry2.rev, fields: Object.fromEntries(Object.entries(entry2.fields).filter((field2) => typeof field2[1] === "string")) };
+  }
+  return { version: 1, connection, items: items2 };
+}
+function serializeState(state2) {
+  const items2 = Object.fromEntries(Object.keys(state2.items).sort().map((path) => {
+    const entry2 = state2.items[path];
+    return [path, { id: entry2.id, url: entry2.url, rev: entry2.rev, fields: Object.fromEntries(Object.keys(entry2.fields).sort().map((field2) => [field2, entry2.fields[field2]])) }];
+  }));
+  return `${JSON.stringify({ version: 1, connection: state2.connection, items: items2 }, null, 2)}
+`;
+}
+function renameEntries(state2, from, to, kind) {
+  let moved2 = false;
+  for (const path of Object.keys(state2.items)) {
+    const target = kind === "file" ? path === from ? to : null : path.startsWith(`${from}/`) ? `${to}${path.slice(from.length)}` : null;
+    if (target === null) continue;
+    state2.items[target] = state2.items[path];
+    delete state2.items[path];
+    moved2 = true;
+  }
+  return moved2;
+}
+function pathOfRemote(state2, id2) {
+  return Object.entries(state2.items).find(([, entry2]) => entry2.id === id2)?.[0] ?? null;
+}
+const encoder$2 = new TextEncoder(), decoder$1 = new TextDecoder();
+const SAVE_ATTEMPTS = 3;
+async function readState(workspace2, connection) {
+  try {
+    const snapshot = await workspace2.files.read(statePath(connection));
+    const text2 = decoder$1.decode(snapshot.bytes);
+    return { state: parseState(text2, connection), revision: snapshot.revision, text: text2 };
+  } catch (error2) {
+    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return { state: emptyState(connection), revision: null, text: null };
+    throw error2;
+  }
+}
+function stateWrite$1(stored) {
+  const text2 = serializeState(stored.state);
+  if (text2 === stored.text || stored.text === null && Object.keys(stored.state.items).length === 0) return null;
+  return { path: statePath(stored.state.connection), bytes: encoder$2.encode(text2), ...stored.revision === null ? {} : { expectedRevision: stored.revision } };
+}
+const conflictOn = (error2, path) => error2 instanceof AppError && error2.code === "CONFLICT" && error2.details?.path === path;
+class SyncStore {
+  constructor(workspace2, stored) {
+    this.workspace = workspace2;
+    this.stored = stored;
+  }
+  workspace;
+  stored;
+  sets = /* @__PURE__ */ new Map();
+  removed = /* @__PURE__ */ new Set();
+  static async open(workspace2, connection) {
+    return new SyncStore(workspace2, await readState(workspace2, connection));
+  }
+  get state() {
+    return this.stored.state;
+  }
+  get path() {
+    return statePath(this.stored.state.connection);
+  }
+  set(path, entry2) {
+    this.stored.state.items[path] = entry2;
+    this.sets.set(path, entry2);
+    this.removed.delete(path);
+  }
+  remove(path) {
+    delete this.stored.state.items[path];
+    this.sets.delete(path);
+    this.removed.add(path);
+  }
+  /** The guarded state write for a batch, or null when nothing changed. */
+  request() {
+    return stateWrite$1(this.stored);
+  }
+  /** Takes in the revision a committed batch gave the state file. */
+  committed(changes) {
+    const change2 = changes.find((entry2) => entry2.path === this.path);
+    if (change2) this.stored = { state: this.stored.state, revision: change2.revision, text: serializeState(this.stored.state) };
+  }
+  /** Re-reads the file and re-applies this run's changes on top of what another writer left. */
+  async refresh() {
+    const fresh = await readState(this.workspace, this.stored.state.connection);
+    for (const path of this.removed) delete fresh.state.items[path];
+    for (const [path, entry2] of this.sets) fresh.state.items[path] = entry2;
+    this.stored = fresh;
+  }
+  /**
+   * Writes the state file alone, right away (dry runs write nothing). A revision conflict re-reads the file and
+   * retries against the fresh revision, so ids recorded here survive a concurrent writer.
+   */
+  async save() {
+    if (this.workspace.dryRun) return;
+    for (let attempt = 1; ; attempt++) {
+      const request = this.request();
+      if (request === null) return;
+      try {
+        this.committed((await this.workspace.write([request])).changes);
+        return;
+      } catch (error2) {
+        if (attempt >= SAVE_ATTEMPTS || !conflictOn(error2, this.path)) throw error2;
+        await this.refresh();
+      }
+    }
+  }
+}
+async function followRename(workspace2, connections, oldPath, path, kind) {
+  for (const connection of connections) {
+    const stored = await readState(workspace2, connection);
+    if (stored.revision === null || !renameEntries(stored.state, oldPath, path, kind)) continue;
+    const request = stateWrite$1(stored);
+    if (request) await workspace2.write([request]);
+  }
 }
 function sharesNodes(document2) {
   let shared = false;
@@ -36884,7 +37047,7 @@ function editFrontmatter(text2, frontmatter2, changes, removed) {
   if (appended.length > 0 && result.length > 0 && !result.endsWith("\n")) result += newline;
   return `${bom}${source2.slice(0, start2)}${result}${appended.join("")}${source2.slice(end2)}`;
 }
-const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank and release product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command.\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. States, horizons, priorities and risks are written in the spelling the view declares (`--state "in progress"` writes `In Progress`); Deliverables and test-ladder items use their own workflow values. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
+const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way sync with Azure DevOps Boards.\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. States, horizons, priorities and risks are written in the spelling the view declares (`--state "in progress"` writes `In Progress`); Deliverables and test-ladder items use their own workflow values. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nSync with an external tracker (Azure DevOps Boards): connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`); the token comes from the environment variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`) and never from config or notes, so never print or write it. Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (read-only probe). A `product-backlog` view with the option `connection: <id>` is a sync set. Always run `backlog sync status` or `backlog sync --dry-run` first: it reads the remote and lists `created`, `updated`, `pulled`, `conflicts` and `skipped` (each with a `code`) per view, and `left` per connection. A skip is never an error to work around: read its `code` (for example `duplicate-link` for a copied note, `remote-format-unknown` for a remote description that is not Markdown, `server-kept`) and tell the user. Then `backlog sync` (`--direction push|pull`, `--view` to narrow). Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand, and never copy a note with its link property. Without the state file, notes relink by their link property and every differing field is a conflict; nothing is overwritten. `WORKSPACE_BUSY` naming `.forge/sync/<id>.lock` means another sync of that connection runs. A field changed on both sides is a conflict that the sync leaves alone; ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`. Rename notes with `move`/`rename` so the sync state follows. `CONNECTOR_AUTH_FAILED` means the token variable is unset or rejected; `SYNC_CONFLICT` means the remote item changed during the sync: rerun status and sync. `PLUGIN_SERVICE_MISSING` for `connector.hub` means the `connector` core plugin is disabled or its settings are invalid; `plugins` shows its state and reason.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
 const backlogSkill = { id: "forge-backlog", content: backlog };
 const absent = () => ({ value: null, invalid: false });
 function ownValue(frontmatter2, key) {
@@ -36988,12 +37151,6 @@ function reversedSpan(start2, target) {
   return start2 !== null && target !== null && daysBetween(start2, target) < 0;
 }
 const sameCivil = (a, b) => b !== null && a.year === b.year && a.month === b.month && a.day === b.day;
-function backlogError(code2, message2, details) {
-  return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
-}
-function refused(reason, message2, details = {}) {
-  return backlogError("BACKLOG_WRITE_REFUSED", message2, { reason, ...details });
-}
 const LEVELS = ["Epic", "Feature", "PBI", "Task"];
 const TEST_LEVELS = ["Test suite", "Test case", "Task"];
 const DELIVERABLE_TYPE = "Deliverable";
@@ -37204,10 +37361,10 @@ function ownedProperties(settings2) {
 }
 const workflowRoles = ["state", "deliverableState", "testState"];
 function configProblems(settings2) {
-  const keys = /* @__PURE__ */ new Map();
-  for (const { role, key } of ownedProperties(settings2)) if (key) keys.set(key, [...keys.get(key) ?? [], role]);
+  const keys2 = /* @__PURE__ */ new Map();
+  for (const { role, key } of ownedProperties(settings2)) if (key) keys2.set(key, [...keys2.get(key) ?? [], role]);
   const problems = [];
-  for (const [key, roles] of keys) {
+  for (const [key, roles] of keys2) {
     if (roles.length > 1 && !roles.every((role) => workflowRoles.includes(role))) problems.push(`The properties ${roles.join(", ")} all use the key "${key}".`);
   }
   return problems;
@@ -37259,14 +37416,14 @@ function stateColor(raw) {
   const value2 = raw.trim().toLowerCase();
   return /^#[0-9a-f]{6}$/.test(value2) || STATE_COLOR_NAMES.includes(value2) ? value2 : null;
 }
-function secondaryWorkflow(read2, names2, fallbackDone, states, effectiveDone) {
+function secondaryWorkflow(read2, names2, fallbackDone, states2, effectiveDone) {
   const key = read2.propKey(names2.property, "");
   const fallsBack = key === "";
   const doneRaw = read2.list(names2.done);
   const statesRaw = read2.dedupe(read2.list(names2.states));
   return {
     key,
-    states: fallsBack && statesRaw.length === 0 ? states : statesRaw,
+    states: fallsBack && statesRaw.length === 0 ? states2 : statesRaw,
     doneValues: doneRaw.length > 0 ? doneRaw : fallsBack ? effectiveDone : fallbackDone
   };
 }
@@ -37276,15 +37433,15 @@ function resolveSettings(view) {
   const { propKey, clearablePropKey, clearable, str, bool: bool2, list: list2, dedupe: dedupe2 } = read2;
   const doneValues = list2("doneValues");
   const effectiveDone = doneValues.length > 0 ? doneValues : fallback.doneValues;
-  const states = dedupe2(list2("stateValues"));
-  const deliverable = secondaryWorkflow(read2, { property: "deliverableStateProperty", states: "deliverableStateValues", done: "deliverableDoneValues" }, fallback.deliverableDoneValues, states, effectiveDone);
-  const test = secondaryWorkflow(read2, { property: "testStateProperty", states: "testStateValues", done: "testDoneValues" }, fallback.testDoneValues, states, effectiveDone);
+  const states2 = dedupe2(list2("stateValues"));
+  const deliverable = secondaryWorkflow(read2, { property: "deliverableStateProperty", states: "deliverableStateValues", done: "deliverableDoneValues" }, fallback.deliverableDoneValues, states2, effectiveDone);
+  const test = secondaryWorkflow(read2, { property: "testStateProperty", states: "testStateValues", done: "testDoneValues" }, fallback.testDoneValues, states2, effectiveDone);
   const isDone = (state2) => effectiveDone.some((done) => sameValue(done, state2));
   const homeFolder = clearable("homeFolder", fallback.homeFolder, () => vaultFolder(str("homeFolder")));
   const optional2 = Object.fromEntries(OPTIONAL_PROPERTIES.map((property) => [property.settingsKey, propKey(property.option, fallback[property.settingsKey])]));
   const parentKey = propKey("parentProperty", fallback.parentKey), orderKey = propKey("orderProperty", fallback.orderKey), typeKey = propKey("typeProperty", fallback.typeKey);
   const tagsKey = clearablePropKey("tagsProperty", fallback.tagsKey);
-  const colourable = states.filter((state2) => !isDone(state2));
+  const colourable = states2.filter((state2) => !isDone(state2));
   for (const state2 of deliverable.states.filter((state22) => !deliverable.doneValues.some((done) => sameValue(done, state22)))) {
     if (!colourable.some((own2) => sameValue(own2, state2))) colourable.push(state2);
   }
@@ -37307,11 +37464,11 @@ function resolveSettings(view) {
     tagsKey: [parentKey, orderKey, typeKey, optional2.stateKey].includes(tagsKey) ? "" : tagsKey,
     releaseDateKey: clearablePropKey("releaseDateProperty", fallback.releaseDateKey),
     doneValues: effectiveDone,
-    wipLimits: nameTable(states.filter((state2) => !isDone(state2)), (state2) => parseWipLimit(str(`wipLimit.${state2.toLowerCase()}`))),
-    columnPolicies: nameTable(states, (state2) => str(`columnPolicy.${state2.toLowerCase()}`).trim() || null),
+    wipLimits: nameTable(states2.filter((state2) => !isDone(state2)), (state2) => parseWipLimit(str(`wipLimit.${state2.toLowerCase()}`))),
+    columnPolicies: nameTable(states2, (state2) => str(`columnPolicy.${state2.toLowerCase()}`).trim() || null),
     stateColors: nameTable(colourable, (state2) => stateColor(str(`stateColor.${state2.toLowerCase()}`))),
     startedStates: dedupe2(list2("startedStates")),
-    states,
+    states: states2,
     horizonValues: clearable("horizonValues", fallback.horizonValues, () => dedupe2(list2("horizonValues"))),
     deliverableStateKey: deliverable.key,
     deliverableStates: deliverable.states,
@@ -37367,9 +37524,9 @@ function releaseOwned(settings2) {
   ];
 }
 function releaseNoteProblems(settings2) {
-  const keys = /* @__PURE__ */ new Map();
-  for (const { role, key } of releaseOwned(settings2)) if (key) keys.set(key, [...keys.get(key) ?? [], role]);
-  const problems = [...keys].filter(([, roles]) => roles.length > 1).map(([key, roles]) => `The release properties ${roles.join(", ")} all use the key "${key}".`);
+  const keys2 = /* @__PURE__ */ new Map();
+  for (const { role, key } of releaseOwned(settings2)) if (key) keys2.set(key, [...keys2.get(key) ?? [], role]);
+  const problems = [...keys2].filter(([, roles]) => roles.length > 1).map(([key, roles]) => `The release properties ${roles.join(", ")} all use the key "${key}".`);
   if (settings2.releasedDateKey !== "" && settings2.releasedDateKey === settings2.targetDateKey) problems.push(`The released date and the target date share the key "${settings2.releasedDateKey}".`);
   if (settings2.releasedTransition !== "" && settings2.releasedValues.length > 0 && !settings2.releasedValues.some((value2) => sameValue(value2, settings2.releasedTransition))) {
     problems.push(`The released transition value "${settings2.releasedTransition}" is not one of the released status values.`);
@@ -37436,6 +37593,37 @@ function releaseFrontmatter(settings2, id2, spec) {
 const noteText = (yaml) => `---
 ${yaml}---
 `;
+const frontmatterEnd = (text2) => {
+  const opening = /^﻿?---[ \t]*\r?\n/.exec(text2);
+  const closing = opening ? /^---[ \t]*(\r?\n|$)/m.exec(text2.slice(opening[0].length)) : null;
+  return opening && closing ? opening[0].length + closing.index + closing[0].length : 0;
+};
+const noteBody = (text2) => text2.slice(frontmatterEnd(text2)).replace(/^(\r?\n)+/, "");
+function withBody(text2, body) {
+  const head = text2.slice(0, frontmatterEnd(text2));
+  const trimmed = body.replace(/\r\n?/g, "\n").trim();
+  return trimmed === "" ? head : `${head}${head === "" || head.endsWith("\n") ? "" : "\n"}${trimmed}
+`;
+}
+const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
+const COMMENT = /%%[\s\S]*?%%/g;
+function outsideCode(text2, transform2) {
+  let result = "", last = 0;
+  for (const match of text2.matchAll(FENCE)) {
+    result += transform2(text2.slice(last, match.index)) + match[0];
+    last = match.index + match[0].length;
+  }
+  return result + transform2(text2.slice(last));
+}
+const withoutComments = (body) => outsideCode(body, (part) => part.replace(COMMENT, ""));
+function comments(body) {
+  const found = [];
+  outsideCode(body, (part) => {
+    found.push(...part.match(COMMENT) ?? []);
+    return part;
+  });
+  return found;
+}
 function nextIterationName(items2) {
   let highest = 0;
   for (const item of items2) {
@@ -37713,12 +37901,12 @@ function applyItemWrite(frontmatter2, write, env) {
     if (target === null) remove(frontmatter2, key);
     else setOwn(frontmatter2, key, env.wikilink(target, write.path));
   }
-  const states = [
+  const states2 = [
     [write.state, write.removeStateKey, settings2.stateKey],
     [write.deliverableState, write.removeDeliverableStateKey, deliverableStateKey(settings2)],
     [write.testState, write.removeTestStateKey, testStateKey(settings2)]
   ];
-  for (const [value2, removeKey, key] of states) {
+  for (const [value2, removeKey, key] of states2) {
     if (!key) continue;
     if (removeKey) remove(frontmatter2, key);
     else if (value2 !== void 0) setOwn(frontmatter2, key, value2);
@@ -37782,7 +37970,7 @@ function readLinkList(source2, path, key) {
   });
   return entries2;
 }
-const basename = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
+const basename$2 = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 const doneIn = (values2, state2) => state2 !== null && values2.some((value2) => value2.toLowerCase() === state2.toLowerCase());
 const gated = (key, frontmatter2, read2) => key ? read2(ownValue(frontmatter2, key)) : absent();
 const label = (key, frontmatter2) => key ? readString(ownValue(frontmatter2, key)) : null;
@@ -37825,7 +38013,7 @@ function createItems(source2, results, settings2, exists2) {
     const id2 = readNumber(ownValue(frontmatter2, "pbl-id"));
     const item = {
       path,
-      title: basename(path),
+      title: basename$2(path),
       outsideFilter: !inFilter,
       entryIndex: store.all.length,
       typeName,
@@ -38121,10 +38309,15 @@ async function discover(context, cache) {
   }
   return found;
 }
+const isBound = (view) => typeof view.options.connection === "string" && view.options.connection.trim() !== "";
+function preferUnbound(candidates2) {
+  const unbound = candidates2.filter((candidate) => !isBound(candidate.view));
+  return unbound.length > 0 ? unbound : candidates2;
+}
 async function selectView(context, cache, selection2) {
   if (selection2.base === void 0) {
     const bases = await discover(context, cache);
-    const candidates2 = bases.flatMap((base2) => base2.views.filter((view) => view.type === BACKLOG_VIEW && (selection2.view === void 0 || view.name === selection2.view)).map((view) => ({ base: base2, view })));
+    const candidates2 = preferUnbound(bases.flatMap((base2) => base2.views.filter((view) => view.type === BACKLOG_VIEW && (selection2.view === void 0 || view.name === selection2.view)).map((view) => ({ base: base2, view }))));
     if (candidates2.length === 0) throw backlogError("BACKLOG_NOT_FOUND", "No .base file in this scope has a product-backlog view; run backlog init or pass --base.", { scope: context.root });
     if (candidates2.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${candidates2.length} product-backlog views exist; pass --base and --view, or set plugins.settings.backlog.base.`, { candidates: candidates2.map(({ base: base2, view }) => ({ base: base2.path, view: view.name })) });
     return candidates2[0];
@@ -38137,7 +38330,7 @@ async function selectView(context, cache, selection2) {
     throw error2;
   }
   const backlogViews = base.views.filter((view) => view.type === BACKLOG_VIEW);
-  const matches2 = selection2.view === void 0 ? backlogViews : backlogViews.filter((view) => view.name === selection2.view);
+  const matches2 = selection2.view === void 0 ? preferUnbound(backlogViews.map((view) => ({ view }))).map((entry2) => entry2.view) : backlogViews.filter((view) => view.name === selection2.view);
   if (matches2.length === 0) throw backlogError("BACKLOG_NOT_FOUND", `${base.path} has no product-backlog view${selection2.view === void 0 ? "" : ` named ${selection2.view}`}.`, { base: base.path, views: backlogViews.map((view) => view.name) });
   if (matches2.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${base.path} has ${matches2.length} product-backlog views; pass --view.`, { base: base.path, candidates: matches2.map((view) => ({ base: base.path, view: view.name })) });
   return { base, view: matches2[0] };
@@ -38205,6 +38398,7 @@ function findItem(session, reference, model2 = session.model) {
   throw backlogError("BACKLOG_NOT_FOUND", `${reference} is not an item of ${session.base.path} › ${session.view.name}.`, { reference, base: session.base.path, view: session.view.name });
 }
 const encoder$1 = new TextEncoder();
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 const json$5 = (value2) => JSON.stringify(value2);
 const messages = {
   resource: "Resource notes are never written by the backlog.",
@@ -38221,10 +38415,10 @@ function ensureInFilter(session, path) {
   const item = session.model.byPath.get(path);
   if (item === void 0 || item.outsideFilter) throw refused("outside-filter", `${path} is outside the filter of ${session.base.path} › ${session.view.name}; context rows are read-only.`, { path });
 }
-async function editNotes(session, edits, ifMatch2) {
+async function planNoteEdits(session, edits, ifMatch2) {
   const { workspace: workspace2 } = session.context;
   const requests = [];
-  for (const [index2, { path, edit }] of edits.entries()) {
+  for (const [index2, { path, edit, body }] of edits.entries()) {
     const snapshot = await workspace2.files.read(path);
     if (index2 === 0 && ifMatch2 !== void 0 && ifMatch2 !== snapshot.revision) {
       throw forgeError("CONFLICT", `File changed; read again before editing: ${path}`, revisionConflict(path, ifMatch2, snapshot.revision));
@@ -38235,26 +38429,32 @@ async function editNotes(session, edits, ifMatch2) {
     if (failure2) throw failure2;
     const changes = Object.fromEntries(Object.entries(after).filter(([key, value2]) => json$5(value2) !== json$5(before[key])));
     const removed = Object.keys(before).filter((key) => !Object.hasOwn(after, key));
-    if (Object.keys(changes).length + removed.length === 0) continue;
-    requests.push({ path, bytes: frontmatterBytes(session, snapshot.bytes, after, changes, removed), expectedRevision: snapshot.revision });
+    const text2 = decoder.decode(snapshot.bytes);
+    const edited = Object.keys(changes).length + removed.length === 0 ? text2 : session.ports.editFrontmatter(text2, after, changes, removed);
+    const next = body === void 0 ? edited : withBody(edited, body);
+    if (next !== text2) requests.push({ path, bytes: encoder$1.encode(next), expectedRevision: snapshot.revision });
   }
-  if (requests.length === 0) return { dryRun: workspace2.dryRun, changes: [] };
-  return workspace2.write(requests, { diff: true });
+  return requests;
 }
-async function writeItems(session, writes, ifMatch2) {
-  ensureWritable(session);
-  const env = { settings: session.settings, wikilink: (target, source2) => wikilink(session, target, source2), resolve: (linkpath, source2) => session.cache.getClosestLinkpathDest(linkpath, source2), typeOf: (path) => typeOf(session, path) };
-  for (const write of writes) ensureInFilter(session, write.path);
-  return editNotes(session, writes.map((write) => ({
+async function editNotes(session, edits, ifMatch2) {
+  const requests = await planNoteEdits(session, edits, ifMatch2);
+  if (requests.length === 0) return { dryRun: session.context.workspace.dryRun, changes: [] };
+  return session.context.workspace.write(requests, { diff: true });
+}
+function itemEdit(session, write, links) {
+  const env = { settings: session.settings, wikilink: links ?? ((target, source2) => wikilink(session, target, source2)), resolve: (linkpath, source2) => session.cache.getClosestLinkpathDest(linkpath, source2), typeOf: (path) => typeOf(session, path) };
+  return {
     path: write.path,
     edit: (frontmatter2) => {
       const refusal2 = applyItemWrite(frontmatter2, write, env);
       return refusal2 ? refused(refusal2, `${write.path}: ${messages[refusal2]}`, { path: write.path }) : null;
     }
-  })), ifMatch2);
+  };
 }
-function frontmatterBytes(session, bytes, after, changes, removed) {
-  return encoder$1.encode(session.ports.editFrontmatter(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes), after, changes, removed));
+async function writeItems(session, writes, ifMatch2) {
+  ensureWritable(session);
+  for (const write of writes) ensureInFilter(session, write.path);
+  return editNotes(session, writes.map((write) => itemEdit(session, write)), ifMatch2);
 }
 async function createNotes(session, files) {
   return session.context.workspace.write(files.map((file) => ({ path: file.path, bytes: encoder$1.encode(file.text) })), { diff: true });
@@ -39098,6 +39298,688 @@ function check$1(session) {
     problems
   };
 }
+const SYNC_FIELDS = ["title", "type", "state", "parent", "iteration", "area", "priority", "effort", "tags", "description"];
+const sortedTags = (tags2) => [...new Set(tags2.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].sort();
+function canonical(field2, value2) {
+  if (value2 === null || value2 === void 0) return "null";
+  if (field2 === "title" && typeof value2 === "string") return JSON.stringify(sanitizeTitle(value2));
+  if (field2 === "tags" && Array.isArray(value2)) return JSON.stringify(sortedTags(value2));
+  if (field2 === "description" && typeof value2 === "string") return JSON.stringify(value2.replace(/\r\n?/g, "\n").trim());
+  if (typeof value2 === "string") return JSON.stringify(value2.trim());
+  return JSON.stringify(value2);
+}
+function decide(base, local, remote) {
+  if (local === void 0 && remote === void 0) return "unchanged";
+  if (local === void 0 || remote === void 0) return base === void 0 || (local ?? remote) !== base ? "skip" : "unchanged";
+  if (base === void 0) return local === remote ? "converged" : "conflict";
+  const localChanged = local !== base, remoteChanged = remote !== base;
+  if (localChanged && remoteChanged) return local === remote ? "converged" : "conflict";
+  return localChanged ? "push" : remoteChanged ? "pull" : "unchanged";
+}
+function decideDescription(sides) {
+  const { local, remote, localBase, remoteBase } = sides;
+  if (local === void 0 || remote === void 0) return local === remote ? "unchanged" : "skip";
+  if (localBase === void 0 || remoteBase === void 0) return sides.same ? "converged" : "conflict";
+  const localChanged = local !== localBase, remoteChanged = remote !== remoteBase;
+  if (sides.same) return localChanged || remoteChanged ? "converged" : "unchanged";
+  if (localChanged && remoteChanged) return "conflict";
+  if (localChanged) return "push";
+  if (remoteChanged) return sides.markdown ? "pull" : "skip";
+  return "unchanged";
+}
+function remoteType(mapping, localType2) {
+  return Object.entries(mapping.types).find(([local]) => sameValue(local, localType2))?.[1];
+}
+function localType(mapping, remote, current) {
+  if (current !== null && sameValue(remoteType(mapping, current) ?? null, remote)) return current;
+  return Object.entries(mapping.types).find(([, value2]) => sameValue(value2, remote))?.[0];
+}
+const stateEntries = (mapping, type2) => {
+  const qualified = type2 === null ? [] : Object.entries(mapping.states).filter(([key]) => key.toLowerCase().startsWith(`${type2.toLowerCase()}:`)).map(([key, value2]) => [key.slice(type2.length + 1), value2]);
+  return [...qualified, ...Object.entries(mapping.states).filter(([key]) => !key.includes(":"))];
+};
+function remoteState(mapping, type2, state2) {
+  return stateEntries(mapping, type2).find(([local]) => sameValue(local, state2))?.[1] ?? state2;
+}
+function localState(mapping, type2, remote, current, declared) {
+  if (current !== null && sameValue(remoteState(mapping, type2, current), remote)) return current;
+  const candidates2 = stateEntries(mapping, type2).filter(([, value2]) => sameValue(value2, remote)).map(([local]) => local);
+  return candidates2.find((local) => declared.some((value2) => sameValue(value2, local))) ?? (declared.length > 0 ? declared.find((value2) => sameValue(value2, remote)) : void 0) ?? candidates2[0] ?? remote;
+}
+function priorityNumber(label2) {
+  const match = label2 === null ? null : /^\s*(\d+)/.exec(label2);
+  return match ? Number(match[1]) : null;
+}
+function priorityLabel(priority, declared) {
+  return declared.find((value2) => priorityNumber(value2) === priority) ?? String(priority);
+}
+const iterationPath = (root, title2) => `${root}\\${title2}`;
+function iterationName(root, path) {
+  if (path === null) return null;
+  const prefix = `${root}\\`.toLowerCase();
+  if (!path.toLowerCase().startsWith(prefix)) return null;
+  const rest = path.slice(prefix.length);
+  return rest.slice(rest.lastIndexOf("\\") + 1) || null;
+}
+const PROPERTY = "property:";
+const iterationRoot = (context) => {
+  const root = context.connection.settings.iterationRoot;
+  return typeof root === "string" && root.trim() !== "" ? root.trim().replace(/\\+$/, "") : null;
+};
+function synced(context, field2) {
+  const { settings: settings2 } = context.session;
+  if (context.mapping.fields[field2] === null) return false;
+  if (field2 === "state") return settings2.stateKey !== "";
+  if (field2 === "iteration") return iterationRoot(context) !== null && settings2.iterationKey !== "";
+  if (field2 === "priority") return settings2.priorityKey !== "";
+  if (field2 === "tags") return settings2.tagsKey !== "";
+  if (field2 === "area") return context.connection.areaProperty !== "";
+  return true;
+}
+const basename$1 = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
+const iterationNote = (session, name2) => session.cache.files().find((path) => path.toLowerCase().endsWith(".md") && basename$1(path).toLowerCase() === name2.toLowerCase() && isIterationType(readString(ownValue(session.cache.getFileCache(path)?.frontmatter, session.settings.typeKey)))) ?? null;
+const scalar$1 = (value2) => value2 === void 0 || value2 === null || value2 === "" ? null : typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? value2 : void 0;
+const itemType = (item) => item.typeName ?? (displayType(item) || null);
+function localValues(context, item, frontmatter2, body) {
+  const values2 = /* @__PURE__ */ new Map();
+  const type2 = itemType(item);
+  if (synced(context, "title")) values2.set("title", item.title);
+  const remote = type2 === null ? void 0 : remoteType(context.mapping, type2);
+  if (synced(context, "type") && remote !== void 0) values2.set("type", remote);
+  if (synced(context, "state")) values2.set("state", item.stateValue === null ? null : remoteState(context.mapping, type2, item.stateValue));
+  if (synced(context, "parent")) {
+    const parent2 = item.parent === null ? null : context.idOf(item.parent.path);
+    if (item.parent === null || parent2 !== null) values2.set("parent", parent2);
+  }
+  const root = iterationRoot(context);
+  if (synced(context, "iteration") && root !== null) {
+    const entry2 = item.iterationEntry;
+    if (entry2 === null) values2.set("iteration", null);
+    else if (entry2.path !== null) values2.set("iteration", iterationPath(root, basename$1(entry2.path)));
+  }
+  if (synced(context, "area")) {
+    const area = scalar$1(ownValue(frontmatter2, context.connection.areaProperty));
+    if (area === null || typeof area === "string") values2.set("area", area === null ? null : area.trim().replace(/\\+$/, "") || null);
+  }
+  if (synced(context, "priority")) {
+    const number2 = priorityNumber(item.priorityValue);
+    if (item.priorityValue === null || number2 !== null) values2.set("priority", number2);
+  }
+  if (synced(context, "effort")) {
+    const raw = ownValue(frontmatter2, context.connection.effortProperty);
+    const number2 = readNumber(raw);
+    if (raw === void 0 || raw === null || raw === "" || number2 !== null) values2.set("effort", number2);
+  }
+  if (synced(context, "tags")) values2.set("tags", item.tags);
+  if (synced(context, "description") && body !== null) {
+    const text2 = withoutComments(body.replace(/\r\n?/g, "\n")).trim();
+    values2.set("description", text2 === "" ? null : text2);
+  }
+  for (const key of Object.keys(context.mapping.properties)) {
+    const value2 = scalar$1(ownValue(frontmatter2, key));
+    if (value2 !== void 0) values2.set(`${PROPERTY}${key}`, value2);
+  }
+  return values2;
+}
+function remoteValues(context, remote) {
+  const values2 = /* @__PURE__ */ new Map();
+  if (synced(context, "title")) values2.set("title", remote.title);
+  if (synced(context, "type")) values2.set("type", remote.type);
+  if (synced(context, "state")) values2.set("state", remote.state);
+  if (synced(context, "parent")) values2.set("parent", remote.parentId ?? null);
+  const root = iterationRoot(context);
+  if (synced(context, "iteration") && root !== null) values2.set("iteration", iterationName(root, remote.iteration ?? null) === null ? null : remote.iteration ?? null);
+  if (synced(context, "area") && remote.area !== void 0) values2.set("area", remote.area);
+  if (synced(context, "priority")) values2.set("priority", remote.priority ?? null);
+  if (synced(context, "effort")) values2.set("effort", remote.effort ?? null);
+  if (synced(context, "tags")) values2.set("tags", remote.tags);
+  if (synced(context, "description") && remote.description !== void 0) values2.set("description", remote.description);
+  for (const [key, reference] of Object.entries(context.mapping.properties)) {
+    const value2 = scalar$1(remote.fields[reference]);
+    if (value2 !== void 0) values2.set(`${PROPERTY}${key}`, value2);
+  }
+  return values2;
+}
+function remoteChange(context, values2) {
+  const change2 = {};
+  const fields2 = {};
+  for (const [key, value2] of values2) {
+    if (key.startsWith(PROPERTY)) fields2[context.mapping.properties[key.slice(PROPERTY.length)]] = value2;
+    else if (key === "parent") change2.parentId = value2;
+    else change2[key] = value2;
+  }
+  return Object.keys(fields2).length > 0 ? { ...change2, fields: fields2 } : change2;
+}
+function pulledNote(context, item, pulls, pathOfRemote2, body) {
+  const { session } = context;
+  const { settings: settings2 } = session;
+  const note = { write: { path: item.path }, extra: {}, removed: [], skipped: [] };
+  const type2 = itemType(item);
+  for (const [field2, value2] of pulls) {
+    if (field2 === "title") note.title = sanitizeTitle(String(value2));
+    else if (field2 === "type" && typeof value2 === "string") {
+      const local = localType(context.mapping, value2, type2);
+      if (local === void 0) note.skipped.push({ field: field2, code: "unmapped-remote-type", reason: `remote type ${value2} has no local type mapping; add it to mappings.types` });
+      else note.write.typeName = local;
+    } else if (field2 === "state") Object.assign(note.write, stateWrite(item, workflowOf(item.typeName, item.ladder), value2 === null ? null : localState(context.mapping, type2, String(value2), item.stateValue, settings2.states), settings2, formatCivil(session.today)));
+    else if (field2 === "parent") {
+      const parent2 = value2 === null ? null : pathOfRemote2(String(value2));
+      if (value2 !== null && parent2 === null) note.skipped.push({ field: field2, code: "unsynced-parent", reason: `remote parent ${String(value2)} is not synced on this connection` });
+      else note.write.parent = parent2;
+    } else if (field2 === "iteration") {
+      const name2 = iterationName(iterationRoot(context), value2 === null ? null : String(value2));
+      const target = name2 === null ? null : iterationNote(session, name2);
+      if (name2 !== null && target === null) note.skipped.push({ field: field2, code: "missing-iteration", reason: `no iteration note named ${name2}` });
+      else note.write.iteration = target;
+    } else if (field2 === "priority") note.write.priority = value2 === null ? null : priorityLabel(Number(value2), settings2.priorityValues);
+    else if (field2 === "tags" && Array.isArray(value2)) {
+      const lower = new Set(value2.map((tag) => tag.toLowerCase()));
+      note.write.tags = { add: value2, remove: item.tags.filter((tag) => !lower.has(tag.toLowerCase())) };
+    } else if (field2 === "description") note.body = [value2 === null ? "" : String(value2), ...comments(body ?? "")].filter((part) => part.trim() !== "").join("\n\n");
+    else {
+      const key = field2 === "effort" ? context.connection.effortProperty : field2 === "area" ? context.connection.areaProperty : field2.slice(PROPERTY.length);
+      if (value2 === null) note.removed.push(key);
+      else setOwn(note.extra, key, value2);
+    }
+  }
+  return note;
+}
+const linkValue = (connection, frontmatter2) => readString(ownValue(frontmatter2, connection.linkProperty));
+function identify(context, items2, state2, linkId, exists2) {
+  const members2 = [], skipped = [], adopted = [];
+  const claimed = /* @__PURE__ */ new Map();
+  const mapped = items2.filter(({ item }) => {
+    const type2 = itemType(item);
+    if (type2 !== null && remoteType(context.mapping, type2) !== void 0) return true;
+    skipped.push({ path: item.path, code: "unmapped-type", reason: `type ${type2 ?? "(none)"} has no remote type mapping` });
+    return false;
+  });
+  const linkOf = ({ frontmatter: frontmatter2 }) => {
+    const link2 = linkValue(context.connection, frontmatter2);
+    return { link: link2, id: link2 === null ? null : linkId(link2) };
+  };
+  for (const source2 of mapped) {
+    const entry2 = state2.items[source2.item.path];
+    if (entry2 === void 0) continue;
+    if (claimed.has(entry2.id)) {
+      skipped.push({ path: source2.item.path, code: "duplicate-link", reason: `${claimed.get(entry2.id)} already syncs remote item ${entry2.id}` });
+      continue;
+    }
+    claimed.set(entry2.id, source2.item.path);
+    members2.push({ ...source2, id: entry2.id, entry: entry2, relink: linkOf(source2).id !== entry2.id });
+  }
+  const linkOnly = mapped.filter(({ item }) => state2.items[item.path] === void 0).map((source2) => ({ source: source2, ...linkOf(source2) }));
+  const linking = /* @__PURE__ */ new Map();
+  for (const { id: id2 } of linkOnly) if (id2 !== null) linking.set(id2, (linking.get(id2) ?? 0) + 1);
+  for (const { source: source2, link: link2, id: id2 } of linkOnly) {
+    const { path } = source2.item;
+    if (link2 !== null && id2 === null) {
+      skipped.push({ path, code: "foreign-link", reason: `${context.connection.linkProperty} links an item of another connection` });
+      continue;
+    }
+    const previous2 = id2 === null ? null : pathOfRemote(state2, id2);
+    const holder = id2 === null ? void 0 : claimed.get(id2) ?? (previous2 !== null && exists2(previous2) ? previous2 : void 0);
+    if (holder !== void 0) {
+      skipped.push({ path, code: "duplicate-link", reason: `${holder} already syncs remote item ${id2}; remove or change ${context.connection.linkProperty} in this copy` });
+      continue;
+    }
+    if (id2 !== null && linking.get(id2) > 1) {
+      skipped.push({ path, code: "duplicate-link", reason: `${linking.get(id2)} notes link remote item ${id2}; keep ${context.connection.linkProperty} in one of them` });
+      continue;
+    }
+    let entry2 = null;
+    if (previous2 !== null) {
+      entry2 = state2.items[previous2];
+      adopted.push({ from: previous2, to: path });
+    }
+    if (id2 !== null) claimed.set(id2, path);
+    members2.push({ ...source2, id: id2, entry: entry2, relink: false });
+  }
+  const order2 = new Map(items2.map(({ item }, index2) => [item.path, index2]));
+  members2.sort((a, b) => order2.get(a.item.path) - order2.get(b.item.path));
+  return { members: members2, skipped, adopted };
+}
+const fieldSkip = (path, field2, local, base) => field2 === "description" && base ? { path, field: field2, code: "remote-format-unknown", reason: "the remote description changed but is not known to be Markdown, so it is not pulled; edit the note or run backlog sync resolve with --field description" } : local ? { path, field: field2, code: "unexpressible", reason: `the note's ${field2} cannot be expressed on this connection, so the remote value is not pulled over it` } : { path, field: field2, code: "unreadable-remote", reason: `the remote ${field2} cannot be read, so the note's value is not pushed over it` };
+function planItem(context, member2, remote, options2) {
+  const { item, entry: entry2 } = member2;
+  const local = localValues(context, item, member2.frontmatter, member2.body);
+  const plan = {
+    item,
+    path: item.path,
+    frontmatter: member2.frontmatter,
+    body: member2.body,
+    id: member2.id,
+    url: remote?.url ?? entry2?.url ?? null,
+    remote,
+    entry: entry2,
+    create: member2.id === null,
+    push: /* @__PURE__ */ new Map(),
+    pull: /* @__PURE__ */ new Map(),
+    conflicts: [],
+    converged: [],
+    resolved: [],
+    remoteChanged: [],
+    local,
+    remoteValues: /* @__PURE__ */ new Map(),
+    remoteMarkdown: false,
+    baseFrom: /* @__PURE__ */ new Map(),
+    skipped: [],
+    relink: member2.relink
+  };
+  if (plan.create) return plan;
+  if (remote === null) return { path: item.path, code: "remote-missing", reason: `remote item ${member2.id} no longer exists or is not readable` };
+  plan.remoteValues = remoteValues(context, remote);
+  plan.remoteMarkdown = remote.description === null || remote.descriptionMarkdown === true;
+  const unchangedRemote = entry2 !== null && entry2.rev === remote.rev;
+  const resolution = options2.resolution?.path === item.path ? options2.resolution : void 0;
+  const hashOf = (field2, values2) => values2.has(field2) ? options2.hash(canonical(field2, values2.get(field2))) : void 0;
+  for (const field2 of /* @__PURE__ */ new Set([...local.keys(), ...plan.remoteValues.keys()])) {
+    const baseKey = field2 === "description" ? `${REMOTE_BASE}${field2}` : field2;
+    const base = entry2?.fields[field2], remoteBase = entry2?.fields[baseKey];
+    const localHash = hashOf(field2, local);
+    const remoteHash = unchangedRemote && remoteBase !== void 0 && plan.remoteValues.has(field2) ? remoteBase : hashOf(field2, plan.remoteValues);
+    let decision = field2 === "description" ? decideDescription({ local: localHash, remote: remoteHash, localBase: base, remoteBase, same: localHash !== void 0 && localHash === hashOf(field2, plan.remoteValues), markdown: plan.remoteMarkdown }) : decide(base, localHash, remoteHash);
+    if (decision !== "push" && decision !== "unchanged") plan.remoteChanged.push(field2);
+    const settles = decision === "conflict" || decision === "skip" && localHash !== void 0 && remoteHash !== void 0;
+    if (resolution && decision !== "converged" && !settles) decision = "unchanged";
+    if (settles && resolution && (resolution.fields === null || resolution.fields.includes(field2))) {
+      decision = resolution.take === "local" ? "push" : "pull";
+      plan.resolved.push(field2);
+    }
+    if (decision === "push" && options2.direction !== "pull") plan.push.set(field2, local.get(field2));
+    else if (decision === "pull" && options2.direction !== "push") plan.pull.set(field2, plan.remoteValues.get(field2));
+    else if (decision === "conflict") plan.conflicts.push({ field: field2, local: local.get(field2) ?? null, remote: plan.remoteValues.get(field2) ?? null });
+    else if (decision === "converged") plan.converged.push(field2);
+    else if (decision === "skip") plan.skipped.push(fieldSkip(item.path, field2, localHash === void 0, base !== void 0));
+  }
+  return plan;
+}
+const empty = (value2) => value2 === null || Array.isArray(value2) && value2.length === 0;
+function settlePush(context, plan, result, direction, freshLocal) {
+  const before = plan.remoteValues;
+  Object.assign(plan, { id: result.id, url: result.url, remote: result, remoteValues: remoteValues(context, result), remoteMarkdown: result.description === null || result.descriptionMarkdown === true });
+  const pushed = new Set(plan.create ? freshLocal.keys() : plan.push.keys());
+  if (plan.create) plan.local = freshLocal;
+  for (const [field2, remote] of plan.remoteValues) {
+    if (field2 === "description") continue;
+    const local = plan.local.get(field2);
+    if (!pushed.has(field2)) {
+      if (before.has(field2) && canonical(field2, before.get(field2)) !== canonical(field2, remote)) plan.remoteChanged.push(field2);
+      continue;
+    }
+    if (local === void 0 || canonical(field2, local) === canonical(field2, remote)) continue;
+    if (!empty(local)) {
+      plan.baseFrom.set(field2, "remote");
+      plan.skipped.push({ path: plan.path, field: field2, code: "server-kept", reason: `the platform stored ${canonical(field2, remote)} instead of ${canonical(field2, local)}; the next sync pushes the note's value again` });
+    } else if (direction === "push") {
+      plan.remoteChanged.push(field2);
+      plan.skipped.push({ path: plan.path, field: field2, code: "server-applied", reason: `the platform applied ${canonical(field2, remote)}; a pull takes it into the note` });
+    } else {
+      plan.remoteChanged.push(field2);
+      plan.pull.set(field2, remote);
+    }
+  }
+}
+function nextBase(plan, pushed, pulled, hash) {
+  const fields2 = { ...plan.entry?.fields };
+  const set2 = (key, field2, value2) => {
+    if (value2 !== void 0) fields2[key] = hash(canonical(field2, value2));
+  };
+  const settle2 = (field2, value2) => {
+    set2(field2, field2, value2);
+    if (field2 === "description") set2(`${REMOTE_BASE}${field2}`, field2, plan.remoteValues.get(field2));
+  };
+  for (const field2 of plan.create ? plan.local.keys() : [...pushed, ...plan.converged]) settle2(field2, plan.baseFrom.get(field2) === "remote" ? plan.remoteValues.get(field2) : plan.local.get(field2));
+  for (const field2 of pulled) settle2(field2, plan.remoteValues.get(field2));
+  return fields2;
+}
+const basename = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
+function landings(session, context, plans, pathOfRemote2) {
+  const landed = plans.map((plan) => {
+    const note = pulledNote(context, plan.item, plan.pull, pathOfRemote2, plan.body);
+    const skipped = note.skipped.map((skip) => ({ path: plan.path, ...skip }));
+    const pulled = new Set([...plan.pull.keys()].filter((field2) => !note.skipped.some((skip) => skip.field === field2)));
+    let renameTo = null;
+    if (note.title !== void 0) {
+      const folder = plan.path.includes("/") ? plan.path.slice(0, plan.path.lastIndexOf("/") + 1) : "";
+      const target = `${folder}${note.title}.md`;
+      if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) {
+        pulled.delete("title");
+        skipped.push({ path: plan.path, field: "title", code: "title-taken", reason: `${target} already exists` });
+      } else if (target !== plan.path) renameTo = target;
+    }
+    return { plan, note, pulled, renameTo, skipped };
+  });
+  const renamed = new Map(landed.flatMap((landing) => landing.renameTo === null ? [] : [[landing.plan.path, landing.renameTo]]));
+  for (const { note } of landed) if (typeof note.write.parent === "string") note.write.parent = renamed.get(note.write.parent) ?? note.write.parent;
+  return landed;
+}
+async function commitVault(session, context, items2, store, pushed, hash, live) {
+  const { connection } = context;
+  const { workspace: workspace2 } = session.context;
+  const edits = [];
+  const changes = [];
+  const plannedFrom = new Map(live ? [] : items2.flatMap(({ plan, renameTo }) => renameTo === null ? [] : [[renameTo, plan.path]]));
+  const links = (target, source2) => {
+    const from = plannedFrom.get(target);
+    if (from === void 0) return wikilink(session, target, source2);
+    const text2 = session.cache.fileToLinktext(from, source2), old = basename(from), next = basename(target);
+    return `[[${text2.endsWith(old) ? `${text2.slice(0, -old.length)}${next}` : text2}]]`;
+  };
+  for (const { plan, note, pulled, renameTo } of items2) {
+    let path = plan.path;
+    if (renameTo !== null) {
+      const moved2 = await session.context.app.fileManager.move(plan.path, renameTo);
+      for (const rename2 of moved2.renames) if (rename2.kind === "file") changes.push({ path: rename2.to, oldPath: rename2.from, operation: "renamed", revision: rename2.revision, bytes: rename2.bytes, ...moved2.dryRun ? { diff: null } : {} });
+      changes.push(...moved2.changes);
+      if (live) {
+        path = renameTo;
+        store.remove(plan.path);
+      }
+    }
+    const extra = { ...note.extra };
+    if (plan.url !== null && (plan.relink || plan.create)) setOwn(extra, connection.linkProperty, plan.url);
+    if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== void 0) {
+      const write = itemEdit(session, { ...note.write, path }, links);
+      edits.push({
+        path,
+        ...note.body === void 0 ? {} : { body: note.body },
+        edit: (frontmatter2) => {
+          const failure2 = write.edit(frontmatter2);
+          if (failure2) return failure2;
+          for (const [key, value2] of Object.entries(extra)) setOwn(frontmatter2, key, value2);
+          for (const key of note.removed) delete frontmatter2[key];
+          return null;
+        }
+      });
+    }
+    if (plan.id === null || plan.remote === null) continue;
+    const absorbed = plan.remoteChanged.every((field2) => pulled.has(field2) || plan.converged.includes(field2));
+    const rev = absorbed ? plan.remote.rev : plan.entry?.rev ?? UNSETTLED_REV;
+    store.set(path, { id: plan.id, url: plan.url ?? plan.remote.url, rev, fields: nextBase(plan, pushed.get(plan.path) ?? /* @__PURE__ */ new Set(), pulled, hash) });
+  }
+  for (let attempt = 1; ; attempt++) {
+    const requests = await planNoteEdits(session, edits);
+    const state2 = store.request();
+    if (requests.length + (state2 ? 1 : 0) === 0) return changes;
+    try {
+      const result = await workspace2.write([...requests, ...state2 ? [state2] : []], { diff: true });
+      store.committed(result.changes);
+      return [...changes, ...result.changes];
+    } catch (error2) {
+      if (!live || attempt > 1 || !conflictOn(error2, store.path)) throw error2;
+      await store.refresh();
+    }
+  }
+}
+const PLACEHOLDER = "new:";
+const codeOf = (error2) => isRecord(error2) && typeof error2.code === "string" ? error2.code : "OPERATION_FAILED";
+const keys = (values2) => [...values2.keys()];
+const shown = (field2, value2) => JSON.parse(canonical(field2, value2));
+async function syncView(session, bound2, store, hash, options2) {
+  const { connection, connector } = bound2;
+  const { workspace: workspace2 } = session.context;
+  const live = options2.mode === "sync" && !workspace2.dryRun;
+  if (options2.mode === "sync") ensureWritable(session);
+  const mapping = connector.mapping(connection);
+  const ids = /* @__PURE__ */ new Map();
+  const context = { session, connection, mapping, idOf: (path) => ids.get(path) ?? store.state.items[path]?.id ?? null };
+  const sources = await Promise.all(session.model.results.map(async (item) => ({
+    item,
+    frontmatter: session.cache.getFileCache(item.path)?.frontmatter ?? {},
+    body: mapping.fields.description === null ? null : noteBody(new TextDecoder().decode((await workspace2.files.read(item.path)).bytes))
+  })));
+  const files = new Set(session.cache.files());
+  const { members: members2, skipped, adopted } = identify(context, sources, store.state, (url2) => connector.idFromLink(connection, url2), (path) => files.has(path));
+  for (const { from, to } of adopted) {
+    const entry2 = store.state.items[from];
+    store.remove(from);
+    store.set(to, entry2);
+  }
+  for (const member2 of members2) ids.set(member2.item.path, member2.id ?? `${PLACEHOLDER}${member2.item.path}`);
+  const targets = options2.resolution ? members2.filter((member2) => member2.item.path === options2.resolution.path) : members2;
+  const linked = targets.flatMap((member2) => member2.id === null ? [] : [member2.id]);
+  const remotes = new Map((linked.length > 0 ? await connector.query(connection, linked) : []).map((item) => [item.id, item]));
+  const report = {
+    base: session.base.path,
+    view: session.view.name,
+    connection: connection.id,
+    platform: connection.platform,
+    created: [],
+    updated: [],
+    pulled: [],
+    conflicts: [],
+    resolved: [],
+    unchanged: 0,
+    skipped,
+    failed: [],
+    changes: []
+  };
+  const plans = [];
+  for (const member2 of targets) {
+    const plan = planItem(context, member2, member2.id === null ? null : remotes.get(member2.id) ?? null, { direction: options2.direction, hash, ...options2.resolution ? { resolution: options2.resolution } : {} });
+    if ("reason" in plan) report.skipped.push(plan);
+    else plans.push(plan);
+  }
+  if (options2.resolution) ensureResolvable(plans, options2.resolution);
+  const pushed = await pushAll(context, bound2, plans, ids, report, options2, live, store, hash);
+  const failed = new Set(report.failed.map((failure2) => failure2.path));
+  const settled = plans.filter((plan) => !failed.has(plan.path) && !(plan.create && (options2.direction === "pull" || plan.id === null)));
+  for (const plan of plans) {
+    report.skipped.push(...plan.skipped);
+    if (plan.conflicts.length > 0) report.conflicts.push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: plan.conflicts.map(({ field: field2, local, remote }) => ({ field: field2, local: shown(field2, local), remote: shown(field2, remote) })) });
+    if (options2.resolution && plan.resolved.length > 0) report.resolved.push({ path: plan.path, take: options2.resolution.take, fields: plan.resolved });
+  }
+  report.unchanged = plans.filter((plan) => !plan.create && plan.push.size + plan.pull.size + plan.conflicts.length === 0).length;
+  const remotePath = (id2) => [...ids].find(([, value2]) => value2 === id2)?.[0] ?? pathOfRemote(store.state, id2);
+  const landed = landings(session, context, settled, remotePath);
+  for (const { plan, pulled, renameTo, skipped: skips } of landed) {
+    report.skipped.push(...skips);
+    if (pulled.size > 0) report.pulled.push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: [...pulled], ...renameTo ? { renamedTo: renameTo } : {} });
+  }
+  const result = { report, members: new Set(members2.map((member2) => member2.item.path)) };
+  if (options2.mode === "status") return result;
+  report.changes = await commitVault(session, context, landed, store, pushed, hash, live);
+  return result;
+}
+async function pushAll(context, { connection, connector }, plans, ids, report, options2, live, store, hash) {
+  const pushed = /* @__PURE__ */ new Map();
+  const parentId = (value2) => {
+    if (typeof value2 !== "string" || !value2.startsWith(PLACEHOLDER)) return value2;
+    const id2 = ids.get(value2.slice(PLACEHOLDER.length));
+    return id2 === void 0 || id2.startsWith(PLACEHOLDER) ? void 0 : id2;
+  };
+  for (const plan of plans) {
+    if (plan.create && options2.direction === "pull") {
+      report.skipped.push({ path: plan.path, code: "not-created", reason: "not synced yet; a push creates it" });
+      continue;
+    }
+    const values2 = plan.create ? new Map([...plan.local].filter(([, value2]) => value2 !== null && !(Array.isArray(value2) && value2.length === 0))) : plan.push;
+    const fields2 = keys(values2);
+    if (fields2.length === 0) continue;
+    if (!live) {
+      (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: fields2 });
+      continue;
+    }
+    const change2 = remoteChange(context, values2);
+    if (change2.parentId !== void 0) {
+      const parent2 = parentId(change2.parentId);
+      if (parent2 === void 0) delete change2.parentId;
+      else change2.parentId = parent2;
+    }
+    let result;
+    try {
+      result = plan.create ? await connector.create(connection, { ...change2, type: String(plan.local.get("type")), title: String(plan.local.get("title") ?? plan.item.title) }) : await connector.update(connection, plan.id, change2, plan.remote.rev);
+    } catch (error2) {
+      if (codeOf(error2) === "CONNECTOR_AUTH_FAILED") throw error2;
+      const stale = isRecord(error2) && isRecord(error2.details) && error2.details.reason === "stale-revision";
+      if (stale && options2.resolution) throw backlogError("SYNC_CONFLICT", `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
+      report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? "SYNC_CONFLICT" : codeOf(error2), message: stale ? "The remote item changed during the sync; run the sync again." : String(error2.message) });
+      continue;
+    }
+    if (plan.create) ids.set(plan.path, result.id);
+    settlePush(context, plan, result, options2.direction, plan.create ? resolvedLocal(context, plan) : plan.local);
+    pushed.set(plan.path, new Set(fields2));
+    (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: result.id, url: result.url, fields: fields2 });
+    if (plan.create) {
+      store.set(plan.path, { id: result.id, url: result.url, rev: plan.remoteChanged.length === 0 ? result.rev : UNSETTLED_REV, fields: nextBase(plan, new Set(fields2), /* @__PURE__ */ new Set(), hash) });
+      await store.save();
+    }
+  }
+  return pushed;
+}
+function resolvedLocal(context, plan) {
+  const values2 = localValues(context, plan.item, plan.frontmatter, plan.body);
+  const parent2 = values2.get("parent");
+  if (typeof parent2 === "string" && parent2.startsWith(PLACEHOLDER)) values2.delete("parent");
+  return values2;
+}
+function ensureResolvable(plans, resolution) {
+  const settled = plans.flatMap((plan) => plan.resolved);
+  const missing2 = resolution.fields?.filter((field2) => !settled.includes(field2)) ?? [];
+  if (settled.length > 0 && missing2.length === 0) return;
+  const conflicts = plans.flatMap((plan) => plan.conflicts.map((conflict2) => conflict2.field));
+  throw forgeError("INVALID_ARGUMENT", `${resolution.path} has no conflict in ${missing2.length > 0 ? missing2.join(", ") : "any field"}; run backlog sync status to list conflicts.`, { path: resolution.path, conflicts: [...conflicts, ...settled] });
+}
+async function publish(session, hub, { connection }, report, left) {
+  const base = { connection: connection.id, platform: connection.platform };
+  for (const [operation2, entries2] of [["create", report.created], ["update", report.updated]]) {
+    for (const entry2 of entries2) await hub.report("pushed", { ...base, path: entry2.path, remoteId: entry2.remoteId, url: entry2.url, operation: operation2, fields: entry2.fields });
+  }
+  for (const entry2 of report.pulled) await hub.report("pulled", { ...base, path: entry2.renamedTo ?? entry2.path, remoteId: entry2.remoteId, url: entry2.url, fields: entry2.fields });
+  for (const entry2 of report.conflicts) await hub.report("conflict", { ...base, path: entry2.path, remoteId: entry2.remoteId, url: entry2.url, fields: entry2.fields.map((field2) => field2.field) });
+  await session.context.events.emit("backlog.synced", {
+    base: report.base,
+    view: report.view,
+    connection: connection.id,
+    created: report.created.length,
+    updated: report.updated.length,
+    pulled: report.pulled.length,
+    conflicts: report.conflicts.length,
+    left,
+    failed: report.failed.length
+  });
+}
+async function boundViews(context, request) {
+  let bases;
+  if (request.base === void 0) bases = await discover(context, await context.metadata.load());
+  else {
+    try {
+      bases = [await readBase(context, request.base)];
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw backlogError("BACKLOG_NOT_FOUND", `The base ${request.base} does not exist.`, { base: request.base });
+      throw error2;
+    }
+  }
+  const views2 = bases.flatMap((base) => base.views.filter((view) => view.type === BACKLOG_VIEW && (request.view === void 0 || view.name === request.view)).map((view) => ({ base: base.path, view: view.name, connection: isBound(view) ? String(view.options.connection).trim() : null })));
+  const bound2 = views2.filter((entry2) => entry2.connection !== null);
+  if (bound2.length === 0) {
+    const where = request.base === void 0 ? "this scope" : `${request.base}${request.view === void 0 ? "" : ` › ${request.view}`}`;
+    throw backlogError("BACKLOG_NOT_FOUND", `No product-backlog view in ${where} is bound to a connection; add the view option connection: <id>.`, { views: views2.map(({ base, view }) => ({ base, view })) });
+  }
+  return bound2;
+}
+const totals = (views2, left) => ({
+  created: views2.reduce((sum, view) => sum + view.created.length, 0),
+  updated: views2.reduce((sum, view) => sum + view.updated.length, 0),
+  pulled: views2.reduce((sum, view) => sum + view.pulled.length, 0),
+  conflicts: views2.reduce((sum, view) => sum + view.conflicts.length, 0),
+  skipped: views2.reduce((sum, view) => sum + view.skipped.length, 0),
+  left: left.length,
+  failed: views2.reduce((sum, view) => sum + view.failed.length, 0)
+});
+async function runSync(context, services, request) {
+  const views2 = await boundViews(context, request);
+  const live = request.mode === "sync" && !context.workspace.dryRun;
+  const open2 = (view) => openBacklog(context, services.bases, services.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
+  let targets = views2;
+  let resolution;
+  if (request.resolve) {
+    const holding = [];
+    for (const view of views2) {
+      try {
+        holding.push({ view, path: findItem(await open2(view), request.resolve.item).path });
+      } catch (error2) {
+        if (!(error2 instanceof Error && "code" in error2 && error2.code === "BACKLOG_NOT_FOUND")) throw error2;
+      }
+    }
+    if (holding.length === 0) throw backlogError("BACKLOG_NOT_FOUND", `${request.resolve.item} is not an item of a bound view.`, { reference: request.resolve.item });
+    if (holding.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${request.resolve.item} syncs in ${holding.length} views; pass --base and --view.`, { candidates: holding.map((entry2) => ({ base: entry2.view.base, view: entry2.view.view, connection: entry2.view.connection })) });
+    targets = [holding[0].view];
+    resolution = { path: holding[0].path, take: request.resolve.take, fields: request.resolve.fields };
+  }
+  const connections = [...new Set(targets.map((view) => view.connection))];
+  const bound2 = new Map(connections.map((id2) => [id2, services.hub.connection(id2)]));
+  const releases = [];
+  const reports = [];
+  let left = [];
+  services.activity.syncing = true;
+  try {
+    if (live) for (const id2 of [...connections].sort()) releases.push(await services.lock(lockPath(id2), "backlog sync"));
+    const stores = /* @__PURE__ */ new Map();
+    for (const id2 of connections) stores.set(id2, await SyncStore.open(context.workspace, id2));
+    const all2 = request.base === void 0 && request.view === void 0 ? views2 : [...views2, ...await boundViews(context, {})];
+    const held = resolution ? null : await heldPaths(all2, connections, open2);
+    const leftOf = (connection) => held === null ? [] : leftEntries(connection, stores.get(connection), held.get(connection));
+    for (const view of targets) {
+      const session = await open2(view);
+      const connection = bound2.get(view.connection);
+      const { report } = await syncView(session, connection, stores.get(view.connection), services.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, ...resolution ? { resolution } : {} });
+      for (const entry2 of report.pulled) if (entry2.renamedTo) held?.get(view.connection).add(entry2.renamedTo);
+      reports.push(report);
+      if (live) await publish(session, services.hub, connection, report, leftOf(view.connection).length);
+    }
+    left = connections.flatMap(leftOf);
+  } finally {
+    services.activity.syncing = false;
+    for (const release2 of releases.reverse()) if (!await release2()) context.events.warn("A backlog sync lock no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs.");
+  }
+  return {
+    dryRun: request.mode === "status" || context.workspace.dryRun,
+    mode: request.resolve ? "resolve" : request.mode,
+    direction: request.resolve ? "both" : request.direction,
+    counts: totals(reports, left),
+    views: reports,
+    left,
+    changes: reports.flatMap((report) => report.changes)
+  };
+}
+async function heldPaths(all2, connections, open2) {
+  const held = new Map(connections.map((id2) => [id2, /* @__PURE__ */ new Set()]));
+  for (const view of all2) {
+    const paths2 = held.get(view.connection);
+    if (paths2) for (const item of (await open2(view)).model.results) paths2.add(item.path);
+  }
+  return held;
+}
+function leftEntries(connection, store, held) {
+  return Object.entries(store.state.items).filter(([path]) => !held.has(path)).map(([path, entry2]) => ({ connection, path, remoteId: entry2.id, url: entry2.url }));
+}
+const syncOptions = {
+  direction: option$1.string("sync: push vault changes, pull remote changes, or both (default).", { enum: ["push", "pull", "both"] }),
+  take: option$1.string("sync resolve: settle the conflict with the local or the remote value.", { enum: ["local", "remote"] }),
+  field: option$1.string(`sync resolve: comma-separated fields to settle (${SYNC_FIELDS.join(", ")}, property:<key>); default every conflicting field.`)
+};
+function syncAccepted(sub) {
+  return sub === "resolve" ? ["take", "field"] : ["direction"];
+}
+function syncAction(rest, flags, context, services, selection2) {
+  const [sub, ...args] = rest;
+  const direction = value$2(flags, "direction") ?? "both";
+  ensure(["push", "pull", "both"].includes(direction), "INVALID_ARGUMENT", "--direction must be push, pull or both.");
+  if (sub === void 0) return runSync(context, services, { ...selection2, direction, mode: "sync" });
+  if (sub === "status") {
+    arity(args, 0);
+    return runSync(context, services, { ...selection2, direction, mode: "status" });
+  }
+  ensure(sub === "resolve", "INVALID_ARGUMENT", "Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.");
+  arity(args, 1);
+  const take = value$2(flags, "take", true);
+  ensure(take === "local" || take === "remote", "INVALID_ARGUMENT", "--take must be local or remote.");
+  const fields2 = value$2(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
+  ensure(fields2 === null || fields2.length > 0, "INVALID_ARGUMENT", "--field needs at least one field name.");
+  return runSync(context, services, { ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
+}
 const selection = ["base", "view", "today"];
 const accepted = {
   init: ["folder"],
@@ -39113,9 +39995,10 @@ const accepted = {
   depend: ["on", "if-match"],
   undepend: ["on", "if-match"],
   iteration: ["name", "goal", "start", "due", "length", "if-match"],
-  release: ["release-version", "target-date", "status", "description", "if-match"]
+  release: ["release-version", "target-date", "status", "description", "if-match"],
+  sync: ["direction", "take", "field"]
 };
-const actions = Object.keys(accepted);
+const actions$1 = Object.keys(accepted);
 const options = {
   base: option$1.string("The .base file of the backlog; discovered when it is the only one with a product-backlog view."),
   view: option$1.string("The product-backlog view of the base."),
@@ -39147,7 +40030,8 @@ const options = {
   "target-date": option$1.string("release add: the target date."),
   status: option$1.string("release add: the release status."),
   description: option$1.string("release add: the description."),
-  "if-match": option$1.string("The revision of the item note the write is planned against.")
+  "if-match": option$1.string("The revision of the item note the write is planned against."),
+  ...syncOptions
 };
 const read = { mutating: false };
 function date$1(flags, key) {
@@ -39168,7 +40052,7 @@ function backlogCommand(ports2) {
   return {
     id: "backlog",
     description: "Plan a product backlog compatible with the Obsidian Product Backlog view (backlog-view): hierarchy, ranks, states, iterations, releases and dependencies.",
-    usage: "backlog init [--folder docs] | list | tree | board | show <item> | add <type> <title> | move <item> | ranks seed|respace | set <item> | depend|undepend <item> --on <item> | iteration add|assign | release add|join|mark-released|readiness|notes|list | check",
+    usage: "backlog init [--folder docs] | list | tree | board | show <item> | add <type> <title> | move <item> | ranks seed|respace | set <item> | depend|undepend <item> --on <item> | iteration add|assign | release add|join|mark-released|readiness|notes|list | check | sync [status | resolve <item> --take local|remote] [--direction push|pull|both]",
     scope: "project",
     discovery: false,
     mutating: true,
@@ -39186,23 +40070,28 @@ function backlogCommand(ports2) {
       undepend: { description: "Remove a dependsOn entry; the key is deleted when the list empties." },
       iteration: { description: "add an iteration with the plugin's name and date defaults, or assign <item> <iteration>." },
       release: { description: "add, join <item> <release>, mark-released, readiness, notes (generated release notes) or list releases." },
-      check: { description: "Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.", ...read }
+      check: { description: "Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.", ...read },
+      sync: { description: "Two-way sync of every view bound to a connection (view option connection: <id>) with explicit conflicts; status reads both sides without writing; resolve settles a conflict." }
     },
     args: [
-      { name: "action", description: actions.join(", "), required: true, enum: actions },
+      { name: "action", description: actions$1.join(", "), required: true, enum: actions$1 },
       { name: "arguments", description: "The action's arguments: an item, a type and title, or a sub-action and its arguments.", variadic: true }
     ],
     options,
-    errors: ["BACKLOG_NOT_FOUND", "BACKLOG_AMBIGUOUS", "BACKLOG_CONFIG_PROBLEM", "BACKLOG_WRITE_REFUSED", "BACKLOG_NO_GAP", "CONFLICT"],
+    errors: ["BACKLOG_NOT_FOUND", "BACKLOG_AMBIGUOUS", "BACKLOG_CONFIG_PROBLEM", "BACKLOG_WRITE_REFUSED", "BACKLOG_NO_GAP", "CONFLICT", "SYNC_CONFLICT", "CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
     async run(args, flags, context) {
       const [action2, ...rest] = args;
-      ensure(action2 !== void 0 && actions.includes(action2), "INVALID_ARGUMENT", `Use backlog ${actions.join(", backlog ")}.`);
-      only(flags, `backlog ${action2}`, accepted[action2]);
+      ensure(action2 !== void 0 && actions$1.includes(action2), "INVALID_ARGUMENT", `Use backlog ${actions$1.join(", backlog ")}.`);
+      only(flags, `backlog ${action2}`, action2 === "sync" ? syncAccepted(rest[0]) : accepted[action2]);
       if (action2 === "init") {
         arity(rest, 0);
         return initBacklog(context, value$2(flags, "folder"));
       }
-      const { bases, ports: host } = ports2(context);
+      const { bases, ports: host, sync } = ports2(context);
+      if (action2 === "sync") {
+        const today2 = date$1(flags, "today");
+        return syncAction(rest, flags, context, sync(), { ...value$2(flags, "base") === void 0 ? {} : { base: value$2(flags, "base") }, ...value$2(flags, "view") === void 0 ? {} : { view: value$2(flags, "view") }, ...today2 ? { today: today2 } : {} });
+      }
       const session = await openBacklog(context, bases, host, selected(flags, context));
       const ifMatch2 = value$2(flags, "if-match");
       switch (action2) {
@@ -39238,9 +40127,9 @@ function backlogCommand(ports2) {
           return respaceRanks(session, rest[0]);
         case "set": {
           arity(rest, 1);
-          const fields = ["state", "horizon", "priority", "risk", "start", "due", "assignee", "type"];
-          ensure(fields.some((key) => flags[key] !== void 0), "MISSING_ARGUMENT", `backlog set needs at least one of --${fields.join(", --")}.`);
-          return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields.flatMap((key) => value$2(flags, key) === void 0 ? [] : [[key, value$2(flags, key)]])) });
+          const fields2 = ["state", "horizon", "priority", "risk", "start", "due", "assignee", "type"];
+          ensure(fields2.some((key) => flags[key] !== void 0), "MISSING_ARGUMENT", `backlog set needs at least one of --${fields2.join(", --")}.`);
+          return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields2.flatMap((key) => value$2(flags, key) === void 0 ? [] : [[key, value$2(flags, key)]])) });
         }
         case "depend":
         case "undepend": {
@@ -39256,8 +40145,8 @@ function backlogCommand(ports2) {
     }
   };
 }
-function only(flags, sub, keys) {
-  for (const key of Object.keys(flags)) ensure(!Object.hasOwn(options, key) || [...selection, ...keys].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by ${sub}.`);
+function only(flags, sub, keys2) {
+  for (const key of Object.keys(flags)) ensure(!Object.hasOwn(options, key) || [...selection, ...keys2].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by ${sub}.`);
 }
 function iteration(session, rest, flags, ifMatch2) {
   const [sub, ...args] = rest;
@@ -39298,18 +40187,19 @@ function release(session, bases, rest, flags, ifMatch2) {
       return listReleases(session, bases);
   }
 }
-const payload = (keys) => (value2) => isRecord(value2) && keys.every((key) => typeof value2[key] === "string");
-const events = [
-  { id: "backlog.item-created", description: "A backlog item, iteration or release note was created: {path, title, type, id, parent?, order?}.", validate: payload(["path", "title", "type"]) },
-  { id: "backlog.item-moved", description: "An item was reparented or reordered: {path, parent, order, previousParent, previousOrder}.", validate: payload(["path"]) },
-  { id: "backlog.state-changed", description: "An item changed its workflow state: {path, title, from, to, started?, finished?}.", validate: payload(["path", "title"]) },
-  { id: "backlog.released", description: "A release was marked released: {path, name, status, released}.", validate: payload(["path", "name", "status", "released"]) }
+const payload$1 = (keys2) => (value2) => isRecord(value2) && keys2.every((key) => typeof value2[key] === "string");
+const events$1 = [
+  { id: "backlog.item-created", description: "A backlog item, iteration or release note was created: {path, title, type, id, parent?, order?}.", validate: payload$1(["path", "title", "type"]) },
+  { id: "backlog.item-moved", description: "An item was reparented or reordered: {path, parent, order, previousParent, previousOrder}.", validate: payload$1(["path"]) },
+  { id: "backlog.state-changed", description: "An item changed its workflow state: {path, title, from, to, started?, finished?}.", validate: payload$1(["path", "title"]) },
+  { id: "backlog.released", description: "A release was marked released: {path, name, status, released}.", validate: payload$1(["path", "name", "status", "released"]) },
+  { id: "backlog.synced", description: "A bound view finished syncing with its connection: {base, view, connection, created, updated, pulled, conflicts, left (notes that left the sync set of the connection), failed}.", validate: payload$1(["base", "view", "connection"]) }
 ];
 const today = () => {
   const now = /* @__PURE__ */ new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
 };
-const de = {
+const de$1 = {
   commands: { backlog: "Ein Product Backlog kompatibel mit der Obsidian-Ansicht Product Backlog (backlog-view) planen: Hierarchie, Ränge, Status, Iterationen, Releases und Abhängigkeiten." },
   actions: {
     "backlog init": "Das Product-Backlog.base-Gerüst des Plugins in einen Ordner schreiben (Standard docs).",
@@ -39325,20 +40215,23 @@ const de = {
     "backlog undepend": "Einen dependsOn-Eintrag entfernen; der Schlüssel entfällt, wenn die Liste leer wird.",
     "backlog iteration": "add legt eine Iteration mit den Namens- und Datumsvorgaben des Plugins an, assign <item> <iteration> plant einen Eintrag ein.",
     "backlog release": "add, join <item> <release>, mark-released, readiness, notes (generierte Release Notes) oder list für Releases.",
-    "backlog check": "Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden."
+    "backlog check": "Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden.",
+    "backlog sync": "Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen; status liest beide Seiten ohne zu schreiben, resolve löst einen Konflikt."
   },
   events: {
     "backlog.item-created": "Ein Backlog-Eintrag, eine Iteration oder ein Release wurde angelegt.",
     "backlog.item-moved": "Ein Eintrag wurde umgehängt oder neu eingereiht.",
     "backlog.state-changed": "Ein Eintrag hat seinen Workflow-Status geändert.",
-    "backlog.released": "Ein Release wurde als veröffentlicht markiert."
+    "backlog.released": "Ein Release wurde als veröffentlicht markiert.",
+    "backlog.synced": "Eine an eine Verbindung gebundene Ansicht wurde abgeglichen."
   },
   errors: {
     BACKLOG_NOT_FOUND: { summary: "Das Backlog oder der Eintrag wurde nicht gefunden.", hint: "Legen Sie mit backlog init ein Backlog an, übergeben Sie --base und --view oder prüfen Sie den Eintrag mit backlog list." },
     BACKLOG_AMBIGUOUS: { summary: "Die Angabe passt auf mehrere Backlogs oder Einträge.", hint: "Wählen Sie einen der Kandidaten in error.details.candidates über --base und --view oder den vollständigen Pfad." },
     BACKLOG_CONFIG_PROBLEM: { summary: "Die Backlog-Konfiguration in der .base-Datei verhindert diesen Vorgang.", hint: "Beheben Sie das in der Meldung genannte Problem in den Ansichtsoptionen der .base-Datei und wiederholen Sie den Befehl." },
     BACKLOG_WRITE_REFUSED: { summary: "Das Backlog-Plugin verweigert diesen Schreibvorgang.", hint: "error.details.reason nennt die Regel; wählen Sie einen passenden Eintrag, Typ oder Wert oder binden Sie die fehlende Eigenschaft." },
-    BACKLOG_NO_GAP: { summary: "Zwischen den Nachbarn ist kein Rang mehr frei.", hint: "Führen Sie backlog ranks respace (oder backlog ranks seed bei fehlenden Rängen) aus und wiederholen Sie die Verschiebung." }
+    BACKLOG_NO_GAP: { summary: "Zwischen den Nachbarn ist kein Rang mehr frei.", hint: "Führen Sie backlog ranks respace (oder backlog ranks seed bei fehlenden Rängen) aus und wiederholen Sie die Verschiebung." },
+    SYNC_CONFLICT: { summary: "Das entfernte Work Item hat sich während des Abgleichs geändert.", hint: "Prüfen Sie den Stand mit backlog sync status und wiederholen Sie den Abgleich oder die Konfliktlösung." }
   }
 };
 const backlogPlugin = {
@@ -39351,32 +40244,754 @@ const backlogPlugin = {
     author: "The Forge",
     description: "Plan a product backlog compatible with the Obsidian Product Backlog view: hierarchy, ranks, states, iterations, releases and dependencies."
   },
-  create: () => ({
-    requires: ["bases.query"],
-    commands: [backlogCommand((context) => ({
-      bases: context.services.get("bases.query"),
-      ports: { stringifyYaml, editFrontmatter, today }
-    }))],
-    events,
-    skills: [backlogSkill],
-    settings: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        base: { type: "string", minLength: 1, description: "The default .base file of the backlog command, relative to the command scope." },
-        view: { type: "string", minLength: 1, description: "The default product-backlog view of that base." }
-      }
-    },
-    errors: [
-      { code: "BACKLOG_NOT_FOUND", category: "not-found", summary: "The backlog or the backlog item was not found.", hint: "Create a backlog with backlog init, pass --base and --view, or check the item with backlog list." },
-      { code: "BACKLOG_AMBIGUOUS", category: "input", summary: "The selection matches several backlogs or items.", hint: "Pick one of error.details.candidates with --base and --view, or pass the full path." },
-      { code: "BACKLOG_CONFIG_PROBLEM", category: "input", summary: "The backlog configuration in the .base file blocks this operation.", hint: "Fix the problem named in the message in the .base view options, then rerun the command." },
-      { code: "BACKLOG_WRITE_REFUSED", category: "conflict", summary: "The backlog refuses this write.", hint: "error.details.reason names the rule; choose a fitting item, type or value, or bind the missing property." },
-      { code: "BACKLOG_NO_GAP", category: "conflict", summary: "No rank is free between the neighbours.", hint: "Run backlog ranks respace (or backlog ranks seed when ranks are missing), then repeat the move." }
-    ],
-    strings: { de }
-  })
+  create: (host) => {
+    const activity = { syncing: false };
+    return {
+      requires: ["bases.query"],
+      optional: ["connector.hub"],
+      commands: [backlogCommand((context) => {
+        const { services } = context;
+        const ports2 = { stringifyYaml, editFrontmatter, today, hash: hashText };
+        return { bases: services.get("bases.query"), ports: ports2, sync: () => ({ bases: services.get("bases.query"), ports: ports2, hub: services.get("connector.hub"), activity, lock: host.locks(context.root) }) };
+      })],
+      // Sync state files stay keyed by note path when notes or folders are renamed through Forge.
+      onload(context) {
+        if (!context.services.has("connector.hub")) return;
+        const hub = context.services.get("connector.hub");
+        context.app.vault.on("rename", async ({ path, oldPath, kind }) => {
+          if (!activity.syncing) await followRename(context.workspace, hub.ids(), oldPath, path, kind);
+        });
+      },
+      events: events$1,
+      skills: [backlogSkill],
+      settings: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          base: { type: "string", minLength: 1, description: "The default .base file of the backlog command, relative to the command scope." },
+          view: { type: "string", minLength: 1, description: "The default product-backlog view of that base." }
+        }
+      },
+      errors: [
+        { code: "BACKLOG_NOT_FOUND", category: "not-found", summary: "The backlog or the backlog item was not found.", hint: "Create a backlog with backlog init, pass --base and --view, or check the item with backlog list." },
+        { code: "BACKLOG_AMBIGUOUS", category: "input", summary: "The selection matches several backlogs or items.", hint: "Pick one of error.details.candidates with --base and --view, or pass the full path." },
+        { code: "BACKLOG_CONFIG_PROBLEM", category: "input", summary: "The backlog configuration in the .base file blocks this operation.", hint: "Fix the problem named in the message in the .base view options, then rerun the command." },
+        { code: "BACKLOG_WRITE_REFUSED", category: "conflict", summary: "The backlog refuses this write.", hint: "error.details.reason names the rule; choose a fitting item, type or value, or bind the missing property." },
+        { code: "BACKLOG_NO_GAP", category: "conflict", summary: "No rank is free between the neighbours.", hint: "Run backlog ranks respace (or backlog ranks seed when ranks are missing), then repeat the move." },
+        { code: "SYNC_CONFLICT", category: "conflict", summary: "The remote work item changed while it was being synced.", hint: "Check the state with backlog sync status, then repeat the sync or the resolution.", retryable: true }
+      ],
+      strings: { de: de$1 }
+    };
+  }
 };
+const SHARED_KEYS = ["platform", "tokenEnv", "linkProperty", "effortProperty", "areaProperty", "mappings"];
+const CONNECTION_ID = /^[a-z][a-z0-9-]*$/;
+const nameMap = (description2) => ({ type: "object", description: description2, additionalProperties: { type: "string" } });
+const connectorSettings = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    connections: {
+      type: "object",
+      default: {},
+      description: "Connection profiles by id (lowercase kebab-case).",
+      additionalProperties: {
+        type: "object",
+        required: ["platform"],
+        additionalProperties: true,
+        properties: {
+          platform: { type: "string", pattern: "^[a-z][a-z0-9-]*$", description: "The connector platform, for example azure-devops." },
+          tokenEnv: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration." },
+          linkProperty: { type: "string", minLength: 1, description: "The frontmatter key that links a note to its remote item; the platform default when omitted." },
+          effortProperty: { type: "string", minLength: 1, default: "effort", description: "The frontmatter key of the effort or story points." },
+          areaProperty: { type: "string", minLength: 1, default: "area", description: "The frontmatter key of the area path; a note without it uses the connection's default area." },
+          mappings: {
+            type: "object",
+            additionalProperties: false,
+            default: {},
+            properties: {
+              types: nameMap("Local backlog type → remote work item type, over the process defaults."),
+              states: nameMap("Local state (optionally Type:State) → remote state, over the process defaults."),
+              fields: nameMap("Neutral field → remote field reference over the process defaults; an empty string stops syncing the field."),
+              properties: nameMap("Extra frontmatter key → remote field reference, synced as a plain value.")
+            }
+          }
+        }
+      }
+    }
+  }
+};
+const strings$1 = (value2) => isRecord(value2) ? Object.fromEntries(Object.entries(value2).filter((entry2) => typeof entry2[1] === "string")) : {};
+function profiles(settings2) {
+  const connections = isRecord(settings2?.connections) ? settings2.connections : {};
+  return Object.entries(connections).filter((entry2) => isRecord(entry2[1])).map(([id2, raw]) => {
+    const mappings = isRecord(raw.mappings) ? raw.mappings : {};
+    return {
+      id: id2,
+      platform: String(raw.platform),
+      ...typeof raw.tokenEnv === "string" ? { tokenEnv: raw.tokenEnv } : {},
+      ...typeof raw.linkProperty === "string" ? { linkProperty: raw.linkProperty } : {},
+      effortProperty: typeof raw.effortProperty === "string" ? raw.effortProperty : "effort",
+      areaProperty: typeof raw.areaProperty === "string" ? raw.areaProperty : "area",
+      mappings: { types: strings$1(mappings.types), states: strings$1(mappings.states), fields: strings$1(mappings.fields), properties: strings$1(mappings.properties) },
+      specific: Object.fromEntries(Object.entries(raw).filter(([key]) => !SHARED_KEYS.includes(key)))
+    };
+  });
+}
+function connectorError(code2, message2, details) {
+  return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
+}
+class Hub {
+  constructor(environment) {
+    this.environment = environment;
+  }
+  environment;
+  connectors = /* @__PURE__ */ new Map();
+  settings = null;
+  events = null;
+  bind(settings2, events2) {
+    this.settings = settings2;
+    this.events = events2;
+  }
+  register(connector) {
+    if (this.connectors.has(connector.id)) throw connectorError("CONNECTION_INVALID", `Two connectors register the platform ${connector.id}.`, { platform: connector.id });
+    this.connectors.set(connector.id, connector);
+  }
+  platforms() {
+    return [...this.connectors.keys()].sort();
+  }
+  ids() {
+    return profiles(this.settings).map((profile) => profile.id);
+  }
+  /** Every profile with its validation result, for listing; never throws for one bad profile. */
+  statuses() {
+    return profiles(this.settings).map((profile) => {
+      const connector = this.connectors.get(profile.platform) ?? null;
+      if (connector === null) return { profile, connector, issues: [`platform ${profile.platform} is not available; enable its connector plugin`], bound: null };
+      const { connection, issues } = this.build(profile, connector);
+      return { profile, connector, issues, bound: issues.length === 0 ? { connection, connector } : null };
+    });
+  }
+  connection(id2) {
+    const profile = profiles(this.settings).find((entry2) => entry2.id === id2);
+    if (profile === void 0) throw connectorError("CONNECTOR_NOT_FOUND", `No connection ${id2} is configured in plugins.settings.connector.connections.`, { connection: id2, connections: this.ids() });
+    const connector = this.connectors.get(profile.platform);
+    if (connector === void 0) throw connectorError("CONNECTOR_NOT_FOUND", `Connection ${id2} uses the platform ${profile.platform}, which no enabled connector provides.`, { connection: id2, platform: profile.platform, platforms: this.platforms() });
+    const { connection, issues } = this.build(profile, connector);
+    if (issues.length > 0) throw connectorError("CONNECTION_INVALID", `Connection ${id2} is invalid: ${issues.join("; ")}`, { connection: id2, issues });
+    return { connection, connector };
+  }
+  async report(name2, payload2) {
+    await this.events?.emit(`connector.${name2}`, payload2);
+  }
+  build(profile, connector) {
+    const description2 = connector.describe();
+    const path = `plugins.settings.connector.connections.${profile.id}`;
+    const checked = validateJsonValue(description2.connectionSchema, profile.specific, path);
+    const issues = [...CONNECTION_ID.test(profile.id) ? [] : [`${path}: connection ids are lowercase kebab-case`], ...checked.issues];
+    const tokenEnv = profile.tokenEnv ?? description2.defaults.tokenEnv;
+    const environment = this.environment;
+    const settings2 = { ...isRecord(checked.value) ? checked.value : {}, platform: profile.platform, tokenEnv, mappings: profile.mappings };
+    const connection = {
+      id: profile.id,
+      platform: profile.platform,
+      tokenEnv,
+      linkProperty: profile.linkProperty ?? description2.defaults.linkProperty,
+      effortProperty: profile.effortProperty,
+      areaProperty: profile.areaProperty,
+      settings: settings2,
+      token() {
+        const value2 = environment(tokenEnv)?.trim();
+        if (!value2) throw connectorError("CONNECTOR_AUTH_FAILED", `Set the environment variable ${tokenEnv} to an access token for connection ${profile.id}.`, { connection: profile.id, tokenEnv });
+        return value2;
+      }
+    };
+    return { connection, issues };
+  }
+}
+function tokenSet(connection, environment) {
+  return (environment(connection.tokenEnv)?.trim() ?? "") !== "";
+}
+const actions = ["list", "inspect", "test"];
+function connectionJson({ connection, connector }, environment) {
+  return {
+    id: connection.id,
+    platform: connection.platform,
+    tokenEnv: connection.tokenEnv,
+    tokenSet: tokenSet(connection, environment),
+    linkProperty: connection.linkProperty,
+    effortProperty: connection.effortProperty,
+    areaProperty: connection.areaProperty,
+    ...connector.describe().summary(connection),
+    warnings: connector.describe().warnings(connection)
+  };
+}
+function connectorsCommand(hub, environment) {
+  return {
+    id: "connectors",
+    description: "List, inspect and test the backlog connector connections configured in plugins.settings.connector.connections.",
+    usage: "connectors list | inspect <id> | test <id>",
+    scope: "workspace",
+    discovery: false,
+    mutating: false,
+    defaultAction: "list",
+    actions: {
+      list: { description: "Every connection with its platform, validity, warnings and whether its token variable is set." },
+      inspect: { description: "One connection with its resolved type, state and field mappings." },
+      test: { description: "An authenticated, read-only probe of one connection." }
+    },
+    args: [
+      { name: "action", description: actions.join(", "), enum: actions },
+      { name: "id", description: "The connection id (inspect, test)." }
+    ],
+    errors: ["CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
+    async run(args) {
+      const [action2 = "list", ...rest] = args;
+      ensure(actions.includes(action2), "INVALID_ARGUMENT", `Use connectors ${actions.join(", connectors ")}.`);
+      if (action2 === "list") {
+        arity(rest, 0);
+        return {
+          platforms: hub.platforms(),
+          connections: hub.statuses().map((status2) => ({
+            ...status2.bound ? connectionJson(status2.bound, environment) : { id: status2.profile.id, platform: status2.profile.platform },
+            available: status2.connector !== null,
+            valid: status2.issues.length === 0,
+            issues: status2.issues
+          }))
+        };
+      }
+      arity(rest, 1);
+      const bound2 = hub.connection(rest[0]);
+      if (action2 === "inspect") {
+        const description2 = bound2.connector.describe();
+        return { connection: connectionJson(bound2, environment), platform: { id: description2.platform, name: description2.name, description: description2.description }, mapping: bound2.connector.mapping(bound2.connection) };
+      }
+      const probe = await bound2.connector.test(bound2.connection);
+      return { connection: bound2.connection.id, platform: bound2.connection.platform, ok: probe.ok, target: probe.target };
+    }
+  };
+}
+const payload = (value2) => isRecord(value2) && ["connection", "platform", "path", "remoteId", "url"].every((key) => typeof value2[key] === "string") && Array.isArray(value2.fields);
+const events = [
+  { id: "connector.pushed", description: "A note was pushed to its remote item: {connection, platform, path, remoteId, url, operation: create|update, fields}.", validate: payload },
+  { id: "connector.pulled", description: "Remote changes were written into a note: {connection, platform, path, remoteId, url, fields}.", validate: payload },
+  { id: "connector.conflict", description: "Fields changed on both sides since the last sync and were left untouched: {connection, platform, path, remoteId, url, fields}.", validate: payload }
+];
+const de = {
+  commands: { connectors: "Die in plugins.settings.connector.connections konfigurierten Backlog-Verbindungen auflisten, prüfen und testen." },
+  actions: {
+    "connectors list": "Jede Verbindung mit Plattform, Gültigkeit, Warnungen und der Angabe, ob ihre Token-Variable gesetzt ist.",
+    "connectors inspect": "Eine Verbindung mit ihren aufgelösten Typ-, Status- und Feldzuordnungen.",
+    "connectors test": "Eine authentifizierte, nur lesende Prüfung einer Verbindung."
+  },
+  events: {
+    "connector.pushed": "Eine Notiz wurde in ihr entferntes Work Item übertragen.",
+    "connector.pulled": "Entfernte Änderungen wurden in eine Notiz geschrieben.",
+    "connector.conflict": "Felder wurden seit dem letzten Abgleich auf beiden Seiten geändert und blieben unverändert."
+  },
+  errors: {
+    CONNECTOR_NOT_FOUND: { summary: "Die Verbindung oder ihre Plattform ist nicht verfügbar.", hint: "Prüfen Sie die Verbindungs-ID mit connectors list und aktivieren Sie das Connector-Plugin der Plattform." },
+    CONNECTION_INVALID: { summary: "Das Verbindungsprofil ist ungültig.", hint: "Korrigieren Sie die in error.details.issues genannten Felder in plugins.settings.connector.connections." },
+    CONNECTOR_AUTH_FAILED: { summary: "Die Anmeldung beim entfernten Dienst ist fehlgeschlagen.", hint: "Setzen Sie die in error.details.tokenEnv genannte Umgebungsvariable auf ein gültiges Zugriffstoken mit Lese- und Schreibrechten für Work Items." },
+    CONNECTOR_REQUEST_FAILED: { summary: "Eine Anfrage an den entfernten Dienst ist fehlgeschlagen.", hint: "Prüfen Sie error.details.status und die Meldung, die Organisations-URL und das Projekt, und wiederholen Sie den Befehl." }
+  }
+};
+const connectorPlugin = {
+  manifest: {
+    id: "connector",
+    name: "Connectors",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Connection profiles and the shared hub for backlog connectors to external work trackers."
+  },
+  create: (host) => {
+    const hub = new Hub(host.environment);
+    return {
+      provides: { "connector.hub": hub },
+      onload(context) {
+        hub.bind(context.settings, context.events);
+      },
+      commands: [connectorsCommand(hub, host.environment)],
+      events,
+      settings: connectorSettings,
+      errors: [
+        { code: "CONNECTOR_NOT_FOUND", category: "not-found", summary: "The connection or its platform is not available.", hint: "Check the connection id with connectors list and enable the platform's connector plugin." },
+        { code: "CONNECTION_INVALID", category: "input", summary: "The connection profile is invalid.", hint: "Fix the fields named in error.details.issues in plugins.settings.connector.connections." },
+        { code: "CONNECTOR_AUTH_FAILED", category: "external", summary: "Authentication with the remote service failed.", hint: "Set the environment variable named in error.details.tokenEnv to a valid access token with work item read and write scope." },
+        { code: "CONNECTOR_REQUEST_FAILED", category: "external", summary: "A request to the remote service failed.", hint: "Check error.details.status and the message, the organization URL and the project, then rerun the command.", retryable: true }
+      ],
+      strings: { de }
+    };
+  }
+};
+function redact(text2, secrets) {
+  let result = text2;
+  for (const secret of secrets.filter((value2) => value2.length >= 4)) {
+    const forms = [secret, encodeURIComponent(secret)];
+    try {
+      forms.push(btoa(`:${secret}`));
+    } catch {
+    }
+    for (const form of forms) result = result.split(form).join("[redacted]");
+  }
+  return result;
+}
+const PROCESSES = ["agile", "scrum", "basic", "custom"];
+const PARENT_LINK = "System.LinkTypes.Hierarchy-Reverse";
+const PREDECESSOR_LINK = "System.LinkTypes.Dependency-Reverse";
+const types = {
+  agile: { Epic: "Epic", Feature: "Feature", PBI: "User Story", Task: "Task", Bug: "Bug", Issue: "Issue" },
+  scrum: { Epic: "Epic", Feature: "Feature", PBI: "Product Backlog Item", Task: "Task", Bug: "Bug", Issue: "Impediment" },
+  basic: { Epic: "Epic", Feature: "Epic", PBI: "Issue", Issue: "Issue", Bug: "Issue", Task: "Task" },
+  custom: {}
+};
+const states = {
+  agile: { New: "New", Active: "Active", Resolved: "Resolved", Closed: "Closed", Removed: "Removed", Open: "New", "To Do": "New", "In Progress": "Active", Done: "Closed" },
+  scrum: {
+    New: "New",
+    Approved: "Approved",
+    Committed: "Committed",
+    Done: "Done",
+    Removed: "Removed",
+    Open: "New",
+    "To Do": "New",
+    Active: "Committed",
+    "In Progress": "Committed",
+    Closed: "Done",
+    "Task:To Do": "To Do",
+    "Task:In Progress": "In Progress",
+    "Task:Done": "Done",
+    "Task:Removed": "Removed",
+    "Task:New": "To Do",
+    "Task:Open": "To Do",
+    "Task:Active": "In Progress",
+    "Task:Closed": "Done"
+  },
+  basic: { "To Do": "To Do", Doing: "Doing", Done: "Done", New: "To Do", Open: "To Do", Active: "Doing", "In Progress": "Doing", Closed: "Done" },
+  custom: {}
+};
+const effort = {
+  agile: "Microsoft.VSTS.Scheduling.StoryPoints",
+  scrum: "Microsoft.VSTS.Scheduling.Effort",
+  basic: "Microsoft.VSTS.Scheduling.Effort",
+  custom: "Microsoft.VSTS.Scheduling.Effort"
+};
+function fields(process2) {
+  return {
+    title: "System.Title",
+    type: "System.WorkItemType",
+    state: "System.State",
+    parent: PARENT_LINK,
+    iteration: "System.IterationPath",
+    area: "System.AreaPath",
+    priority: "Microsoft.VSTS.Common.Priority",
+    effort: effort[process2],
+    tags: "System.Tags",
+    description: "System.Description"
+  };
+}
+function processMapping(process2, overrides = {}) {
+  const resolved = fields(process2);
+  for (const [field2, reference] of Object.entries(overrides.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
+  return {
+    types: { ...types[process2], ...overrides.types },
+    states: { ...states[process2], ...overrides.states },
+    fields: resolved,
+    properties: { ...overrides.properties }
+  };
+}
+function unknownFields(overrides) {
+  const known2 = Object.keys(fields("agile"));
+  return Object.keys(overrides.fields ?? {}).filter((field2) => !known2.includes(field2));
+}
+function markdownToHtml(markdown) {
+  const lines2 = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const html2 = [];
+  let paragraph = [];
+  const open2 = { list: null };
+  const flushParagraph = () => {
+    if (paragraph.length > 0) html2.push(`<p>${paragraph.map(inline).join("<br>")}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    const list2 = open2.list;
+    if (list2) html2.push(`<${list2.tag}>${list2.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list2.tag}>`);
+    open2.list = null;
+  };
+  const flush = () => {
+    flushParagraph();
+    flushList();
+  };
+  for (let index2 = 0; index2 < lines2.length; index2++) {
+    const line = lines2[index2];
+    const fence2 = /^\s*(```|~~~)/.exec(line);
+    if (fence2) {
+      flush();
+      const code2 = [];
+      for (index2++; index2 < lines2.length && !lines2[index2].trimStart().startsWith(fence2[1]); index2++) code2.push(lines2[index2]);
+      html2.push(`<pre><code>${escape$1(code2.join("\n"))}</code></pre>`);
+      continue;
+    }
+    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line), quote = /^\s*>\s?(.*)$/.exec(line);
+    if (line.trim() === "") flush();
+    else if (heading) {
+      flush();
+      html2.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`);
+    } else if (bullet || numbered) {
+      flushParagraph();
+      const tag = bullet ? "ul" : "ol";
+      if (open2.list?.tag !== tag) {
+        flushList();
+        open2.list = { tag, items: [] };
+      }
+      open2.list.items.push((bullet ?? numbered)[1]);
+    } else if (quote) {
+      flush();
+      html2.push(`<blockquote>${inline(quote[1])}</blockquote>`);
+    } else {
+      flushList();
+      paragraph.push(line.trim());
+    }
+  }
+  flush();
+  return html2.join("");
+}
+function escape$1(text2) {
+  return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+const safeHref = (href) => /^(https?:|mailto:)/i.test(href);
+function inline(text2) {
+  const codes = [];
+  let result = escape$1(text2).replace(/`([^`]+)`/g, (_, code2) => {
+    codes.push(`<code>${code2}</code>`);
+    return `<c${codes.length - 1}>`;
+  });
+  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label2, href) => safeHref(href) ? `<a href="${href}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
+  return result.replace(/<c(\d+)>/g, (_, index2) => codes[Number(index2)]);
+}
+const field$1 = (reference, value2) => value2 === null ? { op: "remove", path: `/fields/${reference}` } : { op: "add", path: `/fields/${reference}`, value: value2 };
+const AREA_PATH = "System.AreaPath";
+const workItemApiUrl = (organization, id2) => `${organization}/_apis/wit/workItems/${id2}`;
+const lastSegment = (url2) => typeof url2 === "string" ? /\/(\d+)$/.exec(url2)?.[1] ?? null : null;
+function fieldOperations(change2, context) {
+  const { fields: fields2 } = context.mapping;
+  const operations2 = [];
+  const scalar2 = [["type", fields2.type], ["title", fields2.title], ["state", fields2.state], ["iteration", fields2.iteration], ["area", fields2.area], ["priority", fields2.priority], ["effort", fields2.effort]];
+  for (const [key, reference] of scalar2) if (reference !== null && change2[key] !== void 0) operations2.push(field$1(reference, change2[key]));
+  if (fields2.tags !== null && change2.tags !== void 0) operations2.push(field$1(fields2.tags, change2.tags.join("; ")));
+  if (fields2.description !== null && change2.description !== void 0) {
+    const markdown = context.descriptionFormat === "markdown";
+    if (change2.description === null) operations2.push(field$1(fields2.description, null));
+    else {
+      operations2.push(field$1(fields2.description, markdown ? change2.description : markdownToHtml(change2.description)));
+      if (markdown) operations2.push({ op: "add", path: `/multilineFieldsFormat/${fields2.description}`, value: "Markdown" });
+    }
+  }
+  for (const [reference, value2] of Object.entries(change2.fields ?? {})) operations2.push(field$1(reference, value2));
+  return operations2;
+}
+function createOperations(draft, context) {
+  const { type: _type, ...rest } = draft;
+  const set2 = Object.fromEntries(Object.entries(rest).filter(([, value2]) => value2 !== null && value2 !== void 0 && !(Array.isArray(value2) && value2.length === 0)));
+  const operations2 = fieldOperations({ ...set2, ...rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value2]) => value2 !== null)) } : {} }, context);
+  if (draft.area && context.mapping.fields.area === null) operations2.push(field$1(AREA_PATH, draft.area));
+  if (draft.parentId && context.mapping.fields.parent !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
+  return operations2;
+}
+function updateOperations(patch, expectedRev, context, relations = []) {
+  const operations2 = [{ op: "test", path: "/rev", value: Number(expectedRev) }, ...fieldOperations(patch, context)];
+  if (patch.parentId !== void 0 && context.mapping.fields.parent !== null) {
+    const index2 = relations.findIndex((relation) => isRecord(relation) && relation.rel === PARENT_LINK);
+    if (index2 >= 0) operations2.push({ op: "remove", path: `/relations/${index2}` });
+    if (patch.parentId !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, patch.parentId) } });
+  }
+  return operations2;
+}
+const text$2 = (value2) => typeof value2 === "string" && value2.trim() !== "" ? value2 : null;
+const number$2 = (value2) => typeof value2 === "number" && Number.isFinite(value2) ? value2 : typeof value2 === "string" && value2.trim() !== "" && Number.isFinite(Number(value2)) ? Number(value2) : null;
+function remoteItem(json2, context, url2) {
+  const item = isRecord(json2) ? json2 : {};
+  const values2 = isRecord(item.fields) ? item.fields : {};
+  const relations = Array.isArray(item.relations) ? item.relations.filter(isRecord) : [];
+  const { fields: fields2 } = context.mapping;
+  const id2 = String(item.id);
+  const read2 = (reference) => reference === null ? void 0 : values2[reference];
+  const formats = isRecord(item.multilineFieldsFormat) ? item.multilineFieldsFormat : {};
+  const description2 = fields2.description === null ? void 0 : text$2(read2(fields2.description));
+  const markdown = fields2.description !== null && String(formats[fields2.description] ?? "").toLowerCase() === "markdown";
+  const area = text$2(values2[fields2.area ?? AREA_PATH]);
+  return {
+    id: id2,
+    rev: String(item.rev),
+    url: url2(id2),
+    type: String(values2["System.WorkItemType"] ?? ""),
+    title: String(read2(fields2.title) ?? ""),
+    state: text$2(read2(fields2.state)),
+    parentId: lastSegment(relations.find((relation) => relation.rel === PARENT_LINK)?.url),
+    iteration: text$2(read2(fields2.iteration)),
+    area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
+    priority: number$2(read2(fields2.priority)),
+    effort: number$2(read2(fields2.effort)),
+    tags: (text$2(read2(fields2.tags)) ?? "").split(";").map((tag) => tag.trim()).filter(Boolean),
+    ...description2 === void 0 ? {} : { description: description2, descriptionMarkdown: markdown },
+    links: { predecessors: relations.filter((relation) => relation.rel === PREDECESSOR_LINK).map((relation) => lastSegment(relation.url)).filter((value2) => value2 !== null) },
+    fields: Object.fromEntries(Object.values(context.mapping.properties).map((reference) => [reference, values2[reference] ?? null]))
+  };
+}
+const API_VERSION = "7.1";
+const BATCH_SIZE = 200;
+const organizationPattern = "^(https://[^\\s/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?)(/[^\\s/?#@]+)*/?$";
+const connectionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["organization", "project"],
+  properties: {
+    organization: { type: "string", pattern: organizationPattern, description: "The organization URL, for example https://dev.azure.com/contoso (https without user info; http only for localhost). The token is sent to this host." },
+    project: { type: "string", minLength: 1, description: "The project name." },
+    areaPath: { type: "string", minLength: 1, description: "The default area path: notes without an area property sync to it." },
+    iterationRoot: { type: "string", minLength: 1, description: "The iteration path under which iteration notes map by name, for example Trailhead or Trailhead\\Sprints." },
+    process: { type: "string", enum: [...PROCESSES], default: "agile", description: "The process whose type, state and field defaults apply." },
+    descriptionFormat: { type: "string", enum: ["markdown", "html"], default: "markdown", description: "markdown syncs the note body both ways; html pushes converted HTML only (Azure DevOps Server)." }
+  }
+};
+const failure$1 = (code2, message2, details) => Object.assign(new Error(message2), { code: code2, details });
+const setting = (connection, key) => typeof connection.settings[key] === "string" ? connection.settings[key] : void 0;
+const organizationOf = (connection) => setting(connection, "organization").replace(/\/+$/, "");
+const defaultArea = (connection) => setting(connection, "areaPath") ?? setting(connection, "project");
+function withDefaults(connection, change2) {
+  return { ...change2, ...change2.iteration === null ? { iteration: setting(connection, "project") } : {}, ...change2.area === null ? { area: defaultArea(connection) } : {} };
+}
+const knownHost = (host) => host === "dev.azure.com" || host.endsWith(".visualstudio.com");
+class AzureDevOpsConnector {
+  constructor(http) {
+    this.http = http;
+  }
+  http;
+  id = "azure-devops";
+  describe() {
+    return {
+      platform: this.id,
+      name: "Azure DevOps Boards",
+      description: "Work items of one Azure DevOps project through the Work Items REST API 7.1.",
+      defaults: { tokenEnv: "AZURE_DEVOPS_EXT_PAT", linkProperty: "azure-devops" },
+      connectionSchema,
+      summary: (connection) => ({
+        organization: organizationOf(connection),
+        project: setting(connection, "project"),
+        process: setting(connection, "process"),
+        descriptionFormat: setting(connection, "descriptionFormat"),
+        ...setting(connection, "areaPath") ? { areaPath: setting(connection, "areaPath") } : {},
+        ...setting(connection, "iterationRoot") ? { iterationRoot: setting(connection, "iterationRoot") } : {}
+      }),
+      warnings: (connection) => {
+        let host;
+        try {
+          host = new URL(organizationOf(connection)).hostname.toLowerCase();
+        } catch {
+          return [];
+        }
+        return knownHost(host) ? [] : [`organization host ${host} is neither dev.azure.com nor *.visualstudio.com; the token in ${connection.tokenEnv} is sent there (expected only for Azure DevOps Server).`];
+      }
+    };
+  }
+  mapping(connection) {
+    const overrides = isRecord(connection.settings.mappings) ? connection.settings.mappings : {};
+    const unknown2 = unknownFields(overrides);
+    if (unknown2.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown2.join(", ")}.`), { code: "CONNECTION_INVALID", details: { connection: connection.id, issues: unknown2.map((name2) => `mappings.fields.${name2}: not a neutral field`) } });
+    return processMapping(setting(connection, "process") ?? "agile", overrides);
+  }
+  link(connection, id2) {
+    return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_workitems/edit/${id2}`;
+  }
+  idFromLink(connection, url2) {
+    const match = /^(.*)\/_workitems\/edit\/(\d+)\/?$/i.exec(url2.trim());
+    if (!match) return null;
+    const expected = `${organizationOf(connection)}/${setting(connection, "project")}`.toLowerCase();
+    let prefix;
+    try {
+      prefix = decodeURIComponent(match[1]).toLowerCase();
+    } catch {
+      return null;
+    }
+    return prefix === expected ? match[2] : null;
+  }
+  async test(connection) {
+    const project2 = setting(connection, "project");
+    const json2 = await this.call(connection, "GET", `${organizationOf(connection)}/_apis/projects/${encodeURIComponent(project2)}?includeCapabilities=true&api-version=${API_VERSION}`);
+    const capabilities = isRecord(json2.capabilities) && isRecord(json2.capabilities.processTemplate) ? json2.capabilities.processTemplate : {};
+    const processName = typeof capabilities.templateName === "string" ? capabilities.templateName : null;
+    return {
+      ok: true,
+      target: {
+        organization: organizationOf(connection),
+        project: json2.name ?? project2,
+        projectId: json2.id ?? null,
+        state: json2.state ?? null,
+        process: processName,
+        ...processName !== null && setting(connection, "process") !== "custom" ? { processMatches: processName.toLowerCase() === setting(connection, "process") } : {}
+      }
+    };
+  }
+  async query(connection, ids) {
+    const items2 = [];
+    const context = this.context(connection);
+    for (let start2 = 0; start2 < ids.length; start2 += BATCH_SIZE) {
+      const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitemsbatch?api-version=${API_VERSION}`), { ids: ids.slice(start2, start2 + BATCH_SIZE).map(Number), $expand: "relations", errorPolicy: "omit" }, { retry: true });
+      for (const entry2 of Array.isArray(json2.value) ? json2.value : []) if (isRecord(entry2)) items2.push(remoteItem(entry2, context, (id2) => this.link(connection, id2)));
+    }
+    return items2;
+  }
+  /**
+   * Work item types start in their initial state, which processes may enforce on create: the item is created without
+   * a state and then moved to the drafted state with a revision-guarded update. A failed move still returns the
+   * created item. Creates are never retried automatically, so a throttled create cannot create a duplicate.
+   */
+  async create(connection, item) {
+    const context = this.context(connection);
+    const { state: state2, ...draft } = item;
+    const operations2 = createOperations({ ...withDefaults(connection, draft), area: draft.area ?? defaultArea(connection) }, context);
+    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item.type)}?api-version=${API_VERSION}`), operations2, { contentType: "application/json-patch+json" });
+    const created = remoteItem(json2, context, (id2) => this.link(connection, id2));
+    if (state2 === void 0 || state2 === null || state2 === created.state || context.mapping.fields.state === null) return created;
+    try {
+      return await this.update(connection, created.id, { state: state2 }, created.rev);
+    } catch {
+      return created;
+    }
+  }
+  async update(connection, id2, patch, expectedRev) {
+    const context = this.context(connection);
+    const url2 = this.projectUrl(connection, `workitems/${encodeURIComponent(id2)}`);
+    const relations = patch.parentId === void 0 ? [] : (await this.call(connection, "GET", `${url2}?$expand=relations&api-version=${API_VERSION}`)).relations;
+    const operations2 = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
+    const json2 = await this.call(connection, "PATCH", `${url2}?$expand=relations&api-version=${API_VERSION}`, operations2, { contentType: "application/json-patch+json", retry: true });
+    return remoteItem(json2, context, (item) => this.link(connection, item));
+  }
+  context(connection) {
+    return { mapping: this.mapping(connection), descriptionFormat: setting(connection, "descriptionFormat") ?? "markdown", organization: organizationOf(connection), defaultArea: defaultArea(connection) };
+  }
+  projectUrl(connection, path) {
+    return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_apis/wit/${path}`;
+  }
+  /** One authenticated JSON request; failures are coded, carry the status and never the token. */
+  async call(connection, method, url2, body, options2 = {}) {
+    const contentType = options2.contentType ?? "application/json";
+    const token = connection.token();
+    const clean = (text2) => redact(text2, [token]);
+    let response;
+    try {
+      response = await this.http.request({
+        method,
+        url: url2,
+        headers: { Authorization: `Basic ${btoa(`:${token}`)}`, Accept: "application/json", ...body === void 0 ? {} : { "Content-Type": contentType } },
+        ...body === void 0 ? {} : { body: JSON.stringify(body) },
+        ...options2.retry === void 0 ? {} : { retry: options2.retry }
+      });
+    } catch (error2) {
+      throw failure$1("CONNECTOR_REQUEST_FAILED", clean(error2 instanceof Error ? error2.message : String(error2)), { connection: connection.id, status: null });
+    }
+    const details = { connection: connection.id, status: response.status, method, url: clean(url2) };
+    if (response.status === 401 || response.status === 403 || response.status === 203 || response.status >= 300 && response.status < 400) {
+      throw failure$1("CONNECTOR_AUTH_FAILED", `Azure DevOps refused the token in ${connection.tokenEnv} for connection ${connection.id} (HTTP ${response.status}).`, { ...details, tokenEnv: connection.tokenEnv });
+    }
+    let json2 = null;
+    try {
+      json2 = response.body.trim() === "" ? {} : JSON.parse(response.body);
+    } catch {
+      json2 = null;
+    }
+    if (response.status >= 200 && response.status < 300 && isRecord(json2)) return json2;
+    const message2 = isRecord(json2) && typeof json2.message === "string" ? clean(json2.message).slice(0, 300) : `HTTP ${response.status}`;
+    const stale = response.status === 412 || /TF26071|\btest\b.*\brev\b|\/rev/i.test(message2);
+    throw failure$1("CONNECTOR_REQUEST_FAILED", `Azure DevOps ${method} failed for connection ${connection.id}: ${message2}`, { ...details, ...stale ? { reason: "stale-revision" } : {} });
+  }
+}
+const azureDevOpsPlugin = {
+  manifest: {
+    id: "connector-azure-devops",
+    name: "Azure DevOps Boards connector",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Sync backlog items with Azure DevOps Boards work items through the Work Items REST API."
+  },
+  create: (host) => {
+    const connector = new AzureDevOpsConnector(host.http);
+    return {
+      provides: { "connector-azure-devops.connector": connector },
+      requires: ["connector.hub"],
+      onload(context) {
+        context.services.get("connector.hub").register(connector);
+      }
+    };
+  }
+};
+function nodeLockFiles(root) {
+  return async (path, command2) => {
+    const target = await (await NodeFiles.at(root)).resolvePath(path);
+    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
+    const token = await acquireLock(target, () => ({ command: command2 }), `Lock ${path}`);
+    return async () => await releaseLock(target, token) === "released";
+  };
+}
+const retryable = /* @__PURE__ */ new Set([429, 503]);
+function retryAfter(value2, now = Date.now()) {
+  if (value2 === null || value2.trim() === "") return null;
+  const seconds = Number(value2.trim());
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
+  const date2 = Date.parse(value2);
+  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
+}
+class FetchHttpClient {
+  fetch;
+  sleep;
+  retries;
+  timeoutMs;
+  maxDelayMs;
+  constructor(options2 = {}) {
+    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
+    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
+      setTimeout(resolve2, milliseconds);
+    }));
+    this.retries = options2.retries ?? 3;
+    this.timeoutMs = options2.timeoutMs ?? 3e4;
+    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
+  }
+  async request(request) {
+    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.attempt(request);
+      if (!retryable.has(response.status) || attempt >= retries) return response;
+      const asked = retryAfter(response.headers["retry-after"] ?? null);
+      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
+    }
+  }
+  async attempt(request) {
+    const timeout = request.timeoutMs ?? this.timeoutMs;
+    let response;
+    try {
+      response = await this.fetch(request.url, {
+        method: request.method,
+        ...request.headers ? { headers: { ...request.headers } } : {},
+        ...request.body === void 0 ? {} : { body: request.body },
+        signal: AbortSignal.timeout(timeout),
+        redirect: "manual"
+      });
+    } catch (error2) {
+      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout} ms` : "could not connect";
+      throw new Error(`${request.method} ${request.url} ${reason}.`);
+    }
+    const headers = {};
+    response.headers.forEach((value2, name2) => {
+      headers[name2.toLowerCase()] = value2;
+    });
+    return { status: response.status, headers, body: await response.text() };
+  }
+}
 function encodeText(text2) {
   return new TextEncoder().encode(text2);
 }
@@ -39398,9 +41013,9 @@ async function makeDocument(title2, flags, context, services) {
   const template = value$2(flags, "template", true);
   ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
   const source2 = await services.files.read(`bin/templates/${vaultPath(template)}`);
-  const inline = value$2(flags, "values"), from = value$2(flags, "values-from");
-  ensure(inline === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
-  const data = from === void 0 ? parseJson(inline ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
+  const inline2 = value$2(flags, "values"), from = value$2(flags, "values-from");
+  ensure(inline2 === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
+  const data = from === void 0 ? parseJson(inline2 ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
   ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
   const bytes = services.templates.render(source2.bytes, { title: title2, values: data, date: value$2(flags, "date"), ...services.loaded.config.templates });
   const path = `${value$2(flags, "out") ?? "notes"}/${title2}.md`;
@@ -39856,9 +41471,9 @@ function putProp(target, key, value2) {
   else
     target[key] = value2;
 }
-function mirrorShape(target, source2, keys, wrap2) {
+function mirrorShape(target, source2, keys2, wrap2) {
   const raw = sourceShape(source2);
-  for (const key of keys) {
+  for (const key of keys2) {
     const desc = Object.getOwnPropertyDescriptor(raw, key);
     if (!desc.enumerable)
       continue;
@@ -40005,15 +41620,15 @@ function pick(schema2, mask) {
 }
 function maskedKeys(schema2, mask) {
   const raw = sourceShape(schema2);
-  const keys = [];
+  const keys2 = [];
   for (const key of Reflect.ownKeys(mask)) {
     if (!Object.getOwnPropertyDescriptor(raw, key)?.enumerable) {
       throw new Error(`Unrecognized key: "${String(key)}"`);
     }
     if (mask[key])
-      keys.push(key);
+      keys2.push(key);
   }
-  return keys;
+  return keys2;
 }
 function omit(schema2, mask) {
   const currDef = schema2._zod.def;
@@ -41759,10 +43374,10 @@ function handlePropertyResult(result, final, key, input, optin, optout) {
 }
 const NO_SYMBOL_KEYS = [];
 function normalizeDef(def) {
-  const keys = Object.keys(def.shape);
+  const keys2 = Object.keys(def.shape);
   const ownSymbols = Object.getOwnPropertySymbols(def.shape);
   const symbolKeys = ownSymbols.length ? ownSymbols : NO_SYMBOL_KEYS;
-  const allKeys = symbolKeys.length ? [...keys, ...symbolKeys] : keys;
+  const allKeys = symbolKeys.length ? [...keys2, ...symbolKeys] : keys2;
   for (const k of allKeys) {
     if (!def.shape?.[k]?._zod?.traits?.has("$ZodType")) {
       throw new Error(`Invalid element at key "${String(k)}": expected a Zod schema`);
@@ -41774,8 +43389,8 @@ function normalizeDef(def) {
     allKeys,
     symbolKeys,
     // string-only: handleCatchall matches it against `for...in`, which never yields a symbol
-    keySet: new Set(keys),
-    numKeys: keys.length,
+    keySet: new Set(keys2),
+    numKeys: keys2.length,
     optionalKeys: new Set(okeys)
   };
 }
@@ -42165,19 +43780,19 @@ function handleIntersectionResults(result, left, right) {
   let unrecIssue;
   const keyIssues = /* @__PURE__ */ new Map();
   const collect = (iss, side) => {
-    let keys;
+    let keys2;
     if (iss.code === "unrecognized_keys" && !iss.path?.length) {
       unrecIssue ?? (unrecIssue = iss);
-      keys = iss.keys;
+      keys2 = iss.keys;
     } else if (iss.code === "invalid_key" && iss.origin === "record" && iss.path?.length === 1) {
       const k = String(iss.path[0]);
       if (!keyIssues.has(k))
         keyIssues.set(k, iss);
-      keys = [k];
+      keys2 = [k];
     } else {
       return false;
     }
-    for (const k of keys) {
+    for (const k of keys2) {
       if (!unrecKeys.has(k))
         unrecKeys.set(k, {});
       unrecKeys.get(k)[side] = true;
@@ -43842,8 +45457,8 @@ function compactTypeUnion(schema2) {
     if (!option2 || typeof option2 !== "object")
       return;
     compactTypeUnion(option2);
-    const keys = Object.keys(option2);
-    if (keys.length !== 1 || keys[0] !== "type")
+    const keys2 = Object.keys(option2);
+    if (keys2.length !== 1 || keys2[0] !== "type")
       return;
     const type2 = option2.type;
     for (const member2 of Array.isArray(type2) ? type2 : [type2]) {
@@ -45436,11 +47051,11 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   inst._zod.processJSONSchema = (ctx, json2, params) => enumProcessor(inst, ctx, json2);
   inst.enum = def.entries;
   inst.options = [...inst._zod.values];
-  const keys = new Set(Object.keys(def.entries));
+  const keys2 = new Set(Object.keys(def.entries));
   inst.extract = (values2, params) => {
     const newEntries = {};
     for (const value2 of values2) {
-      if (keys.has(value2)) {
+      if (keys2.has(value2)) {
         newEntries[value2] = def.entries[value2];
       } else
         throw new Error(`Key ${value2} not found in enum`);
@@ -45455,7 +47070,7 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   inst.exclude = (values2, params) => {
     const newEntries = { ...def.entries };
     for (const value2 of values2) {
-      if (keys.has(value2)) {
+      if (keys2.has(value2)) {
         delete newEntries[value2];
       } else
         throw new Error(`Key ${value2} not found in enum`);
@@ -47517,11 +49132,11 @@ function renderUiStories(definitions2, framework, componentDirectory, storiesDir
       `type _Story = ${html2 ? `_StoryObj<${htmlPropsType}>` : framework === "angular" ? "_StoryObj<InstanceType<typeof component>>" : "_StoryObj<typeof meta>"};`
     ];
     for (const story2 of settings2?.stories?.length ? settings2.stories : [{ name: "Default" }]) {
-      const { name: name2, ...fields } = story2;
+      const { name: name2, ...fields2 } = story2;
       lines2.push(
         "",
         `export const ${name2}: _Story = {`,
-        ...Object.keys(fields).length ? [`${literal(fields).slice(2, -2)},`] : [],
+        ...Object.keys(fields2).length ? [`${literal(fields2).slice(2, -2)},`] : [],
         ...extension2 ? [`  ...extensions.stories?.[${JSON.stringify(name2)}],`] : [],
         "} satisfies _Story;"
       );
@@ -47562,8 +49177,8 @@ const schema$1 = strictObject({
   testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record$1(identifier$1, value)).min(1).max(100).optional() }).optional()
 }).superRefine((definition2, context) => {
   const issue2 = (message2) => context.addIssue({ code: "custom", message: message2 });
-  const fields = definition2.model.fields, primary = fields[definition2.model.idField];
-  if (!Object.keys(fields).length) issue2("Model must define at least one field.");
+  const fields2 = definition2.model.fields, primary = fields2[definition2.model.idField];
+  if (!Object.keys(fields2).length) issue2("Model must define at least one field.");
   if (!primary || !["string", "number"].includes(primary.type) || primary.optional || primary.nullable) issue2("idField must name a required, non-nullable string or number field.");
   const invalidId = (item) => item === "" || item === "." || item === "..";
   if (invalidId(primary?.example) || primary?.enum?.some(invalidId)) issue2("ID examples and enum values cannot be empty or dot path segments.");
@@ -47594,8 +49209,8 @@ const schema$1 = strictObject({
   if (definition2.testData?.records && definition2.testData.count !== void 0) issue2("Use either explicit testData.records or generated testData.count.");
   const ids = /* @__PURE__ */ new Set();
   for (const [index2, record2] of (definition2.testData?.records ?? []).entries()) {
-    for (const key of Object.keys(record2)) if (!Object.hasOwn(fields, key)) issue2(`Test record ${index2} has unknown field ${key}.`);
-    for (const [key, property] of Object.entries(fields)) {
+    for (const key of Object.keys(record2)) if (!Object.hasOwn(fields2, key)) issue2(`Test record ${index2} has unknown field ${key}.`);
+    for (const [key, property] of Object.entries(fields2)) {
       const item = record2[key];
       if (item === void 0 ? !property.optional : !matches(property, item) || property.enum && !property.enum.includes(item)) issue2(`Test record ${index2}.${key} must match its declared field.`);
     }
@@ -47672,8 +49287,8 @@ function fixtureRecords(definition2) {
   });
 }
 function modelSource(definition2) {
-  const { name: name2, fields, idField } = definition2.model;
-  const declarations = Object.entries(fields).sort(([left], [right]) => compare(left, right)).map(([key, field2]) => `  ${JSON.stringify(key)}${field2.optional ? "?" : ""}: ${fieldType(field2)};`).join("\n");
+  const { name: name2, fields: fields2, idField } = definition2.model;
+  const declarations = Object.entries(fields2).sort(([left], [right]) => compare(left, right)).map(([key, field2]) => `  ${JSON.stringify(key)}${field2.optional ? "?" : ""}: ${fieldType(field2)};`).join("\n");
   return `// Generated deterministically from ${definition2.id}.md. No runtime dependencies.
 export interface ${name2} {
 ${declarations}
@@ -47682,7 +49297,7 @@ export type ${name2}Id = ${name2}[${JSON.stringify(idField)}];
 export class ${name2}DataSourceError extends globalThis.Error {
   constructor(message: string, readonly status?: number) { super(message); this.name = ${JSON.stringify(`${name2}DataSourceError`)}; }
 }
-const fields: { [key: string]: { type: string; optional?: boolean; nullable?: boolean; enum?: readonly unknown[] } } = ${canonicalJson(Object.fromEntries(Object.entries(fields).map(([key, { example: _example, ...field2 }]) => [key, field2])), 2)};
+const fields: { [key: string]: { type: string; optional?: boolean; nullable?: boolean; enum?: readonly unknown[] } } = ${canonicalJson(Object.fromEntries(Object.entries(fields2).map(([key, { example: _example, ...field2 }]) => [key, field2])), 2)};
 function validateField(key: string, value: unknown): void {
   const field = fields[key];
   if (!field) throw new ${name2}DataSourceError('Unknown field: ' + key);
@@ -51839,11 +53454,11 @@ function text(value2, path, nonempty2 = false) {
 function strings(value2, path) {
   check(Array.isArray(value2) && value2.every((item) => typeof item === "string"), path, "must be an array of strings.");
 }
-function optionalStrings(value2, fields, path) {
-  for (const field2 of fields) if (value2[field2] !== void 0) text(value2[field2], `${path}.${field2}`);
+function optionalStrings(value2, fields2, path) {
+  for (const field2 of fields2) if (value2[field2] !== void 0) text(value2[field2], `${path}.${field2}`);
 }
-function optionalBooleans(value2, fields, path) {
-  for (const field2 of fields) if (value2[field2] !== void 0) check(typeof value2[field2] === "boolean", `${path}.${field2}`, "must be a boolean.");
+function optionalBooleans(value2, fields2, path) {
+  for (const field2 of fields2) if (value2[field2] !== void 0) check(typeof value2[field2] === "boolean", `${path}.${field2}`, "must be a boolean.");
 }
 function stringMap(value2, path) {
   object(value2, path);
@@ -61336,7 +62951,7 @@ function generationCommand(registry2) {
 }
 function pluginCatalog(registry2, installed) {
   const loaded = registry2.plugins.map((plugin2) => {
-    const services = { provides: Object.keys(plugin2.provides ?? {}), requires: [...plugin2.requires ?? []] };
+    const services = { provides: Object.keys(plugin2.provides ?? {}), requires: [...plugin2.requires ?? []], optional: [...plugin2.optional ?? []] };
     const unavailable = registry2.unavailable.get(plugin2.manifest.id);
     return {
       ...plugin2.manifest,
@@ -61402,10 +63017,10 @@ function catalogCommands(registry2) {
     { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", ...discovery, run(args) {
       arity(args, 0);
       const builtIn = errorCodes.map((code2) => {
-        const { exitCode, category, retryable, summary } = errorCatalog[code2];
-        return { code: code2, exitCode, category, retryable, summary };
+        const { exitCode, category, retryable: retryable2, summary } = errorCatalog[code2];
+        return { code: code2, exitCode, category, retryable: retryable2, summary };
       });
-      const contributed = registry2.catalog.errors().map(({ code: code2, exitCode, category, retryable, summary, pluginId }) => ({ code: code2, exitCode, category, retryable, summary, plugin: pluginId }));
+      const contributed = registry2.catalog.errors().map(({ code: code2, exitCode, category, retryable: retryable2, summary, pluginId }) => ({ code: code2, exitCode, category, retryable: retryable2, summary, plugin: pluginId }));
       const { commands: commands2, ...rest } = catalog();
       return { ...rest, commands: [...registry2.commands.values()].map((command2, index2) => ({ ...commands2[index2], inputSchema: commandInputSchema(command2) })), errors: [...builtIn, ...contributed] };
     } },
@@ -61951,7 +63566,7 @@ const germanErrors = {
   AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen." },
   UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
   INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
-  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
   DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
   PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
   INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
@@ -62150,7 +63765,7 @@ class Localizer {
     return { code: code2, message: german.summary, hint: german.hint, retryable: definition2.retryable, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin];
 async function run() {
   const tokens = process.argv.slice(2);
   const registry2 = new Registry(), events2 = new EventBus(new NodeEventScope());
@@ -62221,7 +63836,13 @@ async function run() {
       for (const generator of [...generators, ...libraryGenerators(services)]) registry2.add(registry2.generators, generator);
       for (const command22 of commands(registry2, services)) registry2.add(registry2.commands, command22);
       registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
-      registerCorePlugins(registry2, events2, corePlugins, { skills: registrySkills(registry2), fileDates: nodeFileDates }, config2.plugins.disabled);
+      registerCorePlugins(registry2, events2, corePlugins, {
+        skills: registrySkills(registry2),
+        fileDates: nodeFileDates,
+        locks: nodeLockFiles,
+        http: new FetchHttpClient(),
+        environment: (name2) => process.env[name2]
+      }, config2.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events2);
       config2.plugins.settings = await registry2.configure(config2.plugins.settings, async () => (await services.installedPlugins()).map((entry2) => entry2.manifest.id), (message2) => events2.warn(message2));
       await registry2.publishRegistered(events2);
@@ -62270,8 +63891,8 @@ async function run() {
       }, async () => {
         if (!policy.activatePlugins) return;
         const settingsRevision = async (pluginId) => {
-          const canonical = registry2.settings.canonical(pluginId);
-          return canonical === null ? null : node_crypto.createHash("sha256").update(canonical).digest("hex");
+          const canonical2 = registry2.settings.canonical(pluginId);
+          return canonical2 === null ? null : node_crypto.createHash("sha256").update(canonical2).digest("hex");
         };
         await registry2.activate(events2, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message2) => events2.warn(message2), settingsRevision));
         await announceLayoutReady(events2);

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFile, cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,5 +34,23 @@ export function portableCli() {
     expect(result.stderr).toBe('');
     return { status: result.status, body: JSON.parse(result.stdout), stdout: result.stdout };
   }
-  return { get project() { return project; }, get bundle() { return bundle; }, cli };
+  /**
+   * The same invocation without blocking the test process, so an in-process fake server can answer the CLI's
+   * requests; `env` adds variables such as a connector token.
+   */
+  function cliAsync(args: string[], env: Record<string, string> = {}) {
+    return new Promise<{ status: number | null; body: any; stdout: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [join(bundle, 'bin/forge.js'), '--root', project, '--json', ...args], { cwd: project, env: { ...process.env, NODE_PATH: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const stdout: Buffer[] = [], stderr: Buffer[] = [];
+      child.stdout.on('data', chunk => stdout.push(chunk as Buffer));
+      child.stderr.on('data', chunk => stderr.push(chunk as Buffer));
+      child.on('error', reject);
+      child.on('close', status => {
+        expect(Buffer.concat(stderr).toString('utf8')).toBe('');
+        const text = Buffer.concat(stdout).toString('utf8');
+        resolve({ status, body: JSON.parse(text), stdout: text });
+      });
+    });
+  }
+  return { get project() { return project; }, get bundle() { return bundle; }, cli, cliAsync };
 }

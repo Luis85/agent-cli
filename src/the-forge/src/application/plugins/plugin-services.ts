@@ -1,9 +1,12 @@
 import { ensure, forgeError } from '../../domain/shared/errors.ts';
 
-/** What the service graph needs from a plugin: its id and declared `provides`/`requires`. */
-export interface ServiceNode { manifest: { id: string }; provides?: Readonly<Record<string, unknown>>; requires?: readonly string[] }
-/** Typed access to the services a plugin declared in `requires` (and its own `provides`). */
-export interface PluginServices { get<T = unknown>(id: string): T }
+/** What the service graph needs from a plugin: its id and declared `provides`, `requires` and `optional` services. */
+export interface ServiceNode { manifest: { id: string }; provides?: Readonly<Record<string, unknown>>; requires?: readonly string[]; optional?: readonly string[] }
+/**
+ * Typed access to the services a plugin declared in `requires` or `optional` (and its own `provides`). `has` tells
+ * whether an enabled plugin provides a declared optional service; `get` fails with PLUGIN_SERVICE_MISSING when none does.
+ */
+export interface PluginServices { get<T = unknown>(id: string): T; has(id: string): boolean }
 
 /** Providers by service id; a second provider for one id fails registration. */
 export function serviceProviders(nodes: readonly ServiceNode[]): Map<string, ServiceNode> {
@@ -16,8 +19,8 @@ export function serviceProviders(nodes: readonly ServiceNode[]): Map<string, Ser
 }
 
 /**
- * Activation order: every plugin after the providers of the services it requires, otherwise in registration
- * order. A required service without an enabled provider is PLUGIN_SERVICE_MISSING; a dependency cycle is
+ * Activation order: every plugin after the providers of the services it requires or optionally uses (when they are
+ * enabled), otherwise in registration order. A required service without an enabled provider is PLUGIN_SERVICE_MISSING; a dependency cycle is
  * PLUGIN_SERVICE_CYCLE. Both name the plugins and services involved.
  */
 export function activationOrder<T extends ServiceNode>(nodes: readonly T[]): T[] {
@@ -33,9 +36,9 @@ export function activationOrder<T extends ServiceNode>(nodes: readonly T[]): T[]
       throw forgeError('PLUGIN_SERVICE_CYCLE', `Plugin services form a cycle: ${cycle.join(' -> ')}.`, { plugins: cycle });
     }
     state.set(node, 'visiting');
-    for (const id of node.requires ?? []) {
-      const provider = providers.get(id) as T;
-      if (provider !== node) visit(provider, [...path, node.manifest.id]);
+    for (const id of [...node.requires ?? [], ...node.optional ?? []]) {
+      const provider = providers.get(id) as T | undefined;
+      if (provider !== undefined && provider !== node) visit(provider, [...path, node.manifest.id]);
     }
     state.set(node, 'done');
     ordered.push(node);
@@ -79,13 +82,17 @@ function readOnly<T>(implementation: T, id: string): T {
  * service is handed out as a read-only view, so one consumer cannot change what another consumer or the provider sees.
  */
 export function pluginServices(node: ServiceNode, providers: ReadonlyMap<string, ServiceNode>): PluginServices {
+  const declared = (id: string) => {
+    const known = (node.requires ?? []).includes(id) || (node.optional ?? []).includes(id) || Object.hasOwn(node.provides ?? {}, id);
+    ensure(known, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} must declare service ${id} in requires or optional before using it.`, { plugin: node.manifest.id, service: id });
+  };
   return {
     get<T>(id: string): T {
-      const declared = (node.requires ?? []).includes(id) || Object.hasOwn(node.provides ?? {}, id);
-      ensure(declared, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} must declare service ${id} in requires before using it.`, { plugin: node.manifest.id, service: id });
+      declared(id);
       const provider = providers.get(id);
-      ensure(provider, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} requires service ${id}, which no enabled plugin provides.`, { plugin: node.manifest.id, service: id });
+      ensure(provider, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} uses service ${id}, which no enabled plugin provides.`, { plugin: node.manifest.id, service: id });
       return readOnly(provider.provides![id] as T, id);
     },
+    has(id: string): boolean { declared(id); return providers.has(id); },
   };
 }

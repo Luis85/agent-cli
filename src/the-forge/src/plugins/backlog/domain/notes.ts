@@ -81,6 +81,41 @@ export function releaseFrontmatter(settings: ReleaseSettings, id: number, spec: 
 /** A new note: frontmatter only, `---\n<yaml>---\n`. */
 export const noteText = (yaml: string) => `---\n${yaml}---\n`;
 
+const frontmatterEnd = (text: string) => {
+  const opening = /^﻿?---[ \t]*\r?\n/.exec(text);
+  const closing = opening ? /^---[ \t]*(\r?\n|$)/m.exec(text.slice(opening[0].length)) : null;
+  return opening && closing ? opening[0].length + closing.index + closing[0].length : 0;
+};
+
+/** The text after a note's frontmatter, without the blank lines that separate it. */
+export const noteBody = (text: string) => text.slice(frontmatterEnd(text)).replace(/^(\r?\n)+/, '');
+
+/** The note with its body replaced; an empty body leaves only the frontmatter. */
+export function withBody(text: string, body: string): string {
+  const head = text.slice(0, frontmatterEnd(text));
+  const trimmed = body.replace(/\r\n?/g, '\n').trim();
+  return trimmed === '' ? head : `${head}${head === '' || head.endsWith('\n') ? '' : '\n'}${trimmed}\n`;
+}
+
+const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
+const COMMENT = /%%[\s\S]*?%%/g;
+/** Applies `transform` to the text outside fenced code blocks, where Obsidian comments live. */
+function outsideCode(text: string, transform: (part: string) => string): string {
+  let result = '', last = 0;
+  for (const match of text.matchAll(FENCE)) { result += transform(text.slice(last, match.index)) + match[0]; last = match.index + match[0].length; }
+  return result + transform(text.slice(last));
+}
+
+/** The body without Obsidian `%%comments%%` (inline or multi-line; fenced code is kept as it is). */
+export const withoutComments = (body: string) => outsideCode(body, part => part.replace(COMMENT, ''));
+
+/** The Obsidian `%%comments%%` of a body, in order. */
+export function comments(body: string): string[] {
+  const found: string[] = [];
+  outsideCode(body, part => { found.push(...(part.match(COMMENT) ?? [])); return part; });
+  return found;
+}
+
 // Iterations: `<N> - Iteration[ - <goal>]`, starting the day after the latest iteration's target.
 interface IterationLike { title: string; typeName: string | null; outsideFilter: boolean; path: string; plannedStart: { value: CivilDate | null }; plannedTarget: { value: CivilDate | null } }
 

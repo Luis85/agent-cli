@@ -11,6 +11,7 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { scopeServices } from '../support/metadata.ts';
+import { offlineHost } from '../support/core-plugins.ts';
 
 /** The pinned docker-agent examples copied by scripts/vendor-docker-agent.mjs. */
 export const dockerAgentExamples = join(import.meta.dirname, 'fixtures/docker-agent/examples');
@@ -28,7 +29,7 @@ export async function agentsWorkspace() {
   async function run(args: string[], flags: Record<string, string | boolean> = {}, options: { settings?: Record<string, unknown>; dryRun?: boolean } = {}) {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [agentsPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('agents reads no file dates'); } }, []);
+    registerCorePlugins(registry, events, [agentsPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('agents reads no file dates'); }, ...offlineHost }, []);
     registry.settings.configure(options.settings ?? {}, new Set(registry.origins.keys()));
     const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, options.dryRun ?? false);
     const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;

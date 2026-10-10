@@ -6,6 +6,9 @@ Tests live under the concern they verify. Every executable test file declares it
 | --- | --- |
 | [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
 | [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
+| [backlog](backlog/) | The `backlog` core plugin: backlog-view conformance fixtures, settings, model, ranks, writes, releases, the CLI workflow, and the sync engine (three-way field decisions, sync state, push/pull/conflict/resolve against the Azure DevOps fake, portable sync) |
+| [connector](connector/) | The `connector` core plugin: connection profiles and their validation, the connectors hub, token handling and redaction, and the kernel HTTP transport (retries, Retry-After, timeouts) |
+| [connector-azure-devops](connector-azure-devops/) | The `connector-azure-devops` core plugin: process mappings, JSON Patch documents, work item reading, Markdown to HTML, and the connector against the in-process Azure DevOps fake (`support/azure-devops.ts`) |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
 | [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |

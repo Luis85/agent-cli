@@ -12,6 +12,7 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { scopeServices } from '../support/metadata.ts';
+import { offlineHost } from '../support/core-plugins.ts';
 
 let root: string;
 const put = async (path: string, content: string) => {
@@ -22,7 +23,7 @@ const put = async (path: string, content: string) => {
 async function links(settings: Record<string, unknown> = {}) {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
-  registerCorePlugins(registry, events, [linksPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); } }, []);
+  registerCorePlugins(registry, events, [linksPlugin], { skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); }, ...offlineHost }, []);
   await registry.configure(settings, async () => [], message => events.warn(message));
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, false);
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;

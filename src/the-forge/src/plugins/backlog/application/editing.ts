@@ -27,7 +27,7 @@ function currentState(item: BacklogItem, workflow: Workflow): string | null {
 }
 
 /** The state write of the item's own workflow; only the requirements workflow stamps started and finished dates. */
-function stateWrite(item: BacklogItem, workflow: Workflow, state: string | null, settings: BacklogSettings, today: string): Partial<ItemWrite> | null {
+export function stateWrite(item: BacklogItem, workflow: Workflow, state: string | null, settings: BacklogSettings, today: string): Partial<ItemWrite> | null {
   if (sameValue(currentState(item, workflow), state)) return null;
   if (workflow === 'deliverable') return state === null ? { removeDeliverableStateKey: true } : { deliverableState: state };
   if (workflow === 'test') return state === null ? { removeTestStateKey: true } : { testState: state };

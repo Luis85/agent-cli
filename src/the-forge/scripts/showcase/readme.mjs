@@ -7,6 +7,7 @@ import { vaultPaths } from './vault.mjs';
 import { maintenance } from './vault-maintenance.mjs';
 import { explorationSection } from './vault-explore.mjs';
 import { backlogPaths, backlogSection } from './backlog.mjs';
+import { syncSection } from './sync.mjs';
 
 export const buildLogPath = 'docs/Build log.md';
 
@@ -19,7 +20,7 @@ const folders = [
   [vaultPaths.canvas, 'JSON Canvas architecture map with file nodes, groups and labelled edges', '`create`, `patch --pointer /nodes` and `/edges` (replace), `/nodes/-` and `/edges/-` (append), `validate`'],
   ['docs/bases', 'Native Bases views: documents by stage, requirement traceability and library backlinks', '`create`, `validate`, `bases list`, `bases inspect`, `bases query`'],
   ['docs', 'Full-text search and link reports over the finished knowledge graph, recorded below', '`search`, `links back`, `links unresolved`, `links orphans`'],
-  [backlogPaths.folder, 'Product backlog compatible with the Obsidian Product Backlog view: Epics, Features, PBIs, a Bug and Tasks with ranks, states and stamps, assignees, dependencies, an iteration, two releases with readiness and generated release notes', '`backlog init`, `write --if-match`, `backlog add`, `backlog move`, `backlog set`, `backlog depend`, `backlog iteration add/assign`, `backlog release add/join/mark-released/readiness/notes`, `backlog check`'],
+  [backlogPaths.folder, 'Product backlog compatible with the Obsidian Product Backlog view: Epics, Features, PBIs, a Bug and Tasks with ranks, states and stamps, assignees, dependencies, an iteration, two releases with readiness and generated release notes, and a sync base with two views bound to two Azure DevOps connections', '`backlog init`, `write --if-match`, `backlog add`, `backlog move`, `backlog set`, `backlog depend`, `backlog iteration add/assign`, `backlog release add/join/mark-released/readiness/notes`, `backlog check`, `create`, `connectors list`, `backlog sync --dry-run`'],
   [maintenance.renamed.to, 'Generated as "Trip planner test plan", then renamed: every wikilink, frontmatter link and the Canvas file node that named it were rewritten in the same guarded batch', '`rename --dry-run`, `rename --if-match`'],
   [maintenance.trashed, 'A scratch note deleted the Obsidian way: moved to the vault trash, which Obsidian and the metadata cache ignore', '`create`, `delete --if-match`'],
   ['library/components', 'Starter component library plus the Trailhead `trip-card` and `trip-planner` definitions', '`components init`, `components create`, `write --if-match`, `components validate`'],
@@ -43,9 +44,10 @@ const folders = [
  * @param {{ base: string, view: string, files: string[], total: number }[]} queries
  * @param {import('./vault-explore.mjs').Exploration} exploration
  * @param {import('./backlog.mjs').BacklogSummary} backlog
+ * @param {import('./sync.mjs').SyncSummary} sync
  * @param {Parameters<typeof agentsSection>[0]} agents
  */
-export function readme(queries, exploration, backlog, agents) {
+export function readme(queries, exploration, backlog, sync, agents) {
   const results = queries.map(query => [
     `### ${query.view} (\`${query.base}\`)`,
     '',
@@ -91,6 +93,9 @@ The \`search\` and \`links\` core plugins read the same vault through the metada
 ${explorationSection(exploration)}## Product backlog
 
 ${backlogSection(backlog)}
+## Backlog sync
+
+${syncSection(sync)}
 ${agentsSection(agents)}`;
 }
 

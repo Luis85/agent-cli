@@ -94,6 +94,8 @@ export interface PluginContributions {
     provides?: Record<string, unknown>;
     /** Service ids this plugin needs; it activates after their providers. */
     requires?: string[];
+    /** Service ids this plugin uses when an enabled plugin provides them; it activates after those providers. */
+    optional?: string[];
     /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
     settings?: JsonSchema;
     /**
@@ -161,7 +163,10 @@ export declare class Registry {
     configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>>;
     /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
     private cascadeUnavailable;
-    /** The context a plugin's hooks, commands and generators run with. */
+    /**
+     * The context a plugin's hooks, commands and generators run with. Unavailable plugins provide no services, so an
+     * optional service whose provider is unavailable reads as absent (`services.has` is false).
+     */
     pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext;
     publishRegistered(events: EventBus): Promise<void>;
     /**
@@ -170,6 +175,10 @@ export declare class Registry {
      */
     activate(events: EventBus, context: CommandContext, state?: PluginStateStore): Promise<void>;
     dispose(events: EventBus): Promise<void>;
+    /** Service providers by service id among available plugins: an unavailable plugin provides nothing. */
+    private availableProviders;
+    /** The available plugins providing services that `plugin` requires or optionally uses; their error codes surface through it. */
+    private serviceProviderIds;
     /** PLUGIN_UNAVAILABLE, with `details` `{command|generator, plugin, reason, issues}`, when the plugin cannot run. */
     private ensureAvailable;
     /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
