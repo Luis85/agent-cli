@@ -109,6 +109,18 @@ Delivery to listeners and `replay` are unaffected by this flag.
 
 ## Milestones
 
+### Showcase project, maintained in every milestone
+
+A fully generated example project is committed under `src/forge-showcase/` as a managed Forge project. It demonstrates the app's capabilities end to end on a small fictional web product, with:
+- a vault of interlinked specs, docs, Canvas and Bases;
+- domain and application components;
+- forms;
+- data sources with adapters and fixtures;
+- a component library generated for every UI target, with stories;
+- once M4 lands, a backlog compatible with backlog-view.
+
+A deterministic script, `scripts/showcase.mjs`, regenerates it by driving the bundled CLI with fixed inputs and dates. It keeps everything inside the showcase project and preserves the checkout's project selection. A test regenerates the showcase and fails on drift. Every milestone that adds a user-visible capability extends the script and commits the regenerated showcase.
+
 ### M1: Agent-ready responses and a durable core
 
 These items need no architecture change and ship first.
