@@ -1,0 +1,28 @@
+[
+  {
+    "destination": "Lake Tahoe",
+    "favorite": true,
+    "id": "trip-lakeside",
+    "nights": 2,
+    "notes": "Bring the canoe.",
+    "status": "planned",
+    "title": "Lakeside weekend"
+  },
+  {
+    "destination": "Big Sur",
+    "favorite": false,
+    "id": "trip-coastal",
+    "nights": 4,
+    "status": "booked",
+    "title": "Coastal traverse"
+  },
+  {
+    "destination": "Mount Rainier",
+    "favorite": false,
+    "id": "trip-ridge",
+    "nights": 3,
+    "notes": null,
+    "status": "completed",
+    "title": "Ridge loop"
+  }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "difficulty": "hard",
+    "distanceKm": 32,
+    "dogFriendly": false,
+    "id": "guide-desolation",
+    "name": "Desolation Wilderness traverse",
+    "region": "sierra"
+  },
+  {
+    "difficulty": "moderate",
+    "distanceKm": 9,
+    "dogFriendly": false,
+    "id": "guide-skyline",
+    "name": "Skyline Trail",
+    "region": "cascades"
+  },
+  {
+    "difficulty": "easy",
+    "distanceKm": 3,
+    "dogFriendly": true,
+    "id": "guide-pfeiffer",
+    "name": "Pfeiffer Falls",
+    "region": "coast"
+  },
+  {
+    "difficulty": "moderate",
+    "distanceKm": 5,
+    "dogFriendly": false,
+    "id": "guide-joshua",
+    "name": "Ryan Mountain",
+    "region": "desert"
+  }
+]

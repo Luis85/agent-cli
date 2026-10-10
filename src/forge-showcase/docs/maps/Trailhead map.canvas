@@ -1,0 +1,264 @@
+{
+  "nodes": [
+    {
+      "id": "group-product",
+      "type": "group",
+      "label": "Product",
+      "x": -40,
+      "y": -60,
+      "width": 1000,
+      "height": 260
+    },
+    {
+      "id": "prd",
+      "type": "file",
+      "file": "docs/product/Trailhead PRD.md",
+      "x": 0,
+      "y": 0,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "uc-001",
+      "type": "file",
+      "file": "docs/use-cases/UC-001 Plan a trip.md",
+      "x": 340,
+      "y": -20,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "uc-002",
+      "type": "file",
+      "file": "docs/use-cases/UC-002 Share an itinerary.md",
+      "x": 340,
+      "y": 80,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "uc-003",
+      "type": "file",
+      "file": "docs/use-cases/UC-003 Browse trail guides.md",
+      "x": 660,
+      "y": 30,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "group-design",
+      "type": "group",
+      "label": "Design system",
+      "x": -40,
+      "y": 260,
+      "width": 1000,
+      "height": 220
+    },
+    {
+      "id": "design",
+      "type": "file",
+      "file": "docs/design/Trip planner design.md",
+      "x": 0,
+      "y": 300,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "trip-planner",
+      "type": "file",
+      "file": "library/components/trip-planner.md",
+      "x": 340,
+      "y": 300,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "trip-card",
+      "type": "file",
+      "file": "library/components/trip-card.md",
+      "x": 660,
+      "y": 300,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "group-data",
+      "type": "group",
+      "label": "Data",
+      "x": 1000,
+      "y": 260,
+      "width": 340,
+      "height": 360
+    },
+    {
+      "id": "trips-api",
+      "type": "file",
+      "file": "library/data-sources/trips-api.md",
+      "x": 1040,
+      "y": 300,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "trail-guides",
+      "type": "file",
+      "file": "library/data-sources/trail-guides.md",
+      "x": 1040,
+      "y": 460,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "group-delivery",
+      "type": "group",
+      "label": "Delivery",
+      "x": -40,
+      "y": 540,
+      "width": 1000,
+      "height": 220
+    },
+    {
+      "id": "build-spec",
+      "type": "file",
+      "file": "docs/delivery/Trip planner build spec.md",
+      "x": 0,
+      "y": 580,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "implementation",
+      "type": "file",
+      "file": "docs/delivery/Trip planner implementation plan.md",
+      "x": 340,
+      "y": 580,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "test-plan",
+      "type": "file",
+      "file": "docs/delivery/Trip planner test plan.md",
+      "x": 660,
+      "y": 580,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "release",
+      "type": "file",
+      "file": "docs/delivery/Trailhead 1.0 release plan.md",
+      "x": 1040,
+      "y": 660,
+      "width": 260,
+      "height": 120
+    },
+    {
+      "id": "code",
+      "type": "text",
+      "text": "## Code\n\n- `src/domain` and `src/application`: generated model and use cases\n- `src/infrastructure/data-sources`: generated adapters\n- `ui/<target>`: generated UI and stories for seven targets",
+      "x": 1380,
+      "y": 300,
+      "width": 340,
+      "height": 220
+    }
+  ],
+  "edges": [
+    {
+      "id": "prd--uc-001",
+      "fromNode": "prd",
+      "fromSide": "right",
+      "toNode": "uc-001",
+      "toSide": "left",
+      "label": "REQ-001, 003, 005"
+    },
+    {
+      "id": "prd--uc-002",
+      "fromNode": "prd",
+      "fromSide": "right",
+      "toNode": "uc-002",
+      "toSide": "left",
+      "label": "REQ-004"
+    },
+    {
+      "id": "uc-002--uc-003",
+      "fromNode": "uc-002",
+      "fromSide": "right",
+      "toNode": "uc-003",
+      "toSide": "left",
+      "label": "REQ-002"
+    },
+    {
+      "id": "uc-001--design",
+      "fromNode": "uc-001",
+      "fromSide": "bottom",
+      "toNode": "design",
+      "toSide": "top",
+      "label": "designed by"
+    },
+    {
+      "id": "design--trip-planner",
+      "fromNode": "design",
+      "fromSide": "right",
+      "toNode": "trip-planner",
+      "toSide": "left",
+      "label": "composes"
+    },
+    {
+      "id": "trip-planner--trip-card",
+      "fromNode": "trip-planner",
+      "fromSide": "right",
+      "toNode": "trip-card",
+      "toSide": "left",
+      "label": "contains"
+    },
+    {
+      "id": "trip-card--trips-api",
+      "fromNode": "trip-card",
+      "fromSide": "right",
+      "toNode": "trips-api",
+      "toSide": "left",
+      "label": "reads"
+    },
+    {
+      "id": "design--build-spec",
+      "fromNode": "design",
+      "fromSide": "bottom",
+      "toNode": "build-spec",
+      "toSide": "top",
+      "label": "specified by"
+    },
+    {
+      "id": "build-spec--implementation",
+      "fromNode": "build-spec",
+      "fromSide": "right",
+      "toNode": "implementation",
+      "toSide": "left",
+      "label": "tasks"
+    },
+    {
+      "id": "implementation--test-plan",
+      "fromNode": "implementation",
+      "fromSide": "right",
+      "toNode": "test-plan",
+      "toSide": "left",
+      "label": "verified by"
+    },
+    {
+      "id": "test-plan--release",
+      "fromNode": "test-plan",
+      "fromSide": "right",
+      "toNode": "release",
+      "toSide": "left",
+      "label": "gates"
+    },
+    {
+      "id": "trips-api--code",
+      "fromNode": "trips-api",
+      "fromSide": "right",
+      "toNode": "code",
+      "toSide": "left",
+      "label": "generates"
+    }
+  ]
+}
