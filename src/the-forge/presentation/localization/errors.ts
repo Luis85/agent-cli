@@ -107,7 +107,7 @@ export const germanErrors = {
   UNKNOWN_UI_COMPONENT: 'Die Komponente ist unbekannt. Prüfen Sie components list.',
   UNSAFE_PATH: 'Der Pfad ist nicht sicher. Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen.',
   UNSUPPORTED_EDIT: 'Diese Bearbeitung wird für den Dateityp nicht unterstützt. Prüfen Sie help edit, help patch oder help write.',
-  WORKSPACE_BUSY: 'Ein anderer Schreibvorgang sperrt den Arbeitsbereich. Versuchen Sie es nach dessen Abschluss erneut.',
+  WORKSPACE_BUSY: 'Die Schreibsperre .agent-cli.lock existiert; Forge entfernt sie nie automatisch. Warten Sie auf einen aktiven Schreibvorgang und versuchen Sie es erneut. Meldet error.details.stale "likely", läuft der eingetragene Prozess auf diesem Rechner nicht mehr: Prüfen Sie dessen Änderungen, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperre. Bei "unknown" prüfen Sie Prozess-ID und Rechner in error.details.lock selbst.',
   GENERATION_DRIFT: 'Generierte Dateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.',
   UI_DRIFT: 'Generierte UI-Dateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.',
   DATA_SOURCE_DRIFT: 'Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.',

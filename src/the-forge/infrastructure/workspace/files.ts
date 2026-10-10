@@ -1,18 +1,27 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir, mkdir, realpath, rename, rm, rmdir, open, unlink } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { errorMessage, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange } from '../../domain/documents/file.ts';
 import { snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { FileRepository } from '../../application/workspace/ports.ts';
+import { syncDirectory } from './durable.ts';
+import { acquireLock, lockName, releaseLock, type LockOwner } from './lock.ts';
+import { retryTransient } from './retry.ts';
 
 export const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 interface StoredFile { bytes: Buffer; mode: number; revision: string }
+interface FilePlan { write: WriteRequest; target: string; before?: StoredFile }
+/** Concurrent staging lets the filesystem group fsyncs while bounding open handles. */
+const stagingConcurrency = 8;
 
 export class NodeFiles implements FileRepository {
-  private constructor(readonly root: string, private readonly warn: (message: string) => void) {}
-  static async at(root: string, warn: (message: string) => void = () => {}): Promise<NodeFiles> { return new NodeFiles(await realpath(resolve(root)), warn); }
+  private constructor(readonly root: string, private readonly warn: (message: string) => void, private readonly owner: () => LockOwner) {}
+  /** `owner` names the invocation recorded in the writer lock; composition code supplies it. */
+  static async at(root: string, warn: (message: string) => void = () => {}, owner: () => LockOwner = () => ({})): Promise<NodeFiles> {
+    return new NodeFiles(await realpath(resolve(root)), warn, owner);
+  }
   async resolvePath(path: string): Promise<string> {
     const parts = vaultPath(path).split('/');
     let current = this.root;
@@ -39,7 +48,7 @@ export class NodeFiles implements FileRepository {
     const result: string[] = [];
     const walk = async (directory: string, prefix: string) => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
-        if (['.git', 'node_modules', '.agent-cli.lock'].includes(entry.name) || entry.name.startsWith('.agent-cli-tmp-')) continue;
+        if (['.git', 'node_modules', lockName].includes(entry.name) || entry.name.startsWith('.agent-cli-tmp-')) continue;
         const path = prefix + entry.name;
         if (entry.isDirectory()) await walk(join(directory, entry.name), path + '/');
         else if (entry.isFile()) result.push(path);
@@ -61,13 +70,10 @@ export class NodeFiles implements FileRepository {
   async remove(path: string, expectedRevision: string, dryRun: boolean): Promise<FileChange> {
     path = vaultPath(path);
     ensure(typeof expectedRevision === 'string' && expectedRevision.length > 0, 'CONFLICT', `Removing a file requires its current --if-match revision: ${path}`);
-    const lock = join(this.root, '.agent-cli.lock');
+    const lock = join(this.root, lockName);
     let locked = false;
     try {
-      if (!dryRun) {
-        try { const handle = await open(lock, 'wx'); locked = true; await handle.close(); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw this.busy(); throw error; }
-      }
+      if (!dryRun) { await acquireLock(lock, this.owner); locked = true; }
       const target = await this.resolvePath(path);
       const before = await this.stored(path);
       if (before === undefined) throw new AppError('NOT_FOUND', `File not found: ${path}`, 3);
@@ -75,7 +81,8 @@ export class NodeFiles implements FileRepository {
       if (!dryRun) {
         await this.assertRevision(path, expectedRevision);
         // unlink cannot remove a directory, even if an external writer replaces the file.
-        await unlink(target);
+        await retryTransient(() => unlink(target));
+        await this.syncDirectories([dirname(target)]);
       }
       return { path, revision: before.revision, operation: 'deleted', bytes: before.bytes.length };
     } finally { if (locked) await this.cleanupLock(lock); }
@@ -84,80 +91,119 @@ export class NodeFiles implements FileRepository {
     const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0 && new Set(requests.map(w => w.path)).size === requests.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
     ensure(!requests.some(a => requests.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
-    const lock = join(this.root, '.agent-cli.lock');
+    const lock = join(this.root, lockName);
     let locked = false;
     const createdDirectories: string[] = [];
-    const committed: Array<{ write: WriteRequest; target: string; before?: StoredFile }> = [];
+    const committed: FilePlan[] = [];
+    const staged: string[] = [];
+    // Each changed directory entry is fsynced once, after all renames and before events.
+    const touched = new Set<string>();
     try {
-      if (!dryRun) {
-        try { const handle = await open(lock, 'wx'); locked = true; await handle.close(); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw this.busy(); throw error; }
-      }
-      const plans = [];
+      if (!dryRun) { await acquireLock(lock, this.owner); locked = true; }
+      const plans: FilePlan[] = [];
       for (const write of requests) {
         const target = await this.resolvePath(write.path);
         const before = await this.stored(write.path);
         ensure(before === undefined ? write.expectedRevision === undefined : write.expectedRevision === before.revision, 'CONFLICT', `Existing files require their current --if-match revision: ${write.path}`);
         plans.push({ write, target, before });
       }
-      if (!dryRun) for (const plan of plans) {
-        const parts = plan.write.path.split('/').slice(0, -1);
-        let directory = this.root;
-        for (const part of parts) {
-          directory = join(directory, part);
-          try { await mkdir(directory); createdDirectories.push(directory); }
-          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+      if (!dryRun) {
+        for (const plan of plans) {
+          let directory = this.root;
+          for (const part of plan.write.path.split('/').slice(0, -1)) {
+            directory = join(directory, part);
+            try { await mkdir(directory); createdDirectories.push(directory); touched.add(dirname(directory)); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+          }
         }
-        await this.resolvePath(plan.write.path);
-        await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision));
-        committed.push(plan);
+        await this.stageAll(plans, staged);
+        for (const [index, plan] of plans.entries()) {
+          await this.resolvePath(plan.write.path);
+          await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision), staged[index]);
+          committed.push(plan);
+          touched.add(dirname(plan.target));
+        }
+        await this.syncDirectories(touched);
       }
       return plans.map(({ write, before }) => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === undefined ? 'created' : 'updated', bytes: write.bytes.length }));
     } catch (error) {
+      // Renamed temporaries no longer exist; the rest must go before directories are removed.
+      for (const temp of staged) if (temp) await retryTransient(() => rm(temp, { force: true })).catch(() => {});
       const failures: string[] = [];
       for (const entry of committed.reverse()) {
         try {
           // Never silently roll back over a newer edit from an external writer.
           const verify = () => this.assertRevision(entry.write.path, revisionOf(entry.write.bytes));
           if (entry.before) await this.replace(entry.target, entry.before.bytes, entry.before.mode, verify);
-          else { await verify(); await rm(entry.target); }
+          else { await verify(); await retryTransient(() => rm(entry.target)); }
         } catch { failures.push(entry.target); }
       }
-      for (const directory of createdDirectories.reverse()) await rmdir(directory).catch(() => {});
+      for (const directory of createdDirectories.reverse()) {
+        try { await retryTransient(() => rmdir(directory)); touched.delete(directory); }
+        catch { /* A directory still holding external files remains in place. */ }
+      }
+      for (const directory of touched) {
+        try { await syncDirectory(directory); }
+        catch { failures.push(directory); }
+      }
       if (failures.length) throw new AppError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
       throw error;
     } finally { if (locked) await this.cleanupLock(lock); }
-  }
-  private busy(): AppError {
-    return new AppError('WORKSPACE_BUSY', 'Workspace lock .agent-cli.lock exists. Wait for the active writer. If a previous process was interrupted, inspect its changes and confirm no writer is running before removing the lock.', 4);
   }
   private async cleanupLock(lock: string): Promise<void> {
     try { await this.releaseLock(lock); }
     catch (error) {
       // A cleanup failure cannot erase committed changes or the primary error.
-      try { this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${errorMessage(error)}`); }
+      try { this.warn(`Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error)}`); }
       catch { /* Diagnostics must not change the write outcome. */ }
     }
   }
-  private async releaseLock(lock: string): Promise<void> { await rm(lock, { force: true }); }
-  private async replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> {
+  private async releaseLock(lock: string): Promise<void> { await releaseLock(lock); }
+  private async syncDirectories(directories: Iterable<string>): Promise<void> {
+    for (const directory of new Set(directories)) await syncDirectory(directory);
+  }
+  /** Stage every plan, waiting for all workers so that no temporary file escapes cleanup. */
+  private async stageAll(plans: readonly FilePlan[], staged: string[]): Promise<void> {
+    let next = 0;
+    const failures: unknown[] = [];
+    const worker = async () => {
+      while (next < plans.length && failures.length === 0) {
+        const index = next++, plan = plans[index]!;
+        try { staged[index] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode); }
+        catch (error) { failures.push(error); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(stagingConcurrency, plans.length) }, worker));
+    if (failures.length) throw failures[0];
+  }
+  /** Write a same-directory temporary file whose data is durable before any rename publishes it. */
+  private async stage(target: string, bytes: Uint8Array, mode?: number): Promise<string> {
     const temp = join(resolve(target, '..'), `.agent-cli-tmp-${randomUUID()}`);
-    let created = false;
-    let renamed = false;
+    const handle = await open(temp, 'wx', mode ?? 0o666);
     try {
-      const handle = await open(temp, 'wx', mode ?? 0o666);
-      created = true;
       try {
         await handle.writeFile(bytes);
         // Creation modes are filtered by umask; existing files must retain their exact mode.
         if (mode !== undefined) await handle.chmod(mode);
+        await handle.sync();
       } finally { await handle.close(); }
+    } catch (error) {
+      await retryTransient(() => rm(temp, { force: true })).catch(() => {});
+      throw error;
+    }
+    return temp;
+  }
+  /** Publish `staged` (or freshly staged bytes) over the target; the caller fsyncs the directory entry. */
+  private async replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>, staged?: string): Promise<void> {
+    const temp = staged ?? await this.stage(target, bytes, mode);
+    let renamed = false;
+    try {
       await verify?.();
-      await rename(temp, target);
+      await retryTransient(() => rename(temp, target));
       renamed = true;
     } finally {
       // Cleanup errors must not turn a successful rename into an untracked commit.
-      if (created && !renamed) await rm(temp, { force: true }).catch(() => {});
+      if (!renamed) await retryTransient(() => rm(temp, { force: true })).catch(() => {});
     }
   }
 }
