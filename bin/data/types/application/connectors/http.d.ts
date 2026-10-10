@@ -1,6 +1,6 @@
 /**
  * The HTTP transport port connectors use. The kernel adapter wraps global `fetch` with a timeout per attempt and
- * retries 429 and 503 responses, honoring `Retry-After`. A request that cannot complete (timeout, refused
+ * retries 429 and 503 responses of retry-safe requests, honoring `Retry-After`. A request that cannot complete (timeout, refused
  * connection) rejects with an Error whose message names the method and URL; it never carries request headers.
  */
 export interface HttpRequest {
@@ -10,6 +10,11 @@ export interface HttpRequest {
     body?: string;
     /** Per-attempt timeout; the adapter's default applies when omitted. */
     timeoutMs?: number;
+    /**
+     * Whether repeating the request after a 429 or 503 is safe. Defaults to true for GET and false otherwise; set it
+     * for a read-only POST or a PATCH guarded by the target's revision, never for a request that creates something.
+     */
+    retry?: boolean;
 }
 /** A completed exchange; header names are lowercase. */
 export interface HttpResponse {

@@ -77,7 +77,7 @@ const errorCatalog = {
   AMBIGUOUS_EDIT: entry("input", "The --find text occurs more than once, counting overlapping matches.", "Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines."),
   UNSUPPORTED_EDIT: entry("input", "This edit is not supported for the file kind.", "Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments."),
   INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
-  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
+  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
   DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
   PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
   INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
@@ -401,7 +401,7 @@ const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadat
 const text$a = (value2) => typeof value2 === "string" && value2.length > 0;
 const count$1 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
-const empty = (value2) => Object.keys(value2).length === 0;
+const empty$1 = (value2) => Object.keys(value2).length === 0;
 const operation$1 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
 const error$2 = (value2) => isRecord(value2) && text$a(value2.code) && status(value2.exitCode);
 const command = (value2) => operation$1(value2) && text$a(value2.command) && text$a(value2.root) && text$a(value2.workspaceRoot);
@@ -436,11 +436,11 @@ const hostEventDefinitions = [
   definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$a(value2.path) && isRecord(value2.cache)),
   definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$a(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
   definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$a(value2.path) && Object.keys(value2).length === 1),
-  definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty),
+  definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty$1),
   definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$a(value2.path) && Object.keys(value2).length === 1),
   definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$a(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
-  definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty),
-  definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty),
+  definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
+  definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
   definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
   definition$1("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
   definition$1("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
@@ -10164,7 +10164,7 @@ function hostIdentity() {
   })();
   return identity;
 }
-async function acquireLock(path, owner) {
+async function acquireLock(path, owner, label2 = `Workspace lock ${lockName}`) {
   const token = node_crypto.randomUUID();
   const record2 = {
     pid: process.pid,
@@ -10183,13 +10183,13 @@ async function acquireLock(path, owner) {
     await retryTransient(() => promises$1.link(temporary2, path), { codes: ["EBUSY"] });
     linked = true;
   } catch (error2) {
-    if (errorCode(error2) === "EEXIST") throw await busy(path);
+    if (errorCode(error2) === "EEXIST") throw await busy(path, label2);
     if (!linkUnsupported.has(errorCode(error2))) throw error2;
   } finally {
     await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
     });
   }
-  if (!linked) await createExclusively(path, content2);
+  if (!linked) await createExclusively(path, content2, label2);
   heldTokens.add(token);
   return token;
 }
@@ -10204,12 +10204,12 @@ async function record$2(handle, content2) {
 async function writeDurably(path, content2) {
   await record$2(await retryTransient(() => promises$1.open(path, "wx")), content2);
 }
-async function createExclusively(path, content2) {
+async function createExclusively(path, content2, label2) {
   let handle;
   try {
     handle = await retryTransient(() => promises$1.open(path, "wx"));
   } catch (error2) {
-    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path);
+    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path, label2);
     throw error2;
   }
   try {
@@ -10299,11 +10299,11 @@ async function inspectLock(path) {
   const alive = processAlive(lock.pid);
   return { lock, stale: alive === void 0 ? "unknown" : alive ? "active" : "likely" };
 }
-async function busy(path) {
+async function busy(path, label2) {
   const details = await inspectLock(path);
   const { lock, stale } = details;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
-  return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
+  return forgeError("WORKSPACE_BUSY", `${label2} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
 }
 const missing$2 = (error2) => error2.code === "ENOENT";
 const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
@@ -27321,6 +27321,9 @@ function refused(reason, message, details = {}) {
   return backlogError("BACKLOG_WRITE_REFUSED", message, { reason, ...details });
 }
 const statePath = (connection) => `.forge/sync/${connection}.json`;
+const lockPath = (connection) => `.forge/sync/${connection}.lock`;
+const REMOTE_BASE = "remote:";
+const UNSETTLED_REV = "0";
 const emptyState = (connection) => ({ version: 1, connection, items: {} });
 const text$3 = (value2) => typeof value2 === "string" && value2.length > 0;
 function parseState(source, connection) {
@@ -27330,7 +27333,7 @@ function parseState(source, connection) {
   } catch {
     json2 = null;
   }
-  const invalid = () => backlogError("BACKLOG_CONFIG_PROBLEM", `${statePath(connection)} is not a readable sync state; restore it from version control or delete it to relink items by their link property.`, { path: statePath(connection) });
+  const invalid = () => backlogError("BACKLOG_CONFIG_PROBLEM", `${statePath(connection)} is not a readable sync state; restore it from version control, or delete it to relink notes by their link property (a relink reports differing fields as conflicts and never overwrites either side).`, { path: statePath(connection) });
   if (!isRecord(json2) || json2.version !== 1 || !isRecord(json2.items)) throw invalid();
   const items = {};
   for (const [path, entry2] of Object.entries(json2.items)) {
@@ -27362,6 +27365,7 @@ function pathOfRemote(state2, id2) {
   return Object.entries(state2.items).find(([, entry2]) => entry2.id === id2)?.[0] ?? null;
 }
 const encoder$2 = new TextEncoder(), decoder$1 = new TextDecoder();
+const SAVE_ATTEMPTS = 3;
 async function readState(workspace2, connection) {
   try {
     const snapshot = await workspace2.files.read(statePath(connection));
@@ -27376,6 +27380,70 @@ function stateWrite$1(stored) {
   const text2 = serializeState(stored.state);
   if (text2 === stored.text || stored.text === null && Object.keys(stored.state.items).length === 0) return null;
   return { path: statePath(stored.state.connection), bytes: encoder$2.encode(text2), ...stored.revision === null ? {} : { expectedRevision: stored.revision } };
+}
+const conflictOn = (error2, path) => error2 instanceof AppError && error2.code === "CONFLICT" && error2.details?.path === path;
+class SyncStore {
+  constructor(workspace2, stored) {
+    this.workspace = workspace2;
+    this.stored = stored;
+  }
+  workspace;
+  stored;
+  sets = /* @__PURE__ */ new Map();
+  removed = /* @__PURE__ */ new Set();
+  static async open(workspace2, connection) {
+    return new SyncStore(workspace2, await readState(workspace2, connection));
+  }
+  get state() {
+    return this.stored.state;
+  }
+  get path() {
+    return statePath(this.stored.state.connection);
+  }
+  set(path, entry2) {
+    this.stored.state.items[path] = entry2;
+    this.sets.set(path, entry2);
+    this.removed.delete(path);
+  }
+  remove(path) {
+    delete this.stored.state.items[path];
+    this.sets.delete(path);
+    this.removed.add(path);
+  }
+  /** The guarded state write for a batch, or null when nothing changed. */
+  request() {
+    return stateWrite$1(this.stored);
+  }
+  /** Takes in the revision a committed batch gave the state file. */
+  committed(changes) {
+    const change2 = changes.find((entry2) => entry2.path === this.path);
+    if (change2) this.stored = { state: this.stored.state, revision: change2.revision, text: serializeState(this.stored.state) };
+  }
+  /** Re-reads the file and re-applies this run's changes on top of what another writer left. */
+  async refresh() {
+    const fresh = await readState(this.workspace, this.stored.state.connection);
+    for (const path of this.removed) delete fresh.state.items[path];
+    for (const [path, entry2] of this.sets) fresh.state.items[path] = entry2;
+    this.stored = fresh;
+  }
+  /**
+   * Writes the state file alone, right away (dry runs write nothing). A revision conflict re-reads the file and
+   * retries against the fresh revision, so ids recorded here survive a concurrent writer.
+   */
+  async save() {
+    if (this.workspace.dryRun) return;
+    for (let attempt = 1; ; attempt++) {
+      const request = this.request();
+      if (request === null) return;
+      try {
+        this.committed((await this.workspace.write([request])).changes);
+        return;
+      } catch (error2) {
+        if (attempt >= SAVE_ATTEMPTS || !conflictOn(error2, this.path)) throw error2;
+        await this.refresh();
+      }
+    }
+  }
 }
 async function followRename(workspace2, connections, oldPath, path, kind) {
   for (const connection of connections) {
@@ -27426,7 +27494,7 @@ function editFrontmatter(text2, frontmatter2, changes, removed) {
   if (appended.length > 0 && result.length > 0 && !result.endsWith("\n")) result += newline;
   return `${bom}${source.slice(0, start2)}${result}${appended.join("")}${source.slice(end2)}`;
 }
-const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way sync with Azure DevOps Boards.\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`, `unseededList`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nSync with an external tracker (Azure DevOps Boards): connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`); the token comes from the environment variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`) and never from config or notes, so never print or write it. Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (read-only probe). A `product-backlog` view with the option `connection: <id>` is a sync set. Always run `backlog sync status` or `backlog sync --dry-run` first: it reads the remote and lists `created`, `updated`, `pulled`, `conflicts`, `skipped` and `left`. Then `backlog sync` (`--direction push|pull`, `--view` to narrow). Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand. A field changed on both sides is a conflict that the sync leaves alone; ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`. Rename notes with `move`/`rename` so the sync state follows. `CONNECTOR_AUTH_FAILED` means the token variable is unset or rejected; `SYNC_CONFLICT` means the remote item changed during the sync: rerun status and sync.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
+const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way sync with Azure DevOps Boards.\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`, `unseededList`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nSync with an external tracker (Azure DevOps Boards): connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`); the token comes from the environment variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`) and never from config or notes, so never print or write it. Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (read-only probe). A `product-backlog` view with the option `connection: <id>` is a sync set. Always run `backlog sync status` or `backlog sync --dry-run` first: it reads the remote and lists `created`, `updated`, `pulled`, `conflicts` and `skipped` (each with a `code`) per view, and `left` per connection. A skip is never an error to work around: read its `code` (for example `duplicate-link` for a copied note, `remote-format-unknown` for a remote description that is not Markdown, `server-kept`) and tell the user. Then `backlog sync` (`--direction push|pull`, `--view` to narrow). Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand, and never copy a note with its link property. Without the state file, notes relink by their link property and every differing field is a conflict; nothing is overwritten. `WORKSPACE_BUSY` naming `.forge/sync/<id>.lock` means another sync of that connection runs. A field changed on both sides is a conflict that the sync leaves alone; ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`. Rename notes with `move`/`rename` so the sync state follows. `CONNECTOR_AUTH_FAILED` means the token variable is unset or rejected; `SYNC_CONFLICT` means the remote item changed during the sync: rerun status and sync.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
 const backlogSkill = { id: "forge-backlog", content: backlog };
 const absent = () => ({ value: null, invalid: false });
 function ownValue(frontmatter2, key) {
@@ -27965,6 +28033,25 @@ function withBody(text2, body) {
   return trimmed === "" ? head : `${head}${head === "" || head.endsWith("\n") ? "" : "\n"}${trimmed}
 `;
 }
+const FENCE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[^\n]*(?=\n|$)/g;
+const COMMENT = /%%[\s\S]*?%%/g;
+function outsideCode(text2, transform2) {
+  let result = "", last = 0;
+  for (const match of text2.matchAll(FENCE)) {
+    result += transform2(text2.slice(last, match.index)) + match[0];
+    last = match.index + match[0].length;
+  }
+  return result + transform2(text2.slice(last));
+}
+const withoutComments = (body) => outsideCode(body, (part) => part.replace(COMMENT, ""));
+function comments(body) {
+  const found = [];
+  outsideCode(body, (part) => {
+    found.push(...part.match(COMMENT) ?? []);
+    return part;
+  });
+  return found;
+}
 function nextIterationName(items) {
   let highest = 0;
   for (const item of items) {
@@ -28316,7 +28403,7 @@ function readLinkList(source, path, key) {
   });
   return entries;
 }
-const basename$1 = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
+const basename$2 = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 const doneIn = (values2, state2) => state2 !== null && values2.some((value2) => value2.toLowerCase() === state2.toLowerCase());
 const gated = (key, frontmatter2, read2) => key ? read2(ownValue(frontmatter2, key)) : absent();
 const label = (key, frontmatter2) => key ? readString(ownValue(frontmatter2, key)) : null;
@@ -28359,7 +28446,7 @@ function createItems(source, results, settings2, exists2) {
     const id2 = readNumber(ownValue(frontmatter2, "pbl-id"));
     const item = {
       path,
-      title: basename$1(path),
+      title: basename$2(path),
       outsideFilter: !inFilter,
       entryIndex: store.all.length,
       typeName,
@@ -28786,8 +28873,8 @@ async function editNotes(session, edits, ifMatch2) {
   if (requests.length === 0) return { dryRun: session.context.workspace.dryRun, changes: [] };
   return session.context.workspace.write(requests, { diff: true });
 }
-function itemEdit(session, write) {
-  const env = { settings: session.settings, wikilink: (target, source) => wikilink(session, target, source), resolve: (linkpath, source) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path) => typeOf(session, path) };
+function itemEdit(session, write, links) {
+  const env = { settings: session.settings, wikilink: links ?? ((target, source) => wikilink(session, target, source)), resolve: (linkpath, source) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path) => typeOf(session, path) };
   return {
     path: write.path,
     edit: (frontmatter2) => {
@@ -29623,7 +29710,7 @@ function check$1(session) {
     problems
   };
 }
-const SYNC_FIELDS = ["title", "type", "state", "parent", "iteration", "priority", "effort", "tags", "description"];
+const SYNC_FIELDS = ["title", "type", "state", "parent", "iteration", "area", "priority", "effort", "tags", "description"];
 const sortedTags = (tags2) => [...new Set(tags2.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].sort();
 function canonical(field2, value2) {
   if (value2 === null || value2 === void 0) return "null";
@@ -29634,17 +29721,30 @@ function canonical(field2, value2) {
   return JSON.stringify(value2);
 }
 function decide(base, local, remote) {
-  if (base === void 0 && local !== void 0 && remote !== void 0) return local === remote ? "converged" : "conflict";
-  const localChanged = local !== void 0 && local !== base, remoteChanged = remote !== void 0 && remote !== base;
+  if (local === void 0 && remote === void 0) return "unchanged";
+  if (local === void 0 || remote === void 0) return base === void 0 || (local ?? remote) !== base ? "skip" : "unchanged";
+  if (base === void 0) return local === remote ? "converged" : "conflict";
+  const localChanged = local !== base, remoteChanged = remote !== base;
   if (localChanged && remoteChanged) return local === remote ? "converged" : "conflict";
   return localChanged ? "push" : remoteChanged ? "pull" : "unchanged";
+}
+function decideDescription(sides) {
+  const { local, remote, localBase, remoteBase } = sides;
+  if (local === void 0 || remote === void 0) return local === remote ? "unchanged" : "skip";
+  if (localBase === void 0 || remoteBase === void 0) return sides.same ? "converged" : "conflict";
+  const localChanged = local !== localBase, remoteChanged = remote !== remoteBase;
+  if (sides.same) return localChanged || remoteChanged ? "converged" : "unchanged";
+  if (localChanged && remoteChanged) return "conflict";
+  if (localChanged) return "push";
+  if (remoteChanged) return sides.markdown ? "pull" : "skip";
+  return "unchanged";
 }
 function remoteType(mapping, localType2) {
   return Object.entries(mapping.types).find(([local]) => sameValue(local, localType2))?.[1];
 }
 function localType(mapping, remote, current) {
   if (current !== null && sameValue(remoteType(mapping, current) ?? null, remote)) return current;
-  return Object.entries(mapping.types).find(([, value2]) => sameValue(value2, remote))?.[0] ?? remote;
+  return Object.entries(mapping.types).find(([, value2]) => sameValue(value2, remote))?.[0];
 }
 const stateEntries = (mapping, type2) => {
   const qualified = type2 === null ? [] : Object.entries(mapping.states).filter(([key]) => key.toLowerCase().startsWith(`${type2.toLowerCase()}:`)).map(([key, value2]) => [key.slice(type2.length + 1), value2]);
@@ -29685,10 +29785,11 @@ function synced(context, field2) {
   if (field2 === "iteration") return iterationRoot(context) !== null && settings2.iterationKey !== "";
   if (field2 === "priority") return settings2.priorityKey !== "";
   if (field2 === "tags") return settings2.tagsKey !== "";
+  if (field2 === "area") return context.connection.areaProperty !== "";
   return true;
 }
-const basename = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
-const iterationNote = (session, name2) => session.cache.files().find((path) => path.toLowerCase().endsWith(".md") && basename(path).toLowerCase() === name2.toLowerCase() && isIterationType(readString(ownValue(session.cache.getFileCache(path)?.frontmatter, session.settings.typeKey)))) ?? null;
+const basename$1 = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
+const iterationNote = (session, name2) => session.cache.files().find((path) => path.toLowerCase().endsWith(".md") && basename$1(path).toLowerCase() === name2.toLowerCase() && isIterationType(readString(ownValue(session.cache.getFileCache(path)?.frontmatter, session.settings.typeKey)))) ?? null;
 const scalar$1 = (value2) => value2 === void 0 || value2 === null || value2 === "" ? null : typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? value2 : void 0;
 const itemType = (item) => item.typeName ?? (displayType(item) || null);
 function localValues(context, item, frontmatter2, body) {
@@ -29706,7 +29807,11 @@ function localValues(context, item, frontmatter2, body) {
   if (synced(context, "iteration") && root !== null) {
     const entry2 = item.iterationEntry;
     if (entry2 === null) values2.set("iteration", null);
-    else if (entry2.path !== null) values2.set("iteration", iterationPath(root, basename(entry2.path)));
+    else if (entry2.path !== null) values2.set("iteration", iterationPath(root, basename$1(entry2.path)));
+  }
+  if (synced(context, "area")) {
+    const area = scalar$1(ownValue(frontmatter2, context.connection.areaProperty));
+    if (area === null || typeof area === "string") values2.set("area", area === null ? null : area.trim().replace(/\\+$/, "") || null);
   }
   if (synced(context, "priority")) {
     const number2 = priorityNumber(item.priorityValue);
@@ -29719,7 +29824,7 @@ function localValues(context, item, frontmatter2, body) {
   }
   if (synced(context, "tags")) values2.set("tags", item.tags);
   if (synced(context, "description") && body !== null) {
-    const text2 = body.replace(/\r\n?/g, "\n").trim();
+    const text2 = withoutComments(body.replace(/\r\n?/g, "\n")).trim();
     values2.set("description", text2 === "" ? null : text2);
   }
   for (const key of Object.keys(context.mapping.properties)) {
@@ -29736,6 +29841,7 @@ function remoteValues(context, remote) {
   if (synced(context, "parent")) values2.set("parent", remote.parentId ?? null);
   const root = iterationRoot(context);
   if (synced(context, "iteration") && root !== null) values2.set("iteration", iterationName(root, remote.iteration ?? null) === null ? null : remote.iteration ?? null);
+  if (synced(context, "area") && remote.area !== void 0) values2.set("area", remote.area);
   if (synced(context, "priority")) values2.set("priority", remote.priority ?? null);
   if (synced(context, "effort")) values2.set("effort", remote.effort ?? null);
   if (synced(context, "tags")) values2.set("tags", remote.tags);
@@ -29756,31 +29862,34 @@ function remoteChange(context, values2) {
   }
   return Object.keys(fields2).length > 0 ? { ...change2, fields: fields2 } : change2;
 }
-function pulledNote(context, item, pulls, pathOfRemote2) {
+function pulledNote(context, item, pulls, pathOfRemote2, body) {
   const { session } = context;
   const { settings: settings2 } = session;
   const note = { write: { path: item.path }, extra: {}, removed: [], skipped: [] };
   const type2 = itemType(item);
   for (const [field2, value2] of pulls) {
     if (field2 === "title") note.title = sanitizeTitle(String(value2));
-    else if (field2 === "type" && typeof value2 === "string") note.write.typeName = localType(context.mapping, value2, type2);
-    else if (field2 === "state") Object.assign(note.write, stateWrite(item, value2 === null ? null : localState(context.mapping, type2, String(value2), item.stateValue, settings2.states), settings2, formatCivil(session.today)));
+    else if (field2 === "type" && typeof value2 === "string") {
+      const local = localType(context.mapping, value2, type2);
+      if (local === void 0) note.skipped.push({ field: field2, code: "unmapped-remote-type", reason: `remote type ${value2} has no local type mapping; add it to mappings.types` });
+      else note.write.typeName = local;
+    } else if (field2 === "state") Object.assign(note.write, stateWrite(item, value2 === null ? null : localState(context.mapping, type2, String(value2), item.stateValue, settings2.states), settings2, formatCivil(session.today)));
     else if (field2 === "parent") {
       const parent = value2 === null ? null : pathOfRemote2(String(value2));
-      if (value2 !== null && parent === null) note.skipped.push({ field: field2, reason: `remote parent ${String(value2)} is not synced on this connection` });
+      if (value2 !== null && parent === null) note.skipped.push({ field: field2, code: "unsynced-parent", reason: `remote parent ${String(value2)} is not synced on this connection` });
       else note.write.parent = parent;
     } else if (field2 === "iteration") {
       const name2 = iterationName(iterationRoot(context), value2 === null ? null : String(value2));
       const target = name2 === null ? null : iterationNote(session, name2);
-      if (name2 !== null && target === null) note.skipped.push({ field: field2, reason: `no iteration note named ${name2}` });
+      if (name2 !== null && target === null) note.skipped.push({ field: field2, code: "missing-iteration", reason: `no iteration note named ${name2}` });
       else note.write.iteration = target;
     } else if (field2 === "priority") note.write.priority = value2 === null ? null : priorityLabel(Number(value2), settings2.priorityValues);
     else if (field2 === "tags" && Array.isArray(value2)) {
       const lower = new Set(value2.map((tag) => tag.toLowerCase()));
       note.write.tags = { add: value2, remove: item.tags.filter((tag) => !lower.has(tag.toLowerCase())) };
-    } else if (field2 === "description") note.body = value2 === null ? "" : String(value2);
+    } else if (field2 === "description") note.body = [value2 === null ? "" : String(value2), ...comments(body ?? "")].filter((part) => part.trim() !== "").join("\n\n");
     else {
-      const key = field2 === "effort" ? context.connection.effortProperty : field2.slice(PROPERTY.length);
+      const key = field2 === "effort" ? context.connection.effortProperty : field2 === "area" ? context.connection.areaProperty : field2.slice(PROPERTY.length);
       if (value2 === null) note.removed.push(key);
       else setOwn(note.extra, key, value2);
     }
@@ -29788,42 +29897,61 @@ function pulledNote(context, item, pulls, pathOfRemote2) {
   return note;
 }
 const linkValue = (connection, frontmatter2) => readString(ownValue(frontmatter2, connection.linkProperty));
-function identify(context, items, state2, linkId) {
-  const members2 = [], skipped = [];
-  const claimed = /* @__PURE__ */ new Set();
-  for (const { item, frontmatter: frontmatter2, body } of items) {
+function identify(context, items, state2, linkId, exists2) {
+  const members2 = [], skipped = [], adopted = [];
+  const claimed = /* @__PURE__ */ new Map();
+  const mapped = items.filter(({ item }) => {
     const type2 = itemType(item);
-    if (type2 === null || remoteType(context.mapping, type2) === void 0) {
-      skipped.push({ path: item.path, reason: `type ${type2 ?? "(none)"} has no remote type mapping` });
-      continue;
-    }
+    if (type2 !== null && remoteType(context.mapping, type2) !== void 0) return true;
+    skipped.push({ path: item.path, code: "unmapped-type", reason: `type ${type2 ?? "(none)"} has no remote type mapping` });
+    return false;
+  });
+  const linkOf = ({ frontmatter: frontmatter2 }) => {
     const link2 = linkValue(context.connection, frontmatter2);
-    const linked = link2 === null ? null : linkId(link2);
-    let entry2 = state2.items[item.path] ?? null;
-    if (entry2 === null && linked !== null) {
-      const previous2 = pathOfRemote(state2, linked);
-      if (previous2 !== null && !items.some((other) => other.item.path === previous2)) {
-        entry2 = state2.items[previous2];
-        delete state2.items[previous2];
-        state2.items[item.path] = entry2;
-      }
-    }
-    if (entry2 === null && link2 !== null && linked === null) {
-      skipped.push({ path: item.path, reason: `${context.connection.linkProperty} links an item of another connection` });
+    return { link: link2, id: link2 === null ? null : linkId(link2) };
+  };
+  for (const source of mapped) {
+    const entry2 = state2.items[source.item.path];
+    if (entry2 === void 0) continue;
+    if (claimed.has(entry2.id)) {
+      skipped.push({ path: source.item.path, code: "duplicate-link", reason: `${claimed.get(entry2.id)} already syncs remote item ${entry2.id}` });
       continue;
     }
-    const id2 = entry2?.id ?? linked;
-    if (id2 !== null && claimed.has(id2)) {
-      skipped.push({ path: item.path, reason: `another note already syncs remote item ${id2}` });
-      continue;
-    }
-    if (id2 !== null) claimed.add(id2);
-    members2.push({ item, frontmatter: frontmatter2, body, id: id2, entry: entry2, relink: id2 !== null && linked !== id2 });
+    claimed.set(entry2.id, source.item.path);
+    members2.push({ ...source, id: entry2.id, entry: entry2, relink: linkOf(source).id !== entry2.id });
   }
-  const paths2 = new Set(members2.map((member2) => member2.item.path));
-  const left = Object.entries(state2.items).filter(([path]) => !paths2.has(path)).map(([path, entry2]) => ({ path, remoteId: entry2.id, url: entry2.url }));
-  return { members: members2, skipped, left };
+  const linkOnly = mapped.filter(({ item }) => state2.items[item.path] === void 0).map((source) => ({ source, ...linkOf(source) }));
+  const linking = /* @__PURE__ */ new Map();
+  for (const { id: id2 } of linkOnly) if (id2 !== null) linking.set(id2, (linking.get(id2) ?? 0) + 1);
+  for (const { source, link: link2, id: id2 } of linkOnly) {
+    const { path } = source.item;
+    if (link2 !== null && id2 === null) {
+      skipped.push({ path, code: "foreign-link", reason: `${context.connection.linkProperty} links an item of another connection` });
+      continue;
+    }
+    const previous2 = id2 === null ? null : pathOfRemote(state2, id2);
+    const holder = id2 === null ? void 0 : claimed.get(id2) ?? (previous2 !== null && exists2(previous2) ? previous2 : void 0);
+    if (holder !== void 0) {
+      skipped.push({ path, code: "duplicate-link", reason: `${holder} already syncs remote item ${id2}; remove or change ${context.connection.linkProperty} in this copy` });
+      continue;
+    }
+    if (id2 !== null && linking.get(id2) > 1) {
+      skipped.push({ path, code: "duplicate-link", reason: `${linking.get(id2)} notes link remote item ${id2}; keep ${context.connection.linkProperty} in one of them` });
+      continue;
+    }
+    let entry2 = null;
+    if (previous2 !== null) {
+      entry2 = state2.items[previous2];
+      adopted.push({ from: previous2, to: path });
+    }
+    if (id2 !== null) claimed.set(id2, path);
+    members2.push({ ...source, id: id2, entry: entry2, relink: false });
+  }
+  const order2 = new Map(items.map(({ item }, index2) => [item.path, index2]));
+  members2.sort((a, b) => order2.get(a.item.path) - order2.get(b.item.path));
+  return { members: members2, skipped, adopted };
 }
+const fieldSkip = (path, field2, local, base) => field2 === "description" && base ? { path, field: field2, code: "remote-format-unknown", reason: "the remote description changed but is not known to be Markdown, so it is not pulled; edit the note or run backlog sync resolve with --field description" } : local ? { path, field: field2, code: "unexpressible", reason: `the note's ${field2} cannot be expressed on this connection, so the remote value is not pulled over it` } : { path, field: field2, code: "unreadable-remote", reason: `the remote ${field2} cannot be read, so the note's value is not pushed over it` };
 function planItem(context, member2, remote, options2) {
   const { item, entry: entry2 } = member2;
   const local = localValues(context, item, member2.frontmatter, member2.body);
@@ -29845,21 +29973,28 @@ function planItem(context, member2, remote, options2) {
     remoteChanged: [],
     local,
     remoteValues: /* @__PURE__ */ new Map(),
+    remoteMarkdown: false,
+    baseFrom: /* @__PURE__ */ new Map(),
+    skipped: [],
     relink: member2.relink
   };
   if (plan.create) return plan;
-  if (remote === null) return { path: item.path, reason: `remote item ${member2.id} no longer exists or is not readable` };
+  if (remote === null) return { path: item.path, code: "remote-missing", reason: `remote item ${member2.id} no longer exists or is not readable` };
   plan.remoteValues = remoteValues(context, remote);
+  plan.remoteMarkdown = remote.description === null || remote.descriptionMarkdown === true;
   const unchangedRemote = entry2 !== null && entry2.rev === remote.rev;
   const resolution = options2.resolution?.path === item.path ? options2.resolution : void 0;
+  const hashOf = (field2, values2) => values2.has(field2) ? options2.hash(canonical(field2, values2.get(field2))) : void 0;
   for (const field2 of /* @__PURE__ */ new Set([...local.keys(), ...plan.remoteValues.keys()])) {
-    const base = entry2?.fields[field2];
-    const localHash = local.has(field2) ? options2.hash(canonical(field2, local.get(field2))) : void 0;
-    const remoteHash = !plan.remoteValues.has(field2) ? void 0 : unchangedRemote && base !== void 0 ? base : options2.hash(canonical(field2, plan.remoteValues.get(field2)));
-    let decision = decide(base, localHash, remoteHash);
-    if (decision === "pull" || decision === "conflict" || decision === "converged") plan.remoteChanged.push(field2);
-    if (resolution && decision !== "conflict" && decision !== "converged") decision = "unchanged";
-    if (decision === "conflict" && resolution && (resolution.fields === null || resolution.fields.includes(field2))) {
+    const baseKey = field2 === "description" ? `${REMOTE_BASE}${field2}` : field2;
+    const base = entry2?.fields[field2], remoteBase = entry2?.fields[baseKey];
+    const localHash = hashOf(field2, local);
+    const remoteHash = unchangedRemote && remoteBase !== void 0 && plan.remoteValues.has(field2) ? remoteBase : hashOf(field2, plan.remoteValues);
+    let decision = field2 === "description" ? decideDescription({ local: localHash, remote: remoteHash, localBase: base, remoteBase, same: localHash !== void 0 && localHash === hashOf(field2, plan.remoteValues), markdown: plan.remoteMarkdown }) : decide(base, localHash, remoteHash);
+    if (decision !== "push" && decision !== "unchanged") plan.remoteChanged.push(field2);
+    const settles = decision === "conflict" || decision === "skip" && localHash !== void 0 && remoteHash !== void 0;
+    if (resolution && decision !== "converged" && !settles) decision = "unchanged";
+    if (settles && resolution && (resolution.fields === null || resolution.fields.includes(field2))) {
       decision = resolution.take === "local" ? "push" : "pull";
       plan.resolved.push(field2);
     }
@@ -29867,25 +30002,53 @@ function planItem(context, member2, remote, options2) {
     else if (decision === "pull" && options2.direction !== "push") plan.pull.set(field2, plan.remoteValues.get(field2));
     else if (decision === "conflict") plan.conflicts.push({ field: field2, local: local.get(field2) ?? null, remote: plan.remoteValues.get(field2) ?? null });
     else if (decision === "converged") plan.converged.push(field2);
+    else if (decision === "skip") plan.skipped.push(fieldSkip(item.path, field2, localHash === void 0, base !== void 0));
   }
   return plan;
 }
-function nextBase(plan, local, pushed, pulled, hash) {
-  const fields2 = { ...plan.entry?.fields };
-  const set2 = (field2, value2) => {
-    if (value2 !== void 0) fields2[field2] = hash(canonical(field2, value2));
-  };
-  if (plan.create) {
-    for (const [field2, value2] of local) set2(field2, value2);
-    return fields2;
+const empty = (value2) => value2 === null || Array.isArray(value2) && value2.length === 0;
+function settlePush(context, plan, result, direction, freshLocal) {
+  const before = plan.remoteValues;
+  Object.assign(plan, { id: result.id, url: result.url, remote: result, remoteValues: remoteValues(context, result), remoteMarkdown: result.description === null || result.descriptionMarkdown === true });
+  const pushed = new Set(plan.create ? freshLocal.keys() : plan.push.keys());
+  if (plan.create) plan.local = freshLocal;
+  for (const [field2, remote] of plan.remoteValues) {
+    if (field2 === "description") continue;
+    const local = plan.local.get(field2);
+    if (!pushed.has(field2)) {
+      if (before.has(field2) && canonical(field2, before.get(field2)) !== canonical(field2, remote)) plan.remoteChanged.push(field2);
+      continue;
+    }
+    if (local === void 0 || canonical(field2, local) === canonical(field2, remote)) continue;
+    if (!empty(local)) {
+      plan.baseFrom.set(field2, "remote");
+      plan.skipped.push({ path: plan.path, field: field2, code: "server-kept", reason: `the platform stored ${canonical(field2, remote)} instead of ${canonical(field2, local)}; the next sync pushes the note's value again` });
+    } else if (direction === "push") {
+      plan.remoteChanged.push(field2);
+      plan.skipped.push({ path: plan.path, field: field2, code: "server-applied", reason: `the platform applied ${canonical(field2, remote)}; a pull takes it into the note` });
+    } else {
+      plan.remoteChanged.push(field2);
+      plan.pull.set(field2, remote);
+    }
   }
-  for (const field2 of [...pushed, ...plan.converged]) set2(field2, local.get(field2));
-  for (const field2 of pulled) set2(field2, plan.remoteValues.get(field2));
+}
+function nextBase(plan, pushed, pulled, hash) {
+  const fields2 = { ...plan.entry?.fields };
+  const set2 = (key, field2, value2) => {
+    if (value2 !== void 0) fields2[key] = hash(canonical(field2, value2));
+  };
+  const settle2 = (field2, value2) => {
+    set2(field2, field2, value2);
+    if (field2 === "description") set2(`${REMOTE_BASE}${field2}`, field2, plan.remoteValues.get(field2));
+  };
+  for (const field2 of plan.create ? plan.local.keys() : [...pushed, ...plan.converged]) settle2(field2, plan.baseFrom.get(field2) === "remote" ? plan.remoteValues.get(field2) : plan.local.get(field2));
+  for (const field2 of pulled) settle2(field2, plan.remoteValues.get(field2));
   return fields2;
 }
+const basename = (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 function landings(session, context, plans, pathOfRemote2) {
-  return plans.map((plan) => {
-    const note = pulledNote(context, plan.item, plan.pull, pathOfRemote2);
+  const landed = plans.map((plan) => {
+    const note = pulledNote(context, plan.item, plan.pull, pathOfRemote2, plan.body);
     const skipped = note.skipped.map((skip) => ({ path: plan.path, ...skip }));
     const pulled = new Set([...plan.pull.keys()].filter((field2) => !note.skipped.some((skip) => skip.field === field2)));
     let renameTo = null;
@@ -29894,29 +30057,42 @@ function landings(session, context, plans, pathOfRemote2) {
       const target = `${folder}${note.title}.md`;
       if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) {
         pulled.delete("title");
-        skipped.push({ path: plan.path, field: "title", reason: `${target} already exists` });
+        skipped.push({ path: plan.path, field: "title", code: "title-taken", reason: `${target} already exists` });
       } else if (target !== plan.path) renameTo = target;
     }
     return { plan, note, pulled, renameTo, skipped };
   });
+  const renamed = new Map(landed.flatMap((landing) => landing.renameTo === null ? [] : [[landing.plan.path, landing.renameTo]]));
+  for (const { note } of landed) if (typeof note.write.parent === "string") note.write.parent = renamed.get(note.write.parent) ?? note.write.parent;
+  return landed;
 }
-async function commitVault(session, context, items, stored, pushed, hash, live, created) {
+async function commitVault(session, context, items, store, pushed, hash, live) {
   const { connection } = context;
+  const { workspace: workspace2 } = session.context;
   const edits = [];
   const changes = [];
+  const plannedFrom = new Map(live ? [] : items.flatMap(({ plan, renameTo }) => renameTo === null ? [] : [[renameTo, plan.path]]));
+  const links = (target, source) => {
+    const from = plannedFrom.get(target);
+    if (from === void 0) return wikilink(session, target, source);
+    const text2 = session.cache.fileToLinktext(from, source), old = basename(from), next = basename(target);
+    return `[[${text2.endsWith(old) ? `${text2.slice(0, -old.length)}${next}` : text2}]]`;
+  };
   for (const { plan, note, pulled, renameTo } of items) {
     let path = plan.path;
     if (renameTo !== null) {
-      changes.push(...(await session.context.app.fileManager.move(plan.path, renameTo)).changes);
+      const moved2 = await session.context.app.fileManager.move(plan.path, renameTo);
+      for (const rename2 of moved2.renames) if (rename2.kind === "file") changes.push({ path: rename2.to, oldPath: rename2.from, operation: "renamed", revision: rename2.revision, bytes: rename2.bytes, ...moved2.dryRun ? { diff: null } : {} });
+      changes.push(...moved2.changes);
       if (live) {
         path = renameTo;
-        delete stored.state.items[plan.path];
+        store.remove(plan.path);
       }
     }
     const extra = { ...note.extra };
     if (plan.url !== null && (plan.relink || plan.create)) setOwn(extra, connection.linkProperty, plan.url);
     if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== void 0) {
-      const write = itemEdit(session, { ...note.write, path });
+      const write = itemEdit(session, { ...note.write, path }, links);
       edits.push({
         path,
         ...note.body === void 0 ? {} : { body: note.body },
@@ -29930,45 +30106,52 @@ async function commitVault(session, context, items, stored, pushed, hash, live, 
       });
     }
     if (plan.id === null || plan.remote === null) continue;
-    const local = plan.create ? localValues(context, plan.item, plan.frontmatter, plan.body) : plan.local;
     const absorbed = plan.remoteChanged.every((field2) => pulled.has(field2) || plan.converged.includes(field2));
-    const rev = absorbed || plan.entry === null ? plan.remote.rev : plan.entry.rev;
-    stored.state.items[path] = { id: plan.id, url: plan.url ?? plan.remote.url, rev, fields: nextBase(plan, local, pushed.get(plan.path) ?? /* @__PURE__ */ new Set(), pulled, hash) };
+    const rev = absorbed ? plan.remote.rev : plan.entry?.rev ?? UNSETTLED_REV;
+    store.set(path, { id: plan.id, url: plan.url ?? plan.remote.url, rev, fields: nextBase(plan, pushed.get(plan.path) ?? /* @__PURE__ */ new Set(), pulled, hash) });
   }
-  const requests = await planNoteEdits(session, edits);
-  const state2 = stateWrite$1(stored);
-  if (requests.length + (state2 ? 1 : 0) === 0) return changes;
-  try {
-    changes.push(...(await session.context.workspace.write([...requests, ...state2 ? [state2] : []], { diff: true })).changes);
-  } catch (error2) {
-    if (live && state2 && created) await session.context.workspace.write([state2]);
-    throw error2;
+  for (let attempt = 1; ; attempt++) {
+    const requests = await planNoteEdits(session, edits);
+    const state2 = store.request();
+    if (requests.length + (state2 ? 1 : 0) === 0) return changes;
+    try {
+      const result = await workspace2.write([...requests, ...state2 ? [state2] : []], { diff: true });
+      store.committed(result.changes);
+      return [...changes, ...result.changes];
+    } catch (error2) {
+      if (!live || attempt > 1 || !conflictOn(error2, store.path)) throw error2;
+      await store.refresh();
+    }
   }
-  return changes;
 }
 const PLACEHOLDER = "new:";
 const codeOf = (error2) => isRecord(error2) && typeof error2.code === "string" ? error2.code : "OPERATION_FAILED";
 const keys = (values2) => [...values2.keys()];
 const shown = (field2, value2) => JSON.parse(canonical(field2, value2));
-async function syncView(session, hub, bound2, hash, options2) {
+async function syncView(session, bound2, store, hash, options2) {
   const { connection, connector } = bound2;
   const { workspace: workspace2 } = session.context;
   const live = options2.mode === "sync" && !workspace2.dryRun;
   if (options2.mode === "sync") ensureWritable(session);
   const mapping = connector.mapping(connection);
-  const stored = await readState(workspace2, connection.id);
   const ids = /* @__PURE__ */ new Map();
-  const context = { session, connection, mapping, idOf: (path) => ids.get(path) ?? stored.state.items[path]?.id ?? null };
+  const context = { session, connection, mapping, idOf: (path) => ids.get(path) ?? store.state.items[path]?.id ?? null };
   const sources = await Promise.all(session.model.results.map(async (item) => ({
     item,
     frontmatter: session.cache.getFileCache(item.path)?.frontmatter ?? {},
     body: mapping.fields.description === null ? null : noteBody(new TextDecoder().decode((await workspace2.files.read(item.path)).bytes))
   })));
-  const { members: members2, skipped, left } = identify(context, sources, stored.state, (url2) => connector.idFromLink(connection, url2));
+  const files = new Set(session.cache.files());
+  const { members: members2, skipped, adopted } = identify(context, sources, store.state, (url2) => connector.idFromLink(connection, url2), (path) => files.has(path));
+  for (const { from, to } of adopted) {
+    const entry2 = store.state.items[from];
+    store.remove(from);
+    store.set(to, entry2);
+  }
   for (const member2 of members2) ids.set(member2.item.path, member2.id ?? `${PLACEHOLDER}${member2.item.path}`);
   const targets = options2.resolution ? members2.filter((member2) => member2.item.path === options2.resolution.path) : members2;
   const linked = targets.flatMap((member2) => member2.id === null ? [] : [member2.id]);
-  const remotes = new Map((linked.length > 0 ? await connector.query(connection, { ids: linked }) : []).map((item) => [item.id, item]));
+  const remotes = new Map((linked.length > 0 ? await connector.query(connection, linked) : []).map((item) => [item.id, item]));
   const report = {
     base: session.base.path,
     view: session.view.name,
@@ -29981,7 +30164,6 @@ async function syncView(session, hub, bound2, hash, options2) {
     resolved: [],
     unchanged: 0,
     skipped,
-    left: options2.resolution ? [] : left,
     failed: [],
     changes: []
   };
@@ -29992,26 +30174,27 @@ async function syncView(session, hub, bound2, hash, options2) {
     else plans.push(plan);
   }
   if (options2.resolution) ensureResolvable(plans, options2.resolution);
-  const pushed = await pushAll(context, bound2, plans, ids, report, options2, live);
+  const pushed = await pushAll(context, bound2, plans, ids, report, options2, live, store, hash);
   const failed = new Set(report.failed.map((failure2) => failure2.path));
-  const settled = plans.filter((plan) => !failed.has(plan.path) && !(plan.create && options2.direction === "pull"));
+  const settled = plans.filter((plan) => !failed.has(plan.path) && !(plan.create && (options2.direction === "pull" || plan.id === null)));
   for (const plan of plans) {
+    report.skipped.push(...plan.skipped);
     if (plan.conflicts.length > 0) report.conflicts.push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: plan.conflicts.map(({ field: field2, local, remote }) => ({ field: field2, local: shown(field2, local), remote: shown(field2, remote) })) });
     if (options2.resolution && plan.resolved.length > 0) report.resolved.push({ path: plan.path, take: options2.resolution.take, fields: plan.resolved });
   }
   report.unchanged = plans.filter((plan) => !plan.create && plan.push.size + plan.pull.size + plan.conflicts.length === 0).length;
-  const remotePath = (id2) => [...ids].find(([, value2]) => value2 === id2)?.[0] ?? pathOfRemote(stored.state, id2);
+  const remotePath = (id2) => [...ids].find(([, value2]) => value2 === id2)?.[0] ?? pathOfRemote(store.state, id2);
   const landed = landings(session, context, settled, remotePath);
   for (const { plan, pulled, renameTo, skipped: skips } of landed) {
     report.skipped.push(...skips);
     if (pulled.size > 0) report.pulled.push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: [...pulled], ...renameTo ? { renamedTo: renameTo } : {} });
   }
-  if (options2.mode === "status") return report;
-  report.changes = await commitVault(session, context, landed, stored, pushed, hash, live, report.created.length > 0);
-  if (live) await publish(session, hub, bound2, report);
-  return report;
+  const result = { report, members: new Set(members2.map((member2) => member2.item.path)) };
+  if (options2.mode === "status") return result;
+  report.changes = await commitVault(session, context, landed, store, pushed, hash, live);
+  return result;
 }
-async function pushAll(context, { connection, connector }, plans, ids, report, options2, live) {
+async function pushAll(context, { connection, connector }, plans, ids, report, options2, live, store, hash) {
   const pushed = /* @__PURE__ */ new Map();
   const parentId = (value2) => {
     if (typeof value2 !== "string" || !value2.startsWith(PLACEHOLDER)) return value2;
@@ -30020,7 +30203,7 @@ async function pushAll(context, { connection, connector }, plans, ids, report, o
   };
   for (const plan of plans) {
     if (plan.create && options2.direction === "pull") {
-      report.skipped.push({ path: plan.path, reason: "not synced yet; a push creates it" });
+      report.skipped.push({ path: plan.path, code: "not-created", reason: "not synced yet; a push creates it" });
       continue;
     }
     const values2 = plan.create ? new Map([...plan.local].filter(([, value2]) => value2 !== null && !(Array.isArray(value2) && value2.length === 0))) : plan.push;
@@ -30036,20 +30219,32 @@ async function pushAll(context, { connection, connector }, plans, ids, report, o
       if (parent === void 0) delete change2.parentId;
       else change2.parentId = parent;
     }
+    let result;
     try {
-      const result = plan.create ? await connector.create(connection, { ...change2, type: String(plan.local.get("type")), title: String(plan.local.get("title") ?? plan.item.title) }) : await connector.update(connection, plan.id, change2, plan.remote.rev);
-      if (plan.create) ids.set(plan.path, result.id);
-      Object.assign(plan, { id: result.id, url: result.url, remote: result });
-      pushed.set(plan.path, new Set(fields2));
-      (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: result.id, url: result.url, fields: fields2 });
+      result = plan.create ? await connector.create(connection, { ...change2, type: String(plan.local.get("type")), title: String(plan.local.get("title") ?? plan.item.title) }) : await connector.update(connection, plan.id, change2, plan.remote.rev);
     } catch (error2) {
       if (codeOf(error2) === "CONNECTOR_AUTH_FAILED") throw error2;
       const stale = isRecord(error2) && isRecord(error2.details) && error2.details.reason === "stale-revision";
       if (stale && options2.resolution) throw backlogError("SYNC_CONFLICT", `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
       report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? "SYNC_CONFLICT" : codeOf(error2), message: stale ? "The remote item changed during the sync; run the sync again." : String(error2.message) });
+      continue;
+    }
+    if (plan.create) ids.set(plan.path, result.id);
+    settlePush(context, plan, result, options2.direction, plan.create ? resolvedLocal(context, plan) : plan.local);
+    pushed.set(plan.path, new Set(fields2));
+    (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: result.id, url: result.url, fields: fields2 });
+    if (plan.create) {
+      store.set(plan.path, { id: result.id, url: result.url, rev: plan.remoteChanged.length === 0 ? result.rev : UNSETTLED_REV, fields: nextBase(plan, new Set(fields2), /* @__PURE__ */ new Set(), hash) });
+      await store.save();
     }
   }
   return pushed;
+}
+function resolvedLocal(context, plan) {
+  const values2 = localValues(context, plan.item, plan.frontmatter, plan.body);
+  const parent = values2.get("parent");
+  if (typeof parent === "string" && parent.startsWith(PLACEHOLDER)) values2.delete("parent");
+  return values2;
 }
 function ensureResolvable(plans, resolution) {
   const settled = plans.flatMap((plan) => plan.resolved);
@@ -30058,7 +30253,7 @@ function ensureResolvable(plans, resolution) {
   const conflicts = plans.flatMap((plan) => plan.conflicts.map((conflict) => conflict.field));
   throw forgeError("INVALID_ARGUMENT", `${resolution.path} has no conflict in ${missing2.length > 0 ? missing2.join(", ") : "any field"}; run backlog sync status to list conflicts.`, { path: resolution.path, conflicts: [...conflicts, ...settled] });
 }
-async function publish(session, hub, { connection }, report) {
+async function publish(session, hub, { connection }, report, left) {
   const base = { connection: connection.id, platform: connection.platform };
   for (const [operation2, entries] of [["create", report.created], ["update", report.updated]]) {
     for (const entry2 of entries) await hub.report("pushed", { ...base, path: entry2.path, remoteId: entry2.remoteId, url: entry2.url, operation: operation2, fields: entry2.fields });
@@ -30073,7 +30268,7 @@ async function publish(session, hub, { connection }, report) {
     updated: report.updated.length,
     pulled: report.pulled.length,
     conflicts: report.conflicts.length,
-    left: report.left.length,
+    left,
     failed: report.failed.length
   });
 }
@@ -30096,53 +30291,81 @@ async function boundViews(context, request) {
   }
   return bound2;
 }
-const totals = (views2) => ({
+const totals = (views2, left) => ({
   created: views2.reduce((sum, view) => sum + view.created.length, 0),
   updated: views2.reduce((sum, view) => sum + view.updated.length, 0),
   pulled: views2.reduce((sum, view) => sum + view.pulled.length, 0),
   conflicts: views2.reduce((sum, view) => sum + view.conflicts.length, 0),
   skipped: views2.reduce((sum, view) => sum + view.skipped.length, 0),
-  left: views2.reduce((sum, view) => sum + view.left.length, 0),
+  left: left.length,
   failed: views2.reduce((sum, view) => sum + view.failed.length, 0)
 });
 async function runSync(context, services, request) {
   const views2 = await boundViews(context, request);
+  const live = request.mode === "sync" && !context.workspace.dryRun;
+  const open2 = (view) => openBacklog(context, services.bases, services.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
+  let targets = views2;
+  let resolution;
+  if (request.resolve) {
+    const holding = [];
+    for (const view of views2) {
+      try {
+        holding.push({ view, path: findItem(await open2(view), request.resolve.item).path });
+      } catch (error2) {
+        if (!(error2 instanceof Error && "code" in error2 && error2.code === "BACKLOG_NOT_FOUND")) throw error2;
+      }
+    }
+    if (holding.length === 0) throw backlogError("BACKLOG_NOT_FOUND", `${request.resolve.item} is not an item of a bound view.`, { reference: request.resolve.item });
+    if (holding.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${request.resolve.item} syncs in ${holding.length} views; pass --base and --view.`, { candidates: holding.map((entry2) => ({ base: entry2.view.base, view: entry2.view.view, connection: entry2.view.connection })) });
+    targets = [holding[0].view];
+    resolution = { path: holding[0].path, take: request.resolve.take, fields: request.resolve.fields };
+  }
+  const connections = [...new Set(targets.map((view) => view.connection))];
+  const bound2 = new Map(connections.map((id2) => [id2, services.hub.connection(id2)]));
+  const releases = [];
   const reports = [];
+  let left = [];
   services.activity.syncing = true;
   try {
-    let targets = views2;
-    let resolution;
-    if (request.resolve) {
-      const holding = [];
-      for (const view of views2) {
-        const session = await openBacklog(context, services.bases, services.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
-        try {
-          holding.push({ view, path: findItem(session, request.resolve.item).path });
-        } catch (error2) {
-          if (!(error2 instanceof Error && "code" in error2 && error2.code === "BACKLOG_NOT_FOUND")) throw error2;
-        }
-      }
-      if (holding.length === 0) throw backlogError("BACKLOG_NOT_FOUND", `${request.resolve.item} is not an item of a bound view.`, { reference: request.resolve.item });
-      if (holding.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${request.resolve.item} syncs in ${holding.length} views; pass --base and --view.`, { candidates: holding.map((entry2) => ({ base: entry2.view.base, view: entry2.view.view, connection: entry2.view.connection })) });
-      targets = [holding[0].view];
-      resolution = { path: holding[0].path, take: request.resolve.take, fields: request.resolve.fields };
-    }
+    if (live) for (const id2 of [...connections].sort()) releases.push(await services.lock(lockPath(id2), "backlog sync"));
+    const stores = /* @__PURE__ */ new Map();
+    for (const id2 of connections) stores.set(id2, await SyncStore.open(context.workspace, id2));
+    const all2 = request.base === void 0 && request.view === void 0 ? views2 : [...views2, ...await boundViews(context, {})];
+    const held = resolution ? null : await heldPaths(all2, connections, open2);
+    const leftOf = (connection) => held === null ? [] : leftEntries(connection, stores.get(connection), held.get(connection));
     for (const view of targets) {
-      const session = await openBacklog(context, services.bases, services.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
-      const bound2 = services.hub.connection(view.connection);
-      reports.push(await syncView(session, services.hub, bound2, services.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, ...resolution ? { resolution } : {} }));
+      const session = await open2(view);
+      const connection = bound2.get(view.connection);
+      const { report } = await syncView(session, connection, stores.get(view.connection), services.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, ...resolution ? { resolution } : {} });
+      for (const entry2 of report.pulled) if (entry2.renamedTo) held?.get(view.connection).add(entry2.renamedTo);
+      reports.push(report);
+      if (live) await publish(session, services.hub, connection, report, leftOf(view.connection).length);
     }
+    left = connections.flatMap(leftOf);
   } finally {
     services.activity.syncing = false;
+    for (const release2 of releases.reverse()) if (!await release2()) context.events.warn("A backlog sync lock no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs.");
   }
   return {
     dryRun: request.mode === "status" || context.workspace.dryRun,
     mode: request.resolve ? "resolve" : request.mode,
     direction: request.resolve ? "both" : request.direction,
-    counts: totals(reports),
+    counts: totals(reports, left),
     views: reports,
+    left,
     changes: reports.flatMap((report) => report.changes)
   };
+}
+async function heldPaths(all2, connections, open2) {
+  const held = new Map(connections.map((id2) => [id2, /* @__PURE__ */ new Set()]));
+  for (const view of all2) {
+    const paths2 = held.get(view.connection);
+    if (paths2) for (const item of (await open2(view)).model.results) paths2.add(item.path);
+  }
+  return held;
+}
+function leftEntries(connection, store, held) {
+  return Object.entries(store.state.items).filter(([path]) => !held.has(path)).map(([path, entry2]) => ({ connection, path, remoteId: entry2.id, url: entry2.url }));
 }
 const syncOptions = {
   direction: option$1.string("sync: push vault changes, pull remote changes, or both (default).", { enum: ["push", "pull", "both"] }),
@@ -30382,7 +30605,7 @@ const events$1 = [
   { id: "backlog.item-moved", description: "An item was reparented or reordered: {path, parent, order, previousParent, previousOrder}.", validate: payload$1(["path"]) },
   { id: "backlog.state-changed", description: "An item changed its workflow state: {path, title, from, to, started?, finished?}.", validate: payload$1(["path", "title"]) },
   { id: "backlog.released", description: "A release was marked released: {path, name, status, released}.", validate: payload$1(["path", "name", "status", "released"]) },
-  { id: "backlog.synced", description: "A bound view finished syncing with its connection: {base, view, connection, created, updated, pulled, conflicts, left, failed}.", validate: payload$1(["base", "view", "connection"]) }
+  { id: "backlog.synced", description: "A bound view finished syncing with its connection: {base, view, connection, created, updated, pulled, conflicts, left (notes that left the sync set of the connection), failed}.", validate: payload$1(["base", "view", "connection"]) }
 ];
 const today = () => {
   const now = /* @__PURE__ */ new Date();
@@ -30416,7 +30639,7 @@ const backlogPlugin = {
     author: "The Forge",
     description: "Plan a product backlog compatible with the Obsidian Product Backlog view: hierarchy, ranks, states, iterations, releases and dependencies."
   },
-  create: () => {
+  create: (host) => {
     const activity = { syncing: false };
     return {
       requires: ["bases.query"],
@@ -30424,7 +30647,7 @@ const backlogPlugin = {
       commands: [backlogCommand((context) => {
         const { services } = context;
         const ports = { stringifyYaml, editFrontmatter, today, hash: hashText };
-        return { bases: services.get("bases.query"), ports, sync: () => ({ bases: services.get("bases.query"), ports, hub: services.get("connectors"), activity }) };
+        return { bases: services.get("bases.query"), ports, sync: () => ({ bases: services.get("bases.query"), ports, hub: services.get("connectors"), activity, lock: host.locks(context.root) }) };
       })],
       // Sync state files stay keyed by note path when notes or folders are renamed through Forge.
       onload(context) {
@@ -30456,7 +30679,7 @@ const backlogPlugin = {
     };
   }
 };
-const SHARED_KEYS = ["platform", "tokenEnv", "linkProperty", "effortProperty", "mappings"];
+const SHARED_KEYS = ["platform", "tokenEnv", "linkProperty", "effortProperty", "areaProperty", "mappings"];
 const CONNECTION_ID = /^[a-z][a-z0-9-]*$/;
 const nameMap = (description2) => ({ type: "object", description: description2, additionalProperties: { type: "string" } });
 const connectorSettings = {
@@ -30473,9 +30696,10 @@ const connectorSettings = {
         additionalProperties: true,
         properties: {
           platform: { type: "string", pattern: "^[a-z][a-z0-9-]*$", description: "The connector platform, for example azure-devops." },
-          tokenEnv: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "The environment variable holding the access token; the platform default when omitted." },
+          tokenEnv: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration." },
           linkProperty: { type: "string", minLength: 1, description: "The frontmatter key that links a note to its remote item; the platform default when omitted." },
           effortProperty: { type: "string", minLength: 1, default: "effort", description: "The frontmatter key of the effort or story points." },
+          areaProperty: { type: "string", minLength: 1, default: "area", description: "The frontmatter key of the area path; a note without it uses the connection's default area." },
           mappings: {
             type: "object",
             additionalProperties: false,
@@ -30503,6 +30727,7 @@ function profiles(settings2) {
       ...typeof raw.tokenEnv === "string" ? { tokenEnv: raw.tokenEnv } : {},
       ...typeof raw.linkProperty === "string" ? { linkProperty: raw.linkProperty } : {},
       effortProperty: typeof raw.effortProperty === "string" ? raw.effortProperty : "effort",
+      areaProperty: typeof raw.areaProperty === "string" ? raw.areaProperty : "area",
       mappings: { types: strings$2(mappings.types), states: strings$2(mappings.states), fields: strings$2(mappings.fields), properties: strings$2(mappings.properties) },
       specific: Object.fromEntries(Object.entries(raw).filter(([key]) => !SHARED_KEYS.includes(key)))
     };
@@ -30568,6 +30793,7 @@ class Hub {
       tokenEnv,
       linkProperty: profile.linkProperty ?? description2.defaults.linkProperty,
       effortProperty: profile.effortProperty,
+      areaProperty: profile.areaProperty,
       settings: settings2,
       token() {
         const value2 = environment(tokenEnv)?.trim();
@@ -30590,7 +30816,9 @@ function connectionJson({ connection, connector }, environment) {
     tokenSet: tokenSet(connection, environment),
     linkProperty: connection.linkProperty,
     effortProperty: connection.effortProperty,
-    ...connector.describe().summary(connection)
+    areaProperty: connection.areaProperty,
+    ...connector.describe().summary(connection),
+    warnings: connector.describe().warnings(connection)
   };
 }
 function connectorsCommand(hub, environment) {
@@ -30603,7 +30831,7 @@ function connectorsCommand(hub, environment) {
     mutating: false,
     defaultAction: "list",
     actions: {
-      list: { description: "Every connection with its platform, validity and whether its token variable is set." },
+      list: { description: "Every connection with its platform, validity, warnings and whether its token variable is set." },
       inspect: { description: "One connection with its resolved type, state and field mappings." },
       test: { description: "An authenticated, read-only probe of one connection." }
     },
@@ -30747,6 +30975,7 @@ function fields(process2) {
     state: "System.State",
     parent: PARENT_LINK,
     iteration: "System.IterationPath",
+    area: "System.AreaPath",
     priority: "Microsoft.VSTS.Common.Priority",
     effort: effort[process2],
     tags: "System.Tags",
@@ -30834,12 +31063,13 @@ function inline(text2) {
   return result.replace(/<c(\d+)>/g, (_, index2) => codes[Number(index2)]);
 }
 const field$1 = (reference, value2) => value2 === null ? { op: "remove", path: `/fields/${reference}` } : { op: "add", path: `/fields/${reference}`, value: value2 };
+const AREA_PATH = "System.AreaPath";
 const workItemApiUrl = (organization, id2) => `${organization}/_apis/wit/workItems/${id2}`;
 const lastSegment = (url2) => typeof url2 === "string" ? /\/(\d+)$/.exec(url2)?.[1] ?? null : null;
 function fieldOperations(change2, context) {
   const { fields: fields2 } = context.mapping;
   const operations2 = [];
-  const scalar2 = [["type", fields2.type], ["title", fields2.title], ["state", fields2.state], ["iteration", fields2.iteration], ["priority", fields2.priority], ["effort", fields2.effort]];
+  const scalar2 = [["type", fields2.type], ["title", fields2.title], ["state", fields2.state], ["iteration", fields2.iteration], ["area", fields2.area], ["priority", fields2.priority], ["effort", fields2.effort]];
   for (const [key, reference] of scalar2) if (reference !== null && change2[key] !== void 0) operations2.push(field$1(reference, change2[key]));
   if (fields2.tags !== null && change2.tags !== void 0) operations2.push(field$1(fields2.tags, change2.tags.join("; ")));
   if (fields2.description !== null && change2.description !== void 0) {
@@ -30857,7 +31087,7 @@ function createOperations(draft, context) {
   const { type: _type, ...rest } = draft;
   const set2 = Object.fromEntries(Object.entries(rest).filter(([, value2]) => value2 !== null && value2 !== void 0 && !(Array.isArray(value2) && value2.length === 0)));
   const operations2 = fieldOperations({ ...set2, ...rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value2]) => value2 !== null)) } : {} }, context);
-  if (draft.area) operations2.push(field$1("System.AreaPath", draft.area));
+  if (draft.area && context.mapping.fields.area === null) operations2.push(field$1(AREA_PATH, draft.area));
   if (draft.parentId && context.mapping.fields.parent !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
   return operations2;
 }
@@ -30880,12 +31110,9 @@ function remoteItem(json2, context, url2) {
   const id2 = String(item.id);
   const read2 = (reference) => reference === null ? void 0 : values2[reference];
   const formats = isRecord(item.multilineFieldsFormat) ? item.multilineFieldsFormat : {};
-  let description2;
-  if (fields2.description !== null) {
-    const raw = text$2(read2(fields2.description));
-    const markdown = String(formats[fields2.description] ?? "").toLowerCase() === "markdown";
-    description2 = raw === null ? null : markdown ? raw : void 0;
-  }
+  const description2 = fields2.description === null ? void 0 : text$2(read2(fields2.description));
+  const markdown = fields2.description !== null && String(formats[fields2.description] ?? "").toLowerCase() === "markdown";
+  const area = text$2(values2[fields2.area ?? AREA_PATH]);
   return {
     id: id2,
     rev: String(item.rev),
@@ -30895,31 +31122,26 @@ function remoteItem(json2, context, url2) {
     state: text$2(read2(fields2.state)),
     parentId: lastSegment(relations.find((relation) => relation.rel === PARENT_LINK)?.url),
     iteration: text$2(read2(fields2.iteration)),
-    area: text$2(values2["System.AreaPath"]),
+    area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
     priority: number$2(read2(fields2.priority)),
     effort: number$2(read2(fields2.effort)),
     tags: (text$2(read2(fields2.tags)) ?? "").split(";").map((tag) => tag.trim()).filter(Boolean),
-    ...description2 === void 0 && fields2.description !== null ? {} : { description: description2 ?? null },
+    ...description2 === void 0 ? {} : { description: description2, descriptionMarkdown: markdown },
     links: { predecessors: relations.filter((relation) => relation.rel === PREDECESSOR_LINK).map((relation) => lastSegment(relation.url)).filter((value2) => value2 !== null) },
     fields: Object.fromEntries(Object.values(context.mapping.properties).map((reference) => [reference, values2[reference] ?? null]))
   };
 }
-const wiqlString = (value2) => `'${value2.replaceAll("'", "''")}'`;
-function changedSinceQuery(changedSince, areaPath) {
-  const area = areaPath ? ` AND [System.AreaPath] UNDER ${wiqlString(areaPath)}` : "";
-  return `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.ChangedDate] >= ${wiqlString(changedSince)}${area} ORDER BY [System.Id]`;
-}
 const API_VERSION = "7.1";
 const BATCH_SIZE = 200;
-const organizationPattern = "^(https://[^\\s/?#]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?)(/[^\\s/?#]+)*/?$";
+const organizationPattern = "^(https://[^\\s/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?)(/[^\\s/?#@]+)*/?$";
 const connectionSchema = {
   type: "object",
   additionalProperties: false,
   required: ["organization", "project"],
   properties: {
-    organization: { type: "string", pattern: organizationPattern, description: "The organization URL, for example https://dev.azure.com/contoso (https; http only for localhost)." },
+    organization: { type: "string", pattern: organizationPattern, description: "The organization URL, for example https://dev.azure.com/contoso (https without user info; http only for localhost). The token is sent to this host." },
     project: { type: "string", minLength: 1, description: "The project name." },
-    areaPath: { type: "string", minLength: 1, description: "The area path of created items and the scope of change queries." },
+    areaPath: { type: "string", minLength: 1, description: "The default area path: notes without an area property sync to it." },
     iterationRoot: { type: "string", minLength: 1, description: "The iteration path under which iteration notes map by name, for example Trailhead or Trailhead\\Sprints." },
     process: { type: "string", enum: [...PROCESSES], default: "agile", description: "The process whose type, state and field defaults apply." },
     descriptionFormat: { type: "string", enum: ["markdown", "html"], default: "markdown", description: "markdown syncs the note body both ways; html pushes converted HTML only (Azure DevOps Server)." }
@@ -30928,7 +31150,11 @@ const connectionSchema = {
 const failure$1 = (code2, message, details) => Object.assign(new Error(message), { code: code2, details });
 const setting = (connection, key) => typeof connection.settings[key] === "string" ? connection.settings[key] : void 0;
 const organizationOf = (connection) => setting(connection, "organization").replace(/\/+$/, "");
-const unscheduled = (connection, change2) => change2.iteration === null ? { ...change2, iteration: setting(connection, "project") } : change2;
+const defaultArea = (connection) => setting(connection, "areaPath") ?? setting(connection, "project");
+function withDefaults(connection, change2) {
+  return { ...change2, ...change2.iteration === null ? { iteration: setting(connection, "project") } : {}, ...change2.area === null ? { area: defaultArea(connection) } : {} };
+}
+const knownHost = (host) => host === "dev.azure.com" || host.endsWith(".visualstudio.com");
 class AzureDevOpsConnector {
   constructor(http) {
     this.http = http;
@@ -30949,7 +31175,16 @@ class AzureDevOpsConnector {
         descriptionFormat: setting(connection, "descriptionFormat"),
         ...setting(connection, "areaPath") ? { areaPath: setting(connection, "areaPath") } : {},
         ...setting(connection, "iterationRoot") ? { iterationRoot: setting(connection, "iterationRoot") } : {}
-      })
+      }),
+      warnings: (connection) => {
+        let host;
+        try {
+          host = new URL(organizationOf(connection)).hostname.toLowerCase();
+        } catch {
+          return [];
+        }
+        return knownHost(host) ? [] : [`organization host ${host} is neither dev.azure.com nor *.visualstudio.com; the token in ${connection.tokenEnv} is sent there (expected only for Azure DevOps Server).`];
+      }
     };
   }
   mapping(connection) {
@@ -30990,44 +31225,50 @@ class AzureDevOpsConnector {
       }
     };
   }
-  async query(connection, query) {
-    let ids;
-    if ("ids" in query) ids = [...query.ids];
-    else {
-      const json2 = await this.call(connection, "POST", this.projectUrl(connection, `wiql?timePrecision=true&api-version=${API_VERSION}`), { query: changedSinceQuery(query.changedSince, setting(connection, "areaPath")) });
-      ids = (Array.isArray(json2.workItems) ? json2.workItems : []).filter(isRecord).map((item) => String(item.id));
-    }
+  async query(connection, ids) {
     const items = [];
     const context = this.context(connection);
     for (let start2 = 0; start2 < ids.length; start2 += BATCH_SIZE) {
-      const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitemsbatch?api-version=${API_VERSION}`), { ids: ids.slice(start2, start2 + BATCH_SIZE).map(Number), $expand: "relations", errorPolicy: "omit" });
+      const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitemsbatch?api-version=${API_VERSION}`), { ids: ids.slice(start2, start2 + BATCH_SIZE).map(Number), $expand: "relations", errorPolicy: "omit" }, { retry: true });
       for (const entry2 of Array.isArray(json2.value) ? json2.value : []) if (isRecord(entry2)) items.push(remoteItem(entry2, context, (id2) => this.link(connection, id2)));
     }
     return items;
   }
+  /**
+   * Work item types start in their initial state, which processes may enforce on create: the item is created without
+   * a state and then moved to the drafted state with a revision-guarded update. A failed move still returns the
+   * created item. Creates are never retried automatically, so a throttled create cannot create a duplicate.
+   */
   async create(connection, item) {
     const context = this.context(connection);
-    const area = item.area ?? setting(connection, "areaPath");
-    const operations2 = createOperations({ ...unscheduled(connection, item), ...area ? { area } : {} }, context);
-    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item.type)}?api-version=${API_VERSION}`), operations2, "application/json-patch+json");
-    return remoteItem(json2, context, (id2) => this.link(connection, id2));
+    const { state: state2, ...draft } = item;
+    const operations2 = createOperations({ ...withDefaults(connection, draft), area: draft.area ?? defaultArea(connection) }, context);
+    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item.type)}?api-version=${API_VERSION}`), operations2, { contentType: "application/json-patch+json" });
+    const created = remoteItem(json2, context, (id2) => this.link(connection, id2));
+    if (state2 === void 0 || state2 === null || state2 === created.state || context.mapping.fields.state === null) return created;
+    try {
+      return await this.update(connection, created.id, { state: state2 }, created.rev);
+    } catch {
+      return created;
+    }
   }
   async update(connection, id2, patch, expectedRev) {
     const context = this.context(connection);
     const url2 = this.projectUrl(connection, `workitems/${encodeURIComponent(id2)}`);
     const relations = patch.parentId === void 0 ? [] : (await this.call(connection, "GET", `${url2}?$expand=relations&api-version=${API_VERSION}`)).relations;
-    const operations2 = updateOperations(unscheduled(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
-    const json2 = await this.call(connection, "PATCH", `${url2}?$expand=relations&api-version=${API_VERSION}`, operations2, "application/json-patch+json");
+    const operations2 = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
+    const json2 = await this.call(connection, "PATCH", `${url2}?$expand=relations&api-version=${API_VERSION}`, operations2, { contentType: "application/json-patch+json", retry: true });
     return remoteItem(json2, context, (item) => this.link(connection, item));
   }
   context(connection) {
-    return { mapping: this.mapping(connection), descriptionFormat: setting(connection, "descriptionFormat") ?? "markdown", organization: organizationOf(connection) };
+    return { mapping: this.mapping(connection), descriptionFormat: setting(connection, "descriptionFormat") ?? "markdown", organization: organizationOf(connection), defaultArea: defaultArea(connection) };
   }
   projectUrl(connection, path) {
     return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_apis/wit/${path}`;
   }
   /** One authenticated JSON request; failures are coded, carry the status and never the token. */
-  async call(connection, method, url2, body, contentType = "application/json") {
+  async call(connection, method, url2, body, options2 = {}) {
+    const contentType = options2.contentType ?? "application/json";
     const token = connection.token();
     const clean = (text2) => redact(text2, [token]);
     let response;
@@ -31036,7 +31277,8 @@ class AzureDevOpsConnector {
         method,
         url: url2,
         headers: { Authorization: `Basic ${btoa(`:${token}`)}`, Accept: "application/json", ...body === void 0 ? {} : { "Content-Type": contentType } },
-        ...body === void 0 ? {} : { body: JSON.stringify(body) }
+        ...body === void 0 ? {} : { body: JSON.stringify(body) },
+        ...options2.retry === void 0 ? {} : { retry: options2.retry }
       });
     } catch (error2) {
       throw failure$1("CONNECTOR_REQUEST_FAILED", clean(error2 instanceof Error ? error2.message : String(error2)), { connection: connection.id, status: null });
@@ -31078,6 +31320,14 @@ const azureDevOpsPlugin = {
     };
   }
 };
+function nodeLockFiles(root) {
+  return async (path, command2) => {
+    const target = await (await NodeFiles.at(root)).resolvePath(path);
+    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
+    const token = await acquireLock(target, () => ({ command: command2 }), `Lock ${path}`);
+    return async () => await releaseLock(target, token) === "released";
+  };
+}
 const retryable = /* @__PURE__ */ new Set([429, 503]);
 function retryAfter(value2, now = Date.now()) {
   if (value2 === null || value2.trim() === "") return null;
@@ -31102,9 +31352,10 @@ class FetchHttpClient {
     this.maxDelayMs = options2.maxDelayMs ?? 6e4;
   }
   async request(request) {
+    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
     for (let attempt = 0; ; attempt++) {
       const response = await this.attempt(request);
-      if (!retryable.has(response.status) || attempt >= this.retries) return response;
+      if (!retryable.has(response.status) || attempt >= retries) return response;
       const asked = retryAfter(response.headers["retry-after"] ?? null);
       await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
     }
@@ -53915,7 +54166,7 @@ const germanErrors = {
   AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen." },
   UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
   INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
-  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
   DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
   PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
   INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
@@ -54176,6 +54427,7 @@ async function run() {
       registerCorePlugins(registry2, events2, corePlugins, {
         skills: registrySkills(registry2),
         fileDates: nodeFileDates,
+        locks: nodeLockFiles,
         http: new FetchHttpClient(),
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);

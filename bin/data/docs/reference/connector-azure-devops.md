@@ -10,9 +10,9 @@ A connection with `platform: "azure-devops"` takes the [shared fields](connector
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `organization` | required | The organization URL, such as `https://dev.azure.com/contoso` or a server collection URL. `https` only; `http` is accepted for `localhost` and loopback addresses (test servers) |
+| `organization` | required | The organization URL, such as `https://dev.azure.com/contoso` or a server collection URL. `https` only, without user info (`user@host` is `CONNECTION_INVALID`); `http` is accepted for `localhost` and loopback addresses (test servers). `connectors list` warns when the host is neither `dev.azure.com` nor `*.visualstudio.com`, since the token is sent there (expected only for Azure DevOps Server) |
 | `project` | required | The project name |
-| `areaPath` | none | The area path of created items and the scope of change queries |
+| `areaPath` | the project | The default area: notes without an area property sync to it, and items in it read as having no area |
 | `iterationRoot` | none | The iteration path under which Iteration notes map by name, such as `Trailhead` or `Trailhead\Sprints`. Without it, iterations do not sync |
 | `process` | `agile` | `agile`, `scrum`, `basic` or `custom`: the type, state and field defaults below. `custom` starts empty; map types and states yourself |
 | `descriptionFormat` | `markdown` | How the note body syncs with `System.Description`; see [descriptions](#descriptions) |
@@ -28,12 +28,11 @@ The connector authenticates with a personal access token (PAT) read from the var
 | Purpose | Request |
 | --- | --- |
 | `connectors test` | `GET {organization}/_apis/projects/{project}?includeCapabilities=true`: project id, state and process name (`processMatches` compares it with `process`) |
-| Linked items | `POST {organization}/{project}/_apis/wit/workitemsbatch` with `$expand: relations`, 200 ids per request |
-| Items changed since a time | `POST …/_apis/wit/wiql?timePrecision=true` with `[System.ChangedDate] >= '<time>'` (and `[System.AreaPath] UNDER '<areaPath>'`), then the batch read |
-| Create | `POST …/_apis/wit/workitems/${type}` with a JSON Patch document (`application/json-patch+json`): fields, area path, `multilineFieldsFormat` and the parent relation |
+| Linked items | `POST {organization}/{project}/_apis/wit/workitemsbatch` with `$expand: relations` and `errorPolicy: omit`, 200 ids per request |
+| Create | `POST …/_apis/wit/workitems/${type}` with a JSON Patch document (`application/json-patch+json`): fields except the state, area path, `multilineFieldsFormat` and the parent relation. Processes start work items in their initial state, so a drafted state other than the one the item was created in follows as an update; if that update fails, the item stays in its initial state and the next sync pushes the state again |
 | Update | `PATCH …/_apis/wit/workitems/{id}`: first `{"op": "test", "path": "/rev", "value": <expected>}`, then the field operations. A parent change reads the item's relations and replaces the parent relation by index. A failed revision test (HTTP 412, `TF26071`) is reported as `stale-revision` |
 
-Throttled requests (429, 503) are retried with `Retry-After`; see [transport](connectors.md#the-connector-contract).
+Throttled reads and revision-guarded updates (429, 503) are retried with `Retry-After`; creates are never retried. See [transport](connectors.md#the-connector-contract). Failed requests carry the service's error message (`details.status`, the message in the error).
 
 ## Default mappings
 
@@ -69,12 +68,13 @@ Fields:
 | `state` | `System.State` |
 | `parent` | the `System.LinkTypes.Hierarchy-Reverse` relation |
 | `iteration` | `System.IterationPath`; an item without an iteration is set to the project root |
+| `area` | `System.AreaPath`; an item without an area is set to `areaPath` (else the project), and an item there reads as having none |
 | `priority` | `Microsoft.VSTS.Common.Priority` (1–4) |
 | `effort` | `Microsoft.VSTS.Scheduling.StoryPoints` (Agile), `Microsoft.VSTS.Scheduling.Effort` (Scrum, Basic, custom) |
 | `tags` | `System.Tags` (`a; b`) |
 | `description` | `System.Description` |
 
-Created items get `areaPath` as `System.AreaPath`. Predecessor links (`System.LinkTypes.Dependency-Reverse`) are read into `links.predecessors`; `dependsOn` lists do not sync yet. Override any default per connection:
+Predecessor links (`System.LinkTypes.Dependency-Reverse`) are read into `links.predecessors`; `dependsOn` lists do not sync yet. Override any default per connection:
 
 ```json
 { "mappings": { "types": { "PBI": "Requirement" }, "states": { "Review": "Resolved", "Task:Review": "Active" }, "fields": { "effort": "Microsoft.VSTS.Scheduling.Size", "description": "" }, "properties": { "risk": "Microsoft.VSTS.Common.Risk" } } }
@@ -82,14 +82,16 @@ Created items get `areaPath` as `System.AreaPath`. Predecessor links (`System.Li
 
 ## Descriptions
 
-Azure DevOps stores large text fields as HTML, and since 2025 Azure DevOps Services can store them as Markdown per work item (`multilineFieldsFormat`). The connector uses that:
+Azure DevOps stores large text fields as HTML, and since 2025 Azure DevOps Services can store them as Markdown per work item: a JSON Patch operation `{"op": "add", "path": "/multilineFieldsFormat/System.Description", "value": "Markdown"}` saves the field as Markdown, and the item cannot return to HTML afterwards. The API reference does not document `multilineFieldsFormat` on reads, so the connector never depends on it: a read marks the description as Markdown (`descriptionMarkdown`) only when the response declares that format, and otherwise returns the text as it is.
 
-- `markdown` (default): the note body is sent unchanged with `{"op": "add", "path": "/multilineFieldsFormat/System.Description", "value": "Markdown"}`, and Markdown descriptions read back unchanged, so descriptions sync both ways losslessly. Azure DevOps converts a work item to Markdown permanently once it is saved this way. A description still stored as HTML (edited in the classic editor) is not pulled: it is treated as unchanged remotely until the note's body is pushed.
-- `html`: for Azure DevOps Server and HTML-only workflows. The body is converted with a minimal, safe converter (headings, paragraphs, line breaks, lists, block quotes, code, bold, italics, http(s)/mailto links; every other character is escaped, wikilinks become their text) and pushed. Remote HTML is never pulled back, so descriptions are push-only.
+- `markdown` (default): the note body is sent unchanged with the Markdown format operation. The sync compares the note body and the remote text each against its own base, so a note change is pushed only while the remote text is still the text last synced, and a remote change is pulled only when the response declares Markdown. Otherwise the remote change is skipped (`remote-format-unknown`) and turns into a conflict when the note changes too; `backlog sync resolve --field description` settles it.
+- `html`: for Azure DevOps Server and HTML-only workflows. The body is converted with a minimal, safe converter (headings, paragraphs, line breaks, lists, block quotes, code, bold, italics, http(s)/mailto links; every other character is escaped, wikilinks become their text) and pushed. Remote HTML is never pulled back as Markdown; a remote edit is skipped and protects the remote text from being overwritten until it is resolved.
+
+The whole note body is pushed, including embeds and wikilinks, which Azure DevOps shows as plain text. Obsidian `%%comments%%` are removed before the push and kept in the note when a description is pulled.
 
 ## Limitations
 
 - Only items that a bound view returns sync; remote items without a note are not imported.
 - Dependencies (`dependsOn` ↔ predecessor links), assignees, dates, comments and attachments do not sync yet.
 - An iteration syncs only when an Iteration note with the iteration path's last segment exists locally.
-- Changing a work item's type follows Azure DevOps' rules for the process; a rejected change fails that note only.
+- Changing a work item's type follows Azure DevOps' rules for the process; a rejected change fails that note only. A remote type without a local mapping is reported (`unmapped-remote-type`) and not written into the note.

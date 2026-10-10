@@ -1,5 +1,5 @@
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
-import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch, RemoteQuery } from '../../domain/connectors/items.ts';
+import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch } from '../../domain/connectors/items.ts';
 /**
  * The platform-neutral backlog connector contract. A connector maps one external work tracker (Azure DevOps Boards
  * first; GitHub and Jira later) onto neutral remote items; the backlog sync engine compares and writes them without
@@ -18,6 +18,8 @@ export interface Connection {
     linkProperty: string;
     /** The frontmatter key of the neutral effort field. */
     effortProperty: string;
+    /** The frontmatter key of the neutral area field. */
+    areaProperty: string;
     settings: Readonly<Record<string, unknown>>;
     token(): string;
 }
@@ -35,6 +37,8 @@ export interface ConnectorDescription {
     connectionSchema: JsonSchema;
     /** A short, secret-free summary of a profile (organization, project, process). */
     summary(connection: Connection): Record<string, unknown>;
+    /** Diagnostics about a valid profile that deserve a second look (for example an unexpected host); empty when none. */
+    warnings(connection: Connection): string[];
 }
 /** The result of an authenticated, read-only probe. */
 export interface ProbeResult {
@@ -51,7 +55,13 @@ export interface BacklogConnector {
     link(connection: Connection, id: string): string;
     idFromLink(connection: Connection, url: string): string | null;
     test(connection: Connection): Promise<ProbeResult>;
-    query(connection: Connection, query: RemoteQuery): Promise<RemoteItem[]>;
+    /** The readable remote items with these ids; ids that do not exist or are not readable are left out. */
+    query(connection: Connection, ids: readonly string[]): Promise<RemoteItem[]>;
+    /**
+     * Creates an item and returns it as stored. Platforms that create items in an initial state follow up with an
+     * update to the drafted state; if that follow-up fails, the created item is still returned (in its initial
+     * state), so the caller never loses the new id.
+     */
     create(connection: Connection, item: RemoteDraft): Promise<RemoteItem>;
     /** Applies `patch` only while the remote item is still at `expectedRev`; otherwise fails with `details.reason: 'stale-revision'`. */
     update(connection: Connection, id: string, patch: RemotePatch, expectedRev: string): Promise<RemoteItem>;
