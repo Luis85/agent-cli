@@ -50,6 +50,18 @@ describe('plugin services', () => {
   });
 });
 
+describe('plugin generators', () => {
+  it('keeps one type per make option across generators', () => {
+    const { registry, events } = setup();
+    registry.add(registry.generators, { id: 'ui', description: 'UI', options: { framework: { type: 'string', description: 'Target' } }, run: () => null });
+    expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, generate: () => [] }] }, events))
+      .toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('--framework as boolean, but ui declares it as string') }));
+    expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', generate: () => [], run: () => null }] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
+    registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'string', description: 'Target' } }, review: true, generate: () => [] }] }, events);
+    expect(registry.generators.get('quality.page')).toMatchObject({ review: true });
+  });
+});
+
 describe('plugin config sections', () => {
   const settings = { type: 'object', additionalProperties: false, properties: { threshold: { type: 'integer', minimum: 1, default: 3 }, label: { type: 'string' } } } as const;
 

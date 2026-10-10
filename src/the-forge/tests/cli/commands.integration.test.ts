@@ -65,6 +65,23 @@ describe('extracted command boundaries', () => {
     expect(events.history).toMatchObject([{ id: 'vault.create', payload: { path } }]);
   });
 
+  it('routes make to any generator with its own options, defaults and the shared review service', async () => {
+    let received: unknown;
+    registry.add(registry.generators, {
+      id: 'custom.note', description: 'Note', directory: 'notes', review: true,
+      options: { title: { type: 'string', description: 'Heading' } },
+      generate({ name, directory, flags }) { received = flags; return [{ path: `${directory}/${name}.md`, bytes: new TextEncoder().encode(`# ${String(flags.title ?? name)}\n`) }]; },
+    });
+    const make = registry.commands.get('make')!;
+    expect(make.options).toMatchObject({ title: { type: 'string' }, plan: { type: 'boolean' }, out: { type: 'string' } });
+    expect(await make.run(['custom.note', 'Plan'], { plan: true }, context)).toMatchObject({ generator: 'custom.note', plan: true, matches: false, outputs: [{ path: 'notes/Plan.md', status: 'missing' }] });
+    expect(await make.run(['custom.note', 'Plan'], { title: 'Roadmap' }, context)).toMatchObject({ generator: 'custom.note', changes: [{ path: 'notes/Plan.md', operation: 'created' }] });
+    expect(received).toEqual({ title: 'Roadmap' });
+    await expect(make.run(['custom.note', 'Plan'], { check: true }, context)).rejects.toMatchObject({ code: 'GENERATION_DRIFT' });
+    expect(await make.run(['custom.note', 'Plan'], { check: true, title: 'Roadmap' }, context)).toMatchObject({ check: true, matches: true });
+    await expect(make.run(['custom.note', 'Plan'], { template: 'x.md' }, context)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('--template is not supported by make custom.note') });
+  });
+
   it('shares raw input selection within the selected workspace without decoding binary attachments', async () => {
     await mkdir(join(root, 'selected'));
     await writeFile(join(root, 'input.bin'), 'workspace input');

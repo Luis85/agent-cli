@@ -113,7 +113,14 @@ export class Registry {
     // leave the registry and event bus exactly as they were before this plugin.
     const commands = new Map(this.commands), generators = new Map(this.generators), skills = new Map(this.skills);
     for (const command of plugin.commands ?? []) this.add(commands, command);
-    for (const generator of plugin.generators ?? []) this.add(generators, generator);
+    for (const generator of plugin.generators ?? []) {
+      // make parses one flag set for every generator, so a shared option name must keep one type.
+      for (const [key, option] of Object.entries(generator.options ?? {})) {
+        const clash = [...generators.values()].find(other => other.options?.[key] !== undefined && other.options[key]!.type !== option.type);
+        ensure(!clash, 'INVALID_PLUGIN', `Generator ${generator.id} declares --${key} as ${option.type}, but ${clash?.id} declares it as ${clash?.options?.[key]?.type}.`);
+      }
+      this.add(generators, generator);
+    }
     for (const skill of plugin.skills ?? []) this.add(skills, skill);
     serviceProviders([...this.plugins, plugin]);
     for (const entry of plugin.errors ?? []) ensure(!this.catalog.error(entry.code), 'DUPLICATE_OR_INVALID_ID', entry.code);
