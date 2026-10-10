@@ -27,7 +27,15 @@ node bin/forge.js agents create reviewer --file team.yaml --description "Reviews
 node bin/forge.js agents create reviewer --file team.yaml --description "Reviews changes for defects." --toolset filesystem --if-match TEAM_REVISION
 ```
 
-Adding an agent inserts its YAML after the last agent and leaves the rest of the file, comments included, unchanged. For settings the command does not offer, such as `sub_agents`, MCP toolsets or commands, edit the file in your editor or Obsidian (or replace it with `write agents/team.yaml --stdin --if-match TEAM_REVISION`), then validate it:
+Or start from a bundled template: `basic` (one read-only agent), `team` (a coordinator with `<name>-researcher` and `<name>-writer` sub-agents) or `mcp` (an agent with a Docker MCP Gateway server):
+
+```sh
+node bin/forge.js agents create docs --from-template team --file docs-team.yaml --description "Keeps the docs current."
+```
+
+`create` and `import` write only files directly in the definitions folder (`team.yaml` or `agents/team.yaml`); other paths fail with `INVALID_PATH`.
+
+Adding an agent inserts its YAML after the last agent and leaves the rest of the file, comments included, unchanged. For settings the command does not offer, such as `sub_agents`, MCP toolsets or commands, edit the file in your editor or Obsidian (or change it with `edit agents/team.yaml --find … --replace … --if-match TEAM_REVISION`), then validate it:
 
 ```sh
 node bin/forge.js agents validate team.yaml
@@ -44,16 +52,19 @@ node bin/forge.js agents generate --target claude --plan
 node bin/forge.js agents generate --target claude
 ```
 
-Read `data.diagnostics` before you rely on the result. Warnings mark approximations (for example a non-Anthropic model becomes `model: inherit`, `think` is dropped, sub-agents become `Agent(…)` tool entries) and dropped behavior (unsupported toolsets, hooks or delegation settings). Each diagnostic's `pointer` names the definition setting it comes from.
+Read `data.diagnostics` before you rely on the result. Warnings mark approximations (for example a non-Anthropic model becomes `model: inherit`, `think` is dropped, sub-agents become `Agent(…)` tool entries) and dropped behavior (unsupported toolsets, delegation settings, or a filesystem `allow_list` that Claude cannot enforce). Each diagnostic's `pointer` names the definition setting it comes from.
 
-Opt in to more output with the same options on every run:
+Generated Claude files can run commands and grant permissions, so Forge writes nothing of that kind unless you ask for it. By default MCP servers and hooks are skipped (`mcp-not-generated`, `hooks-not-generated`) and every agent gets an explicit `tools` list, `tools: []` when its toolsets grant no Claude tool. Opt in with the same options on every run:
 
-- `--mcp project` puts MCP servers in the project's `.mcp.json` instead of each agent's frontmatter.
-- `--settings` merges the definitions' permissions as Claude permission rules, and the default agent as the project's main agent, into `.claude/settings.json`.
+- `--mcp inline` writes MCP servers into each agent's frontmatter; `--mcp project` merges them into the project's `.mcp.json`.
+- `--hooks` writes the definitions' command hooks.
+- `--settings` merges the definitions' permissions as Claude permission rules, and the default agent as the project's main agent, into `.claude/settings.json`. Rules that approve a whole tool, such as `Bash` or `WebFetch`, also need `--allow-broad-permissions`.
 - `--commands` writes docker-agent `/commands` as `.claude/skills/<name>/SKILL.md`.
-- `--model-style alias` writes `sonnet`, `opus` or `haiku` instead of model ids.
+- `--model-style alias` writes `sonnet`, `opus`, `haiku` or `fable` instead of model ids.
 
-Merges keep every server, setting and rule they do not generate.
+Review the plan before you opt in: each written MCP server or hook command is an `executes-command` warning with the full command line, and each permission rule a `grants-permission` warning with the exact rule.
+
+Merges change only entries Forge wrote, which it records in `.claude/forge-generated.json`. A generated MCP server whose name `.mcp.json` already uses for another server, or a main agent you set yourself, fails with `AGENT_MERGE_CONFLICT`; rename the toolset's server, pass `--rename-conflicts` to give the generated server a numbered name, or remove your entry. Merged files keep their indentation and key order.
 
 ## Regenerate after a change
 
@@ -64,7 +75,7 @@ node bin/forge.js agents generate --target claude --plan-out agents-review.json
 node bin/forge.js agents generate --target claude --revisions-from agents-review.json
 ```
 
-In the plan, an output's `status` is `changed` when its definition changed, and `hand-edited` when someone edited the generated file. A hand edit is lost on regeneration, so move the change into the definition first. `stale` lists generated files whose agent no longer exists; delete them with `delete <path> --if-match <revision>`.
+In the plan, an output's `status` is `changed` when its definition, an instruction file or the generation options changed, and `hand-edited` when the file no longer matches what Forge recorded when it wrote it. A hand edit is lost on regeneration, so move the change into the definition first. `stale` lists generated files whose agent no longer exists; delete them with `delete <path> --if-match <revision>`.
 
 ## Check for drift in CI
 
@@ -73,7 +84,7 @@ node bin/forge.js agents validate
 node bin/forge.js agents generate --target claude --check
 ```
 
-`--check` exits 5 with `AGENT_DRIFT` and lists every `missing`, `changed`, `hand-edited` or `stale` output in `error.details`. Run it with the same `--mcp`, `--settings`, `--commands` and `--model-style` options as your generation.
+`--check` exits 5 with `AGENT_DRIFT` and lists every `missing`, `changed`, `hand-edited` or `stale` output in `error.details`. Run it with the same `--mcp`, `--hooks`, `--settings`, `--commands` and `--model-style` options as your generation.
 
 ## Import an existing Claude agent
 

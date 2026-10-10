@@ -398,23 +398,23 @@ class EventBus {
   }
 }
 const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
-const text$9 = (value2) => typeof value2 === "string" && value2.length > 0;
+const text$a = (value2) => typeof value2 === "string" && value2.length > 0;
 const count$1 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
 const empty = (value2) => Object.keys(value2).length === 0;
 const operation$1 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$1 = (value2) => isRecord(value2) && text$9(value2.code) && status(value2.exitCode);
-const command = (value2) => operation$1(value2) && text$9(value2.command) && text$9(value2.root) && text$9(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$9(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$9);
-const claude = (value2) => operation$1(value2) && text$9(value2.executable) && text$9(value2.cwd);
-const plugin = (value2) => text$9(value2.pluginId);
+const error$1 = (value2) => isRecord(value2) && text$a(value2.code) && status(value2.exitCode);
+const command = (value2) => operation$1(value2) && text$a(value2.command) && text$a(value2.root) && text$a(value2.workspaceRoot);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$a(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$a);
+const claude = (value2) => operation$1(value2) && text$a(value2.executable) && text$a(value2.cwd);
+const plugin = (value2) => text$a(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change = (value2) => isRecord(value2) && text$9(value2.path) && text$9(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
-const moved = (value2) => isRecord(value2) && text$9(value2.from) && text$9(value2.to) && ["file", "folder"].includes(String(value2.kind));
+const change = (value2) => isRecord(value2) && text$a(value2.path) && text$a(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$a(value2.from) && text$a(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
-const project = (value2) => value2 === null || text$9(value2);
-const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$9(value2.path) && Object.keys(value2).length === 3);
-const rename = (value2) => text$9(value2.path) && text$9(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$9(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
+const project = (value2) => value2 === null || text$a(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$a(value2.path) && Object.keys(value2).length === 3);
+const rename = (value2) => text$a(value2.path) && text$a(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$a(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$1(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
 }
@@ -428,17 +428,17 @@ const hostEventDefinitions = [
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$1(value2.error) && optionalStatus(value2)),
-  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$9(value2.executable) && text$9(value2.cwd) && status(value2.exitCode)),
+  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$a(value2.executable) && text$a(value2.cwd) && status(value2.exitCode)),
   definition$1("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
   definition$1("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
   definition$1("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
   definition$1("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
-  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$9(value2.path) && isRecord(value2.cache)),
-  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$9(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
-  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$9(value2.path) && Object.keys(value2).length === 1),
+  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$a(value2.path) && isRecord(value2.cache)),
+  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$a(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
+  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$a(value2.path) && Object.keys(value2).length === 1),
   definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty),
-  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$9(value2.path) && Object.keys(value2).length === 1),
-  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$9(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
+  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$a(value2.path) && Object.keys(value2).length === 1),
+  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$a(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
   definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty),
   definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty),
   definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
@@ -718,10 +718,10 @@ function vaultPath(input) {
 }
 const trashFolder = ".trash";
 const isInTrash = (path) => path.toLowerCase() === trashFolder || path.toLowerCase().startsWith(`${trashFolder}/`);
-function ensureSeparateDirectories(source, destination) {
-  vaultPath(source);
+function ensureSeparateDirectories(source2, destination) {
+  vaultPath(source2);
   vaultPath(destination);
-  ensure(source !== destination && !source.startsWith(`${destination}/`) && !destination.startsWith(`${source}/`), "INVALID_PATH", "Import and export directories must be separate; neither may contain the other.");
+  ensure(source2 !== destination && !source2.startsWith(`${destination}/`) && !destination.startsWith(`${source2}/`), "INVALID_PATH", "Import and export directories must be separate; neither may contain the other.");
 }
 const nativeFormats = {
   markdown: ["md"],
@@ -1173,7 +1173,7 @@ function typeMatches(type2, value2) {
   if (type2 === "null") return value2 === null;
   return typeof value2 === type2;
 }
-const same$2 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const same$3 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const copy$1 = (value2) => value2 === void 0 ? value2 : JSON.parse(JSON.stringify(value2));
 function validateJsonValue(schema2, value2, path) {
   const issues = [];
@@ -1182,8 +1182,8 @@ function validateJsonValue(schema2, value2, path) {
       issues.push(`${at}: must be ${node2.type}`);
       return current;
     }
-    if (node2.enum !== void 0 && !node2.enum.some((item) => same$2(item, current))) issues.push(`${at}: must be one of ${node2.enum.map((item) => JSON.stringify(item)).join(", ")}`);
-    if (Object.hasOwn(node2, "const") && !same$2(node2.const, current)) issues.push(`${at}: must equal ${JSON.stringify(node2.const)}`);
+    if (node2.enum !== void 0 && !node2.enum.some((item) => same$3(item, current))) issues.push(`${at}: must be one of ${node2.enum.map((item) => JSON.stringify(item)).join(", ")}`);
+    if (Object.hasOwn(node2, "const") && !same$3(node2.const, current)) issues.push(`${at}: must equal ${JSON.stringify(node2.const)}`);
     if (typeof current === "string") {
       if (node2.minLength !== void 0 && current.length < node2.minLength) issues.push(`${at}: must have at least ${node2.minLength} characters`);
       if (node2.maxLength !== void 0 && current.length > node2.maxLength) issues.push(`${at}: must have at most ${node2.maxLength} characters`);
@@ -1286,7 +1286,7 @@ function commandAnnotations(command2) {
 }
 const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
 const flag = /^[a-z][a-z0-9-]*$/;
-const text$8 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$9 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateMode(mode, where, options2) {
   ensure(mode.scope === void 0 || mode.scope === "workspace" || mode.scope === "project", "INVALID_PLUGIN", `${where} scope must be workspace or project.`);
   for (const key of ["discovery", "mutating"]) ensure(mode[key] === void 0 || typeof mode[key] === "boolean", "INVALID_PLUGIN", `${where} ${key} must be a boolean.`);
@@ -1294,21 +1294,21 @@ function validateMode(mode, where, options2) {
 }
 function validateCommandMetadata(command2) {
   const where = `Command ${String(command2.id)}`;
-  ensure(text$8(command2.description) && text$8(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
+  ensure(text$9(command2.description) && text$9(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
   ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", `${where} options must be an object.`);
   const options2 = command2.options ?? {};
   for (const [key, schema2] of Object.entries(options2)) {
     ensure(flag.test(key) && !reservedOptions.includes(key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$8(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$9(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
   }
   validateMode(command2, where, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$8(arg.name) && text$8(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$9(arg.name) && text$9(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord(command2.actions), "INVALID_PLUGIN", `${where} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
-    ensure(isRecord(action2) && text$8(action2.description), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
+    ensure(isRecord(action2) && text$9(action2.description), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
     validateMode(action2, `${where} action ${id2}`, options2);
   }
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where} defaultAction must name a declared action.`);
@@ -1316,7 +1316,7 @@ function validateCommandMetadata(command2) {
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
-const text$7 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$8 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const errorCode$2 = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 class PluginCatalog {
   tables = /* @__PURE__ */ new Map();
@@ -1329,7 +1329,7 @@ class PluginCatalog {
       ensure(isRecord(entry2) && typeof entry2.code === "string" && errorCode$2.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
       ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
       ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$7(entry2.summary) && text$7(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$8(entry2.summary) && text$8(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
       ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
       codes.add(entry2.code);
     }
@@ -1341,7 +1341,7 @@ class PluginCatalog {
         for (const [id2, entry2] of Object.entries(entries2)) {
           const known2 = kind === "messages" || (kind === "errors" ? codes.has(id2) : owned[kind].includes(id2));
           ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind}.${id2} does not name a contribution of plugin ${pluginId}.`);
-          ensure(kind === "errors" ? isRecord(entry2) && text$7(entry2.summary) && text$7(entry2.hint) : text$7(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
+          ensure(kind === "errors" ? isRecord(entry2) && text$8(entry2.summary) && text$8(entry2.hint) : text$8(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
         }
       }
     }
@@ -1393,12 +1393,12 @@ class PluginCatalog {
     return codedError(entry2.code, error2.message, entry2.exitCode, details);
   }
 }
-const hooks$2 = ["onload", "onUserEnable", "onExternalSettingsChange", "onunload"];
+const hooks$3 = ["onload", "onUserEnable", "onExternalSettingsChange", "onunload"];
 const lists = ["commands", "generators", "events", "skills"];
 const id$2 = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
 function validateContributions(plugin2, pluginId, origin) {
   const inNamespace = (value2) => value2.startsWith(pluginId + ".");
-  for (const hook of hooks$2) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
+  for (const hook of hooks$3) ensure(plugin2[hook] === void 0 || typeof plugin2[hook] === "function", "INVALID_PLUGIN", `${hook} must be a function.`);
   for (const key of lists) {
     ensure(plugin2[key] === void 0 || Array.isArray(plugin2[key]), "INVALID_PLUGIN", `${key} must be an array.`);
     for (const contribution of plugin2[key] ?? []) {
@@ -1966,9 +1966,9 @@ function valueType(definition2, value2) {
   validateUiBindings(definition2, value2);
   const binding = uiWholeBinding(value2);
   if (!binding) return typeof value2;
-  const source = uiBindingSource(definition2, binding);
-  ensure(source.default !== void 0 || "required" in source && source.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
-  return source.type;
+  const source2 = uiBindingSource(definition2, binding);
+  ensure(source2.default !== void 0 || "required" in source2 && source2.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
+  return source2.type;
 }
 function validateAttachment(definition2, node2, interaction) {
   for (const action2 of interaction.actions) {
@@ -2054,9 +2054,9 @@ function validateUiLibrary(definitions2, interactions = []) {
           checkBinding(value2);
           const binding = uiWholeBinding(value2);
           if (binding) {
-            const source = uiBindingSource(definition2, binding);
-            ensure(source.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
-            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source && source.required || source.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
+            const source2 = uiBindingSource(definition2, binding);
+            ensure(source2.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
+            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source2 && source2.required || source2.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
           } else if (!uiBindings(value2).length) checkValue(value2, targetProp.type, `${node2.component}.${name2}`);
           else ensure(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
         }
@@ -2195,10 +2195,10 @@ class UiLibrary {
   }
   async inspect(directory, id2, interactionDirectory) {
     const sources = await this.sources(directory);
-    await this.validateDefinitions(sources.map((source2) => source2.definition), interactionDirectory);
-    const source = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
-    return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
+    await this.validateDefinitions(sources.map((source22) => source22.definition), interactionDirectory);
+    const source2 = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source2, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
   }
   async validate(directory, interactionDirectory) {
     const definitions2 = await this.list(directory, interactionDirectory);
@@ -2227,7 +2227,7 @@ Describe this component.
     vaultPath(sourceDirectory);
     vaultPath(directory);
     ensureSeparateDirectories(sourceDirectory, directory);
-    const sources = await this.sources(sourceDirectory), imported = sources.map((source) => source.definition), existing = await this.discover(directory);
+    const sources = await this.sources(sourceDirectory), imported = sources.map((source2) => source2.definition), existing = await this.discover(directory);
     ensure(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
     await this.validateDefinitions([...existing, ...imported], interactionDirectory);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
@@ -2237,7 +2237,7 @@ Describe this component.
     vaultPath(directory);
     vaultPath(outputDirectory);
     ensureSeparateDirectories(directory, outputDirectory);
-    const sources = await this.sources(directory), definitions2 = sources.map((source) => source.definition);
+    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
     const interactions = await this.interactions(interactionDirectory);
     validateUiLibrary(definitions2, interactions);
     validateUiLibrary([...await this.discover(outputDirectory), ...definitions2], interactions);
@@ -2291,7 +2291,7 @@ Describe this component.
     validateUiLibrary(definitions2, await this.interactions(interactionDirectory));
   }
   async discover(directory) {
-    return (await this.sources(directory)).map((source) => source.definition);
+    return (await this.sources(directory)).map((source2) => source2.definition);
   }
   async sources(directory) {
     vaultPath(directory);
@@ -2338,16 +2338,16 @@ class DataSourceLibrary {
   codec;
   renderer;
   async list(directory) {
-    const definitions2 = (await this.sources(directory)).map((source) => source.definition);
+    const definitions2 = (await this.sources(directory)).map((source2) => source2.definition);
     validateLibrary(definitions2);
     return definitions2;
   }
   async inspect(directory, id2) {
     const sources = await this.sources(directory);
-    validateLibrary(sources.map((source2) => source2.definition));
-    const source = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
-    return { ...source.definition, revision: source.revision };
+    validateLibrary(sources.map((source22) => source22.definition));
+    const source2 = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source2, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
+    return { ...source2.definition, revision: source2.revision };
   }
   async validate(directory) {
     return { valid: true, sources: (await this.list(directory)).map((definition2) => definition2.id) };
@@ -2369,13 +2369,13 @@ class DataSourceLibrary {
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
     ensure(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
-    validateLibrary([...await this.list(directory), ...sources.map((source) => source.definition)]);
+    validateLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
-    return { sources: sources.map((source) => source.definition.id), ...await this.commit(plan) };
+    return { sources: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
   }
   async export(directory, outputDirectory) {
     ensureSeparateDirectories(directory, outputDirectory);
-    const sources = await this.sources(directory), definitions2 = sources.map((source) => source.definition);
+    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
     validateLibrary([...await this.list(outputDirectory), ...definitions2]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
     return { sources: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
@@ -2461,16 +2461,16 @@ class InteractionLibrary {
   workspace;
   codec;
   async list(directory) {
-    const definitions2 = (await this.sources(directory)).map((source) => source.definition);
+    const definitions2 = (await this.sources(directory)).map((source2) => source2.definition);
     validateInteractionLibrary(definitions2);
     return definitions2;
   }
   async inspect(directory, id2) {
     const sources = await this.sources(directory);
-    validateInteractionLibrary(sources.map((source2) => source2.definition));
-    const source = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
-    return { ...source.definition, revision: source.revision, bytes: source.bytes.length };
+    validateInteractionLibrary(sources.map((source22) => source22.definition));
+    const source2 = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source2, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
+    return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
   }
   async validate(directory) {
     const definitions2 = await this.list(directory);
@@ -2500,13 +2500,13 @@ class InteractionLibrary {
     ensureSeparateDirectories(sourceDirectory, directory);
     const sources = await this.sources(sourceDirectory);
     ensure(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
-    validateInteractionLibrary([...await this.list(directory), ...sources.map((source) => source.definition)]);
+    validateInteractionLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
-    return { interactions: sources.map((source) => source.definition.id), ...await this.commit(plan) };
+    return { interactions: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
   }
   async export(directory, outputDirectory) {
     ensureSeparateDirectories(directory, outputDirectory);
-    const sources = await this.sources(directory), definitions2 = sources.map((source) => source.definition);
+    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
     validateInteractionLibrary([...await this.list(outputDirectory), ...definitions2]);
     const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
     return { interactions: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
@@ -2568,8 +2568,8 @@ function workflowSource(project2, projectDirectory, path) {
 function generatedWorkflowPath(project2, concern, stem) {
   return `${generatedWorkflowDirectory}/${project2}--${concern}${stem === concern ? "" : `--${stem}`}.yml`;
 }
-function generatedHeader(source) {
-  return `${generatedMarker}${source}.
+function generatedHeader(source2) {
+  return `${generatedMarker}${source2}.
 # Do not edit this file; change the source and run: node bin/forge.js workflows sync
 `;
 }
@@ -2602,11 +2602,11 @@ function scopedTriggerPaths(filters, projectDirectory, target) {
 }
 function ensureDistinctTargets(sources) {
   const seen = /* @__PURE__ */ new Map();
-  for (const source of sources) {
-    vaultPath(source.target);
-    const previous2 = seen.get(source.target);
-    ensure(previous2 === void 0, "INVALID_WORKFLOW", `Workflow sources ${previous2} and ${source.source} both generate ${source.target}; rename one.`);
-    seen.set(source.target, source.source);
+  for (const source2 of sources) {
+    vaultPath(source2.target);
+    const previous2 = seen.get(source2.target);
+    ensure(previous2 === void 0, "INVALID_WORKFLOW", `Workflow sources ${previous2} and ${source2.source} both generate ${source2.target}; rename one.`);
+    seen.set(source2.target, source2.source);
   }
 }
 const equalBytes = (left, right) => left.length === right.length && left.every((byte, index2) => byte === right[index2]);
@@ -2642,26 +2642,26 @@ class WorkflowSync {
     }
     return { dryRun: this.workspace.dryRun, workflows: plan.map((entry2) => this.entry(entry2)), changes };
   }
-  entry({ project: project2, concern, source, target, status: status2 }) {
-    return { project: project2, concern, source, target, status: status2 };
+  entry({ project: project2, concern, source: source2, target, status: status2 }) {
+    return { project: project2, concern, source: source2, target, status: status2 };
   }
   async plan() {
     const paths2 = await this.workspace.files.list();
     const sources = [];
     for (const project2 of await this.projects.list()) {
       for (const path of paths2) {
-        const source = workflowSource(project2.name, project2.directory, path);
-        if (source) sources.push(source);
+        const source2 = workflowSource(project2.name, project2.directory, path);
+        if (source2) sources.push(source2);
       }
     }
     ensureDistinctTargets(sources);
-    const desired = new Set(sources.map((source) => source.target));
-    const planned = await Promise.all(sources.map(async (source) => {
-      const bytes = this.renderer.render((await this.workspace.files.read(source.source)).bytes, source);
-      const current = await this.current(source.target);
-      ensure(current === void 0 || isGeneratedWorkflow(decode$6(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
+    const desired = new Set(sources.map((source2) => source2.target));
+    const planned = await Promise.all(sources.map(async (source2) => {
+      const bytes = this.renderer.render((await this.workspace.files.read(source2.source)).bytes, source2);
+      const current = await this.current(source2.target);
+      ensure(current === void 0 || isGeneratedWorkflow(decode$6(current.bytes)), "CONFLICT", `${source2.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source2.target });
       const status2 = current === void 0 ? "missing" : equalBytes(current.bytes, bytes) ? "unchanged" : "changed";
-      return { project: source.project, concern: source.concern, source: source.source, target: source.target, status: status2, bytes, ...current ? { revision: current.revision } : {} };
+      return { project: source2.project, concern: source2.concern, source: source2.source, target: source2.target, status: status2, bytes, ...current ? { revision: current.revision } : {} };
     }));
     const prefix = `${generatedWorkflowDirectory}/`;
     const stale = await Promise.all(paths2.filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && !desired.has(path)).map(async (path) => {
@@ -2998,26 +2998,26 @@ function requireDirectives() {
      * @returns Resolved tag, which may also be the non-specific tag `'!'` or a
      *   `'!local'` tag, or `null` if unresolvable.
      */
-    tagName(source, onError) {
-      if (source === "!")
+    tagName(source2, onError) {
+      if (source2 === "!")
         return "!";
-      if (source[0] !== "!") {
-        onError(`Not a valid tag: ${source}`);
+      if (source2[0] !== "!") {
+        onError(`Not a valid tag: ${source2}`);
         return null;
       }
-      if (source[1] === "<") {
-        const verbatim = source.slice(2, -1);
+      if (source2[1] === "<") {
+        const verbatim = source2.slice(2, -1);
         if (verbatim === "!" || verbatim === "!!") {
-          onError(`Verbatim tags aren't resolved, so ${source} is invalid.`);
+          onError(`Verbatim tags aren't resolved, so ${source2} is invalid.`);
           return null;
         }
-        if (source[source.length - 1] !== ">")
+        if (source2[source2.length - 1] !== ">")
           onError("Verbatim tags must end with a >");
         return verbatim;
       }
-      const [, handle, suffix] = source.match(/^(.*!)([^!]*)$/s);
+      const [, handle, suffix] = source2.match(/^(.*!)([^!]*)$/s);
       if (!suffix)
-        onError(`The ${source} tag has no suffix`);
+        onError(`The ${source2} tag has no suffix`);
       const prefix = this.tags[handle];
       if (prefix) {
         try {
@@ -3028,8 +3028,8 @@ function requireDirectives() {
         }
       }
       if (handle === "!")
-        return source;
-      onError(`Could not resolve tag: ${source}`);
+        return source2;
+      onError(`Could not resolve tag: ${source2}`);
       return null;
     }
     /**
@@ -3109,8 +3109,8 @@ function requireAnchors() {
     const sourceObjects = /* @__PURE__ */ new Map();
     let prevAnchors = null;
     return {
-      onAnchor: (source) => {
-        aliasObjects.push(source);
+      onAnchor: (source2) => {
+        aliasObjects.push(source2);
         prevAnchors ?? (prevAnchors = anchorNames(doc));
         const anchor2 = findNewAnchor(prefix, prevAnchors);
         prevAnchors.add(anchor2);
@@ -3122,13 +3122,13 @@ function requireAnchors() {
        * the nodes have been created.
        */
       setAnchors: () => {
-        for (const source of aliasObjects) {
-          const ref2 = sourceObjects.get(source);
+        for (const source2 of aliasObjects) {
+          const ref2 = sourceObjects.get(source2);
           if (typeof ref2 === "object" && ref2.anchor && (identity2.isScalar(ref2.node) || identity2.isCollection(ref2.node))) {
             ref2.node.anchor = ref2.anchor;
           } else {
             const error2 = new Error("Failed to resolve repeated object (this should not happen)");
-            error2.source = source;
+            error2.source = source2;
             throw error2;
           }
         }
@@ -3242,7 +3242,7 @@ function requireNode() {
       return copy2;
     }
     /** A plain JavaScript representation of this node. */
-    toJS(doc, { mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
+    toJS(doc, { mapAsMap, maxAliasCount: maxAliasCount2, onAnchor, reviver } = {}) {
       if (!identity2.isDocument(doc))
         throw new TypeError("A document argument is required");
       const ctx = {
@@ -3251,7 +3251,7 @@ function requireNode() {
         keep: true,
         mapAsMap: mapAsMap === true,
         mapKeyWarned: false,
-        maxAliasCount: typeof maxAliasCount === "number" ? maxAliasCount : 100
+        maxAliasCount: typeof maxAliasCount2 === "number" ? maxAliasCount2 : 100
       };
       const res = toJS2.toJS(this, "", ctx);
       if (typeof onAnchor === "function")
@@ -3273,9 +3273,9 @@ function requireAlias() {
   var Node2 = requireNode();
   var toJS2 = requireToJS();
   let Alias$1 = class Alias extends Node2.NodeBase {
-    constructor(source) {
+    constructor(source2) {
       super(identity2.ALIAS);
-      this.source = source;
+      this.source = source2;
       Object.defineProperty(this, "tag", {
         set() {
           throw new Error("Alias nodes cannot have tags");
@@ -3311,7 +3311,7 @@ function requireAlias() {
           found = node2;
       }
       if (found && ctx) {
-        const { anchors: anchors3, doc: doc2, maxAliasCount } = ctx;
+        const { anchors: anchors3, doc: doc2, maxAliasCount: maxAliasCount2 } = ctx;
         let data = anchors3.get(found);
         if (!data) {
           toJS2.toJS(found, null, ctx);
@@ -3321,11 +3321,11 @@ function requireAlias() {
           const msg = "This should not happen: Alias anchor was not resolved?";
           throw new ReferenceError(msg);
         }
-        if (maxAliasCount >= 0) {
+        if (maxAliasCount2 >= 0) {
           data.count += 1;
           if (data.aliasCount === 0)
             data.aliasCount = getAliasCount(doc2, found, anchors3);
-          if (data.count * data.aliasCount > maxAliasCount) {
+          if (data.count * data.aliasCount > maxAliasCount2) {
             const msg = "Excessive alias count indicates a resource exhaustion attack";
             throw new ReferenceError(msg);
           }
@@ -3336,12 +3336,12 @@ function requireAlias() {
     toJSON(_arg, ctx) {
       if (!ctx)
         return { source: this.source };
-      const source = this.resolve(ctx.doc, ctx);
-      if (!source) {
+      const source2 = this.resolve(ctx.doc, ctx);
+      if (!source2) {
         const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
         throw new ReferenceError(msg);
       }
-      return ctx.anchors.get(source).res;
+      return ctx.anchors.get(source2).res;
     }
     toString(ctx, _onComment, _onChompKeep) {
       const src = `*${this.source}`;
@@ -3359,8 +3359,8 @@ function requireAlias() {
   };
   function getAliasCount(doc, node2, anchors3) {
     if (identity2.isAlias(node2)) {
-      const source = node2.resolve(doc);
-      const anchor2 = anchors3 && source && anchors3.get(source);
+      const source2 = node2.resolve(doc);
+      const anchor2 = anchors3 && source2 && anchors3.get(source2);
       return anchor2 ? anchor2.count * anchor2.aliasCount : 0;
     } else if (identity2.isCollection(node2)) {
       let count2 = 0;
@@ -4365,21 +4365,21 @@ function requireMerge() {
   };
   const isMergeKey = (ctx, key) => (merge2.identify(key) || identity2.isScalar(key) && (!key.type || key.type === Scalar2.Scalar.PLAIN) && merge2.identify(key.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge2.tag && tag.default);
   function addMergeToJSMap(ctx, map2, value2) {
-    const source = resolveAliasValue(ctx, value2);
-    if (identity2.isSeq(source))
-      for (const it of source.items)
+    const source2 = resolveAliasValue(ctx, value2);
+    if (identity2.isSeq(source2))
+      for (const it of source2.items)
         mergeValue(ctx, map2, it);
-    else if (Array.isArray(source))
-      for (const it of source)
+    else if (Array.isArray(source2))
+      for (const it of source2)
         mergeValue(ctx, map2, it);
     else
-      mergeValue(ctx, map2, source);
+      mergeValue(ctx, map2, source2);
   }
   function mergeValue(ctx, map2, value2) {
-    const source = resolveAliasValue(ctx, value2);
-    if (!identity2.isMap(source))
+    const source2 = resolveAliasValue(ctx, value2);
+    if (!identity2.isMap(source2))
       throw new Error("Merge sources must be maps or map aliases");
-    const srcMap = source.toJSON(null, ctx, Map);
+    const srcMap = source2.toJSON(null, ctx, Map);
     for (const [key, value3] of srcMap) {
       if (map2 instanceof Map) {
         if (!map2.has(key))
@@ -4996,7 +4996,7 @@ function require_null() {
     tag: "tag:yaml.org,2002:null",
     test: /^(?:~|[Nn]ull|NULL)?$/,
     resolve: () => new Scalar2.Scalar(null),
-    stringify: ({ source }, ctx) => typeof source === "string" && nullTag.test.test(source) ? source : ctx.options.nullStr
+    stringify: ({ source: source2 }, ctx) => typeof source2 === "string" && nullTag.test.test(source2) ? source2 : ctx.options.nullStr
   };
   _null$3.nullTag = nullTag;
   return _null$3;
@@ -5013,11 +5013,11 @@ function requireBool$1() {
     tag: "tag:yaml.org,2002:bool",
     test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
     resolve: (str) => new Scalar2.Scalar(str[0] === "t" || str[0] === "T"),
-    stringify({ source, value: value2 }, ctx) {
-      if (source && boolTag.test.test(source)) {
-        const sv = source[0] === "t" || source[0] === "T";
+    stringify({ source: source2, value: value2 }, ctx) {
+      if (source2 && boolTag.test.test(source2)) {
+        const sv = source2[0] === "t" || source2[0] === "T";
         if (value2 === sv)
-          return source;
+          return source2;
       }
       return value2 ? ctx.options.trueStr : ctx.options.falseStr;
     }
@@ -5467,10 +5467,10 @@ function requireBool() {
   if (hasRequiredBool) return bool;
   hasRequiredBool = 1;
   var Scalar2 = requireScalar();
-  function boolStringify({ value: value2, source }, ctx) {
+  function boolStringify({ value: value2, source: source2 }, ctx) {
     const boolObj = value2 ? trueTag : falseTag;
-    if (source && boolObj.test.test(source))
-      return source;
+    if (source2 && boolObj.test.test(source2))
+      return source2;
     return value2 ? ctx.options.trueStr : ctx.options.falseStr;
   }
   const trueTag = {
@@ -6310,14 +6310,14 @@ function requireDocument() {
         throw new Error(`With a null YAML version, the { schema: Schema } option is required`);
     }
     // json & jsonArg are only used from toJSON()
-    toJS({ json: json2, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
+    toJS({ json: json2, jsonArg, mapAsMap, maxAliasCount: maxAliasCount2, onAnchor, reviver } = {}) {
       const ctx = {
         anchors: /* @__PURE__ */ new Map(),
         doc: this,
         keep: !json2,
         mapAsMap: mapAsMap === true,
         mapKeyWarned: false,
-        maxAliasCount: typeof maxAliasCount === "number" ? maxAliasCount : 100
+        maxAliasCount: typeof maxAliasCount2 === "number" ? maxAliasCount2 : 100
       };
       const res = toJS2.toJS(this.contents, jsonArg ?? "", ctx);
       if (typeof onAnchor === "function")
@@ -6802,7 +6802,7 @@ function requireResolveEnd() {
       let hasSpace = false;
       let sep = "";
       for (const token of end2) {
-        const { source, type: type2 } = token;
+        const { source: source2, type: type2 } = token;
         switch (type2) {
           case "space":
             hasSpace = true;
@@ -6810,7 +6810,7 @@ function requireResolveEnd() {
           case "comment": {
             if (reqSpace && !hasSpace)
               onError(token, "MISSING_CHAR", "Comments must be separated from other tokens by white space characters");
-            const cb = source.substring(1) || " ";
+            const cb = source2.substring(1) || " ";
             if (!comment)
               comment = cb;
             else
@@ -6820,13 +6820,13 @@ function requireResolveEnd() {
           }
           case "newline":
             if (comment)
-              sep += source;
+              sep += source2;
             hasSpace = true;
             break;
           default:
             onError(token, "UNEXPECTED_TOKEN", `Unexpected ${type2} at node end`);
         }
-        offset += source.length;
+        offset += source2.length;
       }
     }
     return { comment, offset };
@@ -7207,13 +7207,13 @@ function requireResolveBlockScalar() {
       onError(props[0], "IMPOSSIBLE", "Block scalar header not found");
       return null;
     }
-    const { source } = props[0];
-    const mode = source[0];
+    const { source: source2 } = props[0];
+    const mode = source2[0];
     let indent = 0;
     let chomp = "";
     let error2 = -1;
-    for (let i = 1; i < source.length; ++i) {
-      const ch = source[i];
+    for (let i = 1; i < source2.length; ++i) {
+      const ch = source2[i];
       if (!chomp && (ch === "-" || ch === "+"))
         chomp = ch;
       else {
@@ -7225,10 +7225,10 @@ function requireResolveBlockScalar() {
       }
     }
     if (error2 !== -1)
-      onError(error2, "UNEXPECTED_TOKEN", `Block scalar header includes extra characters: ${source}`);
+      onError(error2, "UNEXPECTED_TOKEN", `Block scalar header includes extra characters: ${source2}`);
     let hasSpace = false;
     let comment = "";
-    let length = source.length;
+    let length = source2.length;
     for (let i = 1; i < props.length; ++i) {
       const token = props[i];
       switch (token.type) {
@@ -7262,8 +7262,8 @@ function requireResolveBlockScalar() {
     }
     return { mode, indent, chomp, comment, length };
   }
-  function splitLines2(source) {
-    const split = source.split(/\n( *)/);
+  function splitLines2(source2) {
+    const split = source2.split(/\n( *)/);
     const first = split[0];
     const m = first.match(/^( *)/);
     const line0 = m?.[1] ? [m[1], first.slice(m[1].length)] : ["", first];
@@ -7283,22 +7283,22 @@ function requireResolveFlowScalar() {
   var Scalar2 = requireScalar();
   var resolveEnd2 = requireResolveEnd();
   function resolveFlowScalar$1(scalar2, strict2, onError) {
-    const { offset, type: type2, source, end: end2 } = scalar2;
+    const { offset, type: type2, source: source2, end: end2 } = scalar2;
     let _type;
     let value2;
     const _onError = (rel, code2, msg) => onError(offset + rel, code2, msg);
     switch (type2) {
       case "scalar":
         _type = Scalar2.Scalar.PLAIN;
-        value2 = plainValue(source, _onError);
+        value2 = plainValue(source2, _onError);
         break;
       case "single-quoted-scalar":
         _type = Scalar2.Scalar.QUOTE_SINGLE;
-        value2 = singleQuotedValue(source, _onError);
+        value2 = singleQuotedValue(source2, _onError);
         break;
       case "double-quoted-scalar":
         _type = Scalar2.Scalar.QUOTE_DOUBLE;
-        value2 = doubleQuotedValue(source, _onError);
+        value2 = doubleQuotedValue(source2, _onError);
         break;
       /* istanbul ignore next should not happen */
       default:
@@ -7307,10 +7307,10 @@ function requireResolveFlowScalar() {
           value: "",
           type: null,
           comment: "",
-          range: [offset, offset + source.length, offset + source.length]
+          range: [offset, offset + source2.length, offset + source2.length]
         };
     }
-    const valueEnd = offset + source.length;
+    const valueEnd = offset + source2.length;
     const re = resolveEnd2.resolveEnd(end2, valueEnd, strict2, onError);
     return {
       value: value2,
@@ -7319,9 +7319,9 @@ function requireResolveFlowScalar() {
       range: [offset, valueEnd, re.offset]
     };
   }
-  function plainValue(source, onError) {
+  function plainValue(source2, onError) {
     let badChar = "";
-    switch (source[0]) {
+    switch (source2[0]) {
       /* istanbul ignore next should not happen */
       case "	":
         badChar = "a tab character";
@@ -7334,29 +7334,29 @@ function requireResolveFlowScalar() {
         break;
       case "|":
       case ">": {
-        badChar = `block scalar indicator ${source[0]}`;
+        badChar = `block scalar indicator ${source2[0]}`;
         break;
       }
       case "@":
       case "`": {
-        badChar = `reserved character ${source[0]}`;
+        badChar = `reserved character ${source2[0]}`;
         break;
       }
     }
     if (badChar)
       onError(0, "BAD_SCALAR_START", `Plain value cannot start with ${badChar}`);
-    return unfoldLines(source);
+    return unfoldLines(source2);
   }
-  function singleQuotedValue(source, onError) {
-    if (source[source.length - 1] !== "'" || source.length === 1)
-      onError(source.length, "MISSING_CHAR", "Missing closing 'quote");
-    return unfoldLines(source.slice(1, -1)).replace(/''/g, "'");
+  function singleQuotedValue(source2, onError) {
+    if (source2[source2.length - 1] !== "'" || source2.length === 1)
+      onError(source2.length, "MISSING_CHAR", "Missing closing 'quote");
+    return unfoldLines(source2.slice(1, -1)).replace(/''/g, "'");
   }
-  function unfoldLines(source) {
+  function unfoldLines(source2) {
     const line = /(.*?)\r?\n/sy;
-    let match = line.exec(source);
+    let match = line.exec(source2);
     if (!match)
-      return source;
+      return source2;
     let trimEnd, trimBoth;
     try {
       trimEnd = new RegExp("(?<![ 	])[ 	]+$");
@@ -7368,7 +7368,7 @@ function requireResolveFlowScalar() {
     let res = match[1].replace(trimEnd, "");
     let sep = " ";
     let pos = line.lastIndex;
-    while (match = line.exec(source)) {
+    while (match = line.exec(source2)) {
       const lm = match[1].replace(trimBoth, "");
       if (lm === "") {
         if (sep === "\n")
@@ -7383,66 +7383,66 @@ function requireResolveFlowScalar() {
     }
     const last = /[ \t]*(.*)/sy;
     last.lastIndex = pos;
-    match = last.exec(source);
+    match = last.exec(source2);
     return res + sep + (match?.[1] ?? "");
   }
-  function doubleQuotedValue(source, onError) {
+  function doubleQuotedValue(source2, onError) {
     let res = "";
-    for (let i = 1; i < source.length - 1; ++i) {
-      const ch = source[i];
-      if (ch === "\r" && source[i + 1] === "\n")
+    for (let i = 1; i < source2.length - 1; ++i) {
+      const ch = source2[i];
+      if (ch === "\r" && source2[i + 1] === "\n")
         continue;
       if (ch === "\n") {
-        const { fold, offset } = foldNewline(source, i);
+        const { fold, offset } = foldNewline(source2, i);
         res += fold;
         i = offset;
       } else if (ch === "\\") {
-        let next = source[++i];
+        let next = source2[++i];
         const cc = escapeCodes[next];
         if (cc)
           res += cc;
         else if (next === "\n") {
-          next = source[i + 1];
+          next = source2[i + 1];
           while (next === " " || next === "	")
-            next = source[++i + 1];
-        } else if (next === "\r" && source[i + 1] === "\n") {
-          next = source[++i + 1];
+            next = source2[++i + 1];
+        } else if (next === "\r" && source2[i + 1] === "\n") {
+          next = source2[++i + 1];
           while (next === " " || next === "	")
-            next = source[++i + 1];
+            next = source2[++i + 1];
         } else if (next === "x" || next === "u" || next === "U") {
           const length = next === "x" ? 2 : next === "u" ? 4 : 8;
-          res += parseCharCode(source, i + 1, length, onError);
+          res += parseCharCode(source2, i + 1, length, onError);
           i += length;
         } else {
-          const raw = source.substr(i - 1, 2);
+          const raw = source2.substr(i - 1, 2);
           onError(i - 1, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
           res += raw;
         }
       } else if (ch === " " || ch === "	") {
         const wsStart = i;
-        let next = source[i + 1];
+        let next = source2[i + 1];
         while (next === " " || next === "	")
-          next = source[++i + 1];
-        if (next !== "\n" && !(next === "\r" && source[i + 2] === "\n"))
-          res += i > wsStart ? source.slice(wsStart, i + 1) : ch;
+          next = source2[++i + 1];
+        if (next !== "\n" && !(next === "\r" && source2[i + 2] === "\n"))
+          res += i > wsStart ? source2.slice(wsStart, i + 1) : ch;
       } else {
         res += ch;
       }
     }
-    if (source[source.length - 1] !== '"' || source.length === 1)
-      onError(source.length, "MISSING_CHAR", 'Missing closing "quote');
+    if (source2[source2.length - 1] !== '"' || source2.length === 1)
+      onError(source2.length, "MISSING_CHAR", 'Missing closing "quote');
     return res;
   }
-  function foldNewline(source, offset) {
+  function foldNewline(source2, offset) {
     let fold = "";
-    let ch = source[offset + 1];
+    let ch = source2[offset + 1];
     while (ch === " " || ch === "	" || ch === "\n" || ch === "\r") {
-      if (ch === "\r" && source[offset + 2] !== "\n")
+      if (ch === "\r" && source2[offset + 2] !== "\n")
         break;
       if (ch === "\n")
         fold += "\n";
       offset += 1;
-      ch = source[offset + 1];
+      ch = source2[offset + 1];
     }
     if (!fold)
       fold = " ";
@@ -7481,14 +7481,14 @@ function requireResolveFlowScalar() {
     "\\": "\\",
     "	": "	"
   };
-  function parseCharCode(source, offset, length, onError) {
-    const cc = source.substr(offset, length);
+  function parseCharCode(source2, offset, length, onError) {
+    const cc = source2.substr(offset, length);
     const ok = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
     const code2 = ok ? parseInt(cc, 16) : NaN;
     try {
       return String.fromCodePoint(code2);
     } catch {
-      const raw = source.substr(offset - 2, length + 2);
+      const raw = source2.substr(offset - 2, length + 2);
       onError(offset - 2, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
       return raw;
     }
@@ -7694,13 +7694,13 @@ function requireComposeNode() {
     }
     return node2;
   }
-  function composeAlias({ options: options2 }, { offset, source, end: end2 }, onError) {
-    const alias = new Alias2.Alias(source.substring(1));
+  function composeAlias({ options: options2 }, { offset, source: source2, end: end2 }, onError) {
+    const alias = new Alias2.Alias(source2.substring(1));
     if (alias.source === "")
       onError(offset, "BAD_ALIAS", "Alias cannot be an empty string");
     if (alias.source.endsWith(":"))
-      onError(offset + source.length - 1, "BAD_ALIAS", "Alias ending in : is ambiguous", true);
-    const valueEnd = offset + source.length;
+      onError(offset + source2.length - 1, "BAD_ALIAS", "Alias ending in : is ambiguous", true);
+    const valueEnd = offset + source2.length;
     const re = resolveEnd2.resolveEnd(end2, valueEnd, options2.strict, onError);
     alias.range = [offset, valueEnd, re.offset];
     if (re.comment)
@@ -7769,18 +7769,18 @@ function requireComposer() {
       return [src, src + 1];
     if (Array.isArray(src))
       return src.length === 2 ? src : [src[0], src[1]];
-    const { offset, source } = src;
-    return [offset, offset + (typeof source === "string" ? source.length : 1)];
+    const { offset, source: source2 } = src;
+    return [offset, offset + (typeof source2 === "string" ? source2.length : 1)];
   }
   function parsePrelude(prelude) {
     let comment = "";
     let atComment = false;
     let afterEmptyLine = false;
     for (let i = 0; i < prelude.length; ++i) {
-      const source = prelude[i];
-      switch (source[0]) {
+      const source2 = prelude[i];
+      switch (source2[0]) {
         case "#":
-          comment += (comment === "" ? "" : afterEmptyLine ? "\n\n" : "\n") + (source.substring(1) || " ");
+          comment += (comment === "" ? "" : afterEmptyLine ? "\n\n" : "\n") + (source2.substring(1) || " ");
           atComment = true;
           afterEmptyLine = false;
           break;
@@ -7804,8 +7804,8 @@ function requireComposer() {
       this.prelude = [];
       this.errors = [];
       this.warnings = [];
-      this.onError = (source, code2, message2, warning) => {
-        const pos = getErrorPos(source);
+      this.onError = (source2, code2, message2, warning) => {
+        const pos = getErrorPos(source2);
         if (warning)
           this.warnings.push(new errors2.YAMLWarning(pos, code2, message2));
         else
@@ -7992,7 +7992,7 @@ function requireCstScalar() {
   }
   function createScalarToken(value2, context) {
     const { implicitKey = false, indent, inFlow = false, offset = -1, type: type2 = "PLAIN" } = context;
-    const source = stringifyString2.stringifyString({ type: type2, value: value2 }, {
+    const source2 = stringifyString2.stringifyString({ type: type2, value: value2 }, {
       implicitKey,
       indent: indent > 0 ? " ".repeat(indent) : "",
       inFlow,
@@ -8001,12 +8001,12 @@ function requireCstScalar() {
     const end2 = context.end ?? [
       { type: "newline", offset: -1, indent, source: "\n" }
     ];
-    switch (source[0]) {
+    switch (source2[0]) {
       case "|":
       case ">": {
-        const he = source.indexOf("\n");
-        const head = source.substring(0, he);
-        const body = source.substring(he + 1) + "\n";
+        const he = source2.indexOf("\n");
+        const head = source2.substring(0, he);
+        const body = source2.substring(he + 1) + "\n";
         const props = [
           { type: "block-scalar-header", offset, indent, source: head }
         ];
@@ -8015,11 +8015,11 @@ function requireCstScalar() {
         return { type: "block-scalar", offset, indent, props, source: body };
       }
       case '"':
-        return { type: "double-quoted-scalar", offset, indent, source, end: end2 };
+        return { type: "double-quoted-scalar", offset, indent, source: source2, end: end2 };
       case "'":
-        return { type: "single-quoted-scalar", offset, indent, source, end: end2 };
+        return { type: "single-quoted-scalar", offset, indent, source: source2, end: end2 };
       default:
-        return { type: "scalar", offset, indent, source, end: end2 };
+        return { type: "scalar", offset, indent, source: source2, end: end2 };
     }
   }
   function setScalarValue(token, value2, context = {}) {
@@ -8045,31 +8045,31 @@ function requireCstScalar() {
         default:
           type2 = "PLAIN";
       }
-    const source = stringifyString2.stringifyString({ type: type2, value: value2 }, {
+    const source2 = stringifyString2.stringifyString({ type: type2, value: value2 }, {
       implicitKey: implicitKey || indent === null,
       indent: indent !== null && indent > 0 ? " ".repeat(indent) : "",
       inFlow,
       options: { blockQuote: true, lineWidth: -1 }
     });
-    switch (source[0]) {
+    switch (source2[0]) {
       case "|":
       case ">":
-        setBlockScalarValue(token, source);
+        setBlockScalarValue(token, source2);
         break;
       case '"':
-        setFlowScalarValue(token, source, "double-quoted-scalar");
+        setFlowScalarValue(token, source2, "double-quoted-scalar");
         break;
       case "'":
-        setFlowScalarValue(token, source, "single-quoted-scalar");
+        setFlowScalarValue(token, source2, "single-quoted-scalar");
         break;
       default:
-        setFlowScalarValue(token, source, "scalar");
+        setFlowScalarValue(token, source2, "scalar");
     }
   }
-  function setBlockScalarValue(token, source) {
-    const he = source.indexOf("\n");
-    const head = source.substring(0, he);
-    const body = source.substring(he + 1) + "\n";
+  function setBlockScalarValue(token, source2) {
+    const he = source2.indexOf("\n");
+    const head = source2.substring(0, he);
+    const body = source2.substring(he + 1) + "\n";
     if (token.type === "block-scalar") {
       const header2 = token.props[0];
       if (header2.type !== "block-scalar-header")
@@ -8104,31 +8104,31 @@ function requireCstScalar() {
         }
     return false;
   }
-  function setFlowScalarValue(token, source, type2) {
+  function setFlowScalarValue(token, source2, type2) {
     switch (token.type) {
       case "scalar":
       case "double-quoted-scalar":
       case "single-quoted-scalar":
         token.type = type2;
-        token.source = source;
+        token.source = source2;
         break;
       case "block-scalar": {
         const end2 = token.props.slice(1);
-        let oa = source.length;
+        let oa = source2.length;
         if (token.props[0].type === "block-scalar-header")
           oa -= token.props[0].source.length;
         for (const tok of end2)
           tok.offset += oa;
         delete token.props;
-        Object.assign(token, { type: type2, source, end: end2 });
+        Object.assign(token, { type: type2, source: source2, end: end2 });
         break;
       }
       case "block-map":
       case "block-seq": {
-        const offset = token.offset + source.length;
+        const offset = token.offset + source2.length;
         const nl = { type: "newline", offset, indent: token.indent, source: "\n" };
         delete token.items;
-        Object.assign(token, { type: type2, source, end: [nl] });
+        Object.assign(token, { type: type2, source: source2, end: [nl] });
         break;
       }
       default: {
@@ -8137,7 +8137,7 @@ function requireCstScalar() {
         for (const key of Object.keys(token))
           if (key !== "type" && key !== "offset")
             delete token[key];
-        Object.assign(token, { type: type2, indent, source, end: end2 });
+        Object.assign(token, { type: type2, indent, source: source2, end: end2 });
       }
     }
   }
@@ -8296,8 +8296,8 @@ function requireCst() {
         return JSON.stringify(token);
     }
   }
-  function tokenType(source) {
-    switch (source) {
+  function tokenType(source2) {
+    switch (source2) {
       case BOM:
         return "byte-order-mark";
       case DOCUMENT:
@@ -8331,7 +8331,7 @@ function requireCst() {
       case ",":
         return "comma";
     }
-    switch (source[0]) {
+    switch (source2[0]) {
       case " ":
       case "	":
         return "space";
@@ -8413,11 +8413,11 @@ function requireLexer() {
      *
      * @returns A generator of lexical tokens
      */
-    *lex(source, incomplete = false) {
-      if (source) {
-        if (typeof source !== "string")
+    *lex(source2, incomplete = false) {
+      if (source2) {
+        if (typeof source2 !== "string")
           throw TypeError("source is not a string");
-        this.buffer = this.buffer ? this.buffer + source : source;
+        this.buffer = this.buffer ? this.buffer + source2 : source2;
         this.lineEndPos = null;
       }
       this.atEnd = !incomplete;
@@ -9062,12 +9062,12 @@ function requireParser() {
     }
     return prev.splice(i, prev.length);
   }
-  function arrayPushArray(target, source) {
-    if (source.length < 1e5)
-      Array.prototype.push.apply(target, source);
+  function arrayPushArray(target, source2) {
+    if (source2.length < 1e5)
+      Array.prototype.push.apply(target, source2);
     else
-      for (let i = 0; i < source.length; ++i)
-        target.push(source[i]);
+      for (let i = 0; i < source2.length; ++i)
+        target.push(source2[i]);
   }
   function fixFlowSeqItems(fc) {
     if (fc.start.type === "flow-seq-start") {
@@ -9113,10 +9113,10 @@ function requireParser() {
      *
      * @returns A generator of tokens representing each directive, document, and other structure.
      */
-    *parse(source, incomplete = false) {
+    *parse(source2, incomplete = false) {
       if (this.onNewLine && this.offset === 0)
         this.onNewLine(0);
-      for (const lexeme of this.lexer.lex(source, incomplete))
+      for (const lexeme of this.lexer.lex(source2, incomplete))
         yield* this.next(lexeme);
       if (!incomplete)
         yield* this.end();
@@ -9124,21 +9124,21 @@ function requireParser() {
     /**
      * Advance the parser by the `source` of one lexical token.
      */
-    *next(source) {
-      this.source = source;
+    *next(source2) {
+      this.source = source2;
       if (node_process.env.LOG_TOKENS)
-        console.log("|", cst2.prettyToken(source));
+        console.log("|", cst2.prettyToken(source2));
       if (this.atScalar) {
         this.atScalar = false;
         yield* this.step();
-        this.offset += source.length;
+        this.offset += source2.length;
         return;
       }
-      const type2 = cst2.tokenType(source);
+      const type2 = cst2.tokenType(source2);
       if (!type2) {
-        const message2 = `Not a YAML token: ${source}`;
-        yield* this.pop({ type: "error", offset: this.offset, message: message2, source });
-        this.offset += source.length;
+        const message2 = `Not a YAML token: ${source2}`;
+        yield* this.pop({ type: "error", offset: this.offset, message: message2, source: source2 });
+        this.offset += source2.length;
       } else if (type2 === "scalar") {
         this.atNewLine = false;
         this.atScalar = true;
@@ -9151,17 +9151,17 @@ function requireParser() {
             this.atNewLine = true;
             this.indent = 0;
             if (this.onNewLine)
-              this.onNewLine(this.offset + source.length);
+              this.onNewLine(this.offset + source2.length);
             break;
           case "space":
-            if (this.atNewLine && source[0] === " ")
-              this.indent += source.length;
+            if (this.atNewLine && source2[0] === " ")
+              this.indent += source2.length;
             break;
           case "explicit-key-ind":
           case "map-value-ind":
           case "seq-item-ind":
             if (this.atNewLine)
-              this.indent += source.length;
+              this.indent += source2.length;
             break;
           case "doc-mode":
           case "flow-error-end":
@@ -9169,7 +9169,7 @@ function requireParser() {
           default:
             this.atNewLine = false;
         }
-        this.offset += source.length;
+        this.offset += source2.length;
       }
     }
     /** Call at end of input to push out any remaining constructions */
@@ -9881,26 +9881,26 @@ function requirePublicApi() {
     const lineCounter$1 = options2.lineCounter || prettyErrors && new lineCounter2.LineCounter() || null;
     return { lineCounter: lineCounter$1, prettyErrors };
   }
-  function parseAllDocuments(source, options2 = {}) {
+  function parseAllDocuments(source2, options2 = {}) {
     const { lineCounter: lineCounter3, prettyErrors } = parseOptions2(options2);
     const parser$12 = new parser2.Parser(lineCounter3?.addNewLine);
     const composer$1 = new composer2.Composer(options2);
-    const docs = Array.from(composer$1.compose(parser$12.parse(source)));
+    const docs = Array.from(composer$1.compose(parser$12.parse(source2)));
     if (prettyErrors && lineCounter3)
       for (const doc of docs) {
-        doc.errors.forEach(errors2.prettifyError(source, lineCounter3));
-        doc.warnings.forEach(errors2.prettifyError(source, lineCounter3));
+        doc.errors.forEach(errors2.prettifyError(source2, lineCounter3));
+        doc.warnings.forEach(errors2.prettifyError(source2, lineCounter3));
       }
     if (docs.length > 0)
       return docs;
     return Object.assign([], { empty: true }, composer$1.streamInfo());
   }
-  function parseDocument(source, options2 = {}) {
+  function parseDocument(source2, options2 = {}) {
     const { lineCounter: lineCounter3, prettyErrors } = parseOptions2(options2);
     const parser$12 = new parser2.Parser(lineCounter3?.addNewLine);
     const composer$1 = new composer2.Composer(options2);
     let doc = null;
-    for (const _doc of composer$1.compose(parser$12.parse(source), true, source.length)) {
+    for (const _doc of composer$1.compose(parser$12.parse(source2), true, source2.length)) {
       if (!doc)
         doc = _doc;
       else if (doc.options.logLevel !== "silent") {
@@ -9909,8 +9909,8 @@ function requirePublicApi() {
       }
     }
     if (prettyErrors && lineCounter3) {
-      doc.errors.forEach(errors2.prettifyError(source, lineCounter3));
-      doc.warnings.forEach(errors2.prettifyError(source, lineCounter3));
+      doc.errors.forEach(errors2.prettifyError(source2, lineCounter3));
+      doc.warnings.forEach(errors2.prettifyError(source2, lineCounter3));
     }
     return doc;
   }
@@ -10015,10 +10015,10 @@ function requireDist() {
 var distExports = requireDist();
 const scopedEvents = ["push", "pull_request"];
 class ScopedWorkflow {
-  constructor(document2, root, source) {
+  constructor(document2, root, source2) {
     this.document = document2;
     this.root = root;
-    this.source = source;
+    this.source = source2;
   }
   document;
   root;
@@ -10095,22 +10095,22 @@ class ScopedWorkflow {
   }
 }
 const yamlWorkflowRenderer = {
-  render(bytes, source) {
+  render(bytes, source2) {
     let text2;
     try {
       text2 = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } catch {
-      ensure(false, "INVALID_WORKFLOW", `${source.source}: the file is not valid UTF-8.`);
+      ensure(false, "INVALID_WORKFLOW", `${source2.source}: the file is not valid UTF-8.`);
     }
     const document2 = distExports.parseDocument(text2, { uniqueKeys: true, prettyErrors: false });
-    ensure(!document2.errors.length, "INVALID_WORKFLOW", `${source.source}: ${document2.errors.map((error2) => error2.message).join("; ")}`);
+    ensure(!document2.errors.length, "INVALID_WORKFLOW", `${source2.source}: ${document2.errors.map((error2) => error2.message).join("; ")}`);
     const root = document2.contents;
-    ensure(distExports.isMap(root) && root.has("on") && root.has("jobs"), "INVALID_WORKFLOW", `${source.source}: a workflow must be a YAML mapping that declares on and jobs.`);
-    const workflow2 = new ScopedWorkflow(document2, root, source);
+    ensure(distExports.isMap(root) && root.has("on") && root.has("jobs"), "INVALID_WORKFLOW", `${source2.source}: a workflow must be a YAML mapping that declares on and jobs.`);
+    const workflow2 = new ScopedWorkflow(document2, root, source2);
     workflow2.scopeTriggers();
     workflow2.injectProjectPath();
     workflow2.scopeWorkingDirectories();
-    return new TextEncoder().encode(`${generatedHeader(source.source)}
+    return new TextEncoder().encode(`${generatedHeader(source2.source)}
 ${document2.toString({ lineWidth: 0 })}`);
   }
 };
@@ -10135,12 +10135,12 @@ const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSY
 const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
 const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
-const text$6 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const text$7 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
 const errorCode = (error2) => error2.code ?? "";
 function ownerDetails(owner) {
   try {
     const { command: command2, operationId } = owner();
-    return { ...text$6(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
+    return { ...text$7(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
   } catch {
     return {};
   }
@@ -10150,7 +10150,7 @@ function hostIdentity() {
   identity ??= (async () => {
     const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
     const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
-    return { ...text$6(pidNamespace) ? { pidNamespace } : {}, ...text$6(bootId) ? { bootId } : {} };
+    return { ...text$7(pidNamespace) ? { pidNamespace } : {}, ...text$7(bootId) ? { bootId } : {} };
   })();
   return identity;
 }
@@ -10236,17 +10236,17 @@ function parseMetadata(content2) {
   } catch {
     return null;
   }
-  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$6(value2.hostname) || !text$6(value2.startedAt)) return null;
+  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$7(value2.hostname) || !text$7(value2.startedAt)) return null;
   const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
   return {
     pid,
     hostname: host,
     startedAt,
-    ...text$6(command2) ? { command: command2 } : {},
+    ...text$7(command2) ? { command: command2 } : {},
     ...positiveInteger(operationId) ? { operationId } : {},
-    ...text$6(forgeVersion) ? { forgeVersion } : {},
-    ...text$6(pidNamespace) ? { pidNamespace } : {},
-    ...text$6(bootId) ? { bootId } : {}
+    ...text$7(forgeVersion) ? { forgeVersion } : {},
+    ...text$7(pidNamespace) ? { pidNamespace } : {},
+    ...text$7(bootId) ? { bootId } : {}
   };
 }
 async function readLock(path) {
@@ -10361,9 +10361,9 @@ class Transaction {
     const renames = await this.planRenames(conflicts);
     const writes = await this.planWrites(conflicts);
     const removes = await this.planRemoves(conflicts);
-    const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
-    const message2 = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict?.path}` : `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`;
-    ensure(conflict === void 0, "CONFLICT", message2, conflict && { ...conflict, ...steps > 1 ? { conflicts } : {} });
+    const [conflict2] = conflicts, steps = renames.length + writes.length + removes.length;
+    const message2 = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict2?.path}` : `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`;
+    ensure(conflict2 === void 0, "CONFLICT", message2, conflict2 && { ...conflict2, ...steps > 1 ? { conflicts } : {} });
     if (!dryRun) {
       try {
         await this.apply(renames, writes, removes);
@@ -10392,17 +10392,17 @@ class Transaction {
       const entry2 = await this.entry(request.from);
       if (!entry2) throw forgeError("NOT_FOUND", `File or folder not found: ${request.from}`);
       if (entryRevision(entry2) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry2)));
-      const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
-      const caseOnly = await this.caseOnly(request, source, target);
-      plans.push({ request, source, target, entry: entry2, caseOnly });
+      const source2 = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
+      const caseOnly = await this.caseOnly(request, source2, target);
+      plans.push({ request, source: source2, target, entry: entry2, caseOnly });
     }
     return plans;
   }
   /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
-  async caseOnly(request, source, target) {
+  async caseOnly(request, source2, target) {
     const existing = await exists(target);
     if (!existing) return false;
-    const original = await promises$1.lstat(source);
+    const original = await promises$1.lstat(source2);
     const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
     ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
     return true;
@@ -10515,28 +10515,28 @@ class Transaction {
    * created between that check and the rename by another program is a documented race. A case-only rename passes
    * through a reserved name, which works whether or not the filesystem ignores case.
    */
-  async move(plan, source, target) {
+  async move(plan, source2, target) {
     if (plan.caseOnly) {
-      const temp = temporary(source);
-      await retryTransient(() => promises$1.rename(source, temp));
+      const temp = temporary(source2);
+      await retryTransient(() => promises$1.rename(source2, temp));
       try {
         await retryTransient(() => promises$1.rename(temp, target));
       } catch (error2) {
-        await retryTransient(() => promises$1.rename(temp, source)).catch(() => {
+        await retryTransient(() => promises$1.rename(temp, source2)).catch(() => {
         });
         throw error2;
       }
       return;
     }
     const occupied = () => forgeError("DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
-    if (plan.entry.kind === "file" && await this.linkInPlace(source, target, occupied)) return;
+    if (plan.entry.kind === "file" && await this.linkInPlace(source2, target, occupied)) return;
     if (await exists(target)) throw occupied();
-    await retryTransient(() => promises$1.rename(source, target));
+    await retryTransient(() => promises$1.rename(source2, target));
   }
   /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
-  async linkInPlace(source, target, occupied) {
+  async linkInPlace(source2, target, occupied) {
     try {
-      await retryTransient(() => promises$1.link(source, target), { codes: ["EBUSY"] });
+      await retryTransient(() => promises$1.link(source2, target), { codes: ["EBUSY"] });
     } catch (error2) {
       const code2 = error2.code ?? "";
       if (code2 === "EEXIST") throw occupied();
@@ -10544,7 +10544,7 @@ class Transaction {
       throw error2;
     }
     try {
-      await retryTransient(() => promises$1.unlink(source));
+      await retryTransient(() => promises$1.unlink(source2));
     } catch (error2) {
       await retryTransient(() => promises$1.unlink(target)).catch(() => {
       });
@@ -17910,7 +17910,7 @@ const resolver = {
   resolveAll: createResolver()
 };
 const string$3 = initializeFactory("string");
-const text$5 = initializeFactory("text");
+const text$6 = initializeFactory("text");
 function initializeFactory(field2) {
   return {
     resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
@@ -18084,7 +18084,7 @@ const string$2 = {
   [38]: characterReference,
   [92]: characterEscape
 };
-const text$4 = {
+const text$5 = {
   [-5]: lineEnding,
   [-4]: lineEnding,
   [-3]: lineEnding,
@@ -18117,7 +18117,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flowInitial,
   insideSpan,
   string: string$2,
-  text: text$4
+  text: text$5
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
   let point2 = {
@@ -18450,7 +18450,7 @@ function parse$1(options2) {
     flow: create2(flow$1),
     lazy: {},
     string: create2(string$3),
-    text: create2(text$5)
+    text: create2(text$6)
   };
   return parser2;
   function create2(initial) {
@@ -19822,10 +19822,10 @@ function stringScalars(document2) {
   walk(document2.contents, "", []);
   return found;
 }
-function candidates$2(node2, source, value2, pairs2) {
+function candidates$2(node2, source2, value2, pairs2) {
   const encode2 = node2.type === "QUOTE_SINGLE" ? (text2) => text2.replaceAll("'", "''") : node2.type === "QUOTE_DOUBLE" ? (text2) => text2.replace(/[\\"]/g, "\\$&") : (text2) => text2;
-  const raw = replaceOnce(source, pairs2.map(([from, to]) => [encode2(from), encode2(to)])).text;
-  const trailing = /(?:\r\n|\n|\r)*$/.exec(source)[0];
+  const raw = replaceOnce(source2, pairs2.map(([from, to]) => [encode2(from), encode2(to)])).text;
+  const trailing = /(?:\r\n|\n|\r)*$/.exec(source2)[0];
   return [
     raw,
     ...node2.type === "QUOTE_SINGLE" && !/[\r\n]/.test(value2) ? [`'${encode2(value2)}'`] : [],
@@ -20057,10 +20057,10 @@ async function loadModule(directory, files) {
   } catch (error2) {
     if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
     const commonjs = `${directory}/main.js`;
-    const source = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(commonjs)).bytes);
+    const source2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(commonjs)).bytes);
     const filename = await files.resolvePath(commonjs);
     const module = { exports: {} };
-    const execute = node_vm.compileFunction(source, ["exports", "require", "module", "__filename", "__dirname"], { filename });
+    const execute = node_vm.compileFunction(source2, ["exports", "require", "module", "__filename", "__dirname"], { filename });
     execute.call(module.exports, module.exports, node_module.createRequire(filename), module, filename, minpath.dirname(filename));
     return module.exports;
   }
@@ -20153,8 +20153,8 @@ class Bases {
 const punct = /* @__PURE__ */ new Set(["(", ")", "[", "]", "{", "}", ".", ",", ":"]);
 const singleOps = /* @__PURE__ */ new Set(["+", "-", "*", "/", "%", "!", ">", "<"]);
 const endExpressionValues = /* @__PURE__ */ new Set([")", "]", "}"]);
-function tokenize(source) {
-  const lexer2 = new Lexer(source);
+function tokenize(source2) {
+  const lexer2 = new Lexer(source2);
   return lexer2.scan();
 }
 class Lexer {
@@ -20163,8 +20163,8 @@ class Lexer {
   tokens = [];
   diagnostics = [];
   lastSignificant;
-  constructor(source) {
-    this.source = source;
+  constructor(source2) {
+    this.source = source2;
   }
   scan() {
     while (!this.done()) {
@@ -20396,8 +20396,8 @@ const precedences = {
   "/": 5,
   "%": 5
 };
-function parseExpression(source) {
-  const { tokens, diagnostics: diagnostics2 } = tokenize(source);
+function parseExpression(source2) {
+  const { tokens, diagnostics: diagnostics2 } = tokenize(source2);
   const parser2 = new Parser$1(tokens, diagnostics2);
   return parser2.parse();
 }
@@ -26020,7 +26020,7 @@ class ExpressionError extends Error {
 }
 function compileExpression(sourceOrAst) {
   const parsed2 = typeof sourceOrAst === "string" ? parseExpression(sourceOrAst) : { ast: sourceOrAst, diagnostics: [] };
-  const source = typeof sourceOrAst === "string" ? sourceOrAst : null;
+  const source2 = typeof sourceOrAst === "string" ? sourceOrAst : null;
   const dependencies2 = parsed2.ast ? getExpressionDependencies(parsed2.ast) : emptyDependencies();
   const valid2 = Boolean(parsed2.ast) && !parsed2.diagnostics.some((diagnostic2) => diagnostic2.severity === "error");
   const evaluate2 = (context = {}, options2 = {}) => {
@@ -26040,7 +26040,7 @@ function compileExpression(sourceOrAst) {
     return result;
   };
   return {
-    source,
+    source: source2,
     ast: parsed2.ast,
     diagnostics: parsed2.diagnostics,
     dependencies: dependencies2,
@@ -26301,20 +26301,20 @@ function allTags(cache) {
 }
 const pendingFileReads$1 = 16;
 const isMarkdown = (path) => path.toLowerCase().endsWith(".md");
-function typedLinks(value2, source, cache) {
+function typedLinks(value2, source2, cache) {
   if (typeof value2 === "string") {
     const match = /^\[\[([^\]]+)\]\]$/.exec(value2);
     if (!match) return value2;
     const [target, display] = match[1].split("|");
-    return frontmatterLink(target, display, cache.getFirstLinkpathDest(target, source));
+    return frontmatterLink(target, display, cache.getFirstLinkpathDest(target, source2));
   }
-  if (Array.isArray(value2)) return value2.map((item) => typedLinks(item, source, cache));
-  if (isRecord(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source, cache)]));
+  if (Array.isArray(value2)) return value2.map((item) => typedLinks(item, source2, cache));
+  if (isRecord(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source2, cache)]));
   return value2;
 }
-function baseLink({ reference, resolution }, source) {
+function baseLink({ reference, resolution }, source2) {
   if (resolution.status === "unresolved" && resolution.reason === "ambiguous" && resolution.via === "path") {
-    throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${resolution.linkpath} in ${source} matches multiple files: ${resolution.candidates.join(", ")}`);
+    throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${resolution.linkpath} in ${source2} matches multiple files: ${resolution.candidates.join(", ")}`);
   }
   return { path: reference.link, resolvedPath: resolution.status === "resolved" && resolution.via === "path" ? resolution.path : null };
 }
@@ -26355,9 +26355,9 @@ async function indexBaseFiles(cache, dates) {
     return { ...file, size, ctime, mtime };
   });
   const byPath = new Map(result.map((file) => [file.path, file]));
-  for (const source of result) {
-    for (const target of new Set(source.links?.map((link) => link.resolvedPath).filter((path) => Boolean(path)))) {
-      byPath.get(target)?.backlinks?.push({ path: source.path, resolvedPath: source.path });
+  for (const source2 of result) {
+    for (const target of new Set(source2.links?.map((link) => link.resolvedPath).filter((path) => Boolean(path)))) {
+      byPath.get(target)?.backlinks?.push({ path: source2.path, resolvedPath: source2.path });
     }
   }
   return result;
@@ -26423,13 +26423,13 @@ function adapt(expression2) {
   if (expression2.type === "Array") return { ...expression2, elements: expression2.elements.map(adapt) };
   return expression2;
 }
-function baseExpression(source) {
-  const parsed2 = compileExpression(source);
+function baseExpression(source2) {
+  const parsed2 = compileExpression(source2);
   ensure(parsed2.valid && parsed2.ast, "INVALID_BASE_EXPRESSION", parsed2.diagnostics.map((item) => item.message).join("; ") || "Invalid Bases expression.");
   const nativeNumericMember = (node2) => {
     if (!isRecord(node2)) return;
     if (node2.type === "Member" && isRecord(node2.object) && node2.object.type === "Literal" && typeof node2.object.value === "number" && isRecord(node2.object.span)) {
-      ensure(source.slice(Number(node2.object.span.start), Number(node2.object.span.end)).trimStart().startsWith("("), "INVALID_BASE_EXPRESSION", "Numeric method receivers need parentheses, as in (1).isTruthy().");
+      ensure(source2.slice(Number(node2.object.span.start), Number(node2.object.span.end)).trimStart().startsWith("("), "INVALID_BASE_EXPRESSION", "Numeric method receivers need parentheses, as in (1).isTruthy().");
     }
     for (const value2 of Object.values(node2)) {
       if (Array.isArray(value2)) value2.forEach(nativeNumericMember);
@@ -26528,7 +26528,7 @@ class NodeBasesQueryEngine {
     const view = options2.view === void 0 ? views[0] : views.find((item) => item.name === options2.view);
     ensure(view, "BASE_VIEW_NOT_FOUND", `View ${options2.view ?? ""} is not defined in ${path}.`);
     const formulas = base.formulas ?? {};
-    const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name2, source]) => [name2, baseExpression(source).ast]));
+    const formulaAsts = Object.fromEntries(Object.entries(formulas).map(([name2, source2]) => [name2, baseExpression(source2).ast]));
     const compiledFormulas = compileFormulaSet(formulaAsts);
     diagnostics(compiledFormulas.diagnostics, "Formulas");
     const globalFilter = baseFilter(base.filters), viewFilter = baseFilter(view.filters);
@@ -26751,26 +26751,26 @@ function characterClass(pattern2, start2) {
 }
 function pathGlob(pattern2, option2 = "--path") {
   ensure(pattern2.length > 0 && pattern2.length <= 1024, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to 1024 characters.`);
-  const source = pattern2.replace(/^\.\//, "");
+  const source2 = pattern2.replace(/^\.\//, "");
   let regex = "", braces = 0;
-  for (let index2 = 0; index2 < source.length; index2++) {
-    const char = source[index2];
+  for (let index2 = 0; index2 < source2.length; index2++) {
+    const char = source2[index2];
     if (char === "\\") {
-      ensure(index2 + 1 < source.length, "INVALID_ARGUMENT", `${option2} ends with an unescaped backslash.`);
-      regex += literal$2(source[++index2]);
+      ensure(index2 + 1 < source2.length, "INVALID_ARGUMENT", `${option2} ends with an unescaped backslash.`);
+      regex += literal$2(source2[++index2]);
     } else if (char === "*") {
       let end2 = index2;
-      while (source[end2 + 1] === "*") end2++;
-      const segmentStart = index2 === 0 || source[index2 - 1] === "/";
-      const globstar = end2 > index2 && segmentStart && (end2 + 1 === source.length || source[end2 + 1] === "/");
-      if (globstar && source[end2 + 1] === "/") {
+      while (source2[end2 + 1] === "*") end2++;
+      const segmentStart = index2 === 0 || source2[index2 - 1] === "/";
+      const globstar = end2 > index2 && segmentStart && (end2 + 1 === source2.length || source2[end2 + 1] === "/");
+      if (globstar && source2[end2 + 1] === "/") {
         regex += "(?:.*/)?";
         end2++;
       } else regex += globstar ? ".*" : "[^/]*";
       index2 = end2;
     } else if (char === "?") regex += "[^/]";
     else if (char === "[") {
-      const range2 = characterClass(source, index2);
+      const range2 = characterClass(source2, index2);
       if (range2) {
         regex += range2.source;
         index2 = range2.end;
@@ -26903,9 +26903,9 @@ function searchExpression(query) {
   if (query.pattern.length === 0 || query.pattern.length > maxPatternLength) {
     throw searchError("INVALID_SEARCH_PATTERN", `The pattern must have 1 to ${maxPatternLength} characters.`);
   }
-  const source = query.regex ? query.pattern : query.pattern.replace(syntax, "\\$&");
+  const source2 = query.regex ? query.pattern : query.pattern.replace(syntax, "\\$&");
   try {
-    return new RegExp(source, `gu${query.caseSensitive ? "" : "i"}`);
+    return new RegExp(source2, `gu${query.caseSensitive ? "" : "i"}`);
   } catch (error2) {
     throw searchError("INVALID_SEARCH_PATTERN", `Invalid regular expression: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -26963,9 +26963,9 @@ async function readExisting(files, path) {
 }
 function codeLines(cache, path) {
   const lines2 = /* @__PURE__ */ new Set();
-  for (const section of cache?.getFileCache(path)?.sections ?? []) {
-    if (section.type !== "code") continue;
-    for (let line = section.position.start.line; line <= section.position.end.line; line++) lines2.add(line);
+  for (const section2 of cache?.getFileCache(path)?.sections ?? []) {
+    if (section2.type !== "code") continue;
+    for (let line = section2.position.start.line; line <= section2.position.end.line; line++) lines2.add(line);
   }
   return lines2;
 }
@@ -27029,8 +27029,8 @@ function vmSearchBudget(milliseconds) {
   };
 }
 const defaultSearchLimit = 100;
-const text$3 = { type: "string" };
-const lines = { type: "array", items: text$3 };
+const text$4 = { type: "string" };
+const lines = { type: "array", items: text$4 };
 const output = {
   type: "object",
   required: ["hits", "total"],
@@ -27039,18 +27039,18 @@ const output = {
       type: "object",
       required: ["path", "line", "column", "match", "snippet", "revision"],
       properties: {
-        path: text$3,
+        path: text$4,
         line: { type: "integer", minimum: 1 },
         column: { type: "integer", minimum: 1 },
-        match: text$3,
-        snippet: text$3,
+        match: text$4,
+        snippet: text$4,
         before: lines,
         after: lines,
-        revision: text$3
+        revision: text$4
       }
     } },
     total: { type: "integer", minimum: 0 },
-    nextCursor: text$3
+    nextCursor: text$4
   }
 };
 function searchCommand(service) {
@@ -27167,11 +27167,11 @@ function location(item) {
   const { line, col, offset } = item.reference.position.start;
   return { line: line + 1, column: col + 1, offset };
 }
-function linkEntry(source, item) {
+function linkEntry(source2, item) {
   const { kind, reference, resolution } = item;
   const resolved = resolution.status === "resolved" ? { target: resolution.path, via: resolution.via } : resolution.status === "unresolved" ? { reason: resolution.reason, ...resolution.reason === "ambiguous" ? { candidates: resolution.candidates } : {} } : {};
   return {
-    source,
+    source: source2,
     kind,
     ...location(item),
     original: reference.original,
@@ -27181,7 +27181,7 @@ function linkEntry(source, item) {
     ...resolved
   };
 }
-const outbound = (source, { resolution }) => resolution.status !== "external" && !(resolution.status === "resolved" && resolution.path === source);
+const outbound = (source2, { resolution }) => resolution.status !== "external" && !(resolution.status === "resolved" && resolution.path === source2);
 function indexed(cache, note) {
   const path = vaultPath(note);
   ensure(cache.files().includes(path), "NOT_FOUND", `${path} is not a visible file of the vault; run list to find its path.`);
@@ -27193,10 +27193,10 @@ function linksOut(cache, note) {
 }
 function linksBack(cache, note) {
   const path = indexed(cache, note);
-  return { path, backlinks: cache.backlinks(path).map(({ source, ...reference }) => linkEntry(source, reference)), issues: cache.issues() };
+  return { path, backlinks: cache.backlinks(path).map(({ source: source2, ...reference }) => linkEntry(source2, reference)), issues: cache.issues() };
 }
 function unresolvedLinks(cache, include) {
-  const links = cache.files().filter(include).flatMap((source) => cache.references(source).filter((reference) => reference.resolution.status === "unresolved").map((reference) => linkEntry(source, reference)));
+  const links = cache.files().filter(include).flatMap((source2) => cache.references(source2).filter((reference) => reference.resolution.status === "unresolved").map((reference) => linkEntry(source2, reference)));
   return { links, issues: cache.issues() };
 }
 function orphanNotes(cache, include, root) {
@@ -27283,9 +27283,8 @@ const linksPlugin = {
     }
   })
 };
-const supportedConfigVersion = "16";
 const isObject$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
-const text$2 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$3 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const stringList = (value2) => Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
 const record$2 = (value2) => isObject$1(value2) ? value2 : {};
 function pointer(...segments) {
@@ -27308,6 +27307,19 @@ function instructionText(value2) {
   if (typeof value2 === "string") return value2;
   if (Array.isArray(value2)) return stringList(value2).join("\n\n");
   return void 0;
+}
+function normalizedDocument(value2) {
+  return isObject$1(value2) && typeof value2.version === "number" && Number.isFinite(value2.version) ? { ...value2, version: String(value2.version) } : value2;
+}
+function localPath(path) {
+  if (path.trim() === "" || /^(?:[\\/]|[A-Za-z]:)/.test(path)) return void 0;
+  const parts = [];
+  for (const segment2 of path.split("/")) {
+    if (segment2 === "" || segment2 === ".") continue;
+    if (segment2 !== "..") parts.push(segment2);
+    else if (parts.pop() === void 0) return void 0;
+  }
+  return parts.length > 0 ? parts.join("/") : void 0;
 }
 function instructionFiles(agent) {
   return typeof agent.instruction_file === "string" ? [agent.instruction_file] : stringList(agent.instruction_file);
@@ -27423,8 +27435,8 @@ function oauth(remote, at) {
   const settings2 = record$2(remote.oauth);
   const where = `${at}/remote/oauth`;
   if (!isObject$1(remote.oauth)) return [];
-  if (!text$2(remote.url)) return [diagnostic("error", "invalid-toolset", where, "oauth requires remote url to be set.")];
-  if (!text$2(settings2.clientId) && text$2(settings2.clientSecret)) return [diagnostic("error", "invalid-toolset", where, "oauth clientSecret requires clientId to be set.")];
+  if (!text$3(remote.url)) return [diagnostic("error", "invalid-toolset", where, "oauth requires remote url to be set.")];
+  if (!text$3(settings2.clientId) && text$3(settings2.clientSecret)) return [diagnostic("error", "invalid-toolset", where, "oauth clientSecret requires clientId to be set.")];
   if (typeof settings2.callbackRedirectURL === "string" && settings2.callbackRedirectURL !== "") {
     let url2;
     try {
@@ -27441,16 +27453,16 @@ function typeRequirements(toolset, at) {
   const type2 = toolset.type, remote = record$2(toolset.remote);
   const fail = (message2, field2 = "") => [diagnostic("error", "invalid-toolset", `${at}${field2}`, message2)];
   if (type2 === "mcp") {
-    const sources = [text$2(toolset.command), text$2(remote.url), text$2(toolset.ref)].filter(Boolean).length;
+    const sources = [text$3(toolset.command), text$3(remote.url), text$3(toolset.ref)].filter(Boolean).length;
     if (sources !== 1) return fail(sources === 0 ? "either command, remote or ref must be set." : "either command, remote or ref must be set, but only one of those.");
-    if (enabled(toolset.allow_private_ips) && !text$2(remote.url) && !text$2(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
-    if (present(toolset.working_dir) && text$2(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
+    if (enabled(toolset.allow_private_ips) && !text$3(remote.url) && !text$3(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
+    if (present(toolset.working_dir) && text$3(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
     return oauth(remote, at);
   }
   const required2 = { a2a: "url", lsp: "command", openapi: "url", open_url: "url" };
-  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$2(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
+  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$3(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
   if (type2 === "model_picker" && !present(toolset.models)) return fail("model_picker toolset requires at least one model in the 'models' list.");
-  if (type2 === "rag" && !text$2(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
+  if (type2 === "rag" && !text$3(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
   return [];
 }
 function toolsetDiagnostics(toolset, at) {
@@ -27474,10 +27486,10 @@ function harnessDiagnostics(agent, at) {
   const harness = agent.harness, where = `${at}/harness`;
   const fail = (message2, field2 = "") => diagnostic("error", "invalid-harness", `${where}${field2}`, message2);
   const problems = [];
-  if (text$2(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
+  if (text$3(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
   if (record$2(agent.structured_output).mode === "tool") problems.push(diagnostic("error", "invalid-harness", `${at}/structured_output/mode`, "structured_output.mode 'tool' cannot be used with a harness; use mode 'native'."));
-  if (text$2(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
-  if (text$2(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
+  if (text$3(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
+  if (text$3(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
   if (harness.thinking === true && harness.type !== "opencode") problems.push(fail("harness.thinking can only be used with harness.type 'opencode'.", "/thinking"));
   return problems;
 }
@@ -27511,17 +27523,17 @@ function modelDiagnostics(model2, at) {
   if (typeof threshold === "number" && (threshold <= 0 || threshold > 1)) problems.push(diagnostic("error", "invalid-model", `${at}/compaction_threshold`, `compaction_threshold must be greater than 0 and at most 1, got ${threshold}.`));
   if (!Array.isArray(model2.first_available)) return problems;
   if (model2.first_available.length === 0) return [...problems, diagnostic("error", "invalid-model", `${at}/first_available`, "first_available must contain at least one candidate.")];
-  const conflict = selectorConflicts.find((field2) => field2 === "bypass_models_gateway" ? model2[field2] === true : present(model2[field2]) || model2[field2] === false || model2[field2] === 0);
-  if (conflict) problems.push(diagnostic("error", "invalid-model", `${at}/${conflict}`, `first_available cannot be combined with ${conflict}.`));
+  const conflict2 = selectorConflicts.find((field2) => field2 === "bypass_models_gateway" ? model2[field2] === true : present(model2[field2]) || model2[field2] === false || model2[field2] === 0);
+  if (conflict2) problems.push(diagnostic("error", "invalid-model", `${at}/${conflict2}`, `first_available cannot be combined with ${conflict2}.`));
   model2.first_available.forEach((candidate, index2) => {
     if (typeof candidate !== "string" || candidate.trim() === "") problems.push(diagnostic("error", "invalid-model", `${at}/first_available/${index2}`, `first_available[${index2}] must not be empty.`));
   });
   return problems;
 }
-function semanticDiagnostics(config2) {
+function semanticDiagnostics(config2, version2) {
   const agents = agentEntries(config2);
   return [
-    ...versionDiagnostics(config2),
+    ...versionDiagnostics(config2, version2),
     ...agents.length === 0 ? [diagnostic("error", "no-agents", "/agents", "At least one agent must be configured (add an entry under 'agents').")] : [],
     ...providerDiagnostics(config2),
     ...Object.entries(record$2(config2.models)).flatMap(([name2, model2]) => modelDiagnostics(model2, pointer("models", name2))),
@@ -27536,9 +27548,9 @@ function semanticDiagnostics(config2) {
     ...forceHandoffDiagnostics(config2)
   ];
 }
-function versionDiagnostics(config2) {
-  if (config2.version === void 0 || config2.version === supportedConfigVersion) return [];
-  return [diagnostic("error", "unsupported-version", "/version", `Forge reads docker-agent configuration version ${supportedConfigVersion}; version ${JSON.stringify(config2.version)} is not migrated. Update the file to version ${supportedConfigVersion} syntax (docker-agent migrates older files when it loads them) or remove the version key.`)];
+function versionDiagnostics(config2, version2) {
+  if (config2.version === void 0 || config2.version === version2) return [];
+  return [diagnostic("error", "unsupported-version", "/version", `Forge reads docker-agent configuration version ${version2}; version ${JSON.stringify(config2.version)} is not migrated. Update the file to version ${version2} syntax (docker-agent migrates older files when it loads them) or remove the version key.`)];
 }
 function providerDiagnostics(config2) {
   return Object.entries(record$2(config2.providers)).flatMap(([name2, value2]) => {
@@ -27550,7 +27562,7 @@ function providerDiagnostics(config2) {
     const apiType = provider.api_type ?? "";
     if (!["", "openai_chatcompletions", "openai_responses"].includes(String(apiType))) return fail(`invalid api_type '${String(apiType)}' (must be one of: openai_chatcompletions, openai_responses)`, "/api_type");
     const openAiCompatible = apiType !== "" || provider.provider === void 0 || provider.provider === "" || provider.provider === "openai";
-    if (!text$2(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
+    if (!text$3(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
     return [];
   });
 }
@@ -27561,7 +27573,7 @@ function modelReferenceDiagnostics(config2) {
     ...Object.entries(record$2(config2.rag)).flatMap(([name2, rag]) => (Array.isArray(record$2(rag).strategies) ? record$2(rag).strategies : []).flatMap((strategy, index2) => unknown2(record$2(strategy).model, pointer("rag", name2, "strategies", index2, "model"), `RAG strategy '${String(record$2(strategy).type)}' in RAG '${name2}'`)))
   ];
 }
-const sourceUrl = (source) => source.startsWith("http://") || source.startsWith("https://");
+const sourceUrl = (source2) => source2.startsWith("http://") || source2.startsWith("https://");
 function skillsDiagnostics(skills2, at, label) {
   if (!Array.isArray(skills2)) return [];
   const seen = /* @__PURE__ */ new Set();
@@ -27575,8 +27587,8 @@ function skillsDiagnostics(skills2, at, label) {
     const skill = record$2(entry2), name2 = typeof skill.name === "string" ? skill.name : "";
     if (name2.trim() === "") return fail("has an inline skill with no name.");
     if (/\s/.test(name2)) return fail(`inline skill '${name2}' must not have whitespace in its name: it doubles as the /${name2} command.`);
-    if (!text$2(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
-    if (!text$2(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
+    if (!text$3(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
+    if (!text$3(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
     if (skill.context !== void 0 && skill.context !== "fork") return fail(`inline skill '${name2}' has invalid context '${String(skill.context)}' (only 'fork' is supported).`);
     if (skill.context !== "fork" && stringList(skill.toolsets).length > 0) return fail(`inline skill '${name2}' declares toolsets but is not a fork skill (set context: fork).`);
     if (skill.context !== "fork" && stringList(skill.allowed_tools).length > 0) return fail(`inline skill '${name2}' declares allowed_tools but is not a fork skill (set context: fork).`);
@@ -27585,7 +27597,6 @@ function skillsDiagnostics(skills2, at, label) {
     return [];
   });
 }
-const localPath = (path) => path.trim() !== "" && !/^(?:[\\/]|[A-Za-z]:)/.test(path) && !path.split(/[\\/]/).includes("..");
 function referenceDiagnostics(config2, name2, agent) {
   const names2 = new Set(Object.keys(record$2(config2.agents)));
   return ["sub_agents", "handoffs"].flatMap((field2) => stringList(agent[field2]).flatMap((reference, index2) => {
@@ -27601,7 +27612,7 @@ function definitionDiagnostics(config2, name2, agent) {
     ["use_commands", "commands", "unknown-command-group", "command group"],
     ["use_skills", "skills", "unknown-skill-group", "skill group"]
   ];
-  const problems = groups.flatMap(([field2, section, code2, kind]) => stringList(agent[field2]).flatMap((reference, index2) => Object.hasOwn(record$2(config2[section]), reference) ? [] : [diagnostic("error", code2, pointer("agents", name2, field2, index2), `agent '${name2}' references non-existent ${kind} '${reference}'.`)]));
+  const problems = groups.flatMap(([field2, section2, code2, kind]) => stringList(agent[field2]).flatMap((reference, index2) => Object.hasOwn(record$2(config2[section2]), reference) ? [] : [diagnostic("error", code2, pointer("agents", name2, field2, index2), `agent '${name2}' references non-existent ${kind} '${reference}'.`)]));
   (Array.isArray(agent.toolsets) ? agent.toolsets : []).forEach((toolset, index2) => {
     const { type: type2, ref: ref2 } = record$2(toolset);
     if (typeof ref2 !== "string" || ref2 === "") return;
@@ -27620,7 +27631,7 @@ function agentDiagnostics(config2, name2, agent) {
     problems.push(diagnostic("error", "instruction-conflict", `${at}/instruction_file`, `agent '${name2}': 'instruction' and 'instruction_file' are mutually exclusive, set only one.`));
   }
   instructionFiles(agent).forEach((path, index2) => {
-    if (!localPath(path)) problems.push(diagnostic("error", "invalid-instruction-file", typeof agent.instruction_file === "string" ? `${at}/instruction_file` : `${at}/instruction_file/${index2}`, `instruction_file "${path}" must be a local relative path inside the config directory.`));
+    if (localPath(path) === void 0) problems.push(diagnostic("error", "invalid-instruction-file", typeof agent.instruction_file === "string" ? `${at}/instruction_file` : `${at}/instruction_file/${index2}`, `instruction_file "${path}" must be a relative path to a file in the definition file's folder or below it.`));
   });
   for (const budget of stringList(agent.budgets)) if (!Object.hasOwn(record$2(config2.budgets), budget)) {
     problems.push(diagnostic("error", "unknown-budget", `${at}/budgets`, `agents.${name2}: budgets: unknown budget "${budget}"; define it under the top-level 'budgets'.`));
@@ -27690,13 +27701,28 @@ class AgentDefinitions {
   resolve(file) {
     return vaultPath(file.includes("/") ? file : `${this.directory}/${file}`);
   }
+  /**
+   * The file `agents create` and `agents import` write: a definition file directly in the definitions directory
+   * (`.yaml` or `.yml`), never another scope path such as `.github/workflows/ci.yaml`.
+   */
+  target(file) {
+    const path = this.resolve(file), prefix = `${this.directory}/`;
+    ensure(
+      path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && definitionFile.test(path),
+      "INVALID_PATH",
+      `Definition files are written directly in ${prefix} with a .yaml or .yml extension; ${file} is not such a file.`,
+      { path, directory: this.directory }
+    );
+    return path;
+  }
   /** Parse, schema and semantic diagnostics for definition text; positions come from the YAML source. */
   check(text2) {
     const parsed2 = this.ports.codec.parse(text2);
     if (parsed2.value === void 0) return { diagnostics: parsed2.diagnostics, locate: parsed2.locate };
-    const schema2 = this.ports.schema.validate(parsed2.value);
-    const config2 = isObject$1(parsed2.value) ? parsed2.value : void 0;
-    const semantic = config2 ? semanticDiagnostics(config2) : [];
+    const value2 = normalizedDocument(parsed2.value);
+    const schema2 = this.ports.schema.validate(value2);
+    const config2 = isObject$1(value2) ? value2 : void 0;
+    const semantic = config2 ? semanticDiagnostics(config2, this.ports.schema.configVersion) : [];
     const diagnostics2 = [...schema2, ...semantic].map((entry2) => ({ ...entry2, ...parsed2.locate(entry2.pointer) }));
     return { ...config2 ? { config: config2 } : {}, diagnostics: diagnostics2.sort(byPosition), locate: parsed2.locate };
   }
@@ -27718,9 +27744,9 @@ class AgentDefinitions {
         for (const [index2, file] of files.entries()) {
           const at = typeof agent.instruction_file === "string" ? pointer("agents", name2, "instruction_file") : pointer("agents", name2, "instruction_file", index2);
           try {
-            parts.push(decoder$2.decode((await this.files.read(vaultPath(`${parent(path)}${file}`))).bytes));
+            parts.push(decoder$2.decode((await this.files.read(vaultPath(`${parent(path)}${localPath(file)}`))).bytes));
           } catch (error2) {
-            const reason = error2 instanceof AppError && error2.code === "NOT_FOUND" ? "does not exist" : `cannot be read: ${errorMessage(error2)}`;
+            const reason = error2 instanceof AppError && error2.code === "NOT_FOUND" ? "does not exist" : `cannot be read: ${errorMessage(error2).replace(/\.$/, "")}`;
             missing2.push({ ...diagnostic("error", "instruction-file-missing", at, `instruction_file "${file}" ${reason}.`), ...checked.locate(at) });
           }
         }
@@ -27971,8 +27997,6 @@ const builtinTools = {
   list_directory: "Glob",
   directory_tree: "Glob",
   search_files_content: "Grep",
-  create_directory: "Bash",
-  remove_directory: "Bash",
   shell: "Bash",
   fetch: "WebFetch",
   user_prompt: "AskUserQuestion",
@@ -28013,9 +28037,9 @@ function modelAlias(id2) {
   return ["opus", "sonnet", "haiku", "fable"].find((family) => new RegExp(`(?:^|[-.])${family}(?:$|[-.])`).test(id2));
 }
 const aliasModels = { opus: "claude-opus-5", sonnet: "claude-sonnet-5", haiku: "claude-haiku-4-5", fable: "claude-fable-5-1" };
-const globSource = (glob) => `^${glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*")}$`;
+const globSource$1 = (glob) => `^${glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*")}$`;
 function claudeToolsFor(pattern2) {
-  const expression2 = new RegExp(globSource(pattern2));
+  const expression2 = new RegExp(globSource$1(pattern2));
   return [...new Set(Object.entries(builtinTools).filter(([name2]) => expression2.test(name2)).map(([, tool]) => tool))];
 }
 function translateMatcher(matcher) {
@@ -28029,14 +28053,6 @@ function translateMatcher(matcher) {
     } else translated2.push(...tools);
   }
   return { matcher: [...new Set(translated2)].join("|"), unknown: unknown2 };
-}
-function permissionRules(pattern2) {
-  const shell = /^shell:cmd=(.+)$/.exec(pattern2);
-  if (shell) return [`Bash(${shell[1]})`];
-  const mcp = /^mcp:([^:]+):(.+)$/.exec(pattern2);
-  if (mcp) return [mcp[2] === "*" ? `mcp__${mcp[1]}` : `mcp__${mcp[1]}__${mcp[2]}`];
-  if (pattern2.includes(":")) return [];
-  return claudeToolsFor(pattern2);
 }
 const fileTools = ["Read", "Glob", "Grep", "Write", "Edit", "MultiEdit", "NotebookEdit"];
 const writing$1 = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
@@ -28111,7 +28127,7 @@ function toolsets$1(metadata2, diagnostics2) {
   }
   return { toolsets: [...result, ...mcpToolsets(metadata2, grants, diagnostics2)], subAgents };
 }
-function hooks$1(value2, diagnostics2) {
+function hooks$2(value2, diagnostics2) {
   const result = {};
   for (const [event, groups] of Object.entries(record$2(value2))) {
     const target = reverseEvents[event];
@@ -28121,7 +28137,7 @@ function hooks$1(value2, diagnostics2) {
     }
     const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target);
     for (const group of Array.isArray(groups) ? groups.map(record$2) : []) {
-      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$2(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
+      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$3(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
       if (handlers.length === 0) continue;
       const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
       result[target] = [...result[target] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
@@ -28130,19 +28146,22 @@ function hooks$1(value2, diagnostics2) {
   }
   return Object.keys(result).length > 0 ? result : void 0;
 }
+function importedName(name2) {
+  return String(name2).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+}
 function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   const diagnostics2 = [];
-  const name2 = String(metadata2.name).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+  const name2 = importedName(metadata2.name);
   if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", `Agent ${String(metadata2.name)} is imported as ${name2}.`, "E"));
-  const source = record$2(metadata2["x-forge-source"]);
-  if (text$2(source.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source.path}#${String(source.agent)}; edit that definition instead, since an import is lossy.`, "A"));
+  const source2 = record$2(metadata2["x-forge-source"]);
+  if (text$3(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
   const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
   const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
   if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", `Agent(…) entries become sub_agents: ${subAgents.join(", ")}.`, "A"));
   for (const agent2 of delegates.filter((entry2) => !subAgents.includes(entry2))) {
     diagnostics2.push(diagnostic("warning", "delegation-unsupported", "/tools", `Agent(${agent2}) is not imported because ${agent2} is not defined in the target file; import it first.`, "U"));
   }
-  const mappedHooks = hooks$1(metadata2.hooks, diagnostics2);
+  const mappedHooks = hooks$2(metadata2.hooks, diagnostics2);
   for (const field2 of unsupportedFields$1) if (metadata2[field2] !== void 0) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), `${field2} has no docker-agent equivalent and is not imported.`, "U"));
   for (const field2 of Object.keys(metadata2)) if (!known.includes(field2)) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), `The unknown field ${field2} is not imported.`, "U"));
   if (metadata2.maxTurns !== void 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", "/maxTurns", "maxTurns is imported as max_iterations, which counts model calls.", "A"));
@@ -28159,6 +28178,24 @@ function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
     ...mappedHooks ? { hooks: mappedHooks } : {}
   };
   return { name: name2, agent, diagnostics: diagnostics2 };
+}
+const agentTemplates = ["basic", "team", "mcp"];
+const text$2 = (value2) => `${value2.trimEnd()}
+`;
+function templateAgents(template, name2, model2, main) {
+  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$2(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
+  if (template === "basic") {
+    return [[name2, agent(`The ${name2} agent.`, "Read the relevant files, think the task through, track your steps and report what you found.", [{ type: "filesystem", readonly: true }, { type: "think" }, { type: "todo" }])]];
+  }
+  if (template === "mcp") {
+    return [[name2, agent(`Searches the web for ${name2} through an MCP server.`, "Search the web with the DuckDuckGo tools, compare the sources and answer with links.", [{ type: "mcp", ref: "docker:duckduckgo" }, { type: "think" }])]];
+  }
+  const researcher = `${name2}-researcher`, writer = `${name2}-writer`;
+  return [
+    [name2, agent(`Coordinates the ${name2} team.`, `Plan the work, delegate research to ${researcher} and writing to ${writer}, then review and summarize their results.`, [{ type: "todo" }], { sub_agents: [researcher, writer] })],
+    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$2("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
+    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$2("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
+  ];
 }
 const simpleToolsets = [
   "filesystem",
@@ -28195,33 +28232,39 @@ class AgentAuthoring {
   definitions;
   ports;
   defaultModel;
-  /** `agents create`: a valid docker-agent agent in a new file, or added to an existing team file. */
+  /**
+   * `agents create`: a valid docker-agent agent in a new file, or added to an existing team file; with a template,
+   * the template's agents (`team` adds `<name>-researcher` and `<name>-writer` sub-agents).
+   */
   async create(request) {
     ensure(agentName.test(request.name), "INVALID_NAME", "Agent names start with a letter or digit and contain only letters, digits, hyphens and underscores.");
+    const model2 = request.model ?? this.defaultModel;
+    const text2 = { ...request.description ? { description: request.description } : {}, ...request.instruction ? { instruction: request.instruction } : {} };
+    if (request.template) return this.add(request.file ?? `${request.name}.yaml`, templateAgents(request.template, request.name, model2, text2), request.ifMatch, []);
     const description2 = request.description ?? `The ${request.name} agent.`;
     const agent = {
-      model: request.model ?? this.defaultModel,
+      model: model2,
       description: description2,
       instruction: `${(request.instruction ?? description2).trimEnd()}
 `,
       ...request.toolsets && request.toolsets.length > 0 ? { toolsets: request.toolsets.map((type2) => ({ type: type2 })) } : {}
     };
-    return this.add(request.file ?? `${request.name}.yaml`, request.name, agent, request.ifMatch, []);
+    return this.add(request.file ?? `${request.name}.yaml`, [[request.name, agent]], request.ifMatch, []);
   }
   /**
    * `agents import --from claude`: converts `.claude/agents/<name>.md` (or a Markdown path) into a docker-agent
    * agent. The conversion is approximate; its diagnostics point into the Claude agent's frontmatter.
    */
-  async importClaude(source, options2) {
-    const path = vaultPath(source.includes("/") || source.endsWith(".md") ? source : `.claude/agents/${source}.md`);
+  async importClaude(source2, options2) {
+    const path = vaultPath(source2.includes("/") || source2.endsWith(".md") ? source2 : `.claude/agents/${source2}.md`);
     const snapshot = await this.workspace.files.read(path);
     const { metadata: metadata2, body } = this.ports.markdown.parse(decoder$1.decode(snapshot.bytes));
     validateClaudeAgent(metadata2, body);
-    const file = options2.file ?? `${String(metadata2.name)}.yaml`;
-    const known2 = await this.knownAgents(this.definitions.resolve(file));
+    const file = options2.file ?? `${importedName(metadata2.name)}.yaml`;
+    const known2 = await this.knownAgents(this.definitions.target(file));
     const imported = importClaudeAgent(metadata2, body, this.defaultModel, known2);
     const diagnostics2 = imported.diagnostics.map((entry2) => ({ ...entry2, path }));
-    return { from: { target: "claude", path, revision: snapshot.revision }, ...await this.add(file, imported.name, imported.agent, options2.ifMatch, diagnostics2) };
+    return { from: { target: "claude", path, revision: snapshot.revision }, ...await this.add(file, [[imported.name, imported.agent]], options2.ifMatch, diagnostics2) };
   }
   async knownAgents(path) {
     const current = await this.current(path);
@@ -28236,25 +28279,27 @@ class AgentAuthoring {
       throw error2;
     }
   }
-  async add(file, name2, agent, ifMatch2, extra) {
-    const path = this.definitions.resolve(file), current = await this.current(path);
+  /** Adds `entries` (the first is the main agent) to a new file, or to an existing one at its `--if-match` revision. */
+  async add(file, entries2, ifMatch2, extra) {
+    const path = this.definitions.target(file), current = await this.current(path), names2 = entries2.map(([name22]) => name22), name2 = names2[0];
     let text2;
     if (current) {
-      ensure(ifMatch2 !== void 0, "CONFLICT", `${path} exists; pass its current revision with --if-match to add ${name2} to it.`, revisionConflict(path, null, current.revision));
+      ensure(ifMatch2 !== void 0, "CONFLICT", `${path} exists; pass its current revision with --if-match to add ${names2.join(", ")} to it.`, revisionConflict(path, null, current.revision));
       ensure(ifMatch2 === current.revision, "CONFLICT", `${path} changed; read it again and pass its current revision with --if-match.`, revisionConflict(path, ifMatch2, current.revision));
-      const existing = decoder$1.decode(current.bytes);
-      if (Object.hasOwn(record$2(this.definitions.check(existing).config?.agents), name2)) throw agentError("AGENT_EXISTS", `${path} already defines agent ${name2}.`, { path, agent: name2 });
-      text2 = this.ports.codec.addAgent(existing, name2, agent);
+      text2 = decoder$1.decode(current.bytes);
+      const defined = record$2(this.definitions.check(text2).config?.agents), existing = names2.find((entry2) => Object.hasOwn(defined, entry2));
+      if (existing !== void 0) throw agentError("AGENT_EXISTS", `${path} already defines agent ${existing}.`, { path, agent: existing });
+      for (const [entry2, agent] of entries2) text2 = this.ports.codec.addAgent(text2, entry2, agent);
     } else {
       ensure(ifMatch2 === void 0, "CONFLICT", `${path} does not exist; omit --if-match to create it.`, revisionConflict(path, ifMatch2, null));
-      text2 = this.ports.codec.render({ version: supportedConfigVersion, agents: { [name2]: agent } });
+      text2 = this.ports.codec.render({ version: this.ports.schema.configVersion, agents: Object.fromEntries(entries2) });
     }
     const checked = this.definitions.check(text2);
     if (hasErrors(checked.diagnostics)) {
-      throw agentError("INVALID_AGENT_DEFINITION", `Adding ${name2} would leave ${path} invalid; see details.files[].diagnostics.`, { files: [{ path, diagnostics: checked.diagnostics }] });
+      throw agentError("INVALID_AGENT_DEFINITION", `Adding ${names2.join(", ")} would leave ${path} invalid; see details.files[].diagnostics.`, { files: [{ path, diagnostics: checked.diagnostics }] });
     }
     const result = await this.workspace.write([{ path, bytes: new TextEncoder().encode(text2), ...current ? { expectedRevision: current.revision } : {} }], { diff: true });
-    return { path, agent: name2, created: !current, diagnostics: [...extra, ...checked.diagnostics.map((entry2) => ({ ...entry2, path }))], ...result };
+    return { path, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked.diagnostics.map((entry2) => ({ ...entry2, path }))], ...result };
   }
 }
 const efforts = ["low", "medium", "high", "xhigh", "max"];
@@ -28303,7 +28348,7 @@ function harnessModel(agent, at, style) {
   if (harness.type !== "claude-code") {
     return { model: "inherit", diagnostics: [diagnostic("warning", "harness-unsupported", `${at}/harness`, `The ${String(harness.type)} harness has no Claude agent equivalent; the agent inherits the session model.`, "U")] };
   }
-  const chosen = text$2(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
+  const chosen = text$3(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
   return {
     model: chosen.model,
     ...typeof harness.effort === "string" ? { effort: harness.effort } : {},
@@ -28316,7 +28361,7 @@ function claudeModel(config2, name2, agent, style) {
   const reference = typeof agent.model === "string" ? agent.model.trim() : "";
   if (reference === "") return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, "The agent names no model; the Claude agent inherits the session model.", "A")] };
   const options2 = candidates$1(config2, reference);
-  const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$2(candidate.id));
+  const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$3(candidate.id));
   if (!anthropic) {
     return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, `Model ${reference} has no Anthropic candidate; the Claude agent inherits the session model.`, "A")] };
   }
@@ -28393,6 +28438,9 @@ function commandArguments(text2) {
   return { ...result, usesArguments };
 }
 const bangToolCalls = (text2) => [...text2.matchAll(/!`?[a-z_][a-z0-9_]*\([^)\n]*\)`?/g)].map((match) => match[0]);
+function commandLine(command2, args = []) {
+  return [command2, ...args].map((part) => /^[\w@%+=:,./${}~-]+$/.test(part) ? part : JSON.stringify(part)).join(" ");
+}
 const launchers = ["npx", "uvx", "bunx", "pnpx", "pipx"];
 const unsupported = {
   version: "auto-installation versions",
@@ -28403,10 +28451,10 @@ const unsupported = {
 };
 const serverName = (name2) => name2.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
 function derivedName(toolset) {
-  if (text$2(toolset.name)) return toolset.name;
+  if (text$3(toolset.name)) return toolset.name;
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) return toolset.ref.slice("docker:".length);
   const remote = record$2(toolset.remote);
-  if (text$2(remote.url)) {
+  if (text$3(remote.url)) {
     try {
       return new URL(remote.url).hostname.replace(/^(?:www|mcp|api)\./, "").split(".")[0];
     } catch {
@@ -28431,7 +28479,7 @@ function remoteServer(remote, at, diagnostics2) {
   const type2 = remote.transport_type === "sse" ? "sse" : "http";
   const headers = variableMap(remote.headers, `${at}/remote/headers`, diagnostics2);
   const oauth2 = record$2(remote.oauth), mapped = {};
-  if (text$2(oauth2.clientId)) mapped.clientId = oauth2.clientId;
+  if (text$3(oauth2.clientId)) mapped.clientId = oauth2.clientId;
   if (typeof oauth2.callbackPort === "number") mapped.callbackPort = oauth2.callbackPort;
   for (const field2 of ["clientSecret", "scopes", "callbackRedirectURL"]) if (oauth2[field2] !== void 0) {
     diagnostics2.push(diagnostic("warning", "mcp-oauth-unsupported", `${at}/remote/oauth/${field2}`, `OAuth ${field2} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.`, "U"));
@@ -28439,23 +28487,26 @@ function remoteServer(remote, at, diagnostics2) {
   return { type: type2, url: variables(String(remote.url), `${at}/remote/url`, diagnostics2), ...headers ? { headers } : {}, ...Object.keys(mapped).length > 0 ? { oauth: mapped } : {} };
 }
 function mcpServer(toolset, at, taken) {
-  const diagnostics2 = [];
-  let name2 = serverName(derivedName(toolset));
-  for (let index2 = 2; taken.includes(name2); index2++) name2 = `${serverName(derivedName(toolset))}-${index2}`;
+  const diagnostics2 = [], declared = derivedName(toolset);
+  let name2 = serverName(declared);
+  for (let index2 = 2; taken.includes(name2); index2++) name2 = `${serverName(declared)}-${index2}`;
   for (const [field2, label] of Object.entries(unsupported)) if (toolset[field2] !== void 0) {
     diagnostics2.push(diagnostic("info", "toolset-field-unsupported", `${at}/${field2}`, `MCP ${label} (${field2}) have no Claude equivalent and are not emitted.`, "U"));
   }
   const env = variableMap(toolset.env, `${at}/env`, diagnostics2);
   const args = stringList(toolset.args).map((arg, index2) => variables(arg, `${at}/args/${index2}`, diagnostics2));
   const remote = record$2(toolset.remote);
-  if (text$2(remote.url)) return { server: { name: name2, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
+  if (text$3(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) {
-    diagnostics2.push(diagnostic("warning", "mcp-docker-gateway", `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: docker mcp gateway run --servers ${toolset.ref.slice("docker:".length)}.`, "A"));
-    return { server: { name: name2, config: { type: "stdio", command: "docker", args: ["mcp", "gateway", "run", "--servers", toolset.ref.slice("docker:".length)], ...env ? { env } : {} } }, diagnostics: diagnostics2 };
+    const gateway = ["mcp", "gateway", "run", "--servers", toolset.ref.slice("docker:".length)];
+    diagnostics2.push(diagnostic("warning", "mcp-docker-gateway", `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: ${commandLine("docker", gateway)}.`, "A"));
+    return { server: { name: name2, declared, at: `${at}/ref`, config: { type: "stdio", command: "docker", args: gateway, ...env ? { env } : {} }, commandLine: commandLine("docker", gateway) }, diagnostics: diagnostics2 };
   }
-  if (!text$2(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
-  return { server: { name: name2, config: { type: "stdio", command: variables(toolset.command, `${at}/command`, diagnostics2), ...args.length > 0 ? { args } : {}, ...env ? { env } : {} } }, diagnostics: diagnostics2 };
+  if (!text$3(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
+  const command2 = variables(toolset.command, `${at}/command`, diagnostics2);
+  return { server: { name: name2, declared, at, config: { type: "stdio", command: command2, ...args.length > 0 ? { args } : {}, ...env ? { env } : {} }, commandLine: commandLine(command2, args) }, diagnostics: diagnostics2 };
 }
+const toolName = (grant) => typeof grant === "string" ? grant : `mcp__${grant.server.name}__${grant.tool}`;
 function resolvedToolsets(config2, name2, agent) {
   const inline = (Array.isArray(agent.toolsets) ? agent.toolsets : []).map((toolset, index2) => ({ toolset: record$2(toolset), at: pointer("agents", name2, "toolsets", index2) }));
   const shared = stringList(agent.use_toolsets).map((ref2) => ({ toolset: record$2(record$2(config2.toolsets)[ref2]), at: pointer("toolsets", ref2) }));
@@ -28474,6 +28525,11 @@ function pathRules(entry2) {
   const root = entry2.startsWith("/") ? `/${entry2}` : entry2.startsWith("~") ? entry2 : `./${entry2.replace(/^\.\/?/, "")}`;
   const glob = `${root.replace(/\/+$/, "")}/**`;
   return [`Read(${glob})`, `Edit(${glob})`];
+}
+function domainRules(domain) {
+  const host = domain.toLowerCase();
+  if (host.startsWith("*.") || host.startsWith(".")) return [`WebFetch(domain:*.${host.replace(/^\*?\./, "")})`];
+  return [`WebFetch(domain:${host})`, `WebFetch(domain:*.${host})`];
 }
 const ignoredFields = {
   instruction: "toolset instructions",
@@ -28495,9 +28551,10 @@ function filtered(granted, toolset, at, diagnostics2) {
   return granted.filter((tool) => allowed.has(tool));
 }
 function claudeTools(config2, name2, agent) {
-  const result = { tools: [], disallowedTools: [], memory: false, servers: [], permissions: { allow: [], deny: [] }, diagnostics: [] };
+  const result = { tools: [], disallowedTools: [], memory: false, servers: [], permissions: [], diagnostics: [] };
   const warn = (code2, at, message2, fidelity = "A") => result.diagnostics.push(diagnostic(fidelity === "A" ? "warning" : "info", code2, at, message2, fidelity));
   const agentReadonly = agent.readonly === true;
+  const restriction = (at, message2) => result.diagnostics.push(diagnostic("warning", "restriction-unsupported", at, message2, "U"));
   for (const { toolset, at } of resolvedToolsets(config2, name2, agent)) {
     const type2 = String(toolset.type), readonly2 = agentReadonly || toolset.readonly === true;
     for (const [field2, label] of Object.entries(ignoredFields)) if (toolset[field2] !== void 0 && !(type2 === "mcp" && (field2 === "env" || field2 === "headers"))) {
@@ -28506,22 +28563,22 @@ function claudeTools(config2, name2, agent) {
     if (type2 === "filesystem") {
       result.tools.push(...filtered(readonly2 ? readOnlyFilesystemTools : filesystemTools, toolset, at, result.diagnostics));
       warn("toolset-approximated", at, `The filesystem toolset is approximated by the Claude tools ${(readonly2 ? readOnlyFilesystemTools : filesystemTools).join(", ")}.`);
-      for (const [field2, list2] of [["allow_list", result.permissions.allow], ["deny_list", result.permissions.deny]]) {
-        const entries2 = stringList(toolset[field2]);
-        if (entries2.length === 0) continue;
-        list2.push(...entries2.flatMap(pathRules));
-        warn("permission-approximated", `${at}/${field2}`, `${field2} becomes Read and Edit permission rules in project settings with --settings.`);
+      if (stringList(toolset.allow_list).length > 0) restriction(`${at}/allow_list`, "allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent's file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).");
+      const denied = stringList(toolset.deny_list);
+      if (denied.length > 0) {
+        result.permissions.push(...denied.flatMap(pathRules).map((rule) => ({ list: "deny", rule, at: `${at}/deny_list` })));
+        warn("permission-approximated", `${at}/deny_list`, "deny_list becomes Read and Edit deny rules in project settings with --settings.");
       }
     } else if (type2 === "shell") {
       if (readonly2) warn("readonly-approximated", at, "A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.");
       else result.tools.push(...filtered(["Bash"], toolset, at, result.diagnostics));
     } else if (type2 === "fetch") {
       result.tools.push(...filtered(["WebFetch"], toolset, at, result.diagnostics));
-      for (const [field2, list2] of [["allowed_domains", result.permissions.allow], ["blocked_domains", result.permissions.deny]]) {
-        const domains = stringList(toolset[field2]);
-        if (domains.length === 0) continue;
-        list2.push(...domains.filter((domain) => !domain.includes("/")).map((domain) => `WebFetch(domain:${domain.replace(/^\*\./, "*.")})`));
-        warn("permission-approximated", `${at}/${field2}`, `${field2} becomes WebFetch(domain:…) permission rules in project settings with --settings; CIDR ranges are not emitted.`);
+      if (stringList(toolset.allowed_domains).length > 0) restriction(`${at}/allowed_domains`, "allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.");
+      const blocked = stringList(toolset.blocked_domains);
+      if (blocked.length > 0) {
+        result.permissions.push(...blocked.filter((domain) => !domain.includes("/")).flatMap(domainRules).map((rule) => ({ list: "deny", rule, at: `${at}/blocked_domains` })));
+        warn("permission-approximated", `${at}/blocked_domains`, "blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.");
       }
     } else if (type2 === "todo" || type2 === "tasks") {
       result.tools.push(...filtered(taskTools$1, toolset, at, result.diagnostics));
@@ -28539,8 +28596,8 @@ function claudeTools(config2, name2, agent) {
       result.diagnostics.push(...server.diagnostics);
       if (server.server) {
         result.servers.push(server.server);
-        const tools = stringList(toolset.tools);
-        result.tools.push(...tools.length > 0 ? tools.map((tool) => `mcp__${server.server.name}__${tool}`) : [`mcp__${server.server.name}__*`]);
+        const tools = stringList(toolset.tools), mapped = server.server;
+        result.tools.push(...(tools.length > 0 ? tools : ["*"]).map((tool) => ({ server: mapped, tool })));
         if (readonly2) warn("readonly-approximated", at, `Claude cannot select read-only tools of MCP server ${server.server.name}; every granted tool is emitted.`);
       }
     } else {
@@ -28554,7 +28611,7 @@ function claudeTools(config2, name2, agent) {
   result.tools = [...new Set(result.tools)];
   return result;
 }
-const ignoredHandlerFields = ["name", "env", "working_dir", "on_error", "strict_output"];
+const ignoredHandlerFields = ["name", "args", "env", "working_dir", "on_error", "strict_output"];
 function handler(definition2, at, diagnostics2) {
   if (definition2.type !== "command" || typeof definition2.command !== "string") {
     diagnostics2.push(diagnostic("warning", "hook-unsupported", at, `A ${String(definition2.type)} hook has no Claude equivalent and is not emitted.`, "U"));
@@ -28563,11 +28620,10 @@ function handler(definition2, at, diagnostics2) {
   for (const field2 of ignoredHandlerFields) if (definition2[field2] !== void 0) {
     diagnostics2.push(diagnostic("info", "hook-field-unsupported", `${at}/${field2}`, `Hook ${field2} is not emitted.`, "U"));
   }
-  const args = stringList(definition2.args);
-  return { type: "command", command: definition2.command, ...args.length > 0 ? { args } : {}, ...typeof definition2.timeout === "number" ? { timeout: definition2.timeout } : {} };
+  return { type: "command", command: definition2.command, ...typeof definition2.timeout === "number" ? { timeout: definition2.timeout } : {} };
 }
 function claudeHooks(name2, hooks2) {
-  const diagnostics2 = [], result = {};
+  const diagnostics2 = [], result = {}, commands2 = [];
   for (const [event, entries2] of Object.entries(record$2(hooks2))) {
     const at = pointer("agents", name2, "hooks", event), target = hookEvents[event];
     if (!target) {
@@ -28580,7 +28636,9 @@ function claudeHooks(name2, hooks2) {
       if (!isObject$1(entry2)) return;
       const grouped = Array.isArray(entry2.hooks);
       const handlers = (grouped ? entry2.hooks : [entry2]).flatMap((definition2, position2) => {
-        const mapped = isObject$1(definition2) ? handler(definition2, grouped ? `${where}/hooks/${position2}` : where, diagnostics2) : void 0;
+        const location2 = grouped ? `${where}/hooks/${position2}` : where;
+        const mapped = isObject$1(definition2) ? handler(definition2, location2, diagnostics2) : void 0;
+        if (mapped) commands2.push({ at: location2, event: target, command: String(mapped.command) });
         return mapped ? [mapped] : [];
       });
       if (handlers.length === 0) return;
@@ -28597,7 +28655,7 @@ function claudeHooks(name2, hooks2) {
     result[target] = [...result[target] ?? [], ...groups];
     diagnostics2.push(diagnostic("warning", "hook-approximated", at, `${event} hooks run on Claude's ${target} event, which sends Claude Code's hook input; check each command's input and decision format.`, "A"));
   }
-  return { ...Object.keys(result).length > 0 ? { hooks: result } : {}, diagnostics: diagnostics2 };
+  return { ...Object.keys(result).length > 0 ? { hooks: result } : {}, commands: commands2, diagnostics: diagnostics2 };
 }
 const unsupportedFields = [
   "fallback",
@@ -28654,7 +28712,7 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   const diagnostics2 = [];
   if (claude2 !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, `Agent ${name2} is generated as ${claude2}.`, "E"));
   let description2 = typeof agent.description === "string" ? agent.description : "";
-  if (!text$2(description2)) {
+  if (!text$3(description2)) {
     description2 = `The ${name2} agent.`;
     diagnostics2.push(diagnostic("warning", "description-synthesized", `${at}/description`, `The agent has no description; "${description2}" is emitted so Claude Code can delegate to it.`, "A"));
   }
@@ -28665,25 +28723,24 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   const delegates = delegation(name2, agent, names2), preloaded = skills(name2, agent);
   diagnostics2.push(...model2.diagnostics, ...tools.diagnostics, ...hooks2.diagnostics, ...delegates.diagnostics, ...preloaded.diagnostics);
   const granted = [...tools.tools, ...delegates.agents.map((agentName2) => `Agent(${agentName2})`)];
-  if (granted.length === 0) diagnostics2.push(diagnostic("warning", "tools-inherited", `${at}/toolsets`, "No toolset maps to a Claude tool, so tools is omitted and the Claude agent inherits every tool of the session.", "A"));
   const maxTurns = agent.max_iterations;
   if (typeof maxTurns === "number" && maxTurns > 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", `${at}/max_iterations`, `max_iterations is emitted as maxTurns: ${maxTurns}; Claude counts agentic turns, not model calls.`, "A"));
   for (const field2 of unsupportedFields) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", `${at}/${field2}`, `${field2} has no Claude agent equivalent and is not emitted.`, "U"));
   const metadata2 = {
     name: claude2,
     description: description2,
-    ...granted.length > 0 ? { tools: granted.join(", ") } : {},
-    ...tools.disallowedTools.length > 0 ? { disallowedTools: tools.disallowedTools.join(", ") } : {},
     model: model2.model,
     ...model2.effort ? { effort: model2.effort } : {},
     ...typeof maxTurns === "number" && maxTurns > 0 ? { maxTurns } : {},
     ...preloaded.skills.length > 0 ? { skills: preloaded.skills } : {},
-    ...tools.memory ? { memory: "project" } : {},
-    ...hooks2.hooks ? { hooks: hooks2.hooks } : {}
+    ...tools.memory ? { memory: "project" } : {}
   };
   const prompt = instruction === "" || instruction.endsWith("\n") ? instruction : `${instruction}
 `;
-  return { draft: { agent: name2, name: claude2, metadata: metadata2, prompt, servers: tools.servers, permissions: tools.permissions }, diagnostics: diagnostics2 };
+  return {
+    draft: { agent: name2, name: claude2, metadata: metadata2, prompt, grants: granted, disallowed: tools.disallowedTools, servers: tools.servers, permissions: tools.permissions, ...hooks2.hooks ? { hooks: hooks2.hooks } : {}, hookCommands: hooks2.commands },
+    diagnostics: diagnostics2
+  };
 }
 function commandEntries(config2, name2, agent) {
   const entries2 = /* @__PURE__ */ new Map();
@@ -28722,97 +28779,216 @@ function commandSkills(config2, name2, agent, agentNames) {
   }
   return { skills: skills2, diagnostics: diagnostics2 };
 }
-const frontmatterOrder = ["name", "description", "tools", "disallowedTools", "model", "effort", "maxTurns", "skills", "memory", "mcpServers", "hooks", "x-forge-source"];
-const ordered$1 = (metadata2) => Object.fromEntries(frontmatterOrder.filter((key) => metadata2[key] !== void 0).map((key) => [key, metadata2[key]]));
-const unsupportedTopLevel = ["metadata", "runtime", "budget", "budgets", "flavors", "evaluators", "providers"];
-const same$1 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
-function projectServers(drafts, servers) {
-  for (const draft of drafts) {
-    const names2 = [];
+const noToolsDisallowed = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch"];
+const serverTarget = (server) => server.commandLine ?? String(server.config.url);
+function servers(draft, mode, diagnostics2) {
+  if (mode === "none") {
     for (const server of draft.servers) {
-      let name2 = server.name;
-      for (let index2 = 2; servers[name2] && !same$1(servers[name2], server.config); index2++) name2 = `${server.name}-${index2}`;
-      servers[name2] = server.config;
-      names2.push(name2);
-      if (name2 !== server.name) draft.metadata.tools = String(draft.metadata.tools).replaceAll(`mcp__${server.name}__`, `mcp__${name2}__`);
+      diagnostics2.push(diagnostic("info", "mcp-not-generated", server.at, `MCP server ${server.declared} (${serverTarget(server)}) is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it.`, "U"));
     }
-    if (names2.length > 0) draft.metadata.mcpServers = names2;
+    return [];
   }
+  const target = mode === "inline" ? `.claude/agents/${draft.name}.md` : ".mcp.json";
+  for (const server of draft.servers) if (server.commandLine !== void 0) {
+    diagnostics2.push(diagnostic("warning", "executes-command", server.at, `MCP server ${server.name} in ${target} runs the command: ${server.commandLine}`));
+  }
+  return draft.servers;
 }
-function settingsPermissions(source, drafts, diagnostics2) {
-  const permissions = { allow: drafts.flatMap((draft) => draft.permissions.allow), ask: [], deny: drafts.flatMap((draft) => draft.permissions.deny) };
+function hooks$1(draft, enabled2, diagnostics2) {
+  if (!draft.hooks) return void 0;
+  if (!enabled2) {
+    const skipped = draft.hookCommands.map((entry2) => `${entry2.event}: ${entry2.command}`).join("; ");
+    diagnostics2.push(diagnostic("info", "hooks-not-generated", pointer("agents", draft.agent, "hooks"), `Hooks run commands and are generated only with --hooks; skipped ${skipped}.`, "U"));
+    return void 0;
+  }
+  for (const entry2 of draft.hookCommands) {
+    diagnostics2.push(diagnostic("warning", "executes-command", entry2.at, `The ${entry2.event} hook of ${draft.name} runs the command: ${entry2.command}`));
+  }
+  return draft.hooks;
+}
+function completeAgent(draft, options2, diagnostics2) {
+  const emitted = servers(draft, options2.mcp, diagnostics2), mapped = hooks$1(draft, options2.hooks, diagnostics2);
+  const tools = [...new Set(draft.grants.filter((grant) => typeof grant === "string" || emitted.includes(grant.server)).map(toolName))];
+  const disallowed = [...draft.disallowed];
+  if (tools.length === 0) {
+    disallowed.push(...noToolsDisallowed.filter((tool) => !disallowed.includes(tool)));
+    diagnostics2.push(diagnostic("info", "tools-none", pointer("agents", draft.agent), `No toolset grants a Claude tool, so ${draft.name} gets tools: [] and disallows ${noToolsDisallowed.join(", ")} instead of inheriting every tool.`, "E"));
+  }
+  return {
+    ...draft.metadata,
+    tools: tools.length > 0 ? tools.join(", ") : [],
+    ...disallowed.length > 0 ? { disallowedTools: disallowed.join(", ") } : {},
+    ...emitted.length > 0 ? { mcpServers: options2.mcp === "inline" ? emitted.map((server) => ({ [server.name]: server.config })) : [...new Set(emitted.map((server) => server.name))] } : {},
+    ...mapped ? { hooks: mapped } : {}
+  };
+}
+const permissionTools = {
+  read_file: "Read",
+  read_multiple_files: "Read",
+  list_directory: "Glob",
+  directory_tree: "Glob",
+  search_files_content: "Grep",
+  write_file: "Write",
+  edit_file: "Edit",
+  shell: "Bash",
+  fetch: "WebFetch",
+  user_prompt: "AskUserQuestion",
+  create_todo: "TaskCreate",
+  create_todos: "TaskCreate",
+  update_todos: "TaskUpdate",
+  list_todos: "TaskList",
+  create_task: "TaskCreate",
+  get_task: "TaskGet",
+  list_tasks: "TaskList",
+  update_task: "TaskUpdate"
+};
+const unmappedTools = ["create_directory", "remove_directory", "next_task", "delete_task", "add_dependency", "remove_dependency", "think"];
+const knownTools = [...Object.keys(permissionTools), ...unmappedTools];
+function isBroadRule(rule) {
+  if (["Bash", "Edit", "Write", "NotebookEdit", "WebFetch"].includes(rule)) return true;
+  if (/^Bash\([\s*]*\)$/.test(rule)) return true;
+  return /^mcp__[^_]+(?:_[^_]+)*(?:__\*)?$/.test(rule);
+}
+const globSource = (glob) => `^${glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*")}$`;
+function builtinRules(pattern2) {
+  const expression2 = new RegExp(globSource(pattern2)), matched2 = knownTools.filter((name2) => expression2.test(name2));
+  const rules2 = [...new Set(matched2.flatMap((name2) => permissionTools[name2] ? [permissionTools[name2]] : []))];
+  if (matched2.length === 0) return { rules: rules2, reason: "names no docker-agent built-in tool with a Claude permission rule" };
+  const unmapped = matched2.filter((name2) => !permissionTools[name2]);
+  return { rules: rules2, ...unmapped.length > 0 ? { reason: `matches ${unmapped.join(", ")}, which ${unmapped.length === 1 ? "has" : "have"} no Claude permission rule of the same reach` } : {} };
+}
+function mcpRules(server, tool, servers2, mode) {
+  if (mode === "none") return { rules: [], reason: "names an MCP server, and no MCP server is generated without --mcp inline or --mcp project" };
+  const names2 = servers2.get(server);
+  if (!names2) return { rules: [], reason: `names the MCP server ${server}, which no generated agent defines` };
+  return { rules: names2.map((name2) => tool === "*" ? `mcp__${name2}` : `mcp__${name2}__${tool}`) };
+}
+function patternRules(pattern2, servers2, mode) {
+  const shell = /^shell:cmd=(.+)$/.exec(pattern2);
+  if (shell) return { rules: [`Bash(${shell[1]})`] };
+  const mcp = /^mcp:([^:]+):(.+)$/.exec(pattern2);
+  if (mcp) return mcpRules(mcp[1], mcp[2], servers2, mode);
+  if (pattern2.includes(":")) return { rules: [], reason: "matches tool arguments, which Claude permission rules express only for shell commands" };
+  return builtinRules(pattern2);
+}
+function serverNames(drafts) {
+  const names2 = /* @__PURE__ */ new Map();
+  for (const server of drafts.flatMap((draft) => draft.servers)) names2.set(server.declared, [.../* @__PURE__ */ new Set([...names2.get(server.declared) ?? [], server.name])]);
+  return names2;
+}
+function topLevelRules(config2, servers2, mode) {
+  const rules2 = [], diagnostics2 = [];
   for (const list2 of ["allow", "ask", "deny"]) {
-    const patterns = stringList(record$2(source.config.permissions)[list2]);
+    const patterns = stringList(record$2(config2.permissions)[list2]);
     patterns.forEach((pattern2, index2) => {
-      const rules2 = permissionRules(pattern2);
-      if (rules2.length === 0) diagnostics2.push(diagnostic("info", "permission-unsupported", pointer("permissions", list2, index2), `The permission pattern ${pattern2} has no Claude rule and is not emitted.`, "U"));
-      permissions[list2].push(...rules2);
+      const at = pointer("permissions", list2, index2), mapped = patternRules(pattern2, servers2, mode);
+      if (mapped.reason) diagnostics2.push(diagnostic(list2 === "allow" ? "info" : "warning", "permission-unsupported", at, `The ${list2} pattern ${pattern2} ${mapped.reason}; ${mapped.rules.length > 0 ? `only ${mapped.rules.join(", ")} is emitted` : "it is not emitted"}.`, "U"));
+      rules2.push(...mapped.rules.map((rule) => ({ list: list2, rule, at })));
     });
     if (patterns.length > 0) diagnostics2.push(diagnostic("warning", "permission-approximated", pointer("permissions", list2), `permissions.${list2} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.`, "A"));
   }
-  return permissions;
+  return { rules: rules2, diagnostics: diagnostics2 };
 }
-function generateSource(source, names2, options2) {
+function reviewedRules(rules2, allowBroad, diagnostics2) {
+  return rules2.filter((entry2) => {
+    if (entry2.list === "allow" && isBroadRule(entry2.rule) && !allowBroad) {
+      diagnostics2.push(diagnostic("error", "broad-permission", entry2.at, `The rule ${entry2.rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.`));
+      return false;
+    }
+    diagnostics2.push(diagnostic("warning", "grants-permission", entry2.at, `.claude/settings.json permissions.${entry2.list} gets the rule ${entry2.rule}${entry2.list === "allow" && isBroadRule(entry2.rule) ? " (broad, allowed by --allow-broad-permissions)" : ""}.`));
+    return true;
+  });
+}
+const frontmatterOrder = ["name", "description", "tools", "disallowedTools", "model", "effort", "maxTurns", "skills", "memory", "mcpServers", "hooks", "x-forge-source"];
+const ordered$1 = (metadata2) => Object.fromEntries(frontmatterOrder.filter((key) => metadata2[key] !== void 0).map((key) => [key, metadata2[key]]));
+const unsupportedTopLevel = ["metadata", "runtime", "budget", "budgets", "flavors", "evaluators", "providers"];
+const same$2 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+function projectServers(drafts, servers2, options2, diagnostics2) {
+  const foreign = options2.foreign?.servers ?? {};
+  const taken = (name2, base, config2) => servers2[name2] !== void 0 && !same$2(servers2[name2], config2) || (options2.renameConflicts === true || name2 !== base) && foreign[name2] !== void 0 && !same$2(foreign[name2], config2);
+  for (const server of drafts.flatMap((draft) => draft.servers)) {
+    const base = server.name;
+    for (let index2 = 2; taken(server.name, base, server.config); index2++) server.name = `${base}-${index2}`;
+    if (foreign[base] !== void 0 && !same$2(foreign[base], server.config) && (server.name === base || options2.renameConflicts === true)) {
+      diagnostics2.push(server.name === base ? diagnostic("error", "mcp-server-conflict", server.at, `.mcp.json already defines the server ${base}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.`) : diagnostic("warning", "mcp-server-renamed", server.at, `.mcp.json already defines a different server ${base}; this one is generated as ${server.name}.`, "A"));
+    }
+    servers2[server.name] = server.config;
+  }
+}
+function generateSource(source2, names2, options2) {
   const diagnostics2 = [], drafts = [], skills2 = [];
-  const selected = agentEntries(source.config).filter(([name2]) => !options2.agents || options2.agents.includes(name2));
+  const selected = agentEntries(source2.config).filter(([name2]) => !options2.agents || options2.agents.includes(name2));
   for (const [name2, agent] of selected) {
-    const result = claudeAgent(source.config, name2, source.instructions, names2, options2.modelStyle);
+    const result = claudeAgent(source2.config, name2, source2.instructions, names2, options2.modelStyle);
     diagnostics2.push(...result.diagnostics);
     drafts.push(result.draft);
-    const commands2 = commandSkills(source.config, name2, agent, names2);
+    const commands2 = commandSkills(source2.config, name2, agent, names2);
     if (options2.commands) {
       skills2.push(...commands2.skills);
       diagnostics2.push(...commands2.diagnostics);
     } else if (commands2.skills.length > 0) diagnostics2.push(diagnostic("info", "commands-not-generated", pointer("agents", name2, "commands"), "Commands become Claude skills with --commands.", "U"));
   }
-  for (const key of unsupportedTopLevel) if (source.config[key] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", pointer(key), `The top-level ${key} section has no Claude equivalent and is not emitted.`, "U"));
-  if (!options2.settings && source.config.permissions !== void 0) diagnostics2.push(diagnostic("info", "permissions-not-generated", "/permissions", "Permissions become project settings rules with --settings.", "U"));
-  if (options2.mcp === "inline") {
-    for (const draft of drafts) if (draft.servers.length > 0) draft.metadata.mcpServers = draft.servers.map((server) => ({ [server.name]: server.config }));
-  }
-  return { drafts, skills: skills2, diagnostics: diagnostics2, permissions: options2.settings ? settingsPermissions(source, drafts, diagnostics2) : void 0 };
+  for (const key of unsupportedTopLevel) if (source2.config[key] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", pointer(key), `The top-level ${key} section has no Claude equivalent and is not emitted.`, "U"));
+  if (!options2.settings && source2.config.permissions !== void 0) diagnostics2.push(diagnostic("info", "permissions-not-generated", "/permissions", "Permissions become project settings rules with --settings.", "U"));
+  return { drafts, skills: skills2, diagnostics: diagnostics2 };
+}
+function settingsRules(source2, drafts, options2, diagnostics2) {
+  const top = topLevelRules(source2.config, serverNames(drafts), options2.mcp);
+  diagnostics2.push(...top.diagnostics);
+  return reviewedRules([...drafts.flatMap((draft) => draft.permissions), ...top.rules], options2.allowBroadPermissions === true, diagnostics2);
 }
 function uniqueSkills(skills2, diagnostics2) {
   const byName = /* @__PURE__ */ new Map();
   for (const skill of skills2) byName.set(skill.name, [...byName.get(skill.name) ?? [], skill]);
+  const owners = /* @__PURE__ */ new Map();
   return [...byName.values()].flatMap((group) => {
-    const identical = group.every((skill) => same$1(skill.metadata, group[0].metadata) && skill.body === group[0].body);
-    return (identical ? [group[0]] : group).map((skill) => {
-      const name2 = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`);
-      if (!identical) diagnostics2.push({ ...diagnostic("warning", "command-renamed", pointer("agents", skill.agent, "commands", skill.command), `Several agents define a different /${skill.command}; this one becomes the skill ${name2}.`, "A"), path: skill.source.path });
-      const metadata2 = { ...skill.metadata, name: name2, "x-forge-source": { path: skill.source.path, sha256: skill.source.sha256, agent: skill.agent, command: skill.command } };
-      return { path: `.claude/skills/${name2}/SKILL.md`, metadata: metadata2, body: skill.body };
+    const identical = group.every((skill) => same$2(skill.metadata, group[0].metadata) && skill.body === group[0].body);
+    return (identical ? [group[0]] : group).flatMap((skill) => {
+      const name2 = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`), at = pointer("agents", skill.agent, "commands", skill.command);
+      const owner = owners.get(name2), label = `/${skill.command} of ${skill.agent}`;
+      if (owner !== void 0) {
+        diagnostics2.push({ ...diagnostic("error", "command-name-collision", at, `The ${label} would generate .claude/skills/${name2}/SKILL.md, which the ${owner} already generates; rename one of the commands.`), path: skill.source.path });
+        return [];
+      }
+      owners.set(name2, label);
+      if (!identical) diagnostics2.push({ ...diagnostic("warning", "command-renamed", at, `Several agents define a different /${skill.command}; this one becomes the skill ${name2}.`, "A"), path: skill.source.path });
+      const metadata2 = { ...skill.metadata, name: name2, "x-forge-source": { path: skill.source.path, agent: skill.agent, command: skill.command, sourceHash: skill.source.sourceHash } };
+      return [{ path: `.claude/skills/${name2}/SKILL.md`, metadata: metadata2, body: skill.body }];
     });
   });
 }
 function generateClaude(sources, options2) {
   const names2 = /* @__PURE__ */ new Map(), owners = /* @__PURE__ */ new Map(), diagnostics2 = [];
-  for (const source of sources) for (const [name2] of agentEntries(source.config)) {
+  for (const source2 of sources) for (const [name2] of agentEntries(source2.config)) {
     const claude2 = claudeName(name2), owner = owners.get(claude2);
-    if (owner !== void 0) diagnostics2.push({ ...diagnostic("error", "agent-name-collision", pointer("agents", name2), `Agent ${name2} would generate .claude/agents/${claude2}.md, which ${owner} already generates.`), path: source.path });
-    owners.set(claude2, `${source.path}#${name2}`);
+    if (owner !== void 0) diagnostics2.push({ ...diagnostic("error", "agent-name-collision", pointer("agents", name2), `Agent ${name2} would generate .claude/agents/${claude2}.md, which ${owner} already generates.`), path: source2.path });
+    owners.set(claude2, `${source2.path}#${name2}`);
     names2.set(name2, claude2);
   }
   const output2 = { agents: [], skills: [], mcpServers: {}, diagnostics: diagnostics2 };
   if (diagnostics2.length > 0) return output2;
   const skills2 = [], permissions = { allow: [], ask: [], deny: [] };
-  for (const source of sources) {
-    const generated = generateSource(source, names2, options2);
-    if (options2.mcp === "project") projectServers(generated.drafts, output2.mcpServers);
+  for (const source2 of sources) {
+    const generated = generateSource(source2, names2, options2);
+    if (options2.mcp === "project") projectServers(generated.drafts, output2.mcpServers, options2, generated.diagnostics);
     for (const draft of generated.drafts) {
-      const metadata2 = ordered$1({ ...draft.metadata, "x-forge-source": { path: source.path, sha256: source.sha256, agent: draft.agent } });
+      const metadata2 = ordered$1({ ...completeAgent(draft, options2, generated.diagnostics), "x-forge-source": { path: source2.path, agent: draft.agent, sourceHash: source2.sourceHash, ...options2.optionsHash ? { optionsHash: options2.optionsHash } : {} } });
       validateClaudeAgent(metadata2, draft.prompt);
-      output2.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source.path, metadata: metadata2, body: draft.prompt });
+      output2.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source2.path, metadata: metadata2, body: draft.prompt });
     }
-    skills2.push(...generated.skills.map((skill) => ({ ...skill, source })));
-    for (const list2 of ["allow", "ask", "deny"]) permissions[list2].push(...generated.permissions?.[list2] ?? []);
-    diagnostics2.push(...generated.diagnostics.map((entry2) => ({ ...entry2, path: source.path })));
+    skills2.push(...generated.skills.map((skill) => ({ ...skill, source: source2 })));
+    if (options2.settings) for (const rule of settingsRules(source2, generated.drafts, options2, generated.diagnostics)) permissions[rule.list].push(rule.rule);
+    diagnostics2.push(...generated.diagnostics.map((entry2) => ({ ...entry2, path: source2.path })));
   }
   output2.skills = uniqueSkills(skills2, diagnostics2);
   if (options2.settings) {
     const main = sources.length === 1 ? defaultAgent(sources[0].config) : void 0;
     const agent = main !== void 0 && output2.agents.some((entry2) => entry2.agent === main && entry2.source === sources[0].path) ? names2.get(main) : void 0;
     if (agent !== void 0) diagnostics2.push({ ...diagnostic("warning", "main-agent-approximated", pointer("agents", main), `The default agent ${main} becomes the project's main agent ("agent": "${agent}").`, "A"), path: sources[0].path });
+    const foreignAgent = options2.foreign?.agent;
+    if (agent !== void 0 && foreignAgent !== void 0 && foreignAgent !== agent) {
+      diagnostics2.push({ ...diagnostic("error", "settings-agent-conflict", pointer("agents", main), `.claude/settings.json already sets agent to ${foreignAgent}, which Forge did not generate; remove it to let Forge set ${agent}.`), path: sources[0].path });
+    }
     output2.settings = { permissions: Object.fromEntries(Object.entries(permissions).map(([list2, rules2]) => [list2, [...new Set(rules2)]])), ...agent ? { agent } : {} };
   }
   output2.diagnostics = dedupe(diagnostics2);
@@ -28827,6 +29003,8 @@ function dedupe(diagnostics2) {
     return true;
   });
 }
+const manifestPath$1 = ".claude/forge-generated.json";
+const same$1 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 function parsed(path, text2) {
   if (text2 === void 0) return {};
   let value2;
@@ -28838,18 +29016,43 @@ function parsed(path, text2) {
   if (!isRecord(value2)) throw forgeError("INVALID_CLAUDE_SETTINGS", `${path} must contain a JSON object.`);
   return value2;
 }
-const json$5 = (value2) => `${JSON.stringify(value2, null, 2)}
-`;
-function mergeMcpServers(path, text2, servers) {
-  const current = parsed(path, text2);
-  const existing = current.mcpServers === void 0 ? {} : current.mcpServers;
-  if (!isRecord(existing)) throw forgeError("INVALID_CLAUDE_SETTINGS", `${path} mcpServers must be an object.`);
-  return json$5({ ...current, mcpServers: { ...existing, ...servers } });
+function section(path, value2, key) {
+  if (value2 === void 0) return {};
+  if (!isRecord(value2)) throw forgeError("INVALID_CLAUDE_SETTINGS", `${path} ${key} must be an object.`);
+  return value2;
 }
-function mergeSettings(path, text2, settings2) {
-  const current = parsed(path, text2);
-  const permissions = current.permissions === void 0 ? {} : current.permissions;
-  if (!isRecord(permissions)) throw forgeError("INVALID_CLAUDE_SETTINGS", `${path} permissions must be an object.`);
+function json$5(value2, text2) {
+  const indented = text2 === void 0 ? void 0 : /^([ \t]+)\S/m.exec(text2)?.[1];
+  const indent = indented === void 0 ? 2 : indented.startsWith("	") ? "	" : indented.length;
+  const eol = text2?.includes("\r\n") ? "\r\n" : "\n";
+  const final = text2 === void 0 || /\r?\n$/.test(text2) ? eol : "";
+  return `${JSON.stringify(value2, null, indent).replaceAll("\n", eol)}${final}`;
+}
+function parseManifest(text2) {
+  const value2 = parsed(manifestPath$1, text2);
+  const settings2 = section(manifestPath$1, value2.settings, "settings");
+  return { mcpServers: section(manifestPath$1, value2.mcpServers, "mcpServers"), settings: typeof settings2.agent === "string" ? { agent: settings2.agent } : {} };
+}
+function foreignEntries(mcp, settings2, manifest) {
+  const servers2 = section(".mcp.json", parsed(".mcp.json", mcp).mcpServers, "mcpServers");
+  const agent = parsed(".claude/settings.json", settings2).agent;
+  return {
+    servers: Object.fromEntries(Object.entries(servers2).filter(([name2, config2]) => !same$1(manifest.mcpServers[name2], config2))),
+    ...agent !== void 0 && agent !== manifest.settings.agent ? { agent: typeof agent === "string" ? agent : JSON.stringify(agent) } : {}
+  };
+}
+const conflict = (message2, details) => agentError("AGENT_MERGE_CONFLICT", message2, details);
+function mergeMcpServers(text2, servers2, manifest) {
+  const current = parsed(".mcp.json", text2), existing = section(".mcp.json", current.mcpServers, "mcpServers");
+  const foreign = Object.keys(servers2).filter((name2) => existing[name2] !== void 0 && !same$1(existing[name2], servers2[name2]) && !same$1(existing[name2], manifest.mcpServers[name2]));
+  if (foreign.length > 0) throw conflict(`.mcp.json already defines ${foreign.join(", ")}, which Forge did not generate; rename the MCP toolsets or pass --rename-conflicts.`, { path: ".mcp.json", servers: foreign });
+  return json$5({ ...current, mcpServers: { ...existing, ...servers2 } }, text2);
+}
+function mergeSettings(text2, settings2, manifest) {
+  const path = ".claude/settings.json", current = parsed(path, text2), permissions = section(path, current.permissions, "permissions");
+  if (settings2.agent !== void 0 && current.agent !== void 0 && current.agent !== settings2.agent && current.agent !== manifest.settings.agent) {
+    throw conflict(`${path} already sets agent to ${JSON.stringify(current.agent)}, which Forge did not generate; remove it to let Forge set ${settings2.agent}.`, { path, agent: current.agent });
+  }
   const merged = { ...permissions };
   for (const list2 of ["allow", "ask", "deny"]) {
     const rules2 = settings2.permissions[list2];
@@ -28858,40 +29061,74 @@ function mergeSettings(path, text2, settings2) {
     if (!Array.isArray(existing) || !existing.every((rule) => typeof rule === "string")) throw forgeError("INVALID_CLAUDE_SETTINGS", `${path} permissions.${list2} must be an array of strings.`);
     merged[list2] = [...existing, ...rules2.filter((rule) => !existing.includes(rule))];
   }
-  return json$5({ ...current, ...Object.keys(merged).length > 0 ? { permissions: merged } : {}, ...settings2.agent === void 0 ? {} : { agent: settings2.agent } });
+  return json$5({ ...current, ...Object.keys(merged).length > 0 ? { permissions: merged } : {}, ...settings2.agent === void 0 ? {} : { agent: settings2.agent } }, text2);
+}
+function nextManifest(previous2, text2, files, written) {
+  const current = section(".mcp.json", parsed(".mcp.json", files.mcp).mcpServers, "mcpServers");
+  const kept = Object.fromEntries(Object.entries(previous2.mcpServers).filter(([name2, config2]) => same$1(current[name2], config2)));
+  const agent = written.agent ?? (parsed(".claude/settings.json", files.settings).agent === previous2.settings.agent ? previous2.settings.agent : void 0);
+  return json$5({
+    description: "Entries The Forge wrote with agents generate. Forge replaces an entry of .mcp.json or .claude/settings.json only while it still has the content recorded here.",
+    mcpServers: { ...kept, ...written.servers },
+    settings: agent === void 0 ? {} : { agent }
+  }, text2);
 }
 const mcpPath$1 = ".mcp.json", settingsPath = ".claude/settings.json";
+const conflictCodes = ["mcp-server-conflict", "settings-agent-conflict"];
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encode$2 = (text2) => new TextEncoder().encode(text2);
 class AgentGeneration {
-  constructor(workspace2, definitions2, markdown, events) {
+  constructor(workspace2, definitions2, ports2, events) {
     this.workspace = workspace2;
     this.definitions = definitions2;
-    this.markdown = markdown;
+    this.ports = ports2;
     this.events = events;
   }
   workspace;
   definitions;
-  markdown;
+  ports;
   events;
+  /** `x-forge-source.outputHash`: the digest of the file as rendered without its provenance. */
+  outputHash(file) {
+    const { "x-forge-source": _provenance, ...metadata2 } = file.metadata;
+    return this.ports.digest(this.ports.markdown.render(metadata2, file.body));
+  }
+  /** The rendered file with its complete provenance. */
+  render(file) {
+    const provenance = { ...record$2(file.metadata["x-forge-source"]), outputHash: this.outputHash(file) };
+    return this.ports.markdown.render({ ...file.metadata, "x-forge-source": provenance }, file.body);
+  }
   async run(request) {
     const sources = await this.sources(request);
-    const generated = generateClaude(sources, { mcp: request.mcp, settings: request.settings, commands: request.commands, modelStyle: request.modelStyle, ...request.agent ? { agents: [request.agent] } : {} });
+    const project2 = await this.projectFiles(request);
+    const optionsHash = this.ports.digest(JSON.stringify({ mcp: request.mcp, hooks: request.hooks, modelStyle: request.modelStyle }));
+    const generated = generateClaude(sources, {
+      optionsHash,
+      mcp: request.mcp,
+      hooks: request.hooks,
+      settings: request.settings,
+      allowBroadPermissions: request.allowBroadPermissions === true,
+      commands: request.commands,
+      modelStyle: request.modelStyle,
+      ...request.agent ? { agents: [request.agent] } : {},
+      ...project2 ? { foreign: foreignEntries(project2.mcp, project2.settings, project2.manifest), renameConflicts: request.renameConflicts === true } : {}
+    });
     if (hasErrors(generated.diagnostics)) {
-      throw agentError("INVALID_AGENT_DEFINITION", "The definitions cannot be generated together; see details.diagnostics.", { diagnostics: generated.diagnostics.filter((entry2) => entry2.severity === "error") });
+      const errors2 = generated.diagnostics.filter((entry2) => entry2.severity === "error"), codes = [...new Set(errors2.map((entry2) => entry2.code))];
+      const code2 = codes.every((entry2) => conflictCodes.includes(entry2)) ? "AGENT_MERGE_CONFLICT" : "INVALID_AGENT_DEFINITION";
+      throw agentError(code2, `Generation stopped on ${codes.join(", ")} errors; see details.diagnostics.`, { diagnostics: errors2 });
     }
     const markdown = [...generated.agents, ...generated.skills];
-    const writes = markdown.map((file) => ({ path: file.path, bytes: encode$2(this.markdown.render(file.metadata, file.body)) }));
-    if (request.mcp === "project" && Object.keys(generated.mcpServers).length > 0) writes.push({ path: mcpPath$1, bytes: encode$2(mergeMcpServers(mcpPath$1, await this.text(mcpPath$1), generated.mcpServers)) });
-    if (generated.settings) writes.push({ path: settingsPath, bytes: encode$2(mergeSettings(settingsPath, await this.text(settingsPath), generated.settings)) });
+    const writes = markdown.map((file) => ({ path: file.path, bytes: encode$2(this.render(file)) }));
+    if (project2) writes.push(...this.projectWrites(project2, generated));
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === "plan" ? request.manifestPath : void 0);
-    const provenance = new Map(markdown.map((file) => [file.path, record$2(file.metadata["x-forge-source"]).sha256]));
-    const outputs = plan.outputs.map((output2) => ({ ...output2, status: this.status(output2, provenance.get(output2.path)) }));
-    const stale = request.agent ? [] : await this.stale(new Set(sources.map((source) => source.path)), new Set(writes.map((write) => write.path)));
+    const generatedMarkdown = new Set(markdown.map((file) => file.path));
+    const outputs = plan.outputs.map((output2) => ({ ...output2, status: generatedMarkdown.has(output2.path) ? this.status(output2) : output2.status }));
+    const stale = request.agent ? [] : await this.stale(new Set(sources.map((source2) => source2.path)), new Set(writes.map((write) => write.path)));
     const summary = {
       target: "claude",
-      agents: generated.agents.map(({ path, name: name2, agent, source }) => ({ agent, name: name2, path, source })),
+      agents: generated.agents.map(({ path, name: name2, agent, source: source2 }) => ({ agent, name: name2, path, source: source2 })),
       skills: generated.skills.map((skill) => skill.path),
       files: outputs.map(({ path, status: status2 }) => ({ path, status: status2 })),
       stale,
@@ -28910,9 +29147,24 @@ class AgentGeneration {
     const revisions = request.revisions && Object.fromEntries(Object.entries(request.revisions).filter(([path]) => pending.has(path)));
     const result = await generation.commit(writes.filter((write) => pending.has(write.path)), revisions);
     if (!this.workspace.dryRun) {
-      await this.events.emit("agents.generated", { target: "claude", sources: sources.map((source) => source.path), agents: summary.agents.map((entry2) => entry2.name), files: [...pending] });
+      await this.events.emit("agents.generated", { target: "claude", sources: sources.map((source2) => source2.path), agents: summary.agents.map((entry2) => entry2.name), files: [...pending] });
     }
     return { ...summary, ...result };
+  }
+  /** With `--mcp project` or `--settings`: the project files generation merges into and the ownership manifest. */
+  async projectFiles(request) {
+    if (request.mcp !== "project" && !request.settings) return void 0;
+    const [mcp, settings2, manifestText] = await Promise.all([this.text(mcpPath$1), this.text(settingsPath), this.text(manifestPath$1)]);
+    return { ...mcp === void 0 ? {} : { mcp }, ...settings2 === void 0 ? {} : { settings: settings2 }, ...manifestText === void 0 ? {} : { manifestText }, manifest: parseManifest(manifestText) };
+  }
+  /** Merged `.mcp.json` and settings, and the manifest recording what Forge now owns in them. */
+  projectWrites(project2, generated) {
+    const servers2 = generated.mcpServers, writes = [];
+    if (Object.keys(servers2).length > 0) writes.push({ path: mcpPath$1, bytes: encode$2(mergeMcpServers(project2.mcp, servers2, project2.manifest)) });
+    if (generated.settings) writes.push({ path: settingsPath, bytes: encode$2(mergeSettings(project2.settings, generated.settings, project2.manifest)) });
+    if (writes.length === 0) return [];
+    const written = { servers: servers2, ...generated.settings?.agent ? { agent: generated.settings.agent } : {} };
+    return [...writes, { path: manifestPath$1, bytes: encode$2(nextManifest(project2.manifest, project2.manifestText, project2, written)) }];
   }
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */
   async sources(request) {
@@ -28922,17 +29174,17 @@ class AgentGeneration {
     if (invalid.length > 0) {
       throw agentError("INVALID_AGENT_DEFINITION", `${invalid.map((file) => file.path).join(", ")} failed validation; run agents validate.`, { files: invalid.map(({ path, diagnostics: diagnostics2 }) => ({ path, diagnostics: diagnostics2 })) });
     }
-    const sources = loaded.map((file) => ({ path: file.path, sha256: file.revision, config: file.config, instructions: file.instructions }));
+    const sources = loaded.map((file) => ({ path: file.path, sourceHash: this.ports.digest(JSON.stringify([file.revision, file.instructions])), config: file.config, instructions: file.instructions }));
     if (request.agent === void 0) return sources;
-    const owner = sources.filter((source) => Object.hasOwn(record$2(source.config.agents), request.agent));
+    const owner = sources.filter((source2) => Object.hasOwn(record$2(source2.config.agents), request.agent));
     if (owner.length === 0) throw agentError("AGENT_NOT_FOUND", `No definition in ${request.file === void 0 ? `${this.definitions.directory}/` : paths2[0]} defines agent ${request.agent}.`, { agent: request.agent });
     return owner;
   }
-  status(output2, sha256) {
-    if (output2.status !== "changed" || sha256 === void 0 || output2.currentContent === void 0) return output2.status;
+  status(output2) {
+    if (output2.status !== "changed" || output2.currentContent === void 0) return output2.status;
     try {
-      const current = record$2(this.markdown.parse(output2.currentContent).metadata["x-forge-source"]);
-      return current.sha256 === sha256 || current.sha256 === void 0 ? "hand-edited" : "changed";
+      const current = this.ports.markdown.parse(output2.currentContent), recorded = record$2(current.metadata["x-forge-source"]).outputHash;
+      return typeof recorded === "string" && recorded === this.outputHash(current) ? "changed" : "hand-edited";
     } catch {
       return "hand-edited";
     }
@@ -28944,8 +29196,8 @@ class AgentGeneration {
     for (const path of candidates2) {
       try {
         const text2 = await this.text(path);
-        const source = text2 === void 0 ? void 0 : this.markdown.parse(text2).metadata["x-forge-source"];
-        if (isObject$1(source) && typeof source.path === "string" && sources.has(source.path)) stale.push(path);
+        const source2 = text2 === void 0 ? void 0 : this.ports.markdown.parse(text2).metadata["x-forge-source"];
+        if (isObject$1(source2) && typeof source2.path === "string" && sources.has(source2.path)) stale.push(path);
       } catch {
       }
     }
@@ -28962,6 +29214,7 @@ class AgentGeneration {
   }
 }
 const parseOptions = { merge: true, uniqueKeys: true, prettyErrors: true };
+const maxAliasCount = 1e3;
 const header = "# docker-agent configuration (https://github.com/docker/docker-agent), managed with The Forge.\n";
 function locateNode(document2, path) {
   let node2 = document2.contents;
@@ -28986,6 +29239,13 @@ function layout(text2) {
   return { indent: Math.min(Math.max(indent, 2), 8), indentSeq: index2 < 0 ? true : width(lines2[index2 + 1]) > width(lines2[index2]) };
 }
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+function expanded(document2) {
+  try {
+    return document2.toJS({ maxAliasCount });
+  } catch (error2) {
+    throw forgeError("INVALID_YAML", `The YAML cannot be expanded: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
 const yamlDefinitions = {
   parse(text2) {
     const lineCounter2 = new distExports.LineCounter();
@@ -29005,12 +29265,17 @@ const yamlDefinitions = {
         }))
       };
     }
-    return { value: document2.toJS({ maxAliasCount: 1e3 }), diagnostics: [], locate };
+    try {
+      return { value: document2.toJS({ maxAliasCount }), diagnostics: [], locate };
+    } catch (error2) {
+      return { locate, diagnostics: [diagnostic("error", "yaml-syntax", "", `The YAML cannot be expanded: ${error2 instanceof Error ? error2.message : String(error2)}`)] };
+    }
   },
   addAgent(text2, name2, agent) {
     const document2 = distExports.parseDocument(text2, parseOptions);
     ensure(document2.errors.length === 0, "INVALID_YAML", `Cannot add an agent to a file with YAML errors: ${document2.errors[0]?.message ?? ""}`);
-    const original = document2.toJS();
+    const original = expanded(document2);
+    const eol = text2.includes("\r\n") ? "\r\n" : "\n";
     const expected = { ...original, agents: { ...isObject$1(original.agents) ? original.agents : {}, [name2]: agent } };
     const agents = document2.get("agents", true);
     const style = layout(text2);
@@ -29023,16 +29288,16 @@ const yamlDefinitions = {
         const end2 = text2.indexOf("\n", at);
         at = end2 < 0 ? text2.length : end2 + 1;
       }
-      const prefix = at === text2.length && !text2.endsWith("\n") ? "\n" : "";
-      const block = distExports.stringify({ [name2]: agent }, { lineWidth: 0, indent: style.indent, indentSeq: style.indentSeq }).split("\n").map((line) => line === "" ? line : `${" ".repeat(column)}${line}`).join("\n");
-      const spacer = text2.slice(0, at).endsWith("\n\n") ? "" : "\n";
+      const prefix = at === text2.length && !text2.endsWith("\n") ? eol : "";
+      const block = distExports.stringify({ [name2]: agent }, { lineWidth: 0, indent: style.indent, indentSeq: style.indentSeq }).split("\n").map((line) => line === "" ? line : `${" ".repeat(column)}${line}`).join(eol);
+      const spacer = /\r?\n\r?\n$/.test(text2.slice(0, at)) ? "" : eol;
       const edited2 = `${text2.slice(0, at)}${prefix}${spacer}${block}${text2.slice(at)}`;
       const check2 = distExports.parseDocument(edited2, parseOptions);
-      if (check2.errors.length === 0 && same(check2.toJS(), expected)) return edited2;
+      if (check2.errors.length === 0 && same(expanded(check2), expected)) return edited2;
     }
     document2.setIn(["agents", name2], document2.createNode(agent));
-    const edited = document2.toString({ lineWidth: 0, indent: style.indent, indentSeq: style.indentSeq });
-    ensure(same(distExports.parseDocument(edited, parseOptions).toJS(), expected), "OPERATION_FAILED", "Adding the agent would change other definitions; edit the file by hand.");
+    const edited = document2.toString({ lineWidth: 0, indent: style.indent, indentSeq: style.indentSeq }).replace(/\r?\n/g, eol);
+    ensure(same(expanded(distExports.parseDocument(edited, parseOptions)), expected), "OPERATION_FAILED", "Adding the agent would change other definitions; edit the file by hand.");
     return edited;
   },
   render(document2) {
@@ -32235,10 +32500,10 @@ function requireUtils() {
       return compressIPv6ZeroRun(parts);
     }
     if (hextetCount >= 8) return void 0;
-    const expanded = parts.slice(0, left.length);
-    for (let i = hextetCount; i < 8; i++) expanded.push("0");
-    for (let i = left.length; i < parts.length; i++) expanded.push(parts[i]);
-    return compressIPv6ZeroRun(expanded);
+    const expanded2 = parts.slice(0, left.length);
+    for (let i = hextetCount; i < 8; i++) expanded2.push("0");
+    for (let i = left.length; i < parts.length; i++) expanded2.push(parts[i]);
+    return compressIPv6ZeroRun(expanded2);
   }
   function normalizeIPv6(host) {
     const bracketed = host[0] === "[" && host[host.length - 1] === "]";
@@ -33958,12 +34223,12 @@ function requireRef() {
     function callSyncRef() {
       cxt.result((0, code_1.callValidateCode)(cxt, v, passCxt), () => addEvaluatedFrom(v), () => addErrorsFrom(v));
     }
-    function addErrorsFrom(source) {
-      const errs = (0, codegen_1._)`${source}.errors`;
+    function addErrorsFrom(source2) {
+      const errs = (0, codegen_1._)`${source2}.errors`;
       gen.assign(names_1.default.vErrors, (0, codegen_1._)`${names_1.default.vErrors} === null ? ${errs} : ${names_1.default.vErrors}.concat(${errs})`);
       gen.assign(names_1.default.errors, (0, codegen_1._)`${names_1.default.vErrors}.length`);
     }
-    function addEvaluatedFrom(source) {
+    function addEvaluatedFrom(source2) {
       var _a2;
       if (!it.opts.unevaluated)
         return;
@@ -33974,7 +34239,7 @@ function requireRef() {
             it.props = util_1.mergeEvaluated.props(gen, schEvaluated.props, it.props);
           }
         } else {
-          const props = gen.var("props", (0, codegen_1._)`${source}.evaluated.props`);
+          const props = gen.var("props", (0, codegen_1._)`${source2}.evaluated.props`);
           it.props = util_1.mergeEvaluated.props(gen, props, it.props, codegen_1.Name);
         }
       }
@@ -33984,7 +34249,7 @@ function requireRef() {
             it.items = util_1.mergeEvaluated.items(gen, schEvaluated.items, it.items);
           }
         } else {
-          const items2 = gen.var("items", (0, codegen_1._)`${source}.evaluated.items`);
+          const items2 = gen.var("items", (0, codegen_1._)`${source2}.evaluated.items`);
           it.items = util_1.mergeEvaluated.items(gen, items2, it.items, codegen_1.Name);
         }
       }
@@ -35776,6 +36041,10 @@ const schema$3 = {
   required: required$1,
   definitions
 };
+const configVersion = "16";
+const source = {
+  configVersion
+};
 let compiled;
 function validator() {
   if (!compiled) {
@@ -35797,6 +36066,7 @@ function message(error2) {
   return `${error2.message ?? "is invalid"}.`.replace(/^must/, "Must");
 }
 const ajvDefinitionSchema = {
+  configVersion: source.configVersion,
   validate(value2) {
     const validate2 = validator();
     if (validate2(value2)) return [];
@@ -35832,7 +36102,8 @@ ${body}`;
     return { metadata: metadata2, body: normalized.slice(match[0].length) };
   }
 };
-const content$1 = '---\nname: forge-agents\ndescription: Maintain docker-agent agent definitions in agents/*.yaml and generate, check and import Claude Code agents from them.\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"` or absent). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`, unsupported toolsets, hooks and delegation settings are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- `--mcp project` merges MCP servers into `.mcp.json` instead of inlining them; `--settings` merges permission rules and the main agent into `.claude/settings.json`; `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`. Merges keep unrelated servers, rules and settings. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition changed), `hand-edited` (output edited since generation) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, sha256, agent}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
+const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
+const content$1 = "---\nname: forge-agents\ndescription: Maintain docker-agent agent definitions in agents/*.yaml and generate, check and import Claude Code agents from them.\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope's `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file's `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent's `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent's semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `\"16\"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description \"Reviews changes\" --instruction \"...\" --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files' indentation and key order. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge's Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n";
 const agentsSkill = { id: "forge-agents", content: content$1 };
 const reviewOptions = {
   "revisions-from": option.string("JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out)."),
@@ -35862,17 +36133,21 @@ async function generationControls(flags, files) {
 }
 const actions = ["list", "inspect", "validate", "create", "import", "generate"];
 const options = {
-  file: option.string("create and import: the team file to add to (a name in the definitions directory or a scope path); generate: only this file. Defaults to <name>.yaml for create and import."),
+  file: option.string("create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file."),
   model: option.string("create: the model reference, such as anthropic/claude-sonnet-5 or a named model; defaults to plugins.settings.agents.defaultModel."),
   description: option.string("create: the agent description."),
   instruction: option.string("create: the agent instruction (system prompt); defaults to the description."),
   toolset: option.string(`create: comma-separated toolset types without required settings (${simpleToolsets.join(", ")}).`),
+  "from-template": option.string("create: start from a bundled template: basic (one read-only agent), team (a coordinator with <name>-researcher and <name>-writer sub-agents) or mcp (an agent with a Docker MCP Gateway server).", { enum: [...agentTemplates] }),
   "if-match": option.string("create and import: the current revision of an existing team file, required to add an agent to it."),
   from: option.string("import: the agent format to convert from.", { enum: ["claude"] }),
   target: option.string("generate: the agent format to generate.", { enum: ["claude"] }),
   agent: option.string("generate: only this docker-agent agent."),
-  mcp: option.string("generate: inline MCP servers in agent frontmatter, or merge them into the project .mcp.json.", { enum: ["inline", "project"], default: "inline" }),
-  settings: option.boolean("generate: merge permission rules and the main agent into .claude/settings.json."),
+  mcp: option.string("generate: MCP servers start processes or reach remote services, so none are written by default; inline writes them in agent frontmatter, project merges them into the project .mcp.json.", { enum: ["none", "inline", "project"], default: "none" }),
+  hooks: option.boolean("generate: write agent hooks, which run commands; without it hooks are reported and skipped."),
+  settings: option.boolean("generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic."),
+  "rename-conflicts": option.boolean("generate --mcp project: give a generated MCP server whose name .mcp.json already uses for a server Forge did not generate a numbered name, instead of failing with AGENT_MERGE_CONFLICT."),
+  "allow-broad-permissions": option.boolean("generate --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors."),
   commands: option.boolean("generate: generate commands as .claude/skills/<name>/SKILL.md."),
   "model-style": option.string("generate: emit Anthropic model ids, or Claude aliases (opus, sonnet, haiku, fable).", { enum: ["id", "alias"], default: "id" }),
   ...Object.fromEntries(Object.entries(reviewOptions).map(([key, schema2]) => [key, { ...schema2, description: `generate: ${schema2.description}` }]))
@@ -35881,9 +36156,9 @@ const accepted = {
   list: [],
   inspect: [],
   validate: [],
-  create: ["file", "model", "description", "instruction", "toolset", "if-match"],
+  create: ["file", "model", "description", "instruction", "toolset", "from-template", "if-match"],
   import: ["from", "file", "if-match"],
-  generate: ["target", "file", "agent", "mcp", "settings", "commands", "model-style", ...Object.keys(reviewOptions)]
+  generate: ["target", "file", "agent", "mcp", "hooks", "settings", "allow-broad-permissions", "rename-conflicts", "commands", "model-style", ...Object.keys(reviewOptions)]
 };
 function choice(flags, key, allowed, fallback) {
   const selected = value$2(flags, key) ?? fallback;
@@ -35899,7 +36174,7 @@ function agentsCommand(services) {
   return {
     id: "agents",
     description: "Manage docker-agent definitions (list, inspect, validate, create, import) and generate Claude Code agents from them.",
-    usage: "agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp inline|project] [--settings] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]",
+    usage: "agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]",
     scope: "project",
     discovery: false,
     mutating: false,
@@ -35908,7 +36183,7 @@ function agentsCommand(services) {
       list: { description: "List definition files with their agents, default agent and diagnostic counts." },
       inspect: { description: "Return one definition file, or one agent with file#agent, with diagnostics." },
       validate: { description: "Validate one or every definition file against the docker-agent schema and semantic rules; errors fail with INVALID_AGENT_DEFINITION." },
-      create: { description: "Add a docker-agent agent to a new or existing team file, preserving comments.", mutating: true },
+      create: { description: "Add a docker-agent agent, or a bundled template's agents, to a new or existing team file, preserving comments.", mutating: true },
       import: { description: "Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.", mutating: true },
       generate: { description: "Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.", mutating: true }
     },
@@ -35917,7 +36192,7 @@ function agentsCommand(services) {
       { name: "target", description: "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path." }
     ],
     options,
-    errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_YAML", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
+    errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "AGENT_MERGE_CONFLICT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_PATH", "INVALID_YAML", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       ensure(actions.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions.join(", agents ")}.`);
@@ -35938,7 +36213,18 @@ function agentsCommand(services) {
       if (action2 === "create") {
         arity(args, 2);
         const [file2, model2, description2, instruction, ifMatch2, types2] = [value$2(flags, "file"), value$2(flags, "model"), value$2(flags, "description"), value$2(flags, "instruction"), value$2(flags, "if-match"), toolsets(flags)];
-        return agents.create({ name: args[1], ...file2 ? { file: file2 } : {}, ...model2 ? { model: model2 } : {}, ...description2 ? { description: description2 } : {}, ...instruction ? { instruction } : {}, ...types2 ? { toolsets: types2 } : {}, ...ifMatch2 ? { ifMatch: ifMatch2 } : {} });
+        const template = flags["from-template"] === void 0 ? void 0 : choice(flags, "from-template", agentTemplates, "basic");
+        ensure(template === void 0 || types2 === void 0, "INVALID_ARGUMENT", "--from-template sets the toolsets; omit --toolset or edit the YAML afterwards.");
+        return agents.create({
+          name: args[1],
+          ...file2 ? { file: file2 } : {},
+          ...model2 ? { model: model2 } : {},
+          ...description2 ? { description: description2 } : {},
+          ...instruction ? { instruction } : {},
+          ...types2 ? { toolsets: types2 } : {},
+          ...template ? { template } : {},
+          ...ifMatch2 ? { ifMatch: ifMatch2 } : {}
+        });
       }
       if (action2 === "import") {
         arity(args, 2);
@@ -35948,13 +36234,18 @@ function agentsCommand(services) {
       }
       arity(args, 1);
       ensure(value$2(flags, "target", true) === "claude", "INVALID_ARGUMENT", "--target must be claude.");
+      ensure(flags["allow-broad-permissions"] === void 0 || flags.settings === true, "INVALID_ARGUMENT", "--allow-broad-permissions applies to the rules --settings writes; pass --settings too.");
+      ensure(flags["rename-conflicts"] === void 0 || value$2(flags, "mcp") === "project", "INVALID_ARGUMENT", "--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.");
       const controls = await generationControls(flags, context.workspace.files);
       const file = value$2(flags, "file"), agent = value$2(flags, "agent");
       return agents.generate({
         ...file ? { file } : {},
         ...agent ? { agent } : {},
-        mcp: choice(flags, "mcp", ["inline", "project"], "inline"),
+        mcp: choice(flags, "mcp", ["none", "inline", "project"], "none"),
+        hooks: flags.hooks === true,
         settings: flags.settings === true,
+        allowBroadPermissions: flags["allow-broad-permissions"] === true,
+        renameConflicts: flags["rename-conflicts"] === true,
         commands: flags.commands === true,
         modelStyle: choice(flags, "model-style", ["id", "alias"], "id"),
         mode: controls.mode,
@@ -35965,7 +36256,7 @@ function agentsCommand(services) {
   };
 }
 const defaults$1 = { directory: "agents", defaultModel: "anthropic/claude-sonnet-5" };
-const ports = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter };
+const ports = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
 const strings$1 = (value2) => Array.isArray(value2) && value2.every((item) => typeof item === "string");
 const agentsPlugin = {
   manifest: {
@@ -35983,13 +36274,13 @@ const agentsPlugin = {
       const directory = String(settings2.directory ?? defaults$1.directory), defaultModel = String(settings2.defaultModel ?? defaults$1.defaultModel);
       const definitions2 = new AgentDefinitions(context.workspace.files, ports, directory);
       const authoring = new AgentAuthoring(context.workspace, definitions2, ports, defaultModel);
-      const generation = new AgentGeneration(context.workspace, definitions2, ports.markdown, context.events);
+      const generation = new AgentGeneration(context.workspace, definitions2, ports, context.events);
       return {
         list: () => definitions2.list(),
         inspect: (target) => definitions2.inspect(target),
         validate: (file) => definitions2.validate(file),
         create: (request) => authoring.create(request),
-        importClaude: (source, options2) => authoring.importClaude(source, options2),
+        importClaude: (source2, options2) => authoring.importClaude(source2, options2),
         generate: (request) => generation.run(request)
       };
     })],
@@ -36011,6 +36302,7 @@ const agentsPlugin = {
       { code: "INVALID_AGENT_DEFINITION", category: "input", summary: "An agent definition fails docker-agent schema or semantic validation.", hint: "Fix each error in details.files[].diagnostics (JSON pointer, line and column), then run agents validate." },
       { code: "AGENT_NOT_FOUND", category: "not-found", summary: "No definition file defines the named agent.", hint: "Run agents list for the defined agents, or create it with agents create." },
       { code: "AGENT_EXISTS", category: "conflict", summary: "The team file already defines an agent with this name.", hint: "Choose another name or file, or edit the existing agent in the YAML file." },
+      { code: "AGENT_MERGE_CONFLICT", category: "conflict", summary: "Generation would replace an MCP server or main agent in the project's Claude files that Forge did not write.", hint: "Rename the generated MCP server in the definition, pass --rename-conflicts with --mcp project, or remove the entry; Forge only replaces entries recorded in .claude/forge-generated.json." },
       { code: "AGENT_DRIFT", category: "drift", summary: "Generated Claude files are missing, stale or differ from their agent definitions.", hint: "Run agents generate with the same options and --plan-out review.json, review the outputs, then regenerate with --revisions-from review.json." }
     ],
     strings: {
@@ -36021,6 +36313,7 @@ const agentsPlugin = {
           INVALID_AGENT_DEFINITION: { summary: "Eine Agentendefinition verletzt das docker-agent-Schema oder dessen semantische Regeln.", hint: "Beheben Sie jeden Fehler in details.files[].diagnostics (JSON-Pointer, Zeile und Spalte) und führen Sie dann agents validate aus." },
           AGENT_NOT_FOUND: { summary: "Keine Definitionsdatei definiert den genannten Agenten.", hint: "Führen Sie agents list für die definierten Agenten aus oder legen Sie ihn mit agents create an." },
           AGENT_EXISTS: { summary: "Die Team-Datei definiert bereits einen Agenten mit diesem Namen.", hint: "Wählen Sie einen anderen Namen oder eine andere Datei oder bearbeiten Sie den vorhandenen Agenten in der YAML-Datei." },
+          AGENT_MERGE_CONFLICT: { summary: "Die Generierung würde einen MCP-Server oder Hauptagenten in den Claude-Dateien des Projekts ersetzen, den Forge nicht geschrieben hat.", hint: "Benennen Sie den generierten MCP-Server in der Definition um, übergeben Sie --rename-conflicts mit --mcp project oder entfernen Sie den Eintrag; Forge ersetzt nur Einträge, die in .claude/forge-generated.json verzeichnet sind." },
           AGENT_DRIFT: { summary: "Generierte Claude-Dateien fehlen, sind veraltet oder weichen von ihren Agentendefinitionen ab.", hint: "Führen Sie agents generate mit denselben Optionen und --plan-out review.json aus, prüfen Sie die Ausgaben und generieren Sie dann mit --revisions-from review.json neu." }
         }
       }
@@ -36047,15 +36340,15 @@ async function makeDocument(title2, flags, context, services) {
   ensure(title2.trim() === title2 && title2.length > 0 && !/[/\\:]/.test(title2), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
   const template = value$2(flags, "template", true);
   ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
-  const source = await services.files.read(`bin/templates/${vaultPath(template)}`);
+  const source2 = await services.files.read(`bin/templates/${vaultPath(template)}`);
   const inline = value$2(flags, "values"), from = value$2(flags, "values-from");
   ensure(inline === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
   const data = from === void 0 ? parseJson(inline ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
   ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
-  const bytes = services.templates.render(source.bytes, { title: title2, values: data, date: value$2(flags, "date"), ...services.loaded.config.templates });
+  const bytes = services.templates.render(source2.bytes, { title: title2, values: data, date: value$2(flags, "date"), ...services.loaded.config.templates });
   const path = `${value$2(flags, "out") ?? "notes"}/${title2}.md`;
   const result = await context.workspace.write([{ path, bytes }]);
-  return { generator: "document", template: source.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
+  return { generator: "document", template: source2.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
 }
 function workflowCommands(services) {
   const config2 = services.loaded.config;
@@ -36438,10 +36731,10 @@ function cached(getter) {
 function nullish(input) {
   return input === null || input === void 0;
 }
-function cleanRegex(source) {
-  const start2 = source.startsWith("^") ? 1 : 0;
-  const end2 = source.endsWith("$") ? source.length - 1 : source.length;
-  return source.slice(start2, end2);
+function cleanRegex(source2) {
+  const start2 = source2.startsWith("^") ? 1 : 0;
+  const end2 = source2.endsWith("$") ? source2.length - 1 : source2.length;
+  return source2.slice(start2, end2);
 }
 function floatSafeRemainder(val, step) {
   const ratio = val / step;
@@ -36506,28 +36799,28 @@ function putProp(target, key, value2) {
   else
     target[key] = value2;
 }
-function mirrorShape(target, source, keys, wrap2) {
-  const raw = sourceShape(source);
+function mirrorShape(target, source2, keys, wrap2) {
+  const raw = sourceShape(source2);
   for (const key of keys) {
     const desc = Object.getOwnPropertyDescriptor(raw, key);
     if (!desc.enumerable)
       continue;
     if (desc.get) {
       deferProp(target, key, () => {
-        const value2 = source._zod.def.shape[key];
+        const value2 = source2._zod.def.shape[key];
         return wrap2 ? wrap2(value2, key) : value2;
       });
     } else
       putProp(target, key, wrap2 ? wrap2(desc.value, key) : desc.value);
   }
 }
-function mirrorProps(target, source) {
-  for (const key of Reflect.ownKeys(source)) {
-    const desc = Object.getOwnPropertyDescriptor(source, key);
+function mirrorProps(target, source2) {
+  for (const key of Reflect.ownKeys(source2)) {
+    const desc = Object.getOwnPropertyDescriptor(source2, key);
     if (!desc.enumerable)
       continue;
     if (desc.get)
-      deferProp(target, key, () => source[key]);
+      deferProp(target, key, () => source2[key]);
     else
       putProp(target, key, desc.value);
   }
@@ -37373,8 +37666,8 @@ const base64url = /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/;
 const httpProtocol = /^https?$/;
 const e164 = /^\+[1-9]\d{6,14}$/;
 const dateSource = `(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))`;
-function anchor(source) {
-  return new RegExp(`^${source}$`);
+function anchor(source2) {
+  return new RegExp(`^${source2}$`);
 }
 const date = /* @__PURE__ */ anchor(dateSource);
 function timeSource(args) {
@@ -40288,10 +40581,10 @@ function _check(fn, params) {
   return ch;
 }
 function assignProps(target, ...sources) {
-  for (const source of sources) {
-    for (const key of Reflect.ownKeys(source)) {
-      if (Object.prototype.propertyIsEnumerable.call(source, key)) {
-        assignProp(target, key, source[key]);
+  for (const source2 of sources) {
+    for (const key of Reflect.ownKeys(source2)) {
+      if (Object.prototype.propertyIsEnumerable.call(source2, key)) {
+        assignProp(target, key, source2[key]);
       }
     }
   }
@@ -42893,14 +43186,14 @@ function jsonValue$1(value2, ancestors = /* @__PURE__ */ new Set(), depth = 0) {
 function asText(value2) {
   return typeof value2 === "string" ? value2 : JSON.stringify(value2);
 }
-function renderYaml(source, resolve2) {
-  const tokens = placeholders(source);
+function renderYaml(source2, resolve2) {
+  const tokens = placeholders(source2);
   const resolved = tokens.map(resolve2);
   const serializedValues = JSON.stringify(resolved);
   let prefix = "AGENTCLITEMPLATETOKEN";
-  while (source.includes(prefix) || serializedValues.includes(prefix)) prefix += "X";
+  while (source2.includes(prefix) || serializedValues.includes(prefix)) prefix += "X";
   const sentinels = tokens.map((_, index2) => `${prefix}${index2}END`);
-  const document2 = distExports.parseDocument(replaceTokens(source, tokens, (_, index2) => sentinels[index2]), { uniqueKeys: true });
+  const document2 = distExports.parseDocument(replaceTokens(source2, tokens, (_, index2) => sentinels[index2]), { uniqueKeys: true });
   ensure(document2.errors.length === 0, "INVALID_TEMPLATE", document2.errors.map((error2) => error2.message).join("; "));
   ensure(document2.contents === null || distExports.isMap(document2.contents), "INVALID_TEMPLATE", "Template frontmatter must be a YAML mapping.");
   const consumed = /* @__PURE__ */ new Set();
@@ -43076,7 +43369,7 @@ function componentScaffold(project2, name2, projectsDirectory, kind = "domain") 
   ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase component name, for example WorkItem.");
   ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
   const file = kebab(name2);
-  const source = kind === "domain" ? `export class ${name2} {
+  const source2 = kind === "domain" ? `export class ${name2} {
   private constructor(readonly id: string) {}
 
   static create(id: string): ${name2} {
@@ -43124,7 +43417,7 @@ describe('${name2}', () => {
   });
 });
 `;
-  return [textFile(`${directory}/src/${kind}/${file}.ts`, source), textFile(`${directory}/tests/${file}.${kind}.unit.test.ts`, test)];
+  return [textFile(`${directory}/src/${kind}/${file}.ts`, source2), textFile(`${directory}/tests/${file}.${kind}.unit.test.ts`, test)];
 }
 function projectScaffold(name2, projectsDirectory) {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
@@ -43678,8 +43971,8 @@ function renderInteractionHandlers(definition2, interactions, options2) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
   element?.ownerDocument.defaultView?.location.assign(url.href);
 }`);
-  const source = [...helpers, ...functions].join("\n");
-  return options2.classMembers ? source.replace(/^(async )?function (\w+)\((.*)\) \{$/gm, "$2 = $1($3) => {").replace(/^\}$/gm, "};") : source;
+  const source2 = [...helpers, ...functions].join("\n");
+  return options2.classMembers ? source2.replace(/^(async )?function (\w+)\((.*)\) \{$/gm, "$2 = $1($3) => {").replace(/^\}$/gm, "};") : source2;
 }
 function reactiveDomModule(definition2, interactions) {
   const references = componentDependencies(definition2.root);
@@ -44081,8 +44374,8 @@ function renderUiComponents(input, framework, outputDirectory, interactions = []
   const writes = [];
   for (const definition2 of [...input].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     const artifact = componentArtifact(definition2, framework);
-    const source = renderers[framework](definition2, definitions2, interactions);
-    writes.push({ path: `${outputDirectory}/${artifact.fileName}`, bytes: new TextEncoder().encode(source) });
+    const source2 = renderers[framework](definition2, definitions2, interactions);
+    writes.push({ path: `${outputDirectory}/${artifact.fileName}`, bytes: new TextEncoder().encode(source2) });
     if (["html", "htmx", "vanilla"].includes(framework)) {
       writes.push({ path: `${outputDirectory}/${definition2.id}.html`, bytes: new TextEncoder().encode(staticMarkup(definition2.root, defaults(definition2), definitions2, "", stateDefaults(definition2)) + "\n") });
       writes.push({ path: `${outputDirectory}/${definition2.id}.d.ts`, bytes: new TextEncoder().encode(domDeclaration(definition2)) });
@@ -44768,12 +45061,12 @@ class ClaudeAgents {
     const path = this.path(id2), snapshot = await this.workspace.files.read(path);
     return { id: id2, path, revision: snapshot.revision, bytes: snapshot.bytes.length, ...this.codec.parse(text$1(snapshot.bytes)) };
   }
-  async create(id2, source) {
-    return this.write(id2, source);
+  async create(id2, source2) {
+    return this.write(id2, source2);
   }
-  async update(id2, source, revision) {
+  async update(id2, source2, revision) {
     this.requireRevision(revision);
-    return this.write(id2, source, revision);
+    return this.write(id2, source2, revision);
   }
   async remove(id2, revision) {
     this.requireRevision(revision);
@@ -44786,16 +45079,16 @@ class ClaudeAgents {
   requireRevision(revision) {
     ensure(typeof revision === "string" && revision.length > 0, "MISSING_ARGUMENT", "A current revision is required to update or remove an agent.");
   }
-  async write(id2, source, revision) {
-    const path = this.path(id2), { metadata: metadata2 } = this.codec.parse(source);
-    const result = await this.workspace.write([{ path, bytes: new TextEncoder().encode(source), ...revision === void 0 ? {} : { expectedRevision: revision } }]);
+  async write(id2, source2, revision) {
+    const path = this.path(id2), { metadata: metadata2 } = this.codec.parse(source2);
+    const result = await this.workspace.write([{ path, bytes: new TextEncoder().encode(source2), ...revision === void 0 ? {} : { expectedRevision: revision } }]);
     return {
       id: id2,
       path,
       name: metadata2.name,
       description: metadata2.description,
       ...result,
-      ...this.workspace.dryRun ? { preview: [{ path, content: source }] } : {}
+      ...this.workspace.dryRun ? { preview: [{ path, content: source2 }] } : {}
     };
   }
 }
@@ -46794,13 +47087,13 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {string} source - expected values are default/config/env/cli/implied
    * @return {Command} `this` command for chaining
    */
-  setOptionValueWithSource(key, value2, source) {
+  setOptionValueWithSource(key, value2, source2) {
     if (this._storeOptionsAsProperties) {
       this[key] = value2;
     } else {
       this._optionValues[key] = value2;
     }
-    this._optionValueSources[key] = source;
+    this._optionValueSources[key] = source2;
     return this;
   }
   /**
@@ -46821,13 +47114,13 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @return {string}
    */
   getOptionValueSourceWithGlobals(key) {
-    let source;
+    let source2;
     this._getCommandAndAncestors().forEach((cmd) => {
       if (cmd.getOptionValueSource(key) !== void 0) {
-        source = cmd.getOptionValueSource(key);
+        source2 = cmd.getOptionValueSource(key);
       }
     });
-    return source;
+    return source2;
   }
   /**
    * Get user arguments from implied or explicit arguments.
@@ -47707,8 +48000,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
     const getErrorMessage = (option3) => {
       const bestOption = findBestOptionFromValue(option3);
       const optionKey = bestOption.attributeName();
-      const source = this.getOptionValueSource(optionKey);
-      if (source === "env") {
+      const source2 = this.getOptionValueSource(optionKey);
+      if (source2 === "env") {
         return `environment variable '${bestOption.envVar}'`;
       }
       return `option '${bestOption.flags}'`;
@@ -48966,10 +49259,10 @@ const commands$1 = {
 };
 const claudeRuntimeOptions = (() => {
   const uses = /* @__PURE__ */ new Map();
-  for (const [section, actions2] of Object.entries(commands$1)) for (const [action2, command2] of Object.entries(actions2)) {
+  for (const [section2, actions2] of Object.entries(commands$1)) for (const [action2, command2] of Object.entries(actions2)) {
     for (const [name2, kind] of Object.entries(command2.options ?? {})) {
       const entry2 = uses.get(name2) ?? { kind, actions: [] };
-      entry2.actions.push(`claude ${section} ${action2}`);
+      entry2.actions.push(`claude ${section2} ${action2}`);
       uses.set(name2, entry2);
     }
   }
@@ -48978,27 +49271,27 @@ const claudeRuntimeOptions = (() => {
     description: `Passed to the native Claude Code CLI as --${name2}${kind === "list" || kind === "repeat" ? " (one string or a JSON array)" : ""} by ${actions2.join(", ")}.`
   }]));
 })();
-function actionArgs(section, args) {
-  const nested = section === "plugins" && args[0] === "eval" && args[1] === "init";
+function actionArgs(section2, args) {
+  const nested = section2 === "plugins" && args[0] === "eval" && args[1] === "init";
   return { action: nested ? "eval init" : args[0] ?? "", operands: args.slice(nested ? 2 : 1) };
 }
-function commandDefinition(section, action2) {
+function commandDefinition(section2, action2) {
   ensure(
-    Object.hasOwn(commands$1, section) && Object.hasOwn(commands$1[section], action2),
+    Object.hasOwn(commands$1, section2) && Object.hasOwn(commands$1[section2], action2),
     "INVALID_CLAUDE_COMMAND",
-    `Unknown Claude ${section} command: ${action2 || "(missing)"}. See help claude.`
+    `Unknown Claude ${section2} command: ${action2 || "(missing)"}. See help claude.`
   );
-  return commands$1[section][action2];
+  return commands$1[section2][action2];
 }
-function claudeRuntimeOutput(section, args, flags) {
-  const { action: action2 } = actionArgs(section, args);
-  const command2 = commandDefinition(section, action2);
-  if (section === "plugins" && action2 === "uninstall" && flags.prune === true) return "text";
-  if (section === "plugins" && action2 === "eval") return flags["native-json"] === true && flags["native-json-output"] === void 0 ? "json" : "text";
+function claudeRuntimeOutput(section2, args, flags) {
+  const { action: action2 } = actionArgs(section2, args);
+  const command2 = commandDefinition(section2, action2);
+  if (section2 === "plugins" && action2 === "uninstall" && flags.prune === true) return "text";
+  if (section2 === "plugins" && action2 === "eval") return flags["native-json"] === true && flags["native-json-output"] === void 0 ? "json" : "text";
   return command2.output ?? "text";
 }
-function claudeRuntimeNeedsInput(section, args, flags) {
-  return section === "plugins" && args[0] === "configure" && flags["values-stdin"] === true;
+function claudeRuntimeNeedsInput(section2, args, flags) {
+  return section2 === "plugins" && args[0] === "configure" && flags["values-stdin"] === true;
 }
 function stringValue(value2, flag2) {
   ensure(typeof value2 === "string" && value2.length > 0 && !value2.includes("\0"), "INVALID_CLAUDE_OPTION", `--${flag2} requires a nonempty string without null bytes.`);
@@ -49040,20 +49333,20 @@ function optionArgs(flag2, kind, value2) {
   if (flag2 === "native-json-output") ensure(value2.endsWith(".json"), "INVALID_CLAUDE_OPTION", "--native-json-output must name a .json file.");
   return value2.startsWith("-") ? [`--${flag2}=${value2}`] : [`--${flag2}`, value2];
 }
-function commandRules(section, action2, operands, flags) {
+function commandRules(section2, action2, operands, flags) {
   ensure(!(flags.yes === true && flags["accept-command"] !== void 0), "INVALID_CLAUDE_OPTION", "Choose --yes or --accept-command, not both.");
   ensure(!(flags.scaffold === true && flags["no-scaffold"] === true), "INVALID_CLAUDE_OPTION", "Choose --scaffold or --no-scaffold.");
   ensure(!(flags["no-publish"] === true && flags["publish-report"] === true), "INVALID_CLAUDE_OPTION", "Choose --no-publish or --publish-report.");
-  if (section === "plugins" && action2 === "disable") {
+  if (section2 === "plugins" && action2 === "disable") {
     ensure(flags.all === true ? operands.length === 0 && flags.scope === void 0 : operands.length === 1, "INVALID_CLAUDE_ARGUMENT", "Disable one plugin, or use --all without a plugin name or scope.");
   }
-  if (section === "plugins" && action2 === "configure") ensure(/^[^@\s]+@[^@\s]+$/.test(operands[0]), "INVALID_CLAUDE_ARGUMENT", "Plugin configure requires the full name@marketplace identifier from plugin list.");
-  if (section === "plugins" && action2 === "eval init") ensure(flags.interactive !== true, "INVALID_CLAUDE_OPTION", "--interactive requires a terminal. Use --bare with a case name, or invoke claude plugin eval init directly in your terminal.");
-  if (section === "marketplaces" && action2 === "add" && flags.claudeai === true) ensure(flags.scope === void 0 && flags.sparse === void 0, "INVALID_CLAUDE_OPTION", "--claudeai cannot be combined with --scope or --sparse.");
+  if (section2 === "plugins" && action2 === "configure") ensure(/^[^@\s]+@[^@\s]+$/.test(operands[0]), "INVALID_CLAUDE_ARGUMENT", "Plugin configure requires the full name@marketplace identifier from plugin list.");
+  if (section2 === "plugins" && action2 === "eval init") ensure(flags.interactive !== true, "INVALID_CLAUDE_OPTION", "--interactive requires a terminal. Use --bare with a case name, or invoke claude plugin eval init directly in your terminal.");
+  if (section2 === "marketplaces" && action2 === "add" && flags.claudeai === true) ensure(flags.scope === void 0 && flags.sparse === void 0, "INVALID_CLAUDE_OPTION", "--claudeai cannot be combined with --scope or --sparse.");
 }
-function buildClaudeRuntimeArgs(section, args, flags) {
-  const { action: action2, operands } = actionArgs(section, args);
-  const command2 = commandDefinition(section, action2);
+function buildClaudeRuntimeArgs(section2, args, flags) {
+  const { action: action2, operands } = actionArgs(section2, args);
+  const command2 = commandDefinition(section2, action2);
   arity(operands, command2.min, command2.max ?? command2.min);
   for (const operand of operands) {
     ensure(
@@ -49062,7 +49355,7 @@ function buildClaudeRuntimeArgs(section, args, flags) {
       "Claude command operands must be nonempty and cannot start with a dash or contain null bytes. Prefix a dash-leading local path with ./ ."
     );
   }
-  const options2 = [], input = claudeRuntimeNeedsInput(section, args, flags);
+  const options2 = [], input = claudeRuntimeNeedsInput(section2, args, flags);
   for (const [flag2, value2] of Object.entries(flags)) {
     if (Object.hasOwn(globalOptions, flag2) || flag2 === "claude-bin" || flag2 === "timeout") continue;
     if (input && ["content", "from", "stdin"].includes(flag2)) continue;
@@ -49070,23 +49363,23 @@ function buildClaudeRuntimeArgs(section, args, flags) {
       ensure(
         typeof value2 === "string" && ["user", "project", "local", ...command2.managed ? ["managed"] : []].includes(value2),
         "INVALID_CLAUDE_SCOPE",
-        `Invalid scope for Claude ${section} ${action2}: ${String(value2)}.`
+        `Invalid scope for Claude ${section2} ${action2}: ${String(value2)}.`
       );
       continue;
     }
     const kind = command2.options && Object.hasOwn(command2.options, flag2) ? command2.options[flag2] : void 0;
-    ensure(kind, "INVALID_CLAUDE_OPTION", `--${flag2} is not supported by Claude ${section} ${action2}.`);
+    ensure(kind, "INVALID_CLAUDE_OPTION", `--${flag2} is not supported by Claude ${section2} ${action2}.`);
     const translated2 = optionArgs(flag2, kind, value2);
     if (!["native-json", "native-json-output"].includes(flag2)) options2.push(...translated2);
   }
-  commandRules(section, action2, operands, flags);
-  if (section === "runtime") return [action2 === "version" ? "--version" : action2, ...operands];
-  const native = section === "plugins" ? ["plugin", ...action2.split(" "), ...operands] : ["plugin", "marketplace", action2, ...operands];
-  const unscoped = section === "plugins" && action2 === "disable" && flags.all === true || section === "marketplaces" && action2 === "add" && flags.claudeai === true;
+  commandRules(section2, action2, operands, flags);
+  if (section2 === "runtime") return [action2 === "version" ? "--version" : action2, ...operands];
+  const native = section2 === "plugins" ? ["plugin", ...action2.split(" "), ...operands] : ["plugin", "marketplace", action2, ...operands];
+  const unscoped = section2 === "plugins" && action2 === "disable" && flags.all === true || section2 === "marketplaces" && action2 === "add" && flags.claudeai === true;
   if (command2.scope && !unscoped) native.push("--scope", typeof flags.scope === "string" ? flags.scope : "project");
   const outputPath = flags["native-json-output"];
   if (typeof outputPath === "string") native.push(...outputPath.startsWith("-") ? [`--json=${outputPath}`] : ["--json", outputPath]);
-  else if (claudeRuntimeOutput(section, args, flags) !== "text") native.push("--json");
+  else if (claudeRuntimeOutput(section2, args, flags) !== "text") native.push("--json");
   native.push(...options2);
   return native;
 }
@@ -49131,8 +49424,8 @@ function claudeCommand(services) {
       strict: option.boolean("Passed to the native Claude Code CLI as --strict by claude plugins validate.")
     },
     async run(args, flags, context) {
-      const [section, action2] = args;
-      if (!section || section === "capabilities") {
+      const [section2, action2] = args;
+      if (!section2 || section2 === "capabilities") {
         arity(args, 0, 1);
         claudeOptions(flags, []);
         return {
@@ -49145,23 +49438,23 @@ function claudeCommand(services) {
           lifecycle: { executable: "claude", commands: ["plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval", "marketplaces add|list|remove|update", "runtime version|doctor|install|update"], mutationDefaultScope: "project where the native command supports a scope", dryRun: "Returns command arguments without starting Claude Code." }
         };
       }
-      if (section === "agents") return agentCommands(args.slice(1), flags, context, services);
-      if (section === "hooks") return hookCommands(args.slice(1), flags, context, services);
-      if (section === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services);
-      ensure(section === "plugins" || section === "marketplaces" || section === "runtime", "INVALID_ARGUMENT", "Use claude agents, hooks, plugins, marketplaces, runtime, or capabilities.");
-      const command2 = buildClaudeRuntimeArgs(section, args.slice(1), flags);
+      if (section2 === "agents") return agentCommands(args.slice(1), flags, context, services);
+      if (section2 === "hooks") return hookCommands(args.slice(1), flags, context, services);
+      if (section2 === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services);
+      ensure(section2 === "plugins" || section2 === "marketplaces" || section2 === "runtime", "INVALID_ARGUMENT", "Use claude agents, hooks, plugins, marketplaces, runtime, or capabilities.");
+      const command2 = buildClaudeRuntimeArgs(section2, args.slice(1), flags);
       const timeout = value$2(flags, "timeout");
       const timeoutMs = timeout === void 0 ? void 0 : Number(timeout);
       ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_ARGUMENT", "--timeout must be milliseconds from 1 to 3600000.");
       const executable = value$2(flags, "claude-bin");
       let input;
-      if (claudeRuntimeNeedsInput(section, args.slice(1), flags)) {
+      if (claudeRuntimeNeedsInput(section2, args.slice(1), flags)) {
         const values2 = parseJson(await claudeInput(flags, context));
         ensure(isRecord(values2) && Object.values(values2).every((item) => typeof item === "string" && !/[\r\n]/.test(item)), "INVALID_INPUT", "Claude plugin configuration must map keys to single-line string values.");
         input = JSON.stringify(values2) + "\n";
         ensure(new TextEncoder().encode(input).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
       }
-      return context.claude.execute({ args: command2, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
+      return context.claude.execute({ args: command2, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section2, args.slice(1), flags) });
     }
   };
 }
@@ -49205,13 +49498,13 @@ function matched(found, linkpath, via) {
   if (found.length > 1) return { status: "unresolved", linkpath, reason: "ambiguous", via, candidates: found };
   return void 0;
 }
-function resolveLinkpath(index2, link, source, options2 = {}) {
+function resolveLinkpath(index2, link, source2, options2 = {}) {
   let target = parseLinktext(link).path;
-  if (!target) return { status: "resolved", path: source, via: "path" };
+  if (!target) return { status: "resolved", path: source2, via: "path" };
   if (external(target)) return { status: "external" };
   target = target.replace(/^\//, "");
   const relative = options2.relative === true;
-  const local = joinPath(folderOf$1(source), target);
+  const local = joinPath(folderOf$1(source2), target);
   const candidates2 = relative ? [local, target] : [target, local];
   for (const candidate of candidates2) {
     for (const spelling of [candidate, `${candidate}.md`]) {
@@ -49228,11 +49521,11 @@ function resolveLinkpath(index2, link, source, options2 = {}) {
   const alias = options2.aliases ? matched([...new Set(index2.aliases.get(target.toLowerCase()) ?? [])].map((position2) => index2.paths[position2]), target, "alias") : void 0;
   return alias ?? { status: "unresolved", linkpath: target, reason: "missing" };
 }
-function fileToLinktext(index2, path, source, omitMdExtension = true) {
+function fileToLinktext(index2, path, source2, omitMdExtension = true) {
   const spelling = (value2) => omitMdExtension && value2.toLowerCase().endsWith(".md") ? value2.slice(0, -3) : value2;
   const resolvesTo2 = (link) => {
     if (parseLinktext(link).path !== link || !link) return false;
-    const result = resolveLinkpath(index2, link, source);
+    const result = resolveLinkpath(index2, link, source2);
     return result.status === "resolved" && result.path === path;
   };
   for (const candidate of [spelling(path.slice(path.lastIndexOf("/") + 1)), spelling(path)]) {
@@ -49312,7 +49605,7 @@ class VaultMetadata {
     return fileToLinktext(this.index, path, sourcePath, omitMdExtension);
   }
   backlinks(path) {
-    return vaultOrder(this.incoming.get(path) ?? []).filter((source) => source !== path).flatMap((source) => this.references(source).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path).map((item) => ({ ...item, source })));
+    return vaultOrder(this.incoming.get(path) ?? []).filter((source2) => source2 !== path).flatMap((source2) => this.references(source2).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path).map((item) => ({ ...item, source: source2 })));
   }
   async build() {
     this.paths = (await this.repository.list()).filter(visible);
@@ -49320,7 +49613,7 @@ class VaultMetadata {
       this.parse(path, (await this.repository.read(path)).bytes);
     });
     this.reindex();
-    for (const source of this.sources()) this.resolve(source);
+    for (const source2 of this.sources()) this.resolve(source2);
   }
   parse(path, bytes) {
     try {
@@ -49374,12 +49667,12 @@ class VaultMetadata {
     let resolved;
     if (pathsChanged || aliasesChanged) {
       this.reindex();
-      const previous2 = new Map(this.sources().map((source) => [source, this.resolutionKey(source)]));
-      for (const source of this.sources()) this.resolve(source);
-      resolved = this.sources().filter((source) => contents.has(source) || previous2.get(source) !== this.resolutionKey(source));
+      const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
+      for (const source2 of this.sources()) this.resolve(source2);
+      resolved = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
     } else {
       resolved = vaultOrder(changed.filter((path) => this.caches.has(path)));
-      for (const source of resolved) this.resolve(source);
+      for (const source2 of resolved) this.resolve(source2);
     }
     this.reorder();
     return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
@@ -49387,8 +49680,8 @@ class VaultMetadata {
   aliasKey(path) {
     return JSON.stringify(this.caches.get(path)?.aliases ?? []);
   }
-  resolutionKey(source) {
-    const references = this.outgoing.get(source);
+  resolutionKey(source2) {
+    const references = this.outgoing.get(source2);
     return references && JSON.stringify(references.map((item) => item.resolution));
   }
   sources() {
@@ -49402,11 +49695,11 @@ class VaultMetadata {
     this.index = linkIndex(this.paths, aliases);
   }
   /** Re-resolves one parsed source and replaces its link counts and backlink entries. */
-  resolve(source) {
-    this.unlink(source);
-    const references = orderedReferences(this.caches.get(source)).flatMap((item) => {
+  resolve(source2) {
+    this.unlink(source2);
+    const references = orderedReferences(this.caches.get(source2)).flatMap((item) => {
       const relative = !["wikilink", "canvas"].includes(item.reference.syntax);
-      const resolution = resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
+      const resolution = resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
       return resolution.status === "external" ? [] : [{ ...item, resolution }];
     });
     const resolved = counts(), unresolved = counts();
@@ -49414,32 +49707,32 @@ class VaultMetadata {
       if (resolution.status === "resolved") {
         resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
         const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
-        this.incoming.set(resolution.path, sources.add(source));
+        this.incoming.set(resolution.path, sources.add(source2));
       } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
     }
-    this.outgoing.set(source, references);
-    this.resolvedLinks[source] = resolved;
-    this.unresolvedLinks[source] = unresolved;
+    this.outgoing.set(source2, references);
+    this.resolvedLinks[source2] = resolved;
+    this.unresolvedLinks[source2] = unresolved;
   }
-  unlink(source) {
-    for (const item of this.outgoing.get(source) ?? []) {
-      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source);
+  unlink(source2) {
+    for (const item of this.outgoing.get(source2) ?? []) {
+      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source2);
     }
   }
   /** Removes a source's outgoing references and link counts. */
-  forget(source) {
-    this.unlink(source);
-    this.outgoing.delete(source);
-    delete this.resolvedLinks[source];
-    delete this.unresolvedLinks[source];
+  forget(source2) {
+    this.unlink(source2);
+    this.outgoing.delete(source2);
+    delete this.resolvedLinks[source2];
+    delete this.unresolvedLinks[source2];
   }
   /** Keeps the link maps' key order equal to a fresh build after sources were added. */
   reorder() {
     for (const maps of [this.resolvedLinks, this.unresolvedLinks]) {
-      const entries2 = this.sources().map((source) => [source, maps[source]]);
-      for (const [source, value2] of entries2) {
-        delete maps[source];
-        maps[source] = value2;
+      const entries2 = this.sources().map((source2) => [source2, maps[source2]]);
+      for (const [source2, value2] of entries2) {
+        delete maps[source2];
+        maps[source2] = value2;
       }
     }
   }
@@ -57412,17 +57705,17 @@ const start = (node2) => node2.position?.start.offset ?? 0;
 const end = (node2) => node2.position?.end.offset ?? 0;
 const blockId = /(?:^|\s)\^([A-Za-z0-9-]+)\s*$/;
 const task = /^(?:[-*+]|\d+[.)])[ \t]+\[(.)\](?=[ \t]|$)/;
-function sectionType(node2, source) {
-  if (node2.type === "blockquote") return /^>\s*\[!/.test(source) ? "callout" : "blockquote";
-  if (node2.type === "paragraph" && source.startsWith("$$")) return "math";
+function sectionType(node2, source2) {
+  if (node2.type === "blockquote") return /^>\s*\[!/.test(source2) ? "callout" : "blockquote";
+  if (node2.type === "paragraph" && source2.startsWith("$$")) return "math";
   return node2.type;
 }
 function markdownStructure(text2, tree, lines2) {
   const sections = [], headings = [], blocks = [], listItems = [];
   const lastLineId = (span) => blockId.exec(text2.slice(Math.max(span.start, lines2.lineStart(lines2.line(span.end))), span.end))?.[1];
   for (const node2 of tree.children ?? []) {
-    const span = { start: start(node2), end: end(node2) }, source = text2.slice(span.start, span.end);
-    const section = { type: sectionType(node2, source), ...span };
+    const span = { start: start(node2), end: end(node2) }, source2 = text2.slice(span.start, span.end);
+    const section2 = { type: sectionType(node2, source2), ...span };
     if (node2.type === "heading") {
       const children = node2.children ?? [];
       headings.push({ heading: children.length ? text2.slice(start(children[0]), end(children.at(-1))) : "", level: node2.depth ?? 1, ...span });
@@ -57430,15 +57723,15 @@ function markdownStructure(text2, tree, lines2) {
     if (node2.type === "paragraph") {
       const id2 = lastLineId(span);
       const previous2 = sections.at(-1);
-      if (id2 && previous2 && source.trim() === `^${id2}`) {
+      if (id2 && previous2 && source2.trim() === `^${id2}`) {
         previous2.id = id2;
         blocks.push({ id: id2, start: previous2.start, end: previous2.end });
       } else if (id2) {
-        section.id = id2;
+        section2.id = id2;
         blocks.push({ id: id2, ...span });
       }
     }
-    sections.push(section);
+    sections.push(section2);
   }
   const items2 = (list2, parentLine) => {
     const listLine = lines2.line(start(list2));
@@ -57558,10 +57851,10 @@ function relativePath(fromFolder, to) {
 function withExtensionStyle(target, previous2) {
   return isMarkdownPath(target) && !isMarkdownPath(previous2) ? target.slice(0, -3) : target;
 }
-function vaultLinkpath(index2, previous2, target, source) {
+function vaultLinkpath(index2, previous2, target, source2) {
   const absolute = previous2.startsWith("/");
   if (!previous2.includes("/") || absolute && !previous2.slice(1).includes("/")) {
-    return fileToLinktext(index2, target, source, !isMarkdownPath(previous2));
+    return fileToLinktext(index2, target, source2, !isMarkdownPath(previous2));
   }
   return (absolute ? "/" : "") + withExtensionStyle(target, previous2);
 }
@@ -57676,19 +57969,19 @@ function planLinkUpdates(cache, moves) {
   const after = indexOf(sorted(cache.files().map(rename2)), cache, rename2);
   const files = [], unrewritten = [];
   let references = 0;
-  for (const source of cache.files()) {
-    const metadata2 = cache.getFileCache(source);
+  for (const source2 of cache.files()) {
+    const metadata2 = cache.getFileCache(source2);
     if (!metadata2) continue;
-    const plan = { source, edits: [], frontmatter: [], canvas: [] };
-    const newSource = rename2(source);
+    const plan = { source: source2, edits: [], frontmatter: [], canvas: [] };
+    const newSource = rename2(source2);
     for (const candidate of candidates(metadata2, plan)) {
-      const previous2 = resolveLinkpath(before, candidate.link, source, { relative: candidate.relative, aliases: true });
+      const previous2 = resolveLinkpath(before, candidate.link, source2, { relative: candidate.relative, aliases: true });
       if (previous2.status !== "resolved") continue;
       const target = rename2(previous2.path);
       if (candidate.syntax === "canvas" ? !moves.has(previous2.path) : resolvesTo(after, candidate, newSource, target)) continue;
-      const text2 = replacement(candidate, after, source, previous2.path, newSource, target);
+      const text2 = replacement(candidate, after, source2, previous2.path, newSource, target);
       if (text2 === void 0) {
-        unrewritten.push({ source, original: candidate.original, reason: "Unrecognized link syntax." });
+        unrewritten.push({ source: source2, original: candidate.original, reason: "Unrecognized link syntax." });
         continue;
       }
       candidate.apply(text2);
@@ -57698,8 +57991,8 @@ function planLinkUpdates(cache, moves) {
   }
   return { files, references, unrewritten };
 }
-function resolvesTo(index2, candidate, source, target) {
-  const current = resolveLinkpath(index2, candidate.link, source, { relative: candidate.relative, aliases: true });
+function resolvesTo(index2, candidate, source2, target) {
+  const current = resolveLinkpath(index2, candidate.link, source2, { relative: candidate.relative, aliases: true });
   return current.status === "resolved" && current.path === target;
 }
 function candidates(metadata2, plan) {

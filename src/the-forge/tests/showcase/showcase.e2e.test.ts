@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 import { workspaceRoot } from '../support/workspace.ts';
 import { listFiles } from '../../scripts/showcase/tree.mjs';
+import { agentTeam } from '../../scripts/showcase/agents.mjs';
 
 const showcase = join(workspaceRoot, 'src/forge-showcase');
 const targets = ['html', 'htmx', 'vanilla', 'vue', 'svelte', 'react', 'angular'];
@@ -70,7 +71,7 @@ describe('committed showcase project', () => {
     expect(cli(['validate', 'docs/maps/Trailhead map.canvas']).body.data).toMatchObject({ valid: true, kind: 'canvas' });
     // The generated Claude agents match the committed docker-agent team.
     expect(cli(['agents', 'validate']).body.data).toMatchObject({ valid: true });
-    expect(cli(['agents', 'generate', '--target', 'claude', '--commands', '--check']).body.data).toMatchObject({ check: true, matches: true });
+    expect(cli([...agentTeam.generate, '--check']).body.data).toMatchObject({ check: true, matches: true });
     const query = cli(['bases', 'query', 'docs/bases/Requirements.base', '--view', 'REQ-004']);
     expect(query.status).toBe(0);
     expect(query.body.data.files).toEqual(expect.arrayContaining(['docs/product/Trailhead PRD.md', 'docs/use-cases/UC-002 Share an itinerary.md']));

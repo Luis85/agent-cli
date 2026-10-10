@@ -15,8 +15,10 @@ mcpServers:
         GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
 x-forge-source:
   path: agents/trailhead-team.yaml
-  sha256: 523453a241886158b32adc5dddd6b339590c9a2c5abb4874cd3bc63194cb71c7
   agent: trailhead-lead
+  sourceHash: df96235a142aa3321b3f7250fe3c601cc9889b1c7a67c1dbf0843eedfe3e03db
+  optionsHash: ab3c73d527c12330ecbfeb55462a0a327a549c56e418275123f3ce56ac3077c8
+  outputHash: dc68c06a5dfa81adfe3454b6cd66fabe93cb99d2976ea382a4886f47ee716d98
 ---
 You lead changes to the Trailhead trip planner.
 

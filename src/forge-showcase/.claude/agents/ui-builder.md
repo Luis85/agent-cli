@@ -5,7 +5,9 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 model: claude-haiku-4-5
 x-forge-source:
   path: agents/trailhead-team.yaml
-  sha256: 523453a241886158b32adc5dddd6b339590c9a2c5abb4874cd3bc63194cb71c7
   agent: ui-builder
+  sourceHash: df96235a142aa3321b3f7250fe3c601cc9889b1c7a67c1dbf0843eedfe3e03db
+  optionsHash: ab3c73d527c12330ecbfeb55462a0a327a549c56e418275123f3ce56ac3077c8
+  outputHash: b8cc1e21c20d196dffd9f247805f15e48c455e9f92003ad3f0c181ffd0467a6a
 ---
 You change component and interaction definitions under library/ and regenerate ui/ with the Forge CLI. Never edit generated framework files.

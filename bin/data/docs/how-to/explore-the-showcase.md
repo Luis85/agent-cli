@@ -30,8 +30,8 @@ The showcase's agent team is docker-agent YAML in `agents/trailhead-team.yaml`: 
 
 ```sh
 node bin/forge.js agents validate
-node bin/forge.js agents generate --target claude --commands --check
-node bin/forge.js agents generate --target claude --commands --plan
+node bin/forge.js agents generate --target claude --commands --mcp inline --check
+node bin/forge.js agents generate --target claude --commands --mcp inline --plan
 ```
 
 The README's "Agent definitions" section counts the diagnostics by code; see [manage agent definitions](manage-agents.md).

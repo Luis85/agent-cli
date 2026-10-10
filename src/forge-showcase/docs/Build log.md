@@ -243,9 +243,9 @@ node bin/forge.js agents create ui-builder --file trailhead-team.yaml --model an
 node bin/forge.js edit agents/trailhead-team.yaml --find 'sub_agents: [spec-writer]' --replace 'sub_agents: [spec-writer, ui-builder]' --if-match <revision>
 node bin/forge.js agents validate
 node bin/forge.js agents list
-node bin/forge.js agents generate --target claude --commands --plan
-node bin/forge.js agents generate --target claude --commands
-node bin/forge.js agents generate --target claude --commands --check
+node bin/forge.js agents generate --target claude --commands --mcp inline --plan
+node bin/forge.js agents generate --target claude --commands --mcp inline
+node bin/forge.js agents generate --target claude --commands --mcp inline --check
 node bin/forge.js claude agents inspect trailhead-lead
 ```
 
