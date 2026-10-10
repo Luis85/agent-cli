@@ -145,6 +145,14 @@ describe('commands, skills, hooks, permissions and delegation', () => {
     expect(codes(output.diagnostics)).toEqual(expect.arrayContaining(['command-unsupported:U', 'command-approximated:A', 'command-renamed:A', 'template-literal:U', 'description-synthesized:A']));
   });
 
+  it('reports command names that collide after sanitizing as errors instead of generating duplicate skills', () => {
+    const output = generate({ agents: { root: agent({ commands: { fix: 'Fix it.', Fix: 'Fix it differently.' } }) } }, { commands: true });
+    expect(output.skills.map(skill => skill.path)).toEqual(['.claude/skills/root-fix/SKILL.md']);
+    expect(output.diagnostics.filter(entry => entry.severity === 'error')).toEqual([expect.objectContaining({
+      code: 'command-name-collision', pointer: '/agents/root/commands/Fix', path: 'agents/team.yaml', message: expect.stringContaining('which the /fix of root already generates'),
+    })]);
+  });
+
   it('maps hooks with Claude events and translated tool matchers', () => {
     const hooks = {
       pre_tool_use: [{ matcher: 'shell|edit_file|custom', hooks: [{ type: 'command', command: './guard.sh', timeout: 5, env: { A: 'b' } }, { type: 'builtin', command: 'redact_secrets' }] }],

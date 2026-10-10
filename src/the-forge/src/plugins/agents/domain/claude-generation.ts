@@ -74,17 +74,27 @@ function settingsRules(source: DefinitionSource, drafts: readonly ClaudeAgentDra
   return reviewedRules([...drafts.flatMap(draft => draft.permissions), ...top.rules], options.allowBroadPermissions === true, diagnostics);
 }
 
-/** Skills share one namespace: identical skills merge, conflicting names are prefixed with their agent. */
+/**
+ * Skills share one namespace: identical skills merge, conflicting names are prefixed with their agent, and names that
+ * still collide (such as `fix` and `Fix` of one agent) are errors that generate nothing, like agent name collisions.
+ */
 function uniqueSkills(skills: Array<CommandSkill & { source: DefinitionSource }>, diagnostics: GenerationDiagnostic[]): GeneratedMarkdown[] {
   const byName = new Map<string, Array<CommandSkill & { source: DefinitionSource }>>();
   for (const skill of skills) byName.set(skill.name, [...(byName.get(skill.name) ?? []), skill]);
+  const owners = new Map<string, string>();
   return [...byName.values()].flatMap(group => {
     const identical = group.every(skill => same(skill.metadata, group[0]!.metadata) && skill.body === group[0]!.body);
-    return (identical ? [group[0]!] : group).map(skill => {
-      const name = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`);
-      if (!identical) diagnostics.push({ ...diagnostic('warning', 'command-renamed', pointer('agents', skill.agent, 'commands', skill.command), `Several agents define a different /${skill.command}; this one becomes the skill ${name}.`, 'A'), path: skill.source.path });
+    return (identical ? [group[0]!] : group).flatMap(skill => {
+      const name = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`), at = pointer('agents', skill.agent, 'commands', skill.command);
+      const owner = owners.get(name), label = `/${skill.command} of ${skill.agent}`;
+      if (owner !== undefined) {
+        diagnostics.push({ ...diagnostic('error', 'command-name-collision', at, `The ${label} would generate .claude/skills/${name}/SKILL.md, which the ${owner} already generates; rename one of the commands.`), path: skill.source.path });
+        return [];
+      }
+      owners.set(name, label);
+      if (!identical) diagnostics.push({ ...diagnostic('warning', 'command-renamed', at, `Several agents define a different /${skill.command}; this one becomes the skill ${name}.`, 'A'), path: skill.source.path });
       const metadata = { ...skill.metadata, name, 'x-forge-source': { path: skill.source.path, sha256: skill.source.sha256, agent: skill.agent, command: skill.command } };
-      return { path: `.claude/skills/${name}/SKILL.md`, metadata, body: skill.body };
+      return [{ path: `.claude/skills/${name}/SKILL.md`, metadata, body: skill.body }];
     });
   });
 }
