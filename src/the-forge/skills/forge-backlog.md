@@ -1,0 +1,20 @@
+---
+name: forge-backlog
+description: Plan, decompose, rank and release product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command.
+---
+
+The `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file's `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin's rules (ranks, stamps, refusals, YAML style).
+
+Start: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin's `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.
+
+Read before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).
+
+Decompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.
+
+Rank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`, `unseededList`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.
+
+Track work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.
+
+Iterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration's dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.
+
+Finish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.
