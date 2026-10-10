@@ -16,8 +16,9 @@ mcpServers:
         - context7
 x-forge-source:
   path: agents/dev-team.yaml
-  sha256: "0000000000000000000000000000000000000000000000000000000000000000"
   agent: awesome_engineer
+  sourceHash: "0000000000000000000000000000000000000000000000000000000000000000"
+  optionsHash: "1111111111111111111111111111111111111111111111111111111111111111"
 ---
 You are an Awesome Engineer responsible for implementing user interfaces based on the designer's specifications.
 

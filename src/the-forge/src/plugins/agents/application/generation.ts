@@ -9,14 +9,18 @@ import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource } f
 import { mergeMcpServers, mergeSettings } from '../domain/claude-merge.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentDefinitions } from './definitions.ts';
-import type { FrontmatterCodec } from './ports.ts';
+import type { AgentPorts } from './ports.ts';
 
-export interface GenerateRequest extends Omit<ClaudeGenerationOptions, 'agents'> {
+export interface GenerateRequest extends Omit<ClaudeGenerationOptions, 'agents' | 'optionsHash'> {
   file?: string; agent?: string;
   mode: GenerationMode; manifestPath?: string; revisions?: Record<string, string>;
 }
-/** `hand-edited`: the output differs although its provenance matches the current source, or it has none. */
+/**
+ * `changed`: the output still matches the `outputHash` its provenance recorded, so the definition, its instruction
+ * files or the options changed. `hand-edited`: the output differs from what its provenance recorded, or has none.
+ */
 type OutputStatus = 'unchanged' | 'changed' | 'missing' | 'hand-edited';
+type Markdown = { metadata: Record<string, unknown>; body: string };
 
 const mcpPath = '.mcp.json', settingsPath = '.claude/settings.json';
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -30,24 +34,37 @@ const encode = (text: string) => new TextEncoder().encode(text);
 export class AgentGeneration {
   constructor(
     private readonly workspace: Workspace, private readonly definitions: AgentDefinitions,
-    private readonly markdown: FrontmatterCodec, private readonly events: EventChannel,
+    private readonly ports: Pick<AgentPorts, 'markdown' | 'digest'>, private readonly events: EventChannel,
   ) {}
+
+  /** `x-forge-source.outputHash`: the digest of the file as rendered without its provenance. */
+  private outputHash(file: Markdown): string {
+    const { 'x-forge-source': _provenance, ...metadata } = file.metadata;
+    return this.ports.digest(this.ports.markdown.render(metadata, file.body));
+  }
+
+  /** The rendered file with its complete provenance. */
+  private render(file: Markdown): string {
+    const provenance = { ...record(file.metadata['x-forge-source']), outputHash: this.outputHash(file) };
+    return this.ports.markdown.render({ ...file.metadata, 'x-forge-source': provenance }, file.body);
+  }
 
   async run(request: GenerateRequest) {
     const sources = await this.sources(request);
-    const generated = generateClaude(sources, { mcp: request.mcp, hooks: request.hooks, settings: request.settings, allowBroadPermissions: request.allowBroadPermissions === true, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
+    const optionsHash = this.ports.digest(JSON.stringify({ mcp: request.mcp, hooks: request.hooks, modelStyle: request.modelStyle }));
+    const generated = generateClaude(sources, { optionsHash, mcp: request.mcp, hooks: request.hooks, settings: request.settings, allowBroadPermissions: request.allowBroadPermissions === true, commands: request.commands, modelStyle: request.modelStyle, ...(request.agent ? { agents: [request.agent] } : {}) });
     if (hasErrors(generated.diagnostics)) {
       const errors = generated.diagnostics.filter(entry => entry.severity === 'error');
       throw agentError('INVALID_AGENT_DEFINITION', `Generation stopped on ${[...new Set(errors.map(entry => entry.code))].join(', ')} errors; see details.diagnostics.`, { diagnostics: errors });
     }
     const markdown = [...generated.agents, ...generated.skills];
-    const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.markdown.render(file.metadata, file.body)) }));
+    const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.render(file)) }));
     if (request.mcp === 'project' && Object.keys(generated.mcpServers).length > 0) writes.push({ path: mcpPath, bytes: encode(mergeMcpServers(mcpPath, await this.text(mcpPath), generated.mcpServers)) });
     if (generated.settings) writes.push({ path: settingsPath, bytes: encode(mergeSettings(settingsPath, await this.text(settingsPath), generated.settings)) });
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === 'plan' ? request.manifestPath : undefined);
-    const provenance = new Map(markdown.map(file => [file.path, record(file.metadata['x-forge-source']).sha256]));
-    const outputs = plan.outputs.map(output => ({ ...output, status: this.status(output, provenance.get(output.path)) }));
+    const generatedMarkdown = new Set(markdown.map(file => file.path));
+    const outputs = plan.outputs.map(output => ({ ...output, status: generatedMarkdown.has(output.path) ? this.status(output) : output.status }));
     const stale = request.agent ? [] : await this.stale(new Set(sources.map(source => source.path)), new Set(writes.map(write => write.path)));
     const summary = {
       target: 'claude',
@@ -82,18 +99,18 @@ export class AgentGeneration {
     if (invalid.length > 0) {
       throw agentError('INVALID_AGENT_DEFINITION', `${invalid.map(file => file.path).join(', ')} failed validation; run agents validate.`, { files: invalid.map(({ path, diagnostics }) => ({ path, diagnostics })) });
     }
-    const sources = loaded.map(file => ({ path: file.path, sha256: file.revision, config: file.config!, instructions: file.instructions }));
+    const sources = loaded.map(file => ({ path: file.path, sourceHash: this.ports.digest(JSON.stringify([file.revision, file.instructions])), config: file.config!, instructions: file.instructions }));
     if (request.agent === undefined) return sources;
     const owner = sources.filter(source => Object.hasOwn(record(source.config.agents), request.agent!));
     if (owner.length === 0) throw agentError('AGENT_NOT_FOUND', `No definition in ${request.file === undefined ? `${this.definitions.directory}/` : paths[0]} defines agent ${request.agent}.`, { agent: request.agent });
     return owner;
   }
 
-  private status(output: { path: string; status: 'unchanged' | 'changed' | 'missing'; currentContent?: string }, sha256: unknown): OutputStatus {
-    if (output.status !== 'changed' || sha256 === undefined || output.currentContent === undefined) return output.status;
+  private status(output: { path: string; status: 'unchanged' | 'changed' | 'missing'; currentContent?: string }): OutputStatus {
+    if (output.status !== 'changed' || output.currentContent === undefined) return output.status;
     try {
-      const current = record(this.markdown.parse(output.currentContent).metadata['x-forge-source']);
-      return current.sha256 === sha256 || current.sha256 === undefined ? 'hand-edited' : 'changed';
+      const current = this.ports.markdown.parse(output.currentContent), recorded = record(current.metadata['x-forge-source']).outputHash;
+      return typeof recorded === 'string' && recorded === this.outputHash(current) ? 'changed' : 'hand-edited';
     } catch { return 'hand-edited'; }
   }
 
@@ -105,7 +122,7 @@ export class AgentGeneration {
     for (const path of candidates) {
       try {
         const text = await this.text(path);
-        const source = text === undefined ? undefined : this.markdown.parse(text).metadata['x-forge-source'];
+        const source = text === undefined ? undefined : this.ports.markdown.parse(text).metadata['x-forge-source'];
         if (isObject(source) && typeof source.path === 'string' && sources.has(source.path)) stale.push(path);
       } catch { /* Unreadable or hand-written files without frontmatter are not generated outputs. */ }
     }

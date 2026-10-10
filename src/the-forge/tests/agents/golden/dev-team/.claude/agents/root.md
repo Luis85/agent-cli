@@ -16,8 +16,9 @@ mcpServers:
         - context7
 x-forge-source:
   path: agents/dev-team.yaml
-  sha256: "0000000000000000000000000000000000000000000000000000000000000000"
   agent: root
+  sourceHash: "0000000000000000000000000000000000000000000000000000000000000000"
+  optionsHash: "1111111111111111111111111111111111111111111111111111111111111111"
 ---
 You are the Product Manager leading a development team consisting of a designer, frontend engineer, full stack engineer, and QA tester.
 

@@ -6,7 +6,7 @@ import { noToolsDisallowed } from '../../src/plugins/agents/domain/claude-execut
 const options: ClaudeGenerationOptions = { mcp: 'none', hooks: false, settings: false, commands: false, modelStyle: 'id' };
 const agent = (extra: Record<string, unknown> = {}) => ({ model: 'anthropic/claude-sonnet-5', description: 'Helps.', instruction: 'Help.', ...extra });
 const generate = (config: Record<string, unknown>, extra: Partial<ClaudeGenerationOptions> = {}) =>
-  generateClaude([{ path: 'agents/team.yaml', sha256: 'a'.repeat(64), config, instructions: {} }], { ...options, ...extra });
+  generateClaude([{ path: 'agents/team.yaml', sourceHash: 'a'.repeat(64), config, instructions: {} }], { ...options, ...extra });
 const findings = (output: ReturnType<typeof generate>, code: string) => output.diagnostics.filter(entry => entry.code === code).map(({ severity, pointer, message }) => ({ severity, pointer, message }));
 
 const mcpTeam = { agents: { root: agent({ toolsets: [

@@ -21,9 +21,14 @@ export interface ClaudeGenerationOptions {
   modelStyle: ModelStyle;
   /** Generate only these docker-agent agents (by their definition names). */
   agents?: readonly string[];
+  /** Hash of the options that shape agent files (`--mcp`, `--hooks`, `--model-style`), recorded in their provenance. */
+  optionsHash?: string;
 }
-/** One definition file: its scope path and revision (SHA-256), parsed document and resolved instruction files by agent. */
-export interface DefinitionSource { path: string; sha256: string; config: AgentConfigDocument; instructions: Readonly<Record<string, string>> }
+/**
+ * One definition file: its scope path, parsed document and resolved instruction files by agent. `sourceHash` covers
+ * the file and its instruction files, so provenance changes when either does.
+ */
+export interface DefinitionSource { path: string; sourceHash: string; config: AgentConfigDocument; instructions: Readonly<Record<string, string>> }
 /** A diagnostic of the definition file at `path`. */
 export interface GenerationDiagnostic extends AgentDiagnostic { path: string }
 export interface GeneratedMarkdown { path: string; metadata: Record<string, unknown>; body: string }
@@ -93,7 +98,7 @@ function uniqueSkills(skills: Array<CommandSkill & { source: DefinitionSource }>
       }
       owners.set(name, label);
       if (!identical) diagnostics.push({ ...diagnostic('warning', 'command-renamed', at, `Several agents define a different /${skill.command}; this one becomes the skill ${name}.`, 'A'), path: skill.source.path });
-      const metadata = { ...skill.metadata, name, 'x-forge-source': { path: skill.source.path, sha256: skill.source.sha256, agent: skill.agent, command: skill.command } };
+      const metadata = { ...skill.metadata, name, 'x-forge-source': { path: skill.source.path, agent: skill.agent, command: skill.command, sourceHash: skill.source.sourceHash } };
       return [{ path: `.claude/skills/${name}/SKILL.md`, metadata, body: skill.body }];
     });
   });
@@ -120,7 +125,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
     const generated = generateSource(source, names, options);
     if (options.mcp === 'project') projectServers(generated.drafts, output.mcpServers);
     for (const draft of generated.drafts) {
-      const metadata = ordered({ ...completeAgent(draft, options, generated.diagnostics), 'x-forge-source': { path: source.path, sha256: source.sha256, agent: draft.agent } });
+      const metadata = ordered({ ...completeAgent(draft, options, generated.diagnostics), 'x-forge-source': { path: source.path, agent: draft.agent, sourceHash: source.sourceHash, ...(options.optionsHash ? { optionsHash: options.optionsHash } : {}) } });
       validateClaudeAgent(metadata, draft.prompt);
       output.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source.path, metadata, body: draft.prompt });
     }

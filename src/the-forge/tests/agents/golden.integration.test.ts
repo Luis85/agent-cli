@@ -15,7 +15,7 @@ import { example } from './agents-workspace.ts';
  */
 const golden = join(import.meta.dirname, 'golden');
 const update = process.env.UPDATE_GOLDEN === '1';
-const options: ClaudeGenerationOptions = { mcp: 'inline', hooks: true, settings: true, commands: true, modelStyle: 'id' };
+const options: ClaudeGenerationOptions = { mcp: 'inline', hooks: true, settings: true, commands: true, modelStyle: 'id', optionsHash: '1'.repeat(64) };
 const sha256 = '0'.repeat(64);
 
 async function expectGolden(path: string, content: string) {
@@ -29,7 +29,7 @@ describe.each(['dev-team.yaml', 'mcp-definitions.yaml', 'agent_switching_command
     const parsed = yamlDefinitions.parse(await example(name));
     const config = parsed.value as Record<string, unknown>;
     expect([...ajvDefinitionSchema.validate(config), ...semanticDiagnostics(config, ajvDefinitionSchema.configVersion)]).toEqual([]);
-    const output = generateClaude([{ path: `agents/${name}`, sha256, config, instructions: {} }], options);
+    const output = generateClaude([{ path: `agents/${name}`, sourceHash: sha256, config, instructions: {} }], options);
     const directory = name.replace(/\.yaml$/, '');
     for (const file of [...output.agents, ...output.skills]) {
       const text = markdownFrontmatter.render(file.metadata, file.body);

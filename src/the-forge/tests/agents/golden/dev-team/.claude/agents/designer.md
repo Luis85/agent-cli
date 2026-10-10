@@ -16,8 +16,9 @@ mcpServers:
         - context7
 x-forge-source:
   path: agents/dev-team.yaml
-  sha256: "0000000000000000000000000000000000000000000000000000000000000000"
   agent: designer
+  sourceHash: "0000000000000000000000000000000000000000000000000000000000000000"
+  optionsHash: "1111111111111111111111111111111111111111111111111111111111111111"
 ---
 You are a UI/UX Designer working on a development team. Your role is to create user-friendly, intuitive designs for each feature iteration.
 

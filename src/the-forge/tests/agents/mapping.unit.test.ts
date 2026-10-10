@@ -7,7 +7,7 @@ import { commandArguments, mcpVariables, templateExpressions } from '../../src/p
 import { claudeName, translateMatcher } from '../../src/plugins/agents/domain/claude-vocabulary.ts';
 
 const options: ClaudeGenerationOptions = { mcp: 'inline', hooks: false, settings: false, commands: false, modelStyle: 'id' };
-const source = (config: Record<string, unknown>) => ({ path: 'agents/team.yaml', sha256: 'a'.repeat(64), config, instructions: {} });
+const source = (config: Record<string, unknown>) => ({ path: 'agents/team.yaml', sourceHash: 'a'.repeat(64), config, instructions: {} });
 const generate = (config: Record<string, unknown>, extra: Partial<ClaudeGenerationOptions> = {}) => generateClaude([source(config)], { ...options, ...extra });
 const agent = (extra: Record<string, unknown> = {}) => ({ model: 'anthropic/claude-sonnet-5', description: 'Helps.', instruction: 'Help.', ...extra });
 const tools = (toolsets: unknown[], extra: Record<string, unknown> = {}) => claudeTools({ agents: { a: agent({ toolsets, ...extra }) } }, 'a', agent({ toolsets, ...extra }));
@@ -16,7 +16,7 @@ const codes = (diagnostics: Array<{ code: string; fidelity?: string }>) => diagn
 describe('agent identity and prompt', () => {
   it('sanitizes names, inlines instructions and records provenance', () => {
     const output = generate({ agents: { Code_Reviewer: agent({ instruction: ['First.', 'Second.'] }) } });
-    expect(output.agents[0]).toMatchObject({ path: '.claude/agents/code-reviewer.md', body: 'First.\n\nSecond.\n', metadata: { name: 'code-reviewer', 'x-forge-source': { path: 'agents/team.yaml', sha256: 'a'.repeat(64), agent: 'Code_Reviewer' } } });
+    expect(output.agents[0]).toMatchObject({ path: '.claude/agents/code-reviewer.md', body: 'First.\n\nSecond.\n', metadata: { name: 'code-reviewer', 'x-forge-source': { path: 'agents/team.yaml', agent: 'Code_Reviewer', sourceHash: 'a'.repeat(64) } } });
     expect(codes(output.diagnostics)).toContain('name-sanitized:E');
     expect(claudeName('--Weird  Name!!')).toBe('weird-name');
   });

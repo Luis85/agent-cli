@@ -8,11 +8,12 @@ import type { AgentPorts } from './application/ports.ts';
 import { yamlDefinitions } from './infrastructure/yaml-definitions.ts';
 import { ajvDefinitionSchema } from './infrastructure/schema.ts';
 import { markdownFrontmatter } from './infrastructure/frontmatter.ts';
+import { sha256Digest } from './infrastructure/digest.ts';
 import { agentsSkill } from './infrastructure/skill.ts';
 import { agentsCommand } from './presentation/command.ts';
 
 const defaults = { directory: 'agents', defaultModel: 'anthropic/claude-sonnet-5' };
-const ports: AgentPorts = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter };
+const ports: AgentPorts = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
 
 /**
@@ -31,7 +32,7 @@ export const agentsPlugin: CorePlugin = {
       const directory = String(settings.directory ?? defaults.directory), defaultModel = String(settings.defaultModel ?? defaults.defaultModel);
       const definitions = new AgentDefinitions(context.workspace.files, ports, directory);
       const authoring = new AgentAuthoring(context.workspace, definitions, ports, defaultModel);
-      const generation = new AgentGeneration(context.workspace, definitions, ports.markdown, context.events);
+      const generation = new AgentGeneration(context.workspace, definitions, ports, context.events);
       return {
         list: () => definitions.list(), inspect: target => definitions.inspect(target), validate: file => definitions.validate(file),
         create: request => authoring.create(request), importClaude: (source, options) => authoring.importClaude(source, options),

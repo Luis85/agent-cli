@@ -6,8 +6,8 @@ context: fork
 agent: planner
 x-forge-source:
   path: agents/agent_switching_commands.yaml
-  sha256: "0000000000000000000000000000000000000000000000000000000000000000"
   agent: root
   command: plan
+  sourceHash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 $ARGUMENTS

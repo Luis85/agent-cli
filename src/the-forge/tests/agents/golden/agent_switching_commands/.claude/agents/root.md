@@ -5,8 +5,9 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Agent(planner), Agent(reviewer)
 model: claude-sonnet-5
 x-forge-source:
   path: agents/agent_switching_commands.yaml
-  sha256: "0000000000000000000000000000000000000000000000000000000000000000"
   agent: root
+  sourceHash: "0000000000000000000000000000000000000000000000000000000000000000"
+  optionsHash: "1111111111111111111111111111111111111111111111111111111111111111"
 ---
 You are the implementation agent. You write and edit code.
 If the user asks for a plan or design discussion, use the /plan command

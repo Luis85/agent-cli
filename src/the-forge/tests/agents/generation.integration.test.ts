@@ -48,6 +48,23 @@ describe('generating Claude agents in a workspace', () => {
     expect(await failure(generate({ check: true }))).toMatchObject({ code: 'AGENT_DRIFT', details: { outputs: [], stale: ['.claude/agents/frontend.md'] } });
   });
 
+  it('reports instruction file and option changes as changed, and only output edits as hand-edited', async () => {
+    await scope.put('agents/team.yaml', 'agents:\n  root:\n    model: anthropic/claude-sonnet-5\n    description: Leads.\n    instruction_file: prompts/root.md\n');
+    await scope.put('agents/prompts/root.md', 'Lead.\n');
+    await generate();
+    const written = await scope.read('.claude/agents/root.md');
+    expect(written).toMatch(/x-forge-source:\n {2}path: agents\/team.yaml\n {2}agent: root\n {2}sourceHash: [a-f0-9]{64}\n {2}optionsHash: [a-f0-9]{64}\n {2}outputHash: [a-f0-9]{64}\n/);
+    await scope.put('agents/prompts/root.md', 'Lead carefully.\n');
+    expect(await failure(generate({ check: true }))).toMatchObject({ details: { outputs: [{ path: '.claude/agents/root.md', status: 'changed' }] } });
+    await scope.put('agents/prompts/root.md', 'Lead.\n');
+    expect((await generate({ check: true })).data).toMatchObject({ matches: true });
+    expect(await failure(generate({ check: true, 'model-style': 'alias' }))).toMatchObject({ details: { outputs: [{ path: '.claude/agents/root.md', status: 'changed' }] } });
+    expect(await failure(generate({ check: true, mcp: 'inline' }))).toMatchObject({ details: { outputs: [{ path: '.claude/agents/root.md', status: 'changed' }] } });
+    await scope.put('.claude/agents/root.md', written.replace('Lead.', 'Lead, edited.'));
+    await scope.put('agents/prompts/root.md', 'Lead carefully.\n');
+    expect(await failure(generate({ check: true }))).toMatchObject({ details: { outputs: [{ path: '.claude/agents/root.md', status: 'hand-edited' }] } });
+  });
+
   it('merges MCP servers, settings and skills into existing Claude files without clobbering unrelated keys', async () => {
     await scope.put('agents/switching.yaml', await example('agent_switching_commands.yaml'));
     await scope.put('.mcp.json', JSON.stringify({ mcpServers: { local: { command: 'mine' } } }));

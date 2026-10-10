@@ -29,4 +29,7 @@ export interface FrontmatterCodec {
   parse(text: string): { metadata: Record<string, unknown>; body: string };
 }
 
-export interface AgentPorts { codec: DefinitionCodec; schema: DefinitionSchema; markdown: FrontmatterCodec }
+/** SHA-256 of UTF-8 text as lowercase hex, for generation provenance. */
+export type Digest = (text: string) => string;
+
+export interface AgentPorts { codec: DefinitionCodec; schema: DefinitionSchema; markdown: FrontmatterCodec; digest: Digest }
