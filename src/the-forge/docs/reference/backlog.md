@@ -128,13 +128,31 @@ When an action other than `sync` chooses its backlog by discovery, unbound views
 | `sync status [--base … --view …]` | Reads both sides and reports pending pushes, pulls and conflicts; writes nothing |
 | `sync resolve <item> --take local\|remote [--field title,state]` | Settles the note's conflicting fields (all, or the named ones) in favour of one side; its other pending changes wait for the next sync. A named field that is not in conflict, or a note without conflicts, is `INVALID_ARGUMENT`; a note in several bound views needs `--base`/`--view` |
 
-The result is `{dryRun, mode, direction, counts, views, changes}`. Each view reports `{base, view, connection, platform, created, updated, pulled, conflicts, resolved, unchanged, skipped, left, failed, changes}`:
+The result is `{dryRun, mode, direction, counts, views, left, changes}`. Each view reports `{base, view, connection, platform, created, updated, pulled, conflicts, resolved, unchanged, skipped, failed, changes}`:
 
 - `created`, `updated` and `pulled` list `{path, remoteId, url, fields}` (`remoteId` and `url` are null for creates a dry run only plans; a pulled title adds `renamedTo`).
 - `conflicts` lists `{path, remoteId, url, fields: [{field, local, remote}]}` with both canonical values.
-- `skipped` lists `{path, reason, field?}`: an unmapped type, a link property naming another connection's item, a remote item that no longer exists, a remote parent or iteration without a local counterpart, a title whose file name is taken.
-- `left` lists notes the view no longer returns but the state still holds (`{path, remoteId, url}`). They are never deleted remotely.
-- `failed` lists `{path, remoteId, code, message}` for remote writes that failed; `SYNC_CONFLICT` marks a remote item that changed during the sync. A refused token aborts the whole sync with `CONNECTOR_AUTH_FAILED`.
+- `skipped` lists `{path, code, reason, field?}`: a note or one of its fields the sync left alone. The codes are below.
+- `failed` lists `{path, remoteId, code, message}` for remote writes that failed; `SYNC_CONFLICT` marks a remote item that changed during the sync. A refused token aborts the whole sync with `CONNECTOR_AUTH_FAILED`, after recording every item created before it.
+- `changes` lists the vault changes; a note renamed for a pulled title appears as `{path, oldPath, operation: "renamed", revision, bytes}` (with `diff: null` on dry runs) before the link rewrites.
+
+`left` lists, per connection, the state entries whose note no bound view of that connection returns any more (`{connection, path, remoteId, url}`), across all bound views of the scope, so a note held by another view of the same connection is not reported. They are never deleted remotely.
+
+| Skip `code` | Meaning |
+| --- | --- |
+| `unmapped-type` | The note's type has no remote type mapping |
+| `foreign-link` | The link property names an item of another connection |
+| `duplicate-link` | Another note already syncs the linked item (a copied note), or, without a state entry, several notes link it; remove or change the link in the copy |
+| `remote-missing` | The linked remote item no longer exists or is not readable |
+| `not-created` | A pull-only run does not create new notes remotely |
+| `unexpressible` | The note's value cannot be expressed on this connection (a parent that does not sync here, a priority label without a number, a non-text area), so the remote value is not pulled over it |
+| `unreadable-remote` | The remote value cannot be read (a structured value), so the note's value is not pushed over it |
+| `remote-format-unknown` | The remote description changed but is not known to be Markdown; it is not pulled (see descriptions below) |
+| `unmapped-remote-type` | The remote type has no local type mapping; the note keeps its type |
+| `unsynced-parent`, `missing-iteration` | A pulled parent or iteration has no local counterpart |
+| `title-taken` | A pulled title's file name is taken |
+| `server-kept` | The platform stored another value than the one pushed (a rule); the note keeps its value and the next sync pushes it again |
+| `server-applied` | On a push-only run, the platform filled a field the note leaves empty (a default or rule); the next two-way sync pulls it |
 
 ### Fields and the three-way comparison
 
@@ -145,22 +163,26 @@ The result is `{dryRun, mode, direction, counts, views, changes}`. Each view rep
 | `state` | `stateProperty`, mapped through the connection's states | `System.State` |
 | `parent` | `parentProperty`, when the parent syncs on the same connection | Parent link (`System.LinkTypes.Hierarchy-Reverse`) |
 | `iteration` | `iterationProperty`: the Iteration note's name under the connection's `iterationRoot` | `System.IterationPath` |
+| `area` | The connection's `areaProperty` (default `area`), a full area path; a note without it is in the connection's default area | `System.AreaPath` |
 | `priority` | `priorityProperty`: the label's leading number (`1 - Must` → 1) | `Microsoft.VSTS.Common.Priority` |
 | `effort` | The connection's `effortProperty` (default `effort`), a number | Story points or effort, by process |
 | `tags` | `tagsProperty`, compared case-insensitively | `System.Tags` |
-| `description` | The note body after the frontmatter | `System.Description` |
+| `description` | The whole note body after the frontmatter, without `%%comments%%` | `System.Description` |
 | `property:<key>` | Extra frontmatter keys from the connection's `mappings.properties` | The mapped remote field |
 
 A field syncs only when the connection maps it and the view binds its property; it is then compared in canonical form (sanitized titles, trimmed text, sorted lowercase tags). For every note and connection, the state file `.forge/sync/<connection>.json` in the command scope stores the remote id, URL and revision and, per field, a hash of the value both sides held after the last successful sync. Each sync compares both sides with that base:
 
 - changed only in the note: pushed with a revision-guarded update;
-- changed only remotely: pulled through the backlog's write rules (state stamps, `mayHoldField`, Obsidian's YAML style; a new title renames the note and rewrites links to it);
+- changed only remotely: pulled through the backlog's write rules (state stamps, `mayHoldField`, Obsidian's YAML style; a new title renames the note and rewrites links to it, and a note re-parented to a renamed note in the same run links its new name);
 - changed on both sides to different values: a conflict, reported (`connector.conflict`) and left untouched on both sides until `sync resolve`; to the same value: converged;
-- never synced but linked (no base): every differing field is a conflict.
+- no base (a fresh clone without the state file, a deleted state file, a link property added by hand): every differing field is a conflict, so a relink never overwrites either side;
+- a side that cannot express or read the field (see `unexpressible` and `unreadable-remote`): never overwritten, and never cleared with an empty value; the field is skipped.
 
-While the remote revision equals the stored one, the remote side counts as unchanged; the stored revision advances only once every remote change has landed. New notes (no state, no link property) are created remotely in tree order, parents before children. After a create or relink, the note's link property (default `azure-devops`, set per connection with `linkProperty`) holds the remote URL, which Obsidian opens as a link; backlog-view keeps the unknown key. A note renamed through Forge (`move`, `rename`, `app.fileManager`) keeps its state, because the plugin follows `vault.rename`; a note renamed elsewhere is relinked by its link property on the next sync. Notes the remote side does not know yet are not imported: the sync set is defined by the view.
+While the remote revision equals the stored one, the remote side counts as unchanged; the stored revision advances only once every remote change has landed. New notes (no state, no link property) are created remotely in tree order, parents before children. The base of a pushed or created field is the value the platform returned, not the value sent: a field the note leaves empty that the platform filled (a default state or priority, a rule) is pulled into the note in the same run, and a value the platform stored differently is reported as `server-kept`. After a create or relink, the note's link property (default `azure-devops`, set per connection with `linkProperty`) holds the remote URL, which Obsidian opens as a link; backlog-view keeps the unknown key. A note renamed through Forge (`move`, `rename`, `app.fileManager`) keeps its state, because the plugin follows `vault.rename`; a note renamed elsewhere is relinked by its link property on the next sync. A copied note with the same link property never takes over its original's item (`duplicate-link`). Notes the remote side does not know yet are not imported: the sync set is defined by the view.
 
-Remote writes are planned before anything is written. Committed syncs publish `vault.*` records for note changes, then `connector.pushed` per remote write, `connector.pulled` per pulled note, `connector.conflict` per conflicting note and one `backlog.synced` per view. Dry runs and `status` publish none of them. If the vault batch fails after remote items were created, the state file is still saved, so the next sync links them instead of creating them twice.
+**Descriptions.** The note body is pushed as it is, including embeds, wikilinks (Azure DevOps shows them as plain text) and Markdown it cannot render, but without Obsidian `%%comments%%`, which stay private. The state keeps two bases for the description: the note body, and the remote text exactly as read (Markdown or HTML), so a change is detected on each side by itself. A note change pushes while the remote text is still the one last synced. A remote change is pulled only when the platform declares the text as Markdown; otherwise it is skipped (`remote-format-unknown`) and becomes a conflict once the note changes too. `sync resolve --field description` settles either case: `--take local` pushes the note body, `--take remote` writes the remote text into the body as it is. A pulled description keeps the note's `%%comments%%`, appended after it.
+
+Remote writes are planned before anything is written. A live sync holds the lock file `.forge/sync/<connection>.lock` of every connection it syncs from start to end, so a second sync of the same connection fails with `WORKSPACE_BUSY` instead of interleaving. Each created item is recorded in the state file right after its create, so a later failure (a refused token, a rejected write, a vault conflict) never loses its id and the next sync does not create it again; a state file another process changed meanwhile is re-read and merged. Committed syncs publish `vault.*` records for note changes, then per view `connector.pushed` per remote write, `connector.pulled` per pulled note, `connector.conflict` per conflicting note and one `backlog.synced` (its `left` counts the connection's notes that left the sync set). Dry runs and `status` publish none of them.
 
 ## New notes
 
