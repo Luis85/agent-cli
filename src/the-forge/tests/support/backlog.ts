@@ -14,6 +14,7 @@ import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts'
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { scopeServices } from './metadata.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 /** The copied backlog-view conformance vault (`tests/backlog/fixtures/vault`). */
 export const backlogFixtures = resolve('tests/backlog/fixtures');
@@ -36,7 +37,7 @@ export async function backlogVault(files?: Record<string, string>) {
  * per call (fresh metadata cache and event bus). Returns the result and the recorded events.
  */
 export async function runBacklog(root: string, args: string[], flags: Record<string, string | boolean> = {}, options: { dryRun?: boolean; settings?: Record<string, unknown> } = {}) {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), []);
   registry.settings.configure({ backlog: options.settings ?? {} }, new Set(registry.origins.keys()));

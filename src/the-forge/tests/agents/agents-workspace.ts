@@ -12,6 +12,7 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { scopeServices } from '../support/metadata.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 /** The pinned docker-agent examples copied by scripts/vendor-docker-agent.mjs. */
 export const dockerAgentExamples = join(import.meta.dirname, 'fixtures/docker-agent/examples');
@@ -27,7 +28,7 @@ export async function agentsWorkspace() {
   const read = (path: string) => readFile(join(root, path), 'utf8');
   /** Runs `agents <args>` with `flags`; `settings` is plugins.settings, `dryRun` the invocation mode. */
   async function run(args: string[], flags: Record<string, string | boolean> = {}, options: { settings?: Record<string, unknown>; dryRun?: boolean } = {}) {
-    const registry = new Registry(), events = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [agentsPlugin], testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('agents reads no file dates'); } }), []);
     registry.settings.configure(options.settings ?? {}, new Set(registry.origins.keys()));

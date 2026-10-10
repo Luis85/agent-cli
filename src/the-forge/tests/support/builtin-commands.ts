@@ -10,6 +10,7 @@ import type { CorePlugin } from '../../src/application/plugins/core-plugins.ts';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
 import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
 import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 /**
  * Every command the bundle registers without user plugins, assembled like the composition root but with services
@@ -20,7 +21,7 @@ export function builtinCommands(): { registry: Registry; commands: Map<string, C
   const services = new Proxy({ loaded: { config: { paths: {} } } }, {
     get: (target, key) => key in target ? target[key as keyof typeof target] : unavailable,
   }) as unknown as WorkflowServices;
-  const registry = new Registry();
+  const registry = new Registry(skillFrontmatter);
   const contributions = (plugin: CorePlugin) => plugin.create(testHost());
   const plugins = [templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin].map(contributions);
   for (const generator of plugins.flatMap(plugin => plugin.generators ?? [])) registry.add(registry.generators, generator);

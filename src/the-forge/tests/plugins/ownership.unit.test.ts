@@ -6,6 +6,7 @@ import { Registry, validatePluginManifest, type CommandContext, type Plugin } fr
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { errorCatalog } from '../../src/domain/shared/error-catalog.ts';
 import { germanErrors } from '../../src/presentation/localization/errors.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 const manifest = (id: string) => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Ownership test', author: 'Test' });
 const plugin = (id: string, extra: Partial<Plugin> = {}): Plugin => ({ manifest: manifest(id), ...extra });
@@ -46,7 +47,7 @@ describe('event ownership', () => {
   });
 
   it('gives plugin commands and lifecycle hooks the owned channel, while host contexts keep the bus', async () => {
-    const bus = create(), registry = new Registry(), outcomes: string[] = [];
+    const bus = create(), registry = new Registry(skillFrontmatter), outcomes: string[] = [];
     const attempt = async (events: CommandContext['events'], label: string) => {
       try { await events.emit('vault.create', { path: 'x.md', kind: 'file', operation: 'created', revision: 'r', bytes: 1 }); outcomes.push(`${label}:emitted`); }
       catch (error) { outcomes.push(`${label}:${(error as { code: string }).code}`); }

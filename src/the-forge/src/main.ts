@@ -12,6 +12,7 @@ import { Workspace } from './application/workspace/workspace.ts';
 import { ScopedFiles, scopedCommitObserver } from './application/workspace/scoped-files.ts';
 import type { CommitObserver } from './application/workspace/ports.ts';
 import { Registry, type CommandContext } from './application/plugins/registry.ts';
+import { skillFrontmatter } from './infrastructure/plugins/skill-frontmatter.ts';
 import { ProjectService, projectScaffolderService, type ProjectScaffolder, type ProjectScaffolderLookup } from './application/projects/projects.ts';
 import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
@@ -60,7 +61,7 @@ const corePlugins = [
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   let result: Record<string, unknown>;
   let activeContext: Pick<CommandContext, 'workspaceRoot' | 'root' | 'project'> | undefined;
   let localizer = new Localizer();

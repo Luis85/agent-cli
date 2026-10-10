@@ -9,10 +9,11 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { reviewOptions } from '../../src/application/generation/controls.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events };
 };

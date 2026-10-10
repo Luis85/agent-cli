@@ -2,7 +2,10 @@ import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { defaultIssues, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 import { validateCommandMetadata } from './command-metadata.ts';
 import { errorPrefix, PluginCatalog } from './plugin-catalog.ts';
-import { skillIssues } from '../../domain/skills/skill.ts';
+import { skillIssues, type SkillFrontmatter } from '../../domain/skills/skill.ts';
+
+/** Reads the YAML frontmatter of a SKILL.md; composition injects a complete YAML parser. */
+export type SkillFrontmatterReader = (content: string) => SkillFrontmatter;
 
 export type PluginOrigin = 'core' | 'user';
 const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload', 'validateSettings'] as const;
@@ -15,7 +18,7 @@ const id = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
  * is an Agent Skill whose frontmatter name equals its id. Bundled core plugins may
  * own bare command, generator, skill and service ids, while their events stay in their own `<id>.*` namespace.
  */
-export function validateContributions(plugin: Record<string, unknown>, pluginId: string, origin: PluginOrigin): void {
+export function validateContributions(plugin: Record<string, unknown>, pluginId: string, origin: PluginOrigin, frontmatter: SkillFrontmatterReader): void {
   // Skill ids are Agent Skills folder names, which allow no dots: user plugins prefix them with `<id>-`.
   const inNamespace = (value: string, key?: typeof lists[number]) => value.startsWith(pluginId + (key === 'skills' ? '-' : '.'));
   for (const hook of hooks) ensure(plugin[hook] === undefined || typeof plugin[hook] === 'function', 'INVALID_PLUGIN', `${hook} must be a function.`);
@@ -34,7 +37,7 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
   for (const generator of (plugin.generators ?? []) as Record<string, unknown>[]) validateGenerator(generator);
   for (const skill of (plugin.skills ?? []) as Record<string, unknown>[]) {
     ensure(typeof skill.content === 'string', 'INVALID_PLUGIN', 'Invalid skill.');
-    const issues = skillIssues(skill.id as string, skill.content);
+    const issues = skillIssues(skill.id as string, frontmatter(skill.content));
     ensure(issues.length === 0, 'INVALID_PLUGIN', issues.join(' '));
   }
   ensure(plugin.provides === undefined || isRecord(plugin.provides), 'INVALID_PLUGIN', 'provides must map service ids to implementations.');

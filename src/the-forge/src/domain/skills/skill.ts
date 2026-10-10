@@ -21,34 +21,38 @@ export function targetRoots(target: string): string[] {
   return target === 'both' ? Object.values(skillTargets) : [skillTargets[target as SkillTarget]];
 }
 
-function unquoted(value: string): string {
-  const quoted = /^(["'])(.*)\1$/.exec(value);
-  return quoted ? quoted[2]! : value;
-}
+/** The YAML frontmatter of a SKILL.md: its parsed value, the YAML syntax error, or null when the file has none. */
+export type SkillFrontmatter = { value: unknown } | { error: string } | null;
 
-/** Top-level scalar keys of the leading YAML frontmatter; block scalars (`|`, `>`) read as their indicator. */
-function frontmatterKeys(content: string): Map<string, string> | undefined {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content);
-  if (!match) return undefined;
-  const keys = new Map<string, string>();
-  for (const line of match[1]!.split(/\r?\n/)) {
-    const entry = /^([A-Za-z][\w-]*):(?:\s+(.*))?$/.exec(line);
-    if (entry) keys.set(entry[1]!, unquoted((entry[2] ?? '').trim()));
-  }
-  return keys;
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+const text = (value: unknown, maximum: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
+
+/** Problems of the optional fields: `license`, `compatibility` (1-500 characters), `metadata`, `allowed-tools`. */
+function optionalIssues(id: string, frontmatter: Record<string, unknown>): string[] {
+  const { license, compatibility, metadata } = frontmatter, tools = frontmatter['allowed-tools'];
+  const issues: string[] = [];
+  if (license !== undefined && typeof license !== 'string') issues.push(`Skill ${id} frontmatter license must be a string.`);
+  if (compatibility !== undefined && !text(compatibility, 500)) issues.push(`Skill ${id} frontmatter compatibility must have 1-500 characters.`);
+  if (metadata !== undefined && !(isRecord(metadata) && Object.values(metadata).every(value => typeof value === 'string'))) issues.push(`Skill ${id} frontmatter metadata must map names to string values.`);
+  if (tools !== undefined && typeof tools !== 'string' && !(Array.isArray(tools) && tools.every(tool => typeof tool === 'string'))) issues.push(`Skill ${id} frontmatter allowed-tools must be a space-separated string or a list of tool names.`);
+  return issues;
 }
 
 /**
- * Specification problems of a contributed skill: the id is a valid skill name, and SKILL.md starts with
- * frontmatter whose `name` equals the id and whose `description` is present. Complete YAML validation of the
- * bundled skills, including description length and `metadata` values, runs in the test suite.
+ * Specification problems of a contributed skill (https://agentskills.io/specification): the id is a valid skill
+ * name, and SKILL.md starts with YAML frontmatter whose `name` equals the id, whose `description` has 1-1024
+ * characters, and whose optional `license`, `compatibility`, `metadata` and `allowed-tools` have their specified
+ * types. Other fields, such as client-specific extensions, are left to the agents that read them.
  */
-export function skillIssues(id: string, content: string): string[] {
+export function skillIssues(id: string, frontmatter: SkillFrontmatter): string[] {
   const issues: string[] = [];
   if (!isSkillName(id)) issues.push(`Skill id ${id} must be 1-64 lowercase letters, digits and single hyphens, as the folder name of an Agent Skill.`);
-  const keys = frontmatterKeys(content);
-  if (!keys) return [...issues, `Skill ${id} must start with YAML frontmatter.`];
-  if (keys.get('name') !== id) issues.push(`Skill ${id} frontmatter name must be ${id}.`);
-  if (!keys.get('description')) issues.push(`Skill ${id} frontmatter needs a description of what it does and when to use it.`);
-  return issues;
+  if (frontmatter === null) return [...issues, `Skill ${id} must start with YAML frontmatter.`];
+  if ('error' in frontmatter) return [...issues, `Skill ${id} frontmatter is not valid YAML: ${frontmatter.error}`];
+  if (!isRecord(frontmatter.value)) return [...issues, `Skill ${id} frontmatter must be a YAML mapping of fields.`];
+  const { name, description } = frontmatter.value;
+  if (name !== id) issues.push(`Skill ${id} frontmatter name must be ${id}.`);
+  if (typeof description !== 'string' || description.trim().length === 0) issues.push(`Skill ${id} frontmatter needs a description of what it does and when to use it.`);
+  else if (description.length > 1024) issues.push(`Skill ${id} frontmatter description must have at most 1024 characters.`);
+  return [...issues, ...optionalIssues(id, frontmatter.value)];
 }

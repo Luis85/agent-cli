@@ -19,6 +19,7 @@ import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import type { FakeAzureDevOps } from './azure-devops.ts';
 import { testHost } from './core-plugins.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 export const TOKEN_ENV = 'FORGE_TEST_AZURE_PAT';
 
@@ -36,7 +37,7 @@ export interface Invocation { dryRun?: boolean; env?: Record<string, string | un
  * and the JSON a CLI would print.
  */
 export async function invocation(root: string, connections: Record<string, unknown>, options: Invocation = {}) {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   const env = options.env ?? {};
   registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({

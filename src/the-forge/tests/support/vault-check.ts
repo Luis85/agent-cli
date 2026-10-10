@@ -10,6 +10,7 @@ import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { vaultCheckPlugin } from '../../src/plugins/vault-check/plugin.ts';
 import { testHost } from './core-plugins.ts';
 import { scopeServices } from './metadata.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 export interface VaultFinding { rule: string; severity: string; path: string; line: number | null; column: number | null; message: string; hint: string; suggestion?: string }
 interface VaultCheckResult {
@@ -22,7 +23,7 @@ interface VaultCheckResult {
  * root does: after `bases` unless `plugins` says otherwise, with `settings` as `plugins.settings`.
  */
 export async function vaultCommand(root: string, settings: Record<string, unknown> = {}, options: { plugins?: CorePlugin[]; language?: 'en' | 'de' } = {}) {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   registerCorePlugins(registry, events, options.plugins ?? [basesPlugin, vaultCheckPlugin], testHost({ skills: registrySkills(registry) }), []);
   await registry.configure(settings, async () => [], message => events.warn(message));

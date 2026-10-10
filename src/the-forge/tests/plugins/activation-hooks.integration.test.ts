@@ -10,6 +10,7 @@ import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-activation-')); });
@@ -27,7 +28,7 @@ const hooked = (id: string, extra: Partial<Plugin> = {}): Plugin => ({
 /** One CLI-like invocation: register, activate with persisted state, dispose. */
 async function invoke(plugins: Plugin[], options: { dryRun?: boolean; settings?: Record<string, string | null> } = {}) {
   calls.length = 0;
-  const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope()), registry = new Registry();
+  const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope()), registry = new Registry(skillFrontmatter);
   registerHostEvents(events);
   const workspace = new Workspace(files, new ObsidianDocuments(), events, options.dryRun ?? false, root);
   const state = new WorkspacePluginState(workspace, message => events.warn(message), async id => options.settings?.[id] ?? null);
@@ -114,7 +115,7 @@ describe('plugin activation hooks', () => {
   });
 
   it('rejects non-function hooks at registration and hooks that return values at activation', async () => {
-    expect(() => new Registry().register({ manifest: manifest('alpha'), onUserEnable: 'yes' } as unknown as Plugin, new EventBus(new NodeEventScope()))).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
+    expect(() => new Registry(skillFrontmatter).register({ manifest: manifest('alpha'), onUserEnable: 'yes' } as unknown as Plugin, new EventBus(new NodeEventScope()))).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
     const result = await invoke([hooked('alpha', { onUserEnable: (() => () => {}) as unknown as Plugin['onUserEnable'] })]);
     expect(result.failure).toMatchObject({ code: 'INVALID_PLUGIN', message: 'onUserEnable must return nothing.' });
   });

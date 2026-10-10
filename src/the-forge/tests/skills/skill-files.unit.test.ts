@@ -5,6 +5,7 @@ import { bundledSkills } from '../../src/plugins/skills/infrastructure/bundled-s
 import { agentsSkill } from '../../src/plugins/agents/infrastructure/skill.ts';
 import { backlogSkill } from '../../src/plugins/backlog/infrastructure/skill.ts';
 import { skillIssues } from '../../src/domain/skills/skill.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -39,7 +40,7 @@ describe('authored Agent Skills', () => {
   it.each(folders.map(entry => entry.name))('%s follows the Agent Skills specification', folder => {
     const content = readFileSync(`skills/${folder}/SKILL.md`, 'utf8');
     expect(specificationIssues(folder, content)).toEqual([]);
-    expect(skillIssues(folder, content)).toEqual([]);
+    expect(skillIssues(folder, skillFrontmatter(content))).toEqual([]);
   });
 
   it('registers each authored folder under its own name, as plugins contribute skills in the same shape', async () => {
