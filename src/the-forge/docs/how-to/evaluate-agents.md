@@ -14,7 +14,7 @@ npm run eval -- --task recover-stale-revision --task links-rename-note
 npm run eval -- --category error-recovery
 ```
 
-The reference driver (the default) replays each task's reference command sequence and requires three things: at least one check fails on the prepared fixture, so no check passes vacuously; every reference step succeeds, or fails with the code it expects; and afterwards every check passes, with answer checks matched against the task's reference answer. It prints a JSON summary and exits 1 when any task fails. `npm run check` runs the same driver over every task in `tests/evals/reference.e2e.test.ts`, which also requires that tasks use only commands the built executable registers.
+The reference driver (the default) replays each task's reference command sequence and requires four things: at least one check fails on the prepared fixture; every reference step succeeds, or fails with the code it expects; every text an answer check requires (`contains` and `items`) occurs in the output of the reference steps, ignoring case, so a wrong reference answer fails instead of passing against itself; and afterwards every check passes, with answer checks matched against the task's reference answer. The first rule proves little for a question task: its answer check always fails before the run, because there is no answer yet, so its state checks may all pass on the prepared fixture. The reference output rule is what keeps such an answer honest. It prints a JSON summary and exits 1 when any task fails. `npm run check` runs the same driver over every task in `tests/evals/reference.e2e.test.ts`, which also requires that tasks use only commands the built executable registers.
 
 ## Measure Claude Code
 
@@ -81,9 +81,10 @@ Arguments after `node bin/forge.js` omit `--root` and `--json`. In prompts and a
 | `{command, data?}` | The Forge command succeeds, and its `data` meets the pointer assertion |
 | `{command, code}` | The Forge command fails with that code |
 | `{unchanged: path}` | The file's bytes equal those after setup |
-| `{answer: {contains}}` | The final answer mentions every listed text, ignoring case |
+| `{answer: {contains, notContains}}` | The final answer mentions every `contains` text and none of the `notContains` texts, ignoring case |
+| `{answer: {items, ignore?}}` | An exact set for list questions: the final answer names every listed path and no other file path of the fixture (outside hidden folders), ignoring case, except the `ignore` paths such as the note the question is about. An answer that lists every path fails |
 
-Prefer state checks over answer checks, check that unrelated content survived an edit, and add a check that fails on the prepared fixture. Validate the format with `npm run eval -- --task <id>`; the task schema is `taskSchema` in `scripts/eval/tasks.mjs`.
+Prefer state checks over answer checks, use `items` for questions whose answer is a list of notes, check that unrelated content survived an edit, and add a check that fails on the prepared fixture. Validate the format with `npm run eval -- --task <id>`; the task schema is `taskSchema` in `scripts/eval/tasks.mjs`.
 
 ## Coverage
 

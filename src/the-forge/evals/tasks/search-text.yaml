@@ -8,4 +8,4 @@ reference:
   - [search, agreed on the budget]
 answer: Meetings/2026-10-01.md
 checks:
-  - answer: { contains: [Meetings/2026-10-01.md] }
+  - answer: { items: [Meetings/2026-10-01.md] }

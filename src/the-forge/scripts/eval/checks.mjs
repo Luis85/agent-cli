@@ -5,6 +5,7 @@ import { parse } from 'yaml';
 
 /**
  * @typedef {import('./tasks.mjs').Check} Check
+ * @typedef {import('./tasks.mjs').AnswerAssertion} AnswerAssertion
  * @typedef {import('./tasks.mjs').DataAssertion} DataAssertion
  * @typedef {import('./workspace.mjs').EvalWorkspace} EvalWorkspace
  * @typedef {{ check: string, passed: boolean, detail?: string }} CheckResult
@@ -61,14 +62,32 @@ function frontmatter(text) {
 }
 
 /**
+ * An answer check, ignoring letter case: `contains` must all occur and `notContains` none. `items` is an exact set
+ * of vault paths: the answer names each one and no other path of the fixture, except the `ignore` paths (such as
+ * the note the question is about), so an answer that lists every path fails.
+ * @param {EvalWorkspace} workspace @param {AnswerAssertion} check @param {string} answer
+ * @returns {string | undefined} the failure, if any
+ */
+export function answerFailure(workspace, check, answer) {
+  const text = answer.toLowerCase();
+  const missing = [...check.contains ?? [], ...check.items ?? []].filter(item => !text.includes(item.toLowerCase()));
+  if (missing.length) return `the answer does not mention ${missing.join(', ')}`;
+  const excluded = (check.notContains ?? []).filter(item => text.includes(item.toLowerCase()));
+  if (excluded.length) return `the answer mentions ${excluded.join(', ')}`;
+  if (check.items === undefined) return undefined;
+  // Remove the expected and ignored paths first, so a path that is part of a longer one is not counted twice.
+  const named = [...check.items, ...check.ignore ?? []].map(item => item.toLowerCase()).sort((a, b) => b.length - a.length);
+  const rest = named.reduce((remaining, item) => remaining.replaceAll(item, ' '), text);
+  const extra = workspace.vaultPaths.filter(path => !named.includes(path.toLowerCase()) && rest.includes(path.toLowerCase()));
+  return extra.length ? `the answer also names ${extra.join(', ')}, beyond exactly ${check.items.join(', ')}` : undefined;
+}
+
+/**
  * @param {EvalWorkspace} workspace @param {Check} check @param {string} answer
  * @returns {Promise<string | undefined>} the failure, if any
  */
 async function failure(workspace, check, answer) {
-  if ('answer' in check) {
-    const missing = check.answer.contains.filter(text => !answer.toLowerCase().includes(text.toLowerCase()));
-    return missing.length ? `the answer does not mention ${missing.join(', ')}` : undefined;
-  }
+  if ('answer' in check) return answerFailure(workspace, check.answer, answer);
   if ('unchanged' in check) {
     const before = workspace.prepared(check.unchanged);
     const after = await readFile(join(workspace.root, check.unchanged)).catch(() => undefined);
@@ -93,7 +112,10 @@ async function failure(workspace, check, answer) {
 
 /** A short label for reports. @param {Check} check */
 export function describeCheck(check) {
-  if ('answer' in check) return `answer mentions ${check.answer.contains.join(', ')}`;
+  if ('answer' in check) {
+    const { contains = [], notContains = [], items } = check.answer;
+    return [items ? `answer names exactly ${items.join(', ')}` : '', contains.length ? `answer mentions ${contains.join(', ')}` : '', notContains.length ? `not ${notContains.join(', ')}` : ''].filter(Boolean).join('; ');
+  }
   if ('unchanged' in check) return `${check.unchanged} unchanged`;
   if ('command' in check) return `${check.command.join(' ')}${check.code ? ` fails with ${check.code}` : ''}${check.data ? ` ${check.data.pointer}` : ''}`;
   return `${check.file}${check.exists === false ? ' absent' : ''}${check.contains ? ' contains' : ''}${check.frontmatter ? ' frontmatter' : ''}${check.data ? ` ${check.data.pointer}` : ''}`;

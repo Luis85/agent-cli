@@ -11,7 +11,7 @@ import { asStep, evalsRoot, projectRoot } from './tasks.mjs';
  * @typedef {{ status: number | null, body: any, stdout: string }} ForgeResult
  * @typedef {{
  *   root: string, forge: (args: Args) => Promise<ForgeResult>, expand: (text: string) => Promise<string>,
- *   prepared: (path: string) => Buffer | undefined, dispose: () => Promise<void>,
+ *   prepared: (path: string) => Buffer | undefined, vaultPaths: string[], dispose: () => Promise<void>,
  * }} EvalWorkspace
  */
 
@@ -99,7 +99,9 @@ export async function createWorkspace(task, options = {}) {
     /** @type {Map<string, Buffer>} */
     const prepared = new Map();
     for (const path of await files(root)) if (!path.startsWith('bin/')) prepared.set(path, await readFile(join(root, path)));
-    return { root, forge, expand, prepared: path => prepared.get(path), dispose: () => rm(root, { recursive: true, force: true }) };
+    // The fixture's own files outside hidden folders: the paths an answer about the vault may name.
+    const vaultPaths = [...initial.keys()].filter(path => !path.split('/').some(segment => segment.startsWith('.')) && !path.startsWith('bin/')).sort();
+    return { root, forge, expand, prepared: path => prepared.get(path), vaultPaths, dispose: () => rm(root, { recursive: true, force: true }) };
   } catch (error) {
     await rm(root, { recursive: true, force: true });
     throw error;

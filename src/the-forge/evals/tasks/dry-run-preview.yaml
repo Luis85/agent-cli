@@ -10,7 +10,7 @@ reference:
   - [rename, People/Ada.md, Ada Lovelace, --dry-run]
 answer: Meetings/2026-10-01.md and Projects/Alpha.md would be rewritten.
 checks:
-  - answer: { contains: [Meetings/2026-10-01.md, Projects/Alpha.md] }
+  - answer: { items: [Meetings/2026-10-01.md, Projects/Alpha.md], ignore: [People/Ada.md] }
   - unchanged: People/Ada.md
   - unchanged: Projects/Alpha.md
   - file: People/Ada Lovelace.md

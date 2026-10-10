@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { categories, commandIds, loadTasks, taskSchema } from '../../scripts/eval/tasks.mjs';
 import { summarizeStream } from '../../scripts/eval/claude.mjs';
-import { describeCheck } from '../../scripts/eval/checks.mjs';
+import { answerFailure, describeCheck } from '../../scripts/eval/checks.mjs';
+import type { EvalWorkspace } from '../../scripts/eval/workspace.mjs';
 
 const tasks = loadTasks();
 
@@ -31,6 +32,31 @@ describe('agent evaluation task files', () => {
     expect(commandIds(stale)).toEqual(['edit', 'read']);
     expect(commandIds(tasks.find(task => task.id === 'links-fix-unresolved')!)).toEqual(['links', 'edit']);
     expect(describeCheck({ command: ['links', 'unresolved'], data: { pointer: '/links', length: 0 } })).toBe('links unresolved /links');
+  });
+});
+
+describe('answer checks', () => {
+  const workspace = { vaultPaths: ['Home.md', 'Meetings/2026-10-01.md', 'People/Ada.md', 'Projects/Alpha.md', 'Projects/Beta.md'] } as unknown as EvalWorkspace;
+  const items = { items: ['Projects/Alpha.md', 'Projects/Beta.md'] };
+
+  it('accept exactly the listed paths, ignoring letter case and the ignored paths', () => {
+    expect(answerFailure(workspace, items, 'projects/alpha.md and Projects/Beta.md')).toBeUndefined();
+    expect(answerFailure(workspace, { ...items, ignore: ['People/Ada.md'] }, 'People/Ada.md is linked from Projects/Alpha.md and Projects/Beta.md')).toBeUndefined();
+  });
+
+  it('reject an answer that lists every path, misses one, or mentions an excluded text', () => {
+    expect(answerFailure(workspace, items, workspace.vaultPaths.join(', '))).toBe('the answer also names Home.md, Meetings/2026-10-01.md, People/Ada.md, beyond exactly Projects/Alpha.md, Projects/Beta.md');
+    expect(answerFailure(workspace, items, 'Projects/Alpha.md')).toBe('the answer does not mention Projects/Beta.md');
+    expect(answerFailure(workspace, { contains: ['active'], notContains: ['planned'] }, 'Alpha is active; Beta is planned.')).toBe('the answer mentions planned');
+    expect(describeCheck({ answer: { ...items, contains: ['x'], notContains: ['y'] } })).toBe('answer names exactly Projects/Alpha.md, Projects/Beta.md; answer mentions x; not y');
+  });
+
+  it('need contains or items, and ignore only with items', () => {
+    const validate = new Ajv2020({ strict: true }).compile(taskSchema);
+    const task = { id: 'x-task', title: 'X', category: 'reading', prompt: 'Read the note and answer.', fixture: 'vault', reference: [['read', 'Home.md']], answer: 'x' };
+    expect(validate({ ...task, checks: [{ answer: { notContains: ['y'] } }] })).toBe(false);
+    expect(validate({ ...task, checks: [{ answer: { contains: ['x'], ignore: ['Home.md'] } }] })).toBe(false);
+    expect(validate({ ...task, checks: [{ answer: { items: ['Home.md'], ignore: ['Ideas.md'], notContains: ['y'] } }] })).toBe(true);
   });
 });
 

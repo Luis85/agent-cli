@@ -44,4 +44,12 @@ describe('agent evaluation tasks under the reference driver', () => {
     const wrongStep: Task = { ...task, id: 'wrong-step', reference: [{ run: ['read', 'Missing.md'] }] };
     expect((await runReference(wrongStep, { distribution })).failures[0]).toContain('read Missing.md: expected success, got NOT_FOUND');
   }, 120_000);
+
+  it('rejects a reference answer that the reference commands do not support, although it passes its own check', async () => {
+    const [list, property] = loadTasks('tests/evals/fixtures/wrong-tasks');
+    const wrongList = await runReference(list!, { distribution });
+    expect(wrongList.checks.every(check => check.passed)).toBe(true);
+    expect(wrongList.failures).toEqual(['the reference output does not support the answer "Projects/Gamma.md"']);
+    expect((await runReference(property!, { distribution })).failures).toEqual(['the reference output does not support the answer "paused"']);
+  }, 120_000);
 });

@@ -8,4 +8,4 @@ reference:
   - [search, "^# ", --regex, --tag, project]
 answer: Projects/Alpha.md, Projects/Beta.md
 checks:
-  - answer: { contains: [Projects/Alpha.md, Projects/Beta.md] }
+  - answer: { items: [Projects/Alpha.md, Projects/Beta.md] }

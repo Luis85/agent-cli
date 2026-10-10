@@ -14,7 +14,8 @@ export const evalsRoot = join(projectRoot, 'evals');
  * @typedef {{ file: string, exists?: boolean, contains?: string[], notContains?: string[], frontmatter?: Record<string, unknown>, data?: DataAssertion }} FileCheck
  * @typedef {{ command: Args, code?: string, data?: DataAssertion }} CommandCheck
  * @typedef {{ unchanged: string }} UnchangedCheck
- * @typedef {{ answer: { contains: string[] } }} AnswerCheck
+ * @typedef {{ contains?: string[], notContains?: string[], items?: string[], ignore?: string[] }} AnswerAssertion
+ * @typedef {{ answer: AnswerAssertion }} AnswerCheck
  * @typedef {FileCheck | CommandCheck | UnchangedCheck | AnswerCheck} Check
  * @typedef {{
  *   id: string, title: string, category: string, prompt: string, fixture: string,
@@ -41,7 +42,10 @@ const check = { oneOf: [
   },
   { type: 'object', additionalProperties: false, required: ['command'], properties: { command: args, code: { type: 'string' }, data } },
   { type: 'object', additionalProperties: false, required: ['unchanged'], properties: { unchanged: { type: 'string' } } },
-  { type: 'object', additionalProperties: false, required: ['answer'], properties: { answer: { type: 'object', additionalProperties: false, required: ['contains'], properties: { contains: texts } } } },
+  { type: 'object', additionalProperties: false, required: ['answer'], properties: { answer: {
+    type: 'object', additionalProperties: false, anyOf: [{ required: ['contains'], properties: { contains: texts } }, { required: ['items'], properties: { items: texts } }], dependentRequired: { ignore: ['items'] },
+    properties: { contains: texts, notContains: texts, items: texts, ignore: texts },
+  } } },
 ] };
 
 /** JSON Schema 2020-12 of one task file. */

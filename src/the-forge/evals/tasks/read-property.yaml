@@ -9,5 +9,5 @@ reference:
   - [read, Projects/Alpha.md]
 answer: Alpha is active and owned by People/Ada.
 checks:
-  - answer: { contains: [active, Ada] }
+  - answer: { contains: [active, Ada], notContains: [planned] }
   - unchanged: Projects/Alpha.md
