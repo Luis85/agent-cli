@@ -20,7 +20,8 @@ const ownedDirectories = ['docs', 'licenses', 'types'];
 // Replace only generated assets. User data (especially context.json), plugins,
 // templates and configuration survive rebuilds.
 for (const directory of [...ownedDirectories, 'skills', 'examples']) await rm(`bin/data/${directory}`, { recursive: true, force: true });
-await cp('docs', 'bin/data/docs', { recursive: true });
+// Dated product research informs maintainers; it is not part of the runtime contract.
+await cp('docs', 'bin/data/docs', { recursive: true, filter: source => !/^docs[\\/]research(?:[\\/]|$)/.test(source) });
 const docsIndex = await readFile('bin/data/docs/index.md', 'utf8');
 await writeFile('bin/data/docs/index.md', docsIndex.replaceAll('(../bin/skills/', '(../../skills/'));
 await mkdir('bin/data/licenses', { recursive: true });
