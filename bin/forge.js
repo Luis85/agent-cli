@@ -95,8 +95,6 @@ const errorCatalog = {
   BASE_EVALUATION_ERROR: entry("input", "A Bases expression failed while evaluating a file.", "Check the view, file and expression named in the message."),
   BASE_VIEW_NOT_FOUND: entry("input", "The requested Bases view does not exist.", "Run bases inspect <file.base> and pass an existing --view."),
   BASE_CONTEXT_NOT_FOUND: entry("input", "The context file is not an indexed vault file.", "Pass an existing vault file to --context."),
-  BASE_INDEX_ERROR: entry("input", "A vault file could not be indexed.", "Fix or validate the file named in the message."),
-  AMBIGUOUS_BASE_LINK: entry("input", "An internal link matches several files.", "Use a longer link path that identifies one file."),
   INVALID_BASE_PROPERTY_TYPES: entry("input", "The Obsidian property type registry is invalid.", "Fix .obsidian/types.json so it is a JSON object of property types."),
   UNSUPPORTED_BASE_PROPERTY_TYPE: entry("input", "An Obsidian property type is not supported.", "Use a supported type in .obsidian/types.json."),
   // Configuration, setup and projects
@@ -150,6 +148,7 @@ const errorCatalog = {
   DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
   PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix user plugin command, generator, skill, event and service ids with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle."),
   PLUGIN_SERVICE_MISSING: entry("input", "A plugin requires a service that no enabled plugin provides, or uses one it did not declare.", "Enable the plugin that provides the service named in error.details.service (plugins lists providers), or declare it in the plugin's requires."),
+  PLUGIN_UNAVAILABLE: entry("input", "The command belongs to a core plugin that is disabled.", "error.details.reason says why; enable the plugin it names (remove it from plugins.disabled in bin/config.json), then rerun. Run plugins to see each plugin's state and reason."),
   PLUGIN_SERVICE_CYCLE: entry("input", "Plugin service requirements form a cycle.", "Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
@@ -1464,8 +1463,8 @@ function activationOrder(nodes) {
 function pluginServices(node2, providers) {
   return {
     get(id2) {
-      const declared2 = (node2.requires ?? []).includes(id2) || Object.hasOwn(node2.provides ?? {}, id2);
-      ensure(declared2, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} must declare service ${id2} in requires before using it.`, { plugin: node2.manifest.id, service: id2 });
+      const declared = (node2.requires ?? []).includes(id2) || Object.hasOwn(node2.provides ?? {}, id2);
+      ensure(declared, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} must declare service ${id2} in requires before using it.`, { plugin: node2.manifest.id, service: id2 });
       const provider = providers.get(id2);
       ensure(provider, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} requires service ${id2}, which no enabled plugin provides.`, { plugin: node2.manifest.id, service: id2 });
       return provider.provides[id2];
@@ -1532,6 +1531,7 @@ class Registry {
   /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
   origins = /* @__PURE__ */ new Map();
   disabled = [];
+  disabledReasons = /* @__PURE__ */ new Map();
   catalog = new PluginCatalog();
   settings = new PluginSettings();
   cleanups = [];
@@ -1569,11 +1569,31 @@ class Registry {
     this.plugins.push(plugin2);
     this.origins.set(pluginId, origin);
   }
-  /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
-  disable(manifest) {
+  /**
+   * A bundled core plugin that contributes nothing: listed by `plugins` with `reason`. `commands` are the command ids
+   * it would have contributed, when known, so invoking one reports PLUGIN_UNAVAILABLE instead of UNKNOWN_COMMAND.
+   */
+  disable(manifest, reason, commands2 = []) {
     validatePluginManifest(manifest, "core");
     ensure(!this.origins.has(manifest.id) && !this.disabled.some((entry2) => entry2.id === manifest.id), "DUPLICATE_PLUGIN", manifest.id);
     this.disabled.push(manifest);
+    this.disabledReasons.set(manifest.id, { reason, commands: [...commands2] });
+  }
+  /** Why a disabled core plugin contributes nothing. */
+  disabledReason(pluginId) {
+    return this.disabledReasons.get(pluginId)?.reason;
+  }
+  /**
+   * A registered command. A command a disabled core plugin would have contributed fails with PLUGIN_UNAVAILABLE and
+   * `details` `{command, plugin, reason}`; any other unknown id with UNKNOWN_COMMAND.
+   */
+  resolveCommand(commandId) {
+    const command2 = this.commands.get(commandId);
+    if (command2) return command2;
+    for (const [plugin2, { reason, commands: commands2 }] of this.disabledReasons) {
+      if (commands2.includes(commandId)) throw forgeError("PLUGIN_UNAVAILABLE", `Command ${commandId} is unavailable because the core plugin ${plugin2} is disabled: ${reason}`, { command: commandId, plugin: plugin2, reason });
+    }
+    throw forgeError("UNKNOWN_COMMAND", `Unknown command ${commandId}. Run help or schema.`);
   }
   /** The context a plugin's hooks, commands and generators run with. */
   pluginContext(plugin2, context, events2) {
@@ -19835,8 +19855,8 @@ function candidates$1(node2, source, value2, pairs2) {
 function replaceInYamlStrings(yaml, document2, replacements) {
   const targets = [];
   for (const [node2, { path, keys }] of stringScalars(document2)) {
-    const indexes = replacements.flatMap((replacement2, index2) => keys.includes(replacement2.key) ? [index2] : []);
-    if (indexes.length) targets.push({ path, node: node2, replacements: indexes });
+    const indexes2 = replacements.flatMap((replacement2, index2) => keys.includes(replacement2.key) ? [index2] : []);
+    if (indexes2.length) targets.push({ path, node: node2, replacements: indexes2 });
   }
   const expected = document2.clone();
   const applied = [];
@@ -20112,21 +20132,28 @@ function registerCorePlugins(registry2, events2, plugins, host, disabled) {
   const unknown2 = disabled.filter((id2) => !ids.includes(id2));
   ensure(unknown2.length === 0, "INVALID_PLUGIN_CONFIG", `plugins.disabled names only bundled core plugins (${ids.join(", ")}); remove ${unknown2.join(", ")}. Disable a user plugin by removing it from plugins.enabled.`);
   const enabled = new Map(plugins.filter((plugin2) => !disabled.includes(plugin2.manifest.id)).map((plugin2) => [plugin2, plugin2.create(host)]));
+  const cascaded = /* @__PURE__ */ new Map();
   for (let changed = true; changed; ) {
     const provided = new Set([...enabled.values()].flatMap((contributions) => Object.keys(contributions.provides ?? {})));
     changed = false;
     for (const [plugin2, contributions] of enabled) {
-      if ((contributions.requires ?? []).some((service) => !provided.has(service))) {
-        enabled.delete(plugin2);
-        changed = true;
-      }
+      const missing2 = (contributions.requires ?? []).find((service) => !provided.has(service));
+      if (missing2 === void 0) continue;
+      enabled.delete(plugin2);
+      changed = true;
+      cascaded.set(plugin2, { reason: missingServiceReason(missing2, plugins, enabled), commands: (contributions.commands ?? []).map((command2) => command2.id) });
     }
   }
   for (const plugin2 of plugins) {
-    const contributions = enabled.get(plugin2);
-    if (contributions === void 0) registry2.disable(plugin2.manifest);
-    else registry2.register({ ...contributions, manifest: plugin2.manifest }, events2, "core");
+    const contributions = enabled.get(plugin2), cascade = cascaded.get(plugin2);
+    if (contributions !== void 0) registry2.register({ ...contributions, manifest: plugin2.manifest }, events2, "core");
+    else if (cascade !== void 0) registry2.disable(plugin2.manifest, cascade.reason, cascade.commands);
+    else registry2.disable(plugin2.manifest, "Listed in plugins.disabled.");
   }
+}
+function missingServiceReason(service, plugins, enabled) {
+  const provider = plugins.find((plugin2) => service.startsWith(`${plugin2.manifest.id}.`) && !enabled.has(plugin2));
+  return provider === void 0 ? `Requires service ${service}, which no enabled core plugin provides.` : `Requires service ${service}; its provider ${provider.manifest.id} is disabled.`;
 }
 function registrySkills(registry2) {
   return { list: () => [...registry2.skills.values()], get: (id2) => registry2.skills.get(id2) };
@@ -26311,6 +26338,99 @@ function allTags(cache) {
   if (!cache) return [];
   return [.../* @__PURE__ */ new Set([...(cache.tags ?? []).map((item) => item.tag), ...frontmatterTags(cache.frontmatter)])];
 }
+const external = (target) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target);
+const isExternalLink = external;
+function linkIndex(paths2, aliases = /* @__PURE__ */ new Map()) {
+  const lower = /* @__PURE__ */ new Map(), suffixes = /* @__PURE__ */ new Map(), aliasKeys = /* @__PURE__ */ new Map();
+  const add = (map2, key, position2) => {
+    const positions2 = map2.get(key);
+    if (!positions2) map2.set(key, [position2]);
+    else if (positions2.at(-1) !== position2) positions2.push(position2);
+  };
+  for (const [position2, path] of paths2.entries()) {
+    const folded = path.toLowerCase();
+    add(lower, folded, position2);
+    for (let slash = folded.indexOf("/"); slash >= 0; slash = folded.indexOf("/", slash + 1)) add(suffixes, folded.slice(slash + 1), position2);
+    for (const alias of aliases.get(path) ?? []) add(aliasKeys, alias.toLowerCase(), position2);
+  }
+  return { paths: paths2, exact: new Set(paths2), lower, suffixes, aliases: aliasKeys };
+}
+function folderOf$1(path) {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? "." : slash === 0 ? "/" : path.slice(0, slash);
+}
+function joinPath(folder, target) {
+  const parts = [];
+  for (const part of `${folder}/${target}`.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
+    else parts.push(part);
+  }
+  const joined = parts.join("/") || ".";
+  return target.endsWith("/") ? `${joined}/` : joined;
+}
+function lookup(index2, keys, spelling) {
+  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
+  return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
+}
+function matched(found, linkpath, via) {
+  if (found.length === 1) return { status: "resolved", path: found[0], via };
+  if (found.length > 1) return { status: "unresolved", linkpath, reason: "ambiguous", via, candidates: found };
+  return void 0;
+}
+function resolveLinkpath(index2, link2, source, options2 = {}) {
+  let target = parseLinktext(link2).path;
+  if (!target) return { status: "resolved", path: source, via: "path" };
+  if (external(target)) return { status: "external" };
+  target = target.replace(/^\//, "");
+  const relative = options2.relative === true;
+  const local = joinPath(folderOf$1(source), target);
+  const candidates2 = relative ? [local, target] : [target, local];
+  for (const candidate of candidates2) {
+    for (const spelling of [candidate, `${candidate}.md`]) {
+      if (index2.exact.has(spelling)) return { status: "resolved", path: spelling, via: "path" };
+    }
+  }
+  for (const candidate of candidates2) {
+    const result = matched(lookup(index2, index2.lower, candidate), target, "path");
+    if (result) return result;
+  }
+  if (relative || target.startsWith("../")) return { status: "unresolved", linkpath: target, reason: "missing" };
+  const suffix = matched(lookup(index2, index2.suffixes, target), target, "path");
+  if (suffix) return suffix;
+  const alias = options2.aliases ? matched([...new Set(index2.aliases.get(target.toLowerCase()) ?? [])].map((position2) => index2.paths[position2]), target, "alias") : void 0;
+  return alias ?? { status: "unresolved", linkpath: target, reason: "missing" };
+}
+const folderParts = (path) => path.split("/").slice(0, -1);
+function closestCandidate(candidates2, source) {
+  const from = folderParts(source);
+  const distance = (path) => {
+    const to = folderParts(path);
+    let common = 0;
+    while (common < from.length && common < to.length && from[common] === to[common]) common++;
+    return from.length - common + to.length - common;
+  };
+  const ranked = candidates2.map((path) => ({ path, distance: distance(path), depth: path.split("/").length }));
+  ranked.sort((a, b) => a.distance - b.distance || a.depth - b.depth || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return ranked[0].path;
+}
+function closestDestination(resolution, source) {
+  if (resolution.status === "resolved" && resolution.via === "path") return resolution.path;
+  if (resolution.status === "unresolved" && resolution.reason === "ambiguous" && resolution.via === "path") return closestCandidate(resolution.candidates, source);
+  return null;
+}
+function fileToLinktext(index2, path, source, omitMdExtension = true) {
+  const spelling = (value2) => omitMdExtension && value2.toLowerCase().endsWith(".md") ? value2.slice(0, -3) : value2;
+  const resolvesTo2 = (link2) => {
+    if (parseLinktext(link2).path !== link2 || !link2) return false;
+    const result = resolveLinkpath(index2, link2, source);
+    return result.status === "resolved" && result.path === path;
+  };
+  for (const candidate of [spelling(path.slice(path.lastIndexOf("/") + 1)), spelling(path)]) {
+    if (resolvesTo2(candidate)) return candidate;
+  }
+  return path;
+}
 const pendingFileReads$1 = 16;
 const isMarkdown = (path) => path.toLowerCase().endsWith(".md");
 function typedLinks(value2, source, cache) {
@@ -26318,17 +26438,25 @@ function typedLinks(value2, source, cache) {
     const match = /^\[\[([^\]]+)\]\]$/.exec(value2);
     if (!match) return value2;
     const [target, display] = match[1].split("|");
-    return frontmatterLink(target, display, cache.getFirstLinkpathDest(target, source));
+    return frontmatterLink(target, display, cache.getClosestLinkpathDest(target, source));
   }
   if (Array.isArray(value2)) return value2.map((item) => typedLinks(item, source, cache));
   if (isRecord(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source, cache)]));
   return value2;
 }
-function baseLink({ reference, resolution }, source) {
-  if (resolution.status === "unresolved" && resolution.reason === "ambiguous" && resolution.via === "path") {
-    throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${resolution.linkpath} in ${source} matches multiple files: ${resolution.candidates.join(", ")}`);
+function baseLink({ reference, resolution }, source, warnings) {
+  const resolvedPath = closestDestination(resolution, source);
+  if (resolution.status === "unresolved" && resolution.reason === "ambiguous" && resolvedPath !== null) {
+    warnings.push({
+      code: "ambiguous-link",
+      path: source,
+      link: resolution.linkpath,
+      candidates: resolution.candidates,
+      resolvedPath,
+      message: `Link ${resolution.linkpath} in ${source} matches ${resolution.candidates.join(", ")}; it resolves to the closest, ${resolvedPath}.`
+    });
   }
-  return { path: reference.link, resolvedPath: resolution.status === "resolved" && resolution.via === "path" ? resolution.path : null };
+  return { path: reference.link, resolvedPath };
 }
 async function mapInOrder(items, limit, map2) {
   const results = [], failures = /* @__PURE__ */ new Map();
@@ -26347,12 +26475,16 @@ async function mapInOrder(items, limit, map2) {
   if (failures.size > 0) throw failures.get(Math.min(...failures.keys()));
   return results;
 }
-function baseFile(path, cache, problems) {
-  if (!isMarkdown(path)) return { path, properties: {}, links: [], embeds: [], tags: [], backlinks: [] };
+function baseFile(path, cache, problems, warnings) {
+  const bare = { path, properties: {}, links: [], embeds: [], tags: [], backlinks: [] };
+  if (!isMarkdown(path)) return bare;
   const problem = problems.get(path);
-  if (problem !== void 0) throw forgeError("BASE_INDEX_ERROR", `Cannot index ${path}: ${problem}`);
+  if (problem !== void 0) {
+    warnings.push({ code: "unparseable-note", path, message: `${path} cannot be parsed and is indexed without properties, links or tags: ${problem}` });
+    return bare;
+  }
   const references = cache.references(path), metadata2 = cache.getFileCache(path);
-  const links = references.map((item) => baseLink(item, path));
+  const links = references.map((item) => baseLink(item, path, warnings));
   const embeds = links.filter((_, position2) => {
     const item = references[position2];
     return item.kind === "embed" || item.kind === "frontmatter" && item.reference.embed === true;
@@ -26361,18 +26493,30 @@ function baseFile(path, cache, problems) {
 }
 async function indexBaseFiles(cache, dates) {
   const problems = new Map(cache.issues().map((issue2) => [issue2.path, issue2.message]));
-  const indexed2 = cache.files().map((path) => baseFile(path, cache, problems));
-  const result = await mapInOrder(indexed2, pendingFileReads$1, async (file) => {
+  const warnings = [];
+  const indexed2 = cache.files().map((path) => baseFile(path, cache, problems, warnings));
+  const files = await mapInOrder(indexed2, pendingFileReads$1, async (file) => {
     const { size, ctime, mtime } = await dates(file.path);
     return { ...file, size, ctime, mtime };
   });
-  const byPath = new Map(result.map((file) => [file.path, file]));
-  for (const source of result) {
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  for (const source of files) {
     for (const target of new Set(source.links?.map((link2) => link2.resolvedPath).filter((path) => Boolean(path)))) {
       byPath.get(target)?.backlinks?.push({ path: source.path, resolvedPath: source.path });
     }
   }
-  return result;
+  return { files, warnings };
+}
+const indexes = /* @__PURE__ */ new WeakMap();
+function sharedBaseIndex(cache, dates) {
+  const cached2 = indexes.get(cache);
+  if (cached2 !== void 0 && cached2.files === cache.files()) return cached2.index;
+  const index2 = indexBaseFiles(cache, dates);
+  indexes.set(cache, { files: cache.files(), index: index2 });
+  index2.catch(() => {
+    if (indexes.get(cache)?.index === index2) indexes.delete(cache);
+  });
+  return index2;
 }
 async function basePropertyTypes(files) {
   let data;
@@ -26526,9 +26670,10 @@ class NodeBasesQueryEngine {
         "Community-plugin functions and view-specific query behavior are not loaded.",
         "Display columns, summaries and presentation settings do not change the returned file list.",
         "Dot-prefixed paths, node_modules, symlinks and Forge temporary/lock files are excluded.",
-        "Links resolve by path through the kernel metadata cache; ambiguous basename links fail explicitly and alias-only links stay unresolved.",
+        "Links resolve by path through the kernel metadata cache; an ambiguous link path resolves to the closest candidate with a warning, and alias-only links stay unresolved.",
+        "A note that cannot be parsed is indexed without properties, links or tags and reported in warnings.",
         "Rows sort by typed values with host-locale natural string collation; equal keys use file path.",
-        "The filesystem is indexed once per invocation, without a transactional snapshot or live refresh."
+        "The filesystem is indexed once per invocation and metadata state, without a transactional snapshot or live refresh."
       ]
     };
   }
@@ -26549,7 +26694,7 @@ class NodeBasesQueryEngine {
     const grouping = view.groupBy === void 0 ? void 0 : ordering(view.groupBy);
     ensure(view.groupOrder === void 0 || grouping !== void 0 && Array.isArray(view.groupOrder), "INVALID_BASE_QUERY", "groupOrder requires groupBy and a list of visible group values.");
     const groupOrder = view.groupOrder;
-    const indexed2 = await indexBaseFiles(await this.metadata(), this.dates);
+    const { files: indexed2, warnings } = await sharedBaseIndex(await this.metadata(), this.dates);
     const contextPath = options2.context ?? path;
     const thisFile = indexed2.find((file) => file.path === contextPath);
     ensure(thisFile, "BASE_CONTEXT_NOT_FOUND", `Base context is not an indexed vault file: ${contextPath}`);
@@ -26610,7 +26755,7 @@ class NodeBasesQueryEngine {
       return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
     });
     const limit = Math.min(options2.limit ?? Infinity, typeof view.limit === "number" ? view.limit : Infinity);
-    return { path, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), compatibility: this.capabilities() };
+    return { path, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), warnings, compatibility: this.capabilities() };
   }
 }
 const queryOptions = ["view", "context", "limit"];
@@ -26638,7 +26783,7 @@ function basesCommand(service) {
       context: option$1.string("Note used as this file in query expressions."),
       limit: option$1.string("Maximum number of rows for query.")
     },
-    errors: ["INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "BASE_INDEX_ERROR", "AMBIGUOUS_BASE_LINK", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
+    errors: ["INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       for (const key of Object.keys(flags)) ensure(action2 === "query" || !queryOptions.includes(key), "INVALID_ARGUMENT", `--${key} is not supported by bases ${action2}.`);
@@ -27303,6 +27448,17 @@ const linksPlugin = {
 function stringifyYaml(value2) {
   return distExports.stringify(value2);
 }
+function sharesNodes(document2) {
+  let shared = false;
+  distExports.visit(document2, (_key, node2) => {
+    if (distExports.isAlias(node2) || node2 !== null && typeof node2 === "object" && "anchor" in node2 && node2.anchor) {
+      shared = true;
+      return distExports.visit.BREAK;
+    }
+    return void 0;
+  });
+  return shared;
+}
 function editFrontmatter(text2, frontmatter2, changes, removed) {
   const bom = text2.startsWith("\uFEFF") ? "\uFEFF" : "";
   const source = text2.slice(bom.length);
@@ -27315,7 +27471,7 @@ function editFrontmatter(text2, frontmatter2, changes, removed) {
   const yaml = source.slice(start2, end2);
   const document2 = distExports.parseDocument(yaml);
   const whole = () => `${bom}---${newline}${lines2(Object.keys(frontmatter2).length > 0 ? distExports.stringify(frontmatter2) : "")}${source.slice(end2)}`;
-  if (document2.errors.length > 0 || document2.contents !== null && (!distExports.isMap(document2.contents) || document2.contents.flow)) return whole();
+  if (document2.errors.length > 0 || document2.contents !== null && (!distExports.isMap(document2.contents) || document2.contents.flow) || sharesNodes(document2)) return whole();
   const spans = /* @__PURE__ */ new Map();
   for (const pair of distExports.isMap(document2.contents) ? document2.contents.items : []) {
     if (!distExports.isScalar(pair.key) || !pair.key.range) return whole();
@@ -27344,7 +27500,7 @@ function editFrontmatter(text2, frontmatter2, changes, removed) {
   if (appended.length > 0 && result.length > 0 && !result.endsWith("\n")) result += newline;
   return `${bom}${source.slice(0, start2)}${result}${appended.join("")}${source.slice(end2)}`;
 }
-const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank and release product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command.\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`, `unseededList`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
+const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank and release product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command.\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. States, horizons, priorities and risks are written in the spelling the view declares (`--state "in progress"` writes `In Progress`); Deliverables and test-ladder items use their own workflow values. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
 const backlogSkill = { id: "forge-backlog", content: backlog };
 const absent = () => ({ value: null, invalid: false });
 function ownValue(frontmatter2, key) {
@@ -27374,6 +27530,9 @@ function sameValue(a, b) {
   if (a === null || b === null) return a === b;
   return a.toLowerCase() === b.toLowerCase();
 }
+function declaredSpelling(values2, value2) {
+  return values2.find((entry2) => sameValue(entry2, value2)) ?? value2;
+}
 function linkpathFromRawValue(raw) {
   let linkpath = raw.trim();
   const wiki = /^\[\[([^\]]+)\]\]$/.exec(linkpath);
@@ -27396,6 +27555,11 @@ function readTags(value2) {
 function normalizeTag(input) {
   const tag = input.trim().replace(/^[^\p{L}\p{N}\p{M}_/-]+|[^\p{L}\p{N}\p{M}_/-]+$/gu, "").replace(/[^\p{L}\p{N}\p{M}_/]*[^\p{L}\p{N}\p{M}_/-][^\p{L}\p{N}\p{M}_/]*/gu, "-").replace(/\/{2,}/g, "/").replace(/^\/+|\/+$/g, "");
   return /[^\p{N}]/u.test(tag) ? tag : "";
+}
+function typedTags(entries) {
+  const tags2 = [];
+  for (const tag of readTags([...entries]).map(normalizeTag)) if (tag.length > 0 && !hasTag(tags2, tag)) tags2.push(tag);
+  return tags2;
 }
 function readPlacement(value2) {
   if (value2 === null || value2 === void 0) return absent();
@@ -27620,6 +27784,17 @@ function optionalKeyFor(settings2, field2) {
 }
 const deliverableStateKey = (settings2) => settings2.deliverableStateKey || settings2.stateKey;
 const testStateKey = (settings2) => settings2.testStateKey || settings2.stateKey;
+function workflowOf(type2, ladder) {
+  return isDeliverableType(type2) ? "deliverable" : ladder === TEST_LEVELS ? "test" : "requirements";
+}
+function workflowKey(settings2, workflow2) {
+  return workflow2 === "deliverable" ? deliverableStateKey(settings2) : workflow2 === "test" ? testStateKey(settings2) : settings2.stateKey;
+}
+function workflowValues(settings2, workflow2) {
+  if (workflow2 === "deliverable") return [...settings2.deliverableStates, ...settings2.deliverableDoneValues];
+  if (workflow2 === "test") return [...settings2.testStates, ...settings2.testDoneValues];
+  return [...settings2.states, ...settings2.doneValues];
+}
 function isDoneValue(settings2, state2) {
   return state2 !== null && settings2.doneValues.some((value2) => sameValue(value2, state2));
 }
@@ -27989,10 +28164,6 @@ function spreadAround(sequence) {
   }
   return flush() ? { writes } : { wedged: run2 };
 }
-function distinctlyRanked(rows) {
-  const orders = rows.filter((item) => !item.outsideFilter).map((item) => item.order);
-  return !orders.some((order2) => order2 === null) && new Set(orders).size === orders.length;
-}
 const isUnrankedContext = (anchor2) => anchor2 !== null && anchor2.outsideFilter && anchor2.order === null;
 const rankablePeers = (rows) => rows.filter((row) => !isUnrankedContext(row));
 function anchoredOrder(ranked, anchor2, side) {
@@ -28019,18 +28190,17 @@ function orderForTarget(ranked, target) {
   if (insertIndex === 0) return anchoredOrder(ranked, peers[0], "before");
   return anchoredOrder(ranked, peers[insertIndex - 1], "after");
 }
-const drawnInRankOrder = (rows) => rows.every((item, index2) => index2 === 0 || compareRank(rows[index2 - 1], item) < 0);
 function dropPlacement(dragged, target, ranked) {
-  const invisible = (placed2) => {
-    if ("refusal" in placed2 || target.parentUnchanged !== true || dragged === null) return placed2;
-    if (distinctlyRanked([...target.peers, dragged])) return placed2;
-    return distinctlyRanked(target.peers) && drawnInRankOrder(target.peers) ? placed2 : { refusal: "unseededList" };
-  };
   const global = orderForTarget(ranked.filter((item) => item !== dragged), target);
-  if (!("refusal" in global) || global.refusal !== "tied") return invisible(global);
+  if (!("refusal" in global) || global.refusal !== "tied") return global;
   const scoped = orderForTarget(target.peers.filter((item) => item !== dragged), target);
-  if ("refusal" in scoped || !ranked.some((item) => item !== dragged && item.order === scoped.order)) return invisible(scoped);
-  return invisible(global);
+  if ("refusal" in scoped || !ranked.some((item) => item !== dragged && item.order === scoped.order)) return scoped;
+  return global;
+}
+function unchangedPlacement(dragged, target, siblings) {
+  if (target.parent !== dragged.parent) return false;
+  if (target.parent === null && dragged.parent === null && dragged.hasParentValue) return false;
+  return rankablePeers(siblings).indexOf(dragged) === target.insertIndex;
 }
 const axisFields = ["horizon", "start", "target"];
 const axisEntries = (settings2, axis) => axisFields.map((field2) => ({ field: field2, key: optionalKeyFor(settings2, field2), value: axis?.[field2] })).filter((entry2) => entry2.key !== "" && entry2.value !== void 0);
@@ -28324,21 +28494,21 @@ function createItems(source, results, settings2, exists2) {
 }
 function resolveDependencies(items) {
   const byPath = new Map(items.map((item) => [item.path, item]));
-  const declared2 = /* @__PURE__ */ new Map();
+  const declared = /* @__PURE__ */ new Map();
   for (const item of items) {
     if (item.outsideFilter) continue;
     const mine = item.dependsOnEntries.map((entry2) => {
       const from = entry2.path === null ? void 0 : byPath.get(entry2.path);
       return from ? { raw: entry2.raw, from, resolved: true } : { raw: entry2.raw, from: item, resolved: false };
     });
-    if (mine.length > 0) declared2.set(item.path, mine);
+    if (mine.length > 0) declared.set(item.path, mine);
   }
-  const component = stronglyConnected(items, declared2);
+  const component = stronglyConnected(items, declared);
   const results = /* @__PURE__ */ new Map();
   for (const item of items) {
     const result = { prerequisites: [], broken: [] };
     const seen = /* @__PURE__ */ new Set();
-    for (const candidate of declared2.get(item.path) ?? []) {
+    for (const candidate of declared.get(item.path) ?? []) {
       if (!candidate.resolved) {
         result.broken.push({ raw: candidate.raw, reason: "unresolved" });
         continue;
@@ -28355,9 +28525,9 @@ function resolveDependencies(items) {
   }
   return results;
 }
-function stronglyConnected(items, declared2) {
+function stronglyConnected(items, declared) {
   const ids = new Map(items.map((item, id2) => [item.path, id2]));
-  const edges = items.map((item) => (declared2.get(item.path) ?? []).filter((edge) => edge.resolved).map((edge) => ids.get(edge.from.path) ?? -1));
+  const edges = items.map((item) => (declared.get(item.path) ?? []).filter((edge) => edge.resolved).map((edge) => ids.get(edge.from.path) ?? -1));
   const index2 = items.map(() => -1), low = items.map(() => -1), onStack = items.map(() => false), component = items.map(() => -1);
   const stack = [];
   let next = 0, components = 0;
@@ -28592,20 +28762,20 @@ function cacheSource(cache) {
   return {
     frontmatter: (path) => cache.getFileCache(path)?.frontmatter,
     frontmatterLinks: (path) => (cache.getFileCache(path)?.frontmatterLinks ?? []).map((link2) => ({ key: link2.key, link: link2.link })),
-    resolve: (linkpath, sourcePath) => cache.getFirstLinkpathDest(linkpath, sourcePath)
+    resolve: (linkpath, sourcePath) => cache.getClosestLinkpathDest(linkpath, sourcePath)
   };
 }
 async function evaluate$1(context, bases, cache, base, view, settings2) {
-  const results = (await bases.query(context, base, { view })).files;
+  const { files: results, warnings } = await bases.query(context, base, { view });
   const files = new Set(cache.files());
-  return { results, model: buildModel(cacheSource(cache), results, settings2, (path) => files.has(path)) };
+  return { results, warnings, model: buildModel(cacheSource(cache), results, settings2, (path) => files.has(path)) };
 }
 async function openBacklog(context, bases, ports, selection2) {
   const cache = await context.metadata.load();
   const { base, view } = await selectView(context, cache, selection2);
   const settings2 = resolveSettings(view.options);
   const release2 = base.views.find((entry2) => entry2.type === RELEASE_VIEW);
-  const { results, model } = await evaluate$1(context, bases, cache, base.path, view.name, settings2);
+  const { results, warnings, model } = await evaluate$1(context, bases, cache, base.path, view.name, settings2);
   return {
     context,
     ports,
@@ -28616,6 +28786,7 @@ async function openBacklog(context, bases, ports, selection2) {
     settings: settings2,
     model,
     results,
+    warnings,
     today: selection2.today ?? ports.today(),
     releaseView: release2 ? { name: release2.name, settings: resolveReleaseSettings(release2.options), options: release2.options } : null
   };
@@ -28688,7 +28859,7 @@ async function editNotes(session, edits, ifMatch2) {
 }
 async function writeItems(session, writes, ifMatch2) {
   ensureWritable(session);
-  const env = { settings: session.settings, wikilink: (target, source) => wikilink(session, target, source), resolve: (linkpath, source) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path) => typeOf(session, path) };
+  const env = { settings: session.settings, wikilink: (target, source) => wikilink(session, target, source), resolve: (linkpath, source) => session.cache.getClosestLinkpathDest(linkpath, source), typeOf: (path) => typeOf(session, path) };
   for (const write of writes) ensureInFilter(session, write.path);
   return editNotes(session, writes.map((write) => ({
     path: write.path,
@@ -28712,9 +28883,7 @@ async function announce(session, result, id2, payload2) {
 const rankMessages = {
   gapSpent: "No rank gap is left between the neighbours; run backlog ranks respace.",
   tied: "The neighbours share one rank; run backlog ranks respace.",
-  unranked: "A neighbour has no rank; run backlog ranks seed.",
-  unseededList: "The siblings are not distinctly ranked; run backlog ranks seed.",
-  parentGone: "The parent is no longer in the backlog."
+  unranked: "A neighbour has no rank; run backlog ranks seed."
 };
 function placed(result) {
   if ("refusal" in result) throw backlogError("BACKLOG_NO_GAP", rankMessages[result.refusal], { reason: result.refusal });
@@ -28772,19 +28941,21 @@ async function addItem(session, request) {
     ...iteration2 ? { iterationLink: link2(iteration2.path), axis } : {},
     ...release2 ? { releaseLink: link2(release2.path) } : {}
   });
-  appendFields(session, frontmatter2, path, request);
+  appendFields(session, frontmatter2, path, request, workflowOf(typeName, ladderFor(typeName, parent?.ladder ?? null)));
   const result = await createNotes(session, [{ path, text: newNoteText(session, frontmatter2) }]);
   const item = { path, title: path.slice(path.lastIndexOf("/") + 1, -3), type: typeName, id: frontmatter2[ITEM_ID_KEY], parent: parent?.path ?? null, order: order2 };
   await announce(session, result, "backlog.item-created", item);
   return { ...result, item };
 }
-function appendFields(session, frontmatter2, path, request) {
+function appendFields(session, frontmatter2, path, request, workflow2) {
   const { settings: settings2 } = session;
   if (request.state !== void 0) {
-    if (!settings2.stateKey) throw refused("unbound-property", "Bind stateProperty in the backlog view to track states.", { option: "stateProperty" });
-    setOwn(frontmatter2, settings2.stateKey, request.state);
-    if (settings2.startedDateKey && isStartedValue(settings2, request.state)) setOwn(frontmatter2, settings2.startedDateKey, formatCivil(session.today));
-    if (settings2.finishedDateKey && isDoneValue(settings2, request.state)) setOwn(frontmatter2, settings2.finishedDateKey, formatCivil(session.today));
+    const key = workflowKey(settings2, workflow2);
+    if (!key) throw refused("unbound-property", "Bind stateProperty in the backlog view to track states.", { option: "stateProperty" });
+    const state2 = declaredSpelling(workflowValues(settings2, workflow2), request.state.trim());
+    setOwn(frontmatter2, key, state2);
+    if (workflow2 === "requirements" && settings2.startedDateKey && isStartedValue(settings2, state2)) setOwn(frontmatter2, settings2.startedDateKey, formatCivil(session.today));
+    if (workflow2 === "requirements" && settings2.finishedDateKey && isDoneValue(settings2, state2)) setOwn(frontmatter2, settings2.finishedDateKey, formatCivil(session.today));
   }
   if (request.assignee !== void 0) {
     if (!settings2.assigneeKey) throw refused("unbound-property", "Bind assigneeProperty in the backlog view to assign work.", { option: "assigneeProperty" });
@@ -28792,7 +28963,8 @@ function appendFields(session, frontmatter2, path, request) {
     if (target === null || !sameType(typeOf(session, target), RESOURCE_TYPE)) throw refused("not-a-resource", `${request.assignee} is not a Resource note.`, { assignee: request.assignee });
     setOwn(frontmatter2, settings2.assigneeKey, wikilink(session, target, path));
   }
-  if (request.tags && request.tags.length > 0 && settings2.tagsKey) setOwn(frontmatter2, settings2.tagsKey, request.tags);
+  const tags2 = typedTags(request.tags ?? []);
+  if (tags2.length > 0 && settings2.tagsKey) setOwn(frontmatter2, settings2.tagsKey, tags2);
 }
 function moveTarget(session, moved2, request) {
   const anchorRef = request.before ?? request.after;
@@ -28821,8 +28993,11 @@ async function moveItem(session, request) {
     if (ancestor === moved2) throw refused("parent-cycle", `${moved2.title} cannot move under itself or its descendants.`, { path: moved2.path });
   }
   if (!keepsProjection(moved2, target.parent)) throw refused("projection", `${moved2.title} cannot move between the plan and the test catalog.`, { path: moved2.path });
-  const order2 = placed(dropPlacement(moved2, target, session.model.ranked));
   const newParent = target.parent?.path ?? null, oldParent = moved2.parent?.path ?? null;
+  if (unchangedPlacement(moved2, target, moved2.parent ? moved2.parent.children : session.model.roots)) {
+    return { dryRun: session.context.workspace.dryRun, changes: [], item: { path: moved2.path, parent: oldParent, order: moved2.order, previousParent: oldParent, previousOrder: moved2.order } };
+  }
+  const order2 = placed(dropPlacement(moved2, target, session.model.ranked));
   const parentChanged = newParent !== oldParent || target.parent === null && moved2.parent === null && moved2.hasParentValue;
   const result = await writeItems(session, [{ path: moved2.path, order: order2, ...parentChanged ? { parent: newParent } : {} }], request.ifMatch);
   const item = { path: moved2.path, parent: newParent, order: order2, previousParent: oldParent, previousOrder: moved2.order };
@@ -28850,11 +29025,13 @@ const option = (value2) => value2 === void 0 ? void 0 : value2.trim() === "" ? n
 const bound = (key, name2) => {
   if (!key) throw refused("unbound-property", `Bind ${name2} in the backlog view first.`, { option: name2 });
 };
-const declared = (values2, value2) => values2.find((entry2) => sameValue(entry2, value2)) ?? value2;
-function stateWrite(item, state2, settings2, today2) {
-  if (isDeliverableType(item.typeName)) return sameValue(item.deliverableStateValue, state2) ? null : state2 === null ? { removeDeliverableStateKey: true } : { deliverableState: state2 };
-  if (inCatalog(item)) return sameValue(item.testStateValue, state2) ? null : state2 === null ? { removeTestStateKey: true } : { testState: state2 };
-  if (sameValue(item.stateValue, state2)) return null;
+function currentState(item, workflow2) {
+  return workflow2 === "deliverable" ? item.deliverableStateValue : workflow2 === "test" ? item.testStateValue : item.stateValue;
+}
+function stateWrite(item, workflow2, state2, settings2, today2) {
+  if (sameValue(currentState(item, workflow2), state2)) return null;
+  if (workflow2 === "deliverable") return state2 === null ? { removeDeliverableStateKey: true } : { deliverableState: state2 };
+  if (workflow2 === "test") return state2 === null ? { removeTestStateKey: true } : { testState: state2 };
   return {
     ...state2 === null ? { removeStateKey: true } : { state: state2 },
     ...settings2.startedDateKey && isStartedValue(settings2, state2) ? { startedDate: today2 } : {},
@@ -28883,23 +29060,24 @@ async function setFields(session, request) {
   const item = findItem(session, request.item);
   const write = { path: item.path };
   const today2 = formatCivil(session.today);
-  const state2 = option(request.state);
+  const workflow2 = workflowOf(item.typeName, item.ladder), typed = option(request.state);
+  const state2 = typed === void 0 || typed === null ? typed : declaredSpelling(workflowValues(settings2, workflow2), typed);
   let stateChange = null;
   if (state2 !== void 0) {
-    bound(isDeliverableType(item.typeName) ? settings2.deliverableStateKey || settings2.stateKey : inCatalog(item) ? settings2.testStateKey || settings2.stateKey : settings2.stateKey, "stateProperty");
-    stateChange = stateWrite(item, state2, settings2, today2);
+    bound(workflowKey(settings2, workflow2), "stateProperty");
+    stateChange = stateWrite(item, workflow2, state2, settings2, today2);
     Object.assign(write, stateChange);
   }
   const horizon = option(request.horizon);
   if (horizon !== void 0) {
     bound(settings2.horizonKey, "horizonProperty");
-    if (horizon === null ? item.ownKeys.horizon : !sameValue(item.horizon.value, horizon)) write.axis = { horizon: horizon === null ? null : declared(settings2.horizonValues, horizon) };
+    if (horizon === null ? item.ownKeys.horizon : !sameValue(item.horizon.value, horizon)) write.axis = { horizon: horizon === null ? null : declaredSpelling(settings2.horizonValues, horizon) };
   }
   for (const [field2, raw, key, name2, values2, current] of [["risk", request.risk, settings2.riskKey, "riskProperty", settings2.riskValues, item.riskValue], ["priority", request.priority, settings2.priorityKey, "priorityProperty", settings2.priorityValues, item.priorityValue]]) {
     const value2 = option(raw);
     if (value2 === void 0) continue;
     bound(key, name2);
-    if (value2 === null ? item.ownKeys[field2] : !sameValue(current, value2)) write[field2] = value2 === null ? null : declared(values2, value2);
+    if (value2 === null ? item.ownKeys[field2] : !sameValue(current, value2)) write[field2] = value2 === null ? null : declaredSpelling(values2, value2);
   }
   const schedule = scheduleWrite(session, item, option(request.start), option(request.due));
   if (schedule) write.axis = { ...write.axis, ...schedule };
@@ -28918,7 +29096,7 @@ async function setFields(session, request) {
   }
   const result = await writeItems(session, [write], request.ifMatch);
   const summary = { path: item.path, title: item.title };
-  if (stateChange) await announce(session, result, "backlog.state-changed", { ...summary, from: item.stateValue, to: state2, ...stateChange.startedDate ? { started: stateChange.startedDate } : {}, ...stateChange.finish ? { finished: stateChange.finish.toDone ? stateChange.finish.date : null } : {} });
+  if (stateChange) await announce(session, result, "backlog.state-changed", { ...summary, from: currentState(item, workflow2), to: state2, ...stateChange.startedDate ? { started: stateChange.startedDate } : {}, ...stateChange.finish ? { finished: stateChange.finish.toDone ? stateChange.finish.date : null } : {} });
   return { ...result, item: summary };
 }
 function declaredMap(session) {
@@ -29509,12 +29687,25 @@ function showItem(session, reference) {
     dependents
   };
 }
+function indexProblems(session) {
+  const read2 = /* @__PURE__ */ new Set([...session.results, ...session.model.byPath.keys()]);
+  return session.warnings.filter((warning2) => read2.has(warning2.path)).map((warning2) => ({
+    code: warning2.code,
+    severity: "warning",
+    path: warning2.path,
+    ...warning2.link === void 0 ? {} : { value: warning2.link },
+    message: warning2.message
+  }));
+}
 function check$1(session) {
   const release2 = session.releaseView;
   const releasePaths = new Set(session.model.releases.map((entry2) => entry2.path));
   const memberships = release2 ? session.model.items.filter((item) => !item.outsideFilter && membershipTarget(session.source, item, releasePaths, release2.settings) === "unresolved").map((item) => item.path) : [];
   const releaseProblems = release2 ? [...releaseNoteProblems(release2.settings), ...[membershipCollision(release2.settings, session.settings)].filter((problem) => problem !== null)] : [];
-  const problems = checkBacklog({ model: session.model, settings: session.settings, releaseProblems, unresolvedMemberships: memberships, typeOf: (path) => typeOf(session, path) });
+  const problems = [
+    ...checkBacklog({ model: session.model, settings: session.settings, releaseProblems, unresolvedMemberships: memberships, typeOf: (path) => typeOf(session, path) }),
+    ...indexProblems(session)
+  ];
   return {
     ...header(session),
     ok: !problems.some((problem) => problem.severity === "error"),
@@ -29561,7 +29752,7 @@ const options = {
   due: option$1.string("set/iteration add: the planned target date."),
   assignee: option$1.string("add/set: a Resource note."),
   type: option$1.string("set: the new type (canonical spelling is written)."),
-  tags: option$1.string("add: comma-separated tags."),
+  tags: option$1.string("add: tags separated by commas or spaces; a leading # is optional."),
   iteration: option$1.string("add: the iteration to plan the item in."),
   release: option$1.string("add: the release the item ships in."),
   on: option$1.string("depend/undepend: the prerequisite item."),
@@ -29648,8 +29839,8 @@ function backlogCommand(ports) {
           return check$1(session);
         case "add": {
           arity(rest, 2);
-          const tags2 = value$2(flags, "tags")?.split(",").map((tag) => tag.trim()).filter(Boolean);
-          return addItem(session, { type: rest[0], title: rest[1], parent: value$2(flags, "parent"), folder: value$2(flags, "folder"), state: value$2(flags, "state"), iteration: value$2(flags, "iteration"), release: value$2(flags, "release"), assignee: value$2(flags, "assignee"), ...tags2 ? { tags: tags2 } : {} });
+          const tags2 = value$2(flags, "tags");
+          return addItem(session, { type: rest[0], title: rest[1], parent: value$2(flags, "parent"), folder: value$2(flags, "folder"), state: value$2(flags, "state"), iteration: value$2(flags, "iteration"), release: value$2(flags, "release"), assignee: value$2(flags, "assignee"), ...tags2 === void 0 ? {} : { tags: [tags2] } });
         }
         case "move": {
           arity(rest, 1);
@@ -43116,81 +43307,6 @@ function claudeCommand(services) {
     }
   };
 }
-const external = (target) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target);
-const isExternalLink = external;
-function linkIndex(paths2, aliases = /* @__PURE__ */ new Map()) {
-  const lower = /* @__PURE__ */ new Map(), suffixes = /* @__PURE__ */ new Map(), aliasKeys = /* @__PURE__ */ new Map();
-  const add = (map2, key, position2) => {
-    const positions2 = map2.get(key);
-    if (!positions2) map2.set(key, [position2]);
-    else if (positions2.at(-1) !== position2) positions2.push(position2);
-  };
-  for (const [position2, path] of paths2.entries()) {
-    const folded = path.toLowerCase();
-    add(lower, folded, position2);
-    for (let slash = folded.indexOf("/"); slash >= 0; slash = folded.indexOf("/", slash + 1)) add(suffixes, folded.slice(slash + 1), position2);
-    for (const alias of aliases.get(path) ?? []) add(aliasKeys, alias.toLowerCase(), position2);
-  }
-  return { paths: paths2, exact: new Set(paths2), lower, suffixes, aliases: aliasKeys };
-}
-function folderOf$1(path) {
-  const slash = path.lastIndexOf("/");
-  return slash < 0 ? "." : slash === 0 ? "/" : path.slice(0, slash);
-}
-function joinPath(folder, target) {
-  const parts = [];
-  for (const part of `${folder}/${target}`.split("/")) {
-    if (part === "" || part === ".") continue;
-    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
-    else parts.push(part);
-  }
-  const joined = parts.join("/") || ".";
-  return target.endsWith("/") ? `${joined}/` : joined;
-}
-function lookup(index2, keys, spelling) {
-  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
-  return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
-}
-function matched(found, linkpath, via) {
-  if (found.length === 1) return { status: "resolved", path: found[0], via };
-  if (found.length > 1) return { status: "unresolved", linkpath, reason: "ambiguous", via, candidates: found };
-  return void 0;
-}
-function resolveLinkpath(index2, link2, source, options2 = {}) {
-  let target = parseLinktext(link2).path;
-  if (!target) return { status: "resolved", path: source, via: "path" };
-  if (external(target)) return { status: "external" };
-  target = target.replace(/^\//, "");
-  const relative = options2.relative === true;
-  const local = joinPath(folderOf$1(source), target);
-  const candidates2 = relative ? [local, target] : [target, local];
-  for (const candidate of candidates2) {
-    for (const spelling of [candidate, `${candidate}.md`]) {
-      if (index2.exact.has(spelling)) return { status: "resolved", path: spelling, via: "path" };
-    }
-  }
-  for (const candidate of candidates2) {
-    const result = matched(lookup(index2, index2.lower, candidate), target, "path");
-    if (result) return result;
-  }
-  if (relative || target.startsWith("../")) return { status: "unresolved", linkpath: target, reason: "missing" };
-  const suffix = matched(lookup(index2, index2.suffixes, target), target, "path");
-  if (suffix) return suffix;
-  const alias = options2.aliases ? matched([...new Set(index2.aliases.get(target.toLowerCase()) ?? [])].map((position2) => index2.paths[position2]), target, "alias") : void 0;
-  return alias ?? { status: "unresolved", linkpath: target, reason: "missing" };
-}
-function fileToLinktext(index2, path, source, omitMdExtension = true) {
-  const spelling = (value2) => omitMdExtension && value2.toLowerCase().endsWith(".md") ? value2.slice(0, -3) : value2;
-  const resolvesTo2 = (link2) => {
-    if (parseLinktext(link2).path !== link2 || !link2) return false;
-    const result = resolveLinkpath(index2, link2, source);
-    return result.status === "resolved" && result.path === path;
-  };
-  for (const candidate of [spelling(path.slice(path.lastIndexOf("/") + 1)), spelling(path)]) {
-    if (resolvesTo2(candidate)) return candidate;
-  }
-  return path;
-}
 const pendingFileReads = 16;
 const visible = (path) => !path.split("/").some((part) => part.startsWith("."));
 const missing = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
@@ -43258,6 +43374,9 @@ class VaultMetadata {
   getFirstLinkpathDest(linkpath, sourcePath) {
     const result = resolveLinkpath(this.index, linkpath, sourcePath);
     return result.status === "resolved" ? result.path : null;
+  }
+  getClosestLinkpathDest(linkpath, sourcePath) {
+    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
   }
   fileToLinktext(path, sourcePath, omitMdExtension = true) {
     return fileToLinktext(this.index, path, sourcePath, omitMdExtension);
@@ -52007,11 +52126,12 @@ function pluginCatalog(registry2, installed) {
       }
     };
   });
-  const disabledCore = registry2.disabled.map((manifest) => ({ ...manifest, core: true, state: "disabled", contributions: null }));
+  const disabledCore = registry2.disabled.map((manifest) => ({ ...manifest, core: true, state: "disabled", reason: registry2.disabledReason(manifest.id) ?? null, contributions: null }));
   const others = installed.filter((entry2) => !registry2.origins.has(entry2.manifest.id)).map((entry2) => ({
     ...entry2.manifest,
     core: false,
     state: entry2.skipped ? "skipped" : "disabled",
+    reason: entry2.skipped ? "Skipped by --no-plugins." : "Not listed in plugins.enabled.",
     contributions: null
   }));
   return [...loaded.filter((plugin2) => plugin2.core), ...disabledCore, ...loaded.filter((plugin2) => !plugin2.core), ...others];
@@ -52045,11 +52165,10 @@ function catalogCommands(registry2) {
     skills: [...registry2.skills.keys()]
   });
   return [
-    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery, args: commandArgument, errors: ["UNKNOWN_COMMAND"], run(args) {
+    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery, args: commandArgument, errors: ["UNKNOWN_COMMAND", "PLUGIN_UNAVAILABLE"], run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
-      const command2 = registry2.commands.get(args[0]);
-      ensure(command2, "UNKNOWN_COMMAND", args[0]);
+      const command2 = registry2.resolveCommand(args[0]);
       return { ...describe(command2), globalOptions: globalOptionMetadata };
     } },
     { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", ...discovery, run(args) {
@@ -52588,8 +52707,6 @@ const germanErrors = {
   BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
   BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
   BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Tresordatei.", hint: "Übergeben Sie eine vorhandene Tresordatei an --context." },
-  BASE_INDEX_ERROR: { summary: "Eine Tresordatei konnte nicht indexiert werden.", hint: "Korrigieren oder prüfen Sie die in der Meldung genannte Datei." },
-  AMBIGUOUS_BASE_LINK: { summary: "Ein interner Link passt auf mehrere Dateien.", hint: "Verwenden Sie einen längeren Linkpfad, der genau eine Datei bezeichnet." },
   INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
   UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
   // Konfiguration, Installation und Projekte
@@ -52643,6 +52760,7 @@ const germanErrors = {
   DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
   PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill-, Ereignis- und Dienst-IDs eines Benutzer-Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID und beanspruchen Sie core: true nicht außerhalb des Bundles." },
   PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen Dienst, den kein aktiviertes Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt (plugins zeigt die Anbieter), oder deklarieren Sie ihn in requires des Plugins." },
+  PLUGIN_UNAVAILABLE: { summary: "Der Befehl gehört zu einem deaktivierten Kern-Plugin.", hint: "error.details.reason nennt den Grund; aktivieren Sie das genannte Plugin (entfernen Sie es aus plugins.disabled in bin/config.json) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
   PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
@@ -52833,8 +52951,7 @@ async function run() {
       config2.plugins.settings = registry2.settings.configure(config2.plugins.settings, new Set(registry2.origins.keys()));
       await registry2.publishRegistered(events2);
       const id2 = bootstrap.args[0] ?? "help";
-      const command2 = registry2.commands.get(id2);
-      ensure(command2, "UNKNOWN_COMMAND", `Unknown command ${id2}. Run help or schema.`);
+      const command2 = registry2.resolveCommand(id2);
       const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(command2.options) });
       const parsedLanguage = value$2(parsed.flags, "lang");
       localizer = new Localizer(parsedLanguage !== void 0 ? language(parsedLanguage) : localizer.language, registry2.catalog);

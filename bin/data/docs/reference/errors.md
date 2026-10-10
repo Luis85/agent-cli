@@ -107,8 +107,6 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `BASE_EVALUATION_ERROR` | 2 | input | no | A Bases expression failed while evaluating a file. | Check the view, file and expression named in the message. |
 | `BASE_VIEW_NOT_FOUND` | 2 | input | no | The requested Bases view does not exist. | Run `bases inspect <file.base>` and pass an existing `--view`. |
 | `BASE_CONTEXT_NOT_FOUND` | 2 | input | no | The context file is not an indexed vault file. | Pass an existing vault file to `--context`. |
-| `BASE_INDEX_ERROR` | 2 | input | no | A vault file could not be indexed. | Fix or validate the file named in the message. |
-| `AMBIGUOUS_BASE_LINK` | 2 | input | no | An internal link matches several files. | Use a longer link path that identifies one file. |
 | `INVALID_BASE_PROPERTY_TYPES` | 2 | input | no | The Obsidian property type registry is invalid. | Fix `.obsidian/types.json` so it is a JSON object of property types. |
 | `UNSUPPORTED_BASE_PROPERTY_TYPE` | 2 | input | no | An Obsidian property type is not supported. | Use a supported type in `.obsidian/types.json`. |
 | `INVALID_CONFIG` | 2 | input | no | The configuration is invalid or unreadable. | Fix `bin/config.json` at the location named in the message, then run config. |
@@ -157,6 +155,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `DUPLICATE_PLUGIN` | 2 | input | no | The plugin is registered twice. | Enable each plugin once. |
 | `PLUGIN_NAMESPACE` | 2 | input | no | A plugin id or contribution is outside its namespace. | Prefix user plugin command, generator, skill, event and service ids with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (`command`, `operation`, `claude`, `vault`, `metadataCache`, `workspace`, `plugin`) as the plugin id or claim `core: true` outside the bundle. |
 | `PLUGIN_SERVICE_MISSING` | 2 | input | no | A plugin requires a service that no enabled plugin provides, or uses one it did not declare. | Enable the plugin that provides the service named in `error.details.service` (plugins lists providers), or declare it in the plugin's `requires`. |
+| `PLUGIN_UNAVAILABLE` | 2 | input | no | The command belongs to a core plugin that is disabled. | `error.details.reason` says why; enable the plugin it names (remove it from `plugins.disabled` in `bin/config.json`), then rerun. Run `plugins` to see each plugin's state and reason. |
 | `PLUGIN_SERVICE_CYCLE` | 2 | input | no | Plugin service requirements form a cycle. | Break the cycle named in `error.details.plugins` so that one plugin no longer requires a service of another. |
 | `PLUGIN_LIFECYCLE` | 2 | input | no | A plugin used the host outside its lifecycle. | Register contributions before activation and stop using the host after disposal. |
 | `DUPLICATE_OR_INVALID_ID` | 2 | input | no | A contribution id is invalid or already registered. | Use a unique lowercase dotted id. |

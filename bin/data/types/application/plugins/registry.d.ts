@@ -112,6 +112,7 @@ export declare class Registry {
     /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
     readonly origins: Map<string, PluginOrigin>;
     readonly disabled: PluginManifest[];
+    private readonly disabledReasons;
     readonly catalog: PluginCatalog;
     readonly settings: PluginSettings;
     private cleanups;
@@ -121,8 +122,18 @@ export declare class Registry {
         id: string;
     }>(map: Map<string, T>, item: T): void;
     register(plugin: Plugin, events: EventBus, origin?: PluginOrigin): void;
-    /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
-    disable(manifest: PluginManifest): void;
+    /**
+     * A bundled core plugin that contributes nothing: listed by `plugins` with `reason`. `commands` are the command ids
+     * it would have contributed, when known, so invoking one reports PLUGIN_UNAVAILABLE instead of UNKNOWN_COMMAND.
+     */
+    disable(manifest: PluginManifest, reason: string, commands?: readonly string[]): void;
+    /** Why a disabled core plugin contributes nothing. */
+    disabledReason(pluginId: string): string | undefined;
+    /**
+     * A registered command. A command a disabled core plugin would have contributed fails with PLUGIN_UNAVAILABLE and
+     * `details` `{command, plugin, reason}`; any other unknown id with UNKNOWN_COMMAND.
+     */
+    resolveCommand(commandId: string): Command;
     /** The context a plugin's hooks, commands and generators run with. */
     pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext;
     publishRegistered(events: EventBus): Promise<void>;

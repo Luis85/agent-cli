@@ -52,12 +52,17 @@ export interface MetadataUpdate {
 }
 /** Read access to a loaded vault metadata index. Paths are relative to the bound workspace or project root. */
 export interface MetadataCache {
-    /** Visible vault paths in repository order; dot-prefixed files and folders are excluded. */
+    /** Visible vault paths in repository order; dot-prefixed files and folders are excluded. The same array is returned until an update, which replaces it. */
     files(): readonly string[];
     /** The parsed metadata of a Markdown or Canvas file, or null for other, unknown or unparseable files. */
     getFileCache(path: string): CachedMetadata | null;
     /** The file that link text resolves to from `sourcePath`, ignoring any subpath; null when missing or ambiguous. */
     getFirstLinkpathDest(linkpath: string, sourcePath: string): string | null;
+    /**
+     * Like `getFirstLinkpathDest`, but a link text whose path matches several files opens the closest one, as
+     * Obsidian does (`closestCandidate`); null only when no file matches.
+     */
+    getClosestLinkpathDest(linkpath: string, sourcePath: string): string | null;
     /** The shortest link text that resolves from `sourcePath` to `path`. */
     fileToLinktext(path: string, sourcePath: string, omitMdExtension?: boolean): string;
     readonly resolvedLinks: LinkCounts;
