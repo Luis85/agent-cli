@@ -31,6 +31,7 @@ import { optionTypes } from './application/plugins/command-metadata.ts';
 import { value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
+import { searchPlugin } from './plugins/search/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
@@ -60,7 +61,7 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);

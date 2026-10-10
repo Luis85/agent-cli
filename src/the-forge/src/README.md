@@ -49,6 +49,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Bases queries (`bases` core plugin) | `plugins/bases/` |
 | Generators and templates | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` (`make` routing and the kernel generators) |
 | Agent skills (`skills` core plugin) | `plugins/skills/` |
+| Text search (`search` core plugin) | `plugins/search/`; path globs and cursor paging shared with `list` in `domain/documents/path-glob.ts` and `domain/shared/paging.ts` |
 | Plugin contract v2: command metadata, core plugins, services, config sections, strings and error codes | `application/plugins/`, `domain/schema/json-schema.ts`, `presentation/cli/catalog-commands.ts` |
 | Project-owned CI workflows and generated GitHub entrypoints | Matching `workflows/` folders in all four layers; authored workflow sources sit beside the renderer in `infrastructure/workflows/<concern>/` |
 | Shared failures, the error catalog and localized responses | `domain/shared/errors.ts`, `domain/shared/error-catalog.ts`, `presentation/localization/` |

@@ -52,6 +52,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Files and formats](reference/formats.md) | Markdown, Canvas, Bases and attachment guarantees |
 | [Plugins and events](reference/plugins.md) | Manifests, contributions, lifecycle and delivery semantics |
 | [Claude Code management](reference/claude.md) | Native agents, hooks, authored plugin assets and installed CLI operations |
+| [Search](reference/search.md) | Literal and regular-expression search with path, kind, tag and property filters and paging |
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
 | [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 

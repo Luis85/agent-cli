@@ -64,9 +64,6 @@ export class Pager<Item> {
     this.after = request.cursor === undefined ? undefined : this.decode(request.cursor);
   }
 
-  /** Whether the page is complete and a later item exists; scanning may stop unless `total` is needed. */
-  get full(): boolean { return this.more; }
-
   offer(item: Item): void {
     this.total++;
     if (this.more || (this.after !== undefined && compareKeys(this.key(item), this.after) <= 0)) return;

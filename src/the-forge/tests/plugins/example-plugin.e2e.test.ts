@@ -37,8 +37,10 @@ describe('the packaged quality example plugin', () => {
 
   it('contributes a validated config section shown by config, with defaults and change notifications', async () => {
     const config = run('config');
-    expect(config.body.data.config.plugins.settings).toEqual({ quality: { ownerProperty: 'owner' } });
-    expect(config.body.data.sections).toEqual([{ plugin: 'quality', path: 'plugins.settings.quality', schema: expect.objectContaining({ type: 'object' }) }]);
+    // Core plugin sections (search) come first, in bundle order; each section lists the plugin that declares it.
+    expect(config.body.data.config.plugins.settings).toEqual({ search: { timeoutMs: 10_000 }, quality: { ownerProperty: 'owner' } });
+    expect(config.body.data.sections.map((section: { plugin: string; path: string }) => [section.plugin, section.path])).toEqual([['search', 'plugins.settings.search'], ['quality', 'plugins.settings.quality']]);
+    expect(config.body.data.sections[1].schema).toMatchObject({ type: 'object' });
     await configure({ ownerProperty: '' });
     expect(run('config').body.error).toMatchObject({ code: 'INVALID_CONFIG', message: 'plugins.settings.quality.ownerProperty: must have at least 1 characters' });
     await configure({ ownerProperty: 'maintainer' });

@@ -189,3 +189,12 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `CLAUDE_COMMAND_INTERRUPTED` | 130 | interrupted | no | The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM). | Inspect external state before running the command again. |
 | `CLAUDE_RUNTIME_FAILED` | 1 | external | no | Claude Code exited with a nonzero status. | Inspect error.details (native status, output and parsed result) and external state before retrying. |
 | `CLAUDE_INVALID_OUTPUT` | 1 | external | no | Claude Code succeeded but did not return the requested JSON. | Inspect stdout and external state before retrying. |
+
+## Core plugin codes
+
+Bundled [core plugins](plugins.md#core-and-user-plugins) register their own codes like any plugin: `schema` lists them with their `plugin`, they carry `hint` and `retryable`, and `--lang de` localizes them. They exist only while the plugin is enabled.
+
+| Code | Plugin | Exit | Category | Retryable | When |
+| --- | --- | --- | --- | --- | --- |
+| `INVALID_SEARCH_PATTERN` | `search` | 2 | input | no | The pattern is empty, longer than 1,000 characters, or an invalid regular expression. Fix the expression named in the message, or search literally without `--regex`; see [search](search.md#errors) |
+| `SEARCH_TIMEOUT` | `search` | 2 | input | no | Matching exceeded `plugins.settings.search.timeoutMs`; `details.timeoutMs` names the budget. Simplify the expression, narrow `--path` or `--kind`, or raise the budget; see [regular-expression safety](search.md#regular-expression-safety) |

@@ -398,23 +398,23 @@ class EventBus {
   }
 }
 const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
-const text$7 = (value2) => typeof value2 === "string" && value2.length > 0;
+const text$8 = (value2) => typeof value2 === "string" && value2.length > 0;
 const count$1 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
 const empty = (value2) => Object.keys(value2).length === 0;
 const operation$1 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$1 = (value2) => isRecord(value2) && text$7(value2.code) && status(value2.exitCode);
-const command = (value2) => operation$1(value2) && text$7(value2.command) && text$7(value2.root) && text$7(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$7(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$7);
-const claude = (value2) => operation$1(value2) && text$7(value2.executable) && text$7(value2.cwd);
-const plugin = (value2) => text$7(value2.pluginId);
+const error$1 = (value2) => isRecord(value2) && text$8(value2.code) && status(value2.exitCode);
+const command = (value2) => operation$1(value2) && text$8(value2.command) && text$8(value2.root) && text$8(value2.workspaceRoot);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$8(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$8);
+const claude = (value2) => operation$1(value2) && text$8(value2.executable) && text$8(value2.cwd);
+const plugin = (value2) => text$8(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change = (value2) => isRecord(value2) && text$7(value2.path) && text$7(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
-const moved = (value2) => isRecord(value2) && text$7(value2.from) && text$7(value2.to) && ["file", "folder"].includes(String(value2.kind));
+const change = (value2) => isRecord(value2) && text$8(value2.path) && text$8(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$8(value2.from) && text$8(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
-const project = (value2) => value2 === null || text$7(value2);
-const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$7(value2.path) && Object.keys(value2).length === 3);
-const rename = (value2) => text$7(value2.path) && text$7(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$7(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
+const project = (value2) => value2 === null || text$8(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$8(value2.path) && Object.keys(value2).length === 3);
+const rename = (value2) => text$8(value2.path) && text$8(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$8(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$1(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
 }
@@ -428,17 +428,17 @@ const hostEventDefinitions = [
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$1(value2.error) && optionalStatus(value2)),
-  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$7(value2.executable) && text$7(value2.cwd) && status(value2.exitCode)),
+  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$8(value2.executable) && text$8(value2.cwd) && status(value2.exitCode)),
   definition$1("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
   definition$1("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
   definition$1("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
   definition$1("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
-  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$7(value2.path) && isRecord(value2.cache)),
-  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$7(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
-  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$7(value2.path) && Object.keys(value2).length === 1),
+  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$8(value2.path) && isRecord(value2.cache)),
+  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$8(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
+  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$8(value2.path) && Object.keys(value2).length === 1),
   definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty),
-  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$7(value2.path) && Object.keys(value2).length === 1),
-  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$7(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
+  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$8(value2.path) && Object.keys(value2).length === 1),
+  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$8(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
   definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty),
   definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty),
   definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
@@ -613,10 +613,10 @@ class NodeEventScope {
     }
   }
 }
-function nativeResult(stdout, output) {
-  if (output === "text") return void 0;
+function nativeResult(stdout, output2) {
+  if (output2 === "text") return void 0;
   const text2 = stdout.trim();
-  return JSON.parse(output === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
+  return JSON.parse(output2 === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
 }
 class ClaudeLifecycle {
   constructor(runtime, scope, events) {
@@ -666,8 +666,8 @@ class ClaudeLifecycle {
     ensure(input === void 0 || typeof input === "string", "INVALID_CLAUDE_INPUT", "Claude standard input must be UTF-8 text.");
     const inputBytes = input === void 0 ? void 0 : new TextEncoder().encode(input).length;
     ensure(inputBytes === void 0 || inputBytes <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude standard input must not exceed 1 MiB.");
-    const output = request.output ?? "text";
-    ensure(["text", "json", "json-last-line"].includes(output), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
+    const output2 = request.output ?? "text";
+    ensure(["text", "json", "json-last-line"].includes(output2), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
     const sensitive = request.sensitiveArgs ?? [];
     ensure(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
     const redact = new Set(sensitive);
@@ -687,7 +687,7 @@ class ClaudeLifecycle {
     await publishHostEvent(this.events, "claude.executed", { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
     let data, malformed = false;
     try {
-      data = nativeResult(result.stdout, output);
+      data = nativeResult(result.stdout, output2);
     } catch {
       malformed = true;
     }
@@ -769,7 +769,7 @@ function revisionConflict(path, expectedRevision, currentRevision) {
   return { path, expectedRevision: expectedRevision ?? null, currentRevision: currentRevision ?? null };
 }
 const editSearchLimit = 2e3;
-function lines(text2) {
+function lines$1(text2) {
   return text2 === "" ? [] : text2.split(/(?<=\n)/);
 }
 function shortestEdit(before, after) {
@@ -833,7 +833,7 @@ function formatLine({ type: type2, line }) {
 `;
 }
 function unifiedDiff({ path, before, after, created = false, context = 3 }) {
-  const operations2 = editScript(lines(before), lines(after));
+  const operations2 = editScript(lines$1(before), lines$1(after));
   const changed = operations2.flatMap((operation2, index2) => operation2.type === " " ? [] : [index2]);
   if (changed.length === 0) return "";
   const groups = [];
@@ -843,7 +843,7 @@ function unifiedDiff({ path, before, after, created = false, context = 3 }) {
     if (last && start2 <= last[1]) last[1] = end2;
     else groups.push([start2, end2]);
   }
-  let output = `--- ${created ? "/dev/null" : `a/${path}`}
+  let output2 = `--- ${created ? "/dev/null" : `a/${path}`}
 +++ b/${path}
 `;
   let cursor = 0, oldLine = 1, newLine = 1;
@@ -854,13 +854,13 @@ function unifiedDiff({ path, before, after, created = false, context = 3 }) {
     }
     const hunk = operations2.slice(start2, end2);
     const oldCount = hunk.filter((operation2) => operation2.type !== "+").length, newCount = hunk.filter((operation2) => operation2.type !== "-").length;
-    output += `@@ -${range(oldLine, oldCount)} +${range(newLine, newCount)} @@
+    output2 += `@@ -${range(oldLine, oldCount)} +${range(newLine, newCount)} @@
 ${hunk.map(formatLine).join("")}`;
     oldLine += oldCount;
     newLine += newCount;
     cursor = end2;
   }
-  return output;
+  return output2;
 }
 const vaultEvents = { created: "vault.create", updated: "vault.modify", deleted: "vault.delete" };
 const changeSummary = (result) => ({
@@ -1274,7 +1274,7 @@ function commandAnnotations(command2) {
 }
 const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
 const flag = /^[a-z][a-z0-9-]*$/;
-const text$6 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$7 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateMode(mode, where, options) {
   ensure(mode.scope === void 0 || mode.scope === "workspace" || mode.scope === "project", "INVALID_PLUGIN", `${where} scope must be workspace or project.`);
   for (const key of ["discovery", "mutating"]) ensure(mode[key] === void 0 || typeof mode[key] === "boolean", "INVALID_PLUGIN", `${where} ${key} must be a boolean.`);
@@ -1282,21 +1282,21 @@ function validateMode(mode, where, options) {
 }
 function validateCommandMetadata(command2) {
   const where = `Command ${String(command2.id)}`;
-  ensure(text$6(command2.description) && text$6(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
+  ensure(text$7(command2.description) && text$7(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
   ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", `${where} options must be an object.`);
   const options = command2.options ?? {};
   for (const [key, schema2] of Object.entries(options)) {
     ensure(flag.test(key) && !reservedOptions.includes(key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$6(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$7(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
   }
   validateMode(command2, where, options);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$6(arg.name) && text$6(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$7(arg.name) && text$7(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord(command2.actions), "INVALID_PLUGIN", `${where} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
-    ensure(isRecord(action2) && text$6(action2.description), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
+    ensure(isRecord(action2) && text$7(action2.description), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
     validateMode(action2, `${where} action ${id2}`, options);
   }
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where} defaultAction must name a declared action.`);
@@ -1304,7 +1304,7 @@ function validateCommandMetadata(command2) {
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
-const text$5 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$6 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const errorCode$2 = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 class PluginCatalog {
   tables = /* @__PURE__ */ new Map();
@@ -1317,7 +1317,7 @@ class PluginCatalog {
       ensure(isRecord(entry2) && typeof entry2.code === "string" && errorCode$2.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
       ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
       ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$5(entry2.summary) && text$5(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$6(entry2.summary) && text$6(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
       ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
       codes.add(entry2.code);
     }
@@ -1329,7 +1329,7 @@ class PluginCatalog {
         for (const [id2, entry2] of Object.entries(entries)) {
           const known = kind === "messages" || (kind === "errors" ? codes.has(id2) : owned[kind].includes(id2));
           ensure(known, "PLUGIN_NAMESPACE", `strings.${language2}.${kind}.${id2} does not name a contribution of plugin ${pluginId}.`);
-          ensure(kind === "errors" ? isRecord(entry2) && text$5(entry2.summary) && text$5(entry2.hint) : text$5(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
+          ensure(kind === "errors" ? isRecord(entry2) && text$6(entry2.summary) && text$6(entry2.hint) : text$6(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
         }
       }
     }
@@ -2137,7 +2137,7 @@ class GenerationService {
       ensure(![...paths2].some((path) => this.overlaps(path, manifestPath2)), "INVALID_GENERATION_PLAN", "The revision manifest must be separate from generated outputs and their parent directories.");
       manifest = { path: manifestPath2, ...await this.write([{ path: manifestPath2, bytes: new TextEncoder().encode(JSON.stringify(orderedRevisions, null, 2) + "\n") }]) };
     }
-    return { matches: outputs.every((output) => output.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
+    return { matches: outputs.every((output2) => output2.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
   }
   async check(writes, errorCode2) {
     const plan = await this.plan(writes);
@@ -2598,7 +2598,7 @@ function ensureDistinctTargets(sources) {
   }
 }
 const equalBytes = (left, right) => left.length === right.length && left.every((byte, index2) => byte === right[index2]);
-const decode$5 = (bytes) => new TextDecoder().decode(bytes);
+const decode$6 = (bytes) => new TextDecoder().decode(bytes);
 const byTarget = (left, right) => left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
 class WorkflowSync {
   constructor(workspace2, projects, renderer) {
@@ -2647,14 +2647,14 @@ class WorkflowSync {
     const planned = await Promise.all(sources.map(async (source) => {
       const bytes = this.renderer.render((await this.workspace.files.read(source.source)).bytes, source);
       const current = await this.current(source.target);
-      ensure(current === void 0 || isGeneratedWorkflow(decode$5(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
+      ensure(current === void 0 || isGeneratedWorkflow(decode$6(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
       const status2 = current === void 0 ? "missing" : equalBytes(current.bytes, bytes) ? "unchanged" : "changed";
       return { project: source.project, concern: source.concern, source: source.source, target: source.target, status: status2, bytes, ...current ? { revision: current.revision } : {} };
     }));
     const prefix = `${generatedWorkflowDirectory}/`;
     const stale = await Promise.all(paths2.filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && !desired.has(path)).map(async (path) => {
       const current = await this.workspace.files.read(path);
-      return isGeneratedWorkflow(decode$5(current.bytes)) ? [{ project: null, concern: null, source: null, target: path, status: "stale", revision: current.revision }] : [];
+      return isGeneratedWorkflow(decode$6(current.bytes)) ? [{ project: null, concern: null, source: null, target: path, status: "stale", revision: current.revision }] : [];
     }));
     return [...planned, ...stale.flat()].sort(byTarget);
   }
@@ -7092,7 +7092,7 @@ function requireResolveBlockScalar() {
     if (!header)
       return { value: "", type: null, comment: "", range: [start2, start2, start2] };
     const type2 = header.mode === ">" ? Scalar2.Scalar.BLOCK_FOLDED : Scalar2.Scalar.BLOCK_LITERAL;
-    const lines2 = scalar2.source ? splitLines(scalar2.source) : [];
+    const lines2 = scalar2.source ? splitLines2(scalar2.source) : [];
     let chompStart = lines2.length;
     for (let i = lines2.length - 1; i >= 0; --i) {
       const content2 = lines2[i][1];
@@ -7250,7 +7250,7 @@ function requireResolveBlockScalar() {
     }
     return { mode, indent, chomp, comment, length };
   }
-  function splitLines(source) {
+  function splitLines2(source) {
     const split = source.split(/\n( *)/);
     const first = split[0];
     const m = first.match(/^( *)/);
@@ -10420,12 +10420,12 @@ const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSY
 const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
 const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
-const text$4 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const text$5 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
 const errorCode = (error2) => error2.code ?? "";
 function ownerDetails(owner) {
   try {
     const { command: command2, operationId } = owner();
-    return { ...text$4(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
+    return { ...text$5(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
   } catch {
     return {};
   }
@@ -10435,7 +10435,7 @@ function hostIdentity() {
   identity ??= (async () => {
     const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
     const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
-    return { ...text$4(pidNamespace) ? { pidNamespace } : {}, ...text$4(bootId) ? { bootId } : {} };
+    return { ...text$5(pidNamespace) ? { pidNamespace } : {}, ...text$5(bootId) ? { bootId } : {} };
   })();
   return identity;
 }
@@ -10521,17 +10521,17 @@ function parseMetadata(content2) {
   } catch {
     return null;
   }
-  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$4(value2.hostname) || !text$4(value2.startedAt)) return null;
+  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$5(value2.hostname) || !text$5(value2.startedAt)) return null;
   const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
   return {
     pid,
     hostname: host,
     startedAt,
-    ...text$4(command2) ? { command: command2 } : {},
+    ...text$5(command2) ? { command: command2 } : {},
     ...positiveInteger(operationId) ? { operationId } : {},
-    ...text$4(forgeVersion) ? { forgeVersion } : {},
-    ...text$4(pidNamespace) ? { pidNamespace } : {},
-    ...text$4(bootId) ? { bootId } : {}
+    ...text$5(forgeVersion) ? { forgeVersion } : {},
+    ...text$5(pidNamespace) ? { pidNamespace } : {},
+    ...text$5(bootId) ? { bootId } : {}
   };
 }
 async function readLock(path) {
@@ -10926,7 +10926,7 @@ function trough() {
       throw new TypeError("Expected function as last argument, not " + callback);
     }
     next(null, ...values2);
-    function next(error2, ...output) {
+    function next(error2, ...output2) {
       const fn = fns[++middlewareIndex];
       let index2 = -1;
       if (error2) {
@@ -10934,15 +10934,15 @@ function trough() {
         return;
       }
       while (++index2 < values2.length) {
-        if (output[index2] === null || output[index2] === void 0) {
-          output[index2] = values2[index2];
+        if (output2[index2] === null || output2[index2] === void 0) {
+          output2[index2] = values2[index2];
         }
       }
-      values2 = output;
+      values2 = output2;
       if (fn) {
-        wrap(fn, next)(...output);
+        wrap(fn, next)(...output2);
       } else {
-        callback(null, ...output);
+        callback(null, ...output2);
       }
     }
   }
@@ -10987,10 +10987,10 @@ function wrap(middleware, callback) {
       }
     }
   }
-  function done(error2, ...output) {
+  function done(error2, ...output2) {
     if (!called) {
       called = true;
-      callback(error2, ...output);
+      callback(error2, ...output2);
     }
   }
   function then(value2) {
@@ -11589,8 +11589,8 @@ class VFile {
     if (typeof this.value === "string") {
       return this.value;
     }
-    const decoder = new TextDecoder(encoding || void 0);
-    return decoder.decode(this.value);
+    const decoder2 = new TextDecoder(encoding || void 0);
+    return decoder2.decode(this.value);
   }
 }
 function assertPart(part, name2) {
@@ -17824,7 +17824,7 @@ const resolver = {
   resolveAll: createResolver()
 };
 const string$3 = initializeFactory("string");
-const text$3 = initializeFactory("text");
+const text$4 = initializeFactory("text");
 function initializeFactory(field2) {
   return {
     resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
@@ -17998,7 +17998,7 @@ const string$2 = {
   [38]: characterReference,
   [92]: characterEscape
 };
-const text$2 = {
+const text$3 = {
   [-5]: lineEnding,
   [-4]: lineEnding,
   [-3]: lineEnding,
@@ -18031,7 +18031,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flowInitial,
   insideSpan,
   string: string$2,
-  text: text$2
+  text: text$3
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
   let point2 = {
@@ -18364,7 +18364,7 @@ function parse$1(options) {
     flow: create2(flow$1),
     lazy: {},
     string: create2(string$3),
-    text: create2(text$3)
+    text: create2(text$4)
   };
   return parser2;
   function create2(initial) {
@@ -18459,9 +18459,9 @@ function preprocess() {
 }
 const characterEscapeOrReference = /\\([!-/:-@[-`{-~])|&(#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});/gi;
 function decodeString(value2) {
-  return value2.replace(characterEscapeOrReference, decode$4);
+  return value2.replace(characterEscapeOrReference, decode$5);
 }
-function decode$4($0, $1, $2) {
+function decode$5($0, $1, $2) {
   if ($1) {
     return $1;
   }
@@ -20879,11 +20879,11 @@ function requireMoment() {
           }
         }
         return function(mom) {
-          var output = "", i2;
+          var output2 = "", i2;
           for (i2 = 0; i2 < length; i2++) {
-            output += isFunction(array2[i2]) ? array2[i2].call(mom, format3) : array2[i2];
+            output2 += isFunction(array2[i2]) ? array2[i2].call(mom, format3) : array2[i2];
           }
-          return output;
+          return output2;
         };
       }
       function formatMoment(m, format3) {
@@ -21760,8 +21760,8 @@ function requireMoment() {
         sameElse: "L"
       };
       function calendar$1(key, mom, now2) {
-        var output = this._calendar[key] || this._calendar["sameElse"];
-        return isFunction(output) ? output.call(mom, now2) : output;
+        var output2 = this._calendar[key] || this._calendar["sameElse"];
+        return isFunction(output2) ? output2.call(mom, now2) : output2;
       }
       var defaultLongDateFormat = {
         LTS: "h:mm:ss A",
@@ -21821,8 +21821,8 @@ function requireMoment() {
         yy: "%d years"
       };
       function relativeTimeWithoutPostformat(number2, withoutSuffix, string2, isFuture) {
-        var output = this._relativeTime[string2];
-        return isFunction(output) ? output(number2, withoutSuffix, string2, isFuture) : output.replace(/%d/i, number2);
+        var output2 = this._relativeTime[string2];
+        return isFunction(output2) ? output2(number2, withoutSuffix, string2, isFuture) : output2.replace(/%d/i, number2);
       }
       function relativeTime$1(number2, withoutSuffix, string2, isFuture) {
         return this.postformat(
@@ -21835,13 +21835,13 @@ function requireMoment() {
           )
         );
       }
-      function pastFutureWithoutPostformat(diff2, output) {
+      function pastFutureWithoutPostformat(diff2, output2) {
         var format3 = this._relativeTime[diff2 > 0 ? "future" : "past"];
-        return isFunction(format3) ? format3(output) : format3.replace(/%s/i, output);
+        return isFunction(format3) ? format3(output2) : format3.replace(/%s/i, output2);
       }
-      function pastFuture(diff2, output) {
+      function pastFuture(diff2, output2) {
         return this.postformat(
-          pastFutureWithoutPostformat.call(this, diff2, output)
+          pastFutureWithoutPostformat.call(this, diff2, output2)
         );
       }
       function createDate(y, m, d, h, M, s, ms) {
@@ -23307,9 +23307,9 @@ function requireMoment() {
             time2 = void 0;
           }
         }
-        var now2 = time2 || createLocal(), sod = cloneWithOffset(now2, this).startOf("day"), format3 = hooks2.calendarFormat(this, sod) || "sameElse", output = formats && (isFunction(formats[format3]) ? formats[format3].call(this, now2) : formats[format3]);
+        var now2 = time2 || createLocal(), sod = cloneWithOffset(now2, this).startOf("day"), format3 = hooks2.calendarFormat(this, sod) || "sameElse", output2 = formats && (isFunction(formats[format3]) ? formats[format3].call(this, now2) : formats[format3]);
         return this.format(
-          output || this.localeData().calendar(format3, this, createLocal(now2))
+          output2 || this.localeData().calendar(format3, this, createLocal(now2))
         );
       }
       function clone$1() {
@@ -23367,7 +23367,7 @@ function requireMoment() {
         return this.isSame(input, units) || this.isBefore(input, units);
       }
       function diff(input, units, asFloat) {
-        var that, zoneDelta, output;
+        var that, zoneDelta, output2;
         if (!this.isValid()) {
           return NaN;
         }
@@ -23379,38 +23379,38 @@ function requireMoment() {
         units = normalizeUnits(units);
         switch (units) {
           case "year":
-            output = monthDiff(this, that) / 12;
+            output2 = monthDiff(this, that) / 12;
             break;
           case "month":
-            output = monthDiff(this, that);
+            output2 = monthDiff(this, that);
             break;
           case "quarter":
-            output = monthDiff(this, that) / 3;
+            output2 = monthDiff(this, that) / 3;
             break;
           case "second":
-            output = (this - that) / 1e3;
+            output2 = (this - that) / 1e3;
             break;
           // 1000
           case "minute":
-            output = (this - that) / 6e4;
+            output2 = (this - that) / 6e4;
             break;
           // 1000 * 60
           case "hour":
-            output = (this - that) / 36e5;
+            output2 = (this - that) / 36e5;
             break;
           // 1000 * 60 * 60
           case "day":
-            output = (this - that - zoneDelta) / 864e5;
+            output2 = (this - that - zoneDelta) / 864e5;
             break;
           // 1000 * 60 * 60 * 24, negate dst
           case "week":
-            output = (this - that - zoneDelta) / 6048e5;
+            output2 = (this - that - zoneDelta) / 6048e5;
             break;
           // 1000 * 60 * 60 * 24 * 7, negate dst
           default:
-            output = this - that;
+            output2 = this - that;
         }
-        return asFloat ? output : absFloor(output);
+        return asFloat ? output2 : absFloor(output2);
       }
       function monthDiff(a, b) {
         if (a.date() < b.date()) {
@@ -23473,8 +23473,8 @@ function requireMoment() {
         if (!inputString) {
           inputString = this.isUtc() ? hooks2.defaultFormatUtc : hooks2.defaultFormat;
         }
-        var output = formatMoment(this, inputString);
-        return this.localeData().postformat(output);
+        var output2 = formatMoment(this, inputString);
+        return this.localeData().postformat(output2);
       }
       function from(time2, withoutSuffix) {
         if (this.isValid() && (isMoment(time2) && time2.isValid() || createLocal(time2).isValid())) {
@@ -24311,8 +24311,8 @@ function requireMoment() {
         ],
         dayOfMonthOrdinalParse: /\d{1,2}(th|st|nd|rd)/,
         ordinal: function(number2) {
-          var b = number2 % 10, output = toInt(number2 % 100 / 10) === 1 ? "th" : b === 1 ? "st" : b === 2 ? "nd" : b === 3 ? "rd" : "th";
-          return number2 + output;
+          var b = number2 % 10, output2 = toInt(number2 % 100 / 10) === 1 ? "th" : b === 1 ? "st" : b === 2 ? "nd" : b === 3 ? "rd" : "th";
+          return number2 + output2;
         }
       });
       hooks2.lang = deprecate(
@@ -24511,7 +24511,7 @@ function requireMoment() {
         if (!this.isValid()) {
           return this.localeData().invalidDate();
         }
-        var withSuffix = false, th = thresholds, locale2, output;
+        var withSuffix = false, th = thresholds, locale2, output2;
         if (typeof argWithSuffix === "object") {
           argThresholds = argWithSuffix;
           argWithSuffix = false;
@@ -24526,11 +24526,11 @@ function requireMoment() {
           }
         }
         locale2 = this.localeData();
-        output = relativeTime(this, !withSuffix, th, locale2);
+        output2 = relativeTime(this, !withSuffix, th, locale2);
         if (withSuffix) {
-          output = pastFutureWithoutPostformat.call(locale2, +this, output);
+          output2 = pastFutureWithoutPostformat.call(locale2, +this, output2);
         }
-        return locale2.postformat(output);
+        return locale2.postformat(output2);
       }
       var abs = Math.abs;
       function sign(x) {
@@ -24974,11 +24974,11 @@ function createFileContext(input) {
   };
 }
 function normalizeFrontmatterProperties(properties, options = {}) {
-  const output = {};
+  const output2 = {};
   for (const [key, value2] of Object.entries(properties)) {
-    output[key] = normalizeFrontmatterValue(value2, options.propertyTypes?.[key], options.linkResolutions);
+    output2[key] = normalizeFrontmatterValue(value2, options.propertyTypes?.[key], options.linkResolutions);
   }
-  return output;
+  return output2;
 }
 function normalizeFrontmatterValue(value2, type2, linkResolutions = {}) {
   if (type2 === "date")
@@ -26506,7 +26506,7 @@ const basesPlugin = {
   })
 };
 const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
-const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected (`PROTECTED_PATH`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected (`PROTECTED_PATH`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
 const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`) so `help`, `schema` and the invocation policy describe it; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for one-time setup after enabling and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
@@ -26567,6 +26567,429 @@ const skillsPlugin = {
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],
     strings: { de: { commands: { skills: "Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren." } } }
+  })
+};
+const special = /[.*+?^${}()|[\]\\/]/g;
+const literal$2 = (text2) => text2.replace(special, "\\$&");
+function characterClass(pattern, start2) {
+  let index2 = start2 + 1;
+  const negated = pattern[index2] === "!" || pattern[index2] === "^";
+  if (negated) index2++;
+  const first = index2;
+  while (index2 < pattern.length && (pattern[index2] !== "]" || index2 === first)) index2++;
+  if (index2 >= pattern.length) return void 0;
+  const members2 = pattern.slice(first, index2).replace(/[\\\]^[]/g, "\\$&");
+  return { source: negated ? `(?!/)[^${members2}]` : `(?!/)[${members2}]`, end: index2 };
+}
+function pathGlob(pattern, option2 = "--path") {
+  ensure(pattern.length > 0 && pattern.length <= 1024, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to 1024 characters.`);
+  const source = pattern.replace(/^\.\//, "");
+  let regex = "", braces = 0;
+  for (let index2 = 0; index2 < source.length; index2++) {
+    const char = source[index2];
+    if (char === "\\") {
+      ensure(index2 + 1 < source.length, "INVALID_ARGUMENT", `${option2} ends with an unescaped backslash.`);
+      regex += literal$2(source[++index2]);
+    } else if (char === "*") {
+      let end2 = index2;
+      while (source[end2 + 1] === "*") end2++;
+      const segmentStart = index2 === 0 || source[index2 - 1] === "/";
+      const globstar = end2 > index2 && segmentStart && (end2 + 1 === source.length || source[end2 + 1] === "/");
+      if (globstar && source[end2 + 1] === "/") {
+        regex += "(?:.*/)?";
+        end2++;
+      } else regex += globstar ? ".*" : "[^/]*";
+      index2 = end2;
+    } else if (char === "?") regex += "[^/]";
+    else if (char === "[") {
+      const range2 = characterClass(source, index2);
+      if (range2) {
+        regex += range2.source;
+        index2 = range2.end;
+      } else regex += "\\[";
+    } else if (char === "{") {
+      braces++;
+      regex += "(?:";
+    } else if (char === "," && braces > 0) regex += "|";
+    else if (char === "}" && braces > 0) {
+      braces--;
+      regex += ")";
+    } else regex += literal$2(char);
+  }
+  ensure(braces === 0, "INVALID_ARGUMENT", `${option2} has an unclosed {.`);
+  const expression2 = new RegExp(`^${regex}$`, "s");
+  return (path) => expression2.test(path);
+}
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function base64url$1(bytes) {
+  let text2 = "";
+  for (let index2 = 0; index2 < bytes.length; index2 += 3) {
+    const chunk = bytes[index2] << 16 | (bytes[index2 + 1] ?? 0) << 8 | (bytes[index2 + 2] ?? 0);
+    const length = Math.min(3, bytes.length - index2) + 1;
+    for (let position2 = 0; position2 < length; position2++) text2 += alphabet[chunk >> 18 - position2 * 6 & 63];
+  }
+  return text2;
+}
+function fromBase64url(text2) {
+  if (!/^[A-Za-z0-9_-]*$/.test(text2) || text2.length % 4 === 1) return void 0;
+  const bytes = [];
+  for (let index2 = 0; index2 < text2.length; index2 += 4) {
+    const group = text2.slice(index2, index2 + 4);
+    let chunk = 0;
+    for (let position2 = 0; position2 < 4; position2++) chunk = chunk << 6 | (position2 < group.length ? alphabet.indexOf(group[position2]) : 0);
+    for (let position2 = 0; position2 < group.length - 1; position2++) bytes.push(chunk >> 16 - position2 * 8 & 255);
+  }
+  return Uint8Array.from(bytes);
+}
+function fingerprint(query) {
+  let hash = 2166136261;
+  for (const char of JSON.stringify(query)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+const validKey = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((part) => typeof part === "string" || typeof part === "number" && Number.isSafeInteger(part));
+function compareKeys(a, b) {
+  for (let index2 = 0; index2 < Math.min(a.length, b.length); index2++) {
+    const left = a[index2], right = b[index2];
+    if (left === right) continue;
+    if (typeof left === "number" && typeof right === "number") return left - right;
+    return String(left) < String(right) ? -1 : 1;
+  }
+  return a.length - b.length;
+}
+class Pager {
+  constructor(request, query, key) {
+    this.request = request;
+    this.query = query;
+    this.key = key;
+    ensure(request.limit === void 0 || Number.isSafeInteger(request.limit) && request.limit > 0, "INVALID_ARGUMENT", "--limit must be a positive integer.");
+    this.after = request.cursor === void 0 ? void 0 : this.decode(request.cursor);
+  }
+  request;
+  query;
+  key;
+  items = [];
+  /** Every offered item, including those before the cursor and after the page. */
+  total = 0;
+  after;
+  more = false;
+  offer(item) {
+    this.total++;
+    if (this.more || this.after !== void 0 && compareKeys(this.key(item), this.after) <= 0) return;
+    if (this.request.limit !== void 0 && this.items.length >= this.request.limit) this.more = true;
+    else this.items.push(item);
+  }
+  /** The cursor for the next page, or undefined when this page is the last one. */
+  nextCursor() {
+    if (!this.more) return void 0;
+    return base64url$1(new TextEncoder().encode(JSON.stringify({ q: fingerprint(this.query), after: this.key(this.items.at(-1)) })));
+  }
+  decode(cursor) {
+    let value2;
+    try {
+      value2 = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(fromBase64url(cursor) ?? new Uint8Array([255])));
+    } catch {
+      value2 = void 0;
+    }
+    ensure(isRecord(value2) && validKey(value2.after), "INVALID_ARGUMENT", "--cursor is not a cursor returned by this command; rerun without --cursor.");
+    ensure(value2.q === fingerprint(this.query), "INVALID_ARGUMENT", "--cursor belongs to a different query; pass the same pattern and filters, or rerun without --cursor.");
+    return value2.after;
+  }
+}
+const searchScopes = ["body", "frontmatter", "all"];
+const searchKinds = ["markdown", "canvas", "base", "text"];
+const maxPatternLength = 1e3;
+const maxContextLines = 50;
+function searchError(code2, message, details) {
+  return Object.assign(new Error(message), { code: code2, ...details ? { details } : {} });
+}
+function propertyFilter(text2) {
+  const equals = text2.indexOf("=");
+  const key = (equals < 0 ? text2 : text2.slice(0, equals)).trim();
+  if (!key) return void 0;
+  return equals < 0 ? { key } : { key, value: text2.slice(equals + 1) };
+}
+const scalarText = (value2) => typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "boolean" ? String(value2) : void 0;
+function metadataMatches(cache, query) {
+  if (query.tag !== void 0) {
+    const needle = query.tag.replace(/^#/, "").toLowerCase();
+    const tags2 = allTags(cache).map((tag) => tag.replace(/^#/, "").toLowerCase());
+    if (!tags2.some((tag) => tag === needle || tag.startsWith(`${needle}/`))) return false;
+  }
+  if (query.property !== void 0) {
+    const frontmatter2 = cache?.frontmatter;
+    if (!frontmatter2 || !Object.hasOwn(frontmatter2, query.property.key)) return false;
+    const value2 = frontmatter2[query.property.key];
+    if (value2 === null || value2 === void 0) return false;
+    if (query.property.value !== void 0) {
+      const values2 = Array.isArray(value2) ? value2 : [value2];
+      if (!values2.some((item) => scalarText(item) === query.property.value)) return false;
+    }
+  }
+  return true;
+}
+const visiblePath = (path) => !path.split("/").some((segment2) => segment2.startsWith("."));
+const syntax = /[.*+?^${}()|[\]\\/]/g;
+const snippetRadius = 80;
+const maxLineText = 200;
+function searchExpression(query) {
+  if (query.pattern.length === 0 || query.pattern.length > maxPatternLength) {
+    throw searchError("INVALID_SEARCH_PATTERN", `The pattern must have 1 to ${maxPatternLength} characters.`);
+  }
+  const source = query.regex ? query.pattern : query.pattern.replace(syntax, "\\$&");
+  try {
+    return new RegExp(source, `gu${query.caseSensitive ? "" : "i"}`);
+  } catch (error2) {
+    throw searchError("INVALID_SEARCH_PATTERN", `Invalid regular expression: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
+const splitLines = (text2) => text2.split(/\r\n|\n|\r/);
+function frontmatterRange(lines2) {
+  if (lines2.length < 2 || lines2[0].trimEnd() !== "---") return void 0;
+  const end2 = lines2.findIndex((line, index2) => index2 > 0 && line.trimEnd() === "---");
+  return end2 < 0 ? void 0 : { start: 0, end: end2 };
+}
+function searchedLines(lines2, kind, scope, skipped = /* @__PURE__ */ new Set()) {
+  const range2 = kind === "markdown" ? frontmatterRange(lines2) : void 0;
+  const inFrontmatter = (line) => range2 !== void 0 && line > range2.start && line < range2.end;
+  const inBody = (line) => range2 === void 0 || line > range2.end;
+  const scoped = scope === "all" ? () => true : scope === "frontmatter" ? inFrontmatter : inBody;
+  return (line) => scoped(line) && !skipped.has(line);
+}
+function matchLines(expression2, lines2, included) {
+  const hits = [];
+  for (const [line, text2] of lines2.entries()) {
+    if (!included(line)) continue;
+    expression2.lastIndex = 0;
+    for (let found = expression2.exec(text2); found; found = expression2.exec(text2)) {
+      if (found[0].length === 0) {
+        expression2.lastIndex = found.index + (text2.codePointAt(found.index) > 65535 ? 2 : 1);
+        continue;
+      }
+      hits.push({ line, column: found.index, match: found[0] });
+    }
+  }
+  return hits;
+}
+function clipAround(text2, start2, end2, radius = snippetRadius) {
+  if (text2.length <= maxLineText) return text2;
+  const from = Math.max(0, start2 - radius), to = Math.min(text2.length, Math.max(end2, start2) + radius);
+  return `${from > 0 ? "…" : ""}${text2.slice(from, to)}${to < text2.length ? "…" : ""}`;
+}
+const clipLine = (text2) => text2.length <= maxLineText ? text2 : `${text2.slice(0, maxLineText)}…`;
+const batchSize = 32;
+const decoder = new TextDecoder("utf-8", { fatal: true });
+function decode$4(bytes) {
+  try {
+    return decoder.decode(bytes);
+  } catch {
+    return void 0;
+  }
+}
+async function readExisting(files, path) {
+  try {
+    return await files.read(path);
+  } catch (error2) {
+    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return void 0;
+    throw error2;
+  }
+}
+function codeLines(cache, path) {
+  const lines2 = /* @__PURE__ */ new Set();
+  for (const section of cache?.getFileCache(path)?.sections ?? []) {
+    if (section.type !== "code") continue;
+    for (let line = section.position.start.line; line <= section.position.end.line; line++) lines2.add(line);
+  }
+  return lines2;
+}
+async function searchFiles(sources, query, page) {
+  const expression2 = searchExpression(query);
+  const { context: _context, ...ordering2 } = query;
+  const pager = new Pager(page, { command: "search", ...ordering2 }, (hit) => [hit.path, hit.line, hit.column]);
+  const inPath = query.path === void 0 ? () => true : pathGlob(query.path);
+  const kinds = query.kind ? [query.kind] : searchKinds;
+  const candidates2 = (await sources.files.list()).filter((path) => visiblePath(path) && kinds.includes(fileKind(path)) && inPath(path));
+  const cache = query.tag !== void 0 || query.property !== void 0 || query.skipCode ? await sources.metadata() : void 0;
+  const selected = cache ? candidates2.filter((path) => metadataMatches(cache.getFileCache(path), query)) : candidates2;
+  for (let start2 = 0; start2 < selected.length; start2 += batchSize) {
+    const batch = await Promise.all(selected.slice(start2, start2 + batchSize).map((path) => readExisting(sources.files, path)));
+    sources.budget.run(() => {
+      for (const file of batch) {
+        const text2 = file && decode$4(file.bytes);
+        if (text2 === void 0 || !file) continue;
+        const lines2 = splitLines(text2);
+        const included = searchedLines(lines2, fileKind(file.path), query.scope, query.skipCode ? codeLines(cache, file.path) : void 0);
+        for (const hit of matchLines(expression2, lines2, included)) {
+          const line = lines2[hit.line];
+          pager.offer({
+            path: file.path,
+            line: hit.line + 1,
+            column: hit.column + 1,
+            match: hit.match,
+            snippet: clipAround(line, hit.column, hit.column + hit.match.length),
+            ...query.context > 0 ? {
+              before: lines2.slice(Math.max(0, hit.line - query.context), hit.line).map(clipLine),
+              after: lines2.slice(hit.line + 1, hit.line + 1 + query.context).map(clipLine)
+            } : {},
+            revision: file.revision
+          });
+        }
+      }
+    });
+  }
+  const nextCursor = pager.nextCursor();
+  return { hits: pager.items, total: pager.total, ...nextCursor === void 0 ? {} : { nextCursor } };
+}
+function vmSearchBudget(milliseconds) {
+  const context = node_vm.createContext({ task: void 0 }), script = new node_vm.Script("task()");
+  let spent = 0;
+  const timeout = () => searchError("SEARCH_TIMEOUT", `The search exceeded its ${milliseconds} ms matching budget.`, { timeoutMs: milliseconds });
+  return {
+    run(task2) {
+      if (spent >= milliseconds) throw timeout();
+      const started = performance.now();
+      context.task = task2;
+      try {
+        return script.runInContext(context, { timeout: Math.max(1, Math.ceil(milliseconds - spent)) });
+      } catch (error2) {
+        if (error2?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") throw timeout();
+        throw error2;
+      } finally {
+        context.task = void 0;
+        spent += performance.now() - started;
+      }
+    }
+  };
+}
+const defaultSearchLimit = 100;
+const text$2 = { type: "string" };
+const lines = { type: "array", items: text$2 };
+const output = {
+  type: "object",
+  required: ["hits", "total"],
+  properties: {
+    hits: { type: "array", items: {
+      type: "object",
+      required: ["path", "line", "column", "match", "snippet", "revision"],
+      properties: {
+        path: text$2,
+        line: { type: "integer", minimum: 1 },
+        column: { type: "integer", minimum: 1 },
+        match: text$2,
+        snippet: text$2,
+        before: lines,
+        after: lines,
+        revision: text$2
+      }
+    } },
+    total: { type: "integer", minimum: 0 },
+    nextCursor: text$2
+  }
+};
+function searchCommand(service) {
+  return {
+    id: "search",
+    description: "Search text files for a literal or regular-expression pattern and return hits with line, column, snippet and revision.",
+    usage: "search <pattern> [--regex] [--case-sensitive] [--in body|frontmatter|all] [--skip-code] [--kind markdown|canvas|base|text] [--path glob] [--tag tag] [--property key[=value]] [--context lines] [--limit count] [--cursor token]",
+    scope: "project",
+    discovery: false,
+    mutating: false,
+    args: [{ name: "pattern", description: "Literal text, or a JavaScript regular expression with --regex. Use -- before a pattern that starts with -.", required: true }],
+    options: {
+      regex: option.boolean("Treat the pattern as a JavaScript regular expression (u flag)."),
+      "case-sensitive": option.boolean("Match case exactly; matching ignores case by default."),
+      in: option.string("Markdown lines to read: the body after frontmatter, the frontmatter, or both.", { enum: searchScopes, default: "all" }),
+      "skip-code": option.boolean("Skip fenced and indented code blocks in Markdown."),
+      kind: option.string("Only files of this text kind.", { enum: searchKinds }),
+      path: option.string("Only files whose root-relative path matches this glob."),
+      tag: option.string("Only notes with this tag or a nested tag below it."),
+      property: option.string("Only notes whose frontmatter has key (not null), or key=value."),
+      context: option.string(`Lines of context before and after each hit (0–${maxContextLines}).`, { default: "0" }),
+      limit: option.string("Maximum hits per page; a truncated page returns nextCursor.", { default: String(defaultSearchLimit) }),
+      cursor: option.string("Continue after the page that returned this nextCursor, with the same pattern and filters.")
+    },
+    output,
+    errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
+    async run(args, flags, context) {
+      arity(args, 1);
+      const scope = value$2(flags, "in") ?? "all", kind = value$2(flags, "kind"), property = value$2(flags, "property");
+      ensure(searchScopes.includes(scope), "INVALID_ARGUMENT", `--in must be one of: ${searchScopes.join(", ")}.`);
+      ensure(kind === void 0 || searchKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${searchKinds.join(", ")}; search never reads attachments.`);
+      const filter = property === void 0 ? void 0 : propertyFilter(property);
+      ensure(property === void 0 || filter, "INVALID_ARGUMENT", "--property must be key or key=value with a nonempty key.");
+      const contextLines = integer$1(flags, "context") ?? 0;
+      ensure(contextLines <= maxContextLines, "INVALID_ARGUMENT", `--context must be at most ${maxContextLines}.`);
+      const tag = value$2(flags, "tag");
+      ensure(tag === void 0 || tag.replace(/^#/, "").length > 0, "INVALID_ARGUMENT", "--tag must name a tag.");
+      const query = {
+        pattern: args[0],
+        regex: flags.regex === true,
+        caseSensitive: flags["case-sensitive"] === true,
+        scope,
+        skipCode: flags["skip-code"] === true,
+        context: contextLines,
+        ...kind === void 0 ? {} : { kind },
+        ...value$2(flags, "path") === void 0 ? {} : { path: value$2(flags, "path") },
+        ...tag === void 0 ? {} : { tag },
+        ...filter === void 0 ? {} : { property: filter }
+      };
+      const cursor = value$2(flags, "cursor");
+      return service(context)(query, { limit: integer$1(flags, "limit", 1) ?? defaultSearchLimit, ...cursor === void 0 ? {} : { cursor } });
+    }
+  };
+}
+const defaultTimeoutMs = 1e4;
+const searchPlugin = {
+  manifest: {
+    id: "search",
+    name: "Search",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Search text files for literal or regular-expression patterns with metadata filters and paging."
+  },
+  create: () => ({
+    commands: [searchCommand((context) => (query, page) => searchFiles({
+      files: context.workspace.files,
+      metadata: () => context.metadata.load(),
+      budget: vmSearchBudget(Number(context.settings?.timeoutMs ?? defaultTimeoutMs))
+    }, query, page))],
+    settings: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        timeoutMs: {
+          type: "integer",
+          minimum: 100,
+          maximum: 6e5,
+          default: defaultTimeoutMs,
+          description: "Milliseconds one search may spend matching before it fails with SEARCH_TIMEOUT."
+        }
+      }
+    },
+    errors: [
+      {
+        code: "INVALID_SEARCH_PATTERN",
+        category: "input",
+        summary: "The search pattern is invalid.",
+        hint: "Fix the regular expression named in the message, or search for literal text without --regex."
+      },
+      {
+        code: "SEARCH_TIMEOUT",
+        category: "input",
+        summary: "The search exceeded its matching time budget.",
+        hint: "Simplify the regular expression (avoid nested quantifiers such as (a+)+), narrow --path or --kind, or raise plugins.settings.search.timeoutMs."
+      }
+    ],
+    strings: {
+      de: {
+        commands: { search: "Textdateien nach wörtlichem Text oder einem regulären Ausdruck durchsuchen; Treffer mit Zeile, Spalte, Ausschnitt und Revision." },
+        errors: {
+          INVALID_SEARCH_PATTERN: { summary: "Das Suchmuster ist ungültig.", hint: "Korrigieren Sie den in der Meldung genannten regulären Ausdruck oder suchen Sie ohne --regex nach wörtlichem Text." },
+          SEARCH_TIMEOUT: { summary: "Die Suche hat ihr Zeitbudget für den Abgleich überschritten.", hint: "Vereinfachen Sie den regulären Ausdruck (vermeiden Sie verschachtelte Quantoren wie (a+)+), grenzen Sie --path oder --kind ein oder erhöhen Sie plugins.settings.search.timeoutMs." }
+        }
+      }
+    }
   })
 };
 function encodeText(text2) {
@@ -27931,7 +28354,7 @@ const ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:
 const cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
 const cidrv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
 const base64 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
-const base64url$1 = /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/;
+const base64url = /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/;
 const httpProtocol = /^https?$/;
 const e164 = /^\+[1-9]\d{6,14}$/;
 const dateSource = `(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))`;
@@ -29633,9 +30056,9 @@ const $ZodTransform = /* @__PURE__ */ $constructor("$ZodTransform", (inst, def) 
     }
     const _out = def.transform(payload.value, payload);
     if (ctx.async) {
-      const output = _out instanceof Promise ? _out : Promise.resolve(_out);
-      return output.then((output2) => {
-        payload.value = output2;
+      const output2 = _out instanceof Promise ? _out : Promise.resolve(_out);
+      return output2.then((output3) => {
+        payload.value = output3;
         return payload;
       });
     }
@@ -31474,7 +31897,7 @@ const formatMap = {
 };
 const exactPatterns = /* @__PURE__ */ new Map([
   [base64Charset, base64],
-  [base64urlCharset, base64url$1]
+  [base64urlCharset, base64url]
 ]);
 const exactPattern = (p) => exactPatterns.get(p) ?? p;
 const stringProcessor = (schema2, ctx, _json, _params) => {
@@ -32702,7 +33125,7 @@ const ZodLiteral = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
     }
   });
 });
-function literal$2(value2, params) {
+function literal$1(value2, params) {
   return new ZodLiteral({
     type: "literal",
     values: Array.isArray(value2) ? value2 : [value2],
@@ -32732,14 +33155,14 @@ const ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) =>
         payload.issues.push(issue(_issue));
       }
     };
-    const output = def.transform(payload.value, payload);
-    if (output instanceof Promise) {
-      return output.then((output2) => {
-        payload.value = output2;
+    const output2 = def.transform(payload.value, payload);
+    if (output2 instanceof Promise) {
+      return output2.then((output3) => {
+        payload.value = output3;
         return payload;
       });
     }
-    payload.value = output;
+    payload.value = output2;
     return payload;
   };
 });
@@ -32903,7 +33326,7 @@ const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\
 }, "Must be a contained workspace-relative path.");
 const pluginIds = array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
 const configSchema = strictObject({
-  schemaVersion: literal$2(1).default(1),
+  schemaVersion: literal$1(1).default(1),
   paths: strictObject({
     projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
     components: relativePath$1.default("components"),
@@ -33432,12 +33855,12 @@ function placeholders(text2) {
   return result;
 }
 function replaceTokens(text2, tokens, value2) {
-  let cursor = 0, output = "";
+  let cursor = 0, output2 = "";
   for (const [index2, token] of tokens.entries()) {
-    output += text2.slice(cursor, token.start) + value2(token, index2);
+    output2 += text2.slice(cursor, token.start) + value2(token, index2);
     cursor = token.end;
   }
-  return output + text2.slice(cursor);
+  return output2 + text2.slice(cursor);
 }
 function jsonValue$1(value2, ancestors = /* @__PURE__ */ new Set(), depth = 0) {
   ensure(depth < 100, "INVALID_TEMPLATE_VALUES", "Template values are nested too deeply.");
@@ -33977,7 +34400,7 @@ const node = lazy(() => union([
     if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
   }),
   strictObject({ component: id, props: values.optional(), children: array(node).optional() }),
-  strictObject({ slot: literal$2("children") })
+  strictObject({ slot: literal$1("children") })
 ]));
 const metadata = record$1(string$1(), json$3);
 const story = strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), args: values.optional(), parameters: metadata.optional(), tags: array(string$1()).optional() });
@@ -33993,7 +34416,7 @@ const storybook = strictObject({
   const names2 = settings2.stories?.map((entry2) => entry2.name) ?? [];
   if (new Set(names2).size !== names2.length) context.addIssue({ code: "custom", message: "Story names must be unique." });
 });
-const schema$2 = strictObject({ schemaVersion: literal$2(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record$1(identifier$2, prop).default({}), state: record$1(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
+const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record$1(identifier$2, prop).default({}), state: record$1(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
 class MarkdownUiDefinitions {
   documents = new ObsidianDocuments();
   parse(bytes, path) {
@@ -34656,13 +35079,13 @@ function modulePath(directory, target) {
   const relative = minpath.posix.relative(directory, target).replace(/\.tsx?$/, "");
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
-function literal$1(value2, indent = 0) {
-  if (Array.isArray(value2)) return `[${value2.map((item) => literal$1(item, indent)).join(", ")}]`;
+function literal(value2, indent = 0) {
+  if (Array.isArray(value2)) return `[${value2.map((item) => literal(item, indent)).join(", ")}]`;
   if (value2 !== null && typeof value2 === "object") {
     const entries = Object.entries(value2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     if (!entries.length) return "{}";
     return `{
-${entries.map(([key, item]) => `${" ".repeat(indent + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal$1(item, indent + 2)}`).join(",\n")}
+${entries.map(([key, item]) => `${" ".repeat(indent + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item, indent + 2)}`).join(",\n")}
 ${" ".repeat(indent)}}`;
   }
   return JSON.stringify(value2) ?? "undefined";
@@ -34720,7 +35143,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
       ] : [],
       "",
       "const meta = {",
-      `${literal$1(meta).slice(2, -2)},`,
+      `${literal(meta).slice(2, -2)},`,
       ...html2 ? ["  render: (args) => component(args),"] : ["  component,"],
       ...extension2 ? ["  ...extensions.meta,"] : [],
       `} satisfies ${nativeType};`,
@@ -34733,7 +35156,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
       lines2.push(
         "",
         `export const ${name2}: _Story = {`,
-        ...Object.keys(fields).length ? [`${literal$1(fields).slice(2, -2)},`] : [],
+        ...Object.keys(fields).length ? [`${literal(fields).slice(2, -2)},`] : [],
         ...extension2 ? [`  ...extensions.stories?.[${JSON.stringify(name2)}],`] : [],
         "} satisfies _Story;"
       );
@@ -34765,7 +35188,7 @@ const operation = strictObject({
 });
 const operations = strictObject({ list: operation.optional(), get: operation.optional(), create: operation.optional(), update: operation.optional(), delete: operation.optional() });
 const schema$1 = strictObject({
-  schemaVersion: literal$2(1),
+  schemaVersion: literal$1(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   kind: _enum(["rest", "json"]),
   model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record$1(identifier$1, field) }),
@@ -35029,17 +35452,17 @@ const url = string$1().min(1).refine((value2) => {
   return isSafeNavigationUrl(example);
 }, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
 const action = union([
-  strictObject({ type: literal$2("set-state"), state: identifier, value: scalar }),
-  strictObject({ type: literal$2("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
-  strictObject({ type: literal$2("toggle-state"), state: identifier }),
-  strictObject({ type: literal$2("navigate"), url }),
-  strictObject({ type: literal$2("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
-  strictObject({ type: literal$2("upload-form"), url }),
-  strictObject({ type: literal$2("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
-  strictObject({ type: literal$2("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
+  strictObject({ type: literal$1("set-state"), state: identifier, value: scalar }),
+  strictObject({ type: literal$1("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
+  strictObject({ type: literal$1("toggle-state"), state: identifier }),
+  strictObject({ type: literal$1("navigate"), url }),
+  strictObject({ type: literal$1("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
+  strictObject({ type: literal$1("upload-form"), url }),
+  strictObject({ type: literal$1("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
+  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
 ]);
 const schema = strictObject({
-  schemaVersion: literal$2(1),
+  schemaVersion: literal$1(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   event: _enum(interactionEvents),
   keys: array(string$1().min(1)).min(1).optional(),
@@ -35367,7 +35790,7 @@ class NodeClaudeRuntime {
       let settled = false;
       let inputError;
       let timer;
-      const output = () => ({ stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
+      const output2 = () => ({ stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8") });
       const stop = () => {
         if (!child.pid) return false;
         return grouped ? process.kill(-child.pid, "SIGKILL") : child.kill("SIGKILL");
@@ -35399,7 +35822,7 @@ class NodeClaudeRuntime {
           ...details,
           terminationScope: grouped ? "process-group" : "direct-process",
           terminationRequested,
-          ...output()
+          ...output2()
         }, exitCode));
       };
       const interrupt = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" });
@@ -35448,7 +35871,7 @@ class NodeClaudeRuntime {
         }
         settled = true;
         cleanup();
-        resolve({ exitCode, ...output() });
+        resolve({ exitCode, ...output2() });
       });
       child.stdin?.on("error", (error2) => {
         inputError = error2;
@@ -36137,13 +36560,13 @@ class Help {
     function callFormatItem(term, description2) {
       return helper.formatItem(term, termWidth, description2, helper);
     }
-    let output = [
+    let output2 = [
       `${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`,
       ""
     ];
     const commandDescription = helper.commandDescription(cmd);
     if (commandDescription.length > 0) {
-      output = output.concat([
+      output2 = output2.concat([
         helper.boxWrap(
           helper.styleCommandDescription(commandDescription),
           helpWidth
@@ -36157,7 +36580,7 @@ class Help {
         helper.styleArgumentDescription(helper.argumentDescription(argument))
       );
     });
-    output = output.concat(
+    output2 = output2.concat(
       this.formatItemList("Arguments:", argumentList, helper)
     );
     const optionGroups = this.groupItems(
@@ -36172,7 +36595,7 @@ class Help {
           helper.styleOptionDescription(helper.optionDescription(option2))
         );
       });
-      output = output.concat(this.formatItemList(group, optionList, helper));
+      output2 = output2.concat(this.formatItemList(group, optionList, helper));
     });
     if (helper.showGlobalOptions) {
       const globalOptionList = helper.visibleGlobalOptions(cmd).map((option2) => {
@@ -36181,7 +36604,7 @@ class Help {
           helper.styleOptionDescription(helper.optionDescription(option2))
         );
       });
-      output = output.concat(
+      output2 = output2.concat(
         this.formatItemList("Global Options:", globalOptionList, helper)
       );
     }
@@ -36197,9 +36620,9 @@ class Help {
           helper.styleSubcommandDescription(helper.subcommandDescription(sub))
         );
       });
-      output = output.concat(this.formatItemList(group, commandList, helper));
+      output2 = output2.concat(this.formatItemList(group, commandList, helper));
     });
-    return output.join("\n");
+    return output2.join("\n");
   }
   /**
    * Return display width of string, ignoring ANSI escape sequences. Used in padding and wrapping calculations.
@@ -48060,11 +48483,11 @@ function markdownReferences(value2, tree, inlineTags) {
   const references = [], tags2 = [], definitions = [];
   const targets = /* @__PURE__ */ new Map();
   let lines2;
-  const add = (target, embed, syntax, found) => {
+  const add = (target, embed, syntax2, found) => {
     if (isExternalLink(target)) return;
-    const link = syntax === "wikilink" ? target : decoded$1(target);
+    const link = syntax2 === "wikilink" ? target : decoded$1(target);
     const subpath = parseLinktext(link).subpath;
-    references.push({ syntax, embed, link, ...found, displayText: found.displayText ?? defaultDisplayText(link), ...subpath ? { subpath } : {} });
+    references.push({ syntax: syntax2, embed, link, ...found, displayText: found.displayText ?? defaultDisplayText(link), ...subpath ? { subpath } : {} });
   };
   const text2 = (slice, base) => {
     const escaped = (index2) => {
@@ -48198,8 +48621,8 @@ function frontmatterLinks(properties) {
   const result = [];
   const visit2 = (value2, key) => {
     if (typeof value2 === "string") {
-      for (const { embed, syntax, link, original, displayText, subpath } of stringReferences(value2)) {
-        result.push({ key, link, original, displayText, syntax, ...subpath ? { subpath } : {}, ...embed ? { embed } : {} });
+      for (const { embed, syntax: syntax2, link, original, displayText, subpath } of stringReferences(value2)) {
+        result.push({ key, link, original, displayText, syntax: syntax2, ...subpath ? { subpath } : {}, ...embed ? { embed } : {} });
       }
     } else if (value2 && typeof value2 === "object") {
       for (const [name2, item] of Object.entries(value2)) visit2(item, key ? `${key}.${name2}` : name2);
@@ -48214,11 +48637,11 @@ function markdownMetadata(content2, properties, body) {
   const at = (span) => ({ position: lines2.pos(bodyOffset + span.start, bodyOffset + span.end) });
   const found = markdownReferences(visible2, tree, true);
   const structure = markdownStructure(visible2, tree, new LineMap(visible2));
-  const link = ({ syntax, link: link2, original, displayText, subpath, reference, ...span }) => ({
+  const link = ({ syntax: syntax2, link: link2, original, displayText, subpath, reference, ...span }) => ({
     link: link2,
     original,
     displayText,
-    syntax,
+    syntax: syntax2,
     ...subpath ? { subpath } : {},
     ...reference === void 0 ? {} : { reference },
     ...at(span)
@@ -48381,7 +48804,7 @@ function applyEdits(text2, edits) {
   return result;
 }
 const sorted = (paths2) => [...paths2].sort();
-const isRelativeSyntax = (syntax) => !["wikilink", "canvas"].includes(syntax);
+const isRelativeSyntax = (syntax2) => !["wikilink", "canvas"].includes(syntax2);
 function indexOf(paths2, cache, rename2) {
   const aliases = /* @__PURE__ */ new Map();
   for (const path of cache.files()) {
@@ -48444,10 +48867,10 @@ function candidates(metadata2, plan) {
   return result;
 }
 function replacement(candidate, index2, oldSource, oldTarget, newSource, target) {
-  const { original, syntax, link } = candidate;
-  if (syntax === "canvas") return target;
-  if (syntax === "wikilink") return rewriteWikilink(original, link, vaultLinkpath(index2, parseLinktext(link).path, target, newSource));
-  const destination = syntax === "markdown" ? markdownDestination(original) : syntax === "reference" ? definitionDestination(original) : attributeDestination(original);
+  const { original, syntax: syntax2, link } = candidate;
+  if (syntax2 === "canvas") return target;
+  if (syntax2 === "wikilink") return rewriteWikilink(original, link, vaultLinkpath(index2, parseLinktext(link).path, target, newSource));
+  const destination = syntax2 === "markdown" ? markdownDestination(original) : syntax2 === "reference" ? definitionDestination(original) : attributeDestination(original);
   if (!destination) return void 0;
   return original.slice(0, destination.start) + rewriteDestination(destination, oldSource, oldTarget, newSource, target) + original.slice(destination.end);
 }
@@ -48777,7 +49200,7 @@ function pluginCatalog(registry2, installed) {
 const discovery = { scope: "workspace", discovery: true, mutating: false };
 const commandArgument = [{ name: "command", description: "A command id from the catalog." }];
 function describe(command2) {
-  const { id: id2, description: description2, usage, options, args, output, errors: errors2 } = command2;
+  const { id: id2, description: description2, usage, options, args, output: output2, errors: errors2 } = command2;
   return {
     id: id2,
     description: description2,
@@ -48786,7 +49209,7 @@ function describe(command2) {
     args: args ?? [],
     annotations: commandAnnotations(command2),
     errors: errors2 ?? [],
-    ...output ? { outputSchema: output } : {}
+    ...output2 ? { outputSchema: output2 } : {}
   };
 }
 function catalogCommands(registry2) {
@@ -48959,136 +49382,6 @@ function replaceUniqueLiteral(text2, find, replacement2) {
   );
   const [offset] = matches2;
   return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
-}
-const special = /[.*+?^${}()|[\]\\/]/g;
-const literal = (text2) => text2.replace(special, "\\$&");
-function characterClass(pattern, start2) {
-  let index2 = start2 + 1;
-  const negated = pattern[index2] === "!" || pattern[index2] === "^";
-  if (negated) index2++;
-  const first = index2;
-  while (index2 < pattern.length && (pattern[index2] !== "]" || index2 === first)) index2++;
-  if (index2 >= pattern.length) return void 0;
-  const members2 = pattern.slice(first, index2).replace(/[\\\]^[]/g, "\\$&");
-  return { source: negated ? `(?!/)[^${members2}]` : `(?!/)[${members2}]`, end: index2 };
-}
-function pathGlob(pattern, option2 = "--path") {
-  ensure(pattern.length > 0 && pattern.length <= 1024, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to 1024 characters.`);
-  const source = pattern.replace(/^\.\//, "");
-  let regex = "", braces = 0;
-  for (let index2 = 0; index2 < source.length; index2++) {
-    const char = source[index2];
-    if (char === "\\") {
-      ensure(index2 + 1 < source.length, "INVALID_ARGUMENT", `${option2} ends with an unescaped backslash.`);
-      regex += literal(source[++index2]);
-    } else if (char === "*") {
-      let end2 = index2;
-      while (source[end2 + 1] === "*") end2++;
-      const segmentStart = index2 === 0 || source[index2 - 1] === "/";
-      const globstar = end2 > index2 && segmentStart && (end2 + 1 === source.length || source[end2 + 1] === "/");
-      if (globstar && source[end2 + 1] === "/") {
-        regex += "(?:.*/)?";
-        end2++;
-      } else regex += globstar ? ".*" : "[^/]*";
-      index2 = end2;
-    } else if (char === "?") regex += "[^/]";
-    else if (char === "[") {
-      const range2 = characterClass(source, index2);
-      if (range2) {
-        regex += range2.source;
-        index2 = range2.end;
-      } else regex += "\\[";
-    } else if (char === "{") {
-      braces++;
-      regex += "(?:";
-    } else if (char === "," && braces > 0) regex += "|";
-    else if (char === "}" && braces > 0) {
-      braces--;
-      regex += ")";
-    } else regex += literal(char);
-  }
-  ensure(braces === 0, "INVALID_ARGUMENT", `${option2} has an unclosed {.`);
-  const expression2 = new RegExp(`^${regex}$`, "s");
-  return (path) => expression2.test(path);
-}
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-function base64url(bytes) {
-  let text2 = "";
-  for (let index2 = 0; index2 < bytes.length; index2 += 3) {
-    const chunk = bytes[index2] << 16 | (bytes[index2 + 1] ?? 0) << 8 | (bytes[index2 + 2] ?? 0);
-    const length = Math.min(3, bytes.length - index2) + 1;
-    for (let position2 = 0; position2 < length; position2++) text2 += alphabet[chunk >> 18 - position2 * 6 & 63];
-  }
-  return text2;
-}
-function fromBase64url(text2) {
-  if (!/^[A-Za-z0-9_-]*$/.test(text2) || text2.length % 4 === 1) return void 0;
-  const bytes = [];
-  for (let index2 = 0; index2 < text2.length; index2 += 4) {
-    const group = text2.slice(index2, index2 + 4);
-    let chunk = 0;
-    for (let position2 = 0; position2 < 4; position2++) chunk = chunk << 6 | (position2 < group.length ? alphabet.indexOf(group[position2]) : 0);
-    for (let position2 = 0; position2 < group.length - 1; position2++) bytes.push(chunk >> 16 - position2 * 8 & 255);
-  }
-  return Uint8Array.from(bytes);
-}
-function fingerprint(query) {
-  let hash = 2166136261;
-  for (const char of JSON.stringify(query)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
-  return hash.toString(16).padStart(8, "0");
-}
-const validKey = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((part) => typeof part === "string" || typeof part === "number" && Number.isSafeInteger(part));
-function compareKeys(a, b) {
-  for (let index2 = 0; index2 < Math.min(a.length, b.length); index2++) {
-    const left = a[index2], right = b[index2];
-    if (left === right) continue;
-    if (typeof left === "number" && typeof right === "number") return left - right;
-    return String(left) < String(right) ? -1 : 1;
-  }
-  return a.length - b.length;
-}
-class Pager {
-  constructor(request, query, key) {
-    this.request = request;
-    this.query = query;
-    this.key = key;
-    ensure(request.limit === void 0 || Number.isSafeInteger(request.limit) && request.limit > 0, "INVALID_ARGUMENT", "--limit must be a positive integer.");
-    this.after = request.cursor === void 0 ? void 0 : this.decode(request.cursor);
-  }
-  request;
-  query;
-  key;
-  items = [];
-  /** Every offered item, including those before the cursor and after the page. */
-  total = 0;
-  after;
-  more = false;
-  /** Whether the page is complete and a later item exists; scanning may stop unless `total` is needed. */
-  get full() {
-    return this.more;
-  }
-  offer(item) {
-    this.total++;
-    if (this.more || this.after !== void 0 && compareKeys(this.key(item), this.after) <= 0) return;
-    if (this.request.limit !== void 0 && this.items.length >= this.request.limit) this.more = true;
-    else this.items.push(item);
-  }
-  /** The cursor for the next page, or undefined when this page is the last one. */
-  nextCursor() {
-    if (!this.more) return void 0;
-    return base64url(new TextEncoder().encode(JSON.stringify({ q: fingerprint(this.query), after: this.key(this.items.at(-1)) })));
-  }
-  decode(cursor) {
-    let value2;
-    try {
-      value2 = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(fromBase64url(cursor) ?? new Uint8Array([255])));
-    } catch {
-      value2 = void 0;
-    }
-    ensure(isRecord(value2) && validKey(value2.after), "INVALID_ARGUMENT", "--cursor is not a cursor returned by this command; rerun without --cursor.");
-    ensure(value2.q === fingerprint(this.query), "INVALID_ARGUMENT", "--cursor belongs to a different query; pass the same pattern and filters, or rerun without --cursor.");
-    return value2.after;
-  }
 }
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
@@ -49645,7 +49938,7 @@ class Localizer {
     return { code: code2, message: german.summary, hint: german.hint, retryable: definition2.retryable, details: { ...details, localization: { originalMessage: diagnostic, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
-const corePlugins = [basesPlugin, skillsPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin];
 async function run() {
   const tokens = process.argv.slice(2);
   const registry2 = new Registry(), events = new EventBus(new NodeEventScope());
@@ -49771,8 +50064,8 @@ async function run() {
         await registry2.activate(events, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message) => events.warn(message), settingsRevision));
         await announceLayoutReady(events);
       }, async () => {
-        const output = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed.args.slice(1), parsed.flags, context);
-        return localizer.result(commandId, output);
+        const output2 = parsed.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed.args.slice(1), parsed.flags, context);
+        return localizer.result(commandId, output2);
       });
       result = { ok: true, data };
     }
