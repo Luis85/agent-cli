@@ -40,6 +40,27 @@ node bin/forge.js claude agents update reviewer --from definitions/reviewer.md -
 
 Use the native agent's inspected revision for the update. Replacing an existing visible export instead requires that destination note's current revision with `export --if-match`. The two files have independent revision guards; exporting or editing a note does not automatically apply it to Claude.
 
+## Metadata index
+
+The kernel [metadata cache](../explanation/architecture.md#kernel-metadata-cache) indexes visible Markdown and Canvas files. Files or folders whose name starts with a dot, such as `.obsidian`, are excluded, as in Obsidian. Other visible files, such as attachments and `.base` files, are link targets only. The index has no command of its own yet; Bases queries use it. Each Markdown file's cache uses Obsidian's `CachedMetadata` field names. Each position is a `{start, end}` pair of zero-based `{line, col, offset}` points in the decoded file, counting the frontmatter and any BOM.
+
+| Field | Contents |
+| --- | --- |
+| `links` / `embeds` | Wikilinks `[[target#subpath\|display]]`, Markdown links `[text](target)` and images, reference-style uses `[text][id]`, and HTML `href`/`src` attributes. Each entry has `link` (the target with its subpath, percent-decoded for Markdown), `original`, `displayText` (the alias, link text or Obsidian's `Note > Heading` default), `subpath` (`#Heading` or `#^block`), `syntax` (`wikilink`, `markdown`, `reference` or `html`) and `position`. Reference uses also carry `reference`. |
+| `frontmatterLinks` | Links inside frontmatter strings, with `key` as the dotted property path (`related.0`) and `embed: true` for embeds. They have no position. |
+| `referenceLinks` | Reference definitions `[id]: target` with internal targets, with position |
+| `tags` | Inline `#tags` with positions. Frontmatter `tags`/`tag` lists or comma/space strings stay in `frontmatter`; Bases combines both, without duplicates |
+| `headings` | Top-level ATX and setext headings: `{heading, level, position}` |
+| `blocks` | `^block-id` markers, keyed by lowercase id. A trailing `^id` names its paragraph or list item. A paragraph containing only `^id` names the preceding section, such as a list, quote or table |
+| `sections` | Top-level `yaml`, `heading`, `paragraph`, `list`, `code`, `blockquote`, `callout`, `math`, `thematicBreak`, `html` and `definition` blocks, with the block id they carry |
+| `listItems` | Every list item with `parent` (the parent item's line, or the negated first line of a top-level list), `task` (the checkbox character, such as `" "` or `"x"`) and `id` |
+| `frontmatter`, `frontmatterPosition`, `aliases` | Parsed properties, the span of the frontmatter block, and `aliases`/`alias` values as a list or comma-separated string |
+| `canvasLinks` | In `.canvas` files only: each `file` node as `{node, link, original, subpath, syntax: "canvas"}` |
+
+Code spans and blocks, `%%comments%%`, inline `$…$` and display `$$…$$` math, backslash-escaped syntax, numeric-only tags and external URLs (any `scheme:` or `//host`) are not indexed. `resolvedLinks` maps each indexed source to `{destination path: count}`. `unresolvedLinks` maps it to `{link text without subpath: count}`. Missing targets and ambiguous targets both count as unresolved; the cache records the reason, and for an ambiguous target the candidates. Wikilinks and Canvas paths resolve vault-wide, and a wikilink may also resolve through a unique `aliases` entry. Markdown and HTML targets resolve relative to the source folder first. A note whose frontmatter is invalid has no cache and is reported as an issue rather than indexed partially. A Bases query fails on such a note with `BASE_INDEX_ERROR`.
+
+These rules follow Obsidian's documented formats. They have not been compared with a running Obsidian instance, and community-plugin syntax is not recognized.
+
 ## UTF-8 text
 
 `.ts .tsx .mts .cts .js .jsx .mjs .cjs .json .jsonc .yaml .yml .toml .ini .css .scss .less .html .htm .xml .vue .svelte .txt .log .csv .tsv .sh .py .sql` files have kind `text`. `read` returns `{kind:"text",content}` with the exact decoded text, including any BOM and line endings. `list --kind text` selects them. `edit` appends or replaces exactly one literal match with the same revision guard as Markdown, and `write`/`create` replace or create them. `properties` stays Markdown-only and `patch` stays Canvas/Bases-only.

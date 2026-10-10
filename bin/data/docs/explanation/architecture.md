@@ -27,7 +27,7 @@ Command families own their handlers: document editing, generation, skills, proje
 
 Within Claude presentation, agent, hook and authored-plugin asset handlers live in `agents.ts`, `hooks.ts` and `plugin-assets.ts`. `commands.ts` dispatches among those handlers and the installed lifecycle service. Argument parsing and text encoding are presentation responsibilities; the concrete codec and process implementations remain in infrastructure.
 
-The workspace use case owns validation and post-commit notifications; command handlers do not publish fake file events. Plugin generators return write plans instead of writing directly. Core event delivery failures become warnings because persistence has already succeeded.
+The workspace use case owns validation and post-commit notifications; command handlers do not publish fake `vault.*` events, and plugins cannot emit host-owned events at all. Plugin generators return write plans instead of writing directly. Core event delivery failures become warnings because persistence has already succeeded.
 
 ## Source placement and enforcement
 
@@ -44,6 +44,26 @@ The event bus receives an `EventDeliveryScope` port rather than importing Node's
 `src/application/plugins/host-events.ts` defines typed command, workspace, Claude, plugin and file notification contracts. Host phases describe application boundaries, not every syscall: direct repository calls and trusted plugin Node code remain outside workspace phases. Started and terminal operation records share an invocation-local ID and carry scope provenance. Command start precedes plugin activation; plugins can explicitly replay the bounded history to observe earlier registration/start records, then subscribe to future records through `onAny`. Replay is an in-memory snapshot, not persistent storage or an atomic catch-up subscription. Host failure summaries contain codes and status; raw input, error messages and native output remain outside those summaries. Awaited observer failures become warnings and do not replace the original result or undo commits.
 
 Installed Claude execution is an application service behind the `ClaudeRuntime` port. Built-in commands and ordinary namespaced Forge plugin commands share `ClaudeLifecycle`, exposed through the typed `context.claude` client. The composition root binds it to the same selected root, dry-run setting and event bus as the command; plugins supply native arguments and response parsing preferences without reconstructing CLI routing or importing infrastructure. Dry runs return redacted plans without constructing a process adapter. Real execution preserves native status and diagnostics, parses requested output even when Claude returns a nonzero status, and emits `claude.executed` only after receiving an exit status. Native process changes remain external operations rather than revision-guarded Workspace transactions.
+
+## Kernel metadata cache
+
+The metadata cache is the kernel's single index of what vault files reference. It follows Obsidian's `MetadataCache` so that features and, later, plugins can reason about a vault the way Obsidian does without running it. It has three parts:
+
+| Part | Location | Responsibility |
+| --- | --- | --- |
+| Model and resolution | `src/domain/metadata/` | JSON-serializable `CachedMetadata` with `{line, col, offset}` positions, link text helpers, tag and alias rules, and the indexed link resolver with `fileToLinktext` |
+| Index and port | `src/application/metadata/` | The `MetadataCache` read port, the `MetadataIndex` lifecycle port, the `MetadataParser` port, and `VaultMetadata`, which builds `resolvedLinks`, `unresolvedLinks`, references and backlinks over a `FileRepository` |
+| Parser | `src/infrastructure/metadata/` | `ObsidianMetadataParser`: Markdown through the document codec and remark/parse5, and Canvas file nodes |
+
+The composition root creates one `VaultMetadata` per invocation over the selected scope's repository and exposes it as `context.metadata`. Nothing is read until a command calls `load()`. The first load lists visible files, parses Markdown and Canvas files with bounded concurrency and resolves every reference through hash lookups, so a build is linear in vault size. There is no persistent index.
+
+Link resolution has one implementation. It tries exact spellings with or without `.md`, then a single case-insensitive match, then for vault-style links a single case-insensitive path-suffix match, and finally a single note alias. Relative Markdown and HTML targets resolve from the source folder first and never match suffixes or aliases. When several files match equally well, the cache does not choose one. It records the link as unresolved, with reason `ambiguous` and the candidates in path order, and counts it in `unresolvedLinks`. Obsidian would choose the closest file instead; Forge reports the ambiguity rather than guess.
+
+`update(changes)` and `invalidate(paths)` keep a loaded cache current after committed writes. They re-read and re-parse only the named files. When the set of paths or any alias changes, they re-resolve every source, which needs no parsing; otherwise they re-resolve only the changed files. The returned `{changed, deleted, resolved, prevCaches}` report names the paths that Obsidian's `metadataCache` `changed`, `deleted` and `resolve` events report, with each deleted file's previous metadata. An update before the first load returns `null` and does nothing, because the later load reads the current files.
+
+`MetadataCacheEvents` (`src/application/metadata/cache-events.ts`) is the workspace's post-commit `CommitObserver`. After a batch commits and its `vault.*` records are published, it updates the index once for the batch and publishes `metadataCache.changed`, `metadataCache.deleted`, `metadataCache.resolve` and one `metadataCache.resolved`. A write never builds the index: metadataCache events are emitted for commits once the cache is loaded in the invocation, and commands that need link integrity (delete and move, links, Bases) load it. Observers are bound to one scope. When a project is selected, the project workspace feeds the project's index directly, and workspace-scope commits (such as the selection file or another project's files) reach it through `scopedCommitObserver` only for paths inside the project directory, made project-relative. Claude user-scope repositories have no observer.
+
+Bases is the first consumer. `src/infrastructure/bases/index.ts` adapts cached frontmatter, references, tags and resolutions to the expression engine's file inputs and adds file sizes and dates. It keeps Bases' stricter rules: a link with an ambiguous path still fails the query with `AMBIGUOUS_BASE_LINK`, links resolved only through an alias stay unresolved, and Canvas file nodes are not Bases links. The `MetadataCache` types are designed to be exported through the SDK, but the SDK does not export them yet; an Obsidian-shaped `app.metadataCache` facade is planned separately. See [what the index understands](../reference/formats.md#metadata-index).
 
 ## Declarative UI generation
 

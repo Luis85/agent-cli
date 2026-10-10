@@ -114,6 +114,7 @@ export declare const errorCatalog: {
     readonly DUPLICATE_EVENT: ErrorDefinition;
     readonly UNKNOWN_EVENT: ErrorDefinition;
     readonly EVENT_RECURSION: ErrorDefinition;
+    readonly EVENT_OWNERSHIP: ErrorDefinition;
     readonly INVALID_CLAUDE_AGENT: ErrorDefinition;
     readonly INVALID_CLAUDE_HOOKS: ErrorDefinition;
     readonly INVALID_CLAUDE_PLUGIN: ErrorDefinition;
