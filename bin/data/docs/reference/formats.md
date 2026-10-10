@@ -71,7 +71,7 @@ Classification uses the extension; the content decides the representation. Bytes
 
 ## Canvas
 
-The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. File-node subpaths must start with `#`, for example `#Heading` or `#^block-id`. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Referenced file existence and URL reachability are not checked. `move` and `rename` update the `file` value of nodes that point at a moved file in place, keeping the JSON layout. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
+The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. File-node subpaths must start with `#`, for example `#Heading` or `#^block-id`. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Validation does not check that referenced files exist or URLs are reachable; [`vault check`](vault.md) reports missing `file` node targets as `unresolved-embed`. `move` and `rename` update the `file` value of nodes that point at a moved file in place, keeping the JSON layout. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
 
 ## Bases
 

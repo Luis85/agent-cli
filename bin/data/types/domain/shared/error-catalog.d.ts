@@ -44,6 +44,8 @@ export declare const errorCatalog: {
     readonly NO_MATCH: ErrorDefinition;
     readonly AMBIGUOUS_EDIT: ErrorDefinition;
     readonly UNSUPPORTED_EDIT: ErrorDefinition;
+    readonly SECTION_NOT_FOUND: ErrorDefinition;
+    readonly AMBIGUOUS_SECTION: ErrorDefinition;
     readonly INVALID_PLAN: ErrorDefinition;
     readonly WORKSPACE_BUSY: ErrorDefinition;
     readonly DESTINATION_EXISTS: ErrorDefinition;

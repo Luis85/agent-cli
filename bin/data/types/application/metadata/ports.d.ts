@@ -1,5 +1,6 @@
 import type { CachedMetadata, CanvasLinkCache, FrontmatterLinkCache, LinkCache } from '../../domain/metadata/cache.ts';
 import type { LinkResolution } from '../../domain/metadata/link-resolution.ts';
+import type { FileRepository } from '../workspace/ports.ts';
 /** Source path → destination path (resolved) or link text (unresolved) → number of references. */
 export type LinkCounts = Record<string, Record<string, number>>;
 /**
@@ -91,6 +92,17 @@ export interface MetadataIndex {
      * `getFileCache` would hold for these bytes, or null for files the index does not parse or that fail to parse.
      */
     parseFile(path: string, bytes: Uint8Array): CachedMetadata | null;
+    /**
+     * The metadata of content at any path the parser handles, inside or outside the vault rule, such as the headings
+     * and blocks a section edit addresses. Invalid content throws its parse error; other files return null.
+     */
+    parseContent(path: string, bytes: Uint8Array): CachedMetadata | null;
+    /**
+     * An index with the same parser and vault rule over another repository of this scope, such as a staged view of
+     * planned changes. When this index is loaded, the fork starts from a copy of its state instead of reading every
+     * file again; afterwards updates to either index never reach the other.
+     */
+    fork(repository: FileRepository): Promise<MetadataIndex>;
     /**
      * Re-indexes committed changes and re-resolves affected sources. Before the first load it changes nothing and
      * returns null, because the later load reads the current files.

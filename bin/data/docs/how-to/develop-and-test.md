@@ -34,9 +34,17 @@ These file paths resolve relative to the project root `src/the-forge`, the same 
 
 The project's `configs/quality/source.json` declares `sourceRoot: "src"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source, `tests`, `scripts`, root configuration files and authored asset code. Sibling managed projects such as `src/forge-showcase` live outside the project directory, so they are never part of Forge's checks; run each project's own checks from its directory. This quality policy is independent of the CLI's selected project. Portable generated projects without this policy continue to use their ordinary `src` source root.
 
+## Documentation vault check
+
+The project's documentation is an Obsidian-compatible vault. `tests/vault-check/docs-vault.integration.test.ts` runs [`vault check --strict`](../reference/vault.md) over the whole project in the full gate, with `plugins.settings.vault-check.ignore` set to `src/README.md`, `tests/**` and `evals/fixtures/**`, and once more over `README.md`, `docs/**` and `skills/**`; from the workspace root, with `the-forge` selected, run `node bin/forge.js vault check --strict --path "{README.md,docs/**,skills/**}"`. Three kinds of files stay outside the check on purpose: `src/README.md` and `tests/README.md` link folders (`[cli](cli/)`) for navigation on GitHub, which Obsidian cannot resolve; `tests/` holds fixture vaults whose links are broken deliberately; and `evals/fixtures/` is the [agent evaluation](evaluate-agents.md) vault, whose unresolved `[[Idea List]]` link and unlinked `Scratch.md` are what its tasks ask agents to repair. An error finding anywhere else is a real defect: fix the link rather than adding an exclusion.
+
 ## Showcase drift check
 
 `src/forge-showcase` is a committed, fully generated example project; see [explore the showcase](explore-the-showcase.md). `npm run showcase:check` regenerates it into a temporary workspace through the current `bin/forge.js` and lists every differing path; it never modifies the checkout. The end-to-end test `tests/showcase/showcase.e2e.test.ts` runs the same check (about 45 seconds alone, up to about 90 seconds under the full parallel suite) and also queries its Bases, validates its Canvas and checks UI and adapter drift through the CLI. When a change alters generated output, rebuild, run `npm run showcase`, review the showcase diff and commit it with the change. Forge's quality inventory excludes the showcase; run its own `npm ci` and `npm run check` from `src/forge-showcase` when its toolchain or generated code changes.
+
+## Agent evaluation tasks
+
+`evals/tasks/*.yaml` are agent tasks with fixtures and deterministic checks. `npm run eval` replays their reference commands, and `tests/evals/reference.e2e.test.ts` does the same inside `npm run check`, so a change that breaks a task's reference sequence or makes a check vacuous fails the gate. When a command's behavior or output changes, update the affected tasks; measure agents with the opt-in `claude` driver as described in [evaluate agents](evaluate-agents.md).
 
 ## Agent feedback loop
 
@@ -59,7 +67,7 @@ After the targeted checks pass, run `npm run check` once as the final gate. It r
 
 ## Verification
 
-Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, showcase, templates, UI, workflows and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
+Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, evals, forms, generation, plugins, projects, quality, showcase, skills, templates, UI, workflows and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
 
 Every test has an explicit pyramid rank in its filename and runs in the matching named Vitest project:
 

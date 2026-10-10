@@ -13,7 +13,7 @@ interface CommandOperation {
 }
 interface WorkspaceOperation {
     operationId: number;
-    operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete';
+    operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete' | 'apply';
     root: string | null;
     paths: string[];
     dryRun: boolean;
