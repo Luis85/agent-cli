@@ -3,9 +3,11 @@ import { frontmatterLink, type ContextFileInput, type PropertyValueType } from '
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
 import { errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { NodeFiles } from '../workspace/files.ts';
-import { indexBaseLinks, resolveBaseLink } from './links.ts';
+import { baseLinkIndex, indexBaseLinks, resolveBaseLink, type BaseLinkIndex } from './links.ts';
 
-function typedLinks(value: unknown, source: string, paths: string[]): unknown {
+const pendingFileReads = 16;
+
+function typedLinks(value: unknown, source: string, paths: BaseLinkIndex): unknown {
   if (typeof value === 'string') {
     const match = /^\[\[([^\]]+)\]\]$/.exec(value);
     if (!match) return value;
@@ -17,23 +19,43 @@ function typedLinks(value: unknown, source: string, paths: string[]): unknown {
   return value;
 }
 
+// Keeps at most `limit` items in flight and returns results in input order. Items start in order and
+// workers stop taking new ones after a failure, so the earliest failing item's error is thrown, as with
+// one-by-one awaiting.
+async function mapInOrder<Item, Result>(items: readonly Item[], limit: number, map: (item: Item) => Promise<Result>): Promise<Result[]> {
+  const results: Result[] = [], failures = new Map<number, unknown>();
+  let next = 0;
+  const work = async () => {
+    while (failures.size === 0 && next < items.length) {
+      const position = next++;
+      try { results[position] = await map(items[position]!); }
+      catch (error) { failures.set(position, error); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, work));
+  if (failures.size > 0) throw failures.get(Math.min(...failures.keys()));
+  return results;
+}
+
+async function indexBaseFile(files: NodeFiles, codec: DocumentCodec, path: string, paths: BaseLinkIndex): Promise<ContextFileInput> {
+  const info = await stat(await files.resolvePath(path));
+  let properties: Record<string, unknown> = {}, body = '';
+  if (path.toLowerCase().endsWith('.md')) {
+    try {
+      const document = codec.inspect(path, (await files.read(path)).bytes) as { properties: Record<string, unknown>; body: string };
+      properties = document.properties; body = document.body;
+    } catch (error) {
+      throw new AppError('BASE_INDEX_ERROR', `Cannot index ${path}: ${errorMessage(error)}`, 2);
+    }
+  }
+  const links = indexBaseLinks(body, properties, path, paths);
+  return { path, properties: typedLinks(properties, path, paths) as Record<string, unknown>, size: info.size, ctime: info.birthtime, mtime: info.mtime, ...links, backlinks: [] };
+}
+
 export async function indexBaseFiles(files: NodeFiles, codec: DocumentCodec): Promise<ContextFileInput[]> {
   const paths = (await files.list()).filter(path => !path.split('/').some(part => part.startsWith('.')));
-  const result: ContextFileInput[] = [];
-  for (const path of paths) {
-    const info = await stat(await files.resolvePath(path));
-    let properties: Record<string, unknown> = {}, body = '';
-    if (path.toLowerCase().endsWith('.md')) {
-      try {
-        const document = codec.inspect(path, (await files.read(path)).bytes) as { properties: Record<string, unknown>; body: string };
-        properties = document.properties; body = document.body;
-      } catch (error) {
-        throw new AppError('BASE_INDEX_ERROR', `Cannot index ${path}: ${errorMessage(error)}`, 2);
-      }
-    }
-    const links = indexBaseLinks(body, properties, path, paths);
-    result.push({ path, properties: typedLinks(properties, path, paths) as Record<string, unknown>, size: info.size, ctime: info.birthtime, mtime: info.mtime, ...links, backlinks: [] });
-  }
+  const links = baseLinkIndex(paths);
+  const result = await mapInOrder(paths, pendingFileReads, path => indexBaseFile(files, codec, path, links));
   const byPath = new Map(result.map(file => [file.path, file]));
   for (const source of result) {
     for (const target of new Set(source.links?.map(link => link.resolvedPath).filter((path): path is string => Boolean(path)))) {
