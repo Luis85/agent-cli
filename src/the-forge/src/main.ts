@@ -190,9 +190,9 @@ async function run(): Promise<void> {
       result = { ok: true, data };
     }
   } catch (error) {
-    const failure = registry.catalog.normalize(error);
-    process.exitCode = failure instanceof AppError ? failure.exitCode : 1;
-    result = { ok: false, error: localizer.error(failure) };
+    // Plugin failures were already mapped by their owner's wrapper; codes reaching here unmapped stay opaque.
+    process.exitCode = error instanceof AppError ? error.exitCode : 1;
+    result = { ok: false, error: localizer.error(error) };
   } finally {
     await quitInvocation(events);
     await registry.dispose(events);

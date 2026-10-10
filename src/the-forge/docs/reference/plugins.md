@@ -37,7 +37,7 @@ A core plugin's manifest also declares `"core": true`. Only bundled plugins may:
 | `--no-plugins` | Still loaded: they are part of the product | Skipped for the invocation |
 | Command, generator, skill and service ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
 | Event ids | `<id>.*` only, so a core plugin owns its namespace (`bases.*`) | `<id>.*` only |
-| Error codes | Any code outside the built-in catalog | Must start with the id in UPPER_SNAKE_CASE (`QUALITY_`) |
+| Error codes | Any code outside the built-in catalog | Must start with the id in UPPER_SNAKE_CASE (`QUALITY_`) and stay outside a longer registered prefix; see [strings and error codes](#strings-and-error-codes) |
 | Registration | Bundle order, before user plugins | After core plugins |
 
 A disabled core plugin contributes nothing: its commands are absent from `help` and `schema`, its skills from `skills` and `setup`, and its services from other plugins. `plugins.disabled` accepts only bundled core plugin ids; anything else fails with `INVALID_PLUGIN_CONFIG`. Disable a user plugin by removing it from `plugins.enabled`.
@@ -171,6 +171,8 @@ throw Object.assign(new Error('2 notes have no owner.'), { code: 'QUALITY_UNOWNE
 ```
 
 The host turns it into a failure with the category's exit status, the catalog `hint` and `retryable`, and with `--lang de` the German summary and hint, keeping the original message in `details.localization.originalMessage`. `schema` lists registered codes after the built-in ones with their `plugin`. Unregistered codes keep the plain `{code, message, details?}` shape.
+
+Codes are owned. The host maps a thrown code only when the plugin whose command, generator or activation hook threw it registered that code, or when it is a built-in catalog code such as `NOT_FOUND` (which then carries its built-in exit status and hint). Another plugin's registered code, for example one rethrown from a service call, stays an uncoded failure (`OPERATION_FAILED`, original message kept): a plugin cannot borrow a code it does not own. Each user plugin code belongs to the registered user plugin with the longest matching prefix: while plugin `a-b` (`A_B_`) is registered, plugin `a` (`A_`) cannot register `A_B_X`, and `a-b` cannot register after `a` registered `A_B_X`. The plugin that registers later fails with `PLUGIN_NAMESPACE`, so the outcome follows the configured load order.
 
 ## Source layout and layering
 

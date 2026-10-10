@@ -134,6 +134,32 @@ describe('plugin strings and error catalog', () => {
     expect(t('de')('missing')).toBe('missing');
   });
 
+  it('maps only codes the throwing plugin registered, or built-in codes; another plugin\'s code stays opaque', async () => {
+    const { registry, events } = setup();
+    registry.register(localized, events);
+    const thrower = (code: string) => ({ id: `audit.${code.toLowerCase().replaceAll('_', '-')}`, description: 'Throw', usage: 'audit', run() { throw Object.assign(new Error(`Raised ${code}.`), { code, details: { by: 'audit' } }); } });
+    registry.register({ manifest: manifest('audit'), commands: [thrower('QUALITY_UNOWNED'), thrower('NOT_FOUND')] }, events);
+    const failure = (id: string) => Promise.resolve(registry.commands.get(id)!.run([], {}, context)).catch((error: unknown) => error);
+    const borrowed = await failure('audit.quality-unowned');
+    expect(borrowed).not.toBeInstanceOf(AppError);
+    expect(new Localizer('en', registry.catalog).error(borrowed)).toMatchObject({ code: 'OPERATION_FAILED', message: 'Raised QUALITY_UNOWNED.' });
+    expect(await failure('audit.not-found')).toMatchObject({ code: 'NOT_FOUND', exitCode: 3, details: { by: 'audit' } });
+    expect(await failure('quality.check')).toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5 });
+  });
+
+  it('gives a user plugin error code to the plugin with the longest matching prefix, whatever the load order', () => {
+    const error = (code: string) => ({ code, category: 'input' as const, summary: 'S', hint: 'H' });
+    const outer = setup();
+    outer.registry.register({ manifest: manifest('a'), errors: [error('A_B_X')] }, outer.events);
+    expect(() => outer.registry.register({ manifest: manifest('a-b'), errors: [error('A_B_Y')] }, outer.events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE', message: expect.stringContaining('A_B_X of plugin a falls in the namespace A_B_ of plugin a-b') }));
+    expect(outer.registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['a']);
+    const inner = setup();
+    inner.registry.register({ manifest: manifest('a-b'), errors: [error('A_B_Y')] }, inner.events);
+    expect(() => inner.registry.register({ manifest: manifest('a'), errors: [error('A_B_X')] }, inner.events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    inner.registry.register({ manifest: manifest('a'), errors: [error('A_X')] }, inner.events);
+    expect(inner.registry.catalog.errors().map(entry => [entry.pluginId, entry.code])).toEqual([['a-b', 'A_B_Y'], ['a', 'A_X']]);
+  });
+
   it.each([
     [{ errors: [{ code: 'UNOWNED', category: 'drift', summary: 'S', hint: 'H' }] }, 'PLUGIN_NAMESPACE'],
     [{ errors: [{ code: 'QUALITY_X', category: 'unknown', summary: 'S', hint: 'H' }] }, 'INVALID_PLUGIN'],

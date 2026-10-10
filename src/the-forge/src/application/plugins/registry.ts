@@ -14,7 +14,7 @@ import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
 import type { CommandFlags, CommandMetadata, CommandMode, CommandOption } from './command-metadata.ts';
 import { validateContributions, type PluginOrigin } from './contributions.ts';
 import { activationOrder, pluginServices, serviceProviders, type PluginServices } from './plugin-services.ts';
-import { PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
+import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
 
 /**
@@ -130,9 +130,10 @@ export class Registry {
     }
     for (const skill of plugin.skills ?? []) this.add(skills, skill);
     serviceProviders([...this.plugins, plugin]);
-    for (const entry of plugin.errors ?? []) ensure(!this.catalog.error(entry.code), 'DUPLICATE_OR_INVALID_ID', entry.code);
+    const prefix = origin === 'core' ? null : errorPrefix(pluginId);
+    this.catalog.ensureRegistrable(pluginId, plugin.errors, prefix);
     events.defineAll(plugin.events ?? []);
-    this.catalog.add(pluginId, plugin.strings, plugin.errors);
+    this.catalog.add(pluginId, plugin.strings, plugin.errors, prefix);
     if (plugin.settings) this.settings.declare(pluginId, plugin.settings, plugin.validateSettings?.bind(plugin));
     for (const command of plugin.commands ?? []) this.commands.set(command.id, this.ownedCommand(plugin, command, events));
     for (const generator of plugin.generators ?? []) this.generators.set(generator.id, this.ownedGenerator(plugin, generator, events));
@@ -187,7 +188,7 @@ export class Registry {
           await tracker?.activated(plugin, pluginContext);
           await publishHostEvent(events, 'plugin.activated', { pluginId });
         } catch (error) {
-          const failure = this.catalog.normalize(error);
+          const failure = this.catalog.normalize(error, pluginId);
           await publishHostEvent(events, 'plugin.activation-failed', { pluginId, error: summarizeError(failure) });
           throw failure;
         }
@@ -218,14 +219,14 @@ export class Registry {
       ...command,
       run: async (args, flags, context) => {
         try { return await command.run(args, flags, this.pluginContext(plugin, context, events)); }
-        catch (error) { throw this.catalog.normalize(error); }
+        catch (error) { throw this.catalog.normalize(error, plugin.manifest.id); }
       },
     };
   }
   private ownedGenerator(plugin: Plugin, generator: Generator, events: EventBus): Generator {
     const owned = (call: (request: GeneratorRequest) => unknown) => async (request: GeneratorRequest) => {
       try { return await call({ ...request, context: this.pluginContext(plugin, request.context, events) }); }
-      catch (error) { throw this.catalog.normalize(error); }
+      catch (error) { throw this.catalog.normalize(error, plugin.manifest.id); }
     };
     const { generate, run } = generator;
     return {
