@@ -1,6 +1,11 @@
 ---
 name: forge-development
-description: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.
+description: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.
+license: MIT
+compatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.
+metadata:
+  author: The Forge
+  version: "0.1.0"
 ---
 
 1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.

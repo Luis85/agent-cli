@@ -1,0 +1,13 @@
+id: read-canvas
+title: Read a Canvas graph
+category: reading
+prompt: |
+  The canvas board.canvas connects a goal card to a note. What is the goal card's
+  text, and which note does it point to?
+fixture: vault
+reference:
+  - [read, board.canvas]
+answer: The goal "Ship route sharing" points to Home.md.
+checks:
+  - answer: { contains: [Ship route sharing, Home.md] }
+  - unchanged: board.canvas

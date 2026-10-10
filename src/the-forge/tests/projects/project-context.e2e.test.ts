@@ -77,7 +77,7 @@ describe('portable selected-project workflows', () => {
     expect(run(['make', 'plugin', 'OtherTools', '--out', 'elsewhere']).body.error.code).toBe('UNKNOWN_OPTION');
     await expect(readFile(join(root, 'projects/library/bin/plugins/shared-tools/manifest.json'))).rejects.toThrow();
     expect(run(['skills', 'install']).status).toBe(0);
-    expect(await readFile(join(root, 'projects/library/.agents/skills/forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
+    for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(root, 'projects/library', skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
     await expect(readFile(join(root, '.agents/skills/forge-workflow/SKILL.md'))).rejects.toThrow();
     await expect(readFile(join(root, 'docs/Plan.md'))).rejects.toThrow();
     await expect(readFile(join(root, 'src/domain/generated-item.ts'))).rejects.toThrow();

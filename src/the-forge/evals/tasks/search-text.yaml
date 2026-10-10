@@ -1,0 +1,11 @@
+id: search-text
+title: Find a note by its text
+category: searching
+prompt: |
+  Which note records the budget that the team agreed on? Answer with the note's path.
+fixture: vault
+reference:
+  - [search, agreed on the budget]
+answer: Meetings/2026-10-01.md
+checks:
+  - answer: { contains: [Meetings/2026-10-01.md] }

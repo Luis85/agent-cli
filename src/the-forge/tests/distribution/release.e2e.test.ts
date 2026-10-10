@@ -53,7 +53,7 @@ describe('release distribution', () => {
     await expect(readFile(bin(root, 'data/docs/obsolete.md'))).rejects.toThrow();
     await expect(readFile(bin(root, 'skills/obsolete.md'))).rejects.toThrow();
     await expect(readFile(bin(root, 'data/docs/research/notes.md'))).rejects.toThrow();
-    expect(await readFile(bin(root, 'skills/forge-workflow.md'), 'utf8')).toBe(await readFile(resolve('skills/forge-workflow.md'), 'utf8'));
+    expect(await readFile(bin(root, 'skills/forge-workflow/SKILL.md'), 'utf8')).toBe(await readFile(resolve('skills/forge-workflow/SKILL.md'), 'utf8'));
     const manifest = JSON.parse(await readFile(bin(root, 'data/distribution.json'), 'utf8'));
     expect(manifest.files).toContain('forge.js');
     expect(manifest.files).toContain('data/types/sdk.d.ts');
@@ -103,7 +103,7 @@ describe('release distribution', () => {
     expect(listed).toContain('bin/templates/.gitkeep');
     expect(listed).toContain('bin/config.json');
     expect(listed).toContain('bin/config/default.json');
-    expect(listed).toContain('bin/skills/forge-workflow.md');
+    expect(listed).toContain('bin/skills/forge-workflow/SKILL.md');
     expect(listed.some(path => path.startsWith('bin/data/skills/'))).toBe(false);
     expect(listed.some(path => path.includes('node_modules/'))).toBe(false);
   }, 60_000);

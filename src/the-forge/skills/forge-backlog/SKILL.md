@@ -1,6 +1,11 @@
 ---
 name: forge-backlog
-description: Plan, decompose, rank, release and sync product backlog work in Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way sync with Azure DevOps Boards.
+description: Plan, decompose, rank, release and sync a product backlog stored as Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way Azure DevOps Boards sync. Use when the user mentions backlog items, epics, features, PBIs, tasks, ranks, iterations, releases or work item sync.
+license: MIT
+compatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.
+metadata:
+  author: The Forge
+  version: "0.1.0"
 ---
 
 The `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file's `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin's rules (ranks, stamps, refusals, YAML style).

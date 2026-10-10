@@ -1,0 +1,1 @@
+{"nodes":[{"id":"home","type":"file","file":"Home.md","x":0,"y":0,"width":400,"height":300},{"id":"goal","type":"text","text":"Ship route sharing","x":480,"y":0,"width":260,"height":120}],"edges":[{"id":"e1","fromNode":"goal","toNode":"home"}]}

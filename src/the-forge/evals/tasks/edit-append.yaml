@@ -1,0 +1,13 @@
+id: edit-append
+title: Append an action item to a note
+category: editing
+prompt: |
+  Add the action item "- [ ] Book the trailhead shuttle" to the end of the action items
+  in Meetings/2026-10-01.md.
+fixture: vault
+reference:
+  - [edit, Meetings/2026-10-01.md, --if-match, "{{revision:Meetings/2026-10-01.md}}", --append, --content, "- [ ] Book the trailhead shuttle\n"]
+checks:
+  - file: Meetings/2026-10-01.md
+    contains: ["- [ ] Send budget to Ada\n", "- [ ] Send budget summary to the testers\n", "- [ ] Book the trailhead shuttle"]
+    frontmatter: { attendees: ["[[People/Ada]]"] }

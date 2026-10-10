@@ -1,0 +1,18 @@
+id: backlog-plan
+title: Start a backlog and decompose an epic
+category: backlog
+prompt: |
+  Start a product backlog in the folder "backlog". Add an Epic "Trip planning" and a
+  Feature "Route sharing" under it.
+fixture: vault
+reference:
+  - [backlog, init, --folder, backlog]
+  - [backlog, add, Epic, Trip planning]
+  - [backlog, add, Feature, Route sharing, --parent, Trip planning]
+checks:
+  - command: [backlog, show, Trip planning]
+    data: { pointer: /item/type, equals: Epic }
+  - command: [backlog, show, Route sharing]
+    data: { pointer: /item/type, equals: Feature }
+  - command: [backlog, show, Route sharing]
+    data: { pointer: /ancestors/0, contains: Trip planning }

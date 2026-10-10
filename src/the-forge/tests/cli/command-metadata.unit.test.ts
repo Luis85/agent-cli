@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { commandAnnotations, commandInputSchema, commandMode, ensureKnownAction, hasActionOptions, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
+import { commandAnnotations, commandInputSchema, commandMode, commandOutputSchema, ensureKnownAction, hasActionOptions, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
 import { jsonSchemaDialect, schemaIssues, validateJsonValue, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
+import { testHost } from '../support/core-plugins.ts';
+import { searchPlugin } from '../../src/plugins/search/plugin.ts';
+import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 
 const { commands } = builtinCommands();
 
@@ -18,7 +21,7 @@ describe('built-in command metadata', () => {
 
   it('marks exactly the discovery commands and derives annotations from metadata', () => {
     expect([...commands.values()].filter(command => command.discovery).map(command => command.id).sort()).toEqual(['config', 'events', 'formats', 'help', 'plugins', 'schema', 'setup']);
-    expect(commandAnnotations(commands.get('read')!)).toEqual({ scope: 'project', discovery: false, mutating: false, readOnlyHint: true });
+    expect(commandAnnotations(commands.get('read')!)).toEqual({ scope: 'project', discovery: false, mutating: false, readOnlyHint: true, destructiveHint: false, idempotentHint: true });
     // A command is read-only only when no action mutates; each action keeps its own mode.
     expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, defaultAction: 'list', actions: { list: { mutating: false, readOnlyHint: true }, install: { scope: 'project', mutating: true, readOnlyHint: false } } });
     expect(commandAnnotations(commands.get('bases')!)).toMatchObject({ mutating: false, readOnlyHint: true });
@@ -121,8 +124,51 @@ describe('command modes', () => {
     [{ args: [{ name: 'rest', description: 'R', variadic: true }, { name: 'last', description: 'L' }] }, 'only the last may be variadic'],
     [{ errors: ['bad-code'] }, 'UPPER_SNAKE_CASE'],
     [{ output: { type: 'object', allOf: [] } }, 'unsupported keyword allOf'],
+    [{ destructive: 'yes' }, 'destructive must be a boolean'],
+    [{ actions: { run: { description: 'Run', idempotent: 1 } } }, 'action run idempotent must be a boolean'],
+    [{ actions: { run: { description: 'Run', output: { type: 'text' } } } }, 'action run output must be a supported JSON Schema'],
   ])('rejects invalid plugin metadata %#', (extra, message) => {
     expect(() => validateCommandMetadata({ id: 'quality.run', description: 'Run', usage: 'quality.run', ...extra })).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining(message) }));
+  });
+});
+
+describe('derived behavior annotations and output schemas', () => {
+  const reports: CommandMetadata = {
+    id: 'reports', description: 'Reports', usage: 'reports', defaultAction: 'list', output: { type: 'object' },
+    options: { 'if-match': { type: 'string', description: 'Revision.' } },
+    actions: {
+      list: { description: 'List', mutating: false, output: { type: 'array' } },
+      draft: { description: 'Draft', destructive: false },
+      publish: { description: 'Publish', idempotent: false },
+    },
+  };
+
+  it('defaults a mutating mode to destructive, and to idempotent only when it is revision-guarded', () => {
+    expect(commandAnnotations({ id: 'x', description: 'X', usage: 'x' })).toMatchObject({ mutating: true, readOnlyHint: false, destructiveHint: true, idempotentHint: false });
+    expect(commandAnnotations({ ...reports, actions: undefined, defaultAction: undefined })).toMatchObject({ destructiveHint: true, idempotentHint: true });
+    expect(commandAnnotations(reports)).toMatchObject({
+      readOnlyHint: false, destructiveHint: true, idempotentHint: false,
+      actions: {
+        list: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+        draft: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+        publish: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+      },
+    });
+    for (const id of ['write', 'edit', 'delete', 'move']) expect(commandAnnotations(commands.get(id)!), id).toMatchObject({ destructiveHint: true, idempotentHint: true });
+    expect(commandAnnotations(commands.get('create')!)).toMatchObject({ destructiveHint: false, idempotentHint: true });
+    expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ destructiveHint: false, actions: { install: { destructiveHint: false, idempotentHint: true } } });
+  });
+
+  it('resolves the output schema of an invocation from the selected action, else the command', () => {
+    expect(commandOutputSchema(reports, [])).toEqual({ $schema: jsonSchemaDialect, title: 'reports list output', type: 'array' });
+    expect(commandOutputSchema(reports, ['draft'])).toEqual({ $schema: jsonSchemaDialect, title: 'reports output', type: 'object' });
+    expect(commandOutputSchema({ id: 'x', description: 'X', usage: 'x' }, [])).toBeUndefined();
+    expect(commandAnnotations(reports).actions!.list).toMatchObject({ outputSchema: { title: 'reports list output', type: 'array' } });
+    expect(commandAnnotations(reports).actions!.draft).not.toHaveProperty('outputSchema');
+    const [search, links] = [searchPlugin, linksPlugin].map(plugin => plugin.create(testHost()).commands![0]!);
+    for (const command of [...['read', 'list', 'validate', 'config', 'schema'].map(id => commands.get(id)!), search!]) expect(commandOutputSchema(command, ['x']), command.id).toMatchObject({ $schema: jsonSchemaDialect, type: 'object' });
+    for (const action of ['out', 'back', 'unresolved', 'orphans', 'deadends']) expect(commandOutputSchema(links!, [action]), action).toMatchObject({ title: `links ${action} output` });
+    expect(commandOutputSchema(commands.get('project')!, ['current'])).toMatchObject({ title: 'project current output', required: ['project'] });
   });
 });
 
