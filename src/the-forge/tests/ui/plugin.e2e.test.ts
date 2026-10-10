@@ -28,6 +28,14 @@ describe('the ui core plugin', () => {
     expect(config.sections).toContainEqual(expect.objectContaining({ plugin: 'ui', path: 'plugins.settings.ui' }));
   });
 
+  it('shows folder settings as written in config and drops a trailing slash when it uses them', async () => {
+    await configure({ plugins: { settings: { ui: { components: 'library/' } } } });
+    try {
+      expect(fixture.cli(['config']).body.data.config.plugins.settings.ui.components).toBe('library/');
+      expect(fixture.cli(['components']).body.data.nextStep).toBe('Run components init --library library, or add a Markdown component definition.');
+    } finally { await reset(); }
+  });
+
   it('makes the plugin unavailable for an invalid section and names the problem', async () => {
     await configure({ plugins: { settings: { ui: { componentExports: '../escape', framework: 'qt' } } } });
     try {

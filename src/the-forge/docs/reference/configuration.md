@@ -36,7 +36,7 @@ The workspace layout is fixed: `bin/forge.js` is the executable, `bin/config.jso
 
 Command-line values take precedence: `--root` selects the workspace and `--json` / `--no-json`, `--dry-run` / `--no-dry-run` and `--events` override settings. `settings.events` (`none`, `changes` or `all`, default `changes`) selects which events the response envelope carries; see [output and errors](cli.md#output-and-errors). It never changes listener delivery or replay. `config` reports the effective level. Put routing options `--root` and `--no-plugins` before the command, for example `node bin/forge.js --root /path/to/workspace setup --dry-run`. Formatting, dry-run and `--lang en|de` flags may appear on either side of the command. `settings.language` defaults to `en`; `--lang` overrides it for the invocation. `config` reports the effective language, and `setup --lang de` stores it when creating a missing configuration. Existing configuration files are preserved. See [language selection and diagnostic scope](language.md). Do not pass `--json=false`; use the negated flag. `settings.json` controls compact formatting, not whether results use JSON.
 
-UI generation belongs to the `ui` core plugin, whose section `plugins.settings.ui` holds its settings without changing the fixed `bin` layout. Folders must be contained relative paths; a trailing slash is dropped. The former kernel keys `paths.components`, `paths.ui`, `paths.stories`, `paths.componentImports`, `paths.componentExports`, `paths.interactions*` and `ui.framework` are rejected with `INVALID_CONFIG`; move them into this section:
+UI generation belongs to the `ui` core plugin, whose section `plugins.settings.ui` holds its settings without changing the fixed `bin` layout. Folders must be contained relative paths; the plugin drops a trailing slash when it uses a folder, while `config` shows the section as written with defaults filled (`"lib/"` stays `"lib/"` there). The former kernel keys `paths.components`, `paths.ui`, `paths.stories`, `paths.componentImports`, `paths.componentExports`, `paths.interactions*` and `ui.framework` are rejected with `INVALID_CONFIG`; move them into this section:
 
 | Setting in `plugins.settings.ui` | Default | Scope and override |
 | --- | --- | --- |
@@ -85,7 +85,7 @@ Use `node bin/forge.js --no-plugins <command>` to skip user plugins for one invo
 
 Keep workspace configuration under version control as appropriate for your repository. Persisted selection is operating state; this source checkout intentionally tracks its self-management selection. For upgrades, extract separately; preserve configuration, shared plugins/templates and current context while replacing the executable and packaged assets.
 
-Data sources belong to the `data-sources` core plugin, whose section `plugins.settings.data-sources` holds its folders. The former kernel keys `paths.dataSources`, `paths.dataGenerated`, `paths.dataFixtures`, `paths.dataImports` and `paths.dataExports` are rejected with `INVALID_CONFIG`; move them into this section:
+Data sources belong to the `data-sources` core plugin, whose section `plugins.settings.data-sources` holds its folders. As for `ui`, folders must be contained relative paths, and the plugin drops a trailing slash when it uses one. The former kernel keys `paths.dataSources`, `paths.dataGenerated`, `paths.dataFixtures`, `paths.dataImports` and `paths.dataExports` are rejected with `INVALID_CONFIG`; move them into this section:
 
 | Setting in `plugins.settings.data-sources` | Default | Scope and override |
 | --- | --- | --- |
