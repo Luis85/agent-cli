@@ -2,7 +2,7 @@ import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, symlink, writeFile, readdir, chmod, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { WriteRequest } from '../../src/the-forge/domain/documents/file.ts';
 import { NodeFiles, revisionOf } from '../../src/the-forge/infrastructure/workspace/files.ts';
 import { ObsidianDocuments, encodeText } from '../../src/the-forge/infrastructure/documents/codec.ts';
@@ -81,27 +81,32 @@ describe('guarded filesystem', () => {
     expect(await files.list()).toEqual(['original.md']);
     expect(await readFile(join(root, 'original.md'), 'utf8')).toBe('Original');
   });
+  // Windows has no POSIX permission bits: a writable file always reports 0o666 after chmod 0o777.
+  const permissions = async (path: string) => (await stat(join(root, path))).mode & 0o777;
+  const executableMode = process.platform === 'win32' ? 0o666 : 0o777;
   it('preserves existing permissions when replacing files', async () => {
     await writeFile(join(root, 'script.sh'), 'old');
     await chmod(join(root, 'script.sh'), 0o777);
+    expect(await permissions('script.sh')).toBe(executableMode);
     const before = await files.read('script.sh');
     await files.writeBatch([{ ...write('script.sh', 'new'), expectedRevision: before.revision }], false);
-    expect((await stat(join(root, 'script.sh'))).mode & 0o777).toBe(0o777);
+    expect(await permissions('script.sh')).toBe(executableMode);
   });
   it('rolls back creations and replacements including modes after a later write fails', async () => {
     await writeFile(join(root, 'existing.md'), 'Original');
     await chmod(join(root, 'existing.md'), 0o777);
+    expect(await permissions('existing.md')).toBe(executableMode);
     const before = await files.read('existing.md');
     const adapter = files as unknown as { replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> };
     const replace = adapter.replace.bind(files);
     vi.spyOn(adapter, 'replace').mockImplementation(async (target, ...args) => {
-      if (target.endsWith('/failure.md')) throw new Error('Injected write failure');
+      if (basename(target) === 'failure.md') throw new Error('Injected write failure');
       await replace(target, ...args);
     });
     await expect(files.writeBatch([write('new/deep/a.md'), { ...write('existing.md', 'Changed'), expectedRevision: before.revision }, write('failure.md')], false)).rejects.toThrow('Injected write failure');
     expect(await readdir(root)).toEqual(['existing.md']);
     expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('Original');
-    expect((await stat(join(root, 'existing.md'))).mode & 0o777).toBe(0o777);
+    expect(await permissions('existing.md')).toBe(executableMode);
   });
   it('rechecks revisions after preflight and rolls back prior writes on conflict', async () => {
     await writeFile(join(root, 'existing.md'), 'Original');
@@ -109,7 +114,7 @@ describe('guarded filesystem', () => {
     const adapter = files as unknown as { replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> };
     const replace = adapter.replace.bind(files);
     vi.spyOn(adapter, 'replace').mockImplementation(async (target, ...args) => {
-      if (target.endsWith('/existing.md')) await writeFile(target, 'External edit');
+      if (basename(target) === 'existing.md') await writeFile(target, 'External edit');
       await replace(target, ...args);
     });
     await expect(files.writeBatch([write('created.md'), { ...write('existing.md', 'Changed'), expectedRevision: before.revision }], false)).rejects.toMatchObject({ code: 'CONFLICT' });
@@ -122,7 +127,7 @@ describe('guarded filesystem', () => {
     const adapter = files as unknown as { replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>): Promise<void> };
     const replace = adapter.replace.bind(files);
     vi.spyOn(adapter, 'replace').mockImplementation(async (target, ...args) => {
-      if (target.endsWith('/failure.md')) {
+      if (basename(target) === 'failure.md') {
         await writeFile(join(root, 'existing.md'), 'External edit');
         throw new Error('Injected write failure');
       }

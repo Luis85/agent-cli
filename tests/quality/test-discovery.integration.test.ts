@@ -1,14 +1,15 @@
 import { expect, it } from 'vitest';
-import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 it('discovers every labeled test extension in nested folders for its named project', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'forge-test-discovery-'));
+  // Vitest reports files below its canonical working directory (macOS /var is /private/var).
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'forge-test-discovery-')));
   try {
     await cp(resolve('vitest.config.ts'), join(root, 'vitest.config.ts'));
-    await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+    await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
     await writeFile(join(root, 'package.json'), '{"type":"module"}\n');
     const expected: Array<{ file: string; projectName: string }> = [];
     for (const folder of ['nested/cypress/deep', '.hidden/deep', 'dist/deep']) {

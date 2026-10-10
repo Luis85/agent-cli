@@ -50,7 +50,7 @@ const suite = () => [...standardUiCatalog, ...definitions, ...['String', 'Object
 
 async function compileTypescript(framework: 'react' | 'angular') {
   const directory = await mkdtemp(join(tmpdir(), 'forge-ui-compile-')); temporary.push(directory);
-  await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'dir');
+  await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'junction');
   const files = renderUiComponents(suite(), framework, 'generated');
   for (const file of files) {
     const path = join(directory, file.path);
@@ -146,7 +146,7 @@ it('renders Vue composition and projected children through the real server rende
 
 it('renders compiled Svelte composition with literal text and projected children', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'forge-svelte-render-')); temporary.push(directory);
-  await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'dir');
+  await symlink(resolve('node_modules'), join(directory, 'node_modules'), 'junction');
   const files = renderUiComponents(definitions, 'svelte', 'generated');
   const wrapper = '<script>import Page from "./test-page.svelte"; export let label;</script><Page {label}><strong>Projected</strong></Page>';
   for (const file of [...files, { path: 'generated/wrapper.svelte', bytes: new TextEncoder().encode(wrapper) }]) {

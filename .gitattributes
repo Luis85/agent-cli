@@ -1,3 +1,35 @@
+# Check out text with LF on every platform, regardless of core.autocrlf.
+# Revisions are SHA-256 hashes of raw bytes, and tests compare packaged copies byte for byte.
+* text=auto eol=lf
+bin/app.js text eol=lf
+
+# Binary fixtures and media never receive line-ending conversion.
+*.avif binary
+*.bmp binary
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.png binary
+*.webp binary
+*.pdf binary
+*.3gp binary
+*.flac binary
+*.m4a binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.mkv binary
+*.mov binary
+*.mp4 binary
+*.ogv binary
+*.webm binary
+*.gz binary
+*.tgz binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+
 bin/app.js linguist-generated=true
 bin/data/** linguist-generated=true
 # Preserve upstream license notices verbatim, including whitespace and Markdown rulers.

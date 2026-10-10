@@ -13,7 +13,7 @@ async function fixture() {
   for (const directory of ['src', 'tests', 'scripts/quality']) await mkdir(join(root, directory), { recursive: true });
   for (const file of ['structure.mjs', 'shared.mjs', 'lint.mjs']) await cp(resolve('scripts/quality', file), join(root, 'scripts/quality', file));
   await cp(resolve('configs/lint'), join(root, 'configs/lint'), { recursive: true });
-  await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+  await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
   await writeFile(join(root, 'src/index.ts'), 'export {};\n');
   return root;
 }

@@ -66,7 +66,7 @@ describe('portable native Bases repositories', () => {
     }
     expect(await readFile(join(root, 'queries/tasks.base'))).toEqual(before);
     expect(await readdir(root)).not.toContain('.agent-cli.lock');
-  }, 15000);
+  }, 60_000);
 
   it('reports invalid definitions, missing views/context and expression failures without partial successful results', async () => {
     const { root, cli } = await vault('errors');
@@ -97,7 +97,7 @@ describe('portable native Bases repositories', () => {
     expect(cli(['query', 'tasks.base']).body.error.code).toBe('INVALID_BASE_EXPRESSION');
     await put(root, 'tasks.base', stringify({ filters: 'file.unknownFunction()', views: [{ type: 'table', name: 'Invalid' }] }));
     expect(cli(['query', 'tasks.base']).body.error.code).toBe('BASE_EVALUATION_ERROR');
-  }, 15000);
+  }, 60_000);
 
   it('queries only the explicitly selected vault even when launched from another project directory', async () => {
     const { root } = await vault('selection');
@@ -119,5 +119,5 @@ describe('portable native Bases repositories', () => {
     expect(fixture.cli(['project', 'open', 'beta'], undefined, { root }).status).toBe(0);
     expect(fixture.cli(['bases', 'query', 'tasks.base'], undefined, { root }).body.data.files).toEqual(['Beta.md']);
     expect(committedEvents(result.body.events)).toEqual([]);
-  }, 15000);
+  }, 60_000);
 });

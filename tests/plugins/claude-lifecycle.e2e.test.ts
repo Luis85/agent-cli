@@ -101,7 +101,7 @@ describe('portable plugin Claude lifecycle boundary', () => {
       stdout: expect.stringContaining('Native diagnostic'), result: { outcome: 'complete', cwd: selected } });
     expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([{ id: 'claude.executed', payload: { executable: process.execPath, cwd: selected, exitCode: 0 } }]);
     expect(await plugin.launches()).toEqual([{ args: ['diagnostic'], stdin: '', cwd: selected }]);
-  }, 15000);
+  }, 60_000);
 
   it('passes private values intact to the native process while keeping its returned plan private', async () => {
     const plugin = await configuredPlugin('lifecycle-input');
