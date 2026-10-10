@@ -47,5 +47,12 @@ describe('apply plan contract', () => {
       .toMatchObject({ details: { operation: 0, issues: [expect.stringMatching(/^plan\.operations\[0\]\.(append|prepend): is not allowed$/)] } });
     expect(failure({ version: 1, operations: [{ op: 'frontmatter', path: 'a.md' }] })).toMatchObject({ code: 'INVALID_PLAN', details: { operation: 0 } });
     expect(failure({ version: 1, operations: [{ op: 'edit', path: 'a.md', edits: [] }] })).toMatchObject({ details: { operation: 0 } });
+    expect(failure({ version: 1, operations: [{ op: 'edit', path: 'a.md', block: 'x', sectionLine: 2, append: 'y' }] })).toMatchObject({ details: { operation: 0 } });
+    expect(failure({ version: 1, operations: [{ op: 'edit', path: 'a.md', section: 'A', sectionLine: 0, append: 'y' }] })).toMatchObject({ details: { operation: 0 } });
+  });
+
+  it('carries sectionLine into a section edit', () => {
+    const plan = parsePlan({ version: 1, operations: [{ op: 'edit', path: 'a.md', section: 'A > B', sectionLine: 9, replace: 'x' }] });
+    expect(editRequest(plan.operations[0] as EditOperation)).toEqual({ kind: 'section', section: 'A > B', line: 9, mode: 'replace', content: 'x' });
   });
 });

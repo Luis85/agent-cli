@@ -45,25 +45,44 @@ function names(path: readonly string[], segments: readonly string[], same: (a: s
 
 const exact = (a: string, b: string) => a === b;
 const caseless = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-const describe = (section: Section) => ({ section: section.path.join(' > '), line: section.heading.position.start.line + 1 });
+/** A heading as a path segment: a `>` between spaces becomes `\>`, so the segment does not split there. */
+const segment = (heading: string) => heading.replace(/(\s)>(?=\s)/g, '$1\\>');
+const describe = (section: Section) => ({ section: section.path.map(segment).join(' > '), line: section.heading.position.start.line + 1 });
+
+/** The heading texts a section path names: segments split at ` > `, and `\>` stands for a literal `>`. */
+function pathSegments(heading: string): string[] {
+  const segments = heading.split(/\s>\s/).map(part => part.replaceAll('\\>', '>').trim());
+  ensure(segments.every(part => part.length > 0), 'INVALID_INPUT', 'A section path lists heading texts separated by " > ", such as "Plan > Risks"; write a " > " inside a heading as " \\> ".');
+  return segments;
+}
+
+/** Keeps the matches whose heading starts on the 1-based `line`; none is SECTION_NOT_FOUND listing the matches. */
+function onLine(matches: Section[], heading: string, line: number): Section[] {
+  const pinned = matches.filter(section => section.heading.position.start.line + 1 === line);
+  if (pinned.length > 0) return pinned;
+  throw forgeError('SECTION_NOT_FOUND', `No heading matching the section path "${heading}" starts on line ${line}.`, { section: heading, line, headings: matches.slice(0, reportedHeadings).map(describe) });
+}
 
 /**
  * The section a heading path names, such as `Plan > Risks`: segments are separated by ` > `, the last one is the
  * heading and the others are ancestor headings in order, not necessarily direct parents. Headings match their
- * text exactly, or ignoring letter case when no heading matches exactly. A section runs from its heading to the
- * next heading of the same or a higher level.
+ * text exactly, or ignoring letter case when no heading matches exactly; `line`, the heading's 1-based line, picks
+ * one of several matches. A section runs from its heading to the next heading of the same or a higher level.
  */
-function findSection(text: string, headings: readonly HeadingCache[], heading: string): Section {
-  const segments = heading.split(/\s>\s/).map(segment => segment.trim());
-  ensure(segments.every(segment => segment.length > 0), 'INVALID_INPUT', 'A section path lists heading texts separated by " > ", such as "Plan > Risks".');
+function findSection(text: string, headings: readonly HeadingCache[], heading: string, line?: number): Section {
+  const segments = pathSegments(heading);
   const all = sections(text, headings);
   let matches = all.filter(section => names(section.path, segments, exact));
   if (matches.length === 0) matches = all.filter(section => names(section.path, segments, caseless));
   if (matches.length === 0) {
     throw forgeError('SECTION_NOT_FOUND', `No heading matches the section path "${heading}".`, { section: heading, headings: all.slice(0, reportedHeadings).map(describe) });
   }
-  ensure(matches.length === 1, 'AMBIGUOUS_SECTION', `The section path "${heading}" matches ${matches.length} headings; add an ancestor heading, such as "Parent > ${segments.at(-1)}".`,
-    { section: heading, matches: matches.length, candidates: matches.slice(0, reportedHeadings).map(describe) });
+  if (line !== undefined) matches = onLine(matches, heading, line);
+  const candidates = matches.slice(0, reportedHeadings).map(describe);
+  const pick = 'pass one candidate\'s line as the section line (--section-line, or sectionLine in an apply plan)';
+  // Candidates with the same full path differ only by line, so an ancestor heading cannot tell them apart.
+  const hint = new Set(candidates.map(candidate => candidate.section)).size === 1 ? pick : `add an ancestor heading, such as "Parent > ${segment(segments.at(-1)!)}", or ${pick}`;
+  ensure(matches.length === 1, 'AMBIGUOUS_SECTION', `The section path "${heading}" matches ${matches.length} headings; ${hint}.`, { section: heading, matches: matches.length, candidates });
   return matches[0]!;
 }
 
@@ -84,8 +103,8 @@ export function insertLines(text: string, at: number, content: string, newline: 
  * that follow the heading and before the blank lines that precede the next heading: `replace` swaps it, `append`
  * adds lines after it and `prepend` before it, keeping those blank lines. Content is inserted as whole lines.
  */
-export function editSection(text: string, metadata: CachedMetadata, heading: string, mode: RangeEditMode, content: string): string {
-  const section = findSection(text, metadata.headings ?? [], heading), newline = lineBreak(text);
+export function editSection(text: string, metadata: CachedMetadata, heading: string, mode: RangeEditMode, content: string, line?: number): string {
+  const section = findSection(text, metadata.headings ?? [], heading, line), newline = lineBreak(text);
   const body = text.slice(section.bodyStart, section.end);
   const start = section.bodyStart + (/^(?:[ \t]*\r?\n)*/.exec(body)?.[0].length ?? 0);
   const last = text.slice(start, section.end).trimEnd().length;

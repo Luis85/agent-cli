@@ -33,14 +33,17 @@ const modeText: Record<RangeEditMode, string> = {
   prepend: 'Lines to add before the content; next to a list item block, sibling list items.',
 };
 const targets = {
-  section: path('Heading path such as "Plan > Risks"; segments are separated by " > ".'),
+  section: path('Heading path such as "Plan > Risks"; segments are separated by " > ", and " \\> " is a " > " inside a heading.'),
   block: path('Block id, with or without the leading ^.'),
 };
+const sectionLine: JsonSchema = { type: 'integer', minimum: 1, description: 'The 1-based line of the heading, from AMBIGUOUS_SECTION details.candidates; picks one of several headings the path matches.' };
 const editBranches: JsonSchema[] = [
   operation('edit', 'edit: literal replacements', ['path', 'edits'], { path: path(), edits: literalEditsSchema }),
   operation('edit', 'edit: append to the file', ['path', 'append'], { path: path(), append: text('Text appended to the end of the file.') }),
   ...(['section', 'block'] as const).flatMap(target => rangeEditModes.map(mode =>
-    operation('edit', `edit: ${mode} in a ${target}`, ['path', target, mode], { path: path('Markdown note.'), [target]: targets[target], [mode]: text(modeText[mode]) }))),
+    operation('edit', `edit: ${mode} in a ${target}`, ['path', target, mode], {
+      path: path('Markdown note.'), [target]: targets[target], ...(target === 'section' ? { sectionLine } : {}), [mode]: text(modeText[mode]),
+    }))),
 ];
 
 /** JSON Schema 2020-12 of an `apply` plan; `help apply` and `schema` publish it with the plan argument. */
@@ -79,7 +82,7 @@ export const applyPlanSchema: JsonSchema = {
 
 interface Guarded { ifMatch?: string }
 export type WriteOperation = Guarded & { op: 'write'; path: string; content: string; encoding: 'utf8' | 'base64' };
-export type EditOperation = Guarded & { op: 'edit'; path: string; edits?: LiteralEdit[]; append?: string; section?: string; block?: string; replace?: string; prepend?: string };
+export type EditOperation = Guarded & { op: 'edit'; path: string; edits?: LiteralEdit[]; append?: string; section?: string; sectionLine?: number; block?: string; replace?: string; prepend?: string };
 export type FrontmatterOperation = Guarded & { op: 'frontmatter'; path: string; set?: Record<string, unknown>; unset?: string[] };
 export type MoveOperation = Guarded & { op: 'move'; from: string; to: string; updateLinks: boolean };
 export type DeleteOperation = Guarded & { op: 'delete'; path: string; recursive: boolean; allowBrokenLinks: boolean };
@@ -120,7 +123,7 @@ export function parsePlan(value: unknown): ApplyPlan {
 export function editRequest(item: EditOperation): TextEditRequest {
   if (item.edits !== undefined) return { kind: 'literal', edits: item.edits };
   const mode = rangeEditModes.find(candidate => item[candidate] !== undefined)!;
-  if (item.section !== undefined) return { kind: 'section', section: item.section, mode, content: item[mode]! };
+  if (item.section !== undefined) return { kind: 'section', section: item.section, ...(item.sectionLine === undefined ? {} : { line: item.sectionLine }), mode, content: item[mode]! };
   if (item.block !== undefined) return { kind: 'block', block: item.block, mode, content: item[mode]! };
   return { kind: 'append', content: item.append! };
 }

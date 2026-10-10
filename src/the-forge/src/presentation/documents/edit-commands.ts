@@ -4,7 +4,7 @@ import type { LiteralEdit } from '../../domain/documents/literal-edit.ts';
 import type { TextEditRequest } from '../../domain/documents/text-edit.ts';
 import { rangeEditModes } from '../../domain/documents/sections.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity, parseJson, value } from '../../application/plugins/command-input.ts';
+import { arity, integer, parseJson, value } from '../../application/plugins/command-input.ts';
 import { option, type CommandFlags } from '../../application/plugins/command-metadata.ts';
 import { decodeText, editBytes, ensureEditable } from '../../application/documents/text-edit.ts';
 import { PlanRunner } from '../../application/documents/apply.ts';
@@ -24,6 +24,8 @@ async function editRequest(flags: CommandFlags, context: CommandContext): Promis
   const section = value(flags, 'section'), block = value(flags, 'block'), edits = value(flags, 'edits');
   const find = value(flags, 'find'), replace = value(flags, 'replace'), content = value(flags, 'content');
   const modes = rangeEditModes.filter(mode => (mode === 'replace' ? replace !== undefined : flags[mode] === true));
+  const line = integer(flags, 'section-line', 1);
+  ensure(line === undefined || section !== undefined, 'INVALID_INPUT', '--section-line picks one of the headings a --section path matches; pass it with --section.');
   if (section !== undefined || block !== undefined) {
     ensure(section === undefined || block === undefined, 'INVALID_INPUT', 'Choose one of --section or --block.');
     ensure(find === undefined && edits === undefined, 'INVALID_INPUT', '--section and --block edit a part of the note; do not combine them with --find or --edits.');
@@ -31,7 +33,7 @@ async function editRequest(flags: CommandFlags, context: CommandContext): Promis
     const mode = modes[0]!;
     ensure(mode === 'replace' ? content === undefined : content !== undefined, 'INVALID_INPUT', mode === 'replace' ? '--replace carries the new content; do not pass --content.' : `--${mode} needs --content.`);
     const text = mode === 'replace' ? replace! : content!;
-    return section !== undefined ? { kind: 'section', section, mode, content: text } : { kind: 'block', block: block!, mode, content: text };
+    return section !== undefined ? { kind: 'section', section, ...(line === undefined ? {} : { line }), mode, content: text } : { kind: 'block', block: block!, mode, content: text };
   }
   ensure(flags.prepend !== true, 'INVALID_INPUT', '--prepend needs --section or --block.');
   if (edits !== undefined) {
@@ -54,7 +56,7 @@ const applyErrors = ['INVALID_PLAN', 'INVALID_JSON', 'INPUT_REQUIRED', 'NOT_FOUN
 export function editCommand(): Command {
   return {
     id: 'edit', description: 'Edit Markdown or UTF-8 text in place: literal replacements, an append, or a section or block edit.',
-    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" | --block id) (--replace text | --append --content text | --prepend --content text))',
+    usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" [--section-line n] | --block id) (--replace text | --append --content text | --prepend --content text))',
     scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }], errors: editErrors, output: editOutput,
     options: {
       'if-match': option.string('SHA-256 revision the file must still have (from read).', { required: true }),
@@ -64,7 +66,8 @@ export function editCommand(): Command {
       append: option.boolean('Append --content to the end of the file, or after the --section or --block content.'),
       prepend: option.boolean('Insert --content before the --section or --block content.'),
       content: option.string('Text for --append or --prepend.'),
-      section: option.string('Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level.'),
+      section: option.string('Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level. Write " > " inside a heading as " \\> ".'),
+      'section-line': option.string('1-based line of the --section heading, from AMBIGUOUS_SECTION details.candidates, when the path matches several headings.'),
       block: option.string('Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.'),
     },
     async run(args, flags, context) {

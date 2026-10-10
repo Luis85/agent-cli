@@ -5,7 +5,7 @@ import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser
 
 const parser = new ObsidianMetadataParser(new ObsidianDocuments());
 const metadata = (text: string) => parser.parse('note.md', new TextEncoder().encode(text));
-const section = (text: string, path: string, mode: RangeEditMode, content: string) => editSection(text, metadata(text), path, mode, content);
+const section = (text: string, path: string, mode: RangeEditMode, content: string, line?: number) => editSection(text, metadata(text), path, mode, content, line);
 const failure = (edit: () => string) => {
   try { edit(); }
   catch (error) { return error as { code: string; exitCode: number; details?: Record<string, unknown> }; }
@@ -52,5 +52,29 @@ describe('section edits by heading path', () => {
     expect(section('# A\n\ntext', 'A', 'append', 'more')).toBe('# A\n\ntext\nmore\n');
     expect(section('# A', 'A', 'replace', 'body')).toBe('# A\nbody\n');
     expect(section('# A\n```\n# not a heading\n```\n# B\n', 'A', 'replace', 'x')).toBe('# A\nx\n# B\n');
+  });
+});
+
+describe('unaddressable sections', () => {
+  const twice = '# A\n\n## B\n\nfirst\n\n# A\n\n## B\n\nsecond\n';
+
+  it('picks one of several headings with the same full path by its 1-based line', () => {
+    const ambiguous = failure(() => section(twice, 'A > B', 'replace', 'x'));
+    expect(ambiguous).toMatchObject({ code: 'AMBIGUOUS_SECTION', details: { candidates: [{ section: 'A > B', line: 3 }, { section: 'A > B', line: 9 }] } });
+    expect((ambiguous as unknown as Error).message).toContain('section line');
+    expect((ambiguous as unknown as Error).message).not.toContain('add an ancestor heading');
+    expect(section(twice, 'A > B', 'replace', 'x', 9)).toBe(twice.replace('second', 'x'));
+    expect(section(twice, 'B', 'replace', 'x', 3)).toBe(twice.replace('first', 'x'));
+    expect(failure(() => section(twice, 'A > B', 'replace', 'x', 4))).toMatchObject({
+      code: 'SECTION_NOT_FOUND', details: { section: 'A > B', line: 4, headings: [{ section: 'A > B', line: 3 }, { section: 'A > B', line: 9 }] },
+    });
+  });
+
+  it('addresses a heading that contains " > " through the \\> escape, and reports it escaped', () => {
+    const note = '# In > Out\n\nold\n\n## Step > Next\n\nstep\n';
+    expect(section(note, 'In \\> Out', 'replace', 'new')).toBe(note.replace('old\n\n## Step > Next\n\nstep', 'new'));
+    expect(section(note, 'In \\> Out > Step \\> Next', 'replace', 'x')).toBe(note.replace('step', 'x'));
+    expect(failure(() => section(note, 'Missing', 'append', 'x')).details!.headings).toEqual([{ section: 'In \\> Out', line: 1 }, { section: 'In \\> Out > Step \\> Next', line: 5 }]);
+    expect(section('# a -> b\n\nx\n', 'a -> b', 'replace', 'y')).toBe('# a -> b\n\ny\n');
   });
 });

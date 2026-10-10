@@ -39,6 +39,11 @@ describe('precise edits through the portable CLI', () => {
     const failing = cli(['edit', 'notes/Plan.md', '--edits', JSON.stringify([{ find: 'Plan', replace: 'Roadmap', all: true }, { find: 'absent', replace: '' }]), '--if-match', revision('notes/Plan.md')]);
     expect(failing.body.error).toMatchObject({ code: 'NO_MATCH', details: { edit: 1 } });
     expect(cli(['edit', 'notes/Plan.md', '--section', 'Risks', '--prepend', '--if-match', 'x']).body.error.code).toBe('INVALID_INPUT');
+    expect(cli(['edit', 'notes/Plan.md', '--block', 'ship', '--section-line', '4', '--replace', 'x', '--if-match', 'x']).body.error.code).toBe('INVALID_INPUT');
+    expect(cli(['edit', 'notes/Plan.md', '--section', 'Plan', '--section-line', '0', '--replace', 'x', '--if-match', 'x']).body.error.code).toBe('INVALID_ARGUMENT');
+    const pinned = cli(['edit', 'notes/Plan.md', '--section', 'Plan', '--section-line', '5', '--replace', 'x', '--if-match', revision('notes/Plan.md')]);
+    expect(pinned.body.error).toMatchObject({ code: 'SECTION_NOT_FOUND', details: { line: 5, headings: [{ section: 'Plan', line: 4 }] } });
+    expect(cli(['edit', 'notes/Plan.md', '--section', 'Goals', '--section-line', '11', '--append', '--content', 'Later.', '--if-match', revision('notes/Plan.md'), '--dry-run']).body.ok).toBe(true);
     const german = cli(['--lang', 'de', 'edit', 'notes/Plan.md', '--block', 'nope', '--append', '--content', 'x', '--if-match', revision('notes/Plan.md')]);
     expect(german.body.error).toMatchObject({ code: 'SECTION_NOT_FOUND', message: 'Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.' });
   });

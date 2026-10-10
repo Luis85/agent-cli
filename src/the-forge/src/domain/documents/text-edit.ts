@@ -12,7 +12,7 @@ export type TextEditRequest =
   | { kind: 'replace'; find: string; replace: string }
   | { kind: 'literal'; edits: readonly LiteralEdit[] }
   | { kind: 'append'; content: string }
-  | { kind: 'section'; section: string; mode: RangeEditMode; content: string }
+  | { kind: 'section'; section: string; line?: number; mode: RangeEditMode; content: string }
   | { kind: 'block'; block: string; mode: RangeEditMode; content: string };
 
 /** Whether the request needs the note's headings and blocks, and therefore Markdown. */
@@ -24,7 +24,7 @@ export function applyTextEdit(text: string, request: TextEditRequest, metadata: 
     case 'replace': return replaceUniqueLiteral(text, request.find, request.replace);
     case 'literal': return applyLiteralEdits(text, request.edits);
     case 'append': return text + request.content;
-    case 'section': return editSection(text, metadata(), request.section, request.mode, request.content);
+    case 'section': return editSection(text, metadata(), request.section, request.mode, request.content, request.line);
     case 'block': return editBlock(text, metadata(), request.block, request.mode, request.content);
   }
 }
