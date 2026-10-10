@@ -1,0 +1,18 @@
+id: canvas-add-node
+title: Add a connected card to a Canvas
+category: canvas-bases
+prompt: |
+  Add a text card "Collect tester feedback" to board.canvas and connect the existing
+  goal card to it with an edge. The canvas must stay valid JSON Canvas.
+fixture: vault
+reference:
+  - [read, board.canvas]
+  - [patch, board.canvas, --pointer, /nodes/-, --value, '{"id":"feedback","type":"text","text":"Collect tester feedback","x":480,"y":200,"width":260,"height":120}', --if-match, "{{revision:board.canvas}}"]
+  - [patch, board.canvas, --pointer, /edges/-, --value, '{"id":"e2","fromNode":"goal","toNode":"feedback"}', --if-match, "{{revision:board.canvas}}"]
+checks:
+  - file: board.canvas
+    data: { pointer: /nodes, contains: { type: text, text: Collect tester feedback } }
+  - file: board.canvas
+    data: { pointer: /edges, length: 2 }
+  - command: [validate, board.canvas]
+    data: { pointer: /valid, equals: true }

@@ -1,0 +1,11 @@
+id: list-folder
+title: List the notes of one folder
+category: reading
+prompt: |
+  Which notes are in the Projects folder of this vault? Answer with their paths.
+fixture: vault
+reference:
+  - [list, --path, "Projects/**"]
+answer: Projects/Alpha.md and Projects/Beta.md
+checks:
+  - answer: { contains: [Projects/Alpha.md, Projects/Beta.md] }

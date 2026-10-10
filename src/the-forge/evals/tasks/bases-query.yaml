@@ -1,0 +1,13 @@
+id: bases-query
+title: Evaluate a Bases view
+category: canvas-bases
+prompt: |
+  Which notes does the "Projects" view of projects.base list? Evaluate the saved view
+  and answer with the note paths.
+fixture: vault
+reference:
+  - [bases, query, projects.base, --view, Projects]
+answer: Projects/Alpha.md and Projects/Beta.md
+checks:
+  - answer: { contains: [Projects/Alpha.md, Projects/Beta.md] }
+  - unchanged: projects.base

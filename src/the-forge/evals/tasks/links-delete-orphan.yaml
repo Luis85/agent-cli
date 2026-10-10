@@ -1,0 +1,17 @@
+id: links-delete-orphan
+title: Delete an orphan note recoverably
+category: linking
+prompt: |
+  Scratch.md is a leftover note. Confirm that no other note links to it, then delete it
+  so that it can still be recovered from the vault trash.
+fixture: vault
+reference:
+  - [links, back, Scratch.md]
+  - [delete, Scratch.md, --if-match, "{{revision:Scratch.md}}"]
+checks:
+  - file: Scratch.md
+    exists: false
+  - file: .trash/Scratch.md
+    contains: [Temporary notes from a call.]
+  - file: Home.md
+    exists: true

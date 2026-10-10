@@ -1,0 +1,12 @@
+id: links-backlinks
+title: Report the backlinks of a note
+category: linking
+prompt: |
+  Which notes link to People/Ada.md, including links in frontmatter properties?
+  Answer with their paths.
+fixture: vault
+reference:
+  - [links, back, People/Ada.md]
+answer: Meetings/2026-10-01.md and Projects/Alpha.md
+checks:
+  - answer: { contains: [Meetings/2026-10-01.md, Projects/Alpha.md] }

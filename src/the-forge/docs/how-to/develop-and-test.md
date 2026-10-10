@@ -38,6 +38,10 @@ The project's `configs/quality/source.json` declares `sourceRoot: "src"` and `ad
 
 `src/forge-showcase` is a committed, fully generated example project; see [explore the showcase](explore-the-showcase.md). `npm run showcase:check` regenerates it into a temporary workspace through the current `bin/forge.js` and lists every differing path; it never modifies the checkout. The end-to-end test `tests/showcase/showcase.e2e.test.ts` runs the same check (about 45 seconds alone, up to about 90 seconds under the full parallel suite) and also queries its Bases, validates its Canvas and checks UI and adapter drift through the CLI. When a change alters generated output, rebuild, run `npm run showcase`, review the showcase diff and commit it with the change. Forge's quality inventory excludes the showcase; run its own `npm ci` and `npm run check` from `src/forge-showcase` when its toolchain or generated code changes.
 
+## Agent evaluation tasks
+
+`evals/tasks/*.yaml` are agent tasks with fixtures and deterministic checks. `npm run eval` replays their reference commands, and `tests/evals/reference.e2e.test.ts` does the same inside `npm run check`, so a change that breaks a task's reference sequence or makes a check vacuous fails the gate. When a command's behavior or output changes, update the affected tasks; measure agents with the opt-in `claude` driver as described in [evaluate agents](evaluate-agents.md).
+
 ## Agent feedback loop
 
 Read `AGENTS.md`, establish acceptance examples and inspect the affected boundary. After a focused edit, run the relevant behavioral test and `npm run check:fast`. This gate runs structure validation first, then Oxlint, fallow and the TypeScript compiler without rebuilding the distribution. Static analysis complements tests; a clean report does not prove business behavior or filesystem integrity. Analysis includes test entry points, so code referenced only by tests counts as used; this is not proof of production reachability.
@@ -59,7 +63,7 @@ After the targeted checks pass, run `npm run check` once as the final gate. It r
 
 ## Verification
 
-Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, showcase, templates, UI, workflows and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
+Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, evals, forms, generation, plugins, projects, quality, showcase, skills, templates, UI, workflows and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
 
 Every test has an explicit pyramid rank in its filename and runs in the matching named Vitest project:
 

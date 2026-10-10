@@ -1,0 +1,14 @@
+id: recover-ambiguous-edit
+title: Disambiguate an edit that matches several lines
+category: error-recovery
+prompt: |
+  In Meetings/2026-10-01.md, replace "Send budget" with "Send final budget" in the
+  action item addressed to Ada only. The other action item must stay as it is.
+fixture: vault
+reference:
+  - run: [edit, Meetings/2026-10-01.md, --if-match, "{{revision:Meetings/2026-10-01.md}}", --find, Send budget, --replace, Send final budget]
+    expect: { code: AMBIGUOUS_EDIT }
+  - [edit, Meetings/2026-10-01.md, --if-match, "{{revision:Meetings/2026-10-01.md}}", --find, Send budget to Ada, --replace, Send final budget to Ada]
+checks:
+  - file: Meetings/2026-10-01.md
+    contains: ["- [ ] Send final budget to Ada\n", "- [ ] Send budget summary to the testers\n"]

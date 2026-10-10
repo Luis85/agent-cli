@@ -1,0 +1,19 @@
+id: search-fix-typo
+title: Search for a misspelling and fix every occurrence
+category: searching
+prompt: |
+  The word "recieve" is misspelled somewhere in this vault. Correct every occurrence
+  to "receive" without changing anything else in the notes.
+fixture: vault
+reference:
+  - [search, recieve]
+  - [edit, Projects/Alpha.md, --if-match, "{{revision:Projects/Alpha.md}}", --find, recieve, --replace, receive]
+  - [edit, Projects/Beta.md, --if-match, "{{revision:Projects/Beta.md}}", --find, recieve, --replace, receive]
+checks:
+  - command: [search, recieve]
+    data: { pointer: /total, equals: 0 }
+  - file: Projects/Alpha.md
+    contains: ["2. Ask testers to receive a route.", "- GPS accuracy in valleys."]
+  - file: Projects/Beta.md
+    contains: [Testers should receive the offline bundle by email.]
+    frontmatter: { status: planned }

@@ -1,0 +1,13 @@
+id: read-property
+title: Read frontmatter properties of a note
+category: reading
+prompt: |
+  What is the status of the project note Projects/Alpha.md, and who owns it?
+  Answer with both values.
+fixture: vault
+reference:
+  - [read, Projects/Alpha.md]
+answer: Alpha is active and owned by People/Ada.
+checks:
+  - answer: { contains: [active, Ada] }
+  - unchanged: Projects/Alpha.md
