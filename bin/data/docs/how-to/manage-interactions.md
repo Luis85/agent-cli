@@ -98,8 +98,9 @@ node bin/forge.js make ui contact-request --framework react --interactions-libra
 The last command assumes your component library already contains the
 [contact-request example](../examples/interactions/components/contact-request.md)
 and the selected interaction library contains its referenced definitions. Imports
-and exports refuse existing destination files. Adjust the three interaction
-paths in `bin/config.json` to make custom locations the defaults.
+and exports refuse existing destination files. Set `interactions`,
+`interactionImports` and `interactionExports` under `plugins.settings.ui` in
+`bin/config.json` to make custom locations the defaults.
 
 ## Regenerate after behavior changes
 

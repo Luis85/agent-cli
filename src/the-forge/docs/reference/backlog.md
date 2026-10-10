@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` makes `backlog` unavailable: `plugins` lists it as `unavailable` with the reason, and its commands fail with `PLUGIN_UNAVAILABLE`.
+`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` makes `backlog` unavailable: `plugins` lists it as `unavailable` with the reason, and its commands fail with `PLUGIN_UNAVAILABLE`. `backlog sync` uses the optional `connector.hub` service of the `connector` core plugin; while `connector` is disabled or unavailable, `backlog sync` fails with `PLUGIN_SERVICE_MISSING` and every other action keeps working.
 
 Forge conforms to backlog-view 0.10.0 (plugin id `product-backlog-view`) with the global rank and release-join dates of commit `fb813df` on its `main` branch. The [conformance](#conformance) section lists what the fixtures prove and where Forge differs.
 
@@ -45,7 +45,7 @@ Releases are managed by the base's first `product-release` view, with its own op
 
 ### Choosing the backlog
 
-Every action except `init` opens one backlog: `--base <file.base> [--view <name>]`; otherwise `plugins.settings.backlog.base` and `.view` in `bin/config.json`; otherwise the only `product-backlog` view among the scope's `.base` files. No view fails with `BACKLOG_NOT_FOUND`; several fail with `BACKLOG_AMBIGUOUS` and `details.candidates` (`{base, view}` pairs).
+Every action except `init` and `sync` opens one backlog: `--base <file.base> [--view <name>]`; otherwise `plugins.settings.backlog.base` and `.view` in `bin/config.json`; otherwise the only `product-backlog` view among the scope's `.base` files, preferring views that are not [bound to a connection](#bound-views-define-the-sync-set). No view fails with `BACKLOG_NOT_FOUND`; several fail with `BACKLOG_AMBIGUOUS` and `details.candidates` (`{base, view}` pairs).
 
 ```json
 { "plugins": { "settings": { "backlog": { "base": "docs/Product Backlog.base", "view": "Backlog" } } } }
@@ -86,6 +86,7 @@ All actions take `--base`, `--view` and `--today YYYY-MM-DD` (the date used for 
 | `release notes <release>` | Writes `<releaseNotesFolder>/<release> release notes.md` (see [release notes](#release-notes)); `outcome` is `created`, `updated` or `unchanged` |
 | `release mark-released <release>` | Writes `releaseStatusProperty = releasedTransitionValue` and `releasedDateProperty = today` on the release note only; `backlog.released` follows |
 | `check` | `{ok, counts, writable, problems}`. See [check](#check) |
+| `sync`, `sync status`, `sync resolve <item>` | Two-way sync of bound views with external trackers; see [sync](#sync-with-external-trackers) |
 
 Mutating actions accept `--dry-run` (planned changes with unified diffs, nothing written, no `backlog.*` events) and, where one note is edited, `--if-match <revision>` for that note. Committed writes publish `vault.*` records and these events:
 
@@ -95,6 +96,93 @@ Mutating actions accept `--dry-run` (planned changes with unified diffs, nothing
 | `backlog.item-moved` | `{path, parent, order, previousParent, previousOrder}` |
 | `backlog.state-changed` | `{path, title, from, to, started?, finished?}`: `from` and `to` are values of the item's own workflow (requirements, deliverable or test); `started` and `finished` belong to the requirements workflow (`finished: null` when leaving done) |
 | `backlog.released` | `{path, name, status, released}` |
+| `backlog.synced` | `{base, view, connection, created, updated, pulled, conflicts, left, failed}` once per synced view |
+
+## Sync with external trackers
+
+`backlog sync` keeps backlog notes and the work items of an external tracker in sync in both directions, with explicit conflicts. Connectors are plugin services: the `connector` core plugin holds the [connection profiles](connectors.md#connection-profiles) and `connector-azure-devops` talks to [Azure DevOps Boards](connector-azure-devops.md). The sync engine itself lives in this plugin and knows no platform. A [how-to guide](../how-to/sync-backlog-with-azure-devops.md) walks through a first sync.
+
+### Bound views define the sync set
+
+A `product-backlog` view with the view option `connection: <id>` is bound to that connection. Its query (global and view filters) selects the notes held in sync; its options bind the properties as for every other action. One base can hold several bound views, each with its own filter and connection, so different item sets of one repository sync to different organizations or projects. backlog-view ignores the extra option.
+
+```yaml
+views:
+  - type: product-backlog
+    name: Planning
+    filters:
+      and:
+        - file.inFolder("backlog/requirements")
+    stateProperty: note.status
+    priorityProperty: note.priority
+    connection: contoso
+```
+
+When an action other than `sync` chooses its backlog by discovery, unbound views are preferred; with only bound views, pass `--base`/`--view` or set `plugins.settings.backlog`.
+
+### Actions
+
+| Action | Result |
+| --- | --- |
+| `sync [--base … [--view …]] [--direction push\|pull\|both]` | Syncs every bound view (or the named ones), default `both`. `--dry-run` reads the remote, writes nowhere and returns the planned remote operations and vault diffs |
+| `sync status [--base … --view …]` | Reads both sides and reports pending pushes, pulls and conflicts; writes nothing |
+| `sync resolve <item> --take local\|remote [--field title,state]` | Settles the note's conflicting fields (all, or the named ones) in favour of one side; its other pending changes wait for the next sync. A named field that is not in conflict, or a note without conflicts, is `INVALID_ARGUMENT`; a note in several bound views needs `--base`/`--view` |
+
+The result is `{dryRun, mode, direction, counts, views, left, changes}`. Each view reports `{base, view, connection, platform, created, updated, pulled, conflicts, resolved, unchanged, skipped, failed, changes}`:
+
+- `created`, `updated` and `pulled` list `{path, remoteId, url, fields}` (`remoteId` and `url` are null for creates a dry run only plans; a pulled title adds `renamedTo`).
+- `conflicts` lists `{path, remoteId, url, fields: [{field, local, remote}]}` with both canonical values.
+- `skipped` lists `{path, code, reason, field?}`: a note or one of its fields the sync left alone. The codes are below.
+- `failed` lists `{path, remoteId, code, message}` for remote writes that failed; `SYNC_CONFLICT` marks a remote item that changed during the sync. A refused token aborts the whole sync with `CONNECTOR_AUTH_FAILED`, after recording every item created before it.
+- `changes` lists the vault changes; a note renamed for a pulled title appears as `{path, oldPath, operation: "renamed", revision, bytes}` (with `diff: null` on dry runs) before the link rewrites.
+
+`left` lists, per connection, the state entries whose note no bound view of that connection returns any more (`{connection, path, remoteId, url}`), across all bound views of the scope, so a note held by another view of the same connection is not reported. They are never deleted remotely.
+
+| Skip `code` | Meaning |
+| --- | --- |
+| `unmapped-type` | The note's type has no remote type mapping |
+| `foreign-link` | The link property names an item of another connection |
+| `duplicate-link` | Another note already syncs the linked item (a copied note), or, without a state entry, several notes link it; remove or change the link in the copy |
+| `remote-missing` | The linked remote item no longer exists or is not readable |
+| `not-created` | A pull-only run does not create new notes remotely |
+| `unexpressible` | The note's value cannot be expressed on this connection (a parent that does not sync here, a priority label without a number, a non-text area), so the remote value is not pulled over it |
+| `unreadable-remote` | The remote value cannot be read (a structured value), so the note's value is not pushed over it |
+| `remote-format-unknown` | The remote description changed but is not known to be Markdown; it is not pulled (see descriptions below) |
+| `unmapped-remote-type` | The remote type has no local type mapping; the note keeps its type |
+| `unsynced-parent`, `missing-iteration` | A pulled parent or iteration has no local counterpart |
+| `title-taken` | A pulled title's file name is taken |
+| `server-kept` | The platform stored another value than the one pushed (a rule); the note keeps its value and the next sync pushes it again |
+| `server-applied` | On a push-only run, the platform filled a field the note leaves empty (a default or rule); the next two-way sync pulls it |
+
+### Fields and the three-way comparison
+
+| Field | Note side | Remote side (Azure DevOps default) |
+| --- | --- | --- |
+| `title` | The note's file name (basename) | `System.Title` |
+| `type` | `typeProperty`, mapped through the connection's types | `System.WorkItemType` |
+| `state` | `stateProperty`, mapped through the connection's states | `System.State` |
+| `parent` | `parentProperty`, when the parent syncs on the same connection | Parent link (`System.LinkTypes.Hierarchy-Reverse`) |
+| `iteration` | `iterationProperty`: the Iteration note's name under the connection's `iterationRoot` | `System.IterationPath` |
+| `area` | The connection's `areaProperty` (default `area`), a full area path; a note without it is in the connection's default area | `System.AreaPath` |
+| `priority` | `priorityProperty`: the label's leading number (`1 - Must` → 1) | `Microsoft.VSTS.Common.Priority` |
+| `effort` | The connection's `effortProperty` (default `effort`), a number | Story points or effort, by process |
+| `tags` | `tagsProperty`, compared case-insensitively | `System.Tags` |
+| `description` | The whole note body after the frontmatter, without `%%comments%%` | `System.Description` |
+| `property:<key>` | Extra frontmatter keys from the connection's `mappings.properties` | The mapped remote field |
+
+A field syncs only when the connection maps it and the view binds its property; it is then compared in canonical form (sanitized titles, trimmed text, sorted lowercase tags). For every note and connection, the state file `.forge/sync/<connection>.json` in the command scope stores the remote id, URL and revision and, per field, a hash of the value both sides held after the last successful sync. Each sync compares both sides with that base:
+
+- changed only in the note: pushed with a revision-guarded update;
+- changed only remotely: pulled through the backlog's write rules (state stamps, `mayHoldField`, Obsidian's YAML style; a new title renames the note and rewrites links to it, and a note re-parented to a renamed note in the same run links its new name);
+- changed on both sides to different values: a conflict, reported (`connector.conflict`) and left untouched on both sides until `sync resolve`; to the same value: converged;
+- no base (a fresh clone without the state file, a deleted state file, a link property added by hand): every differing field is a conflict, so a relink never overwrites either side;
+- a side that cannot express or read the field (see `unexpressible` and `unreadable-remote`): never overwritten, and never cleared with an empty value; the field is skipped.
+
+While the remote revision equals the stored one, the remote side counts as unchanged; the stored revision advances only once every remote change has landed. New notes (no state, no link property) are created remotely in tree order, parents before children. The base of a pushed or created field is the value the platform returned, not the value sent: a field the note leaves empty that the platform filled (a default state or priority, a rule) is pulled into the note in the same run, and a value the platform stored differently is reported as `server-kept`. After a create or relink, the note's link property (default `azure-devops`, set per connection with `linkProperty`) holds the remote URL, which Obsidian opens as a link; backlog-view keeps the unknown key. A note renamed through Forge (`move`, `rename`, `app.fileManager`) keeps its state, because the plugin follows `vault.rename`; a note renamed elsewhere is relinked by its link property on the next sync. A copied note with the same link property never takes over its original's item (`duplicate-link`). Notes the remote side does not know yet are not imported: the sync set is defined by the view.
+
+**Descriptions.** The note body is pushed as it is, including embeds, wikilinks (Azure DevOps shows them as plain text) and Markdown it cannot render, but without Obsidian `%%comments%%`, which stay private. The state keeps two bases for the description: the note body, and the remote text exactly as read (Markdown or HTML), so a change is detected on each side by itself. A note change pushes while the remote text is still the one last synced. A remote change is pulled only when the platform declares the text as Markdown; otherwise it is skipped (`remote-format-unknown`) and becomes a conflict once the note changes too. `sync resolve --field description` settles either case: `--take local` pushes the note body, `--take remote` writes the remote text into the body as it is. A pulled description keeps the note's `%%comments%%`, appended after it.
+
+Remote writes are planned before anything is written. A live sync holds the lock file `.forge/sync/<connection>.lock` of every connection it syncs from start to end, so a second sync of the same connection fails with `WORKSPACE_BUSY` instead of interleaving. Each created item is recorded in the state file right after its create, so a later failure (a refused token, a rejected write, a vault conflict) never loses its id and the next sync does not create it again; a state file another process changed meanwhile is re-read and merged. Committed syncs publish `vault.*` records for note changes, then per view `connector.pushed` per remote write, `connector.pulled` per pulled note, `connector.conflict` per conflicting note and one `backlog.synced` (its `left` counts the connection's notes that left the sync set). Dry runs and `status` publish none of them.
 
 ## New notes
 

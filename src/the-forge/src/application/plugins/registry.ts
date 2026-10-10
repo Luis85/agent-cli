@@ -66,6 +66,8 @@ export interface PluginContributions {
   provides?: Record<string, unknown>;
   /** Service ids this plugin needs; it activates after their providers. */
   requires?: string[];
+  /** Service ids this plugin uses when an enabled plugin provides them; it activates after those providers. */
+  optional?: string[];
   /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
   settings?: JsonSchema;
   /**
@@ -192,8 +194,8 @@ export class Registry {
    * undefined when no registered plugin provides it or its provider is unavailable. Call it after `configure`.
    */
   service<T>(id: string): T | undefined {
-    const provider = serviceProviders(this.plugins).get(id);
-    return provider === undefined || this.unavailable.has(provider.manifest.id) ? undefined : serviceView<T>(provider, id);
+    const provider = this.availableProviders().get(id);
+    return provider === undefined ? undefined : serviceView<T>(provider, id);
   }
   /**
    * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
@@ -229,12 +231,15 @@ export class Registry {
       }
     }
   }
-  /** The context a plugin's hooks, commands and generators run with. */
+  /**
+   * The context a plugin's hooks, commands and generators run with. Unavailable plugins provide no services, so an
+   * optional service whose provider is unavailable reads as absent (`services.has` is false).
+   */
   pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext {
     const pluginId = plugin.manifest.id;
     return {
       ...context, events: pluginEvents(events, pluginId), settings: this.settings.value(pluginId),
-      services: pluginServices(plugin, serviceProviders(this.plugins)),
+      services: pluginServices(plugin, this.availableProviders()),
       t: key => this.catalog.message(pluginId, context.language, key),
     };
   }
@@ -270,7 +275,7 @@ export class Registry {
           await tracker?.activated(plugin, pluginContext);
           await publishHostEvent(events, 'plugin.activated', { pluginId });
         } catch (error) {
-          const failure = this.catalog.normalize(error, pluginId);
+          const failure = this.catalog.normalize(error, pluginId, this.serviceProviderIds(plugin));
           await publishHostEvent(events, 'plugin.activation-failed', { pluginId, error: summarizeError(failure) });
           throw failure;
         }
@@ -295,6 +300,13 @@ export class Registry {
     events.dispose();
   }
 
+  /** Service providers by service id among available plugins: an unavailable plugin provides nothing. */
+  private availableProviders() { return serviceProviders(this.plugins.filter(entry => !this.unavailable.has(entry.manifest.id))); }
+  /** The available plugins providing services that `plugin` requires or optionally uses; their error codes surface through it. */
+  private serviceProviderIds(plugin: Plugin): string[] {
+    const providers = this.availableProviders();
+    return [...plugin.requires ?? [], ...plugin.optional ?? []].map(id => providers.get(id)?.manifest.id).filter((id): id is string => id !== undefined);
+  }
   /** PLUGIN_UNAVAILABLE, with `details` `{command|generator, plugin, reason, issues}`, when the plugin cannot run. */
   private ensureAvailable(plugin: Plugin, contribution: { command: string } | { generator: string }): void {
     const unavailable = this.unavailable.get(plugin.manifest.id);
@@ -309,7 +321,7 @@ export class Registry {
       run: async (args, flags, context) => {
         this.ensureAvailable(plugin, { command: command.id });
         try { return await command.run(args, flags, this.pluginContext(plugin, context, events)); }
-        catch (error) { throw this.catalog.normalize(error, plugin.manifest.id); }
+        catch (error) { throw this.catalog.normalize(error, plugin.manifest.id, this.serviceProviderIds(plugin)); }
       },
     };
   }
@@ -317,7 +329,7 @@ export class Registry {
     const owned = (call: (request: GeneratorRequest) => unknown) => async (request: GeneratorRequest) => {
       this.ensureAvailable(plugin, { generator: generator.id });
       try { return await call({ ...request, context: this.pluginContext(plugin, request.context, events) }); }
-      catch (error) { throw this.catalog.normalize(error, plugin.manifest.id); }
+      catch (error) { throw this.catalog.normalize(error, plugin.manifest.id, this.serviceProviderIds(plugin)); }
     };
     const { generate, run } = generator;
     return {

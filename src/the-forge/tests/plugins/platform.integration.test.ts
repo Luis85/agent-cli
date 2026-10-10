@@ -41,6 +41,29 @@ describe('plugin services', () => {
     await expect(cyclic.registry.activate(cyclic.events, context)).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_CYCLE', details: { plugins: ['alpha', 'beta', 'alpha'] } });
   });
 
+  it('orders optional services like required ones when a provider is enabled and reports their absence through has', async () => {
+    const { registry, events } = setup(), order: string[] = [];
+    let available: boolean[] = [];
+    registry.register({ manifest: manifest('backlog'), optional: ['sync.hub', 'other.hub'], onload(context) { order.push('backlog'); available = [context.services.has('sync.hub'), context.services.has('other.hub')]; } }, events);
+    registry.register({ manifest: manifest('sync'), provides: { 'sync.hub': {} }, onload() { order.push('sync'); } }, events);
+    await registry.activate(events, context);
+    expect(order).toEqual(['sync', 'backlog']);
+    expect(available).toEqual([true, false]);
+    const pluginContext = registry.pluginContext(registry.plugins[0]!, context, events);
+    expect(() => pluginContext.services.get('other.hub')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'other.hub' } }));
+    expect(() => pluginContext.services.has('undeclared.hub')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING' }));
+    expect(() => setup().registry.register({ manifest: manifest('bad'), optional: ['Not An Id'] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: 'optional must list service ids.' }));
+    await registry.dispose(events);
+  });
+
+  it('keeps a core plugin whose optional service provider is disabled', () => {
+    const { registry, events } = setup();
+    const core = (id: string, contributions: Partial<Plugin> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
+    registerCorePlugins(registry, events, [core('hub', { provides: { 'hub.api': {} } }), core('user', { optional: ['hub.api'] })], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), ['hub']);
+    expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['user']);
+    expect(registry.disabled.map(plugin => plugin.id)).toEqual(['hub']);
+  });
+
   it('rejects service ids outside the provider\'s namespace, for core plugins too, so providers never collide', () => {
     const { registry, events } = setup();
     registry.register({ manifest: manifest('alpha'), provides: { 'alpha.api': {} } }, events);
@@ -153,6 +176,21 @@ describe('plugin strings and error catalog', () => {
     expect(new Localizer('en', registry.catalog).error(borrowed)).toMatchObject({ code: 'OPERATION_FAILED', message: 'Raised QUALITY_UNOWNED.' });
     expect(await failure('audit.not-found')).toMatchObject({ code: 'NOT_FOUND', exitCode: 3, details: { by: 'audit' } });
     expect(await failure('quality.check')).toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5 });
+  });
+
+  it('maps a code of a plugin that provides a service the thrower declares, since its failures surface through the consumer', async () => {
+    const { registry, events } = setup();
+    const fail = () => { throw Object.assign(new Error('Owners unknown.'), { code: 'QUALITY_UNOWNED' }); };
+    registry.register({ ...localized, provides: { 'quality.owners': { check: fail } } }, events);
+    const consumer = (id: string, key: 'requires' | 'optional') => ({
+      manifest: manifest(id), [key]: ['quality.owners'],
+      commands: [{ id: `${id}.run`, description: 'Run', usage: `${id}.run`, run: (_args: string[], _flags: unknown, pluginContext: PluginContext) => pluginContext.services.get<{ check(): void }>('quality.owners').check() }],
+    });
+    registry.register(consumer('board', 'requires'), events);
+    registry.register(consumer('report', 'optional'), events);
+    for (const id of ['board.run', 'report.run']) {
+      await expect(Promise.resolve(registry.commands.get(id)!.run([], {}, context))).rejects.toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5, message: 'Owners unknown.' });
+    }
   });
 
   it('gives a user plugin error code to the plugin with the longest matching prefix, whatever the load order', () => {

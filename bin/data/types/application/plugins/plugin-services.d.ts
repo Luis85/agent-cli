@@ -1,23 +1,30 @@
-/** What the service graph needs from a plugin: its id and declared `provides`/`requires`. */
+/** What the service graph needs from a plugin: its id and declared `provides`, `requires` and `optional` services. */
 export interface ServiceNode {
     manifest: {
         id: string;
     };
     provides?: Readonly<Record<string, unknown>>;
     requires?: readonly string[];
+    optional?: readonly string[];
 }
-/** Typed access to the services a plugin declared in `requires` (and its own `provides`). */
+/**
+ * Typed access to the services a plugin declared in `requires` or `optional` (and its own `provides`). `has` tells
+ * whether an enabled plugin provides a declared optional service; `get` fails with PLUGIN_SERVICE_MISSING when none does.
+ */
 export interface PluginServices {
     get<T = unknown>(id: string): T;
+    has(id: string): boolean;
 }
 /** Providers by service id; a second provider for one id fails registration. */
 export declare function serviceProviders(nodes: readonly ServiceNode[]): Map<string, ServiceNode>;
 /**
- * Activation order: every plugin after the providers of the services it requires, otherwise in registration
- * order. A required service without an enabled provider is PLUGIN_SERVICE_MISSING; a dependency cycle is
+ * Activation order: every plugin after the providers of the services it requires or optionally uses (when they are
+ * enabled), otherwise in registration order. A required service without an enabled provider is PLUGIN_SERVICE_MISSING; a dependency cycle is
  * PLUGIN_SERVICE_CYCLE. Both name the plugins and services involved.
  */
 export declare function activationOrder<T extends ServiceNode>(nodes: readonly T[]): T[];
+/** The provider's read-only view of service `id`; the caller checked that `provider` provides it. */
+export declare function serviceView<T>(provider: ServiceNode, id: string): T;
 /**
  * The lookup a plugin's context receives: only declared services, so dependencies stay visible in manifests. Each
  * service is handed out as a read-only view, so one consumer cannot change what another consumer or the provider sees.

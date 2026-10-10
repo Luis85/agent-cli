@@ -1,4 +1,5 @@
 import type { EventBus } from './events.ts';
+import type { HttpClient } from '../connectors/http.ts';
 import type { PluginContributions, PluginManifest, Registry, Skill } from './registry.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 
@@ -12,6 +13,15 @@ export interface FileDates { size: number; ctime: Date; mtime: Date }
  * non-regular files are refused like repository reads; a missing file fails.
  */
 export type FileDatesReader = (root: string) => (path: string) => Promise<FileDates>;
+
+/** Releases a held lock file; false when the file no longer carried this holder's token (it is then left alone). */
+export type ReleaseLock = () => Promise<boolean>;
+/**
+ * Exclusive lock files below an absolute command root (`context.root`), by root-relative path: the file records its
+ * holder (pid, host, start time and `command`) like the workspace writer lock. Acquiring a held lock fails at once
+ * with WORKSPACE_BUSY naming the holder; a lock is never removed automatically. Missing parent folders are created.
+ */
+export type LockFiles = (root: string) => (path: string, command: string) => Promise<ReleaseLock>;
 
 /**
  * Kernel services a bundled core plugin's factory receives from the composition root. A core plugin depends only
@@ -29,6 +39,12 @@ export interface CorePluginHost {
   openFiles(root: string, warn: (message: string) => void): Promise<FileRepository>;
   /** The next invocation-wide operation id, shared with the host's command.* and operation.* records. */
   operationId(): number;
+  /** Outbound HTTP for connectors to external services. */
+  http: HttpClient;
+  /** Lock files that keep long-running operations (a backlog sync of one connection) apart across processes. */
+  locks: LockFiles;
+  /** Reads one environment variable (a connector's credential source); undefined when unset. */
+  environment: (name: string) => string | undefined;
 }
 
 /**

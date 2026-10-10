@@ -18,12 +18,6 @@ interface WorkspaceOperation {
     paths: string[];
     dryRun: boolean;
 }
-interface ClaudeOperation {
-    operationId: number;
-    executable: string;
-    cwd: string;
-    dryRun: boolean;
-}
 interface PluginOperation {
     pluginId: string;
 }
@@ -67,19 +61,6 @@ export interface HostEventMap {
     };
     'operation.failed': WorkspaceOperation & {
         error: HostError;
-    };
-    'claude.started': ClaudeOperation;
-    'claude.succeeded': ClaudeOperation & {
-        exitCode?: number;
-    };
-    'claude.failed': ClaudeOperation & {
-        error: HostError;
-        exitCode?: number;
-    };
-    'claude.executed': {
-        executable: string;
-        cwd: string;
-        exitCode: number;
     };
     'vault.create': VaultChange & {
         operation: 'created';
@@ -137,7 +118,7 @@ export type HostEventRecord = {
     };
 }[HostEventId];
 /** Namespaces owned by the host. Plugins cannot use them as ids and cannot emit their events. */
-export declare const hostEventNamespaces: readonly ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
+export declare const hostEventNamespaces: readonly ["command", "operation", "vault", "metadataCache", "workspace", "plugin"];
 export declare function registerHostEvents(events: EventBus): void;
 /** Host notifications never veto work. Small service fixtures may intentionally define only their observed events. */
 export declare function publishHostEvent<Id extends HostEventId>(events: EventBus, id: Id, payload: HostEventMap[Id]): Promise<void>;

@@ -10,9 +10,11 @@ export type { HostEventMap, HostEventId, HostEventRecord, VaultChange, VaultFile
 export type { FileSnapshot, FileChange, FileRename, FileStat, PlannedChange, RemoveRequest, RenameRequest, WriteRequest } from './domain/documents/file.ts';
 export type { CommitOptions, WriteOptions } from './application/workspace/workspace.ts';
 export type { BatchResult, CommittedBatch, FileBatch, FileRepository, DocumentCodec, WriteBatchResult } from './application/workspace/ports.ts';
-export type { ClaudeLifecycleClient, ClaudeLifecycleRequest, ClaudeLifecycleResult, ClaudeLifecyclePlan, ClaudeOutput } from './application/claude/lifecycle.ts';
 export type { App, Guard, VaultFacade, MetadataCacheFacade, WorkspaceFacade } from './application/vault/app.ts';
 export type { FileManager, MoveOptions, DeleteOptions, BrokenLink } from './application/vault/file-manager.ts';
 export type { UnrewrittenLink } from './application/vault/link-plan.ts';
 export type { CachedMetadata } from './domain/metadata/cache.ts';
 export type { LinkCounts } from './application/metadata/ports.ts';
+export type { BacklogConnector, BoundConnection, Connection, ConnectorDescription, ConnectorEventPayloads, ConnectorHub, ProbeResult } from './application/connectors/contract.ts';
+export type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch, SyncField } from './domain/connectors/items.ts';
+export type { HttpClient, HttpRequest, HttpResponse } from './application/connectors/http.ts';

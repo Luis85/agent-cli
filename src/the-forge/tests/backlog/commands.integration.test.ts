@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { testHost } from '../support/core-plugins.ts';
+import { offlineHost, testHost } from '../support/core-plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
@@ -8,6 +8,8 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
+import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { backlogVault, runBacklog } from '../support/backlog.ts';
 
 const base = (folder: string, extra = '') => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: ${folder}\n    stateProperty: note.status\n    dependsOnProperty: note.dependsOn\n${extra}`;
@@ -31,7 +33,7 @@ describe('choosing the backlog', () => {
   it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates }), ['bases']);
+    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['bases']);
     const warnings: string[] = [];
     await registry.configure({}, async () => [], message => warnings.push(message));
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
@@ -41,6 +43,20 @@ describe('choosing the backlog', () => {
     expect(warnings).toEqual([]);
     await expect(registry.resolveCommand('backlog').run(['list'], {}, {} as CommandContext)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason, issues: [] } });
     expect(() => registry.resolveCommand('bases')).toThrow(expect.objectContaining({ code: 'UNKNOWN_COMMAND' }));
+  });
+
+  it('stays enabled without the connector plugins, whose service only backlog sync uses', async () => {
+    const registry = new Registry(), events = new EventBus(new NodeEventScope());
+    registerHostEvents(events);
+    registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['connector']);
+    await registry.configure({}, async () => [], () => undefined);
+    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['connector']);
+    // The Azure DevOps connector requires the hub and becomes unavailable; backlog only optionally uses it.
+    expect([...registry.unavailable]).toEqual([['connector-azure-devops', { reason: 'Requires service connector.hub; its provider connector is disabled.', issues: [] }]]);
+    expect(registry.resolveCommand('backlog')).toBeDefined();
+    vault = await backlogVault({ 'a/Backlog.base': base('a', '    connection: contoso\n'), 'a/Epic.md': note({ type: 'Epic', order: 1 }) });
+    expect((await runBacklog(vault.root, ['list'])).data.total).toBe(1);
+    await expect(runBacklog(vault.root, ['sync'])).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'connector.hub' } });
   });
 });
 

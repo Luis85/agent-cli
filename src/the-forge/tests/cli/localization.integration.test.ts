@@ -23,7 +23,9 @@ import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
 import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
 import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
 import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
-import { bundledCorePlugins, testHost } from '../support/core-plugins.ts';
+import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
+import { bundledCorePlugins, offlineHost, testHost } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
@@ -58,9 +60,12 @@ describe('built-in localization catalog coverage', () => {
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin, basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
+    const plugins = [
+      templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
+      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+    ];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
-    registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }), []);
+    registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }), []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));
     expect(registry.generators.size).toBeGreaterThan(0);
     for (const id of registry.generators.keys()) expect(registry.catalog.text('de', 'generators', id), id).toEqual(expect.any(String));

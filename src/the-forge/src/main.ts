@@ -35,6 +35,10 @@ import { scaffoldsPlugin } from './plugins/scaffolds/plugin.ts';
 import { uiPlugin } from './plugins/ui/plugin.ts';
 import { dataSourcesPlugin } from './plugins/data-sources/plugin.ts';
 import { claudePlugin } from './plugins/claude/plugin.ts';
+import { connectorPlugin } from './plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from './plugins/connector-azure-devops/plugin.ts';
+import { nodeLockFiles } from './infrastructure/workspace/lock-files.ts';
+import { FetchHttpClient } from './infrastructure/connectors/http-client.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
 import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
@@ -48,7 +52,10 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin, basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
+const corePlugins = [
+  templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
+  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -107,6 +114,7 @@ async function run(): Promise<void> {
       registerCorePlugins(registry, events, corePlugins, {
         skills: registrySkills(registry), fileDates: nodeFileDates,
         openFiles: (root, warn) => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
+        locks: nodeLockFiles, http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));

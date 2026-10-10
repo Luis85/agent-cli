@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testHost } from '../support/core-plugins.ts';
+import { offlineHost, testHost } from '../support/core-plugins.ts';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { commandInputSchema } from '../../src/application/plugins/command-metadata.ts';
 import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
@@ -8,9 +8,21 @@ import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
+import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
+import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
+import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
+import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
+import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
+import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
+import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
+import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 
-const host = testHost({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')) });
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin];
+const host = testHost({ skills: { list: () => [], get: () => undefined }, fileDates: () => () => Promise.reject(new Error('unused')), ...offlineHost });
+const corePlugins = [
+  templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
+  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+];
 const { commands } = builtinCommands();
 for (const plugin of [searchPlugin, linksPlugin]) for (const command of plugin.create(host).commands ?? []) commands.set(command.id, command);
 /**

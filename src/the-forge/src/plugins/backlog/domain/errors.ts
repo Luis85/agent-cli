@@ -1,5 +1,5 @@
 /** The `backlog` plugin's registered failure codes; the host maps them to their catalog entries. */
-export type BacklogErrorCode = 'BACKLOG_NOT_FOUND' | 'BACKLOG_AMBIGUOUS' | 'BACKLOG_CONFIG_PROBLEM' | 'BACKLOG_WRITE_REFUSED' | 'BACKLOG_NO_GAP';
+export type BacklogErrorCode = 'BACKLOG_NOT_FOUND' | 'BACKLOG_AMBIGUOUS' | 'BACKLOG_CONFIG_PROBLEM' | 'BACKLOG_WRITE_REFUSED' | 'BACKLOG_NO_GAP' | 'SYNC_CONFLICT';
 
 export function backlogError(code: BacklogErrorCode, message: string, details?: Record<string, unknown>): Error {
   return Object.assign(new Error(message), { code, ...(details ? { details } : {}) });

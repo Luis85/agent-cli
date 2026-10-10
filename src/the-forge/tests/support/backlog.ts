@@ -1,5 +1,5 @@
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { testHost } from './core-plugins.ts';
+import { offlineHost, testHost } from './core-plugins.ts';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { EventBus } from '../../src/application/plugins/events.ts';
@@ -38,7 +38,7 @@ export async function backlogVault(files?: Record<string, string>) {
 export async function runBacklog(root: string, args: string[], flags: Record<string, string | boolean> = {}, options: { dryRun?: boolean; settings?: Record<string, unknown> } = {}) {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
-  registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates }), []);
+  registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), []);
   registry.settings.configure({ backlog: options.settings ?? {} }, new Set(registry.origins.keys()));
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), events, options.dryRun === true);
   const context = { workspace, events, root, workspaceRoot: root, project: null, input: async () => new Uint8Array(), ...scopeServices(workspace, events) } as unknown as CommandContext;

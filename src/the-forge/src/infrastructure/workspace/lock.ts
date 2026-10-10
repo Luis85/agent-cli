@@ -58,7 +58,7 @@ export function hostIdentity(): Promise<HostIdentity> {
  * name, which fails with EEXIST when another writer holds it. Filesystems without hard links fall
  * back to an exclusive create followed by the write.
  */
-export async function acquireLock(path: string, owner: () => LockOwner): Promise<string> {
+export async function acquireLock(path: string, owner: () => LockOwner, label = `Workspace lock ${lockName}`): Promise<string> {
   const token = randomUUID();
   const record = { pid: process.pid, hostname: hostname(), startedAt: new Date().toISOString(), ...ownerDetails(owner),
     forgeVersion: metadata.version, ...(await hostIdentity()), token };
@@ -70,10 +70,10 @@ export async function acquireLock(path: string, owner: () => LockOwner): Promise
     await retryTransient(() => link(temporary, path), { codes: ['EBUSY'] });
     linked = true;
   } catch (error) {
-    if (errorCode(error) === 'EEXIST') throw await busy(path);
+    if (errorCode(error) === 'EEXIST') throw await busy(path, label);
     if (!linkUnsupported.has(errorCode(error))) throw error;
   } finally { await retryTransient(() => rm(temporary, { force: true })).catch(() => {}); }
-  if (!linked) await createExclusively(path, content);
+  if (!linked) await createExclusively(path, content, label);
   heldTokens.add(token);
   return token;
 }
@@ -93,11 +93,11 @@ async function writeDurably(path: string, content: string): Promise<void> {
 }
 
 /** Fallback without hard links: the lock is briefly empty, which diagnosis reports as active. */
-async function createExclusively(path: string, content: string): Promise<void> {
+async function createExclusively(path: string, content: string, label: string): Promise<void> {
   let handle: Handle;
   try { handle = await retryTransient(() => open(path, 'wx')); }
   catch (error) {
-    if (errorCode(error) === 'EEXIST' || deniedCodes.has(errorCode(error))) throw await busy(path);
+    if (errorCode(error) === 'EEXIST' || deniedCodes.has(errorCode(error))) throw await busy(path, label);
     throw error;
   }
   try { await record(handle, content); }
@@ -168,11 +168,11 @@ export async function inspectLock(path: string): Promise<{ lock: LockMetadata | 
   return { lock, stale: alive === undefined ? 'unknown' : alive ? 'active' : 'likely' };
 }
 
-async function busy(path: string): Promise<AppError> {
+async function busy(path: string, label: string): Promise<AppError> {
   const details = await inspectLock(path);
   const { lock, stale } = details;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ''})` : '';
-  return forgeError('WORKSPACE_BUSY', `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. `
+  return forgeError('WORKSPACE_BUSY', `${label} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. `
     + 'Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host\'s pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. '
     + 'If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.', details);
 }

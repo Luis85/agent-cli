@@ -81,4 +81,4 @@ node bin/forge.js backlog release notes 1.0
 node bin/forge.js backlog release mark-released 1.0
 ```
 
-Joining fills the item's empty start and target dates only. Readiness reports `estimated`, `blocked` and `risk` criteria with the outstanding items; fix them, then regenerate the notes, which replace only a file this release generated before. Finish with `backlog check` and `links unresolved` to confirm the graph is clean.
+Joining fills the item's empty start and target dates only. Readiness reports `estimated`, `blocked` and `risk` criteria with the outstanding items; fix them, then regenerate the notes, which replace only a file this release generated before. Finish with `backlog check` and `links unresolved` to confirm the graph is clean. To mirror the backlog in Azure DevOps Boards, see [sync a backlog with Azure DevOps](sync-backlog-with-azure-devops.md).

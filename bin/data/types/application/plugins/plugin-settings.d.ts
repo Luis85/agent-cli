@@ -36,3 +36,10 @@ export declare class PluginSettings {
     canonical(pluginId: string): string | null;
     sections(): SettingsSection[];
 }
+/** A workspace-relative path setting without trailing slashes, as `paths.*` in the kernel configuration. */
+export declare const relativePathSetting: (value: unknown) => string;
+/**
+ * `validateSettings` issues for string settings that must be contained workspace-relative paths; a trailing slash is
+ * accepted and dropped by `relativePathSetting`.
+ */
+export declare function relativePathIssues(pluginId: string, settings: Readonly<Record<string, unknown>>, keys: readonly string[]): string[];
