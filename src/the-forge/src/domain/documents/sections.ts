@@ -10,12 +10,15 @@ const reportedHeadings = 50;
 interface Section { heading: HeadingCache; path: string[]; bodyStart: number; end: number }
 
 /** The file's line terminator, from its first line break; LF when it has none. */
-function lineBreak(text: string): string {
+export function lineBreak(text: string): string {
   return /\r?\n/.exec(text)?.[0] ?? '\n';
 }
 
+/** Offset of the start of the line that contains `offset`. */
+export const lineStart = (text: string, offset: number) => text.lastIndexOf('\n', offset - 1) + 1;
+
 /** Offset just after the line that contains `offset` (after its terminator), or the text length on the last line. */
-function nextLine(text: string, offset: number): number {
+export function nextLine(text: string, offset: number): number {
   const index = text.indexOf('\n', offset);
   return index < 0 ? text.length : index + 1;
 }
@@ -65,12 +68,12 @@ function findSection(text: string, headings: readonly HeadingCache[], heading: s
 }
 
 /** Content as whole lines: a nonempty text gains a final line break when it lacks one. */
-function asLines(content: string, newline: string): string {
+export function asLines(content: string, newline: string): string {
   return content === '' || content.endsWith('\n') ? content : content + newline;
 }
 
 /** Inserts whole lines at a line start, first ending an unterminated last line. */
-function insertLines(text: string, at: number, content: string, newline: string): string {
+export function insertLines(text: string, at: number, content: string, newline: string): string {
   const lead = at > 0 && text[at - 1] !== '\n' ? newline : '';
   return text.slice(0, at) + lead + asLines(content, newline) + text.slice(at);
 }
@@ -90,33 +93,4 @@ export function editSection(text: string, metadata: CachedMetadata, heading: str
   if (mode === 'append') return insertLines(text, end, content, newline);
   const lead = start > 0 && text[start - 1] !== '\n' ? newline : '';
   return text.slice(0, start) + lead + asLines(content, newline) + text.slice(end);
-}
-
-/** Lowercase `^id` occurrences on paragraphs, other sections and list items; Obsidian uses only the first. */
-function blockCount(metadata: CachedMetadata, id: string): number {
-  return [...metadata.sections ?? [], ...metadata.listItems ?? []].filter(item => item.id?.toLowerCase() === id).length;
-}
-
-/**
- * Edits the block that `^id` names: a paragraph or list item ending with the marker, or the section before a line
- * holding only the marker. `replace` swaps the block's text and keeps its marker, `append` adds lines after the
- * block (and after a marker line that follows it) and `prepend` adds lines before the block's first line.
- */
-export function editBlock(text: string, metadata: CachedMetadata, id: string, mode: RangeEditMode, content: string): string {
-  const key = id.replace(/^\^/, '').toLowerCase(), block = metadata.blocks?.[key];
-  if (!block) throw forgeError('SECTION_NOT_FOUND', `No block has the id ^${key}.`, { block: key, blocks: Object.values(metadata.blocks ?? {}).sort((a, b) => a.position.start.offset - b.position.start.offset).slice(0, reportedHeadings).map(item => item.id) });
-  const count = blockCount(metadata, key);
-  ensure(count <= 1, 'AMBIGUOUS_SECTION', `The block id ^${block.id} occurs ${count} times; Obsidian links only the first. Give each block a unique id.`, { block: block.id, matches: count });
-  const newline = lineBreak(text), { start, end } = { start: block.position.start.offset, end: block.position.end.offset };
-  // Block ids are letters, digits and dashes, so they need no escaping in a pattern.
-  const marker = new RegExp(`(?:^|\\s)\\^${block.id}\\s*$`, 'i');
-  const inside = marker.test(text.slice(start, end));
-  if (mode === 'prepend') return insertLines(text, text.lastIndexOf('\n', start - 1) + 1, content, newline);
-  if (mode === 'append') {
-    const markerLine = inside ? null : new RegExp(`^\\s*\\^${block.id}[ \\t]*(?=\\r?\\n|$)`, 'i').exec(text.slice(end));
-    return insertLines(text, nextLine(text, end + (markerLine?.[0].length ?? 0)), content, newline);
-  }
-  const replacement = content.replace(/\r?\n$/, '');
-  const kept = inside && !marker.test(replacement) ? `${replacement} ^${block.id}` : replacement;
-  return text.slice(0, start) + kept + text.slice(end);
 }

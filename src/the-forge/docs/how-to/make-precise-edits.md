@@ -29,6 +29,14 @@ A paragraph or list item ending with `^id`, or a table followed by a `^id` line,
 node bin/forge.js edit notes/plan.md --block ship --replace "Ship the beta in May." --if-match REVISION
 ```
 
+Replacing a list item or task keeps its indentation, list marker and checkbox, so you pass only the new text; start the text with a marker, such as `- [x] Ship the beta`, to change the checkbox as well. Nested items stay under the item:
+
+```sh
+node bin/forge.js edit notes/plan.md --block beta --replace "- [x] Ship the beta" --if-match REVISION
+```
+
+`--append --content` and `--prepend --content` keep the block and its `^id` intact: next to a paragraph, table or other section the content becomes a separate block with blank lines around it; next to a list item it must be list items (`- Next step`), which Forge inserts as siblings after the item's nested items or before it.
+
 ## Make several replacements at once
 
 Put the replacements in order into a JSON list. Each one sees the result of the previous one; `all: true` replaces every occurrence:

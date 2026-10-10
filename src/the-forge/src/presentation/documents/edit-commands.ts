@@ -65,7 +65,7 @@ export function editCommand(): Command {
       prepend: option.boolean('Insert --content before the --section or --block content.'),
       content: option.string('Text for --append or --prepend.'),
       section: option.string('Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level.'),
-      block: option.string('Markdown block id (^id) of a paragraph, list item or section.'),
+      block: option.string('Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.'),
     },
     async run(args, flags, context) {
       arity(args, 1); const path = args[0]!;

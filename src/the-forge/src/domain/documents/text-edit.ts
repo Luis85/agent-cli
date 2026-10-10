@@ -1,6 +1,7 @@
 import type { CachedMetadata } from '../metadata/cache.ts';
 import { applyLiteralEdits, replaceUniqueLiteral, type LiteralEdit } from './literal-edit.ts';
-import { editBlock, editSection, type RangeEditMode } from './sections.ts';
+import { editSection, type RangeEditMode } from './sections.ts';
+import { editBlock } from './blocks.ts';
 
 /**
  * One in-memory edit of a UTF-8 file, shared by the `edit` command and `apply` plans: one literal replacement,

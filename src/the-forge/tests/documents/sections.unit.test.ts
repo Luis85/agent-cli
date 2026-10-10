@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { editBlock, editSection, type RangeEditMode } from '../../src/domain/documents/sections.ts';
+import { editSection, type RangeEditMode } from '../../src/domain/documents/sections.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser.ts';
 
 const parser = new ObsidianMetadataParser(new ObsidianDocuments());
 const metadata = (text: string) => parser.parse('note.md', new TextEncoder().encode(text));
 const section = (text: string, path: string, mode: RangeEditMode, content: string) => editSection(text, metadata(text), path, mode, content);
-const block = (text: string, id: string, mode: RangeEditMode, content: string) => editBlock(text, metadata(text), id, mode, content);
 const failure = (edit: () => string) => {
   try { edit(); }
   catch (error) { return error as { code: string; exitCode: number; details?: Record<string, unknown> }; }
@@ -50,26 +49,5 @@ describe('section edits by heading path', () => {
     expect(section('# A\n\ntext', 'A', 'append', 'more')).toBe('# A\n\ntext\nmore\n');
     expect(section('# A', 'A', 'replace', 'body')).toBe('# A\nbody\n');
     expect(section('# A\n```\n# not a heading\n```\n# B\n', 'A', 'replace', 'x')).toBe('# A\nx\n# B\n');
-  });
-});
-
-describe('block edits by ^id', () => {
-  const note = '# Tasks\n\nShip it soon. ^ship\n\n- one\n- two ^two\n\n| a |\n| - |\n| 1 |\n\n^table\n';
-
-  it('replaces a paragraph and keeps its marker', () => {
-    expect(block(note, 'ship', 'replace', 'Ship it now.\n')).toBe(note.replace('Ship it soon. ^ship', 'Ship it now. ^ship'));
-    expect(block(note, '^SHIP', 'replace', 'Ship it now. ^ship')).toBe(note.replace('Ship it soon.', 'Ship it now.'));
-  });
-
-  it('edits list items and sections named by a marker line', () => {
-    expect(block(note, 'two', 'replace', '- deux')).toBe(note.replace('- two ^two', '- deux ^two'));
-    expect(block(note, 'two', 'prepend', '- one and a half')).toBe(note.replace('- two', '- one and a half\n- two'));
-    expect(block(note, 'table', 'append', 'After.')).toBe(`${note}After.\n`);
-    expect(block(note, 'table', 'replace', '| b |\n| - |')).toBe(note.replace('| a |\n| - |\n| 1 |', '| b |\n| - |'));
-  });
-
-  it('refuses unknown and duplicate ids', () => {
-    expect(failure(() => block(note, 'nope', 'append', 'x'))).toMatchObject({ code: 'SECTION_NOT_FOUND', details: { block: 'nope', blocks: ['ship', 'two', 'table'] } });
-    expect(failure(() => block('One ^dup\n\nTwo ^dup\n', 'dup', 'append', 'x'))).toMatchObject({ code: 'AMBIGUOUS_SECTION', details: { block: 'dup', matches: 2 } });
   });
 });

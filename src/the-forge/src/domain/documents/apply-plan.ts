@@ -28,9 +28,9 @@ const operation = (op: string, title: string, required: string[], properties: Re
   properties: { op: { type: 'string', const: op }, ...properties, ifMatch },
 });
 const modeText: Record<RangeEditMode, string> = {
-  replace: 'Replacement for the content (the heading line or block marker stays).',
-  append: 'Lines to add after the content.',
-  prepend: 'Lines to add before the content.',
+  replace: 'Replacement for the content (the heading line, block marker, and a list item\'s marker and checkbox stay).',
+  append: 'Lines to add after the content; next to a list item block, sibling list items.',
+  prepend: 'Lines to add before the content; next to a list item block, sibling list items.',
 };
 const targets = {
   section: path('Heading path such as "Plan > Risks"; segments are separated by " > ".'),
