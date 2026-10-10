@@ -5,7 +5,7 @@ import { option } from '../../application/plugins/command-metadata.ts';
 import { GenerationService } from '../../application/generation/plans.ts';
 import { ensure } from '../../domain/shared/errors.ts';
 import { globalOptions } from '../cli/arguments.ts';
-import { generationControls, reviewOptions } from './controls.ts';
+import { generationControls, reviewOptions } from '../../application/generation/controls.ts';
 
 export const generatorCatalog = (registry: Registry) => [...registry.generators.values()].map(({ id, description }) => ({ id, description }));
 const out = { out: option.string('Output directory; each generator documents its default.') };
