@@ -1,5 +1,5 @@
 import { compileExpression, isTruthy, type Expression, type CompiledExpression, type EvaluationContext } from 'obsidian-bases-expression';
-import { ensure, isRecord } from '../../domain/shared/errors.ts';
+import { ensure, isRecord } from '../../../domain/shared/errors.ts';
 
 const internalContext = '__forge_base_context';
 const internalFormula = '__forge_base_formula';

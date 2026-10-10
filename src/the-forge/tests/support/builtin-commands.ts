@@ -3,7 +3,7 @@ import { generators } from '../../src/infrastructure/generation/generators.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
 import { claudeCommand } from '../../src/presentation/claude/commands.ts';
-import { basesCommand } from '../../src/presentation/bases/commands.ts';
+import { basesCommand } from '../../src/plugins/bases/presentation/commands.ts';
 import { skillsCommand } from '../../src/plugins/skills/presentation/commands.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
 

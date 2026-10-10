@@ -22,12 +22,14 @@ import { TemplateInstaller } from './application/templates/templates.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
 import { NodeFiles } from './infrastructure/workspace/files.ts';
+import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
 import { optionTypes } from './application/plugins/command-metadata.ts';
 import { value } from './application/plugins/command-input.ts';
+import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
@@ -48,20 +50,17 @@ import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude/age
 import { claudeTarget } from './infrastructure/claude/target.ts';
 import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
 import { claudeCommand } from './presentation/claude/commands.ts';
-import { Bases } from './application/bases/query.ts';
-import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { createApp } from './application/vault/app.ts';
-import { basesCommand } from './presentation/bases/commands.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { globalOptions, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [skillsPlugin];
+const corePlugins = [basesPlugin, skillsPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -121,9 +120,8 @@ async function run(): Promise<void> {
       for (const generator of [...generators, ...libraryGenerators(services)]) registry.add(registry.generators, generator);
       for (const command of commands(registry, services)) registry.add(registry.commands, command);
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
-      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec, () => context.metadata.load()))));
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
-      registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry) }, config.plugins.disabled);
+      registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry), fileDates: nodeFileDates }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = registry.settings.configure(config.plugins.settings, new Set(registry.origins.keys()));
       await registry.publishRegistered(events);

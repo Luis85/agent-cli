@@ -63,7 +63,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `events` | none | Registered event IDs, descriptions and invocation delivery/replay semantics |
 | `plugins` | none | Core and user plugins with `core`, `state` (`enabled`, `disabled`, `skipped`) and contributions; see [core and user plugins](plugins.md#core-and-user-plugins) |
 | `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
-| `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md) |
+| `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md). Contributed by the `bases` core plugin |
 | `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope. Contributed by the `skills` core plugin |
 | `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
 | `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |

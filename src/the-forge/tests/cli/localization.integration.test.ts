@@ -8,7 +8,6 @@ import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
-import { basesCommand } from '../../src/presentation/bases/commands.ts';
 import { claudeCommand } from '../../src/presentation/claude/commands.ts';
 import { generators } from '../../src/infrastructure/generation/generators.ts';
 import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
@@ -37,7 +36,7 @@ describe('built-in localization catalog coverage', () => {
       };
       const registry = new Registry();
       const unavailable = (): never => { throw new Error('Catalog must not invoke management services'); };
-      const management = [basesCommand(unavailable), claudeCommand({
+      const management = [claudeCommand({
         agentCodec: { parse: unavailable, render: unavailable }, target: unavailable,
       })];
       const ids = [...commands(registry, services), ...management].map(command => command.id).sort();

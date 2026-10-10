@@ -46,7 +46,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Data sources | Matching `data-sources/` folders in all four layers |
 | Vault metadata cache: links, tags, headings, blocks and resolution | `domain/metadata/`, `application/metadata/`, `infrastructure/metadata/` |
 | Moves, renames and deletion with link updates; the Obsidian-shaped `app` facade | `domain/metadata/link-text.ts`, `application/vault/`, `infrastructure/workspace/batch.ts`, `presentation/documents/vault-commands.ts` |
-| Bases queries | `application/bases/`, `infrastructure/bases/`, `presentation/bases/` |
+| Bases queries (`bases` core plugin) | `plugins/bases/` |
 | Generators and templates | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` (`make` routing and the kernel generators) |
 | Agent skills (`skills` core plugin) | `plugins/skills/` |
 | Plugin contract v2: command metadata, core plugins, services, config sections, strings and error codes | `application/plugins/`, `domain/schema/json-schema.ts`, `presentation/cli/catalog-commands.ts` |

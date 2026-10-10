@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { EventRecord } from '../../src/application/plugins/events.ts';
 import { portableCli } from '../support/portable-cli.ts';
+import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 const fixture = portableCli();
 
@@ -34,14 +35,16 @@ describe('portable host lifecycle observation', () => {
   it('replays pre-activation phases and observes file operations through the public SDK', async () => {
     const configured = await plugin('observe-success'), result = configured.run();
     expect(result.status, result.stdout).toBe(0);
-    // Bundled core plugins (skills) register and activate before user plugins and unload after them.
-    expect(result.body.data.replayed).toEqual(['plugin.registered', 'plugin.registered', 'command.started', 'plugin.activating', 'plugin.activated', 'plugin.activating']);
+    // Bundled core plugins register and activate in bundle order before user plugins and unload after them.
+    const core = bundledCorePlugins.flatMap(id => [`plugin.activating:${id}`, `plugin.activated:${id}`]);
+    const corePhases = bundledCorePlugins.flatMap(() => ['plugin.activating', 'plugin.activated']);
+    expect(result.body.data.replayed).toEqual([...bundledCorePlugins.map(() => 'plugin.registered'), 'plugin.registered', 'command.started', ...corePhases, 'plugin.activating']);
     expect(result.body.data.live).toEqual(['plugin.activated', 'workspace.layout-ready', 'operation.started', 'vault.create', 'operation.succeeded']);
     expect(result.body.events.map((event: EventRecord) => [event.id, (event.payload as { pluginId?: string }).pluginId].filter(Boolean).join(':'))).toEqual([
-      'plugin.registered:skills', 'plugin.registered:observer', 'command.started', 'plugin.activating:skills', 'plugin.activated:skills',
+      ...bundledCorePlugins.map(id => `plugin.registered:${id}`), 'plugin.registered:observer', 'command.started', ...core,
       'plugin.activating:observer', 'plugin.activated:observer', 'workspace.layout-ready',
       'operation.started', 'vault.create', 'operation.succeeded', 'command.succeeded', 'workspace.quit',
-      'plugin.unloading:observer', 'plugin.unload-failed:observer', 'plugin.unloading:skills', 'plugin.unloaded:skills',
+      'plugin.unloading:observer', 'plugin.unload-failed:observer', ...[...bundledCorePlugins].reverse().flatMap(id => [`plugin.unloading:${id}`, `plugin.unloaded:${id}`]),
     ]);
     expect(result.body.events.find((event: EventRecord) => event.id === 'operation.started')?.payload).toMatchObject({ root: configured.root, paths: ['result.md'], dryRun: false });
     expect(JSON.stringify(result.body.events)).not.toMatch(/private body|private-argument/);

@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-A native Obsidian `.base` file and one of its named views define a repository of matching vault files. `bases query` evaluates that definition inside the selected Forge project or workspace and returns a JSON list of relative file paths. It runs entirely in the bundled Node CLI: Obsidian, a desktop session and runtime npm installation are not required.
+A native Obsidian `.base` file and one of its named views define a repository of matching vault files. `bases query` evaluates that definition inside the selected Forge project or workspace and returns a JSON list of relative file paths. It runs entirely in the bundled Node CLI: Obsidian, a desktop session and runtime npm installation are not required. The `bases` command is contributed by the `bases` [core plugin](plugins.md#core-and-user-plugins) (`src/plugins/bases/` in the Forge source), enabled by default; `plugins.disabled: ["bases"]` in `bin/config.json` removes the command from `help`, `schema` and dispatch, while `.base` files remain ordinary documents for `read`, `validate` and `patch`.
 
 ```sh
 node bin/forge.js bases list

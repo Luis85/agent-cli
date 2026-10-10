@@ -5,7 +5,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | Concern | Coverage |
 | --- | --- |
 | [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
-| [bases](bases/) | Standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries and query scaling |
+| [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
 | [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |

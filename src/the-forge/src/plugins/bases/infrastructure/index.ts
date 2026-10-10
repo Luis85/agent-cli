@@ -1,9 +1,9 @@
-import { stat } from 'node:fs/promises';
 import { frontmatterLink, type ContextFileInput, type LinkValueInput, type PropertyValueType } from 'obsidian-bases-expression';
-import type { MetadataCache, SourceReference } from '../../application/metadata/ports.ts';
-import { allTags } from '../../domain/metadata/cache.ts';
-import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
-import { NodeFiles } from '../workspace/files.ts';
+import type { MetadataCache, SourceReference } from '../../../application/metadata/ports.ts';
+import type { FileDates } from '../../../application/plugins/core-plugins.ts';
+import type { FileRepository } from '../../../application/workspace/ports.ts';
+import { allTags } from '../../../domain/metadata/cache.ts';
+import { forgeError, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
 
 const pendingFileReads = 16;
 const isMarkdown = (path: string) => path.toLowerCase().endsWith('.md');
@@ -61,12 +61,12 @@ function baseFile(path: string, cache: MetadataCache, problems: ReadonlyMap<stri
 }
 
 /** Adapts the kernel metadata cache to the evaluator's file inputs, adding filesystem sizes and dates. */
-export async function indexBaseFiles(files: NodeFiles, cache: MetadataCache): Promise<ContextFileInput[]> {
+export async function indexBaseFiles(cache: MetadataCache, dates: (path: string) => Promise<FileDates>): Promise<ContextFileInput[]> {
   const problems = new Map(cache.issues().map(issue => [issue.path, issue.message]));
   const indexed = cache.files().map(path => baseFile(path, cache, problems));
   const result = await mapInOrder(indexed, pendingFileReads, async (file): Promise<ContextFileInput> => {
-    const info = await stat(await files.resolvePath(file.path!));
-    return { ...file, size: info.size, ctime: info.birthtime, mtime: info.mtime };
+    const { size, ctime, mtime } = await dates(file.path!);
+    return { ...file, size, ctime, mtime };
   });
   const byPath = new Map(result.map(file => [file.path, file]));
   for (const source of result) {
@@ -77,7 +77,7 @@ export async function indexBaseFiles(files: NodeFiles, cache: MetadataCache): Pr
   return result;
 }
 
-export async function basePropertyTypes(files: NodeFiles): Promise<Record<string, PropertyValueType>> {
+export async function basePropertyTypes(files: FileRepository): Promise<Record<string, PropertyValueType>> {
   let data: unknown;
   try { data = JSON.parse(new TextDecoder().decode((await files.read('.obsidian/types.json')).bytes)); }
   catch (error) {

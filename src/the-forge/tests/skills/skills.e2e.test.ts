@@ -21,7 +21,7 @@ describe('the skills core plugin', () => {
   });
 
   it('is listed as an enabled core plugin, and disabling it removes its command and skills from schema and help', async () => {
-    expect(cli(['plugins']).body.data.plugins).toEqual([expect.objectContaining({ id: 'skills', core: true, state: 'enabled', contributions: expect.objectContaining({ commands: ['skills'] }) })]);
+    expect(cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'skills', core: true, state: 'enabled', contributions: expect.objectContaining({ commands: ['skills'] }) }));
     expect(ids(cli(['schema']).body.data.commands)).toContain('skills');
     await mkdir(join(fixture.project, 'bin'), { recursive: true });
     await config({ plugins: { disabled: ['skills'] } });
@@ -32,7 +32,7 @@ describe('the skills core plugin', () => {
       expect(ids(cli(['help']).body.data.commands)).not.toContain('skills');
       expect(cli(['help', 'skills']).body.error.code).toBe('UNKNOWN_COMMAND');
       expect(cli(['skills']).body.error.code).toBe('UNKNOWN_COMMAND');
-      expect(cli(['plugins']).body.data.plugins).toEqual([expect.objectContaining({ id: 'skills', core: true, state: 'disabled', contributions: null })]);
+      expect(cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'skills', core: true, state: 'disabled', contributions: null }));
       await config({ plugins: { disabled: ['quality'] } });
       expect(cli(['help']).body.error).toMatchObject({ code: 'INVALID_PLUGIN_CONFIG', message: expect.stringContaining('remove quality') });
     } finally { await rm(join(fixture.project, 'bin/config.json')); }

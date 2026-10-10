@@ -5,6 +5,14 @@ import type { PluginContributions, PluginManifest, Registry, Skill } from './reg
 /** Read access to every registered skill: the kernel's, core plugins' and user plugins'. */
 export interface SkillCatalog { list(): Skill[]; get(id: string): Skill | undefined }
 
+/** A regular file's byte size and filesystem creation and modification dates. */
+export interface FileDates { size: number; ctime: Date; mtime: Date }
+/**
+ * Reads file dates below an absolute command root (`context.root`) by root-relative vault path. Symlinks and
+ * non-regular files are refused like repository reads; a missing file fails.
+ */
+export type FileDatesReader = (root: string) => (path: string) => Promise<FileDates>;
+
 /**
  * Kernel services a bundled core plugin's factory receives from the composition root. A core plugin depends only
  * on these application ports and on domain contracts; it never imports kernel infrastructure or presentation, or
@@ -12,6 +20,8 @@ export interface SkillCatalog { list(): Skill[]; get(id: string): Skill | undefi
  */
 export interface CorePluginHost {
   skills: SkillCatalog;
+  /** Filesystem dates, which the repository port does not carry (Bases `file.ctime`/`file.mtime`). */
+  fileDates: FileDatesReader;
 }
 
 /**

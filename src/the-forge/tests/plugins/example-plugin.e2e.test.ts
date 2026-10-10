@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
+import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 const fixture = portableCli();
 let root: string;
@@ -64,7 +65,7 @@ describe('the packaged quality example plugin', () => {
     const schema = run('schema').body.data;
     expect(schema.errors).toContainEqual({ code: 'QUALITY_UNOWNED', exitCode: 5, category: 'drift', retryable: false, summary: 'Some notes have no owner.', plugin: 'quality' });
     const plugins = run('plugins').body.data.plugins;
-    expect(plugins.map((plugin: { id: string; core: boolean; state: string }) => [plugin.id, plugin.core, plugin.state])).toEqual([['skills', true, 'enabled'], ['quality', false, 'enabled']]);
-    expect(plugins[1].contributions).toMatchObject({ commands: ['quality.check', 'quality.mark-reviewed', 'quality.owners'], settings: 'plugins.settings.quality', strings: ['de', 'en'], errors: ['QUALITY_UNOWNED'] });
+    expect(plugins.map((plugin: { id: string; core: boolean; state: string }) => [plugin.id, plugin.core, plugin.state])).toEqual([...bundledCorePlugins.map(id => [id, true, 'enabled']), ['quality', false, 'enabled']]);
+    expect(plugins.at(-1).contributions).toMatchObject({ commands: ['quality.check', 'quality.mark-reviewed', 'quality.owners'], settings: 'plugins.settings.quality', strings: ['de', 'en'], errors: ['QUALITY_UNOWNED'] });
   });
 });

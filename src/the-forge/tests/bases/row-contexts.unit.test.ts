@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEvaluationContext, parseExpression, type ContextFileInput, type Expression, type PropertyValueType } from 'obsidian-bases-expression';
-import { BaseRowContexts, type SharedRowInput } from '../../src/infrastructure/bases/contexts.ts';
+import { BaseRowContexts, type SharedRowInput } from '../../src/plugins/bases/infrastructure/contexts.ts';
 
 const file = (path: string, properties: Record<string, unknown> = {}, links: [string, string | null][] = []): ContextFileInput => ({
   path, properties, size: path.length, ctime: new Date(1), mtime: new Date(2), tags: [], embeds: [], backlinks: [],
