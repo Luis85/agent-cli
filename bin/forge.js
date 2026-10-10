@@ -19956,6 +19956,12 @@ function value$2(flags, key, required2 = false) {
   ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
   return typeof result === "string" ? result : void 0;
 }
+function integer$1(flags, key, minimum = 0) {
+  const text2 = value$2(flags, key);
+  if (text2 === void 0) return void 0;
+  ensure(/^\d+$/.test(text2) && Number.isSafeInteger(Number(text2)) && Number(text2) >= minimum, "INVALID_ARGUMENT", `--${key} must be an integer of at least ${minimum}.`);
+  return Number(text2);
+}
 function arity(args, min, max = min) {
   ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
 }
@@ -27925,7 +27931,7 @@ const ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:
 const cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
 const cidrv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
 const base64 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
-const base64url = /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/;
+const base64url$1 = /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/;
 const httpProtocol = /^https?$/;
 const e164 = /^\+[1-9]\d{6,14}$/;
 const dateSource = `(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))`;
@@ -31468,7 +31474,7 @@ const formatMap = {
 };
 const exactPatterns = /* @__PURE__ */ new Map([
   [base64Charset, base64],
-  [base64urlCharset, base64url]
+  [base64urlCharset, base64url$1]
 ]);
 const exactPattern = (p) => exactPatterns.get(p) ?? p;
 const stringProcessor = (schema2, ctx, _json, _params) => {
@@ -32696,7 +32702,7 @@ const ZodLiteral = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
     }
   });
 });
-function literal$1(value2, params) {
+function literal$2(value2, params) {
   return new ZodLiteral({
     type: "literal",
     values: Array.isArray(value2) ? value2 : [value2],
@@ -32897,7 +32903,7 @@ const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\
 }, "Must be a contained workspace-relative path.");
 const pluginIds = array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
 const configSchema = strictObject({
-  schemaVersion: literal$1(1).default(1),
+  schemaVersion: literal$2(1).default(1),
   paths: strictObject({
     projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
     components: relativePath$1.default("components"),
@@ -33971,7 +33977,7 @@ const node = lazy(() => union([
     if (uiVoidTags.has(element2.tag) && (element2.text !== void 0 || element2.children?.length)) context.addIssue({ code: "custom", message: `Void element ${element2.tag} cannot have text or children.` });
   }),
   strictObject({ component: id, props: values.optional(), children: array(node).optional() }),
-  strictObject({ slot: literal$1("children") })
+  strictObject({ slot: literal$2("children") })
 ]));
 const metadata = record$1(string$1(), json$3);
 const story = strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), args: values.optional(), parameters: metadata.optional(), tags: array(string$1()).optional() });
@@ -33987,7 +33993,7 @@ const storybook = strictObject({
   const names2 = settings2.stories?.map((entry2) => entry2.name) ?? [];
   if (new Set(names2).size !== names2.length) context.addIssue({ code: "custom", message: "Story names must be unique." });
 });
-const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record$1(identifier$2, prop).default({}), state: record$1(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
+const schema$2 = strictObject({ schemaVersion: literal$2(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record$1(identifier$2, prop).default({}), state: record$1(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
 class MarkdownUiDefinitions {
   documents = new ObsidianDocuments();
   parse(bytes, path) {
@@ -34650,13 +34656,13 @@ function modulePath(directory, target) {
   const relative = minpath.posix.relative(directory, target).replace(/\.tsx?$/, "");
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
-function literal(value2, indent = 0) {
-  if (Array.isArray(value2)) return `[${value2.map((item) => literal(item, indent)).join(", ")}]`;
+function literal$1(value2, indent = 0) {
+  if (Array.isArray(value2)) return `[${value2.map((item) => literal$1(item, indent)).join(", ")}]`;
   if (value2 !== null && typeof value2 === "object") {
     const entries = Object.entries(value2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     if (!entries.length) return "{}";
     return `{
-${entries.map(([key, item]) => `${" ".repeat(indent + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item, indent + 2)}`).join(",\n")}
+${entries.map(([key, item]) => `${" ".repeat(indent + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal$1(item, indent + 2)}`).join(",\n")}
 ${" ".repeat(indent)}}`;
   }
   return JSON.stringify(value2) ?? "undefined";
@@ -34714,7 +34720,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
       ] : [],
       "",
       "const meta = {",
-      `${literal(meta).slice(2, -2)},`,
+      `${literal$1(meta).slice(2, -2)},`,
       ...html2 ? ["  render: (args) => component(args),"] : ["  component,"],
       ...extension2 ? ["  ...extensions.meta,"] : [],
       `} satisfies ${nativeType};`,
@@ -34727,7 +34733,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
       lines2.push(
         "",
         `export const ${name2}: _Story = {`,
-        ...Object.keys(fields).length ? [`${literal(fields).slice(2, -2)},`] : [],
+        ...Object.keys(fields).length ? [`${literal$1(fields).slice(2, -2)},`] : [],
         ...extension2 ? [`  ...extensions.stories?.[${JSON.stringify(name2)}],`] : [],
         "} satisfies _Story;"
       );
@@ -34759,7 +34765,7 @@ const operation = strictObject({
 });
 const operations = strictObject({ list: operation.optional(), get: operation.optional(), create: operation.optional(), update: operation.optional(), delete: operation.optional() });
 const schema$1 = strictObject({
-  schemaVersion: literal$1(1),
+  schemaVersion: literal$2(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   kind: _enum(["rest", "json"]),
   model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record$1(identifier$1, field) }),
@@ -35023,17 +35029,17 @@ const url = string$1().min(1).refine((value2) => {
   return isSafeNavigationUrl(example);
 }, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
 const action = union([
-  strictObject({ type: literal$1("set-state"), state: identifier, value: scalar }),
-  strictObject({ type: literal$1("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
-  strictObject({ type: literal$1("toggle-state"), state: identifier }),
-  strictObject({ type: literal$1("navigate"), url }),
-  strictObject({ type: literal$1("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
-  strictObject({ type: literal$1("upload-form"), url }),
-  strictObject({ type: literal$1("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
-  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
+  strictObject({ type: literal$2("set-state"), state: identifier, value: scalar }),
+  strictObject({ type: literal$2("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
+  strictObject({ type: literal$2("toggle-state"), state: identifier }),
+  strictObject({ type: literal$2("navigate"), url }),
+  strictObject({ type: literal$2("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
+  strictObject({ type: literal$2("upload-form"), url }),
+  strictObject({ type: literal$2("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
+  strictObject({ type: literal$2("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
 ]);
 const schema = strictObject({
-  schemaVersion: literal$1(1),
+  schemaVersion: literal$2(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   event: _enum(interactionEvents),
   keys: array(string$1().min(1)).min(1).optional(),
@@ -48954,6 +48960,136 @@ function replaceUniqueLiteral(text2, find, replacement2) {
   const [offset] = matches2;
   return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
 }
+const special = /[.*+?^${}()|[\]\\/]/g;
+const literal = (text2) => text2.replace(special, "\\$&");
+function characterClass(pattern, start2) {
+  let index2 = start2 + 1;
+  const negated = pattern[index2] === "!" || pattern[index2] === "^";
+  if (negated) index2++;
+  const first = index2;
+  while (index2 < pattern.length && (pattern[index2] !== "]" || index2 === first)) index2++;
+  if (index2 >= pattern.length) return void 0;
+  const members2 = pattern.slice(first, index2).replace(/[\\\]^[]/g, "\\$&");
+  return { source: negated ? `(?!/)[^${members2}]` : `(?!/)[${members2}]`, end: index2 };
+}
+function pathGlob(pattern, option2 = "--path") {
+  ensure(pattern.length > 0 && pattern.length <= 1024, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to 1024 characters.`);
+  const source = pattern.replace(/^\.\//, "");
+  let regex = "", braces = 0;
+  for (let index2 = 0; index2 < source.length; index2++) {
+    const char = source[index2];
+    if (char === "\\") {
+      ensure(index2 + 1 < source.length, "INVALID_ARGUMENT", `${option2} ends with an unescaped backslash.`);
+      regex += literal(source[++index2]);
+    } else if (char === "*") {
+      let end2 = index2;
+      while (source[end2 + 1] === "*") end2++;
+      const segmentStart = index2 === 0 || source[index2 - 1] === "/";
+      const globstar = end2 > index2 && segmentStart && (end2 + 1 === source.length || source[end2 + 1] === "/");
+      if (globstar && source[end2 + 1] === "/") {
+        regex += "(?:.*/)?";
+        end2++;
+      } else regex += globstar ? ".*" : "[^/]*";
+      index2 = end2;
+    } else if (char === "?") regex += "[^/]";
+    else if (char === "[") {
+      const range2 = characterClass(source, index2);
+      if (range2) {
+        regex += range2.source;
+        index2 = range2.end;
+      } else regex += "\\[";
+    } else if (char === "{") {
+      braces++;
+      regex += "(?:";
+    } else if (char === "," && braces > 0) regex += "|";
+    else if (char === "}" && braces > 0) {
+      braces--;
+      regex += ")";
+    } else regex += literal(char);
+  }
+  ensure(braces === 0, "INVALID_ARGUMENT", `${option2} has an unclosed {.`);
+  const expression2 = new RegExp(`^${regex}$`, "s");
+  return (path) => expression2.test(path);
+}
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function base64url(bytes) {
+  let text2 = "";
+  for (let index2 = 0; index2 < bytes.length; index2 += 3) {
+    const chunk = bytes[index2] << 16 | (bytes[index2 + 1] ?? 0) << 8 | (bytes[index2 + 2] ?? 0);
+    const length = Math.min(3, bytes.length - index2) + 1;
+    for (let position2 = 0; position2 < length; position2++) text2 += alphabet[chunk >> 18 - position2 * 6 & 63];
+  }
+  return text2;
+}
+function fromBase64url(text2) {
+  if (!/^[A-Za-z0-9_-]*$/.test(text2) || text2.length % 4 === 1) return void 0;
+  const bytes = [];
+  for (let index2 = 0; index2 < text2.length; index2 += 4) {
+    const group = text2.slice(index2, index2 + 4);
+    let chunk = 0;
+    for (let position2 = 0; position2 < 4; position2++) chunk = chunk << 6 | (position2 < group.length ? alphabet.indexOf(group[position2]) : 0);
+    for (let position2 = 0; position2 < group.length - 1; position2++) bytes.push(chunk >> 16 - position2 * 8 & 255);
+  }
+  return Uint8Array.from(bytes);
+}
+function fingerprint(query) {
+  let hash = 2166136261;
+  for (const char of JSON.stringify(query)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+const validKey = (value2) => Array.isArray(value2) && value2.length > 0 && value2.every((part) => typeof part === "string" || typeof part === "number" && Number.isSafeInteger(part));
+function compareKeys(a, b) {
+  for (let index2 = 0; index2 < Math.min(a.length, b.length); index2++) {
+    const left = a[index2], right = b[index2];
+    if (left === right) continue;
+    if (typeof left === "number" && typeof right === "number") return left - right;
+    return String(left) < String(right) ? -1 : 1;
+  }
+  return a.length - b.length;
+}
+class Pager {
+  constructor(request, query, key) {
+    this.request = request;
+    this.query = query;
+    this.key = key;
+    ensure(request.limit === void 0 || Number.isSafeInteger(request.limit) && request.limit > 0, "INVALID_ARGUMENT", "--limit must be a positive integer.");
+    this.after = request.cursor === void 0 ? void 0 : this.decode(request.cursor);
+  }
+  request;
+  query;
+  key;
+  items = [];
+  /** Every offered item, including those before the cursor and after the page. */
+  total = 0;
+  after;
+  more = false;
+  /** Whether the page is complete and a later item exists; scanning may stop unless `total` is needed. */
+  get full() {
+    return this.more;
+  }
+  offer(item) {
+    this.total++;
+    if (this.more || this.after !== void 0 && compareKeys(this.key(item), this.after) <= 0) return;
+    if (this.request.limit !== void 0 && this.items.length >= this.request.limit) this.more = true;
+    else this.items.push(item);
+  }
+  /** The cursor for the next page, or undefined when this page is the last one. */
+  nextCursor() {
+    if (!this.more) return void 0;
+    return base64url(new TextEncoder().encode(JSON.stringify({ q: fingerprint(this.query), after: this.key(this.items.at(-1)) })));
+  }
+  decode(cursor) {
+    let value2;
+    try {
+      value2 = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(fromBase64url(cursor) ?? new Uint8Array([255])));
+    } catch {
+      value2 = void 0;
+    }
+    ensure(isRecord(value2) && validKey(value2.after), "INVALID_ARGUMENT", "--cursor is not a cursor returned by this command; rerun without --cursor.");
+    ensure(value2.q === fingerprint(this.query), "INVALID_ARGUMENT", "--cursor belongs to a different query; pass the same pattern and filters, or rerun without --cursor.");
+    return value2.after;
+  }
+}
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
   const encoding = value$2(flags, "encoding") ?? "utf8";
@@ -49002,14 +49138,23 @@ function documentCommands() {
     {
       id: "list",
       description: "List regular files in stable path order; skip symlinks, Git and node_modules.",
-      usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment]",
+      usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment] [--path glob] [--limit count] [--cursor token]",
       ...reading,
-      options: { kind: option.string("Only files of this kind.", { enum: fileKinds }) },
+      options: {
+        kind: option.string("Only files of this kind.", { enum: fileKinds }),
+        path: option.string("Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b})."),
+        limit: option.string("Maximum number of files; a truncated page returns nextCursor."),
+        cursor: option.string("Continue after the page that returned this nextCursor, with the same --kind and --path.")
+      },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 0);
-        const kind = value$2(flags, "kind");
+        const kind = value$2(flags, "kind"), glob = value$2(flags, "path");
         ensure(kind === void 0 || fileKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${fileKinds.join(", ")}.`);
-        return { files: (await workspace2.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
+        const matches2 = glob === void 0 ? () => true : pathGlob(glob);
+        const pager = new Pager({ limit: integer$1(flags, "limit", 1), cursor: value$2(flags, "cursor") }, { command: "list", kind: kind ?? null, path: glob ?? null }, (path) => [path]);
+        for (const path of await workspace2.files.list()) if ((!kind || fileKind(path) === kind) && matches2(path)) pager.offer(path);
+        const nextCursor = pager.nextCursor();
+        return { files: pager.items.map((path) => ({ path, kind: fileKind(path) })), ...nextCursor === void 0 ? {} : { nextCursor } };
       }
     },
     {

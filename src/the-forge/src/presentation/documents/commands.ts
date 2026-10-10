@@ -1,8 +1,10 @@
 import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { fileKinds, fileKind } from '../../domain/documents/file.ts';
 import { replaceUniqueLiteral } from '../../domain/documents/literal-edit.ts';
+import { pathGlob } from '../../domain/documents/path-glob.ts';
+import { Pager } from '../../domain/shared/paging.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity, value } from '../../application/plugins/command-input.ts';
+import { arity, integer, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { encodeText, parseJson, readInputBytes } from '../cli/input.ts';
 
@@ -52,11 +54,20 @@ const defaultable = ['markdown', 'canvas', 'base', 'text'];
 
 export function documentCommands(): Command[] {
   return [
-    { id: 'list', description: 'List regular files in stable path order; skip symlinks, Git and node_modules.', usage: 'list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment]', ...reading,
-      options: { kind: option.string('Only files of this kind.', { enum: fileKinds }) }, async run(args, flags, { workspace }) {
-      arity(args, 0); const kind = value(flags, 'kind');
+    { id: 'list', description: 'List regular files in stable path order; skip symlinks, Git and node_modules.', usage: 'list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment] [--path glob] [--limit count] [--cursor token]', ...reading,
+      options: {
+        kind: option.string('Only files of this kind.', { enum: fileKinds }),
+        path: option.string('Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).'),
+        limit: option.string('Maximum number of files; a truncated page returns nextCursor.'),
+        cursor: option.string('Continue after the page that returned this nextCursor, with the same --kind and --path.'),
+      }, async run(args, flags, { workspace }) {
+      arity(args, 0); const kind = value(flags, 'kind'), glob = value(flags, 'path');
       ensure(kind === undefined || fileKinds.includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${fileKinds.join(', ')}.`);
-      return { files: (await workspace.files.list()).filter(p => !kind || fileKind(p) === kind).map(path => ({ path, kind: fileKind(path) })) };
+      const matches = glob === undefined ? () => true : pathGlob(glob);
+      const pager = new Pager<string>({ limit: integer(flags, 'limit', 1), cursor: value(flags, 'cursor') }, { command: 'list', kind: kind ?? null, path: glob ?? null }, path => [path]);
+      for (const path of await workspace.files.list()) if ((!kind || fileKind(path) === kind) && matches(path)) pager.offer(path);
+      const nextCursor = pager.nextCursor();
+      return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
     { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body]', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
       options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts }) }, async run(args, flags, { workspace }) {

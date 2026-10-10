@@ -39,7 +39,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `config` | none | Effective validated configuration and selected paths, with plugin config sections in `config.plugins.settings` and their schemas in `sections` |
 | `templates` | `[list / inspect <template.md> / install [workflow]]` | Discover template inputs or install missing editable workflow templates |
 | `formats` | none | Native extension inventory and processing limits |
-| `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / text / attachment]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files |
+| `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / text / attachment] [--path glob] [--limit count] [--cursor token]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files. See [path globs and paging](#path-globs-and-paging) |
 | `read` | `<path> [--parts body]` | SHA-256 revision, byte count, parsed document, UTF-8 text or base64 bytes; `--parts body` adds the Markdown body |
 | `validate` | `<path>` | Structural document check; text files are checked as UTF-8 (`utf8`); attachments are marked `opaque-bytes` |
 | `create` | `<path> [--content text / --from path / --stdin] [--encoding base64]` | New file only; Markdown/Canvas/Base/text can use default empty documents |
@@ -79,6 +79,12 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 ```sh
 node bin/forge.js read assets/diagram.png --json | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(!r.ok)process.exit(1);process.stdout.write(Buffer.from(r.data.document.content,"base64"));})' > exported.png
 ```
+
+## Path globs and paging
+
+`list` filters with `--path <glob>`, matched against the whole root-relative path, case-sensitively: `*` matches within one path segment, `?` one character other than `/`, `**` as a whole segment any number of segments, `[abc]`, `[a-z]` and `[!abc]` one character of a class, `{md,canvas}` either alternative, and `\` escapes the next character. A leading `./` is ignored. `notes/*.md` lists only files directly in `notes`, `notes/**` everything below it and `**/*.md` Markdown files at any depth; quote globs for your shell. An unclosed `{` or a trailing `\` fails with `INVALID_ARGUMENT`.
+
+`list` pages with `--limit <count>` (a positive integer) and `--cursor <token>`. A truncated page returns `nextCursor`; pass it back with the same command, filters and pattern to continue after the last returned item. Without `nextCursor` the result is complete. Results keep their stable path order, and a cursor resumes after a position rather than an index, so files added or removed between calls neither repeat nor skip later items. A cursor is opaque and bound to its query: a malformed cursor, or one used with different filters, fails with `INVALID_ARGUMENT`. `list` returns every file when `--limit` is omitted.
 
 ## Dry-run diffs
 
