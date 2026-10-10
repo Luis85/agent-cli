@@ -1,4 +1,5 @@
-import { value, type ParsedArguments } from './arguments.ts';
+import { commandMode, type CommandFlags, type CommandMetadata } from '../../application/plugins/command-metadata.ts';
+import { value } from '../../application/plugins/command-input.ts';
 
 export interface InvocationPolicy {
   scope: 'workspace' | 'project';
@@ -6,18 +7,18 @@ export interface InvocationPolicy {
   requestedProject?: string;
 }
 
-/** Arguments exclude the command id. Keep recovery independent of saved projects. */
-export function invocationPolicy(id: string, args: readonly string[], flags: ParsedArguments['flags']): InvocationPolicy {
-  const discovery = ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup'].includes(id);
-  const claudeCapabilities = id === 'claude' && (args.length === 0 || args[0] === 'capabilities');
-  const workspace = flags.help === true || discovery || claudeCapabilities
-    || ['project', 'templates', 'components', 'data-sources', 'interactions', 'workflows'].includes(id)
-    || (id === 'make' && (args.length === 0 || args[0] === 'plugin'))
-    || (id === 'skills' && args[0] !== 'install');
-  const requestedProject = id === 'make' && ['ui', 'stories', 'data-source'].includes(args[0] ?? '') ? value(flags, 'project') : undefined;
+/**
+ * Derives scope and plugin activation from the command's declared metadata; arguments exclude the command id.
+ * `--help` and discovery commands run at workspace scope without plugin activation, so recovery stays independent
+ * of saved projects and plugin startup. A declared `projectOption` explicitly selects the project.
+ */
+export function invocationPolicy(command: CommandMetadata, args: readonly string[], flags: CommandFlags): InvocationPolicy {
+  const mode = commandMode(command, args);
+  const help = flags.help === true;
+  const requestedProject = mode.projectOption === undefined ? undefined : value(flags, mode.projectOption);
   return {
-    scope: workspace ? 'workspace' : 'project',
-    activatePlugins: flags.help !== true && !discovery && !claudeCapabilities,
+    scope: help || mode.discovery || mode.scope === 'workspace' ? 'workspace' : 'project',
+    activatePlugins: !help && !mode.discovery,
     ...(requestedProject === undefined ? {} : { requestedProject }),
   };
 }

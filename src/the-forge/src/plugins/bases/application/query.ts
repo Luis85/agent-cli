@@ -1,5 +1,5 @@
-import { ensure } from '../../domain/shared/errors.ts';
-import { vaultPath } from '../../domain/documents/file.ts';
+import { ensure } from '../../../domain/shared/errors.ts';
+import { vaultPath } from '../../../domain/documents/file.ts';
 
 export interface BasesQueryOptions { view?: string; context?: string; limit?: number }
 export interface BasesQueryResult {

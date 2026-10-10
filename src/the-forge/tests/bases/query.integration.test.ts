@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stringify } from 'yaml';
-import { Bases } from '../../src/application/bases/query.ts';
+import { Bases } from '../../src/plugins/bases/application/query.ts';
 import { basesEngine } from '../support/metadata.ts';
 
 let root: string, bases: Bases;

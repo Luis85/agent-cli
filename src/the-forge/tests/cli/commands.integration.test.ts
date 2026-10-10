@@ -37,17 +37,20 @@ beforeEach(async () => {
     get workflows(): never { throw new Error('Document commands must not access workflows'); },
     async installTemplates() { throw new Error('Document commands must not install templates'); },
     setup: async () => undefined,
+    configSections: () => registry.settings.sections(),
+    installedPlugins: async () => [],
   })) registry.add(registry.commands, command);
 });
 
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
     expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'components', 'data-sources', 'interactions', 'workflows',
-      'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename', 'make', 'events', 'plugins', 'skills']);
+      'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
     const schema = await registry.commands.get('schema')!.run([], {}, context);
-    expect(schema).toMatchObject({ commands: expect.arrayContaining([{ id: 'custom.run', description: 'Late command', usage: 'custom.run', options: {} }]),
+    expect(schema).toMatchObject({ commands: expect.arrayContaining([expect.objectContaining({ id: 'custom.run', description: 'Late command', usage: 'custom.run', options: {}, args: [], errors: [],
+      annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false } })]),
       generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
     expect(await registry.commands.get('make')!.run([], {}, context)).toMatchObject({ generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
   });
@@ -60,6 +63,24 @@ describe('extracted command boundaries', () => {
     await registry.commands.get('create')!.run([path], {}, context);
     expect(await readFile(join(root, path), 'utf8')).toBe(source);
     expect(events.history).toMatchObject([{ id: 'vault.create', payload: { path } }]);
+  });
+
+  it('routes make to any generator with its own options, defaults and the shared review service', async () => {
+    let received: unknown;
+    registry.add(registry.generators, {
+      id: 'custom.note', description: 'Note', directory: 'notes', review: true,
+      options: { title: { type: 'string', description: 'Heading' } },
+      generate({ name, directory, flags }) { received = flags; return [{ path: `${directory}/${name}.md`, bytes: new TextEncoder().encode(`# ${String(flags.title ?? name)}\n`) }]; },
+    });
+    const make = registry.commands.get('make')!;
+    expect(make.options).toBeUndefined();
+    expect(make.actions!['custom.note']!.options).toMatchObject({ title: { type: 'string' }, plan: { type: 'boolean' }, out: { type: 'string' } });
+    expect(await make.run(['custom.note', 'Plan'], { plan: true }, context)).toMatchObject({ generator: 'custom.note', plan: true, matches: false, outputs: [{ path: 'notes/Plan.md', status: 'missing' }] });
+    expect(await make.run(['custom.note', 'Plan'], { title: 'Roadmap' }, context)).toMatchObject({ generator: 'custom.note', changes: [{ path: 'notes/Plan.md', operation: 'created' }] });
+    expect(received).toEqual({ title: 'Roadmap' });
+    await expect(make.run(['custom.note', 'Plan'], { check: true }, context)).rejects.toMatchObject({ code: 'GENERATION_DRIFT' });
+    expect(await make.run(['custom.note', 'Plan'], { check: true, title: 'Roadmap' }, context)).toMatchObject({ check: true, matches: true });
+    await expect(make.run(['custom.note', 'Plan'], { template: 'x.md' }, context)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('--template is not supported by make custom.note') });
   });
 
   it('shares raw input selection within the selected workspace without decoding binary attachments', async () => {

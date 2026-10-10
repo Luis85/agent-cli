@@ -2,11 +2,11 @@ import {
   compileExpression, compileFormulaSet, compatibilityProfile, fileValue, fromJs, errorValue, nullValue, boolValue,
   stringifyValue, toPlain, type CompiledExpression, type Diagnostic, type RuntimeValue,
 } from 'obsidian-bases-expression';
-import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../../application/bases/query.ts';
-import type { DocumentCodec } from '../../application/workspace/ports.ts';
-import type { MetadataCache } from '../../application/metadata/ports.ts';
-import { forgeError, errorMessage, ensure, isRecord } from '../../domain/shared/errors.ts';
-import { NodeFiles } from '../workspace/files.ts';
+import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../application/query.ts';
+import type { DocumentCodec, FileRepository } from '../../../application/workspace/ports.ts';
+import type { MetadataCache } from '../../../application/metadata/ports.ts';
+import { forgeError, errorMessage, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import type { FileDates } from '../../../application/plugins/core-plugins.ts';
 import { BaseRowContexts } from './contexts.ts';
 import { basePropertyTypes, indexBaseFiles } from './index.ts';
 import { baseExpression, baseFilter, internalContext, internalFormula, internalTag, internalGuard } from './expressions.ts';
@@ -51,8 +51,14 @@ function positions(groupOrder: readonly unknown[]): Map<string, number> {
 }
 
 export class NodeBasesQueryEngine implements BasesQueryEngine {
-  /** `metadata` supplies the invocation's kernel metadata cache, built from the same root as `files`. */
-  constructor(private readonly files: NodeFiles, private readonly codec: DocumentCodec, private readonly metadata: () => Promise<MetadataCache>) {}
+  /**
+   * `files` is the command scope's repository, `metadata` supplies the invocation's kernel metadata cache built from
+   * the same root, and `dates` reads a file's size and filesystem dates in that root.
+   */
+  constructor(
+    private readonly files: FileRepository, private readonly codec: DocumentCodec,
+    private readonly metadata: () => Promise<MetadataCache>, private readonly dates: (path: string) => Promise<FileDates>,
+  ) {}
   capabilities(): Record<string, unknown> {
     return {
       engine: 'obsidian-bases-expression', version: '0.2.0', standalone: true,
@@ -86,7 +92,7 @@ export class NodeBasesQueryEngine implements BasesQueryEngine {
     const grouping = view.groupBy === undefined ? undefined : ordering(view.groupBy);
     ensure(view.groupOrder === undefined || (grouping !== undefined && Array.isArray(view.groupOrder)), 'INVALID_BASE_QUERY', 'groupOrder requires groupBy and a list of visible group values.');
     const groupOrder = view.groupOrder as unknown[] | undefined;
-    const indexed = await indexBaseFiles(this.files, await this.metadata());
+    const indexed = await indexBaseFiles(await this.metadata(), this.dates);
     const contextPath = options.context ?? path;
     const thisFile = indexed.find(file => file.path === contextPath);
     ensure(thisFile, 'BASE_CONTEXT_NOT_FOUND', `Base context is not an indexed vault file: ${contextPath}`);

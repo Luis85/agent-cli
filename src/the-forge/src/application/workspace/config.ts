@@ -10,7 +10,8 @@ export interface AppConfig {
   };
   settings: { json: boolean; dryRun: boolean; language: 'en' | 'de'; events: EventOutput };
   templates: { dateFormat: string; timeFormat: string };
-  plugins: { enabled: string[] };
+  /** `enabled` user plugins in load order, `disabled` bundled core plugins, and each plugin's settings section. */
+  plugins: { enabled: string[]; disabled: string[]; settings: Record<string, unknown> };
   ui: { framework: 'html' | 'htmx' | 'vanilla' | 'vue' | 'svelte' | 'react' | 'angular' };
 }
 export interface LoadedConfig { path: string | null; root: string; config: AppConfig }

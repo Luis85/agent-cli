@@ -29,7 +29,7 @@ async function fixture(dryRun = false) {
     schemaVersion: 1,
     paths: { projects: 'work/projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' },
     ui: { framework: 'html' },
-    settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [] },
+    settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [], disabled: [], settings: {} },
   };
   const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope());
   for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (_v): _v is unknown => true });

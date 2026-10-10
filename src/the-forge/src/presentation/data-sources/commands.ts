@@ -2,9 +2,11 @@ import { ensure } from '../../domain/shared/errors.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import type { WorkflowServices } from '../cli/services.ts';
 import { generationControls, generationOutputPath } from '../generation/controls.ts';
-import { arity, value } from '../cli/arguments.ts';
+import { arity, value } from '../../application/plugins/command-input.ts';
+import { option } from '../../application/plugins/command-metadata.ts';
+import { libraryMetadata, libraryOptions } from '../cli/library-metadata.ts';
 
-export const dataSourceGenerationOptions = { 'test-data-out': 'string' } as const;
+export const dataSourceGenerationOptions = { 'test-data-out': option.string('Test-data output directory; defaults to paths.dataFixtures.') };
 
 export async function makeDataSource(id: string, flags: Record<string, string | boolean>, context: CommandContext, services: WorkflowServices) {
   const config = services.loaded.config;
@@ -29,7 +31,9 @@ export function dataSourceCommands(services: WorkflowServices): Command[] {
   return [{
     id: 'data-sources', description: 'Manage Markdown REST/local-JSON definitions for typed adapters and deterministic test data.',
     usage: 'data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]',
-    options: { library: 'string', from: 'string', out: 'string', kind: 'string' },
+    ...libraryMetadata('data-source'),
+    options: { ...libraryOptions, kind: option.string('Data-source kind for create.', { enum: ['rest', 'json'], default: 'rest' }) },
+    errors: ['INVALID_DATA_SOURCE', 'DUPLICATE_DATA_SOURCE', 'UNKNOWN_DATA_SOURCE', 'CONFLICT'],
     async run(args, flags) {
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? config.paths.dataSources;
       ensure(flags.from === undefined || action === 'import', 'INVALID_ARGUMENT', '--from requires data-sources import.');

@@ -91,6 +91,7 @@ export const errorCatalog = {
   INVALID_GENERATION_REVISIONS: entry('input', 'The revision approval does not match the reviewed plan.', 'Create a new plan with --plan-out and pass that file to --revisions-from.'),
   UI_DRIFT: entry('drift', 'Generated UI files are missing or differ from their definitions.', 'Run the same command with --plan to review, then regenerate.'),
   DATA_SOURCE_DRIFT: entry('drift', 'Generated data-source files are missing or differ from their definitions.', 'Run the same command with --plan to review, then regenerate.'),
+  GENERATION_DRIFT: entry('drift', 'Generated files are missing or differ from what the generator produces.', 'Run the same make command with --plan to review, then regenerate.'),
   // Project workflows
   INVALID_WORKFLOW: entry('input', 'An authored project workflow is invalid or two workflows generate the same file.', 'Fix or rename the workflow under src/infrastructure/workflows/<concern>/ named in the message, then run workflows sync.'),
   WORKFLOW_DRIFT: entry('drift', 'Generated GitHub workflows are missing, changed or stale.', 'Run workflows sync, review the changes in .github/workflows and commit them with their sources.'),
@@ -114,10 +115,12 @@ export const errorCatalog = {
   DATA_SOURCE_RENDERER_UNAVAILABLE: entry('input', 'No generator is available for this data source.', 'Use a supported data-source kind; run help make for data-source generation.'),
   // Plugins, skills and events
   INVALID_PLUGIN: entry('input', 'A plugin manifest or implementation is invalid.', 'Fix the plugin named in the message, or disable it with --no-plugins.'),
-  INVALID_PLUGIN_CONFIG: entry('input', 'The enabled plugin list is invalid.', 'List unique lowercase kebab-case plugin ids in plugins.enabled in bin/config.json.'),
+  INVALID_PLUGIN_CONFIG: entry('input', 'The plugin configuration is invalid.', 'List unique lowercase kebab-case ids of installed user plugins in plugins.enabled in bin/config.json; run plugins to list them.'),
   INCOMPATIBLE_PLUGIN: entry('input', 'The plugin requires a newer Forge version.', 'Update The Forge or disable the plugin.'),
   DUPLICATE_PLUGIN: entry('input', 'The plugin is registered twice.', 'Enable each plugin once.'),
-  PLUGIN_NAMESPACE: entry('input', 'A plugin id or contribution is outside its namespace.', 'Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id.'),
+  PLUGIN_NAMESPACE: entry('input', 'A plugin id or contribution is outside its namespace.', 'Prefix user plugin command, generator, skill, event and service ids with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle, and do not declare the options make owns (out, plan, plan-out, check, revisions-from) on a generator.'),
+  PLUGIN_SERVICE_MISSING: entry('input', 'A plugin requires a service that no enabled plugin provides, or uses one it did not declare.', 'Enable the plugin that provides the service named in error.details.service (plugins lists providers), or declare it in the plugin\'s requires.'),
+  PLUGIN_SERVICE_CYCLE: entry('input', 'Plugin service requirements form a cycle.', 'Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another.'),
   PLUGIN_LIFECYCLE: entry('input', 'A plugin used the host outside its lifecycle.', 'Register contributions before activation and stop using the host after disposal.'),
   DUPLICATE_OR_INVALID_ID: entry('input', 'A contribution id is invalid or already registered.', 'Use a unique lowercase dotted id.'),
   UNKNOWN_SKILL: entry('input', 'The skill is not registered.', 'Run skills list.'),

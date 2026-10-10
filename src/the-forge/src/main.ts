@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import metadata from '../package.json';
 import { forgeError, AppError, ensure } from './domain/shared/errors.ts';
 import { EventBus } from './application/plugins/events.ts';
@@ -21,9 +22,19 @@ import { TemplateInstaller } from './application/templates/templates.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
 import { NodeFiles } from './infrastructure/workspace/files.ts';
+import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
-import { loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
+import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
+import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
+import { commandOptions, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
+import { value } from './application/plugins/command-input.ts';
+import { basesPlugin } from './plugins/bases/plugin.ts';
+import { skillsPlugin } from './plugins/skills/plugin.ts';
+import { searchPlugin } from './plugins/search/plugin.ts';
+import { linksPlugin } from './plugins/links/plugin.ts';
+import { libraryGenerators } from './presentation/generation/library-generators.ts';
+import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
 import { MarkdownTemplates } from './infrastructure/templates/markdown.ts';
 import { workflowTemplates } from './infrastructure/templates/workflows.ts';
@@ -37,22 +48,21 @@ import { renderUiStories } from './infrastructure/ui/stories.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/data-sources/definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/data-sources/generator.ts';
 import { MarkdownInteractionDefinitions } from './infrastructure/interactions/definitions.ts';
-import { builtinSkills } from './infrastructure/skills/builtin.ts';
 import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude/agents.ts';
 import { claudeTarget } from './infrastructure/claude/target.ts';
 import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
 import { claudeCommand } from './presentation/claude/commands.ts';
-import { Bases } from './application/bases/query.ts';
-import { NodeBasesQueryEngine } from './infrastructure/bases/engine.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { createApp } from './application/vault/app.ts';
-import { basesCommand } from './presentation/bases/commands.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { globalOptions, parseArguments, parseBootstrap, value } from './presentation/cli/arguments.ts';
+import { globalOptions, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
+
+/** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -90,9 +100,8 @@ async function run(): Promise<void> {
       // The writer lock names the routed command so WORKSPACE_BUSY can identify its holder.
       events.on<HostEventMap['command.started']>('command.started', ({ command, operationId }) => { lockOwner = { command, operationId }; });
       let environment: Workspace;
-      for (const generator of generators) registry.add(registry.generators, generator);
-      for (const skill of builtinSkills) registry.add(registry.skills, skill);
-      for (const command of commands(registry, {
+      const skipUserPlugins = bootstrap.flags['no-plugins'] === true;
+      const services: WorkflowServices = {
         loaded, files, templates: new MarkdownTemplates(),
         get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
@@ -107,17 +116,27 @@ async function run(): Promise<void> {
         }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config.paths.interactions); },
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
-      })) registry.add(registry.commands, command);
+        configSections: () => registry.settings.sections(),
+        installedPlugins: () => installedPlugins('bin/plugins', config.plugins.enabled, skipUserPlugins, files, message => events.warn(message)),
+      };
+      for (const generator of [...generators, ...libraryGenerators(services)]) registry.add(registry.generators, generator);
+      for (const command of commands(registry, services)) registry.add(registry.commands, command);
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
-      registry.add(registry.commands, basesCommand(async context => new Bases(new NodeBasesQueryEngine(await NodeFiles.at(context.root), context.workspace.codec, () => context.metadata.load()))));
-      if (!bootstrap.flags['no-plugins']) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
+      // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
+      registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry), fileDates: nodeFileDates }, config.plugins.disabled);
+      if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
+      config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.commands.get(id);
       ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${id}. Run help or schema.`);
-      const parsed = parseArguments(tokens, { ...globalOptions, ...command.options });
+      // An action's own options (make <generator>) parse only once the action is known: the first argument after
+      // the command id, unless an option precedes it.
+      const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
+      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) });
       const parsedLanguage = value(parsed.flags, 'lang');
-      if (parsedLanguage !== undefined) localizer = new Localizer(language(parsedLanguage));
+      // From here on, plugin-contributed strings and error catalog entries localize responses too.
+      localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
       config.settings.language = localizer.language;
       const parsedEvents = value(parsed.flags, 'events');
       if (parsedEvents !== undefined) eventLevel = config.settings.events = eventOutput(parsedEvents);
@@ -130,11 +149,11 @@ async function run(): Promise<void> {
       // Environment commits reach the metadata index once the command's scope binds it below.
       let metadataCommits: CommitObserver | undefined;
       environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root, { committed: async changes => { await metadataCommits?.committed(changes); } });
-      const policy = invocationPolicy(id, parsed.args.slice(1), parsed.flags);
+      const policy = invocationPolicy(command, parsed.args.slice(1), parsed.flags);
       const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
       const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
-      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec));
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), { workspaceRoot: project === null });
       // Commits keep a loaded cache current and publish metadataCache.* events; workspace-scope commits while a
       // project is selected reach the project's index only inside its directory, with project-relative paths.
       const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);
@@ -143,7 +162,7 @@ async function run(): Promise<void> {
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
       const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
       const app = createApp({ workspace, metadata: vaultMetadata, events, project });
-      const context: CommandContext = { workspace, events, claude, metadata: vaultMetadata, app, ...activeContext, input: async () => {
+      const context: CommandContext = { workspace, environment, events, claude, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
@@ -154,8 +173,13 @@ async function run(): Promise<void> {
         command: commandId, root: context.root, workspaceRoot: context.workspaceRoot, dryRun: workspace.dryRun,
       }, async () => {
         if (!policy.activatePlugins) return;
-        // First-activation and settings state lives in workspace data; --no-plugins leaves it untouched.
-        await registry.activate(events, context, bootstrap.flags['no-plugins'] ? undefined : new WorkspacePluginState(environment, message => events.warn(message)));
+        // First-activation and settings state lives in workspace data; --no-plugins leaves it untouched. The settings
+        // revision is the SHA-256 of the plugin's canonical effective section, so an edited section calls onExternalSettingsChange.
+        const settingsRevision = async (pluginId: string) => {
+          const canonical = registry.settings.canonical(pluginId);
+          return canonical === null ? null : createHash('sha256').update(canonical).digest('hex');
+        };
+        await registry.activate(events, context, skipUserPlugins ? undefined : new WorkspacePluginState(environment, message => events.warn(message), settingsRevision));
         await announceLayoutReady(events);
       }, async () => {
         const output = parsed.flags.help
@@ -166,6 +190,7 @@ async function run(): Promise<void> {
       result = { ok: true, data };
     }
   } catch (error) {
+    // Plugin failures were already mapped by their owner's wrapper; codes reaching here unmapped stay opaque.
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
     result = { ok: false, error: localizer.error(error) };
   } finally {

@@ -4,9 +4,16 @@ import { componentDependencies } from '../../domain/ui/library.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import type { WorkflowServices } from '../cli/services.ts';
 import { generationControls, generationOutputPath } from '../generation/controls.ts';
-import { arity, value } from '../cli/arguments.ts';
+import { arity, value } from '../../application/plugins/command-input.ts';
+import { option } from '../../application/plugins/command-metadata.ts';
+import { libraryMetadata, libraryOptions } from '../cli/library-metadata.ts';
 
-export const uiGenerationOptions = { framework: 'string', stories: 'boolean', 'stories-out': 'string', 'interactions-library': 'string' } as const;
+export const uiGenerationOptions = {
+  framework: option.string('UI target; defaults to ui.framework.', { enum: uiFrameworks }),
+  stories: option.boolean('Also generate Storybook stories (make ui).'),
+  'stories-out': option.string('Stories output directory; defaults to paths.stories.'),
+  'interactions-library': option.string('Interaction library directory; defaults to paths.interactions.'),
+};
 
 export async function makeUi(kind: 'ui' | 'stories', id: string, flags: Record<string, string | boolean>, context: CommandContext, services: WorkflowServices) {
   const config = services.loaded.config;
@@ -39,7 +46,9 @@ export function uiCommands(services: WorkflowServices): Command[] {
   return [{
     id: 'components', description: 'Manage and validate a shared Markdown UI component library.',
     usage: 'components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]',
-    options: { library: 'string', from: 'string', out: 'string', tag: 'string', 'interactions-library': 'string' },
+    ...libraryMetadata('component'),
+    options: { ...libraryOptions, tag: option.string('Root element tag for create.', { default: 'div' }), 'interactions-library': option.string('Interaction library directory used to validate component interactions.') },
+    errors: ['INVALID_UI', 'INVALID_UI_LIBRARY', 'DUPLICATE_UI_COMPONENT', 'UNKNOWN_UI_COMPONENT', 'CYCLIC_UI_COMPONENT', 'UNKNOWN_INTERACTION', 'CONFLICT'],
     async run(args, flags) {
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? config.paths.components;
       const interactionDirectory = value(flags, 'interactions-library') ?? config.paths.interactions;

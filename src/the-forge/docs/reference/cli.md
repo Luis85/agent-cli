@@ -4,7 +4,7 @@
 
 Run `node bin/forge.js [routing options] <command> [options]`. Routing options `--root <directory>` and `--no-plugins` must precede the command because they select the workspace and loaded command catalog. For example, `node bin/forge.js --root /path/to/workspace --no-plugins setup --dry-run`.
 
-Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events none|changes|all`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/forge.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md) and [language selection](language.md).
+Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events none|changes|all`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/forge.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` skips configured user plugins for one invocation; bundled core plugins still load. See [configuration precedence](configuration.md) and [language selection](language.md).
 
 ## Output and errors
 
@@ -34,12 +34,14 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 
 | Command | Arguments/options | Behavior |
 | --- | --- | --- |
-| `help` | `[command]` | Descriptions, options, usage |
-| `schema` | none | Machine-readable catalog, generator and skill IDs |
-| `config` | none | Effective validated configuration and selected paths |
+| `help` | `[command]` | The catalog, or one command's description, usage, described options and arguments, annotations (scope, discovery, mutating, readOnlyHint, actions) and error codes; see [command metadata](plugins.md#command-metadata) |
+| `schema` | none | Machine-readable catalog: every command with a JSON Schema 2020-12 `inputSchema`, annotations and error codes; generator and skill IDs; built-in and plugin error codes |
+| `config` | none | Effective validated configuration and selected paths, with plugin config sections in `config.plugins.settings` and their schemas in `sections` |
 | `templates` | `[list / inspect <template.md> / install [workflow]]` | Discover template inputs or install missing editable workflow templates |
 | `formats` | none | Native extension inventory and processing limits |
-| `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / text / attachment]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files |
+| `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / text / attachment] [--path glob] [--limit count] [--cursor token]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files. See [path globs and paging](#path-globs-and-paging) |
+| `search` | `<pattern> [--regex] [--case-sensitive] [--in body / frontmatter / all] [--skip-code] [--kind markdown / canvas / base / text] [--path glob] [--tag tag] [--property key[=value]] [--context n] [--limit count] [--cursor token]` | Read-only search of visible text files; hits `{path, line, column, match, snippet, before?, after?, revision}` ordered by path, line and column, with `total` and `nextCursor`; see [search](search.md). Contributed by the `search` core plugin |
+| `links` | `out <path> / back <path> / unresolved [--path glob] / orphans [--path glob] / deadends [--path glob]` | Read-only link reports from the metadata index with source `line`/`column`, original text, target and resolution status (`missing`, or `ambiguous` with candidates); see [links](links.md). Contributed by the `links` core plugin |
 | `read` | `<path> [--parts body]` | SHA-256 revision, byte count, parsed document, UTF-8 text or base64 bytes; `--parts body` adds the Markdown body |
 | `validate` | `<path>` | Structural document check; text files are checked as UTF-8 (`utf8`); attachments are marked `opaque-bytes` |
 | `create` | `<path> [--content text / --from path / --stdin] [--encoding base64]` | New file only; Markdown/Canvas/Base/text can use default empty documents |
@@ -50,7 +52,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `move` | `<from> <to> --if-match hash [--no-update-links]` | Move or rename a file or folder and rewrite every link to it in the same batch; see [moving and deleting](#moving-and-deleting) |
 | `rename` | `<path> <new-name> --if-match hash [--no-update-links]` | `move` within the same folder; a file keeps its extension when `<new-name>` omits it |
 | `delete` | `<path> --if-match hash [--recursive] [--permanent] [--allow-broken-links]` | Move a file, or a folder with `--recursive`, to `.trash/`; `--permanent` removes it. Refuses with `HAS_BACKLINKS` while other files link into it |
-| `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; defaults to `src/domain` in the active scope, `src/presentation/forms` for `form`, or workspace `bin/plugins` for `plugin` (`--out` is not allowed for plugins); dry-run includes generated text |
+| `make` | `[generator PascalCaseName] [--out directory]` | List or run generators; defaults to `src/domain` in the active scope, `src/presentation/forms` for `form`, or workspace `bin/plugins` for `plugin` (`--out` is not allowed for plugins); dry-run includes generated text. Each generator accepts only its declared options, after the generator id; others are `UNKNOWN_OPTION`. See [generators](plugins.md#generators) |
 | `make form` | `<PascalCaseName> [--out directory]` | Create a typed form definition and unit test in the open Forge project; default `src/presentation/forms`, with real HTML preview from the same definition |
 | `make document` | `<Title> --template <template.md> [--out directory] [--values JSON / --values-from path] [--date ISO]` | Render Markdown/frontmatter template to a new `<Title>.md` in active-scope `notes`, or `--out` |
 | `components` | `init / list / inspect <id> / validate / create <id> / import / export [--library directory]` | Manage workspace Markdown component definitions; `create` accepts `--tag`, import accepts `--from`, export accepts `--out` |
@@ -61,10 +63,10 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `make data-source` | `<id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from file.json / --plan / --plan-out file.json / --check]` | Generate TypeScript adapters and deterministic test data with guarded regeneration and drift checks; see [data-source reference](data-sources.md) |
 | `workflows` | `list / sync [--check] [--dry-run]` | Workspace scope. Discover each managed project's authored CI under `src/infrastructure/workflows/<concern>/` and generate prefixed, path-scoped `.github/workflows` entrypoints; `--check` exits 5 with `WORKFLOW_DRIFT`; see [workflows](workflows.md) |
 | `events` | none | Registered event IDs, descriptions and invocation delivery/replay semantics |
-| `plugins` | none | Enabled manifests loaded from shared workspace `bin/plugins` |
+| `plugins` | none | Core and user plugins with `core`, `state` (`enabled`, `disabled`, `skipped`) and contributions; see [core and user plugins](plugins.md#core-and-user-plugins) |
 | `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
-| `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md) |
-| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope |
+| `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md). Contributed by the `bases` core plugin |
+| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope. Contributed by the `skills` core plugin |
 | `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
 | `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |
 | `project open` | `<id>` | Persist a managed project as the active scope |
@@ -79,6 +81,12 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 ```sh
 node bin/forge.js read assets/diagram.png --json | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(!r.ok)process.exit(1);process.stdout.write(Buffer.from(r.data.document.content,"base64"));})' > exported.png
 ```
+
+## Path globs and paging
+
+`list`, `search` and `links unresolved`/`orphans`/`deadends` filter with `--path <glob>`, matched against the whole root-relative path, case-sensitively: `*` matches within one path segment, `?` one character other than `/`, `**` as a whole segment any number of segments, `[abc]`, `[a-z]` and `[!abc]` one character of a class, `{md,canvas}` either alternative, and `\` escapes the next character, inside a class too (`[\]x]`). A leading `]` in a class is a member, and alternatives may nest and contain `/`. A leading `./` is ignored. `notes/*.md` lists only files directly in `notes`, `notes/**` everything below it (not `notes` itself) and `**/*.md` Markdown files at any depth; quote globs for your shell. Matching takes time polynomial in the glob and path lengths, so no glob can stall a command. An unclosed `{`, a trailing `\`, a reversed class range such as `[z-a]`, a glob longer than 1,024 characters or one whose braces expand to more than 256 alternatives fails with `INVALID_ARGUMENT`; an unclosed `[` is a literal character.
+
+`list` and `search` page with `--limit <count>` (a positive integer) and `--cursor <token>`. A truncated page returns `nextCursor`; pass it back with the same command, filters and pattern to continue after the last returned item. Without `nextCursor` the result is complete. Results keep their stable order (by path, and for `search` then by line and column), and a cursor resumes after a position rather than an index, so files added or removed between calls neither repeat nor skip later items. A cursor is opaque and bound to its query: a malformed cursor, or one used with different filters, fails with `INVALID_ARGUMENT`. `list` returns every file when `--limit` is omitted; `search` returns 100 hits per page by default and always reports `total`.
 
 ## Dry-run diffs
 

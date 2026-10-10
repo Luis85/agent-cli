@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Bases } from '../../src/application/bases/query.ts';
+import { Bases } from '../../src/plugins/bases/application/query.ts';
 import { basesEngine } from '../support/metadata.ts';
 import { syntheticBase, writeSyntheticVault } from '../support/bases-vault.ts';
 

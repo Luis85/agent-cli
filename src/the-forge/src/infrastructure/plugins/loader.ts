@@ -6,6 +6,7 @@ import { forgeError, AppError, ensure, isRecord } from '../../domain/shared/erro
 import type { NodeFiles } from '../workspace/files.ts';
 import { validatePluginManifest, type Registry, type Plugin, type PluginManifest } from '../../application/plugins/registry.ts';
 import type { EventBus } from '../../application/plugins/events.ts';
+import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts';
 
 async function readManifest(path: string, files: NodeFiles): Promise<PluginManifest> {
   const text = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(path)).bytes);
@@ -34,6 +35,27 @@ async function loadModule(directory: string, files: NodeFiles): Promise<unknown>
   }
   const loaded = await import(/* @vite-ignore */ pathToFileURL(await files.resolvePath(esm)).href) as { default?: unknown };
   return loaded.default;
+}
+
+/**
+ * User plugin directories with a valid manifest, without executing any plugin code. `skipped` marks enabled
+ * plugins that `--no-plugins` left unloaded; an unreadable or invalid manifest is reported through `warn`.
+ */
+export async function installedPlugins(directory: string, enabled: readonly string[], skipped: boolean, files: NodeFiles, warn: (message: string) => void): Promise<InstalledPlugin[]> {
+  let folder;
+  try { folder = await files.stat(directory); }
+  catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return []; throw error; }
+  if (folder.kind !== 'folder') return [];
+  const ids = folder.files.map(path => /^([^/]+)\/manifest\.json$/.exec(path)?.[1]).filter((id): id is string => id !== undefined);
+  const installed: InstalledPlugin[] = [];
+  for (const id of ids) {
+    try {
+      const manifest = await readManifest(`${directory}/${id}/manifest.json`, files);
+      ensure(manifest.id === id, 'INVALID_PLUGIN', `Manifest id must match plugin directory ${id}.`);
+      installed.push({ manifest, skipped: skipped && enabled.includes(id) });
+    } catch (error) { warn(`Ignored plugin directory ${directory}/${id}: ${error instanceof Error ? error.message : String(error)}`); }
+  }
+  return installed;
 }
 
 /** Only IDs explicitly enabled in project configuration execute code. */

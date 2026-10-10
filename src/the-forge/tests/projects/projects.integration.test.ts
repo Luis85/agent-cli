@@ -13,6 +13,7 @@ import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
+import { generatePlan } from '../support/generators.ts';
 
 let root: string;
 let files: NodeFiles;
@@ -267,7 +268,7 @@ describe('Forge project management', () => {
     const form = generators.find(generator => generator.id === 'form')!;
     const projectFiles = await NodeFiles.at(project);
     for (const [name, output] of [['Contact', 'src/presentation/forms'], ['Quoted', "src/presentation/quoted'forms"]]) {
-      await projectFiles.writeBatch(await form.generate(name!, output!), false);
+      await projectFiles.writeBatch(await generatePlan(form, name!, output!), false);
     }
     await run('check');
     const invoice = join(project, 'src/domain/invoice.ts');

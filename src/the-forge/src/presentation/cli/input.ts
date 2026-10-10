@@ -1,6 +1,7 @@
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import type { CommandContext } from '../../application/plugins/registry.ts';
-import { value, type ParsedArguments } from './arguments.ts';
+import type { ParsedArguments } from './arguments.ts';
+import { value } from '../../application/plugins/command-input.ts';
 
 export function encodeText(text: string): Uint8Array { return new TextEncoder().encode(text); }
 

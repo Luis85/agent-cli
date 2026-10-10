@@ -18,7 +18,7 @@ Every built-in failure has a stable `code` from this catalog. The catalog is the
 | `retryable` | `true` when repeating the unchanged invocation later can succeed. Only `WORKSPACE_BUSY` is retryable; every other failure needs a changed request or inspected state |
 | `details` | Optional structured data, documented per code below |
 
-Plugin-defined codes are not in this catalog. They keep their own shape, without `hint` or `retryable`. A thrown value that is not a Forge error becomes `OPERATION_FAILED`. With `--lang de`, `message` and `hint` are German, `code`, `retryable` and `details` stay unchanged, and the original diagnostic moves to `details.localization.originalMessage`. See [CLI language](language.md).
+Plugins can register their own codes with a category, summary, hint and retryability (see [plugin error codes](plugins.md#strings-and-error-codes)); `schema` lists them after the built-in codes with their `plugin`, and their failures carry `hint` and `retryable` like built-in ones. Other plugin-defined codes keep their own shape, without `hint` or `retryable`. A code thrown by plugin code maps only when that plugin registered it or it is a built-in code ([code ownership](plugins.md#strings-and-error-codes)); another plugin's code, like any thrown value that is not a Forge error, becomes `OPERATION_FAILED`. With `--lang de`, `message` and `hint` are German, `code`, `retryable` and `details` stay unchanged, and the original diagnostic moves to `details.localization.originalMessage`. See [CLI language](language.md).
 
 ## Exit statuses
 
@@ -131,6 +131,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_GENERATION_REVISIONS` | 2 | input | no | The revision approval does not match the reviewed plan. | Create a new plan with `--plan-out` and pass that file to `--revisions-from`. |
 | `UI_DRIFT` | 5 | drift | no | Generated UI files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
 | `DATA_SOURCE_DRIFT` | 5 | drift | no | Generated data-source files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
+| `GENERATION_DRIFT` | 5 | drift | no | Generated files are missing or differ from what the generator produces. | Run the same make command with `--plan` to review, then regenerate. |
 | `INVALID_WORKFLOW` | 2 | input | no | An authored project workflow is invalid or two workflows generate the same file. | Fix or rename the workflow under `src/infrastructure/workflows/<concern>/` named in the message, then run `workflows sync`. |
 | `WORKFLOW_DRIFT` | 5 | drift | no | Generated GitHub workflows are missing, changed or stale. | Run `workflows sync`, review the changes in `.github/workflows` and commit them with their sources. |
 | `INVALID_UI` | 2 | input | no | A component definition is invalid. | Fix the definition named in the message; run components validate. |
@@ -151,10 +152,12 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `UNKNOWN_DATA_SOURCE` | 2 | input | no | The data source is not defined. | Run data-sources list and use an existing id. |
 | `DATA_SOURCE_RENDERER_UNAVAILABLE` | 2 | input | no | No generator is available for this data source. | Use a supported data-source kind; run help make for data-source generation. |
 | `INVALID_PLUGIN` | 2 | input | no | A plugin manifest or implementation is invalid. | Fix the plugin named in the message, or disable it with `--no-plugins`. |
-| `INVALID_PLUGIN_CONFIG` | 2 | input | no | The enabled plugin list is invalid. | List unique lowercase kebab-case plugin ids in plugins.enabled in `bin/config.json`. |
+| `INVALID_PLUGIN_CONFIG` | 2 | input | no | The plugin configuration is invalid. | List unique lowercase kebab-case ids of installed user plugins in `plugins.enabled` in `bin/config.json`; run plugins to list them. |
 | `INCOMPATIBLE_PLUGIN` | 2 | input | no | The plugin requires a newer Forge version. | Update The Forge or disable the plugin. |
 | `DUPLICATE_PLUGIN` | 2 | input | no | The plugin is registered twice. | Enable each plugin once. |
-| `PLUGIN_NAMESPACE` | 2 | input | no | A plugin id or contribution is outside its namespace. | Prefix plugin command, generator, skill and event ids with the plugin id and a dot; do not use a host event namespace (`command`, `operation`, `claude`, `vault`, `metadataCache`, `workspace`, `plugin`) as the plugin id. |
+| `PLUGIN_NAMESPACE` | 2 | input | no | A plugin id or contribution is outside its namespace. | Prefix user plugin command, generator, skill, event and service ids with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (`command`, `operation`, `claude`, `vault`, `metadataCache`, `workspace`, `plugin`) as the plugin id or claim `core: true` outside the bundle, and do not declare the options `make` owns (`out`, `plan`, `plan-out`, `check`, `revisions-from`) on a generator. |
+| `PLUGIN_SERVICE_MISSING` | 2 | input | no | A plugin requires a service that no enabled plugin provides, or uses one it did not declare. | Enable the plugin that provides the service named in `error.details.service` (plugins lists providers), or declare it in the plugin's `requires`. |
+| `PLUGIN_SERVICE_CYCLE` | 2 | input | no | Plugin service requirements form a cycle. | Break the cycle named in `error.details.plugins` so that one plugin no longer requires a service of another. |
 | `PLUGIN_LIFECYCLE` | 2 | input | no | A plugin used the host outside its lifecycle. | Register contributions before activation and stop using the host after disposal. |
 | `DUPLICATE_OR_INVALID_ID` | 2 | input | no | A contribution id is invalid or already registered. | Use a unique lowercase dotted id. |
 | `UNKNOWN_SKILL` | 2 | input | no | The skill is not registered. | Run skills list. |
@@ -186,3 +189,12 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `CLAUDE_COMMAND_INTERRUPTED` | 130 | interrupted | no | The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM). | Inspect external state before running the command again. |
 | `CLAUDE_RUNTIME_FAILED` | 1 | external | no | Claude Code exited with a nonzero status. | Inspect error.details (native status, output and parsed result) and external state before retrying. |
 | `CLAUDE_INVALID_OUTPUT` | 1 | external | no | Claude Code succeeded but did not return the requested JSON. | Inspect stdout and external state before retrying. |
+
+## Core plugin codes
+
+Bundled [core plugins](plugins.md#core-and-user-plugins) register their own codes like any plugin: `schema` lists them with their `plugin`, they carry `hint` and `retryable`, and `--lang de` localizes them. They exist only while the plugin is enabled.
+
+| Code | Plugin | Exit | Category | Retryable | When |
+| --- | --- | --- | --- | --- | --- |
+| `INVALID_SEARCH_PATTERN` | `search` | 2 | input | no | The pattern is empty, longer than 1,000 characters, or an invalid regular expression. Fix the expression named in the message, or search literally without `--regex`; see [search](search.md#errors) |
+| `SEARCH_TIMEOUT` | `search` | 2 | input | no | Matching exceeded `plugins.settings.search.timeoutMs`; `details.timeoutMs` names the budget. Simplify the expression, narrow `--path` or `--kind`, or raise the budget; see [regular-expression safety](search.md#regular-expression-safety) |

@@ -47,7 +47,7 @@ export class GenerationService {
     return { matches: outputs.every(output => output.status === 'unchanged'), revisions: orderedRevisions, outputs, ...(manifest ? { manifest } : {}) };
   }
 
-  async check(writes: readonly WriteRequest[], errorCode: 'UI_DRIFT' | 'DATA_SOURCE_DRIFT') {
+  async check(writes: readonly WriteRequest[], errorCode: 'UI_DRIFT' | 'DATA_SOURCE_DRIFT' | 'GENERATION_DRIFT') {
     const plan = await this.plan(writes);
     if (!plan.matches) throw forgeError(errorCode, 'Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.', { outputs: plan.outputs.map(({ path, status }) => ({ path, status })) });
     return plan;

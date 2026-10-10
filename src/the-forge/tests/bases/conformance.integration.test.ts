@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stringify } from 'yaml';
-import { Bases } from '../../src/application/bases/query.ts';
+import { Bases } from '../../src/plugins/bases/application/query.ts';
 import { basesEngine } from '../support/metadata.ts';
 
 let root: string, bases: Bases;

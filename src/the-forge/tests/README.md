@@ -1,12 +1,12 @@
 # Test concerns and pyramid levels
 
-Tests live under the concern they verify. Every executable test file declares its pyramid level in its filename; shared support files do not use a `.test` or `.spec` suffix.
+Tests live under the concern they verify. Every executable test file declares its pyramid level in its filename; shared support files do not use a `.test` or `.spec` suffix. Tests for a bundled core plugin live in `tests/<plugin-id>/`.
 
 | Concern | Coverage |
 | --- | --- |
-| [architecture](architecture/) | Domain and application import boundaries |
-| [bases](bases/) | Standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries and query scaling |
-| [cli](cli/) | Argument parsing, discovery, errors, and input routing |
+| [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
+| [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
+| [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
 | [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
@@ -16,7 +16,10 @@ Tests live under the concern they verify. Every executable test file declares it
 | [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
 | [interactions](interactions/) | Declarative event/action schemas, component attachment, generated behavior, and portable workflows |
 | [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
-| [plugins](plugins/) | Plugin lifecycle, generators, events, and skill installation |
+| [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
+| [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
+| [links](links/) | The `links` core plugin: link reports over the metadata cache (out, back, unresolved, orphans with roots, dead ends) and its CLI contract |
+| [skills](skills/) | The `skills` core plugin: listing, installation, and disabling it through `plugins.disabled` |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |

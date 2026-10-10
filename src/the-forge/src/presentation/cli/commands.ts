@@ -9,8 +9,8 @@ import { workflowsCommands } from '../workflows/commands.ts';
 import { documentCommands } from '../documents/commands.ts';
 import { vaultCommands } from '../documents/vault-commands.ts';
 import { generationCommand } from '../generation/commands.ts';
-import { skillsCommand } from '../skills/commands.ts';
 
+/** Kernel commands in catalog order; core and user plugins contribute theirs through the registry. */
 export function commands(registry: Registry, services: WorkflowServices): Command[] {
   return [
     ...workflowCommands(services),
@@ -21,8 +21,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
     ...catalogCommands(registry),
     ...documentCommands(),
     ...vaultCommands(),
-    generationCommand(registry, services),
-    ...extensionCommands(registry),
-    skillsCommand(registry),
+    generationCommand(registry),
+    ...extensionCommands(registry, services),
   ];
 }

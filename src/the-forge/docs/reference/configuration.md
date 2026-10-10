@@ -36,7 +36,9 @@ The shipped configuration is:
     "timeFormat": "HH:mm"
   },
   "plugins": {
-    "enabled": []
+    "enabled": [],
+    "disabled": [],
+    "settings": {}
   },
   "ui": {
     "framework": "html"
@@ -70,7 +72,15 @@ UI generation adds configurable paths without changing the fixed `bin` layout:
 
 `components` commands always manage the workspace library. UI and story output follows the selected project. `make ui/stories --project <id>` selects a project for that invocation without changing the persisted selection; otherwise the open project is used. Both default directories and explicit `--out`/`--stories-out` paths are relative to that selected project, or to the workspace when none is selected. The library and Storybook extension module paths remain workspace-relative. Inspect the response's `context` to verify the destination. See [UI components](ui-components.md).
 
-Only IDs explicitly listed in `plugins.enabled` load from `bin/plugins`. Installing a directory does not enable it. Use `node bin/forge.js --no-plugins <command>` to disable plugins for one invocation, including recovery from a broken plugin.
+The `plugins` section has three keys:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `plugins.enabled` | `[]` | User plugin ids that load from `bin/plugins`, in load order. Installing a directory does not enable it |
+| `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; other ids are ignored with a warning |
+| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin unavailable, with a warning; sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety) and `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends). See [config sections](plugins.md#config-sections) |
+
+Use `node bin/forge.js --no-plugins <command>` to skip user plugins for one invocation, including recovery from a broken plugin; core plugins still load. `node bin/forge.js plugins` lists every plugin with its state.
 
 Keep workspace configuration under version control as appropriate for your repository. Persisted selection is operating state; this source checkout intentionally tracks its self-management selection. For upgrades, extract separately; preserve configuration, shared plugins/templates and current context while replacing the executable and packaged assets.
 

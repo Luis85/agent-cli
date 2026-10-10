@@ -11,6 +11,15 @@ The workspace's `bin/forge.js` selects this project through tracked workspace co
 | `infrastructure/` | Filesystem and process adapters, codecs, rendering and generation implementations | Infrastructure, application and domain |
 | `presentation/` | CLI parsing, command handlers, input/output translation and scope policy | Presentation, application and domain; Commander owns CLI grammar |
 
+Bundled **core plugins** live in `plugins/<id>/`, each a self-contained slice with its own `domain/`, `application/`, `infrastructure/` and `presentation/` folders (files directly in the layer folder or in subfolders) and a `plugin.ts` entry exporting its `CorePlugin`:
+
+| Location | Put here | Dependencies |
+| --- | --- | --- |
+| `plugins/<id>/<layer>/` | The plugin's own rules, use cases, adapters and commands | The plugin's layers by the table above, plus kernel `domain/` (and kernel `application/` above domain) |
+| `plugins/<id>/plugin.ts` | Manifest (`core: true`) and `create(host)`, which wires the plugin's layers to injected kernel ports without I/O | The plugin's four layers, kernel `domain/` and `application/` |
+
+A core plugin never imports kernel infrastructure or presentation, or another plugin; plugins cooperate through declared services. Kernel code never imports `plugins/`. [main.ts](main.ts) imports each `plugin.ts`, lists it in `corePlugins` and passes the `CorePluginHost` ports; when a plugin needs another kernel capability, add a port to `CorePluginHost` in `application/plugins/core-plugins.ts` and supply it from `main.ts`. Tests for a core plugin live in `tests/<id>/`.
+
 Import the concrete module you need. Do not add layer barrels, re-export chains or compatibility files at previous locations. Infrastructure and presentation do not import one another: application ports and [main.ts](main.ts) connect them. Presentation's package metadata import supports version/discovery output; it does not grant access to arbitrary external modules.
 
 ## Entry points
@@ -18,9 +27,10 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 - [main.ts](main.ts) composes adapters and application services, creates invocation contexts, loads enabled plugins and owns cleanup and response serialization.
 - [sdk.ts](sdk.ts) exports application/domain types for plugin authors. It contains no runtime behavior; packaging generates the distributable declarations.
 - [cli/commands.ts](presentation/cli/commands.ts) assembles command families; [catalog-commands.ts](presentation/cli/catalog-commands.ts) handles discovery.
-- [invocation-policy.ts](presentation/cli/invocation-policy.ts) decides workspace/project scope, whether plugins should activate and explicit project selection before services are bound.
+- [command-metadata.ts](application/plugins/command-metadata.ts) defines the declarative command metadata (scope, discovery, mutating, options, arguments, actions, errors) and the JSON Schema that `schema` publishes; [invocation-policy.ts](presentation/cli/invocation-policy.ts) derives workspace/project scope, plugin activation and explicit project selection from it before services are bound.
 - [workspace.ts](application/workspace/workspace.ts) owns guarded file mutations, dry-run plans and notifications after persistence.
-- [registry.ts](application/plugins/registry.ts) owns plugin contracts and registered contributions; [loader.ts](infrastructure/plugins/loader.ts) loads trusted modules.
+- [registry.ts](application/plugins/registry.ts) owns plugin contracts and registered contributions, with [contributions.ts](application/plugins/contributions.ts) validation, [plugin-services.ts](application/plugins/plugin-services.ts) dependency order, [plugin-settings.ts](application/plugins/plugin-settings.ts) config sections and [plugin-catalog.ts](application/plugins/plugin-catalog.ts) strings and error codes; [core-plugins.ts](application/plugins/core-plugins.ts) registers bundled core plugins; [loader.ts](infrastructure/plugins/loader.ts) loads trusted user plugin modules.
+- The bundled core plugins, in the order [main.ts](main.ts) registers them: [bases](plugins/bases/plugin.ts) (Bases queries), [skills](plugins/skills/plugin.ts) (the bundled agent skills and the `skills` command), [search](plugins/search/plugin.ts) (text search) and [links](plugins/links/plugin.ts) (link reports).
 
 ## Find the concern
 
@@ -36,8 +46,12 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Data sources | Matching `data-sources/` folders in all four layers |
 | Vault metadata cache: links, tags, headings, blocks and resolution | `domain/metadata/`, `application/metadata/`, `infrastructure/metadata/` |
 | Moves, renames and deletion with link updates; the Obsidian-shaped `app` facade | `domain/metadata/link-text.ts`, `application/vault/`, `infrastructure/workspace/batch.ts`, `presentation/documents/vault-commands.ts` |
-| Bases queries | `application/bases/`, `infrastructure/bases/`, `presentation/bases/` |
-| Generators, templates and skills | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` / `presentation/skills/` |
+| Bases queries (`bases` core plugin) | `plugins/bases/` |
+| Generators and templates | `application/generation/`, `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` (`make` routing and the kernel generators) |
+| Agent skills (`skills` core plugin) | `plugins/skills/` |
+| Link reports (`links` core plugin) | `plugins/links/` |
+| Text search (`search` core plugin) | `plugins/search/`; path globs and cursor paging shared with `list` in `domain/documents/path-glob.ts` and `domain/shared/paging.ts` |
+| Plugin contract v2: command metadata, core plugins, services, config sections, strings and error codes | `application/plugins/`, `domain/schema/json-schema.ts`, `presentation/cli/catalog-commands.ts` |
 | Project-owned CI workflows and generated GitHub entrypoints | Matching `workflows/` folders in all four layers; authored workflow sources sit beside the renderer in `infrastructure/workflows/<concern>/` |
 | Shared failures, the error catalog and localized responses | `domain/shared/errors.ts`, `domain/shared/error-catalog.ts`, `presentation/localization/` |
 

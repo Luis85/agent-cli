@@ -4,6 +4,7 @@ import { dataOutputs } from './data.mjs';
 import { project } from './project.mjs';
 import { vaultPaths } from './vault.mjs';
 import { maintenance } from './vault-maintenance.mjs';
+import { explorationSection } from './vault-explore.mjs';
 
 export const buildLogPath = 'docs/Build log.md';
 
@@ -15,6 +16,7 @@ const folders = [
   [vaultPaths.hub, 'Hub note that links the whole knowledge graph and embeds a Bases view', '`create`'],
   [vaultPaths.canvas, 'JSON Canvas architecture map with file nodes, groups and labelled edges', '`create`, `patch --pointer /nodes` and `/edges` (replace), `/nodes/-` and `/edges/-` (append), `validate`'],
   ['docs/bases', 'Native Bases views: documents by stage, requirement traceability and library backlinks', '`create`, `validate`, `bases list`, `bases inspect`, `bases query`'],
+  ['docs', 'Full-text search and link reports over the finished knowledge graph, recorded below', '`search`, `links back`, `links unresolved`, `links orphans`'],
   [maintenance.renamed.to, 'Generated as "Trip planner test plan", then renamed: every wikilink, frontmatter link and the Canvas file node that named it were rewritten in the same guarded batch', '`rename --dry-run`, `rename --if-match`'],
   [maintenance.trashed, 'A scratch note deleted the Obsidian way: moved to the vault trash, which Obsidian and the metadata cache ignore', '`create`, `delete --if-match`'],
   ['library/components', 'Starter component library plus the Trailhead `trip-card` and `trip-planner` definitions', '`components init`, `components create`, `write --if-match`, `components validate`'],
@@ -34,8 +36,9 @@ const folders = [
 
 /**
  * @param {{ base: string, view: string, files: string[], total: number }[]} queries
+ * @param {import('./vault-explore.mjs').Exploration} exploration
  */
-export function readme(queries) {
+export function readme(queries, exploration) {
   const results = queries.map(query => [
     `### ${query.view} (\`${query.base}\`)`,
     '',
@@ -73,7 +76,12 @@ Every command, in order, is recorded in ${link(buildLogPath)}.
 
 These results were produced by \`bases query\` during generation, with \`${project.id}\` selected and without Obsidian.
 
-${results}`;
+${results}
+## Search and link reports
+
+The \`search\` and \`links\` core plugins read the same vault through the metadata cache. These read-only reports ran during generation, after the vault was built and restructured.
+
+${explorationSection(exploration)}`;
 }
 
 /** @param {{ section: string, command: string }[]} log */

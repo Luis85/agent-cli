@@ -75,6 +75,7 @@ export const germanErrors = {
   INVALID_GENERATION_REVISIONS: { summary: 'Die Revisionsfreigabe passt nicht zum geprüften Plan.', hint: 'Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from.' },
   UI_DRIFT: { summary: 'Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.', hint: regenerateHint },
   DATA_SOURCE_DRIFT: { summary: 'Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.', hint: regenerateHint },
+  GENERATION_DRIFT: { summary: 'Generierte Dateien fehlen oder weichen von der Ausgabe des Generators ab.', hint: 'Führen Sie denselben make-Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.' },
   // Projekt-Workflows
   INVALID_WORKFLOW: { summary: 'Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.', hint: 'Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus.' },
   WORKFLOW_DRIFT: { summary: 'Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.', hint: 'Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen.' },
@@ -98,10 +99,12 @@ export const germanErrors = {
   DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: 'Für diese Datenquelle ist kein Generator verfügbar.', hint: 'Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make.' },
   // Plugins, Skills und Ereignisse
   INVALID_PLUGIN: { summary: 'Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.', hint: 'Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins.' },
-  INVALID_PLUGIN_CONFIG: { summary: 'Die Liste aktivierter Plugins ist ungültig.', hint: 'Tragen Sie in plugins.enabled in bin/config.json eindeutige Kebab-Case-Plugin-IDs ein.' },
+  INVALID_PLUGIN_CONFIG: { summary: 'Die Plugin-Konfiguration ist ungültig.', hint: 'Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs installierter Benutzer-Plugins ein; plugins listet sie auf.' },
   INCOMPATIBLE_PLUGIN: { summary: 'Das Plugin benötigt eine neuere Forge-Version.', hint: 'Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin.' },
   DUPLICATE_PLUGIN: { summary: 'Das Plugin ist doppelt registriert.', hint: 'Aktivieren Sie jedes Plugin nur einmal.' },
-  PLUGIN_NAMESPACE: { summary: 'Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.', hint: 'Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID.' },
+  PLUGIN_NAMESPACE: { summary: 'Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.', hint: 'Stellen Sie Befehls-, Generator-, Skill-, Ereignis- und Dienst-IDs eines Benutzer-Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from).' },
+  PLUGIN_SERVICE_MISSING: { summary: 'Ein Plugin benötigt einen Dienst, den kein aktiviertes Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.', hint: 'Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt (plugins zeigt die Anbieter), oder deklarieren Sie ihn in requires des Plugins.' },
+  PLUGIN_SERVICE_CYCLE: { summary: 'Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.', hint: 'Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt.' },
   PLUGIN_LIFECYCLE: { summary: 'Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.', hint: 'Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr.' },
   DUPLICATE_OR_INVALID_ID: { summary: 'Eine Beitrags-ID ist ungültig oder bereits registriert.', hint: 'Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten.' },
   UNKNOWN_SKILL: { summary: 'Der Skill ist nicht registriert.', hint: 'Verfügbare Skills zeigt skills list.' },

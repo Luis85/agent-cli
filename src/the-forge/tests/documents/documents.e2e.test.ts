@@ -19,6 +19,14 @@ it('rejects unsupported file kinds instead of reporting an empty workspace', asy
     expect(valid.body.data.files).toContainEqual({ path: 'kind-filter.md', kind: 'markdown' });
   });
 
+it('lists files matching a path glob in pages joined by nextCursor', async () => {
+    for (const name of ['a', 'b', 'c']) await writeFile(join(project, `glob-${name}.md`), `# ${name}\n`);
+    const first = cli(['list', '--path', 'glob-*.md', '--limit', '2']);
+    expect(first.body.data.files).toEqual([{ path: 'glob-a.md', kind: 'markdown' }, { path: 'glob-b.md', kind: 'markdown' }]);
+    expect(cli(['list', '--path', 'glob-*.md', '--limit', '2', '--cursor', first.body.data.nextCursor]).body.data).toEqual({ files: [{ path: 'glob-c.md', kind: 'markdown' }] });
+    expect(cli(['list', '--path', '*.md', '--cursor', first.body.data.nextCursor]).body.error.code).toBe('INVALID_ARGUMENT');
+  });
+
 it('creates and edits notes with guarded revisions, shell-safe stdin and literal replacement', async () => {
     const source = '---\nstatus: draft\n---\n# Task\nBody $HOME `literal`\n';
     expect(cli(['create', 'notes/task.md', '--stdin'], source).status).toBe(0);

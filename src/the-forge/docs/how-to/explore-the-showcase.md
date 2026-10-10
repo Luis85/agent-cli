@@ -12,13 +12,19 @@ Open `src/forge-showcase` as an Obsidian vault and start at `docs/Trailhead.md`.
 
 You can also open the whole repository as a vault. Wikilinks still resolve by unique note name, but Canvas file nodes use paths relative to the showcase folder, so the map's file cards only resolve in the showcase vault.
 
-Query the same Bases views without Obsidian. File commands need the showcase selected; restore the checkout's own selection afterwards:
+Query the same Bases views, search the notes and check the link graph without Obsidian. File commands need the showcase selected; restore the checkout's own selection afterwards:
 
 ```sh
 node bin/forge.js project open forge-showcase
 node bin/forge.js bases query docs/bases/Requirements.base --view REQ-004
+node bin/forge.js search REQ-004 --kind markdown --path "docs/**" --in body
+node bin/forge.js links back "docs/product/Trailhead PRD.md"
+node bin/forge.js links unresolved
+node bin/forge.js links orphans --path "docs/**"
 node bin/forge.js project open the-forge
 ```
+
+The README's "Search and link reports" section records these results from generation; in the committed vault `links unresolved` and `links orphans --path "docs/**"` report none.
 
 UI and data-source drift checks accept `--project` and leave the selection unchanged:
 

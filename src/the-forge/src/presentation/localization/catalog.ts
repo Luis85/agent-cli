@@ -10,7 +10,6 @@ export const germanCommands = {
   interactions: 'Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.',
   workflows: 'Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.',
   claude: 'Native Claude-Code-Agenten, Hooks und Plugins mit Revisionsschutz und installiertem CLI verwalten.',
-  bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.',
   formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
   list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.',
   read: 'Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.',
@@ -25,9 +24,46 @@ export const germanCommands = {
   rename: 'Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.',
   make: 'Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.',
   events: 'Ereignisverträge des Aufrufs auflisten.',
-  plugins: 'Explizit geladene Plugin-Manifeste auflisten.',
-  skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.',
+  plugins: 'Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten.',
 } satisfies Record<string, string>;
+
+/** The library actions of `components`, `data-sources` and `interactions`, for one German noun (genitive plural). */
+function libraryActions(command: string, noun: string): Record<string, string> {
+  return {
+    [`${command} list`]: `Die ${noun}definitionen der Bibliothek auflisten.`,
+    [`${command} init`]: `Die Bibliothek mit ${noun}definitionen als Ausgangspunkt anlegen.`,
+    [`${command} inspect`]: `Eine geparste ${noun}definition zurückgeben.`,
+    [`${command} validate`]: `Jede ${noun}definition prüfen.`,
+    [`${command} create`]: `Eine neue ${noun}definition anlegen.`,
+    [`${command} import`]: `${noun}definitionen aus dem Importverzeichnis in die Bibliothek kopieren.`,
+    [`${command} export`]: `Die ${noun}definitionen der Bibliothek in das Exportverzeichnis kopieren.`,
+  };
+}
+
+/** German descriptions of kernel command actions, keyed `<command> <action>`; `make` actions use the generator catalog. */
+export const germanActions: Record<string, string> = {
+  'templates list': 'Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.',
+  'templates inspect': 'Die erforderlichen und optionalen Werte einer Vorlage melden.',
+  'templates install': 'Das Vorlagenpaket für den Planungsablauf in bin/templates installieren.',
+  'project list': 'Die verwalteten Projekte auflisten.',
+  'project create': 'Ein eigenständiges TypeScript-Projekt erstellen.',
+  'project open': 'Ein Projekt für Dateibefehle und Generatoren auswählen.',
+  'project current': 'Das ausgewählte Projekt melden.',
+  'project close': 'Die Projektauswahl aufheben.',
+  'project inspect': 'Ein Projekt oder das ausgewählte Projekt beschreiben.',
+  'project component': 'Einem Projekt eine getestete Domain- oder Anwendungskomponente hinzufügen.',
+  ...libraryActions('components', 'Komponenten'),
+  ...libraryActions('data-sources', 'Datenquellen'),
+  ...libraryActions('interactions', 'Interaktions'),
+  'workflows list': 'Die erstellten Workflows jedes verwalteten Projekts und ihre generierten Einstiegspunkte auflisten.',
+  'workflows sync': 'Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben.',
+  'claude capabilities': 'Unterstützte Formate, Bereiche und Vorgänge beschreiben.',
+  'claude agents': 'Native Agenten auflisten, prüfen, erstellen, aktualisieren, entfernen, aktivieren, deaktivieren oder exportieren.',
+  'claude hooks': 'Die native Hook-Konfiguration prüfen, kontrollieren und bearbeiten.',
+  'claude plugins': 'Claude-Plugin-Bestandteile erstellen oder den Plugin-Lebenszyklus des installierten CLI ausführen.',
+  'claude marketplaces': 'Plugin-Marktplätze über das installierte CLI hinzufügen, auflisten, entfernen oder aktualisieren.',
+  'claude runtime': 'Das installierte Claude-Code-CLI melden, diagnostizieren, installieren oder aktualisieren.',
+};
 
 export const germanGenerators = {
   form: 'Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.',

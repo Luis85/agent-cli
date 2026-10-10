@@ -164,7 +164,9 @@ describe('Claude runtime command plans', () => {
     expect(buildClaudeRuntimeArgs('marketplaces', ['add', 'team/repo'], { sparse: '["plugins/review",".claude-plugin"]' })).toEqual(['plugin', 'marketplace', 'add', 'team/repo', '--scope', 'project', '--sparse', 'plugins/review', '.claude-plugin']);
     expect(buildClaudeRuntimeArgs('marketplaces', ['add', 'organization-library'], { claudeai: true })).toEqual(['plugin', 'marketplace', 'add', 'organization-library', '--claudeai']);
     expect(() => buildClaudeRuntimeArgs('marketplaces', ['add', 'organization-library'], { claudeai: true, scope: 'user' })).toThrow(/cannot be combined/);
-    expect(claudeRuntimeOptions).toMatchObject({ 'values-stdin': 'boolean', with: 'string', 'no-publish': 'boolean', 'max-cost-usd': 'string', 'native-json': 'boolean', 'native-json-output': 'string' });
+    const types = Object.fromEntries(Object.entries(claudeRuntimeOptions).map(([name, option]) => [name, option.type]));
+    expect(types).toMatchObject({ 'values-stdin': 'boolean', with: 'string', 'no-publish': 'boolean', 'max-cost-usd': 'string', 'native-json': 'boolean', 'native-json-output': 'string' });
+    expect(claudeRuntimeOptions.config!.description).toBe('Passed to the native Claude Code CLI as --config (one string or a JSON array) by claude plugins install.');
   });
 
   it('rejects unrecognized commands, excess operands and options used with the wrong action', () => {

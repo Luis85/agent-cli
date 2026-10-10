@@ -14,7 +14,7 @@ it('rejects namespace theft, duplicate plugins and reserved global options', () 
   registry.register(plugin('one'), events);
   expect(() => registry.register(plugin('one'), events)).toThrow();
   expect(() => registry.register({ ...plugin('two'), skills: [{ id: 'one.skill', content: 'bad' }] }, events)).toThrow();
-  expect(() => registry.register({ ...plugin('two'), commands: [{ id: 'two.run', description: 'Run', usage: 'two.run', options: { root: 'string' }, run() {} }] }, events)).toThrow();
+  expect(() => registry.register({ ...plugin('two'), commands: [{ id: 'two.run', description: 'Run', usage: 'two.run', options: { root: { type: 'string', description: 'Root' } }, run() {} }] }, events)).toThrow();
 });
 it('disposes successful activations in reverse order after a later activation fails', async () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope()), calls: string[] = [];
@@ -145,5 +145,5 @@ it('does not fall back to CommonJS when an ESM entry fails during evaluation', a
 });
 it.each(Object.keys(globalOptions))('reserves the global --%s option for the host', option => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
-  expect(() => registry.register({ ...plugin('quality'), commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', options: { [option]: 'boolean' }, run() {} }] }, events)).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
+  expect(() => registry.register({ ...plugin('quality'), commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', options: { [option]: { type: 'boolean', description: 'Reserved' } }, run() {} }] }, events)).toThrowError(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
 });
