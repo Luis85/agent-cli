@@ -19,7 +19,13 @@ node bin/forge.js edit notes/plan.md --section "Plan > Risks" --append --content
 node bin/forge.js edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match REVISION
 ```
 
-`--prepend --content` inserts before the section's first line, and `--replace TEXT` replaces its content. The heading line stays, and so do the blank lines around the content. When the path matches no heading, `SECTION_NOT_FOUND` lists the note's heading paths in `error.details.headings`; when it matches several, `AMBIGUOUS_SECTION` lists them in `error.details.candidates`, so add an ancestor heading.
+`--prepend --content` inserts before the section's first line, and `--replace TEXT` replaces its content. The heading line stays, and so do the blank lines around the content. When the path matches no heading, `SECTION_NOT_FOUND` lists the note's heading paths in `error.details.headings`; when it matches several, `AMBIGUOUS_SECTION` lists them in `error.details.candidates`, so add an ancestor heading. When two headings have the same full path, pick one by its line from the candidates:
+
+```sh
+node bin/forge.js edit notes/plan.md --section "Plan > Risks" --section-line 23 --append --content "- Staffing" --if-match REVISION
+```
+
+A heading whose text contains ` > ` is written with a backslash: `--section "In \> Out"`.
 
 ## Edit a block
 
@@ -28,6 +34,14 @@ A paragraph or list item ending with `^id`, or a table followed by a `^id` line,
 ```sh
 node bin/forge.js edit notes/plan.md --block ship --replace "Ship the beta in May." --if-match REVISION
 ```
+
+Replacing a list item or task keeps its indentation, list marker and checkbox, so you pass only the new text; start the text with a marker, such as `- [x] Ship the beta`, to change the checkbox as well. Nested items stay under the item:
+
+```sh
+node bin/forge.js edit notes/plan.md --block beta --replace "- [x] Ship the beta" --if-match REVISION
+```
+
+`--append --content` and `--prepend --content` keep the block and its `^id` intact: next to a paragraph, table or other section the content becomes a separate block with blank lines around it; next to a list item it must be list items (`- Next step`), which Forge inserts as siblings after the item's nested items or before it.
 
 ## Make several replacements at once
 
@@ -69,5 +83,5 @@ Match on `error.code`, and use `error.details.operation` (in a plan) or `error.d
 
 - `CONFLICT`: the file changed since you read it. Read it again, rebuild the step from the current content and retry with the new revision.
 - `NO_MATCH` or `AMBIGUOUS_EDIT`: copy the exact current text, or add surrounding text until it matches once.
-- `SECTION_NOT_FOUND` or `AMBIGUOUS_SECTION`: choose a heading path from `error.details.headings` or `error.details.candidates`.
+- `SECTION_NOT_FOUND` or `AMBIGUOUS_SECTION`: choose a heading path from `error.details.headings` or `error.details.candidates`, and when candidates share the same path, pass the one's `line` as `--section-line` (`sectionLine` in a plan).
 - `INVALID_PLAN`: fix the fields in `error.details.issues`, or split a plan that reuses a path it moves or deletes into two plans.

@@ -17,7 +17,8 @@ import { type JsonSchema } from '../../domain/schema/json-schema.ts';
  * - `destructive`: whether a mutating mode can replace or remove existing content. Default `true` for a mutating
  *   mode, so only modes that never touch existing files (`create`, `setup`) declare `false`.
  * - `idempotent`: whether repeating the identical invocation has no further effect. Default: a read-only mode is
- *   idempotent, and so is a revision-guarded one (it declares `--if-match`): the repeat fails on the changed revision.
+ *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
+ *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
  * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
  */
 export type CommandScope = 'workspace' | 'project';

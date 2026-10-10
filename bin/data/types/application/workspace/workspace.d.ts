@@ -8,8 +8,10 @@ export interface WriteOptions {
 /**
  * How a mixed batch is reported. `trash` lists trash destinations: renames to or into them are reported as
  * deletions, because they move files into the hidden `.trash` folder, and no records are published for folders the
- * batch creates in `.trash`. `previous` holds the snapshots a dry run diffs each write against, keyed by the written
- * path; without it dry runs carry no diffs.
+ * batch creates in `.trash`. A write inside a trash destination (a plan that edits a file and then deletes it) only
+ * gives the trashed file its final content: it is neither reported as a change nor published, so the file reads as
+ * deleted. `previous` holds the snapshots a dry run diffs each write against, keyed by the written path; without it
+ * dry runs carry no diffs.
  */
 export interface CommitOptions {
     operation: 'move' | 'delete' | 'apply';

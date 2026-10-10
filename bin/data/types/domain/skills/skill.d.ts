@@ -12,9 +12,16 @@ export declare const skillTargetChoices: readonly ["both", ...string[]];
 export declare function skillPaths(id: string, roots: readonly string[]): string[];
 /** The roots of `--target both|claude|agents`. */
 export declare function targetRoots(target: string): string[];
+/** The YAML frontmatter of a SKILL.md: its parsed value, the YAML syntax error, or null when the file has none. */
+export type SkillFrontmatter = {
+    value: unknown;
+} | {
+    error: string;
+} | null;
 /**
- * Specification problems of a contributed skill: the id is a valid skill name, and SKILL.md starts with
- * frontmatter whose `name` equals the id and whose `description` is present. Complete YAML validation of the
- * bundled skills, including description length and `metadata` values, runs in the test suite.
+ * Specification problems of a contributed skill (https://agentskills.io/specification): the id is a valid skill
+ * name, and SKILL.md starts with YAML frontmatter whose `name` equals the id, whose `description` has 1-1024
+ * characters, and whose optional `license`, `compatibility`, `metadata` and `allowed-tools` have their specified
+ * types. Other fields, such as client-specific extensions, are left to the agents that read them.
  */
-export declare function skillIssues(id: string, content: string): string[];
+export declare function skillIssues(id: string, frontmatter: SkillFrontmatter): string[];
