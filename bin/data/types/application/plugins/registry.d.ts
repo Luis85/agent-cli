@@ -66,6 +66,11 @@ export interface Generator extends CommandMode {
     generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
     run?(request: GeneratorRequest): unknown | Promise<unknown>;
 }
+/**
+ * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ */
+export declare const hostGeneratorOptions: readonly ["out", "plan", "plan-out", "check", "revisions-from"];
 export interface Skill {
     id: string;
     content: string;
@@ -91,6 +96,11 @@ export interface PluginContributions {
     requires?: string[];
     /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
     settings?: JsonSchema;
+    /**
+     * Checks the schema-valid section (with defaults) beyond what JSON Schema expresses, such as glob syntax. Each
+     * returned issue `<path>: <problem>` makes the section invalid like a schema violation. Runs without I/O.
+     */
+    validateSettings?(settings: Readonly<Record<string, unknown>>): readonly string[];
     strings?: PluginStrings;
     errors?: PluginErrorDefinition[];
     onload?(context: PluginContext): void | Promise<void>;
@@ -114,6 +124,14 @@ export declare class Registry {
     readonly disabled: PluginManifest[];
     readonly catalog: PluginCatalog;
     readonly settings: PluginSettings;
+    /**
+     * Registered plugins that cannot run in this invocation, with the reason: an invalid settings section, or a
+     * required service whose provider is itself unavailable. They stay listed but never activate.
+     */
+    readonly unavailable: Map<string, {
+        reason: string;
+        issues: string[];
+    }>;
     private cleanups;
     private published;
     private state;
@@ -123,6 +141,14 @@ export declare class Registry {
     register(plugin: Plugin, events: EventBus, origin?: PluginOrigin): void;
     /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
     disable(manifest: PluginManifest): void;
+    /**
+     * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
+     * section, and every plugin that requires its services, becomes unavailable with a warning instead of failing the
+     * invocation: discovery and recovery commands keep working, and only its own commands and generators fail with
+     * INVALID_CONFIG. Sections of loaded plugins without settings, and sections naming no registered, disabled or
+     * `installed` plugin (misspelled ids), are kept unchanged with a warning.
+     */
+    configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>>;
     /** The context a plugin's hooks, commands and generators run with. */
     pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext;
     publishRegistered(events: EventBus): Promise<void>;
@@ -132,6 +158,8 @@ export declare class Registry {
      */
     activate(events: EventBus, context: CommandContext, state?: PluginStateStore): Promise<void>;
     dispose(events: EventBus): Promise<void>;
+    /** INVALID_CONFIG when the plugin is unavailable in this invocation. */
+    private ensureAvailable;
     /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
     private ownedCommand;
     private ownedGenerator;

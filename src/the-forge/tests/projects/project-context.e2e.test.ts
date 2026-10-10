@@ -74,7 +74,7 @@ describe('portable selected-project workflows', () => {
     expect(await readFile(join(root, 'projects/library/src/domain/generated-item.ts'), 'utf8')).toContain('class GeneratedItem');
     expect(run(['make', 'plugin', 'SharedTools']).status).toBe(0);
     expect(await readFile(join(root, 'bin/plugins/shared-tools/manifest.json'), 'utf8')).toContain('shared-tools');
-    expect(run(['make', 'plugin', 'OtherTools', '--out', 'elsewhere']).body.error.code).toBe('INVALID_ARGUMENT');
+    expect(run(['make', 'plugin', 'OtherTools', '--out', 'elsewhere']).body.error.code).toBe('UNKNOWN_OPTION');
     await expect(readFile(join(root, 'projects/library/bin/plugins/shared-tools/manifest.json'))).rejects.toThrow();
     expect(run(['skills', 'install']).status).toBe(0);
     expect(await readFile(join(root, 'projects/library/.agents/skills/forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
