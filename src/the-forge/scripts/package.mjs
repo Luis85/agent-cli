@@ -56,6 +56,11 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.l
   }
   notices.push('');
 }
+// Vendored assets are embedded in forge.js without a package; scripts/vendor-docker-agent.mjs records their source.
+const dockerAgent = JSON.parse(await readFile('src/plugins/agents/infrastructure/vendor/source.json', 'utf8'));
+await copyFile('scripts/licenses/docker-agent-LICENSE', join(bin, 'data/licenses/docker-agent-LICENSE'));
+notices.push('# Vendored asset notices', '', `## docker-agent ${dockerAgent.files.join(', ')}`, '',
+  `Copied unchanged from ${dockerAgent.repository} at commit ${dockerAgent.commit}. License: ${dockerAgent.license}.`, '', '- [LICENSE](licenses/docker-agent-LICENSE)', '');
 await writeFile(join(bin, 'data/THIRD-PARTY-NOTICES.md'), notices.join('\n'));
 // Ship type-only SDK declarations; runtime plugins need no package imports.
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.sdk.json', '--outDir', join(bin, 'data/types')], { stdio: 'inherit' });

@@ -30,6 +30,8 @@ Text inputs accept exactly one of `--from <path>`, `--content <text>` or `--stdi
 
 ## Agents
 
+To keep agents as docker-agent YAML definitions and generate these files from them, use [`agents generate --target claude`](agents.md#generation); generated files carry `x-forge-source` provenance and are inspected like any other agent here.
+
 | Command | Input and behavior |
 | --- | --- |
 | `claude agents list` | Lists native `.md` definitions, including malformed entries with diagnostics and revisions; reports duplicate agent names |

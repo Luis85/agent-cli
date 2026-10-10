@@ -52,8 +52,9 @@ In bundle order, which is also their registration and activation order:
 | `skills` | `skills` command and the bundled agent skills | none | [CLI commands](cli.md#commands) |
 | `search` | `search` command; `INVALID_SEARCH_PATTERN` and `SEARCH_TIMEOUT` codes | `timeoutMs` | [Search](search.md) |
 | `links` | `links` command: outgoing links, backlinks, unresolved links, orphans and dead ends | `roots` | [Links](links.md) |
+| `agents` | `agents` command: docker-agent definitions and generated Claude Code agents; the `agents.generated` event, the `forge-agents` skill, and `INVALID_AGENT_DEFINITION`, `AGENT_NOT_FOUND`, `AGENT_EXISTS` and `AGENT_DRIFT` codes | `directory`, `defaultModel` | [Agents](agents.md) |
 
-Each declares German strings for its command and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay.
+Each declares German strings for its command, events and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay.
 
 `node bin/forge.js plugins` lists every plugin, core plugins first: the manifest fields, `core`, `state` and `contributions`. `state` is `enabled` for registered plugins, `unavailable` (with a `reason`) for a registered plugin whose config section is invalid or that requires a service of such a plugin, `disabled` for a core plugin in `plugins.disabled` or an installed user plugin that `plugins.enabled` does not name, and `skipped` for an enabled user plugin that `--no-plugins` left unloaded. `contributions` lists command, generator, event and skill ids, `services.provides` and `services.requires`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run. Invalid manifests in `bin/plugins` are skipped with a warning.
 

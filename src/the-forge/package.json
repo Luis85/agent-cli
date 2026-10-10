@@ -23,9 +23,11 @@
     "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
     "check:structure": "node scripts/quality/structure.mjs --source-layout forge",
     "showcase": "node scripts/showcase.mjs",
-    "showcase:check": "node scripts/showcase.mjs --check"
+    "showcase:check": "node scripts/showcase.mjs --check",
+    "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs"
   },
   "dependencies": {
+    "ajv": "^8.20.0",
     "commander": "^15.0.0",
     "dayjs": "^1.11.23",
     "obsidian-bases-expression": "0.2.0",
@@ -46,7 +48,6 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vue/compiler-sfc": "3.5.43",
-    "ajv": "8.20.0",
     "fallow": "3.31.0",
     "jsdom": "27.4.0",
     "oxlint": "1.86.0",

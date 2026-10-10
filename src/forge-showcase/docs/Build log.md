@@ -235,6 +235,20 @@ node bin/forge.js claude agents list
 node bin/forge.js skills install
 ```
 
+## Agent definitions
+
+```sh
+node bin/forge.js create agents/trailhead-team.yaml --stdin < input
+node bin/forge.js agents create ui-builder --file trailhead-team.yaml --model anthropic/claude-haiku-4-5 --description 'Builds Trailhead UI components from library def…' --instruction 'You change component and interaction definition…' --toolset filesystem,shell --if-match <revision>
+node bin/forge.js edit agents/trailhead-team.yaml --find 'sub_agents: [spec-writer]' --replace 'sub_agents: [spec-writer, ui-builder]' --if-match <revision>
+node bin/forge.js agents validate
+node bin/forge.js agents list
+node bin/forge.js agents generate --target claude --commands --mcp inline --plan
+node bin/forge.js agents generate --target claude --commands --mcp inline
+node bin/forge.js agents generate --target claude --commands --mcp inline --check
+node bin/forge.js claude agents inspect trailhead-lead
+```
+
 ## Project toolchain
 
 ```sh
