@@ -96,6 +96,17 @@ Use the [documentation hub](docs/index.md) to choose a learning path or find an 
 
 The [idea-to-production example pack](docs/examples/idea-to-production/README.md) includes filled-in discovery, requirements, design, implementation, testing and production artifacts. [Agent skills](../skills/forge-workflow.md) and the [runnable example plugin](docs/examples/plugins/quality/main.mjs) support day-to-day use.
 
+## Showcase
+
+The repository commits `src/forge-showcase`, a fully generated managed project for Trailhead, a small fictional trip-planning web app. It shows the capabilities above working together: workflow documents linked into an Obsidian knowledge graph with Canvas and Bases, components and interactions generated for all seven UI targets with Storybook stories, data sources with adapters and fixtures, domain and application code, forms, a Claude agent, agent skills and the project's own toolchain and CI workflow. Open `src/forge-showcase` as an Obsidian vault and start at `docs/Trailhead.md`; its `README.md` maps each folder to the commands that produced it.
+
+```sh
+npm run showcase        # regenerate src/forge-showcase through the bundled CLI
+npm run showcase:check  # regenerate in a temporary workspace and report drift
+```
+
+See [explore the showcase](docs/how-to/explore-the-showcase.md) for browsing, the project's own checks and the lockfile step.
+
 ## Source organization
 
 The runtime source lives in `src/the-forge`, using domain, application, infrastructure and presentation layers divided into concern folders. `src/the-forge/main.ts` composes the runtime; `src/the-forge/sdk.ts` exposes plugin types. The package, Vite/TypeScript configuration, tests, `scripts/` and `configs/` remain at the repository root. Examples live in `docs/examples`, and authored workflow/project templates in `docs/templates`; editable runtime templates remain in `bin/templates`. Run npm commands from the repository root. The repository's `src/the-forge/README.md` maps entry points; the [architecture](docs/explanation/architecture.md) explains dependency rules.

@@ -23,7 +23,7 @@ const type = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const bin = { "forge": "bin/app.js" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run --testTimeout=30000 --hookTimeout=30000", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run --testTimeout=30000 --hookTimeout=30000", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check" };
 const dependencies = { "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "remark-frontmatter": "^5.0.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
 const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4", "vue": "3.5.43" };
 const metadata$1 = {
@@ -25365,7 +25365,7 @@ function projectScaffold(name2, projectsDirectory) {
           { from: "infrastructure", allow: ["domain", "application", "infrastructure"] },
           { from: "presentation", allow: ["domain", "application", "infrastructure", "presentation"] }
         ],
-        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/the-forge/vite-env.d.ts"] }
+        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
       }
     }),
     "tsconfig.json": json$3({
@@ -25389,7 +25389,7 @@ export default defineConfig(({ mode }) => ({
 }));
 `,
     "index.html": demoHtml,
-    "src/the-forge/vite-env.d.ts": '/// <reference types="vite/client" />\n',
+    "src/vite-env.d.ts": '/// <reference types="vite/client" />\n',
     "src/presentation/demo.ts": demoScript,
     "src/presentation/demo.css": demoStyle,
     "src/presentation/forms/form-model.ts": formModel,
