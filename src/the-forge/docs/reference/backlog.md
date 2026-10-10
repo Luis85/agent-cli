@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` disables `backlog` too.
+`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` disables `backlog` too. `backlog sync` uses the optional `connectors` service of the `connector` core plugin; without it every other action keeps working.
 
 Forge conforms to backlog-view 0.10.0 (plugin id `product-backlog-view`) with the global rank and release-join dates of commit `fb813df` on its `main` branch. The [conformance](#conformance) section lists what the fixtures prove and where Forge differs.
 
@@ -45,7 +45,7 @@ Releases are managed by the base's first `product-release` view, with its own op
 
 ### Choosing the backlog
 
-Every action except `init` opens one backlog: `--base <file.base> [--view <name>]`; otherwise `plugins.settings.backlog.base` and `.view` in `bin/config.json`; otherwise the only `product-backlog` view among the scope's `.base` files. No view fails with `BACKLOG_NOT_FOUND`; several fail with `BACKLOG_AMBIGUOUS` and `details.candidates` (`{base, view}` pairs).
+Every action except `init` and `sync` opens one backlog: `--base <file.base> [--view <name>]`; otherwise `plugins.settings.backlog.base` and `.view` in `bin/config.json`; otherwise the only `product-backlog` view among the scope's `.base` files, preferring views that are not [bound to a connection](#bound-views-define-the-sync-set). No view fails with `BACKLOG_NOT_FOUND`; several fail with `BACKLOG_AMBIGUOUS` and `details.candidates` (`{base, view}` pairs).
 
 ```json
 { "plugins": { "settings": { "backlog": { "base": "docs/Product Backlog.base", "view": "Backlog" } } } }
@@ -86,6 +86,7 @@ All actions take `--base`, `--view` and `--today YYYY-MM-DD` (the date used for 
 | `release notes <release>` | Writes `<releaseNotesFolder>/<release> release notes.md` (see [release notes](#release-notes)); `outcome` is `created`, `updated` or `unchanged` |
 | `release mark-released <release>` | Writes `releaseStatusProperty = releasedTransitionValue` and `releasedDateProperty = today` on the release note only; `backlog.released` follows |
 | `check` | `{ok, counts, writable, problems}`. See [check](#check) |
+| `sync`, `sync status`, `sync resolve <item>` | Two-way sync of bound views with external trackers; see [sync](#sync-with-external-trackers) |
 
 Mutating actions accept `--dry-run` (planned changes with unified diffs, nothing written, no `backlog.*` events) and, where one note is edited, `--if-match <revision>` for that note. Committed writes publish `vault.*` records and these events:
 
@@ -95,6 +96,71 @@ Mutating actions accept `--dry-run` (planned changes with unified diffs, nothing
 | `backlog.item-moved` | `{path, parent, order, previousParent, previousOrder}` |
 | `backlog.state-changed` | `{path, title, from, to, started?, finished?}` (`finished: null` when leaving done) |
 | `backlog.released` | `{path, name, status, released}` |
+| `backlog.synced` | `{base, view, connection, created, updated, pulled, conflicts, left, failed}` once per synced view |
+
+## Sync with external trackers
+
+`backlog sync` keeps backlog notes and the work items of an external tracker in sync in both directions, with explicit conflicts. Connectors are plugin services: the `connector` core plugin holds the [connection profiles](connectors.md#connection-profiles) and `connector-azure-devops` talks to [Azure DevOps Boards](connector-azure-devops.md). The sync engine itself lives in this plugin and knows no platform. A [how-to guide](../how-to/sync-backlog-with-azure-devops.md) walks through a first sync.
+
+### Bound views define the sync set
+
+A `product-backlog` view with the view option `connection: <id>` is bound to that connection. Its query (global and view filters) selects the notes held in sync; its options bind the properties as for every other action. One base can hold several bound views, each with its own filter and connection, so different item sets of one repository sync to different organizations or projects. backlog-view ignores the extra option.
+
+```yaml
+views:
+  - type: product-backlog
+    name: Planning
+    filters:
+      and:
+        - file.inFolder("backlog/requirements")
+    stateProperty: note.status
+    priorityProperty: note.priority
+    connection: contoso
+```
+
+When an action other than `sync` chooses its backlog by discovery, unbound views are preferred; with only bound views, pass `--base`/`--view` or set `plugins.settings.backlog`.
+
+### Actions
+
+| Action | Result |
+| --- | --- |
+| `sync [--base … [--view …]] [--direction push\|pull\|both]` | Syncs every bound view (or the named ones), default `both`. `--dry-run` reads the remote, writes nowhere and returns the planned remote operations and vault diffs |
+| `sync status [--base … --view …]` | Reads both sides and reports pending pushes, pulls and conflicts; writes nothing |
+| `sync resolve <item> --take local\|remote [--field title,state]` | Settles the note's conflicting fields (all, or the named ones) in favour of one side; its other pending changes wait for the next sync. A named field that is not in conflict, or a note without conflicts, is `INVALID_ARGUMENT`; a note in several bound views needs `--base`/`--view` |
+
+The result is `{dryRun, mode, direction, counts, views, changes}`. Each view reports `{base, view, connection, platform, created, updated, pulled, conflicts, resolved, unchanged, skipped, left, failed, changes}`:
+
+- `created`, `updated` and `pulled` list `{path, remoteId, url, fields}` (`remoteId` and `url` are null for creates a dry run only plans; a pulled title adds `renamedTo`).
+- `conflicts` lists `{path, remoteId, url, fields: [{field, local, remote}]}` with both canonical values.
+- `skipped` lists `{path, reason, field?}`: an unmapped type, a link property naming another connection's item, a remote item that no longer exists, a remote parent or iteration without a local counterpart, a title whose file name is taken.
+- `left` lists notes the view no longer returns but the state still holds (`{path, remoteId, url}`). They are never deleted remotely.
+- `failed` lists `{path, remoteId, code, message}` for remote writes that failed; `SYNC_CONFLICT` marks a remote item that changed during the sync. A refused token aborts the whole sync with `CONNECTOR_AUTH_FAILED`.
+
+### Fields and the three-way comparison
+
+| Field | Note side | Remote side (Azure DevOps default) |
+| --- | --- | --- |
+| `title` | The note's file name (basename) | `System.Title` |
+| `type` | `typeProperty`, mapped through the connection's types | `System.WorkItemType` |
+| `state` | `stateProperty`, mapped through the connection's states | `System.State` |
+| `parent` | `parentProperty`, when the parent syncs on the same connection | Parent link (`System.LinkTypes.Hierarchy-Reverse`) |
+| `iteration` | `iterationProperty`: the Iteration note's name under the connection's `iterationRoot` | `System.IterationPath` |
+| `priority` | `priorityProperty`: the label's leading number (`1 - Must` → 1) | `Microsoft.VSTS.Common.Priority` |
+| `effort` | The connection's `effortProperty` (default `effort`), a number | Story points or effort, by process |
+| `tags` | `tagsProperty`, compared case-insensitively | `System.Tags` |
+| `description` | The note body after the frontmatter | `System.Description` |
+| `property:<key>` | Extra frontmatter keys from the connection's `mappings.properties` | The mapped remote field |
+
+A field syncs only when the connection maps it and the view binds its property; it is then compared in canonical form (sanitized titles, trimmed text, sorted lowercase tags). For every note and connection, the state file `.forge/sync/<connection>.json` in the command scope stores the remote id, URL and revision and, per field, a hash of the value both sides held after the last successful sync. Each sync compares both sides with that base:
+
+- changed only in the note: pushed with a revision-guarded update;
+- changed only remotely: pulled through the backlog's write rules (state stamps, `mayHoldField`, Obsidian's YAML style; a new title renames the note and rewrites links to it);
+- changed on both sides to different values: a conflict, reported (`connector.conflict`) and left untouched on both sides until `sync resolve`; to the same value: converged;
+- never synced but linked (no base): every differing field is a conflict.
+
+While the remote revision equals the stored one, the remote side counts as unchanged; the stored revision advances only once every remote change has landed. New notes (no state, no link property) are created remotely in tree order, parents before children. After a create or relink, the note's link property (default `azure-devops`, set per connection with `linkProperty`) holds the remote URL, which Obsidian opens as a link; backlog-view keeps the unknown key. A note renamed through Forge (`move`, `rename`, `app.fileManager`) keeps its state, because the plugin follows `vault.rename`; a note renamed elsewhere is relinked by its link property on the next sync. Notes the remote side does not know yet are not imported: the sync set is defined by the view.
+
+Remote writes are planned before anything is written. Committed syncs publish `vault.*` records for note changes, then `connector.pushed` per remote write, `connector.pulled` per pulled note, `connector.conflict` per conflicting note and one `backlog.synced` per view. Dry runs and `status` publish none of them. If the vault batch fails after remote items were created, the state file is still saved, so the next sync links them instead of creating them twice.
 
 ## New notes
 
