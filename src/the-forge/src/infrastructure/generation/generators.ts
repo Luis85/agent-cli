@@ -11,7 +11,9 @@ function names(name: string, directory: string) {
   return { name, directory, file: name.replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() };
 }
 export const generators: Generator[] = [
-  { id: 'form', description: 'Typed form definition with Zod validation and HTML preview in a Forge project.', generate(input, dir) {
+  { id: 'form', description: 'Typed form definition with Zod validation and HTML preview in a Forge project.', directory: 'src/presentation/forms', async generate({ name: input, directory: dir, context }) {
+    ensure(context.project, 'PROJECT_REQUIRED', 'Open a Forge project with project open <name> before making a form.');
+    await context.workspace.files.read('src/presentation/forms/form-model.ts');
     const { name, directory, file } = names(input, dir);
     const relative = posix.relative(directory, 'src/presentation/forms/form-model.js');
     const runtimeImport = relative.startsWith('.') ? relative : `./${relative}`;
@@ -22,23 +24,23 @@ export const generators: Generator[] = [
       { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText(formDefinitionTestSource(name, testImport.startsWith('.') ? testImport : `./${testImport}`, '../src/presentation/forms/form-model.js')) },
     ];
   } },
-  { id: 'entity', description: 'Domain entity with identity and invariant enforcement.', generate(input, dir) {
+  { id: 'entity', description: 'Domain entity with identity and invariant enforcement.', generate({ name: input, directory: dir }) {
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export class ${name} {\n  private constructor(readonly id: string) {}\n\n  static create(id: string): ${name} {\n    if (!id.trim()) throw new globalThis.Error('${name} requires an identity');\n    return new ${name}(id);\n  }\n}\n`) }];
   } },
-  { id: 'value-object', description: 'Immutable value object with equality and validation.', generate(input, dir) {
+  { id: 'value-object', description: 'Immutable value object with equality and validation.', generate({ name: input, directory: dir }) {
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export class ${name} {\n  private constructor(readonly value: string) { globalThis.Object.freeze(this); }\n\n  static from(value: string): ${name} {\n    if (!value.trim()) throw new globalThis.Error('${name} cannot be empty');\n    return new ${name}(value);\n  }\n\n  equals(other: ${name}): boolean { return this.value === other.value; }\n}\n`) }];
   } },
-  { id: 'use-case', description: 'Application use case with an injected repository port.', generate(input, dir) {
+  { id: 'use-case', description: 'Application use case with an injected repository port.', generate({ name: input, directory: dir }) {
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export interface ${name}Input { readonly id: string }\nexport interface ${name}Repository { exists(id: string): globalThis.Promise<boolean> }\n\nexport class ${name} {\n  constructor(private readonly repository: ${name}Repository) {}\n\n  async execute(input: ${name}Input): globalThis.Promise<{ exists: boolean }> {\n    if (!input.id.trim()) throw new globalThis.Error('Identity is required');\n    return { exists: await this.repository.exists(input.id) };\n  }\n}\n`) }];
   } },
-  { id: 'event', description: 'Typed event payload and runtime descriptor.', generate(input, dir) {
+  { id: 'event', description: 'Typed event payload and runtime descriptor.', generate({ name: input, directory: dir }) {
     const { name, directory, file } = names(input, dir);
     return [{ path: `${directory}/${file}.ts`, bytes: encodeText(`export interface ${name} { readonly id: string }\nexport const ${name}Event = {\n  id: 'app.${file}',\n  validate(value: unknown): value is ${name} {\n    return value !== null && typeof value === 'object' && 'id' in value && typeof value.id === 'string';\n  },\n};\n`) }];
   } },
-  { id: 'plugin', description: 'Installable plugin folder with a manifest, namespaced command and lifecycle hooks.', generate(input, dir) {
+  { id: 'plugin', description: 'Installable plugin folder with a manifest, namespaced command and lifecycle hooks.', scope: 'workspace', directory: 'bin/plugins', fixedDirectory: true, generate({ name: input, directory: dir }) {
     const { name, directory, file } = names(input, dir);
     const manifest = {
       id: file, name, version: '0.1.0', minAppVersion: '0.1.0',

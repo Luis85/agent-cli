@@ -1,10 +1,24 @@
 import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
+import { option, type CommandOption } from '../../application/plugins/command-metadata.ts';
 export const globalOptions = {
   root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
   'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
   help: 'boolean', version: 'boolean',
 } as const;
+/** The global options as help and schema describe them; routing options must precede the command. */
+export const globalOptionMetadata = {
+  root: option.string('Workspace root to load bin/config.json from; must precede the command.'),
+  lang: option.string('Response language for descriptions, hints and summaries.', { enum: ['en', 'de'], default: 'en' }),
+  events: option.string('Events included in the response; delivery to listeners is unaffected.', { enum: ['none', 'changes', 'all'], default: 'changes' }),
+  json: option.boolean('Compact JSON output.'),
+  'no-json': option.boolean('Indented JSON output.'),
+  'dry-run': option.boolean('Validate and preview writes without changing files.'),
+  'no-dry-run': option.boolean('Write even when settings.dryRun is true.'),
+  'no-plugins': option.boolean('Skip loading user plugins; core plugins stay. Must precede the command.'),
+  help: option.boolean('Describe the command instead of running it.'),
+  version: option.boolean('Report the Forge version; used without a command.'),
+} satisfies Record<keyof typeof globalOptions, CommandOption>;
 export interface ParsedArguments { args: string[]; flags: Record<string, string | boolean> }
 
 /** Routing options precede the command so unknown plugin arguments cannot
@@ -60,9 +74,3 @@ export function parseArguments(tokens: string[], options: Record<string, 'string
   }
   return { args: command.args, flags };
 }
-export function value(flags: ParsedArguments['flags'], key: string, required = false): string | undefined {
-  const result = flags[key];
-  ensure(!required || typeof result === 'string', 'MISSING_ARGUMENT', `--${key} is required.`);
-  return typeof result === 'string' ? result : undefined;
-}
-export function arity(args: string[], min: number, max = min): void { ensure(args.length >= min && args.length <= max, 'INVALID_ARGUMENT', `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`); }

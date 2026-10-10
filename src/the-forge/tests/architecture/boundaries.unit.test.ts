@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
-import { boundaryViolations, sdkViolations } from './import-boundaries.ts';
+import { boundaryViolations, compositionViolations, sdkViolations } from './import-boundaries.ts';
 
 it.each([
   "import 'node:fs';",
@@ -56,6 +56,43 @@ it('lets infrastructure use libraries/assets while rejecting presentation and co
   const file = resolve('src/infrastructure/plugins/loader.ts');
   expect(boundaryViolations(file, "import 'node:fs'; import 'yaml'; import asset from '../../../../templates/note.md?raw'; const module = import(path);")).toEqual([]);
   expect(boundaryViolations(file, "import '../../presentation/cli/commands.ts'; import '../../main.ts'; import '../../sdk.ts';")).toHaveLength(3);
+});
+
+describe('core plugin boundaries', () => {
+  it.each([
+    ['src/plugins/search/application/query.ts', "import { links } from '../../links/application/links.ts';"],
+    ['src/plugins/search/plugin.ts', "import { linksPlugin } from '../links/plugin.ts';"],
+    ['src/plugins/search/presentation/commands.ts', "import type { Index } from '../../links/domain/index.ts';"],
+    ['src/plugins/search/application/query.ts', "import { NodeFiles } from '../../../infrastructure/workspace/files.ts';"],
+    ['src/plugins/search/infrastructure/index.ts', "import { NodeFiles } from '../../../infrastructure/workspace/files.ts';"],
+    ['src/plugins/search/presentation/commands.ts', "import { parseArguments } from '../../../presentation/cli/arguments.ts';"],
+    ['src/plugins/search/plugin.ts', "import '../../main.ts';"],
+    ['src/plugins/search/domain/query.ts', "import type { Workspace } from '../../../application/workspace/workspace.ts';"],
+    ['src/plugins/search/domain/query.ts', "import '../application/query.ts';"],
+    ['src/plugins/search/application/query.ts', "import 'node:fs';"],
+    ['src/plugins/search/presentation/commands.ts', "import { Command } from 'commander';"],
+    ['src/plugins/search/presentation/commands.ts', "import '../infrastructure/index.ts';"],
+  ])('rejects %s importing another plugin, kernel adapters or outward layers: %s', (file, source) => {
+    expect(boundaryViolations(resolve(file), source)).toHaveLength(1);
+  });
+
+  it('lets plugin layers use kernel domain and application ports and their own inward layers', () => {
+    expect(boundaryViolations(resolve('src/plugins/search/presentation/commands.ts'), [
+      "import type { Command } from '../../../application/plugins/registry.ts';",
+      "import { arity } from '../../../application/plugins/command-input.ts';",
+      "import { ensure } from '../../../domain/shared/errors.ts';",
+      "import { search } from '../application/search.ts';",
+      "import type { Hit } from '../domain/hit.ts';",
+    ].join('\n'))).toEqual([]);
+    expect(boundaryViolations(resolve('src/plugins/search/infrastructure/index.ts'), "import { parse } from 'yaml'; import skill from '../../../../skills/forge-search.md?raw'; import '../application/ports.ts';")).toEqual([]);
+    expect(boundaryViolations(resolve('src/plugins/search/plugin.ts'), "import '../../application/plugins/core-plugins.ts'; import './infrastructure/index.ts'; import './presentation/commands.ts';")).toEqual([]);
+  });
+
+  it('keeps the kernel independent of plugins and the composition root on plugin factories', () => {
+    expect(boundaryViolations(resolve('src/application/plugins/example.ts'), "import { skillsPlugin } from '../../plugins/skills/plugin.ts';")).toHaveLength(1);
+    expect(compositionViolations(resolve('src/main.ts'), "import { skillsPlugin } from './plugins/skills/plugin.ts';")).toEqual([]);
+    expect(compositionViolations(resolve('src/main.ts'), "import { skillsCommand } from './plugins/skills/presentation/commands.ts';")).toHaveLength(1);
+  });
 });
 
 it('allows only inward type exports in the public SDK', () => {

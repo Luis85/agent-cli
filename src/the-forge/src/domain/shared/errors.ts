@@ -10,6 +10,10 @@ export class AppError extends Error {
 export function forgeError(code: ErrorCode, message: string, details?: Record<string, unknown>, exitCode: number = errorCatalog[code].exitCode): AppError {
   return new AppError(code, message, exitCode, details);
 }
+/** A failure with a plugin-registered code; its exit status comes from the plugin's error catalog entry. */
+export function codedError(code: string, message: string, exitCode: number, details?: Record<string, unknown>): AppError {
+  return new AppError(code, message, exitCode, details);
+}
 /** Event diagnostics deliberately omit messages, input and arbitrary error details. */
 export function summarizeError(error: unknown): { code: string; exitCode: number } {
   return error instanceof AppError ? { code: error.code, exitCode: error.exitCode } : { code: 'OPERATION_FAILED', exitCode: errorCatalog.OPERATION_FAILED.exitCode };

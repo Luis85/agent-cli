@@ -34,12 +34,14 @@ describe('portable host lifecycle observation', () => {
   it('replays pre-activation phases and observes file operations through the public SDK', async () => {
     const configured = await plugin('observe-success'), result = configured.run();
     expect(result.status, result.stdout).toBe(0);
-    expect(result.body.data.replayed).toEqual(['plugin.registered', 'command.started', 'plugin.activating']);
+    // Bundled core plugins (skills) register and activate before user plugins and unload after them.
+    expect(result.body.data.replayed).toEqual(['plugin.registered', 'plugin.registered', 'command.started', 'plugin.activating', 'plugin.activated', 'plugin.activating']);
     expect(result.body.data.live).toEqual(['plugin.activated', 'workspace.layout-ready', 'operation.started', 'vault.create', 'operation.succeeded']);
-    expect(result.body.events.map((event: EventRecord) => event.id)).toEqual([
-      'plugin.registered', 'command.started', 'plugin.activating', 'plugin.activated', 'workspace.layout-ready',
+    expect(result.body.events.map((event: EventRecord) => [event.id, (event.payload as { pluginId?: string }).pluginId].filter(Boolean).join(':'))).toEqual([
+      'plugin.registered:skills', 'plugin.registered:observer', 'command.started', 'plugin.activating:skills', 'plugin.activated:skills',
+      'plugin.activating:observer', 'plugin.activated:observer', 'workspace.layout-ready',
       'operation.started', 'vault.create', 'operation.succeeded', 'command.succeeded', 'workspace.quit',
-      'plugin.unloading', 'plugin.unload-failed',
+      'plugin.unloading:observer', 'plugin.unload-failed:observer', 'plugin.unloading:skills', 'plugin.unloaded:skills',
     ]);
     expect(result.body.events.find((event: EventRecord) => event.id === 'operation.started')?.payload).toMatchObject({ root: configured.root, paths: ['result.md'], dryRun: false });
     expect(JSON.stringify(result.body.events)).not.toMatch(/private body|private-argument/);

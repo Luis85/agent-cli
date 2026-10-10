@@ -17,9 +17,9 @@ export function metadataIndex(files: FileRepository): VaultMetadata {
 }
 
 /** The scope services of a command context, as `main.ts` binds them: the metadata index and the `app` facade over the workspace. */
-export function scopeServices(workspace: Workspace, events: EventChannel): { metadata: VaultMetadata; app: App } {
+export function scopeServices(workspace: Workspace, events: EventChannel): { metadata: VaultMetadata; app: App; environment: Workspace; language: 'en' } {
   const metadata = metadataIndex(workspace.files);
-  return { metadata, app: createApp({ workspace, metadata, events, project: null }) };
+  return { metadata, app: createApp({ workspace, metadata, events, project: null }), environment: workspace, language: 'en' };
 }
 
 /** A Bases engine whose every query loads a fresh metadata cache, so tests may change files between queries. */

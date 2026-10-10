@@ -15,8 +15,11 @@ try {
     }
     if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });
     if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {
-      if (!/^src\/(?:domain|application|infrastructure|presentation)\/[^/]+\/.+/.test(path)) {
-        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/...; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });
+      // Kernel source is grouped by layer, then concern; a bundled core plugin owns its layers under src/plugins/<id>/.
+      const kernel = /^src\/(?:domain|application|infrastructure|presentation)\/[^/]+\/.+/.test(path);
+      const corePlugin = /^src\/plugins\/[a-z][a-z0-9-]*\/(?:plugin\.ts|(?:domain|application|infrastructure|presentation)\/.+)$/.test(path);
+      if (!kernel && !corePlugin) {
+        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/... for the kernel and src/plugins/<id>/plugin.ts or src/plugins/<id>/<layer>/... for core plugins; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });
       }
     }
   }

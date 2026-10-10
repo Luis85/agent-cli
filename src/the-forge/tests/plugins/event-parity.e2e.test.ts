@@ -37,10 +37,13 @@ describe('Obsidian event parity through the portable CLI', () => {
     expect(ids(modified.body.events)).toEqual(['vault.modify']);
     expect(modified.body.events[0].payload).toMatchObject({ path: 'notes/plan.md', kind: 'file', operation: 'updated', bytes: 9 });
     const read = run(['--events', 'all', 'read', 'notes/plan.md']);
+    // The bundled core plugins (skills) register, activate and unload around every activating command.
     expect(ids(read.body.events)).toEqual([
-      'command.started', 'workspace.layout-ready', 'operation.started', 'workspace.file-open', 'operation.succeeded', 'command.succeeded', 'workspace.quit',
+      'plugin.registered', 'command.started', 'plugin.activating', 'plugin.activated', 'workspace.layout-ready',
+      'operation.started', 'workspace.file-open', 'operation.succeeded', 'command.succeeded', 'workspace.quit', 'plugin.unloading', 'plugin.unloaded',
     ]);
-    expect(read.body.events[3].payload).toEqual({ path: 'notes/plan.md' });
+    expect(read.body.events[0].payload).toEqual({ pluginId: 'skills' });
+    expect(read.body.events[6].payload).toEqual({ path: 'notes/plan.md' });
     expect(run(['read', 'notes/plan.md']).body.events).toEqual([]);
   });
 

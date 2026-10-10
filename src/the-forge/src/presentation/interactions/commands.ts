@@ -3,7 +3,9 @@ import { interactionEvents, type InteractionEvent } from '../../domain/interacti
 import type { Command } from '../../application/plugins/registry.ts';
 import type { WorkflowServices } from '../cli/services.ts';
 import { defaultInteractionIds } from '../../application/interactions/defaults.ts';
-import { arity, value } from '../cli/arguments.ts';
+import { arity, value } from '../../application/plugins/command-input.ts';
+import { option } from '../../application/plugins/command-metadata.ts';
+import { libraryMetadata, libraryOptions } from '../cli/library-metadata.ts';
 
 /** Reusable behavior definitions share workspace scope with the component library. */
 export function interactionCommands(services: WorkflowServices): Command[] {
@@ -11,7 +13,9 @@ export function interactionCommands(services: WorkflowServices): Command[] {
   return [{
     id: 'interactions', description: 'Manage reusable Markdown interaction definitions for executable UI behavior.',
     usage: 'interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]',
-    options: { library: 'string', from: 'string', out: 'string', event: 'string' },
+    ...libraryMetadata('interaction'),
+    options: { ...libraryOptions, event: option.string('Browser event for create.', { enum: interactionEvents }) },
+    errors: ['INVALID_INTERACTION', 'DUPLICATE_INTERACTION', 'UNKNOWN_INTERACTION', 'CONFLICT'],
     async run(args, flags) {
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? config.paths.interactions;
       ensure(flags.from === undefined || action === 'import', 'INVALID_ARGUMENT', '--from requires interactions import.');

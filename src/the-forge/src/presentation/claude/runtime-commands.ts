@@ -1,5 +1,7 @@
 import { ensure } from '../../domain/shared/errors.ts';
-import { arity, globalOptions } from '../cli/arguments.ts';
+import { globalOptions } from '../cli/arguments.ts';
+import { arity } from '../../application/plugins/command-input.ts';
+import type { CommandOption } from '../../application/plugins/command-metadata.ts';
 
 type RuntimeSection = 'plugins' | 'marketplaces' | 'runtime';
 type Flags = Record<string, string | boolean>;
@@ -55,10 +57,20 @@ const commands: Record<RuntimeSection, Record<string, RuntimeCommand>> = {
 };
 
 /** Forge accepts variadic native flags as one string or one JSON array argument. */
-export const claudeRuntimeOptions: Record<string, 'string' | 'boolean'> = Object.fromEntries(
-  Object.values(commands).flatMap(section => Object.values(section).flatMap(command =>
-    Object.entries(command.options ?? {}).map(([name, kind]) => [name, kind === 'boolean' ? 'boolean' : 'string']))),
-);
+export const claudeRuntimeOptions: Record<string, CommandOption> = (() => {
+  const uses = new Map<string, { kind: OptionKind; actions: string[] }>();
+  for (const [section, actions] of Object.entries(commands)) for (const [action, command] of Object.entries(actions)) {
+    for (const [name, kind] of Object.entries(command.options ?? {})) {
+      const entry = uses.get(name) ?? { kind, actions: [] };
+      entry.actions.push(`claude ${section} ${action}`);
+      uses.set(name, entry);
+    }
+  }
+  return Object.fromEntries([...uses].map(([name, { kind, actions }]) => [name, {
+    type: kind === 'boolean' ? 'boolean' : 'string',
+    description: `Passed to the native Claude Code CLI as --${name}${kind === 'list' || kind === 'repeat' ? ' (one string or a JSON array)' : ''} by ${actions.join(', ')}.`,
+  } satisfies CommandOption]));
+})();
 
 function actionArgs(section: RuntimeSection, args: string[]): { action: string; operands: string[] } {
   const nested = section === 'plugins' && args[0] === 'eval' && args[1] === 'init';

@@ -25,8 +25,7 @@ export const germanCommands = {
   rename: 'Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.',
   make: 'Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.',
   events: 'Ereignisverträge des Aufrufs auflisten.',
-  plugins: 'Explizit geladene Plugin-Manifeste auflisten.',
-  skills: 'Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.',
+  plugins: 'Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten.',
 } satisfies Record<string, string>;
 
 export const germanGenerators = {

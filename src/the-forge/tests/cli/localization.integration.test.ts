@@ -11,6 +11,7 @@ import { commands } from '../../src/presentation/cli/commands.ts';
 import { basesCommand } from '../../src/presentation/bases/commands.ts';
 import { claudeCommand } from '../../src/presentation/claude/commands.ts';
 import { generators } from '../../src/infrastructure/generation/generators.ts';
+import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
 
@@ -31,6 +32,8 @@ describe('built-in localization catalog coverage', () => {
         get workflows(): never { throw new Error('Catalog must not access workflows'); },
         async installTemplates() { throw new Error('Catalog must not install templates'); },
         async setup() { throw new Error('Catalog must not run setup'); },
+        configSections: () => [],
+        async installedPlugins() { throw new Error('Catalog must not list plugin directories'); },
       };
       const registry = new Registry();
       const unavailable = (): never => { throw new Error('Catalog must not invoke management services'); };
@@ -42,7 +45,7 @@ describe('built-in localization catalog coverage', () => {
       const bus = new EventBus(new NodeEventScope());
       registerHostEvents(bus);
       expect(Object.keys(germanEvents).sort()).toEqual(bus.ids());
-      expect(Object.keys(germanGenerators).sort()).toEqual([...generators.map(generator => generator.id), 'document', 'ui', 'stories', 'data-source'].sort());
+      expect(Object.keys(germanGenerators).sort()).toEqual([...generators, ...libraryGenerators(services)].map(generator => generator.id).sort());
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

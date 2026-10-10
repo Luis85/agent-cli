@@ -1,13 +1,31 @@
 import type { Bases } from '../../application/bases/query.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import { ensure } from '../../domain/shared/errors.ts';
-import { arity, globalOptions, value } from '../cli/arguments.ts';
+import { globalOptions } from '../cli/arguments.ts';
+import { arity, value } from '../../application/plugins/command-input.ts';
+import { option } from '../../application/plugins/command-metadata.ts';
 
 export function basesCommand(service: (context: CommandContext) => Promise<Bases>): Command {
   return {
     id: 'bases', description: 'Query native Obsidian Bases views as file repositories without running Obsidian.',
     usage: 'bases list | inspect <path.base> | query <path.base> [--view name] [--context note.md] [--limit count] | capabilities',
-    options: { view: 'string', context: 'string', limit: 'string' },
+    scope: 'project', discovery: false, mutating: false, defaultAction: 'list',
+    actions: {
+      list: { description: 'List visible .base files in the command scope.' },
+      inspect: { description: 'Return a .base definition and its views.' },
+      query: { description: 'Evaluate a view and return its matching files.' },
+      capabilities: { description: 'Describe the standalone Bases compatibility profile.' },
+    },
+    args: [
+      { name: 'action', description: 'list (default), inspect, query or capabilities.', enum: ['list', 'inspect', 'query', 'capabilities'] },
+      { name: 'path', description: 'The .base file for inspect and query.' },
+    ],
+    options: {
+      view: option.string('View name for query; the first view when omitted.'),
+      context: option.string('Note used as this file in query expressions.'),
+      limit: option.string('Maximum number of rows for query.'),
+    },
+    errors: ['INVALID_BASE', 'INVALID_BASE_QUERY', 'INVALID_BASE_EXPRESSION', 'BASE_EVALUATION_ERROR', 'BASE_VIEW_NOT_FOUND', 'BASE_CONTEXT_NOT_FOUND', 'BASE_INDEX_ERROR', 'AMBIGUOUS_BASE_LINK', 'INVALID_BASE_PROPERTY_TYPES', 'UNSUPPORTED_BASE_PROPERTY_TYPE'],
     async run(args, flags, context) {
       const action = args[0] ?? 'list';
       // Global options remain available, but query options never silently affect discovery.

@@ -1,13 +1,23 @@
 import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../../application/workspace/ports.ts';
-import { value, type ParsedArguments } from '../cli/arguments.ts';
+import type { ParsedArguments } from '../cli/arguments.ts';
+import { value } from '../../application/plugins/command-input.ts';
 import { parseJson } from '../cli/input.ts';
+import { option } from '../../application/plugins/command-metadata.ts';
 
+/** Review controls of every reviewed generator: plan, check drift, or regenerate with approved revisions. */
+export const reviewOptions = {
+  'revisions-from': option.string('JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out).'),
+  plan: option.boolean('Report planned outputs and their status without writing.'),
+  'plan-out': option.string('Write the plan\'s revision manifest to this path.'),
+  check: option.boolean('Fail with a drift code when outputs are missing or differ.'),
+};
 export const libraryGenerationOptions = {
-  project: 'string', library: 'string', 'revisions-from': 'string',
-  plan: 'boolean', 'plan-out': 'string', check: 'boolean',
-} as const;
+  project: option.string('Generate into this project instead of the selected one.'),
+  library: option.string('Definition library directory; defaults to the configured path.'),
+  ...reviewOptions,
+};
 
 /** Output writes use workspace paths; input manifests remain in the selected scope. */
 export function generationOutputPath(path: string, project: { directory: string } | null): string {

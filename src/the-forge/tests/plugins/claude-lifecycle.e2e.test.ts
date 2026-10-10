@@ -20,7 +20,7 @@ async function configuredPlugin(name: string) {
     onload(context) { context.events.warn('native-audit activated'); },
     commands: [{
       id: 'native-audit.run', description: 'Run a native fixture', usage: 'native-audit.run [--mode success|failure]',
-      options: { mode: 'string', config: 'string', secret: 'string', 'read-input': 'boolean', output: 'string' },
+      options: { mode: { type: 'string', description: 'Fixture outcome', enum: ['success', 'failure'] }, config: { type: 'string', description: 'Native config' }, secret: { type: 'string', description: 'Credential' }, 'read-input': { type: 'boolean', description: 'Pass stdin' }, output: { type: 'string', description: 'Output format' } },
       async run(_args, flags, context) {
         const args = [${JSON.stringify(executableScript)}, flags.mode ?? 'success'];
         if (flags.config !== undefined) args.push('--config', flags.config);
