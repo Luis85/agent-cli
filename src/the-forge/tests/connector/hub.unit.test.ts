@@ -80,6 +80,22 @@ describe('secrets and transport', () => {
     expect((await always.request({ method: 'GET', url: 'https://x' })).status).toBe(503);
   });
 
+  it('retries only requests that are safe to repeat: GET, or POST and PATCH marked retry-safe', async () => {
+    let calls = 0;
+    const throttled = new FetchHttpClient({ fetch: async () => { calls++; return new Response('', { status: 429, headers: { 'retry-after': '0' } }); }, sleep: async () => {}, retries: 2 });
+    for (const method of ['POST', 'PATCH'] as const) {
+      calls = 0;
+      expect((await throttled.request({ method, url: 'https://x/create' })).status).toBe(429);
+      expect(calls).toBe(1);
+      calls = 0;
+      await throttled.request({ method, url: 'https://x/read', retry: true });
+      expect(calls).toBe(3);
+    }
+    calls = 0;
+    await throttled.request({ method: 'GET', url: 'https://x', retry: false });
+    expect(calls).toBe(1);
+  });
+
   it('reports timeouts and connection failures by method and URL only', async () => {
     const timeout = new FetchHttpClient({ fetch: () => Promise.reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })), timeoutMs: 5 });
     await expect(timeout.request({ method: 'GET', url: 'https://x/a', headers: { Authorization: 'Basic secret' } })).rejects.toThrow('GET https://x/a timed out after 5 ms.');

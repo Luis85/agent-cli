@@ -12,6 +12,7 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
 import { FetchHttpClient } from '../../src/infrastructure/connectors/http-client.ts';
+import { nodeLockFiles } from '../../src/infrastructure/workspace/lock-files.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
@@ -38,7 +39,7 @@ export async function invocation(root: string, connections: Record<string, unkno
   registerHostEvents(events);
   const env = options.env ?? {};
   registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], {
-    skills: registrySkills(registry), fileDates: nodeFileDates, http: new FetchHttpClient({ sleep: async () => {} }), environment: name => env[name],
+    skills: registrySkills(registry), fileDates: nodeFileDates, locks: nodeLockFiles, http: new FetchHttpClient({ sleep: async () => {} }), environment: name => env[name],
   }, []);
   registry.settings.configure({ connector: { connections } }, new Set(registry.origins.keys()));
   const files = await NodeFiles.at(root);

@@ -36,6 +36,7 @@ import { linksPlugin } from './plugins/links/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
 import { connectorPlugin } from './plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from './plugins/connector-azure-devops/plugin.ts';
+import { nodeLockFiles } from './infrastructure/workspace/lock-files.ts';
 import { FetchHttpClient } from './infrastructure/connectors/http-client.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
@@ -128,7 +129,7 @@ async function run(): Promise<void> {
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
       registerCorePlugins(registry, events, corePlugins, {
-        skills: registrySkills(registry), fileDates: nodeFileDates, http: new FetchHttpClient(), environment: name => process.env[name],
+        skills: registrySkills(registry), fileDates: nodeFileDates, locks: nodeLockFiles, http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = registry.settings.configure(config.plugins.settings, new Set(registry.origins.keys()));

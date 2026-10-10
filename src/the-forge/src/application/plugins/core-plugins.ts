@@ -14,6 +14,15 @@ export interface FileDates { size: number; ctime: Date; mtime: Date }
  */
 export type FileDatesReader = (root: string) => (path: string) => Promise<FileDates>;
 
+/** Releases a held lock file; false when the file no longer carried this holder's token (it is then left alone). */
+export type ReleaseLock = () => Promise<boolean>;
+/**
+ * Exclusive lock files below an absolute command root (`context.root`), by root-relative path: the file records its
+ * holder (pid, host, start time and `command`) like the workspace writer lock. Acquiring a held lock fails at once
+ * with WORKSPACE_BUSY naming the holder; a lock is never removed automatically. Missing parent folders are created.
+ */
+export type LockFiles = (root: string) => (path: string, command: string) => Promise<ReleaseLock>;
+
 /**
  * Kernel services a bundled core plugin's factory receives from the composition root. A core plugin depends only
  * on these application ports and on domain contracts; it never imports kernel infrastructure or presentation, or
@@ -25,6 +34,8 @@ export interface CorePluginHost {
   fileDates: FileDatesReader;
   /** Outbound HTTP for connectors to external services. */
   http: HttpClient;
+  /** Lock files that keep long-running operations (a backlog sync of one connection) apart across processes. */
+  locks: LockFiles;
   /** Reads one environment variable (a connector's credential source); undefined when unset. */
   environment: (name: string) => string | undefined;
 }

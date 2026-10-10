@@ -25,8 +25,8 @@ export function retryAfter(value: string | null, now = Date.now()): number | nul
 }
 
 /**
- * The HTTP port over global `fetch`. Each attempt has its own timeout; 429 and 503 responses are retried with the
- * server's `Retry-After` delay, else exponential backoff from one second, each wait capped by `maxDelayMs`.
+ * The HTTP port over global `fetch`. Each attempt has its own timeout; 429 and 503 responses of retry-safe requests
+ * (GET, or `retry: true`) are retried with the server's `Retry-After` delay, else exponential backoff from one second, each wait capped by `maxDelayMs`.
  * Redirects are returned, never followed, so credentials are sent only to the configured host.
  */
 export class FetchHttpClient implements HttpClient {
@@ -45,9 +45,10 @@ export class FetchHttpClient implements HttpClient {
   }
 
   async request(request: HttpRequest): Promise<HttpResponse> {
+    const retries = (request.retry ?? request.method === 'GET') ? this.retries : 0;
     for (let attempt = 0; ; attempt++) {
       const response = await this.attempt(request);
-      if (!retryable.has(response.status) || attempt >= this.retries) return response;
+      if (!retryable.has(response.status) || attempt >= retries) return response;
       const asked = retryAfter(response.headers['retry-after'] ?? null);
       await this.sleep(Math.min(asked ?? 1000 * 2 ** attempt, this.maxDelayMs));
     }

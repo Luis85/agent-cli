@@ -8,4 +8,5 @@ export const bundledCorePlugins = ['bases', 'skills', 'search', 'links', 'connec
 export const offlineHost = {
   http: { request: () => Promise.reject(new Error('This test makes no HTTP requests.')) },
   environment: () => undefined,
+  locks: () => async () => async () => true,
 };
