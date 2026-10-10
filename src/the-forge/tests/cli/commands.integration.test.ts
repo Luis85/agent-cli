@@ -45,7 +45,7 @@ describe('extracted command boundaries', () => {
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
     const schema = await registry.commands.get('schema')!.run([], {}, context);
     expect(schema).toMatchObject({ commands: expect.arrayContaining([expect.objectContaining({ id: 'custom.run', description: 'Late command', usage: 'custom.run', options: {}, args: [], errors: [],
-      annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false } })]),
+      annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false, destructiveHint: true, idempotentHint: false } })]),
       generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
     expect(await registry.commands.get('make')!.run([], {}, context)).toMatchObject({ generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
   });

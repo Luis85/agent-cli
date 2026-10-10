@@ -4,6 +4,7 @@ import { arity, value } from '../../../application/plugins/command-input.ts';
 import { pathGlob } from '../../../domain/documents/path-glob.ts';
 import { ensure } from '../../../domain/shared/errors.ts';
 import type { MetadataCache } from '../../../application/metadata/ports.ts';
+import { linksOutput } from './output.ts';
 import { deadendNotes, linksBack, linksOut, orphanNotes, unresolvedLinks } from '../application/links.ts';
 
 const actions = ['out', 'back', 'unresolved', 'orphans', 'deadends'] as const;
@@ -18,11 +19,11 @@ export function linksCommand(service: (context: CommandContext) => LinksService)
     usage: 'links out <note> | back <note> | unresolved [--path glob] | orphans [--path glob] | deadends [--path glob]',
     scope: 'project', discovery: false, mutating: false,
     actions: {
-      out: { description: 'Every link, embed, frontmatter link and Canvas file node of one file, with location and resolution.' },
-      back: { description: 'References in other files that resolve to one file.' },
-      unresolved: { description: 'Every missing or ambiguous reference in the vault, with candidates for ambiguous ones.' },
-      orphans: { description: 'Markdown and Canvas notes that no other file links to or embeds, except configured roots.' },
-      deadends: { description: 'Markdown and Canvas notes without a link to another file.' },
+      out: { description: 'Every link, embed, frontmatter link and Canvas file node of one file, with location and resolution.', output: linksOutput.out },
+      back: { description: 'References in other files that resolve to one file.', output: linksOutput.back },
+      unresolved: { description: 'Every missing or ambiguous reference in the vault, with candidates for ambiguous ones.', output: linksOutput.unresolved },
+      orphans: { description: 'Markdown and Canvas notes that no other file links to or embeds, except configured roots.', output: linksOutput.orphans },
+      deadends: { description: 'Markdown and Canvas notes without a link to another file.', output: linksOutput.deadends },
     },
     args: [
       { name: 'action', description: 'out, back, unresolved, orphans or deadends.', required: true, enum: actions },

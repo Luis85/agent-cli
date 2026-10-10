@@ -7,6 +7,7 @@ import type { Command, CommandContext } from '../../application/plugins/registry
 import { arity, integer, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { encodeText } from '../cli/input.ts';
+import { listOutput, readOutput, validateOutput } from './output.ts';
 
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');
@@ -60,7 +61,7 @@ export function documentCommands(): Command[] {
         path: option.string('Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).'),
         limit: option.string('Maximum number of files; a truncated page returns nextCursor.'),
         cursor: option.string('Continue after the page that returned this nextCursor, with the same --kind and --path.'),
-      }, async run(args, flags, { workspace }) {
+      }, output: listOutput, async run(args, flags, { workspace }) {
       arity(args, 0); const kind = value(flags, 'kind'), glob = value(flags, 'path');
       ensure(kind === undefined || fileKinds.includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${fileKinds.join(', ')}.`);
       const matches = glob === undefined ? () => true : pathGlob(glob);
@@ -70,19 +71,19 @@ export function documentCommands(): Command[] {
       return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
     { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body]', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
-      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts }) }, async run(args, flags, { workspace }) {
+      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts }) }, output: readOutput, async run(args, flags, { workspace }) {
       arity(args, 1); const parts = selectedParts(flags, fileKind(args[0]!));
       const result = await workspace.read(args[0]!);
       if (!isRecord(result.document) || result.document.kind !== 'markdown' || parts.has('body')) return result;
       const { body: _body, ...document } = result.document;
       return { ...result, document };
     } },
-    { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.', usage: 'validate <path>', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'], async run(args, _, { workspace }) {
+    { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.', usage: 'validate <path>', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'], output: validateOutput, async run(args, _, { workspace }) {
       arity(args, 1); const file = await workspace.files.read(args[0]!); workspace.codec.validate(file.path, file.bytes);
       const kind = fileKind(file.path);
       return { path: file.path, valid: true, kind, validation: ['markdown', 'canvas', 'base'].includes(kind) ? 'structure' : kind === 'text' ? 'utf8' : 'opaque-bytes' };
     } },
-    { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64]', ...writing, args: [pathArgument('New vault path.')], options: contentOptions,
+    { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64]', ...writing, destructive: false, idempotent: true, args: [pathArgument('New vault path.')], options: contentOptions,
       errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
       arity(args, 1); const path = args[0]!;
       const hasInput = flags.content !== undefined || flags.from !== undefined || flags.stdin === true;

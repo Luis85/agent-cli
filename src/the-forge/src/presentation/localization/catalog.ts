@@ -1,6 +1,6 @@
 export const germanCommands = {
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
-  schema: 'Maschinenlesbarer Katalog der verfügbaren Funktionen.',
+  schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
   project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
