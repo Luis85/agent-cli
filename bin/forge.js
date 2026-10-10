@@ -148,7 +148,7 @@ const errorCatalog = {
   DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
   PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix user plugin command, generator, skill and event ids, and the service ids of every plugin, with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle, and do not declare the options make owns (out, plan, plan-out, check, revisions-from) on a generator."),
   PLUGIN_SERVICE_MISSING: entry("input", "A plugin needs a required or optional service that no enabled, available plugin provides, or uses one it did not declare.", "Enable the plugin that provides the service named in error.details.service and make it available (plugins lists providers and states), or declare the service in the plugin's requires or optional."),
-  PLUGIN_UNAVAILABLE: entry("input", "The command or generator belongs to a plugin that is unavailable in this invocation.", "error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, or enable the disabled provider it names (remove it from plugins.disabled), then rerun. Run plugins to see each plugin's state and reason."),
+  PLUGIN_UNAVAILABLE: entry("input", "The command or generator belongs to, or needs a service of, a plugin that is disabled or unavailable.", "error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, or enable the disabled provider it names (remove it from plugins.disabled), then rerun. Run plugins to see each plugin's state and reason."),
   PLUGIN_SERVICE_CYCLE: entry("input", "Plugin service requirements form a cycle.", "Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
@@ -1155,6 +1155,7 @@ function validateJsonValue(schema2, value2, path) {
   const completed2 = visit2(schema2, value2 === void 0 && schema2.default !== void 0 ? copy$1(schema2.default) : value2, path);
   return { value: completed2, issues };
 }
+const unknownActionCodes = ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
 const option$1 = {
   string: (description2, extra = {}) => ({ type: "string", description: description2, ...extra }),
   boolean: (description2, extra = {}) => ({ type: "boolean", description: description2, ...extra })
@@ -1179,7 +1180,15 @@ function commandOptions(command2, args) {
   return { ...command2.options, ...selectedAction(command2, args)?.options };
 }
 function hasActionOptions(command2) {
-  return Object.values(command2.actions ?? {}).some((action2) => Object.keys(action2.options ?? {}).length > 0);
+  return command2.unknownAction !== void 0 || Object.values(command2.actions ?? {}).some((action2) => Object.keys(action2.options ?? {}).length > 0);
+}
+function ensureKnownAction(command2, args) {
+  const action2 = args[0];
+  if (command2.unknownAction === void 0 || action2 === void 0 || action2.startsWith("-")) return;
+  if (command2.actions === void 0 || !Object.hasOwn(command2.actions, action2)) unknownAction(command2.unknownAction, action2);
+}
+function unknownAction(code2, action2) {
+  throw forgeError(code2, action2);
 }
 function optionTypes(options2) {
   return Object.fromEntries(Object.entries(options2 ?? {}).map(([key, schema2]) => [key, schema2.type]));
@@ -1290,6 +1299,7 @@ function validateCommandMetadata(command2) {
     validateMode(action2, `${where} action ${id2}`, { ...options2, ...action2.options });
   }
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where} defaultAction must name a declared action.`);
+  ensure(command2.unknownAction === void 0 || unknownActionCodes.includes(command2.unknownAction) && isRecord(command2.actions), "INVALID_PLUGIN", `${where} unknownAction must be ${unknownActionCodes.join(" or ")} for a command with actions.`);
   ensure(command2.output === void 0 || schemaIssues(command2.output).length === 0, "INVALID_PLUGIN", `${where} output must be a supported JSON Schema: ${schemaIssues(command2.output).join("; ")}`);
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }
@@ -1586,9 +1596,82 @@ function relativePathIssues(pluginId, settings2, keys2) {
       vaultPath(relativePathSetting(settings2[key]));
       return [];
     } catch {
-      return [`plugins.settings.${pluginId}.${key}: Must be a contained workspace-relative path.`];
+      return [`plugins.settings.${pluginId}.${key}: must be a contained workspace-relative path`];
     }
   });
+}
+const globalOptions = {
+  root: "string",
+  lang: "string",
+  events: "string",
+  json: "boolean",
+  "no-json": "boolean",
+  "dry-run": "boolean",
+  "no-dry-run": "boolean",
+  "no-plugins": "boolean",
+  help: "boolean",
+  version: "boolean"
+};
+function value$3(flags, key, required2 = false) {
+  const result = flags[key];
+  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
+  return typeof result === "string" ? result : void 0;
+}
+function integer$1(flags, key, minimum = 0) {
+  const text2 = value$3(flags, key);
+  if (text2 === void 0) return void 0;
+  ensure(/^\d+$/.test(text2) && Number.isSafeInteger(Number(text2)) && Number(text2) >= minimum, "INVALID_ARGUMENT", `--${key} must be an integer of at least ${minimum}.`);
+  return Number(text2);
+}
+function arity(args, min, max = min) {
+  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
+}
+async function readInputBytes(flags, context, message2) {
+  const from = value$3(flags, "from"), content2 = value$3(flags, "content");
+  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message2);
+  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : new TextEncoder().encode(content2);
+}
+function parseJson(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
+  }
+}
+const reviewOptions = {
+  "revisions-from": option$1.string("JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out)."),
+  plan: option$1.boolean("Report planned outputs and their status without writing."),
+  "plan-out": option$1.string("Write the plan's revision manifest to this path."),
+  check: option$1.boolean("Fail with a drift code when outputs are missing or differ.")
+};
+async function generationControls(flags, files) {
+  const revisionsPath = value$3(flags, "revisions-from"), manifestPath2 = value$3(flags, "plan-out");
+  const planning = flags.plan === true || manifestPath2 !== void 0;
+  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
+  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
+  let revisions;
+  if (revisionsPath !== void 0) {
+    const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes);
+    let parsed2;
+    try {
+      parsed2 = JSON.parse(text2);
+    } catch {
+      throw forgeError("INVALID_JSON", "Expected valid JSON input.");
+    }
+    ensure(isRecord(parsed2) && Object.values(parsed2).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
+    revisions = parsed2;
+  }
+  const mode = flags.check ? "check" : planning ? "plan" : "generate";
+  return { mode, manifestPath: manifestPath2, revisions };
+}
+const libraryGenerationOptions = {
+  project: option$1.string("Generate into this project instead of the selected one."),
+  library: option$1.string("Definition library directory; defaults to the configured path."),
+  ...reviewOptions
+};
+function generationOutputPath(path, project2) {
+  const relative = vaultPath(path);
+  return project2 ? `${project2.directory}/${relative}` : relative;
 }
 const hostGeneratorOptions = ["out", "plan", "plan-out", "check", "revisions-from"];
 const appVersion = [0, 1, 0];
@@ -1638,7 +1721,8 @@ class Registry {
     const commands2 = new Map(this.commands), generators = new Map(this.generators), skills2 = new Map(this.skills);
     for (const command2 of plugin2.commands ?? []) this.add(commands2, command2);
     for (const generator of plugin2.generators ?? []) {
-      const owned = Object.keys(generator.options ?? {}).filter((key) => hostGeneratorOptions.includes(key));
+      const hostReview = generator.review === true ? reviewOptions : {};
+      const owned = Object.entries(generator.options ?? {}).filter(([key, schema2]) => hostGeneratorOptions.includes(key) && hostReview[key] !== schema2).map(([key]) => key);
       ensure(owned.length === 0, "PLUGIN_NAMESPACE", `Generator ${generator.id} cannot declare --${owned.join(", --")}; make owns --${hostGeneratorOptions.join(", --")} for every generator.`);
       this.add(generators, generator);
     }
@@ -19210,7 +19294,7 @@ function frontmatterFromMarkdown(options2) {
     const matter2 = matters[index2];
     enter[matter2.type] = opener(matter2);
     exit2[matter2.type] = close;
-    exit2[matter2.type + "Value"] = value$3;
+    exit2[matter2.type + "Value"] = value$2;
   }
   return { enter, exit: exit2 };
 }
@@ -19227,7 +19311,7 @@ function close(token) {
   this.exit(token);
   node2.value = data.replace(/^(\r?\n|\r)|(\r?\n|\r)$/g, "");
 }
-function value$3(token) {
+function value$2(token) {
   this.config.enter.data.call(this, token);
   this.config.exit.data.call(this, token);
 }
@@ -19639,44 +19723,6 @@ function registerCorePlugins(registry2, events2, plugins, host, disabled) {
 }
 function registrySkills(registry2) {
   return { list: () => [...registry2.skills.values()], get: (id2) => registry2.skills.get(id2) };
-}
-const globalOptions = {
-  root: "string",
-  lang: "string",
-  events: "string",
-  json: "boolean",
-  "no-json": "boolean",
-  "dry-run": "boolean",
-  "no-dry-run": "boolean",
-  "no-plugins": "boolean",
-  help: "boolean",
-  version: "boolean"
-};
-function value$2(flags, key, required2 = false) {
-  const result = flags[key];
-  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
-  return typeof result === "string" ? result : void 0;
-}
-function integer$1(flags, key, minimum = 0) {
-  const text2 = value$2(flags, key);
-  if (text2 === void 0) return void 0;
-  ensure(/^\d+$/.test(text2) && Number.isSafeInteger(Number(text2)) && Number(text2) >= minimum, "INVALID_ARGUMENT", `--${key} must be an integer of at least ${minimum}.`);
-  return Number(text2);
-}
-function arity(args, min, max = min) {
-  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
-}
-async function readInputBytes(flags, context, message2) {
-  const from = value$2(flags, "from"), content2 = value$2(flags, "content");
-  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message2);
-  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : new TextEncoder().encode(content2);
-}
-function parseJson(text2) {
-  try {
-    return JSON.parse(text2);
-  } catch {
-    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
-  }
 }
 class Bases {
   constructor(engine) {
@@ -26310,8 +26356,8 @@ function basesCommand(service) {
         const document2 = context.workspace.codec.inspect(path, file.bytes);
         return { path, revision: file.revision, definition: document2.data, views: document2.data.views ?? [], repository: { path, viewSelection: "name; first view when omitted" } };
       }
-      const limit = value$2(flags, "limit");
-      const result = await service(context).query(path, { view: value$2(flags, "view"), context: value$2(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
+      const limit = value$3(flags, "limit");
+      const result = await service(context).query(path, { view: value$3(flags, "view"), context: value$3(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
       return { ...result, repository: { path: result.path, view: result.view }, scope: context.root };
     }
   };
@@ -26394,7 +26440,7 @@ function skillsCommand(skills2) {
       }
       ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
       arity(args, 1);
-      const directory = value$2(flags, "out") ?? ".agents/skills";
+      const directory = value$3(flags, "out") ?? ".agents/skills";
       return workspace2.write(skills2.list().map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: new TextEncoder().encode(skill.content) })));
     }
   };
@@ -26888,14 +26934,14 @@ function searchCommand(service) {
     errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
     async run(args, flags, context) {
       arity(args, 1);
-      const scope2 = value$2(flags, "in") ?? "all", kind = value$2(flags, "kind"), property = value$2(flags, "property");
+      const scope2 = value$3(flags, "in") ?? "all", kind = value$3(flags, "kind"), property = value$3(flags, "property");
       ensure(searchScopes.includes(scope2), "INVALID_ARGUMENT", `--in must be one of: ${searchScopes.join(", ")}.`);
       ensure(kind === void 0 || searchKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${searchKinds.join(", ")}; search never reads attachments.`);
       const filter = property === void 0 ? void 0 : propertyFilter(property);
       ensure(property === void 0 || filter, "INVALID_ARGUMENT", "--property must be key or key=value with a nonempty key.");
       const contextLines = integer$1(flags, "context") ?? 0;
       ensure(contextLines <= maxContextLines, "INVALID_ARGUMENT", `--context must be at most ${maxContextLines}.`);
-      const tag = value$2(flags, "tag");
+      const tag = value$3(flags, "tag");
       ensure(tag === void 0 || tag.replace(/^#/, "").length > 0, "INVALID_ARGUMENT", "--tag must name a tag.");
       const query = {
         pattern: args[0],
@@ -26905,11 +26951,11 @@ function searchCommand(service) {
         skipCode: flags["skip-code"] === true,
         context: contextLines,
         ...kind === void 0 ? {} : { kind },
-        ...value$2(flags, "path") === void 0 ? {} : { path: value$2(flags, "path") },
+        ...value$3(flags, "path") === void 0 ? {} : { path: value$3(flags, "path") },
         ...tag === void 0 ? {} : { tag },
         ...filter === void 0 ? {} : { property: filter }
       };
-      const cursor = value$2(flags, "cursor");
+      const cursor = value$3(flags, "cursor");
       return service(context)(query, { limit: integer$1(flags, "limit", 1) ?? defaultSearchLimit, ...cursor === void 0 ? {} : { cursor } });
     }
   };
@@ -27051,7 +27097,7 @@ function linksCommand(service) {
         return action2 === "out" ? linksOut(cache2, args[1]) : linksBack(cache2, args[1]);
       }
       arity(args, 1);
-      const glob = value$2(flags, "path");
+      const glob = value$3(flags, "path");
       const include = glob === void 0 ? () => true : pathGlob(glob);
       const cache = await links.cache();
       if (action2 === "unresolved") return unresolvedLinks(cache, include);
@@ -36003,40 +36049,6 @@ ${body}`;
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
 const content$1 = "---\nname: forge-agents\ndescription: Maintain docker-agent agent definitions in agents/*.yaml and generate, check and import Claude Code agents from them.\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope's `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file's `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent's `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent's semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `\"16\"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description \"Reviews changes\" --instruction \"...\" --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files' indentation and key order. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge's Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n";
 const agentsSkill = { id: "forge-agents", content: content$1 };
-const reviewOptions = {
-  "revisions-from": option$1.string("JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out)."),
-  plan: option$1.boolean("Report planned outputs and their status without writing."),
-  "plan-out": option$1.string("Write the plan's revision manifest to this path."),
-  check: option$1.boolean("Fail with a drift code when outputs are missing or differ.")
-};
-async function generationControls(flags, files) {
-  const revisionsPath = value$2(flags, "revisions-from"), manifestPath2 = value$2(flags, "plan-out");
-  const planning = flags.plan === true || manifestPath2 !== void 0;
-  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
-  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
-  let revisions;
-  if (revisionsPath !== void 0) {
-    const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes);
-    let parsed2;
-    try {
-      parsed2 = JSON.parse(text2);
-    } catch {
-      throw forgeError("INVALID_JSON", "Expected valid JSON input.");
-    }
-    ensure(isRecord(parsed2) && Object.values(parsed2).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
-    revisions = parsed2;
-  }
-  const mode = flags.check ? "check" : planning ? "plan" : "generate";
-  return { mode, manifestPath: manifestPath2, revisions };
-}
-const libraryGenerationOptions = {
-  project: option$1.string("Generate into this project instead of the selected one."),
-  library: option$1.string("Definition library directory; defaults to the configured path.")
-};
-function generationOutputPath(path, project2) {
-  const relative = vaultPath(path);
-  return project2 ? `${project2.directory}/${relative}` : relative;
-}
 const actions$3 = ["list", "inspect", "validate", "create", "import", "generate"];
 const options$1 = {
   file: option$1.string("create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file."),
@@ -36067,12 +36079,12 @@ const accepted$1 = {
   generate: ["target", "file", "agent", "mcp", "hooks", "settings", "allow-broad-permissions", "rename-conflicts", "commands", "model-style", ...Object.keys(reviewOptions)]
 };
 function choice(flags, key, allowed, fallback) {
-  const selected2 = value$2(flags, key) ?? fallback;
+  const selected2 = value$3(flags, key) ?? fallback;
   ensure(allowed.includes(selected2), "INVALID_ARGUMENT", `--${key} must be one of: ${allowed.join(", ")}.`);
   return selected2;
 }
 function toolsets(flags) {
-  const list2 = value$2(flags, "toolset")?.split(",").map((type2) => type2.trim()).filter((type2) => type2 !== "");
+  const list2 = value$3(flags, "toolset")?.split(",").map((type2) => type2.trim()).filter((type2) => type2 !== "");
   for (const type2 of list2 ?? []) ensure(simpleToolsets.includes(type2), "INVALID_ARGUMENT", `--toolset accepts ${simpleToolsets.join(", ")}; add ${type2} toolsets by editing the file, since they need further settings.`);
   return list2;
 }
@@ -36118,7 +36130,7 @@ function agentsCommand(services2) {
       }
       if (action2 === "create") {
         arity(args, 2);
-        const [file2, model2, description2, instruction, ifMatch2, types2] = [value$2(flags, "file"), value$2(flags, "model"), value$2(flags, "description"), value$2(flags, "instruction"), value$2(flags, "if-match"), toolsets(flags)];
+        const [file2, model2, description2, instruction, ifMatch2, types2] = [value$3(flags, "file"), value$3(flags, "model"), value$3(flags, "description"), value$3(flags, "instruction"), value$3(flags, "if-match"), toolsets(flags)];
         const template = flags["from-template"] === void 0 ? void 0 : choice(flags, "from-template", agentTemplates, "basic");
         ensure(template === void 0 || types2 === void 0, "INVALID_ARGUMENT", "--from-template sets the toolsets; omit --toolset or edit the YAML afterwards.");
         return agents.create({
@@ -36134,16 +36146,16 @@ function agentsCommand(services2) {
       }
       if (action2 === "import") {
         arity(args, 2);
-        ensure(value$2(flags, "from", true) === "claude", "INVALID_ARGUMENT", "--from must be claude.");
-        const file2 = value$2(flags, "file"), ifMatch2 = value$2(flags, "if-match");
+        ensure(value$3(flags, "from", true) === "claude", "INVALID_ARGUMENT", "--from must be claude.");
+        const file2 = value$3(flags, "file"), ifMatch2 = value$3(flags, "if-match");
         return agents.importClaude(args[1], { ...file2 ? { file: file2 } : {}, ...ifMatch2 ? { ifMatch: ifMatch2 } : {} });
       }
       arity(args, 1);
-      ensure(value$2(flags, "target", true) === "claude", "INVALID_ARGUMENT", "--target must be claude.");
+      ensure(value$3(flags, "target", true) === "claude", "INVALID_ARGUMENT", "--target must be claude.");
       ensure(flags["allow-broad-permissions"] === void 0 || flags.settings === true, "INVALID_ARGUMENT", "--allow-broad-permissions applies to the rules --settings writes; pass --settings too.");
-      ensure(flags["rename-conflicts"] === void 0 || value$2(flags, "mcp") === "project", "INVALID_ARGUMENT", "--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.");
+      ensure(flags["rename-conflicts"] === void 0 || value$3(flags, "mcp") === "project", "INVALID_ARGUMENT", "--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.");
       const controls = await generationControls(flags, context.workspace.files);
-      const file = value$2(flags, "file"), agent = value$2(flags, "agent");
+      const file = value$3(flags, "file"), agent = value$3(flags, "agent");
       return agents.generate({
         ...file ? { file } : {},
         ...agent ? { agent } : {},
@@ -39347,7 +39359,7 @@ function syncAccepted(sub) {
 }
 function syncAction(rest, flags, context, services2, selection2) {
   const [sub, ...args] = rest;
-  const direction = value$2(flags, "direction") ?? "both";
+  const direction = value$3(flags, "direction") ?? "both";
   ensure(["push", "pull", "both"].includes(direction), "INVALID_ARGUMENT", "--direction must be push, pull or both.");
   if (sub === void 0) return runSync(context, services2, { ...selection2, direction, mode: "sync" });
   if (sub === "status") {
@@ -39356,9 +39368,9 @@ function syncAction(rest, flags, context, services2, selection2) {
   }
   ensure(sub === "resolve", "INVALID_ARGUMENT", "Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.");
   arity(args, 1);
-  const take = value$2(flags, "take", true);
+  const take = value$3(flags, "take", true);
   ensure(take === "local" || take === "remote", "INVALID_ARGUMENT", "--take must be local or remote.");
-  const fields2 = value$2(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
+  const fields2 = value$3(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
   ensure(fields2 === null || fields2.length > 0, "INVALID_ARGUMENT", "--field needs at least one field name.");
   return runSync(context, services2, { ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
 }
@@ -39417,7 +39429,7 @@ const options = {
 };
 const read = { mutating: false };
 function date$1(flags, key) {
-  const text2 = value$2(flags, key);
+  const text2 = value$3(flags, key);
   if (text2 === void 0) return void 0;
   const parsed2 = readDate(text2).value;
   ensure(parsed2 !== null && /^\d{4}-\d{2}-\d{2}$/.test(text2.trim()), "INVALID_ARGUMENT", `--${key} must be a date in YYYY-MM-DD form.`);
@@ -39425,8 +39437,8 @@ function date$1(flags, key) {
 }
 function selected(flags, context) {
   const settings2 = context.settings ?? {};
-  const base = value$2(flags, "base") ?? (typeof settings2.base === "string" ? settings2.base : void 0);
-  const view = value$2(flags, "view") ?? (value$2(flags, "base") === void 0 && typeof settings2.view === "string" ? settings2.view : void 0);
+  const base = value$3(flags, "base") ?? (typeof settings2.base === "string" ? settings2.base : void 0);
+  const view = value$3(flags, "view") ?? (value$3(flags, "base") === void 0 && typeof settings2.view === "string" ? settings2.view : void 0);
   const today2 = date$1(flags, "today");
   return { ...base === void 0 ? {} : { base }, ...view === void 0 ? {} : { view }, ...today2 === void 0 ? {} : { today: today2 } };
 }
@@ -39467,15 +39479,15 @@ function backlogCommand(ports2) {
       only(flags, `backlog ${action2}`, action2 === "sync" ? syncAccepted(rest[0]) : accepted[action2]);
       if (action2 === "init") {
         arity(rest, 0);
-        return initBacklog(context, value$2(flags, "folder"));
+        return initBacklog(context, value$3(flags, "folder"));
       }
       const { bases, ports: host, sync } = ports2(context);
       if (action2 === "sync") {
         const today2 = date$1(flags, "today");
-        return syncAction(rest, flags, context, sync(), { ...value$2(flags, "base") === void 0 ? {} : { base: value$2(flags, "base") }, ...value$2(flags, "view") === void 0 ? {} : { view: value$2(flags, "view") }, ...today2 ? { today: today2 } : {} });
+        return syncAction(rest, flags, context, sync(), { ...value$3(flags, "base") === void 0 ? {} : { base: value$3(flags, "base") }, ...value$3(flags, "view") === void 0 ? {} : { view: value$3(flags, "view") }, ...today2 ? { today: today2 } : {} });
       }
       const session = await openBacklog(context, bases, host, selected(flags, context));
-      const ifMatch2 = value$2(flags, "if-match");
+      const ifMatch2 = value$3(flags, "if-match");
       switch (action2) {
         case "list":
           arity(rest, 0);
@@ -39494,14 +39506,14 @@ function backlogCommand(ports2) {
           return check$1(session);
         case "add": {
           arity(rest, 2);
-          const tags2 = value$2(flags, "tags");
-          return addItem(session, { type: rest[0], title: rest[1], parent: value$2(flags, "parent"), folder: value$2(flags, "folder"), state: value$2(flags, "state"), iteration: value$2(flags, "iteration"), release: value$2(flags, "release"), assignee: value$2(flags, "assignee"), ...tags2 === void 0 ? {} : { tags: [tags2] } });
+          const tags2 = value$3(flags, "tags");
+          return addItem(session, { type: rest[0], title: rest[1], parent: value$3(flags, "parent"), folder: value$3(flags, "folder"), state: value$3(flags, "state"), iteration: value$3(flags, "iteration"), release: value$3(flags, "release"), assignee: value$3(flags, "assignee"), ...tags2 === void 0 ? {} : { tags: [tags2] } });
         }
         case "move": {
           arity(rest, 1);
           const placements = ["before", "after", "first", "last"].filter((key) => flags[key] !== void 0);
           ensure(placements.length <= 1 && !(flags.top === true && flags.parent !== void 0), "INVALID_ARGUMENT", "Pass at most one of --before, --after, --first, --last, and either --parent or --top.");
-          return moveItem(session, { item: rest[0], parent: value$2(flags, "parent"), top: flags.top === true, before: value$2(flags, "before"), after: value$2(flags, "after"), first: flags.first === true, last: flags.last === true, ifMatch: ifMatch2 });
+          return moveItem(session, { item: rest[0], parent: value$3(flags, "parent"), top: flags.top === true, before: value$3(flags, "before"), after: value$3(flags, "after"), first: flags.first === true, last: flags.last === true, ifMatch: ifMatch2 });
         }
         case "ranks":
           arity(rest, 1);
@@ -39511,12 +39523,12 @@ function backlogCommand(ports2) {
           arity(rest, 1);
           const fields2 = ["state", "horizon", "priority", "risk", "start", "due", "assignee", "type"];
           ensure(fields2.some((key) => flags[key] !== void 0), "MISSING_ARGUMENT", `backlog set needs at least one of --${fields2.join(", --")}.`);
-          return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields2.flatMap((key) => value$2(flags, key) === void 0 ? [] : [[key, value$2(flags, key)]])) });
+          return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields2.flatMap((key) => value$3(flags, key) === void 0 ? [] : [[key, value$3(flags, key)]])) });
         }
         case "depend":
         case "undepend": {
           arity(rest, 1);
-          const on = value$2(flags, "on", true);
+          const on = value$3(flags, "on", true);
           return action2 === "depend" ? depend(session, rest[0], on, ifMatch2) : undepend(session, rest[0], on, ifMatch2);
         }
         case "iteration":
@@ -39536,7 +39548,7 @@ function iteration(session, rest, flags, ifMatch2) {
     arity(args, 0);
     only(flags, "backlog iteration add", ["name", "goal", "start", "due", "length"]);
     const length = integer$1(flags, "length", 1);
-    return addIteration(session, { name: value$2(flags, "name"), goal: value$2(flags, "goal"), start: value$2(flags, "start"), due: value$2(flags, "due"), ...length === void 0 ? {} : { length } });
+    return addIteration(session, { name: value$3(flags, "name"), goal: value$3(flags, "goal"), start: value$3(flags, "start"), due: value$3(flags, "due"), ...length === void 0 ? {} : { length } });
   }
   ensure(sub === "assign", "INVALID_ARGUMENT", "Use backlog iteration add or backlog iteration assign <item> <iteration>.");
   arity(args, 2);
@@ -39551,7 +39563,7 @@ function release(session, bases, rest, flags, ifMatch2) {
   switch (sub) {
     case "add":
       arity(args, 1);
-      return addRelease(session, args[0], { version: value$2(flags, "release-version"), targetDate: value$2(flags, "target-date"), status: value$2(flags, "status"), description: value$2(flags, "description") });
+      return addRelease(session, args[0], { version: value$3(flags, "release-version"), targetDate: value$3(flags, "target-date"), status: value$3(flags, "status"), description: value$3(flags, "description") });
     case "join":
       arity(args, 2);
       return joinRelease(session, args[0], args[1], ifMatch2);
@@ -40391,16 +40403,16 @@ function documentGenerator(templates2) {
     },
     async run({ name: title2, flags, context }) {
       ensure(title2.trim() === title2 && title2.length > 0 && !/[/\\:]/.test(title2), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
-      const template = value$2(flags, "template", true);
+      const template = value$3(flags, "template", true);
       ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
       const source2 = await context.environment.files.read(`bin/templates/${vaultPath(template)}`);
-      const inline2 = value$2(flags, "values"), from = value$2(flags, "values-from");
+      const inline2 = value$3(flags, "values"), from = value$3(flags, "values-from");
       ensure(inline2 === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
       const data = from === void 0 ? parseJson(inline2 ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
       ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
       const settings2 = context.settings ?? {};
-      const bytes = templates2(context).render(source2.bytes, { title: title2, values: data, date: value$2(flags, "date"), dateFormat: settings2.dateFormat, timeFormat: settings2.timeFormat });
-      const path = `${value$2(flags, "out") ?? "notes"}/${title2}.md`;
+      const bytes = templates2(context).render(source2.bytes, { title: title2, values: data, date: value$3(flags, "date"), dateFormat: settings2.dateFormat, timeFormat: settings2.timeFormat });
+      const path = `${value$3(flags, "out") ?? "notes"}/${title2}.md`;
       const result = await context.workspace.write([{ path, bytes }]);
       return { generator: "document", template: source2.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
     }
@@ -48119,8 +48131,8 @@ function componentsCommand(services2) {
     errors: ["INVALID_UI", "INVALID_UI_LIBRARY", "DUPLICATE_UI_COMPONENT", "UNKNOWN_UI_COMPONENT", "CYCLIC_UI_COMPONENT", "UNKNOWN_INTERACTION", "CONFLICT"],
     async run(args, flags, context) {
       const { settings: settings2, components: library } = services2(context);
-      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.components;
-      const interactionDirectory = value$2(flags, "interactions-library") ?? settings2.interactions;
+      const action2 = args[0] ?? "list", directory = value$3(flags, "library") ?? settings2.components;
+      const interactionDirectory = value$3(flags, "interactions-library") ?? settings2.interactions;
       ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
       ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
       ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
@@ -48150,15 +48162,15 @@ function componentsCommand(services2) {
       }
       if (action2 === "create") {
         arity(args, 2);
-        return library.create(directory, args[1], value$2(flags, "tag") ?? "div", interactionDirectory);
+        return library.create(directory, args[1], value$3(flags, "tag") ?? "div", interactionDirectory);
       }
       if (action2 === "import") {
         arity(args, 1);
-        return library.import(value$2(flags, "from") ?? settings2.componentImports, directory, interactionDirectory);
+        return library.import(value$3(flags, "from") ?? settings2.componentImports, directory, interactionDirectory);
       }
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
       arity(args, 1);
-      return library.export(directory, value$2(flags, "out") ?? settings2.componentExports, interactionDirectory);
+      return library.export(directory, value$3(flags, "out") ?? settings2.componentExports, interactionDirectory);
     }
   };
 }
@@ -48172,7 +48184,7 @@ function interactionsCommand(services2) {
     errors: ["INVALID_INTERACTION", "DUPLICATE_INTERACTION", "UNKNOWN_INTERACTION", "CONFLICT"],
     async run(args, flags, context) {
       const { settings: settings2, interactions: library } = services2(context);
-      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.interactions;
+      const action2 = args[0] ?? "list", directory = value$3(flags, "library") ?? settings2.interactions;
       ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires interactions import.");
       ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires interactions export.");
       ensure(flags.event === void 0 || action2 === "create", "INVALID_ARGUMENT", "--event requires interactions create.");
@@ -48208,17 +48220,17 @@ function interactionsCommand(services2) {
       }
       if (action2 === "create") {
         arity(args, 2);
-        const event = value$2(flags, "event");
+        const event = value$3(flags, "event");
         ensure(event === void 0 || interactionEvents.includes(event), "INVALID_ARGUMENT", `--event must be one of: ${interactionEvents.join(", ")}.`);
         return library.create(directory, args[1], event);
       }
       if (action2 === "import") {
         arity(args, 1);
-        return library.import(value$2(flags, "from") ?? settings2.interactionImports, directory);
+        return library.import(value$3(flags, "from") ?? settings2.interactionImports, directory);
       }
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
       arity(args, 1);
-      return library.export(directory, value$2(flags, "out") ?? settings2.interactionExports);
+      return library.export(directory, value$3(flags, "out") ?? settings2.interactionExports);
     }
   };
 }
@@ -48231,20 +48243,20 @@ const uiGenerationOptions = {
 };
 async function makeUi(kind, id2, flags, context, services2) {
   const ui = services2(context), settings2 = ui.settings;
-  const framework = value$2(flags, "framework") ?? settings2.framework;
+  const framework = value$3(flags, "framework") ?? settings2.framework;
   ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `--framework must be one of: ${uiFrameworks.join(", ")}.`);
   const storybook2 = kind === "stories" || flags.stories === true;
   ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
   ensure(kind !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
   const scoped = (path) => generationOutputPath(path, context.project);
-  const directory = value$2(flags, "library") ?? settings2.components;
+  const directory = value$3(flags, "library") ?? settings2.components;
   const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
   const options2 = {
     component: id2,
     framework,
-    interactionDirectory: value$2(flags, "interactions-library") ?? settings2.interactions,
-    outputDirectory: scoped(value$2(flags, "out") ?? settings2.output),
-    ...storybook2 ? { storiesDirectory: scoped(value$2(flags, "stories-out") ?? settings2.stories) } : {},
+    interactionDirectory: value$3(flags, "interactions-library") ?? settings2.interactions,
+    outputDirectory: scoped(value$3(flags, "out") ?? settings2.output),
+    ...storybook2 ? { storiesDirectory: scoped(value$3(flags, "stories-out") ?? settings2.stories) } : {},
     storybook: storybook2,
     storiesOnly: kind === "stories",
     ...revisions ? { revisions } : {}
@@ -48748,12 +48760,12 @@ class TypeScriptDataSourceRenderer {
 async function makeDataSource(id2, flags, context, services2) {
   const data = services2(context), settings2 = data.settings;
   const scoped = (path) => generationOutputPath(path, context.project);
-  const directory = value$2(flags, "library") ?? settings2.library;
+  const directory = value$3(flags, "library") ?? settings2.library;
   const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
   const options2 = {
     source: id2,
-    outputDirectory: scoped(value$2(flags, "out") ?? settings2.output),
-    testDataDirectory: scoped(value$2(flags, "test-data-out") ?? settings2.fixtures),
+    outputDirectory: scoped(value$3(flags, "out") ?? settings2.output),
+    testDataDirectory: scoped(value$3(flags, "test-data-out") ?? settings2.fixtures),
     ...revisions ? { revisions } : {}
   };
   if (mode !== "generate") {
@@ -48783,7 +48795,7 @@ function dataSourcesCommand(services2) {
     errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "CONFLICT"],
     async run(args, flags, context) {
       const { settings: settings2, library } = services2(context);
-      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.library;
+      const action2 = args[0] ?? "list", directory = value$3(flags, "library") ?? settings2.library;
       ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
       ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
       ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
@@ -48812,17 +48824,17 @@ function dataSourcesCommand(services2) {
       }
       if (action2 === "create") {
         arity(args, 2);
-        const kind = value$2(flags, "kind") ?? "rest";
+        const kind = value$3(flags, "kind") ?? "rest";
         ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
         return library.create(directory, args[1], kind);
       }
       if (action2 === "import") {
         arity(args, 1);
-        return library.import(value$2(flags, "from") ?? settings2.imports, directory);
+        return library.import(value$3(flags, "from") ?? settings2.imports, directory);
       }
       ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
       arity(args, 1);
-      return library.export(directory, value$2(flags, "out") ?? settings2.exports);
+      return library.export(directory, value$3(flags, "out") ?? settings2.exports);
     }
   };
 }
@@ -49376,22 +49388,22 @@ async function claudeBytes(flags, context) {
 const claudeInputOptions = ["from", "content", "stdin"];
 const claudeScopeOptions = ["scope", "directory", "claude-dir"];
 async function agentSource(flags, context, services2) {
-  const metadata2 = value$2(flags, "metadata");
+  const metadata2 = value$3(flags, "metadata");
   if (metadata2 === void 0) {
     ensure(flags.prompt === void 0, "INVALID_INPUT", "--prompt requires --metadata.");
     return claudeInput(flags, context);
   }
   ensure(claudeInputOptions.every((key) => flags[key] === void 0), "INVALID_INPUT", "--metadata/--prompt cannot be combined with file or text input.");
-  return services2.agentCodec.render({ metadata: parseJson(metadata2), prompt: value$2(flags, "prompt", true) });
+  return services2.agentCodec.render({ metadata: parseJson(metadata2), prompt: value$3(flags, "prompt", true) });
 }
 async function exportAgent(agent, flags, context, services2) {
   const content2 = services2.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt });
   const result = { ...agent, content: content2, session: { [String(agent.metadata.name)]: { ...agent.metadata, prompt: agent.prompt } } };
-  const out2 = value$2(flags, "out");
+  const out2 = value$3(flags, "out");
   ensure(out2 !== void 0 || flags["if-match"] === void 0, "INVALID_ARGUMENT", "--if-match requires --out for agent export.");
   if (out2 === void 0) return result;
   ensure(out2.endsWith(".md"), "INVALID_ARGUMENT", "Agent exports use a .md destination.");
-  const written = await context.workspace.write([{ path: out2, bytes: new TextEncoder().encode(content2), expectedRevision: value$2(flags, "if-match") }]);
+  const written = await context.workspace.write([{ path: out2, bytes: new TextEncoder().encode(content2), expectedRevision: value$3(flags, "if-match") }]);
   return { ...result, outputRoot: context.root, ...written, ...context.workspace.dryRun ? { preview: [{ path: out2, content: content2 }] } : {} };
 }
 async function agentCommands(args, flags, context, services2) {
@@ -49421,15 +49433,15 @@ async function agentCommands(args, flags, context, services2) {
         result = await agents.create(id2, await agentSource(flags, context, services2));
         break;
       case "update":
-        result = await agents.update(id2, await agentSource(flags, context, services2), value$2(flags, "if-match", true));
+        result = await agents.update(id2, await agentSource(flags, context, services2), value$3(flags, "if-match", true));
         break;
       case "remove":
-        result = await agents.remove(id2, value$2(flags, "if-match", true));
+        result = await agents.remove(id2, value$3(flags, "if-match", true));
         break;
       default: {
         ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use agents list, inspect, create, update, remove, enable, disable, or export.");
         const agent = await agents.inspect(id2);
-        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value$2(flags, "if-match"));
+        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value$3(flags, "if-match"));
       }
     }
   }
@@ -49446,7 +49458,7 @@ async function hookCommands(args, flags, context, services2) {
   claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "remove" ? ["index"] : []]);
   const target = await services2.target(context, flags);
   const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
-  const revision = value$2(flags, "if-match");
+  const revision = value$3(flags, "if-match");
   let result;
   switch (action2) {
     case "inspect":
@@ -49467,8 +49479,8 @@ async function hookCommands(args, flags, context, services2) {
       break;
     case "remove": {
       arity(args, 2);
-      const index2 = value$2(flags, "index");
-      result = await settings2.remove(args[1], value$2(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
+      const index2 = value$3(flags, "index");
+      result = await settings2.remove(args[1], value$3(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
       break;
     }
     default:
@@ -49948,12 +49960,12 @@ async function nativePlugin(args, flags, context, services2) {
   arity(args, ["asset", "write-asset", "remove-asset"].includes(action2) ? 3 : 2);
   const plugins = new ClaudePluginService(context.workspace, services2.agentCodec);
   if (action2 === "create") return plugins.create(directory, parseJson(await claudeInput(flags, context)));
-  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value$2(flags, "if-match", true));
+  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value$3(flags, "if-match", true));
   if (action2 === "inspect") return plugins.inspect(directory);
   if (action2 === "check") return plugins.validate(directory);
   if (action2 === "asset") return plugins.asset(directory, path);
-  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value$2(flags, "if-match", true));
-  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value$2(flags, "if-match"));
+  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value$3(flags, "if-match", true));
+  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value$3(flags, "if-match"));
 }
 const acceptance = { yes: "boolean", "accept-command": "hash" };
 const commands$1 = {
@@ -50198,10 +50210,10 @@ function claudeCommand(adapters) {
       if (section2 === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services2);
       ensure(section2 === "plugins" || section2 === "marketplaces" || section2 === "runtime", "INVALID_ARGUMENT", "Use claude agents, hooks, plugins, marketplaces, runtime, or capabilities.");
       const command2 = buildClaudeRuntimeArgs(section2, args.slice(1), flags);
-      const timeout = value$2(flags, "timeout");
+      const timeout = value$3(flags, "timeout");
       const timeoutMs = timeout === void 0 ? void 0 : Number(timeout);
       ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_ARGUMENT", "--timeout must be milliseconds from 1 to 3600000.");
-      const executable = value$2(flags, "claude-bin");
+      const executable = value$3(flags, "claude-bin");
       let input;
       if (claudeRuntimeNeedsInput(section2, args.slice(1), flags)) {
         const values2 = parseJson(await claudeInput(flags, context));
@@ -63222,8 +63234,8 @@ function generatorOptions(generator) {
 function generationCommand(registry2) {
   return {
     id: "make",
-    description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.",
-    usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]",
+    description: "Run a registered generator, or list the generators.",
+    usage: "make [generator Name] [--out directory]",
     scope: "workspace",
     discovery: false,
     mutating: false,
@@ -63231,6 +63243,7 @@ function generationCommand(registry2) {
       { name: "generator", description: "A generator id; without one, make lists the generators." },
       { name: "name", description: "The name or id the generator creates from." }
     ],
+    unknownAction: "UNKNOWN_GENERATOR",
     errors: ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"],
     get actions() {
       return Object.fromEntries([...registry2.generators.values()].map((generator) => [generator.id, {
@@ -63246,7 +63259,7 @@ function generationCommand(registry2) {
     async run(args, flags, context) {
       const own2 = Object.keys(flags).filter((key) => !Object.hasOwn(globalOptions, key));
       if (args.length === 0) {
-        ensure(own2.length === 0, "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
+        ensure(own2.length === 0, "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>; help make lists each generator's usage and options.");
         return { generators: generatorCatalog(registry2) };
       }
       arity(args, 2);
@@ -63254,7 +63267,7 @@ function generationCommand(registry2) {
       ensure(generator, "UNKNOWN_GENERATOR", args[0]);
       const accepted2 = generatorOptions(generator);
       for (const key of own2) ensure(Object.hasOwn(accepted2, key), "INVALID_ARGUMENT", `--${key} is not supported by make ${generator.id}; run help make for each generator's options.`);
-      const directory = generator.fixedDirectory ? generator.directory : value$2(flags, "out") ?? generator.directory ?? "src/domain";
+      const directory = generator.fixedDirectory ? generator.directory : value$3(flags, "out") ?? generator.directory ?? "src/domain";
       const generation = new GenerationService(context.workspace);
       const request = { name: args[1], directory, flags, context, generation };
       if (generator.run) return generator.run(request);
@@ -63442,7 +63455,7 @@ function workflowCommands(services2) {
         }
         ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
         arity(args, 2, 3);
-        const kind = value$2(flags, "kind") ?? "domain";
+        const kind = value$3(flags, "kind") ?? "domain";
         ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
         const name2 = args.length === 3 ? args[1] : (await services2.projects.requireCurrent()).name;
         return services2.projects.component(name2, args.length === 3 ? args[2] : args[1], kind);
@@ -63514,7 +63527,7 @@ function encodeText(text2) {
 }
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
-  const encoding = value$2(flags, "encoding") ?? "utf8";
+  const encoding = value$3(flags, "encoding") ?? "utf8";
   ensure(["utf8", "base64"].includes(encoding), "INVALID_ENCODING", "Use utf8 or base64. --from copies raw bytes by default.");
   if (encoding === "base64") {
     const text2 = Buffer.from(bytes).toString("utf8").trim();
@@ -63535,7 +63548,7 @@ const reading = { scope: "project", discovery: false, mutating: false };
 const writing = { scope: "project", discovery: false, mutating: true };
 const readParts = ["body"];
 function selectedParts(flags, kind) {
-  const requested = value$2(flags, "parts");
+  const requested = value$3(flags, "parts");
   if (requested === void 0) return /* @__PURE__ */ new Set();
   const parts = requested.split(",").map((part) => part.trim());
   ensure(parts.every((part) => readParts.includes(part)), "INVALID_ARGUMENT", `--parts accepts a comma-separated list of: ${readParts.join(", ")}.`);
@@ -63570,10 +63583,10 @@ function documentCommands() {
       },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 0);
-        const kind = value$2(flags, "kind"), glob = value$2(flags, "path");
+        const kind = value$3(flags, "kind"), glob = value$3(flags, "path");
         ensure(kind === void 0 || fileKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${fileKinds.join(", ")}.`);
         const matches2 = glob === void 0 ? () => true : pathGlob(glob);
-        const pager = new Pager({ limit: integer$1(flags, "limit", 1), cursor: value$2(flags, "cursor") }, { command: "list", kind: kind ?? null, path: glob ?? null }, (path) => [path]);
+        const pager = new Pager({ limit: integer$1(flags, "limit", 1), cursor: value$3(flags, "cursor") }, { command: "list", kind: kind ?? null, path: glob ?? null }, (path) => [path]);
         for (const path of await workspace2.files.list()) if ((!kind || fileKind(path) === kind) && matches2(path)) pager.offer(path);
         const nextCursor = pager.nextCursor();
         return { files: pager.items.map((path) => ({ path, kind: fileKind(path) })), ...nextCursor === void 0 ? {} : { nextCursor } };
@@ -63632,7 +63645,7 @@ function documentCommands() {
       errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
       async run(args, flags, context) {
         arity(args, 1);
-        return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value$2(flags, "if-match") }], { diff: true });
+        return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value$3(flags, "if-match") }], { diff: true });
       }
     },
     {
@@ -63647,15 +63660,15 @@ function documentCommands() {
         arity(args, 1);
         const path = args[0];
         ensure(["markdown", "text"].includes(fileKind(path)), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
-        const revision = value$2(flags, "if-match", true);
+        const revision = value$3(flags, "if-match", true);
         return workspace2.edit(path, revision, (bytes) => {
           const text2 = utf8Text(bytes);
           if (flags.append) {
             ensure(flags.find === void 0 && flags.replace === void 0, "INVALID_INPUT", "Do not combine append and replace.");
-            return encodeText(text2 + value$2(flags, "content", true));
+            return encodeText(text2 + value$3(flags, "content", true));
           }
           ensure(flags.content === void 0, "INVALID_INPUT", "--content requires --append.");
-          return encodeText(replaceUniqueLiteral(text2, value$2(flags, "find", true), value$2(flags, "replace", true)));
+          return encodeText(replaceUniqueLiteral(text2, value$3(flags, "find", true), value$3(flags, "replace", true)));
         });
       }
     },
@@ -63670,9 +63683,9 @@ function documentCommands() {
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
         ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
-        const changes = parseJson(value$2(flags, "set", true));
+        const changes = parseJson(value$3(flags, "set", true));
         ensure(isRecord(changes), "INVALID_INPUT", "--set must be a JSON object.");
-        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
+        return workspace2.edit(args[0], value$3(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
       }
     },
     {
@@ -63685,8 +63698,8 @@ function documentCommands() {
       options: { pointer: option$1.string("JSON Pointer to set; /- appends to an existing array.", { required: true }), value: option$1.string("JSON value to set.", { required: true }), "if-match": ifMatch$1(true) },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
-        const pointer2 = value$2(flags, "pointer", true), data = parseJson(value$2(flags, "value", true));
-        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer2, data));
+        const pointer2 = value$3(flags, "pointer", true), data = parseJson(value$3(flags, "value", true));
+        return workspace2.edit(args[0], value$3(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer2, data));
       }
     }
   ];
@@ -63695,7 +63708,7 @@ const ifMatch = option$1.string("SHA-256 revision of the source file (from read)
 const linkOptions = { "if-match": ifMatch, "no-update-links": option$1.boolean("Move without rewriting links to the moved files.") };
 const vaultWrite = { scope: "project", discovery: false, mutating: true };
 const moveErrors = ["NOT_FOUND", "CONFLICT", "DESTINATION_EXISTS", "PROTECTED_PATH", "INVALID_MOVE"];
-const guard = (flags, dryRun) => value$2(flags, "if-match", !dryRun);
+const guard = (flags, dryRun) => value$3(flags, "if-match", !dryRun);
 function vaultCommands() {
   return [
     {
@@ -63758,7 +63771,7 @@ function commands(registry2, services2) {
 function invocationPolicy(command2, args, flags) {
   const mode = commandMode(command2, args);
   const help = flags.help === true;
-  const requestedProject = mode.projectOption === void 0 ? void 0 : value$2(flags, mode.projectOption);
+  const requestedProject = mode.projectOption === void 0 ? void 0 : value$3(flags, mode.projectOption);
   return {
     scope: help || mode.discovery || mode.scope === "workspace" ? "workspace" : "project",
     activatePlugins: !help && !mode.discovery,
@@ -63784,7 +63797,7 @@ const germanCommands = {
   delete: "Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.",
   move: "Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.",
   rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
-  make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
+  make: "Einen registrierten Generator ausführen oder die Generatoren auflisten.",
   events: "Ereignisverträge des Aufrufs auflisten.",
   plugins: "Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten."
 };
@@ -63938,7 +63951,7 @@ const germanErrors = {
   DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
   PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs eines Benutzer-Plugins sowie den Dienst-IDs jedes Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from)." },
   PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen erforderlichen oder optionalen Dienst, den kein aktiviertes, verfügbares Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt, und machen Sie es verfügbar (plugins zeigt Anbieter und Zustände), oder deklarieren Sie den Dienst in requires oder optional des Plugins." },
-  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das in diesem Aufruf nicht verfügbar ist.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
+  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
   PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
@@ -64088,16 +64101,16 @@ async function run() {
   let eventLevel = "changes";
   try {
     const bootstrap = parseBootstrap(tokens);
-    const requestedLanguage = value$2(bootstrap.flags, "lang");
+    const requestedLanguage = value$3(bootstrap.flags, "lang");
     if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
-    const requestedEvents = value$2(bootstrap.flags, "events");
+    const requestedEvents = value$3(bootstrap.flags, "events");
     if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
     if (bootstrap.flags.version) {
       const parsed2 = parseArguments(tokens, globalOptions);
       ensure(parsed2.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
       result = { ok: true, data: { name: "The Forge", version: metadata$2.version, apiVersion: 1 } };
     } else {
-      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$2(bootstrap.flags, "root") });
+      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$3(bootstrap.flags, "root") });
       const config2 = loaded.config;
       localizer = new Localizer(requestedLanguage !== void 0 ? language(requestedLanguage) : config2.settings.language);
       config2.settings.language = localizer.language;
@@ -64149,11 +64162,18 @@ async function run() {
       const id2 = bootstrap.args[0] ?? "help";
       const command2 = registry2.resolveCommand(id2);
       const actionArgs2 = hasActionOptions(command2) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command2.options) }, true).args.slice(1) : [];
-      const parsed2 = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command2, actionArgs2)) });
-      const parsedLanguage = value$2(parsed2.flags, "lang");
+      const parsed2 = (() => {
+        try {
+          return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command2, actionArgs2)) });
+        } catch (error2) {
+          ensureKnownAction(command2, actionArgs2);
+          throw error2;
+        }
+      })();
+      const parsedLanguage = value$3(parsed2.flags, "lang");
       localizer = new Localizer(parsedLanguage !== void 0 ? language(parsedLanguage) : localizer.language, registry2.catalog);
       config2.settings.language = localizer.language;
-      const parsedEvents = value$2(parsed2.flags, "events");
+      const parsedEvents = value$3(parsed2.flags, "events");
       if (parsedEvents !== void 0) eventLevel = config2.settings.events = eventOutput(parsedEvents);
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed2.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");

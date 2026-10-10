@@ -66,7 +66,8 @@ export interface Generator extends CommandMode {
 }
 /**
  * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
- * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE; only a reviewed generator may list
+ * the host's own review option definitions, which places them among its options without changing them.
  */
 export declare const hostGeneratorOptions: readonly ["out", "plan", "plan-out", "check", "revisions-from"];
 export interface Skill {

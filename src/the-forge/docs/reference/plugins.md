@@ -132,7 +132,7 @@ One declaration drives argument parsing, the invocation policy, `help` and `sche
 | `options` | `{flag: {type: 'string' \| 'boolean', description, enum?, default?, required?}}`. Global options are reserved. The parser enforces types; the command validates values, `enum`, `default` and `required` are published for agents | `{}` |
 | `args` | Positional arguments after the command id: `[{name, description, required?, enum?, variadic?}]`; only the last may be variadic | `[]` |
 | `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, usage?, scope?, discovery?, mutating?, projectOption?, options?}`; `defaultAction` applies when the first argument is omitted. An action's `options` are accepted only with that action and cannot repeat a command option | none |
-| `unknownAction` | `UNKNOWN_GENERATOR` or `INVALID_ARGUMENT`, reported when the first argument names no declared action, ahead of option errors, so options after an unknown action never read as `UNKNOWN_OPTION` (`make` declares `UNKNOWN_GENERATOR`) | none |
+| `unknownAction` | `UNKNOWN_GENERATOR` or `INVALID_ARGUMENT`. When options fail to parse and the first argument names no declared action, the invocation fails with this code instead, so options after an unknown action never read as `UNKNOWN_OPTION`; otherwise the command reports the unknown action itself (`make` declares `UNKNOWN_GENERATOR`) | none |
 | `projectOption` | A declared string option that selects the project for this invocation (`make ui --project web`) | none |
 | `output` | Optional JSON Schema of `data` in a successful response | none |
 | `errors` | Codes the command reports itself (built-in or the plugin's registered codes) | `[]` |

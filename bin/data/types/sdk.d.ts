@@ -18,3 +18,4 @@ export type { LinkCounts } from './application/metadata/ports.ts';
 export type { BacklogConnector, BoundConnection, Connection, ConnectorDescription, ConnectorEventPayloads, ConnectorHub, ProbeResult } from './application/connectors/contract.ts';
 export type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch, SyncField } from './domain/connectors/items.ts';
 export type { HttpClient, HttpRequest, HttpResponse } from './application/connectors/http.ts';
+export type { ClaudeLifecycleClient, ClaudeLifecycleRequest, ClaudeLifecycleResult, ClaudeLifecyclePlan, ClaudeOutput } from './application/plugins/claude-lifecycle.ts';

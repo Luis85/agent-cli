@@ -132,6 +132,7 @@ One declaration drives argument parsing, the invocation policy, `help` and `sche
 | `options` | `{flag: {type: 'string' \| 'boolean', description, enum?, default?, required?}}`. Global options are reserved. The parser enforces types; the command validates values, `enum`, `default` and `required` are published for agents | `{}` |
 | `args` | Positional arguments after the command id: `[{name, description, required?, enum?, variadic?}]`; only the last may be variadic | `[]` |
 | `actions`, `defaultAction` | Refinements keyed by the first argument, such as `skills install`, each `{description, usage?, scope?, discovery?, mutating?, projectOption?, options?}`; `defaultAction` applies when the first argument is omitted. An action's `options` are accepted only with that action and cannot repeat a command option | none |
+| `unknownAction` | `UNKNOWN_GENERATOR` or `INVALID_ARGUMENT`. When options fail to parse and the first argument names no declared action, the invocation fails with this code instead, so options after an unknown action never read as `UNKNOWN_OPTION`; otherwise the command reports the unknown action itself (`make` declares `UNKNOWN_GENERATOR`) | none |
 | `projectOption` | A declared string option that selects the project for this invocation (`make ui --project web`) | none |
 | `output` | Optional JSON Schema of `data` in a successful response | none |
 | `errors` | Codes the command reports itself (built-in or the plugin's registered codes) | `[]` |
@@ -162,7 +163,7 @@ A command with actions publishes `{"$schema", "title", "type": "object", "requir
 
 `request` is `{name, directory, flags, context, generation}`: the name argument, the resolved output directory (`--out`, else `directory`), the invocation's flags, the plugin context and the `GenerationService` with `plan(writes, manifestPath?)`, `check(writes, code)` and `commit(writes, revisions?)`. Generators should be pure and never write directly. Encode text with `new TextEncoder().encode(text)`.
 
-Each generator is an action of `make` with its own options. `make` owns `--out` (unless `fixedDirectory`) and the review options `--plan`, `--plan-out`, `--check` and `--revisions-from`: a plugin generator that declares one of them fails registration with `PLUGIN_NAMESPACE`. The parser resolves the generator first and then accepts only the global options, `--out`, the generator's options and, with `review`, the review options; anything else is `UNKNOWN_OPTION`. Put generator options after `make <generator>`: an option before the generator id is parsed without the generator and is unknown. Because each generator's options are parsed on their own, two generators may declare the same option name with different types. `make` without arguments lists the generators, and `help make` lists each generator's mode, usage and options under `annotations.actions`.
+Each generator is an action of `make` with its own options. `make` owns `--out` (unless `fixedDirectory`) and the review options `--plan`, `--plan-out`, `--check` and `--revisions-from`: a plugin generator that declares one of them fails registration with `PLUGIN_NAMESPACE`. Only a reviewed generator may list the host's own review option definitions, to place them among its options; the bundled library generators (`ui`, `stories`, `data-source`) list them after `--project` and `--library`. The parser resolves the generator first and then accepts only the global options, `--out`, the generator's options and, with `review`, the review options; anything else is `UNKNOWN_OPTION`. An id that names no registered generator, for example one from a disabled plugin, fails with `UNKNOWN_GENERATOR` before its options are considered. Put generator options after `make <generator>`: an option before the generator id is parsed without the generator and is unknown. Because each generator's options are parsed on their own, two generators may declare the same option name with different types. `make` without arguments lists the generators, and `help make` lists each generator's mode, usage and options under `annotations.actions`.
 
 ## Services
 
@@ -229,7 +230,7 @@ The internal plugin SDK is the kernel's application layer, chiefly `src/applicat
 The bundled `claude` core plugin provides the service `claude.lifecycle`, the same lifecycle client its `claude` command uses to invoke the installed Claude CLI. A plugin declares it in `requires` and calls `context.services.get('claude.lifecycle').execute(request)`; it needs no imports from Forge internals or a new contribution type. With `claude` disabled (`plugins.disabled`), a plugin that requires the service is unavailable and its commands fail with `PLUGIN_UNAVAILABLE`:
 
 ```ts
-import type { Plugin } from '../bin/data/types/sdk.js';
+import type { ClaudeLifecycleClient, Plugin } from '../bin/data/types/sdk.js';
 export default {
   requires: ['claude.lifecycle'],
   commands: [{
@@ -237,7 +238,7 @@ export default {
     description: 'Inspect installed Claude plugins',
     usage: 'quality.claude-plugins',
     run(_args, _flags, context) {
-      return context.services.get<{ execute(request: object): Promise<unknown> }>('claude.lifecycle').execute({
+      return context.services.get<ClaudeLifecycleClient>('claude.lifecycle').execute({
         args: ['plugin', 'list', '--json'],
         output: 'json',
       });
@@ -246,7 +247,7 @@ export default {
 } satisfies Omit<Plugin, 'manifest'>;
 ```
 
-Like every plugin service, the client is not part of the SDK's kernel types; its shape is `{ execute(request): Promise<result> }`. Requests contain literal `args` and optional `executable`, `timeoutMs`, UTF-8 `stdin`, `output` and `sensitiveArgs` indices. `output` is `text` by default, `json` for an entire JSON response, or `json-last-line` for commands whose final stdout line is native JSON. The `claude` plugin binds the client when it activates: the working directory is the invocation's selected root and its dry-run setting applies. A plugin cannot override either through this service, and the client fails with `PLUGIN_LIFECYCLE` outside an activated command invocation.
+The SDK types the client as `ClaudeLifecycleClient`, `{ execute(request: ClaudeLifecycleRequest): Promise<ClaudeLifecycleResult> }`, with `ClaudeLifecyclePlan` and `ClaudeOutput`; they are type declarations only, and the `claude` plugin implements them. Requests contain literal `args` and optional `executable`, `timeoutMs`, UTF-8 `stdin`, `output` and `sensitiveArgs` indices. `output` is `text` by default, `json` for an entire JSON response, or `json-last-line` for commands whose final stdout line is native JSON. The `claude` plugin binds the client when it activates: the working directory is the invocation's selected root and its dry-run setting applies. A plugin cannot override either through this service, and the client fails with `PLUGIN_LIFECYCLE` outside an activated command invocation.
 
 Dry runs validate the request and return `{dryRun:true, executed:false, plan}` without creating a runtime process. Real execution passes arguments directly without a shell, closes stdin after optional input, and applies timeout/output bounds. `stdin` contents are omitted from plans; plans record `inputBytes`. `--config` values and indices listed in `sensitiveArgs` are redacted in the plan. Native stdout/stderr remain available for diagnostics and may contain values echoed by Claude itself.
 
