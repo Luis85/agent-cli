@@ -3,11 +3,14 @@ import type { CommandContext } from '../../application/plugins/registry.ts';
 import { Bases } from './application/query.ts';
 import { NodeBasesQueryEngine } from './infrastructure/engine.ts';
 import { basesCommand } from './presentation/commands.ts';
+import { validateBaseFile } from './application/validation.ts';
+import { baseDefinitionIssues } from './infrastructure/validation.ts';
 
 /**
  * The `bases` core plugin: native Obsidian `.base` views evaluated as file repositories over the command scope's
  * files and the kernel metadata cache. Disabling it removes the `bases` command; `.base` files stay ordinary
- * documents for `read`, `validate` and `patch`. It provides the `bases.query` service to other plugins.
+ * documents for `read`, `validate` and `patch`. It provides the `bases.query` and `bases.validation` services to
+ * other plugins.
  */
 export const basesPlugin: CorePlugin = {
   manifest: {
@@ -21,7 +24,11 @@ export const basesPlugin: CorePlugin = {
     return {
       commands: [basesCommand(bases)],
       // `bases.query` evaluates a saved view in the caller's command scope: its result files in result order.
-      provides: { 'bases.query': { query: (context: CommandContext, path: string, options: { view?: string }) => bases(context).query(path, options) } },
+      // `bases.validation` reports what `bases query` would reject in a `.base` file before evaluating it, without throwing.
+      provides: {
+        'bases.query': { query: (context: CommandContext, path: string, options: { view?: string }) => bases(context).query(path, options) },
+        'bases.validation': { validate: (context: CommandContext, path: string) => validateBaseFile(context.workspace.files, context.workspace.codec, baseDefinitionIssues, path) },
+      },
       strings: {
         de: {
           commands: { bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.' },

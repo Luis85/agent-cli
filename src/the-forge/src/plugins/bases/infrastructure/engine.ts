@@ -1,37 +1,21 @@
 import {
   compileExpression, compileFormulaSet, compatibilityProfile, fileValue, fromJs, errorValue, nullValue, boolValue,
-  stringifyValue, toPlain, type CompiledExpression, type Diagnostic, type RuntimeValue,
+  stringifyValue, toPlain, type RuntimeValue,
 } from 'obsidian-bases-expression';
 import type { BasesQueryEngine, BasesQueryOptions, BasesQueryResult } from '../application/query.ts';
 import type { DocumentCodec, FileRepository } from '../../../application/workspace/ports.ts';
 import type { MetadataCache } from '../../../application/metadata/ports.ts';
-import { forgeError, errorMessage, ensure, isRecord } from '../../../domain/shared/errors.ts';
+import { forgeError, errorMessage, ensure } from '../../../domain/shared/errors.ts';
 import type { FileDates } from '../../../application/plugins/core-plugins.ts';
 import { BaseRowContexts } from './contexts.ts';
 import { basePropertyTypes, sharedBaseIndex } from './index.ts';
 import { baseExpression, baseFilter, internalContext, internalFormula, internalTag, internalGuard } from './expressions.ts';
+import { diagnostics, ordering } from './definition.ts';
 
-interface Ordering { property: string; direction: 'ASC' | 'DESC'; expression: CompiledExpression }
 interface Row { path: string; sort: RuntimeValue[]; group?: RuntimeValue; groupIndex?: number }
 const strict = { throwOnError: true };
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-function diagnostics(items: readonly Diagnostic[], label: string): void {
-  const failures = items.filter(item => item.severity === 'error' || item.code === 'circular-formula');
-  ensure(failures.length === 0, 'INVALID_BASE_EXPRESSION', `${label}: ${failures.map(item => item.message).join('; ')}`);
-}
-function ordering(value: unknown): Ordering {
-  ensure(isRecord(value) && typeof value.property === 'string' && value.property.length > 0, 'INVALID_BASE_QUERY', 'Sort and groupBy entries need a property name.');
-  ensure(value.direction === 'ASC' || value.direction === 'DESC', 'INVALID_BASE_QUERY', 'Sort and groupBy direction must be ASC or DESC.');
-  const property = value.property;
-  const dot = property.indexOf('.');
-  const namespace = dot < 0 ? 'note' : property.slice(0, dot);
-  const name = dot < 0 ? property : property.slice(dot + 1);
-  ensure(['note', 'file', 'formula'].includes(namespace) && name.length > 0, 'INVALID_BASE_QUERY', `Invalid property identifier: ${property}`);
-  const expression = baseExpression(`${namespace}[${JSON.stringify(name)}]`);
-  diagnostics(expression.diagnostics, property);
-  return { property, direction: value.direction, expression };
-}
 function compare(a: RuntimeValue, b: RuntimeValue): number {
   if (a.type === 'Null' || b.type === 'Null') return a.type === b.type ? 0 : a.type === 'Null' ? -1 : 1;
   if (a.type === 'Date' && b.type === 'Date') return a.value.getTime() - b.value.getTime();
