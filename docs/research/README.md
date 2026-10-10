@@ -6,6 +6,7 @@ The synthesis and the remaining perspective reports are in progress.
 
 | Report | Perspective |
 | --- | --- |
+| [Competitive landscape and positioning](01-competitive-landscape.md) | Competitors, overlap, differentiation and positioning |
 | [Agent experience and interfaces](02-agent-experience.md) | The agent as primary user: contracts, token cost, primitives, CLI vs MCP |
 | [Knowledge vaults and agent memory](03-knowledge-and-vaults.md) | Obsidian parity, link integrity, search and agent memory |
 | [Code and UI generation](04-code-and-ui-generation.md) | Generators, UI targets, design systems, forms and data adapters |
