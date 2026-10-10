@@ -15,6 +15,7 @@ import { validateContributions, type PluginOrigin } from './contributions.ts';
 import { activationOrder, pluginServices, serviceProviders, serviceView, type PluginServices } from './plugin-services.ts';
 import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
+import { reviewOptions } from '../generation/controls.ts';
 
 /**
  * `workspace` is the command's scope (the selected project, or the workspace) and `environment` the workspace-root
@@ -52,7 +53,8 @@ export interface Generator extends CommandMode {
 }
 /**
  * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
- * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE; only a reviewed generator may list
+ * the host's own review option definitions, which places them among its options without changing them.
  */
 export const hostGeneratorOptions = ['out', 'plan', 'plan-out', 'check', 'revisions-from'] as const;
 export interface Skill { id: string; content: string }
@@ -134,7 +136,9 @@ export class Registry {
     const commands = new Map(this.commands), generators = new Map(this.generators), skills = new Map(this.skills);
     for (const command of plugin.commands ?? []) this.add(commands, command);
     for (const generator of plugin.generators ?? []) {
-      const owned = Object.keys(generator.options ?? {}).filter(key => (hostGeneratorOptions as readonly string[]).includes(key));
+      const hostReview: Readonly<Record<string, CommandOption>> = generator.review === true ? reviewOptions : {};
+      const owned = Object.entries(generator.options ?? {})
+        .filter(([key, schema]) => (hostGeneratorOptions as readonly string[]).includes(key) && hostReview[key] !== schema).map(([key]) => key);
       ensure(owned.length === 0, 'PLUGIN_NAMESPACE', `Generator ${generator.id} cannot declare --${owned.join(', --')}; make owns --${hostGeneratorOptions.join(', --')} for every generator.`);
       this.add(generators, generator);
     }

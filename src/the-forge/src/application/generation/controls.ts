@@ -39,12 +39,13 @@ export async function generationControls(flags: CommandFlags, files: Pick<FileRe
 
 /**
  * Options of a generator that renders a workspace definition library into a project (`make ui`, `make stories`,
- * `make data-source`): `--project` selects the output project for one invocation and `--library` the definitions.
- * Such generators set `review`, so `make` adds the review controls after their own options.
+ * `make data-source`): `--project` selects the output project for one invocation and `--library` the definitions,
+ * followed by the host's review controls. Such generators set `review`, which lets them list those controls.
  */
 export const libraryGenerationOptions = {
   project: option.string('Generate into this project instead of the selected one.'),
   library: option.string('Definition library directory; defaults to the configured path.'),
+  ...reviewOptions,
 };
 
 /** Output writes use workspace paths; input manifests remain in the selected scope. */

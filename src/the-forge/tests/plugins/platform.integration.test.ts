@@ -8,6 +8,7 @@ import { AppError } from '../../src/domain/shared/errors.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
+import { reviewOptions } from '../../src/application/generation/controls.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
@@ -89,6 +90,16 @@ describe('plugin generators', () => {
     // Each generator parses only its own options, so another generator's --framework may be a boolean.
     registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, review: true, generate: () => [] }] }, events);
     expect(registry.generators.get('quality.page')).toMatchObject({ review: true });
+  });
+
+  it('lets only a reviewed generator place the host review controls among its options', () => {
+    const { registry, events } = setup();
+    const generator = (id: string, review: boolean, options: Record<string, { type: 'string' | 'boolean'; description: string }>) => ({ id, description: 'Page', review, options, generate: () => [] });
+    registry.register({ manifest: manifest('quality'), generators: [generator('quality.page', true, { project: { type: 'string', description: 'P' }, ...reviewOptions, tone: { type: 'string', description: 'T' } })] }, events);
+    expect(Object.keys(registry.generators.get('quality.page')!.options!)).toEqual(['project', 'revisions-from', 'plan', 'plan-out', 'check', 'tone']);
+    for (const [id, review, options] of [['audit.page', false, reviewOptions], ['audit.copy', true, { ...reviewOptions, plan: { ...reviewOptions.plan } }]] as const) {
+      expect(() => registry.register({ manifest: manifest(id.split('.')[0]!), generators: [generator(id, review, options)] }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    }
   });
 });
 
