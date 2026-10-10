@@ -111,7 +111,7 @@ describe('moving and deleting through the portable CLI', () => {
     expect(trashed.body.events.filter((event: Record) => /^(vault|metadataCache)\./.test(event.id)).map((event: Record) => event.id)).toEqual(['vault.delete', 'metadataCache.deleted', 'metadataCache.resolved']);
     expect(await readFile(join(root, '.trash/scratch/Idea.md'), 'utf8')).toBe('# Idea\n');
     const folder = run('delete', 'scratch', '--recursive', '--permanent', '--dry-run').body.data;
-    expect(folder).toMatchObject({ kind: 'folder', deleted: [] });
+    expect(folder).toMatchObject({ kind: 'folder', deleted: [{ path: 'scratch', kind: 'folder' }] });
     expect(run('delete', 'scratch', '--recursive', '--permanent', '--if-match', folder.revision).status).toBe(0);
     expect((await readdir(root)).sort()).toEqual(['.trash', 'Board.canvas', 'bin', 'docs', 'notes']);
     expect(run('delete', 'bin/config.json', '--if-match', 'x').body.error.code).toBe('PROTECTED_PATH');

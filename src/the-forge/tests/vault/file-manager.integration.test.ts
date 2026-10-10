@@ -82,6 +82,9 @@ describe('moving notes with link updates', () => {
     await expect(app.fileManager.move('bin/forge.js', 'forge.js')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.delete('.obsidian/app.json', { permanent: true })).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.move('a.md', '.obsidian/a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(app.fileManager.move('a.md', '.Obsidian/a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(app.fileManager.move('a.md', 'BIN/a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(app.fileManager.delete('.FORGE', { recursive: true, permanent: true })).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.rename('a.md', 'x/b')).rejects.toMatchObject({ code: 'INVALID_MOVE' });
     await expect(app.fileManager.move('a.md', 'a.md')).rejects.toMatchObject({ code: 'INVALID_MOVE' });
     const { app: projectApp } = await vaultScope(root, { project: { schemaVersion: 1, name: 'p', type: 'library', directory: 'src/p' } });
@@ -104,9 +107,19 @@ describe('deleting files and folders', () => {
       { source: 'Index.md', target: 'notes/Plan.md', kind: 'frontmatter', line: null, original: '[[Plan]]', key: 'related' },
     ]);
     const deleted = await app.fileManager.delete('notes/Plan.md', { ifMatch: revision, allowBrokenLinks: true });
-    expect(deleted).toMatchObject({ permanent: false, trashPath: '.trash/notes/Plan 1.md', deleted: [{ path: 'notes/Plan.md', revision }], brokenLinks: details });
+    expect(deleted).toMatchObject({ permanent: false, trashPath: '.trash/notes/Plan 1.md', deleted: [{ path: 'notes/Plan.md', kind: 'file', revision }], brokenLinks: details });
     expect(await text('.trash/notes/Plan 1.md')).toBe(vault['notes/Plan.md']);
     expect(records()).toEqual([['vault.delete', 'notes/Plan.md'], ['metadataCache.deleted', 'notes/Plan.md'], ['metadataCache.resolve', 'Board.canvas'], ['metadataCache.resolve', 'Index.md'], ['metadataCache.resolved', undefined]]);
+  });
+
+  it('reports every trashed file and folder, child folders before their parents', async () => {
+    await writeVault(root, { 'docs/a.md': 'A', 'docs/sub/b.md': 'B' });
+    const { app, files } = await vaultScope(root);
+    const trashed = await app.fileManager.delete('docs', { ifMatch: (await files.stat('docs')).revision, recursive: true });
+    expect(trashed.deleted).toEqual([
+      { path: 'docs/a.md', kind: 'file', revision: expect.any(String), bytes: 1 }, { path: 'docs/sub/b.md', kind: 'file', revision: expect.any(String), bytes: 1 },
+      { path: 'docs/sub', kind: 'folder' }, { path: 'docs', kind: 'folder' },
+    ]);
   });
 
   it('counts table-escaped wikilinks as links into a deleted note', async () => {
@@ -118,15 +131,16 @@ describe('deleting files and folders', () => {
   });
 
   it('deletes folders recursively, checking only links from outside them', async () => {
-    await writeVault(root, { 'docs/a.md': '[[b]]', 'docs/b.md': 'B', 'Index.md': '[[a]]', '.trash/old.md': 'x' });
+    await writeVault(root, { 'docs/a.md': '[[b]]', 'docs/b.md': 'B', 'Index.md': '[[a]]', '.trash/old.md': 'x', '.Trash/new.md': 'y' });
     const { app, files } = await vaultScope(root);
     const folder = await files.stat('docs');
     await expect(app.fileManager.delete('docs', { ifMatch: folder.revision })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(app.fileManager.delete('docs', { ifMatch: folder.revision, recursive: true })).rejects.toMatchObject({ code: 'HAS_BACKLINKS', details: { backlinks: [expect.objectContaining({ source: 'Index.md', target: 'docs/a.md' })] } });
     await expect(app.fileManager.delete('.trash/old.md', {})).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(app.fileManager.delete('.Trash/new.md', {})).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     const removed = await app.fileManager.delete('docs', { ifMatch: folder.revision, recursive: true, permanent: true, allowBrokenLinks: true });
-    expect(removed).toMatchObject({ permanent: true, trashPath: null, deleted: [{ path: 'docs/a.md' }, { path: 'docs/b.md' }] });
-    expect((await readdir(root)).sort()).toEqual(['.trash', 'Index.md']);
+    expect(removed).toMatchObject({ permanent: true, trashPath: null, deleted: [{ path: 'docs/a.md', kind: 'file' }, { path: 'docs/b.md', kind: 'file' }, { path: 'docs', kind: 'folder' }] });
+    expect((await readdir(root)).filter(name => name !== '.Trash').sort()).toEqual(['.trash', 'Index.md']);
     expect(await app.fileManager.delete('.trash/old.md', { permanent: true })).toMatchObject({ deleted: [{ path: '.trash/old.md' }] });
   });
 });

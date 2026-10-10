@@ -24,7 +24,7 @@ export type LockRelease = 'released' | 'missing' | 'foreign';
 /** An empty or partial lock this young may still be receiving its holder record. */
 const writingWindowMs = 5000;
 /** Hard links are unavailable on some filesystems (FAT, exFAT, some network shares). */
-const linkUnsupported = new Set(['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EPERM', 'EACCES', 'EMLINK']);
+export const linkUnsupported: ReadonlySet<string> = new Set(['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EPERM', 'EACCES', 'EMLINK']);
 /** Persistent denials while creating the lock: Windows reports a lock that is pending deletion this way. */
 const deniedCodes = new Set(['EPERM', 'EACCES']);
 /** Tokens of locks this process holds right now, to tell a concurrent writer from a reused pid. */

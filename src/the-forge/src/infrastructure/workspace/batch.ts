@@ -1,16 +1,24 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, rename, rm, rmdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import type { Stats } from 'node:fs';
+import { link, lstat, mkdir, rename, rm, rmdir, unlink } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type FileChange, type FileRename, type RemoveRequest, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch } from '../../application/workspace/ports.ts';
+import { linkUnsupported } from './lock.ts';
 import { retryTransient } from './retry.ts';
 
 export interface StoredFile { bytes: Buffer; mode: number; revision: string }
-export interface FilePlan { write: WriteRequest; target: string; before?: StoredFile }
-/** A folder's revision and contents; paths are relative to the folder. `git` reports a nested `.git` entry. */
-export interface FolderSnapshot { revision: string; files: Array<{ path: string; revision: string; bytes: number }>; folders: string[]; git: boolean }
+/** A write and where its temporary file is staged: next to `target`, or inside the folder a rename moves there. */
+export interface FilePlan { write: WriteRequest; target: string; before?: StoredFile; stagingDirectory?: string }
+/** A folder entry that is neither a regular file nor a folder Forge walks: a symlink (with its target), a `node_modules` folder or another special file. */
+export interface SpecialEntry { path: string; kind: 'symlink' | 'node_modules' | 'other'; target?: string }
+/**
+ * A folder's revision and contents; paths are relative to the folder. `special` lists symlinks, `node_modules`
+ * folders (never read) and other special files; `git` reports a nested `.git` entry.
+ */
+export interface FolderSnapshot { revision: string; files: Array<{ path: string; revision: string; bytes: number }>; folders: string[]; special: SpecialEntry[]; git: boolean }
 type Entry = { kind: 'file'; stored: StoredFile } | { kind: 'folder'; snapshot: FolderSnapshot };
 interface RenamePlan { request: RenameRequest; source: string; target: string; entry: Entry; caseOnly: boolean }
 interface RemovePlan { request: RemoveRequest; target: string; entry: Entry; temp?: string }
@@ -34,40 +42,52 @@ const temporary = (target: string) => join(dirname(target), `.agent-cli-tmp-${ra
 const inside = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
 const entryRevision = (entry: Entry) => entry.kind === 'file' ? entry.stored.revision : entry.snapshot.revision;
 
-async function exists(target: string): Promise<{ dev: number; ino: number } | undefined> {
+async function exists(target: string): Promise<Stats | undefined> {
   try { return await lstat(target); }
   catch (error) { if (missing(error)) return undefined; throw error; }
+}
+
+type Claim = { path: string; role: 'source' | 'destination' | 'write' };
+
+/** Refuses two steps whose paths are equal or nested, unless the inner one is a write at or inside a rename destination. */
+function checkOverlap(outer: Claim, inner: Claim): void {
+  if (outer.role === 'write' && inner.role === 'write') {
+    ensure(outer.path === inner.path, 'INVALID_PLAN', 'A generated file cannot also be a directory.');
+    return;
+  }
+  const write = outer.role === 'write' ? outer : inner, other = write === outer ? inner : outer;
+  const allowed = write.role === 'write' && other.role === 'destination' && inside(write.path, other.path);
+  ensure(allowed, 'INVALID_PLAN', `Batch steps overlap at ${outer.path} and ${inner.path}.`);
 }
 
 /**
  * Rejects plans whose steps overlap: writes are unique and never nest, and no rename source, rename destination,
  * removal or write lies inside another one. The only overlap allowed is a write at or inside a rename destination.
+ * Claims are sorted by path segments, so every claim's ancestors precede it and its descendants follow it
+ * directly; one pass with a stack of ancestors compares each claim only with the claims that contain it.
  */
 function validatePlan(renames: readonly RenameRequest[], writes: readonly WriteRequest[], removes: readonly RemoveRequest[]): void {
   ensure(renames.length + writes.length + removes.length > 0, 'INVALID_PLAN', 'Plan must contain at least one change.');
   ensure(new Set(writes.map(w => w.path)).size === writes.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
-  ensure(!writes.some(a => writes.some(b => b.path.startsWith(a.path + '/'))), 'INVALID_PLAN', 'A generated file cannot also be a directory.');
   for (const rename of renames) ensure(!inside(rename.to, rename.from) && !inside(rename.from, rename.to), 'INVALID_PLAN', `Cannot move ${rename.from} into itself or its parent path ${rename.to}.`);
-  type Claim = { path: string; role: 'source' | 'destination' | 'write' };
-  const claims: Claim[] = [
+  // Paths never hold control characters, so NUL as the separator sorts a folder's descendants right after it.
+  const claims = [
     ...renames.flatMap((rename): Claim[] => [{ path: rename.from, role: 'source' }, { path: rename.to, role: 'destination' }]),
     ...removes.map((remove): Claim => ({ path: remove.path, role: 'source' })),
     ...writes.map((write): Claim => ({ path: write.path, role: 'write' })),
-  ];
-  for (const [index, claim] of claims.entries()) {
-    for (const other of claims.slice(index + 1)) {
-      if (claim.role === 'write' && other.role === 'write') continue;
-      if (!inside(claim.path, other.path) && !inside(other.path, claim.path)) continue;
-      const roles = [claim.role, other.role];
-      const allowed = roles.includes('write') && roles.includes('destination') && inside((claim.role === 'write' ? claim : other).path, (claim.role === 'write' ? other : claim).path);
-      ensure(allowed, 'INVALID_PLAN', `Batch steps overlap at ${claim.path} and ${other.path}.`);
-    }
+  ].map(claim => ({ claim, key: claim.path.replaceAll('/', '\0') })).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).map(entry => entry.claim);
+  const ancestors: Claim[] = [];
+  for (const claim of claims) {
+    while (ancestors.length > 0 && !inside(claim.path, ancestors.at(-1)!.path)) ancestors.pop();
+    for (const ancestor of ancestors) checkOverlap(ancestor, claim);
+    ancestors.push(claim);
   }
 }
 
 /**
  * One guarded batch: validated and checked before anything changes, then applied as renames, writes and
- * removals, with every applied step rolled back in reverse order when a later step fails.
+ * removals, with every applied step rolled back in reverse order when a later step fails. Every write is staged
+ * durably before the first rename, so a staging failure changes no file.
  */
 export class Transaction {
   private readonly renames: RenameRequest[];
@@ -76,7 +96,9 @@ export class Transaction {
   private readonly createdDirectories: string[] = [];
   private readonly folders: string[] = [];
   private readonly touched = new Set<string>();
+  /** Staged temporary files by write index, and the folder rename that carries each one staged inside a moved folder. */
   private readonly staged: string[] = [];
+  private readonly carriers: Array<RenamePlan | undefined> = [];
   private readonly committedRenames: RenamePlan[] = [];
   private readonly committedWrites: FilePlan[] = [];
   private readonly committedRemoves: RemovePlan[] = [];
@@ -166,6 +188,9 @@ export class Transaction {
     for (const request of this.removes) {
       const entry = await this.entry(request.path);
       if (!entry) throw forgeError('NOT_FOUND', `File not found: ${request.path}`);
+      // Permanent removal is limited to what the result can report and the revision fully covers.
+      const special = entry.kind === 'folder' ? entry.snapshot.special : [];
+      ensure(special.length === 0, 'PROTECTED_PATH', `Folder ${request.path} contains symlinks, node_modules or special files; Forge permanently removes only regular files and folders. Move it to the trash instead, or remove those entries first.`, { path: request.path, entries: special.slice(0, 20).map(item => ({ path: `${request.path}/${item.path}`, kind: item.kind })) });
       const current = entryRevision(entry);
       ensure(request.expectedRevision.length > 0, 'CONFLICT', `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
       if (current !== request.expectedRevision) conflicts.push(revisionConflict(request.path, request.expectedRevision, current));
@@ -193,22 +218,43 @@ export class Transaction {
     ensure(current === expected, 'CONFLICT', `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
 
+  /**
+   * Where a write is staged: inside a folder that a rename moves to the write's folder (its deepest existing folder
+   * there, so the temporary file moves along), otherwise next to its target after creating the target's parents.
+   */
+  private async stagingDirectory(plan: FilePlan, renames: readonly RenamePlan[], index: number): Promise<string> {
+    const carrier = renames.find(rename => rename.entry.kind === 'folder' && plan.write.path.startsWith(`${rename.request.to}/`));
+    this.carriers[index] = carrier;
+    if (!carrier) { await this.makeParents(plan.write.path); return dirname(plan.target); }
+    let directory = dirname(join(carrier.source, plan.write.path.slice(carrier.request.to.length + 1)));
+    while (directory !== carrier.source && !(await exists(directory))?.isDirectory()) directory = dirname(directory);
+    return directory;
+  }
+
+  /** The staged temporary file's current location: a folder rename carries files staged inside it. */
+  private stagedAt(index: number): string {
+    const temp = this.staged[index]!, carrier = this.carriers[index];
+    return carrier && this.committedRenames.includes(carrier) ? join(carrier.target, relative(carrier.source, temp)) : temp;
+  }
+
   private async apply(renames: RenamePlan[], writes: FilePlan[], removes: RemovePlan[]): Promise<void> {
+    for (const plan of renames) await this.makeParents(plan.request.to);
+    for (const [index, plan] of writes.entries()) plan.stagingDirectory = await this.stagingDirectory(plan, renames, index);
+    await this.host.stageAll(writes, this.staged);
     for (const plan of renames) {
-      await this.makeParents(plan.request.to);
       await this.verify(plan.request.from, plan.entry, plan.request.expectedRevision);
-      if (!plan.caseOnly) ensure(!await exists(plan.target), 'DESTINATION_EXISTS', `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
-      await this.move(plan.source, plan.target, plan.caseOnly);
+      await this.move(plan, plan.source, plan.target);
       this.committedRenames.push(plan);
       this.touched.add(dirname(plan.source)).add(dirname(plan.target));
     }
-    for (const plan of writes) await this.makeParents(plan.write.path);
-    await this.host.stageAll(writes, this.staged);
     for (const [index, plan] of writes.entries()) {
+      // Folders inside a moved folder exist only now that it moved.
+      await this.makeParents(plan.write.path);
       await this.host.resolvePath(plan.write.path);
-      await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), this.staged[index]);
+      const temp = this.stagedAt(index);
+      await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), temp);
       this.committedWrites.push(plan);
-      this.touched.add(dirname(plan.target));
+      this.touched.add(dirname(plan.target)).add(dirname(temp));
     }
     for (const plan of removes) {
       await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
@@ -222,13 +268,39 @@ export class Transaction {
     await this.host.syncDirectories(this.touched);
   }
 
-  /** A case-only rename passes through a reserved name, which works whether or not the filesystem ignores case. */
-  private async move(source: string, target: string, caseOnly: boolean): Promise<void> {
-    if (!caseOnly) { await retryTransient(() => rename(source, target)); return; }
-    const temp = temporary(source);
-    await retryTransient(() => rename(source, temp));
-    try { await retryTransient(() => rename(temp, target)); }
-    catch (error) { await retryTransient(() => rename(temp, source)).catch(() => {}); throw error; }
+  /**
+   * Moves a rename's entry from `source` to `target` without replacing an existing target. A file is hard-linked
+   * to the target, which fails atomically when the target exists, and then unlinked from the source. Folders, and
+   * files on filesystems without hard links, are renamed after checking that the target is absent; a target
+   * created between that check and the rename by another program is a documented race. A case-only rename passes
+   * through a reserved name, which works whether or not the filesystem ignores case.
+   */
+  private async move(plan: RenamePlan, source: string, target: string): Promise<void> {
+    if (plan.caseOnly) {
+      const temp = temporary(source);
+      await retryTransient(() => rename(source, temp));
+      try { await retryTransient(() => rename(temp, target)); }
+      catch (error) { await retryTransient(() => rename(temp, source)).catch(() => {}); throw error; }
+      return;
+    }
+    const occupied = () => forgeError('DESTINATION_EXISTS', `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
+    if (plan.entry.kind === 'file' && await this.linkInPlace(source, target, occupied)) return;
+    if (await exists(target)) throw occupied();
+    await retryTransient(() => rename(source, target));
+  }
+
+  /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
+  private async linkInPlace(source: string, target: string, occupied: () => Error): Promise<boolean> {
+    try { await retryTransient(() => link(source, target), { codes: ['EBUSY'] }); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (code === 'EEXIST') throw occupied();
+      if (linkUnsupported.has(code)) return false;
+      throw error;
+    }
+    try { await retryTransient(() => unlink(source)); }
+    catch (error) { await retryTransient(() => unlink(target)).catch(() => {}); throw error; }
+    return true;
   }
 
   /** Committed removals become permanent; a cleanup failure leaves a reserved temporary entry and a warning. */
@@ -244,7 +316,7 @@ export class Transaction {
 
   private async rollback(): Promise<void> {
     // Renamed temporaries no longer exist; the rest must go before directories are removed.
-    for (const temp of this.staged) if (temp) await retryTransient(() => rm(temp, { force: true })).catch(() => {});
+    for (const index of this.staged.keys()) if (this.staged[index]) await retryTransient(() => rm(this.stagedAt(index), { force: true })).catch(() => {});
     const failures: string[] = [];
     for (const plan of this.committedRemoves.reverse()) {
       try { ensure(!await exists(plan.target), 'ROLLBACK_FAILED', plan.target); await retryTransient(() => rename(plan.temp!, plan.target)); }
@@ -262,7 +334,7 @@ export class Transaction {
       try {
         if (plan.entry.kind === 'file') await this.host.assertRevision(plan.request.to, plan.entry.stored.revision);
         if (!plan.caseOnly) ensure(!await exists(plan.source), 'ROLLBACK_FAILED', plan.source);
-        await this.move(plan.target, plan.source, plan.caseOnly);
+        await this.move(plan, plan.target, plan.source);
       } catch { failures.push(plan.target); }
     }
     for (const directory of this.createdDirectories.reverse()) {
@@ -270,7 +342,8 @@ export class Transaction {
       catch { /* A directory still holding external files remains in place. */ }
     }
     for (const directory of this.touched) {
-      try { await this.host.syncDirectories([directory]); }
+      // A folder that rollback moved back no longer exists here; its parent was touched by the move.
+      try { if (await exists(directory)) await this.host.syncDirectories([directory]); }
       catch { failures.push(directory); }
     }
     if (failures.length) throw forgeError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
