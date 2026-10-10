@@ -1,5 +1,4 @@
 import metadata from '../../../package.json';
-import { ensure } from '../../domain/shared/errors.ts';
 import { errorCatalog, errorCodes } from '../../domain/shared/error-catalog.ts';
 import { nativeFormats, textExtensions } from '../../domain/documents/file.ts';
 import { eventOutputLevels } from '../../application/plugins/event-output.ts';
@@ -37,7 +36,7 @@ export function catalogCommands(registry: Registry): Command[] {
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'], run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
-      const command = registry.commands.get(args[0]); ensure(command, 'UNKNOWN_COMMAND', args[0]);
+      const command = registry.resolveCommand(args[0]);
       return { ...describe(command), globalOptions: globalOptionMetadata };
     } },
     { id: 'schema', description: 'Machine-readable capability catalog.', usage: 'schema', ...discovery, run(args) {

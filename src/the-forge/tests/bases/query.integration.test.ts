@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { stringify } from 'yaml';
 import { Bases } from '../../src/plugins/bases/application/query.ts';
-import { basesEngine } from '../support/metadata.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
+import { NodeBasesQueryEngine } from '../../src/plugins/bases/infrastructure/engine.ts';
+import { basesEngine, metadataIndex } from '../support/metadata.ts';
 
 let root: string, bases: Bases;
 const put = async (path: string, content: string | Uint8Array) => {
@@ -95,15 +99,58 @@ describe('native Bases repository queries without Obsidian', () => {
     await expect(bases.query(path)).rejects.toMatchObject({ code: 'INVALID_BASE_EXPRESSION' });
   });
 
-  it('reports missing views, invalid metadata and ambiguous links with named errors', async () => {
+  it('reports missing views and invalid queries with named errors', async () => {
     const path = await definition({});
     await expect(bases.query(path, { view: 'Missing' })).rejects.toMatchObject({ code: 'BASE_VIEW_NOT_FOUND' });
     await expect(bases.query(path, { limit: -1 })).rejects.toMatchObject({ code: 'INVALID_BASE_QUERY' });
-    await put('bad.md', '---\nx: [\n---');
-    await expect(bases.query(path)).rejects.toMatchObject({ code: 'BASE_INDEX_ERROR' });
-    await rm(join(root, 'bad.md'));
-    await put('A/Target.md', ''); await put('B/Target.md', ''); await put('Link.md', '[[Target]]');
-    await expect(bases.query(path)).rejects.toMatchObject({ code: 'AMBIGUOUS_BASE_LINK' });
+  });
+
+  it('indexes an unparseable note without metadata and reports it instead of failing the query', async () => {
+    await put('bad/flow.md', '---\nstatus: open\nx: [\n---\n#tag [[Good]]');
+    await put('bad/duplicate.md', '---\nstatus: open\nstatus: done\n---\n');
+    await put('Good.md', '---\nstatus: open\n---\n');
+    const path = await definition({ filters: 'file.ext == "md"', views: [{ type: 'table', name: 'Open', filters: 'status == "open"' }, { type: 'table', name: 'Files' }] });
+    const open = await bases.query(path);
+    expect(open.files).toEqual(['Good.md']);
+    expect(open.warnings).toEqual([
+      { code: 'unparseable-note', path: 'bad/duplicate.md', message: expect.stringContaining('bad/duplicate.md cannot be parsed') },
+      { code: 'unparseable-note', path: 'bad/flow.md', message: expect.stringContaining('bad/flow.md cannot be parsed') },
+    ]);
+    expect((await bases.query(path, { view: 'Files' })).files).toEqual(['Good.md', 'bad/duplicate.md', 'bad/flow.md']);
+  });
+
+  it('resolves an ambiguous link path to the closest candidate with a warning, wherever the source is', async () => {
+    await put('archive/README.md', ''); await put('docs/README.md', ''); await put('docs/sub/Source.md', '[[README]]');
+    await put('outside/Elsewhere.md', '---\nup: "[[README]]"\n---\n');
+    await put('docs/Plan.md', '---\nstatus: open\n---\n'); await put('Plan.md', ''); await put('notes/deep/Plan.md', '');
+    await put('Linker.md', '[[Plan]]');
+    const path = await definition({ filters: 'file.inFolder("docs")', views: [
+      { type: 'table', name: 'Linked', filters: 'file.hasLink("docs/README.md")' },
+      { type: 'table', name: 'Backlinked', filters: 'file.backlinks.length > 0' },
+    ] });
+    const linked = await bases.query(path);
+    expect(linked.files).toEqual(['docs/sub/Source.md']);
+    expect(linked.warnings).toEqual([
+      { code: 'ambiguous-link', path: 'docs/sub/Source.md', link: 'README', candidates: ['archive/README.md', 'docs/README.md'], resolvedPath: 'docs/README.md', message: expect.any(String) },
+      { code: 'ambiguous-link', path: 'outside/Elsewhere.md', link: 'README', candidates: ['archive/README.md', 'docs/README.md'], resolvedPath: 'archive/README.md', message: expect.any(String) },
+    ]);
+    // An exact path beats closeness: Linker.md links the root Plan.md, so nothing links to docs/Plan.md.
+    expect((await bases.query(path, { view: 'Backlinked' })).files).toEqual(['docs/README.md']);
+  });
+
+  it('indexes once per metadata state and again after the metadata changes', async () => {
+    await put('A.md', '---\nstatus: open\n---\n');
+    const path = await definition({ filters: 'status == "open"' });
+    const files = await NodeFiles.at(root), metadata = metadataIndex(files), dates = nodeFileDates(files.root);
+    let reads = 0;
+    const shared = new Bases(new NodeBasesQueryEngine(files, new ObsidianDocuments(), () => metadata.load(), path => { reads++; return dates(path); }));
+    expect((await shared.query(path)).files).toEqual(['A.md']);
+    expect((await shared.query(path, { limit: 5 })).files).toEqual(['A.md']);
+    expect(reads).toBe(2);
+    await put('B.md', '---\nstatus: open\n---\n');
+    await metadata.update([{ path: 'B.md', operation: 'created' }]);
+    expect((await shared.query(path)).files).toEqual(['A.md', 'B.md']);
+    expect(reads).toBe(5);
   });
 
   it('publishes the pinned evaluator and its oracle limitations', () => {

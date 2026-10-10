@@ -27,7 +27,7 @@ export function basesCommand(service: (context: CommandContext) => Bases): Comma
       context: option.string('Note used as this file in query expressions.'),
       limit: option.string('Maximum number of rows for query.'),
     },
-    errors: ['INVALID_BASE', 'INVALID_BASE_QUERY', 'INVALID_BASE_EXPRESSION', 'BASE_EVALUATION_ERROR', 'BASE_VIEW_NOT_FOUND', 'BASE_CONTEXT_NOT_FOUND', 'BASE_INDEX_ERROR', 'AMBIGUOUS_BASE_LINK', 'INVALID_BASE_PROPERTY_TYPES', 'UNSUPPORTED_BASE_PROPERTY_TYPE'],
+    errors: ['INVALID_BASE', 'INVALID_BASE_QUERY', 'INVALID_BASE_EXPRESSION', 'BASE_EVALUATION_ERROR', 'BASE_VIEW_NOT_FOUND', 'BASE_CONTEXT_NOT_FOUND', 'INVALID_BASE_PROPERTY_TYPES', 'UNSUPPORTED_BASE_PROPERTY_TYPE'],
     async run(args, flags, context) {
       const action = args[0] ?? 'list';
       // Global options remain available, but query options never silently affect discovery.

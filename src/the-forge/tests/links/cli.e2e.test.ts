@@ -48,7 +48,7 @@ describe('the links core plugin through the portable CLI', () => {
       // An invalid section makes only its plugin unavailable; discovery, recovery and other commands keep working.
       await configure({ plugins: { disabled: ['serach'], settings: { links: { roots: ['[z-a]'] }, lnks: { roots: [] } } } });
       const failed = cli(['links', 'orphans']);
-      expect(failed.body.error).toMatchObject({ code: 'INVALID_CONFIG', details: { plugin: 'links', issues: ['plugins.settings.links.roots[0]: has the reversed class range [z-a].'] } });
+      expect(failed.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'links', plugin: 'links', reason: expect.stringContaining('plugins.settings.links is invalid'), issues: ['plugins.settings.links.roots[0]: has the reversed class range [z-a].'] } });
       expect(failed.body.warnings).toEqual([
         expect.stringContaining('ignored serach'),
         expect.stringContaining('Plugin links is unavailable in this invocation'),

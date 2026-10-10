@@ -1,6 +1,6 @@
 import { AppError, errorMessage } from '../../domain/shared/errors.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
-import { fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
+import { closestDestination, fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import type {
   Backlink, LinkCounts, MetadataCache, MetadataChange, MetadataIndex, MetadataIssue, MetadataParser, MetadataUpdate, SourceReference,
@@ -104,6 +104,10 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   getFirstLinkpathDest(linkpath: string, sourcePath: string): string | null {
     const result = resolveLinkpath(this.index, linkpath, sourcePath);
     return result.status === 'resolved' ? result.path : null;
+  }
+
+  getClosestLinkpathDest(linkpath: string, sourcePath: string): string | null {
+    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
   }
 
   fileToLinktext(path: string, sourcePath: string, omitMdExtension = true): string {

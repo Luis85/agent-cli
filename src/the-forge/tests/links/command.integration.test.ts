@@ -56,7 +56,7 @@ describe('the links command', () => {
   it('rejects malformed root globs when the configuration loads, making only the links command fail', async () => {
     const run = await links({ links: { roots: ['index.md', '[z-a]', 'x\\'] } });
     await expect(run(['out', 'notes/a.md'])).rejects.toMatchObject({
-      code: 'INVALID_CONFIG',
+      code: 'PLUGIN_UNAVAILABLE',
       details: { issues: ['plugins.settings.links.roots[1]: has the reversed class range [z-a].', 'plugins.settings.links.roots[2]: ends with an unescaped backslash.'] },
     });
   });

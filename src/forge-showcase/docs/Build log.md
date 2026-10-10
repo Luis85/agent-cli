@@ -220,6 +220,68 @@ node bin/forge.js links unresolved
 node bin/forge.js links orphans --path 'docs/**'
 ```
 
+## Product backlog
+
+```sh
+node bin/forge.js backlog init --folder backlog
+node bin/forge.js write 'backlog/Product Backlog.base' --stdin --if-match <revision> < input
+node bin/forge.js create backlog/resources/Mara.md --stdin < input
+node bin/forge.js create backlog/resources/Theo.md --stdin < input
+node bin/forge.js backlog add Epic 'Trip planning' --today 2026-10-12
+node bin/forge.js backlog add Epic 'Group sharing' --today 2026-10-12
+node bin/forge.js backlog add Feature 'Itinerary builder' --parent 'Trip planning' --today 2026-10-12
+node bin/forge.js backlog add Feature 'Trail guide browser' --parent 'Trip planning' --today 2026-10-12
+node bin/forge.js backlog add Feature 'Share links' --parent 'Group sharing' --today 2026-10-12
+node bin/forge.js backlog add PBI 'Draft a trip itinerary' --parent 'Itinerary builder' --today 2026-10-12
+node bin/forge.js backlog add PBI 'Save trip drafts offline' --parent 'Itinerary builder' --today 2026-10-12
+node bin/forge.js backlog add Bug 'Duplicate stops after reordering' --parent 'Itinerary builder' --today 2026-10-12
+node bin/forge.js backlog add PBI 'Browse trail guides by region' --parent 'Trail guide browser' --today 2026-10-12
+node bin/forge.js backlog add PBI 'Share an itinerary link' --parent 'Share links' --today 2026-10-12
+node bin/forge.js backlog add Task 'Build the trip card component' --parent 'Draft a trip itinerary' --today 2026-10-12
+node bin/forge.js backlog add Task 'Wire the trips API adapter' --parent 'Draft a trip itinerary' --today 2026-10-12
+node bin/forge.js backlog add Task 'Add the share dialog' --parent 'Share an itinerary link' --today 2026-10-12
+node bin/forge.js backlog move 'Trail guide browser' --before 'Itinerary builder'
+node bin/forge.js backlog move 'Duplicate stops after reordering' --first
+node bin/forge.js backlog set 'Draft a trip itinerary' --state Active --priority '1 - Must' --assignee Mara --today 2026-10-13
+node bin/forge.js backlog set 'Build the trip card component' --state Active --assignee Mara --today 2026-10-13
+node bin/forge.js backlog set 'Build the trip card component' --state Done --today 2026-10-16
+node bin/forge.js backlog set 'Wire the trips API adapter' --state Active --assignee Theo --today 2026-10-14
+node bin/forge.js backlog set 'Share an itinerary link' --state Open --priority '2 - Should' --risk '1 - High'
+node bin/forge.js backlog set 'Duplicate stops after reordering' --state Open --priority '1 - Must'
+node bin/forge.js backlog depend 'Share an itinerary link' --on 'Draft a trip itinerary'
+node bin/forge.js backlog depend 'Add the share dialog' --on 'Build the trip card component'
+```
+
+## Iterations and releases
+
+```sh
+node bin/forge.js backlog iteration add --goal 'Plan a first trip' --today 2026-10-12
+node bin/forge.js backlog iteration assign 'Draft a trip itinerary' '1 - Iteration - Plan a first trip'
+node bin/forge.js backlog iteration assign 'Build the trip card component' '1 - Iteration - Plan a first trip'
+node bin/forge.js backlog iteration assign 'Wire the trips API adapter' '1 - Iteration - Plan a first trip'
+node bin/forge.js backlog release add 'Trailhead 0.9 beta' --release-version 0.9.0 --target-date 2026-10-20 --status Planned
+node bin/forge.js backlog release join 'Build the trip card component' 'Trailhead 0.9 beta' --today 2026-10-12
+node bin/forge.js backlog release mark-released 'Trailhead 0.9 beta' --today 2026-10-19
+node bin/forge.js backlog release add 'Trailhead 1.0' --release-version 1.0.0 --target-date 2026-12-01 --status Planned
+node bin/forge.js backlog release join 'Draft a trip itinerary' 'Trailhead 1.0' --today 2026-10-12
+node bin/forge.js backlog release join 'Save trip drafts offline' 'Trailhead 1.0' --today 2026-10-12
+node bin/forge.js backlog release join 'Duplicate stops after reordering' 'Trailhead 1.0' --today 2026-10-12
+node bin/forge.js backlog release join 'Browse trail guides by region' 'Trailhead 1.0' --today 2026-10-12
+node bin/forge.js backlog release join 'Share an itinerary link' 'Trailhead 1.0' --today 2026-10-12
+node bin/forge.js backlog release readiness 'Trailhead 1.0' --today 2026-10-20
+node bin/forge.js backlog release notes 'Trailhead 1.0'
+node bin/forge.js edit docs/Trailhead.md --append --content ' ## Product backlog - Backlog view: [[Product B…' --if-match <revision>
+```
+
+## Backlog reports
+
+```sh
+node bin/forge.js backlog tree
+node bin/forge.js backlog board
+node bin/forge.js backlog release list --today 2026-10-20
+node bin/forge.js backlog check
+```
+
 ## Project CI workflow
 
 ```sh

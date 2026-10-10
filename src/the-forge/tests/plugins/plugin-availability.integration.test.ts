@@ -25,13 +25,13 @@ describe('plugins with invalid settings', () => {
     expect([...registry.unavailable.keys()]).toEqual(['catalog', 'board']);
     expect(warnings).toEqual([
       expect.stringContaining('Plugin catalog is unavailable in this invocation: plugins.settings.catalog is invalid: plugins.settings.catalog.limit: must be at least 1'),
-      expect.stringContaining('Plugin board is unavailable in this invocation: it requires service catalog.items of unavailable plugin catalog'),
+      expect.stringContaining('Plugin board is unavailable in this invocation: Requires service catalog.items; its provider catalog is unavailable. Its commands and generators fail with PLUGIN_UNAVAILABLE'),
     ]);
     await registry.activate(events, context);
     expect(activated).toEqual(['notes']);
     expect(await registry.commands.get('notes.count')!.run([], {}, context)).toBe(1);
-    for (const id of ['catalog.list', 'board.show']) {
-      await expect(registry.commands.get(id)!.run([], {}, context)).rejects.toMatchObject({ code: 'INVALID_CONFIG', details: { issues: ['plugins.settings.catalog.limit: must be at least 1'] } });
+    for (const [id, plugin] of [['catalog.list', 'catalog'], ['board.show', 'board']] as const) {
+      await expect(registry.commands.get(id)!.run([], {}, context)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: id, plugin, reason: registry.unavailable.get(plugin)!.reason, issues: ['plugins.settings.catalog.limit: must be at least 1'] } });
     }
     await registry.dispose(events);
   });

@@ -2,10 +2,16 @@ import type { Registry } from '../../application/plugins/registry.ts';
 import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts';
 
 /**
- * The `plugins` catalog: bundled core plugins first, then user plugins, with `state` and their contributions.
- * Disabled and unloaded plugins list their manifest only, since their code never ran in this invocation. An
- * installed user plugin whose id a bundled core plugin owns, enabled or disabled, is listed separately as
- * `rejected` with a `reason`; it never loads.
+ * The `plugins` catalog: bundled core plugins first, then user plugins, each with `state`, `reason` and its
+ * contributions. `state` is one of:
+ * - `enabled`: registered and runnable; `reason` is null.
+ * - `unavailable`: registered, but its settings section is invalid or a service it requires has a disabled or
+ *   unavailable provider; it lists its contributions, and they fail with PLUGIN_UNAVAILABLE.
+ * - `disabled`: a core plugin in `plugins.disabled`, or an installed user plugin that `plugins.enabled` omits.
+ * - `skipped`: an enabled user plugin that `--no-plugins` left unloaded.
+ * - `rejected`: an installed user plugin whose id a bundled core plugin owns, enabled or disabled; it never loads
+ *   and is listed separately from the core entry.
+ * Every state but `enabled` carries a `reason` sentence. Plugins whose code never ran list `contributions: null`.
  */
 export function pluginCatalog(registry: Registry, installed: readonly InstalledPlugin[]) {
   const loaded = registry.plugins.map(plugin => {
@@ -13,7 +19,7 @@ export function pluginCatalog(registry: Registry, installed: readonly InstalledP
     const unavailable = registry.unavailable.get(plugin.manifest.id);
     return {
       ...plugin.manifest, core: registry.origins.get(plugin.manifest.id) === 'core',
-      ...(unavailable ? { state: 'unavailable' as const, reason: unavailable.reason } : { state: 'enabled' as const }),
+      ...(unavailable ? { state: 'unavailable' as const, reason: unavailable.reason } : { state: 'enabled' as const, reason: null }),
       contributions: {
         commands: (plugin.commands ?? []).map(command => command.id),
         generators: (plugin.generators ?? []).map(generator => generator.id),
@@ -26,13 +32,15 @@ export function pluginCatalog(registry: Registry, installed: readonly InstalledP
       },
     };
   });
-  const disabledCore = registry.disabled.map(manifest => ({ ...manifest, core: true, state: 'disabled' as const, contributions: null }));
+  const disabledCore = registry.disabled.map(manifest => ({ ...manifest, core: true, state: 'disabled' as const, reason: registry.disabledReason(manifest.id) ?? 'Listed in plugins.disabled.', contributions: null }));
   const coreIds = new Set([...registry.disabled.map(manifest => manifest.id), ...[...registry.origins].filter(([, origin]) => origin === 'core').map(([id]) => id)]);
   const others = installed.filter(entry => coreIds.has(entry.manifest.id) || !registry.origins.has(entry.manifest.id)).map(entry => ({
     ...entry.manifest, core: false,
     ...(coreIds.has(entry.manifest.id)
       ? { state: 'rejected' as const, reason: `Plugin id ${entry.manifest.id} is reserved by the bundled core plugin; rename the user plugin.` }
-      : { state: entry.skipped ? 'skipped' as const : 'disabled' as const }),
+      : entry.skipped
+        ? { state: 'skipped' as const, reason: 'Skipped by --no-plugins.' }
+        : { state: 'disabled' as const, reason: 'Not listed in plugins.enabled.' }),
     contributions: null,
   }));
   return [...loaded.filter(plugin => plugin.core), ...disabledCore, ...loaded.filter(plugin => !plugin.core), ...others];

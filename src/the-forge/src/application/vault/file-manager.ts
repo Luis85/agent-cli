@@ -106,14 +106,12 @@ export class FileManager {
 
   /** Obsidian's `renameFile`: a move that updates links. */
   // Reached through `context.app.fileManager` by the CLI and plugins.
-  // fallow-ignore-next-line unused-class-member
   renameFile(path: string, newPath: string, options: Omit<MoveOptions, 'updateLinks'> = {}) {
     return this.move(path, newPath, { ...options, updateLinks: true });
   }
 
   /** Obsidian's `trashFile`: moves a file or folder to `.trash/`, refusing while other files link into it. */
   // Reached through `context.app.fileManager` by the CLI and plugins.
-  // fallow-ignore-next-line unused-class-member
   trashFile(path: string, options: Omit<DeleteOptions, 'permanent' | 'recursive'> = {}) {
     return this.delete(path, { ...options, recursive: true });
   }

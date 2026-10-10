@@ -40,11 +40,13 @@ describe('plugin services', () => {
     await expect(cyclic.registry.activate(cyclic.events, context)).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_CYCLE', details: { plugins: ['alpha', 'beta', 'alpha'] } });
   });
 
-  it('rejects duplicate providers and service ids outside a user plugin namespace', () => {
+  it('rejects service ids outside the provider\'s namespace, for core plugins too, so providers never collide', () => {
     const { registry, events } = setup();
     registry.register({ manifest: manifest('alpha'), provides: { 'alpha.api': {} } }, events);
-    // Only core plugins may provide bare or foreign service ids, so only they can collide.
-    expect(() => registry.register({ manifest: { ...manifest('beta'), core: true }, provides: { catalog: {}, 'alpha.api': {} } }, events, 'core')).toThrow(expect.objectContaining({ code: 'DUPLICATE_OR_INVALID_ID' }));
+    // A service id names its provider, which lets the host attribute a missing service to a disabled core plugin.
+    for (const provides of [{ catalog: {} }, { 'alpha.api': {} }]) {
+      expect(() => registry.register({ manifest: { ...manifest('beta'), core: true }, provides }, events, 'core')).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    }
     expect(() => registry.register({ manifest: manifest('beta'), provides: { 'alpha.api': {} } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(() => registry.register({ manifest: manifest('gamma'), provides: { catalog: {} } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['alpha']);
@@ -94,7 +96,7 @@ describe('plugin config sections', () => {
       'plugins.settings has sections for plugins that declare no settings: plain; they are ignored.',
     ]);
     await expect(registry.commands.get('quality.run')!.run([], {}, context)).rejects.toMatchObject({
-      code: 'INVALID_CONFIG', details: { plugin: 'quality', issues: ['plugins.settings.quality.threshold: must be at least 1', 'plugins.settings.quality.extra: is not allowed'] },
+      code: 'PLUGIN_UNAVAILABLE', details: { command: 'quality.run', plugin: 'quality', issues: ['plugins.settings.quality.threshold: must be at least 1', 'plugins.settings.quality.extra: is not allowed'] },
     });
   });
 

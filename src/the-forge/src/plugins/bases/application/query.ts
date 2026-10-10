@@ -2,12 +2,23 @@ import { ensure } from '../../../domain/shared/errors.ts';
 import { vaultPath } from '../../../domain/documents/file.ts';
 
 export interface BasesQueryOptions { view?: string; context?: string; limit?: number }
+/**
+ * A note the index read with less than its full metadata; the query still evaluates every file. `unparseable-note`:
+ * the note cannot be parsed (for example duplicate frontmatter keys or an unclosed flow sequence) and is indexed
+ * without properties, links or tags. `ambiguous-link`: a link path matches several files and resolves to the
+ * closest one, `resolvedPath`.
+ */
+export type BaseIndexWarning =
+  | { code: 'unparseable-note'; path: string; message: string }
+  | { code: 'ambiguous-link'; path: string; message: string; link: string; candidates: string[]; resolvedPath: string };
 export interface BasesQueryResult {
   path: string;
   view: string;
   context: string;
   files: string[];
   total: number;
+  /** Indexing warnings over every file of the scope, in vault path order. */
+  warnings: BaseIndexWarning[];
   compatibility: Record<string, unknown>;
 }
 export interface BasesQueryEngine {

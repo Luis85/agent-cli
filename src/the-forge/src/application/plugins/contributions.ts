@@ -34,7 +34,8 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
   ensure(plugin.requires === undefined || (Array.isArray(plugin.requires) && plugin.requires.every(service => typeof service === 'string' && id.test(service))), 'INVALID_PLUGIN', 'requires must list service ids.');
   for (const service of Object.keys((plugin.provides ?? {}) as object)) {
     ensure(id.test(service), 'DUPLICATE_OR_INVALID_ID', service);
-    ensure(origin === 'core' || inNamespace(service), 'PLUGIN_NAMESPACE', `Service ${service} must start with ${pluginId}.`);
+    // Core plugins too: a service id names its provider, so a disabled provider is known without running it.
+    ensure(inNamespace(service), 'PLUGIN_NAMESPACE', `Service ${service} must start with ${pluginId}.`);
   }
   ensure(plugin.validateSettings === undefined || plugin.settings !== undefined, 'INVALID_PLUGIN', 'validateSettings requires settings.');
   ensure(plugin.settings === undefined || (isRecord(plugin.settings) && plugin.settings.type === 'object' && schemaIssues(plugin.settings).length === 0), 'INVALID_PLUGIN', `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin.settings).join('; ')}`);

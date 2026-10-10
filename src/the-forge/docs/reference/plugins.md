@@ -35,7 +35,8 @@ A core plugin's manifest also declares `"core": true`. Only bundled plugins may:
 | Location | `src/plugins/<id>/plugin.ts` in the Forge source, bundled into `bin/forge.js` | Workspace `bin/plugins/<id>/` |
 | Enabled | By default; `plugins.disabled: ["<id>"]` disables one | Only when `plugins.enabled` lists it, in that load order |
 | `--no-plugins` | Still loaded: they are part of the product | Skipped for the invocation |
-| Command, generator, skill and service ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
+| Command, generator and skill ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
+| Service ids | `<id>.*` only (`bases.query`), so a service names its provider | `<id>.*` only |
 | Event ids | `<id>.*` only, so a core plugin owns its namespace (`bases.*`) | `<id>.*` only |
 | Error codes | Any code outside the built-in catalog | Must start with the id in UPPER_SNAKE_CASE (`QUALITY_`) and stay outside a longer registered prefix; see [strings and error codes](#strings-and-error-codes) |
 | Registration | Bundle order, before user plugins | After core plugins |
@@ -48,15 +49,26 @@ In bundle order, which is also their registration and activation order:
 
 | Plugin | Contributes | Settings | Reference |
 | --- | --- | --- | --- |
-| `bases` | `bases` command: native `.base` views as file repositories | none | [Bases queries](bases.md) |
+| `bases` | `bases` command: native `.base` views as file repositories; provides the `bases.query` service | none | [Bases queries](bases.md) |
 | `skills` | `skills` command and the bundled agent skills | none | [CLI commands](cli.md#commands) |
 | `search` | `search` command; `INVALID_SEARCH_PATTERN` and `SEARCH_TIMEOUT` codes | `timeoutMs` | [Search](search.md) |
 | `links` | `links` command: outgoing links, backlinks, unresolved links, orphans and dead ends | `roots` | [Links](links.md) |
-| `agents` | `agents` command: docker-agent definitions and generated Claude Code agents; the `agents.generated` event, the `forge-agents` skill, and `INVALID_AGENT_DEFINITION`, `AGENT_NOT_FOUND`, `AGENT_EXISTS` and `AGENT_DRIFT` codes | `directory`, `defaultModel` | [Agents](agents.md) |
+| `agents` | `agents` command: docker-agent definitions and generated Claude Code agents; the `agents.generated` event, the `forge-agents` skill, and `INVALID_AGENT_DEFINITION`, `AGENT_NOT_FOUND`, `AGENT_EXISTS`, `AGENT_MERGE_CONFLICT` and `AGENT_DRIFT` codes | `directory`, `defaultModel` | [Agents](agents.md) |
+| `backlog` | `backlog` command for backlog-view compatible product backlogs; `backlog.*` events; the `forge-backlog` skill; `BACKLOG_*` codes; requires `bases.query` | `base`, `view` | [Backlog](backlog.md) |
 
-Each declares German strings for its command, events and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay.
+Each declares German strings for its command, actions, events and codes. Disabling one, for example `{"plugins": {"disabled": ["bases"]}}`, removes exactly its contributions; the kernel commands (`list`, `read`, `move`, …) stay, and a command of a plugin listed in `plugins.disabled` is unknown (`UNKNOWN_COMMAND`), since its code never ran. A plugin that requires a service of a disabled plugin stays registered but becomes unavailable: disabling `bases` leaves `backlog` without `bases.query`, so `plugins` lists `backlog` as `unavailable` with `reason` "Requires service bases.query; its provider bases is disabled.", `help backlog` still describes it, and `backlog list` fails with `PLUGIN_UNAVAILABLE`. Service ids start with their provider's plugin id and a dot, core plugins included, so the host names the disabled provider without running it.
 
-`node bin/forge.js plugins` lists every plugin, core plugins first: the manifest fields, `core`, `state` and `contributions`. `state` is `enabled` for registered plugins, `unavailable` (with a `reason`) for a registered plugin whose config section is invalid or that requires a service of such a plugin, `disabled` for a core plugin in `plugins.disabled` or an installed user plugin that `plugins.enabled` does not name, and `skipped` for an enabled user plugin that `--no-plugins` left unloaded. `contributions` lists command, generator, event and skill ids, `services.provides` and `services.requires`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run. Invalid manifests in `bin/plugins` are skipped with a warning.
+`node bin/forge.js plugins` lists every plugin, core plugins first: the manifest fields, `core`, `state`, `reason` and `contributions`. `state` is one of:
+
+| State | Meaning | `reason` |
+| --- | --- | --- |
+| `enabled` | Registered and runnable | `null` |
+| `unavailable` | Registered, but its config section is invalid or a service it requires has a disabled or unavailable provider; it never activates and its commands and generators fail with `PLUGIN_UNAVAILABLE` | "plugins.settings.&lt;id&gt; is invalid: …", "Requires service &lt;service&gt;; its provider &lt;id&gt; is disabled." or "… is unavailable." |
+| `disabled` | A core plugin in `plugins.disabled`, or an installed user plugin that `plugins.enabled` does not name | "Listed in plugins.disabled." or "Not listed in plugins.enabled." |
+| `skipped` | An enabled user plugin that `--no-plugins` left unloaded | "Skipped by --no-plugins." |
+| `rejected` | An installed user plugin whose id a bundled core plugin owns, enabled or disabled; it never loads and is listed besides the core entry | "Plugin id &lt;id&gt; is reserved by the bundled core plugin; rename the user plugin." |
+
+`contributions` lists command, generator, event and skill ids, `services.provides` and `services.requires`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run (`disabled`, `skipped`, `rejected`). Invalid manifests in `bin/plugins` are skipped with a warning.
 
 ## Contract
 
@@ -149,7 +161,7 @@ A plugin offers named services with `provides: {serviceId: implementation}` and 
 
 - Activation follows the dependency order: every plugin activates after the providers of the services it requires; unrelated plugins keep their order. A required service without an enabled provider fails activation with `PLUGIN_SERVICE_MISSING` (`details: {plugin, service}`), and a dependency cycle with `PLUGIN_SERVICE_CYCLE` (`details.plugins` names the cycle), before any `onload` runs.
 - `context.services.get<T>(id)` returns a read-only view of a provider's implementation: assigning, defining or deleting a member, or changing its prototype, throws a `TypeError`, while its methods still run against the provider's own object, so the provider keeps its state. The view is shallow; protect objects that methods return yourself. A plugin may get only services it declared in `requires` or provides itself; an undeclared lookup is `PLUGIN_SERVICE_MISSING`.
-- User plugin service ids start with `<id>.`; core plugins may use bare ids. A second provider of one id fails registration with `DUPLICATE_OR_INVALID_ID`.
+- Service ids start with the provider's `<id>.`, for core plugins too, so the host knows which disabled plugin a missing service belongs to. A second provider of one id fails registration with `DUPLICATE_OR_INVALID_ID`.
 
 ## Config sections
 
@@ -159,7 +171,7 @@ A plugin declares its settings as a JSON Schema of type `object` in `settings`. 
 { "plugins": { "enabled": ["quality"], "settings": { "quality": { "ownerProperty": "maintainer" } } } }
 ```
 
-After plugins register, the host validates each declared section, fills `default`s, runs the plugin's optional `validateSettings(settings)` for checks JSON Schema cannot express (it returns `<path>: <problem>` issues and performs no I/O; the `links` plugin uses it to compile its root globs) and hands the result to the plugin as `context.settings` (`null` without a schema), a frozen deep copy that plugin code cannot change. Every `default` in the schema must satisfy its own schema; otherwise registration fails with `INVALID_PLUGIN`. An invalid section never blocks the CLI: the plugin becomes unavailable for the invocation (`state: "unavailable"` with a `reason` in `plugins`), together with every plugin that requires one of its services, and every response carries a warning naming each path, such as `plugins.settings.quality.ownerProperty: must have at least 1 characters`. Unavailable plugins never activate; their commands and generators fail with `INVALID_CONFIG`, with `error.details` `{plugin, issues}`. Discovery and recovery commands (`config`, `help`, `schema`, `plugins`) and the other plugins keep working. A section for a loaded plugin that declares no settings is ignored with a warning, and a section whose id names no registered, disabled or installed plugin (a misspelled id such as `serach`) is kept unchanged with a warning; sections of disabled or uninstalled plugins are kept unchanged. `config` shows the effective sections in `data.config.plugins.settings` and their schemas in `data.sections` (`[{plugin, path, schema}]`). Changing a section triggers [`onExternalSettingsChange`](#lifecycle-hooks-layout-ready-and-quit) once.
+After plugins register, the host validates each declared section, fills `default`s, runs the plugin's optional `validateSettings(settings)` for checks JSON Schema cannot express (it returns `<path>: <problem>` issues and performs no I/O; the `links` plugin uses it to compile its root globs) and hands the result to the plugin as `context.settings` (`null` without a schema), a frozen deep copy that plugin code cannot change. Every `default` in the schema must satisfy its own schema; otherwise registration fails with `INVALID_PLUGIN`. An invalid section never blocks the CLI: the plugin becomes unavailable for the invocation (`state: "unavailable"` with a `reason` in `plugins`), together with every plugin that requires one of its services, and every response carries a warning naming each path, such as `plugins.settings.quality.ownerProperty: must have at least 1 characters`. Unavailable plugins never activate; their commands and generators fail with `PLUGIN_UNAVAILABLE`, with `error.details` `{command or generator, plugin, reason, issues}`. Discovery and recovery commands (`config`, `help`, `schema`, `plugins`) and the other plugins keep working. A section for a loaded plugin that declares no settings is ignored with a warning, and a section whose id names no registered, disabled or installed plugin (a misspelled id such as `serach`) is kept unchanged with a warning; sections of disabled or uninstalled plugins are kept unchanged. `config` shows the effective sections in `data.config.plugins.settings` and their schemas in `data.sections` (`[{plugin, path, schema}]`). Changing a section triggers [`onExternalSettingsChange`](#lifecycle-hooks-layout-ready-and-quit) once.
 
 ## Strings and error codes
 

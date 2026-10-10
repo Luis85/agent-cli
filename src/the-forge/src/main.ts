@@ -34,6 +34,7 @@ import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { searchPlugin } from './plugins/search/plugin.ts';
 import { linksPlugin } from './plugins/links/plugin.ts';
 import { agentsPlugin } from './plugins/agents/plugin.ts';
+import { backlogPlugin } from './plugins/backlog/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
@@ -63,7 +64,7 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -129,8 +130,7 @@ async function run(): Promise<void> {
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
-      const command = registry.commands.get(id);
-      ensure(command, 'UNKNOWN_COMMAND', `Unknown command ${id}. Run help or schema.`);
+      const command = registry.resolveCommand(id);
       // An action's own options (make <generator>) parse only once the action is known: the first argument after
       // the command id, unless an option precedes it.
       const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];

@@ -61,8 +61,6 @@ export declare const errorCatalog: {
     readonly BASE_EVALUATION_ERROR: ErrorDefinition;
     readonly BASE_VIEW_NOT_FOUND: ErrorDefinition;
     readonly BASE_CONTEXT_NOT_FOUND: ErrorDefinition;
-    readonly BASE_INDEX_ERROR: ErrorDefinition;
-    readonly AMBIGUOUS_BASE_LINK: ErrorDefinition;
     readonly INVALID_BASE_PROPERTY_TYPES: ErrorDefinition;
     readonly UNSUPPORTED_BASE_PROPERTY_TYPE: ErrorDefinition;
     readonly INVALID_CONFIG: ErrorDefinition;
@@ -111,6 +109,7 @@ export declare const errorCatalog: {
     readonly DUPLICATE_PLUGIN: ErrorDefinition;
     readonly PLUGIN_NAMESPACE: ErrorDefinition;
     readonly PLUGIN_SERVICE_MISSING: ErrorDefinition;
+    readonly PLUGIN_UNAVAILABLE: ErrorDefinition;
     readonly PLUGIN_SERVICE_CYCLE: ErrorDefinition;
     readonly PLUGIN_LIFECYCLE: ErrorDefinition;
     readonly DUPLICATE_OR_INVALID_ID: ErrorDefinition;

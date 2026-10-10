@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · How-to guide
 
-The repository commits a fully generated example project, `src/forge-showcase`. It describes Trailhead, a small fictional trip-planning web app, and demonstrates The Forge end to end: workflow documents linked into an Obsidian knowledge graph, a Canvas map and Bases views, a component library with interactions generated for all seven UI targets with Storybook stories, REST and local JSON data sources with typed adapters and fixtures, domain and application code, forms, a native Claude agent, installed agent skills and the project's own CI workflow. Its `README.md` maps every folder to the commands that produced it, and `docs/Build log.md` lists every invocation in order.
+The repository commits a fully generated example project, `src/forge-showcase`. It describes Trailhead, a small fictional trip-planning web app, and demonstrates The Forge end to end: workflow documents linked into an Obsidian knowledge graph, a Canvas map and Bases views, a backlog-view compatible product backlog, a component library with interactions generated for all seven UI targets with Storybook stories, REST and local JSON data sources with typed adapters and fixtures, domain and application code, forms, Claude Code agents generated from a docker-agent team plus a native Claude agent, installed agent skills and the project's own CI workflow. Its `README.md` maps every folder to the commands that produced it, and `docs/Build log.md` lists every invocation in order.
 
 The showcase is available in a source checkout of the repository. Release bundles do not contain it.
 
@@ -25,6 +25,17 @@ node bin/forge.js project open the-forge
 ```
 
 The README's "Search and link reports" section records these results from generation; in the committed vault `links unresolved` and `links orphans --path "docs/**"` report none.
+
+The `backlog` folder holds a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged: Epics, Features, PBIs, a Bug and Tasks with ranks, states and stamps, assignees, dependencies, an iteration and two releases, configured by `backlog/Product Backlog.base`. Inspect it with the showcase selected:
+
+```sh
+node bin/forge.js backlog tree
+node bin/forge.js backlog board
+node bin/forge.js backlog release readiness "Trailhead 1.0"
+node bin/forge.js backlog check
+```
+
+The README's "Product backlog" section records these reports, and `backlog/release-notes` holds the generated release notes. See [plan and release work in a product backlog](manage-backlog.md).
 
 The showcase's agent team is docker-agent YAML in `agents/trailhead-team.yaml`: a lead with two sub-agents, a GitHub MCP server and a `/trace` command. Its Claude Code agents in `.claude/agents/` and the `trace` skill in `.claude/skills/` were generated from it; with the showcase selected, check that they still match, and read the mapping diagnostics:
 

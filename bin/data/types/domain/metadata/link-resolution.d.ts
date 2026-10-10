@@ -43,6 +43,18 @@ export declare function joinPath(folder: string, target: string): string;
  */
 export declare function resolveLinkpath(index: LinkIndex, link: string, source: string, options?: ResolveOptions): LinkResolution;
 /**
+ * The candidate an Obsidian-style lookup opens for an ambiguous path match: the one whose folder is the fewest
+ * folder steps from the source's folder (steps up to their deepest common folder plus steps down from it), then
+ * the one with the fewest path segments, then the first in vault path order. A candidate in the source's own
+ * folder is therefore always chosen.
+ */
+export declare function closestCandidate(candidates: readonly string[], source: string): string;
+/**
+ * The file a resolution opens like Obsidian's `getFirstLinkpathDest`: a resolved path, or for a link whose path
+ * matches several files, the closest candidate. Missing targets and alias matches stay null.
+ */
+export declare function closestDestination(resolution: LinkResolution, source: string): string | null;
+/**
  * Obsidian's default "shortest" link text for `path` from `source`: the file name when it resolves back to the
  * file, otherwise the full path. Markdown files omit `.md` unless `omitMdExtension` is false.
  */

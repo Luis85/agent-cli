@@ -119,14 +119,18 @@ export declare class Registry {
     readonly generators: Map<string, Generator>;
     readonly skills: Map<string, Skill>;
     readonly plugins: Plugin[];
-    /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
+    /** Registered plugins with their origin. */
     readonly origins: Map<string, PluginOrigin>;
+    /** Bundled core plugins listed in `plugins.disabled`: they contribute nothing, and their commands are unknown. */
     readonly disabled: PluginManifest[];
+    private readonly disabledReasons;
     readonly catalog: PluginCatalog;
     readonly settings: PluginSettings;
     /**
-     * Registered plugins that cannot run in this invocation, with the reason: an invalid settings section, or a
-     * required service whose provider is itself unavailable. They stay listed but never activate.
+     * Registered plugins that cannot run in this invocation, with a `reason` sentence: an invalid settings section
+     * (`issues` lists its problems), or a required service whose provider is disabled or itself unavailable (`issues`
+     * are the provider's). They stay listed with their contributions but never activate; their commands and
+     * generators fail with PLUGIN_UNAVAILABLE.
      */
     readonly unavailable: Map<string, {
         reason: string;
@@ -139,16 +143,24 @@ export declare class Registry {
         id: string;
     }>(map: Map<string, T>, item: T): void;
     register(plugin: Plugin, events: EventBus, origin?: PluginOrigin): void;
-    /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
-    disable(manifest: PluginManifest): void;
+    /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
+    disable(manifest: PluginManifest, reason: string): void;
+    /** Why a disabled core plugin contributes nothing. */
+    disabledReason(pluginId: string): string | undefined;
+    /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
+    resolveCommand(commandId: string): Command;
     /**
      * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
-     * section, and every plugin that requires its services, becomes unavailable with a warning instead of failing the
-     * invocation: discovery and recovery commands keep working, and only its own commands and generators fail with
-     * INVALID_CONFIG. Sections of loaded plugins without settings, and sections naming no registered, disabled or
-     * `installed` plugin (misspelled ids), are kept unchanged with a warning.
+     * section becomes unavailable with a warning instead of failing the invocation, and so does every plugin that
+     * requires its services; a plugin that requires a service of a disabled core plugin (`backlog` without `bases`)
+     * becomes unavailable without a warning, since `plugins.disabled` asked for it. Discovery and recovery commands
+     * keep working; only the unavailable plugins' commands and generators fail with PLUGIN_UNAVAILABLE. Sections of
+     * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
+     * ids), are kept unchanged with a warning.
      */
     configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>>;
+    /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
+    private cascadeUnavailable;
     /** The context a plugin's hooks, commands and generators run with. */
     pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext;
     publishRegistered(events: EventBus): Promise<void>;
@@ -158,7 +170,7 @@ export declare class Registry {
      */
     activate(events: EventBus, context: CommandContext, state?: PluginStateStore): Promise<void>;
     dispose(events: EventBus): Promise<void>;
-    /** INVALID_CONFIG when the plugin is unavailable in this invocation. */
+    /** PLUGIN_UNAVAILABLE, with `details` `{command|generator, plugin, reason, issues}`, when the plugin cannot run. */
     private ensureAvailable;
     /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
     private ownedCommand;

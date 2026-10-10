@@ -35,6 +35,7 @@
     "data/docs/how-to/explore-the-showcase.md",
     "data/docs/how-to/generate-forms.md",
     "data/docs/how-to/manage-agents.md",
+    "data/docs/how-to/manage-backlog.md",
     "data/docs/how-to/manage-claude.md",
     "data/docs/how-to/manage-components.md",
     "data/docs/how-to/manage-data-sources.md",
@@ -44,6 +45,7 @@
     "data/docs/how-to/use-workflow-templates.md",
     "data/docs/index.md",
     "data/docs/reference/agents.md",
+    "data/docs/reference/backlog.md",
     "data/docs/reference/bases.md",
     "data/docs/reference/claude.md",
     "data/docs/reference/cli.md",
@@ -181,6 +183,7 @@
     "forge.js",
     "package.json",
     "skills/forge-agents.md",
+    "skills/forge-backlog.md",
     "skills/forge-development.md",
     "skills/forge-vault.md",
     "skills/forge-workflow.md"

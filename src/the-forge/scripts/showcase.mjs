@@ -13,6 +13,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildBacklog } from './showcase/backlog.mjs';
 import { forgeCli } from './showcase/cli.mjs';
 import { buildAutomation, buildCode, buildProject } from './showcase/code.mjs';
 import { buildAgents } from './showcase/agents.mjs';
@@ -57,13 +58,15 @@ async function generate(workspace) {
   buildDataSources(cli);
   const { queries } = await buildVault(cli);
   const exploration = await exploreVault(cli);
+  // After the vault reports: backlog leaves have no inbound links by design and live outside docs.
+  const backlog = buildBacklog(cli);
   buildAutomation(cli);
   const agents = buildAgents(cli);
   configureToolchain(cli);
   cli.begin('Documentation');
   const log = [...cli.log];
   cli.create(buildLogPath, buildLog(log));
-  cli.replace('README.md', readme(queries, exploration, agents));
+  cli.replace('README.md', readme(queries, exploration, backlog, agents));
   assertContained(workspace);
   return join(workspace, project.directory);
 }

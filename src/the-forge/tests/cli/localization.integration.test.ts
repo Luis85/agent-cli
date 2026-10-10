@@ -20,6 +20,7 @@ import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
+import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
@@ -63,7 +64,7 @@ describe('built-in localization catalog coverage', () => {
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin];
+    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }, []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));
@@ -74,6 +75,8 @@ describe('built-in localization catalog coverage', () => {
       }
     }
     for (const { code } of registry.catalog.errors()) expect(registry.catalog.localizedError(code, 'de'), code).toEqual({ summary: expect.any(String), hint: expect.any(String) });
-    for (const { id } of bus.catalog().filter(event => event.id.startsWith('agents.'))) expect(registry.catalog.text('de', 'events', id), id).toEqual(expect.any(String));
+    const pluginEvents = bus.catalog().filter(event => bundledCorePlugins.some(plugin => event.id.startsWith(`${plugin}.`)));
+    expect(pluginEvents.length).toBeGreaterThan(0);
+    for (const { id } of pluginEvents) expect(registry.catalog.text('de', 'events', id), id).toEqual(expect.any(String));
   });
 });
