@@ -19,6 +19,13 @@ beforeAll(async () => {
     ['board.canvas', '{"nodes":[{"id":"a","type":"file","file":"Home.md","x":0,"y":0,"width":200,"height":100}],"edges":[]}\n'],
     ['tasks.base', 'views:\n  - type: table\n    name: Table\n'],
     ['src/index.ts', 'export const answer = 42;\n'],
+    ['plan.json', JSON.stringify({ version: 1, operations: [
+      { op: 'write', path: 'Inbox/New.md', content: '# New\n' },
+      { op: 'frontmatter', path: 'Home.md', set: { status: 'active' } },
+      { op: 'move', from: 'Projects/Alpha.md', to: 'Archive/Alpha.md' },
+      { op: 'edit', path: 'Archive/Alpha.md', edits: [{ find: 'Back', replace: 'Return' }] },
+      { op: 'delete', path: 'Lonely.md' },
+    ] })],
   ] as const) {
     await mkdir(join(project, path, '..'), { recursive: true });
     await writeFile(join(project, path), content);
@@ -57,6 +64,8 @@ describe('the published schema contract', () => {
     expect(annotations.create).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     for (const id of ['write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename']) expect(annotations[id], id).toMatchObject({ destructiveHint: true, idempotentHint: true });
     expect(annotations.make).toMatchObject({ destructiveHint: true, idempotentHint: false });
+    expect(annotations.apply).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
+    expect(annotations.vault).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, defaultAction: 'check' });
     expect(annotations.project).toMatchObject({ mutating: true, destructiveHint: false, actions: { current: { readOnlyHint: true }, open: { destructiveHint: false, idempotentHint: true } } });
   });
 
@@ -81,11 +90,24 @@ describe('the published schema contract', () => {
     ['search', 'Home', '--context', '1'], ['search', 'status', '--in', 'frontmatter'],
     ['links', 'out', 'Home.md'], ['links', 'back', 'Home.md'], ['links', 'unresolved'], ['links', 'orphans'], ['links', 'deadends'],
     ['project', 'current'], ['project', 'list'], ['project'], ['config'], ['schema'], ['schema', 'links'],
+    ['vault'], ['vault', 'check', '--rule', 'unresolved-link'], ['vault', 'tags', '--sort', 'count'], ['vault', 'properties'], ['vault', 'properties', '--name', 'status'],
+    ['apply', 'plan.json', '--dry-run'],
   ])('validates the real output of %s against its declared output schema', (...args) => {
     const result = cli(args);
     expect(result.status, result.stdout).toBe(0);
     expect(validator.envelope(result.body)).toEqual([]);
     expect(validator.output(args, result.body.data)).toEqual([]);
+  });
+
+  it('validates the dry-run output of a precise edit against its declared output schema', () => {
+    const revision = cli(['read', 'Home.md']).body.data.revision;
+    for (const args of [['edit', 'Home.md', '--section', 'Home', '--append', '--content', 'More.'], ['edit', 'Home.md', '--edits', '[{"find":"See","replace":"Visit"}]']]) {
+      const result = cli([...args, '--if-match', revision, '--dry-run']);
+      expect(result.status, result.stdout).toBe(0);
+      expect(result.body.data.changes[0].diff).toContain('+');
+      expect(validator.output(args, result.body.data)).toEqual([]);
+    }
+    expect(cli(['read', 'Home.md']).body.data.revision).toBe(revision);
   });
 
   it('validates the selected project, failures and version output against the envelope schema', () => {

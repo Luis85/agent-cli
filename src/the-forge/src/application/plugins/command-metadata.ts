@@ -112,11 +112,24 @@ export function optionTypes(options: CommandMetadata['options']): Record<string,
   return Object.fromEntries(Object.entries(options ?? {}).map(([key, schema]) => [key, schema.type]));
 }
 
-function optionSchema(schema: CommandOption): JsonSchema {
-  return { type: schema.type, description: schema.description, ...(schema.enum ? { enum: [...schema.enum] } : {}), ...(schema.default === undefined ? {} : { default: schema.default }) };
+/**
+ * A string option or argument with a declared `schema` holds or names a JSON document (inline JSON, `@file`, `-` or
+ * a path, as its description says); the input schema carries the document's schema as a 2020-12 content annotation.
+ */
+function documentContent(schema: JsonSchema | undefined): JsonSchema {
+  if (schema === undefined) return {};
+  const { $schema: _dialect, ...document } = schema;
+  return { contentMediaType: 'application/json', contentSchema: document };
 }
 
-const positionalSchema = (arg: CommandArgument): JsonSchema => ({ type: 'string', description: arg.description, ...(arg.enum ? { enum: [...arg.enum] } : {}) });
+function optionSchema(schema: CommandOption): JsonSchema {
+  return {
+    type: schema.type, description: schema.description, ...(schema.enum ? { enum: [...schema.enum] } : {}),
+    ...(schema.default === undefined ? {} : { default: schema.default }), ...documentContent(schema.schema),
+  };
+}
+
+const positionalSchema = (arg: CommandArgument): JsonSchema => ({ type: 'string', description: arg.description, ...(arg.enum ? { enum: [...arg.enum] } : {}), ...documentContent(arg.schema) });
 
 /** `args` and `options` of one invocation shape; `action` pins the first argument to one action id. */
 function invocationSchema(usage: string, args: readonly CommandArgument[], options: Readonly<Record<string, CommandOption>>, action?: string): JsonSchema {

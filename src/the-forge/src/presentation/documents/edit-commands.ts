@@ -8,6 +8,7 @@ import { arity, parseJson, value } from '../../application/plugins/command-input
 import { option, type CommandFlags } from '../../application/plugins/command-metadata.ts';
 import { decodeText, editBytes, ensureEditable } from '../../application/documents/text-edit.ts';
 import { PlanRunner } from '../../application/documents/apply.ts';
+import { applyOutput, editOutput } from './output.ts';
 
 /** JSON text, `@path` (a file in the command scope) or `-` (standard input). */
 async function jsonInput(source: string, context: Pick<CommandContext, 'workspace' | 'input'>): Promise<unknown> {
@@ -54,7 +55,7 @@ export function editCommand(): Command {
   return {
     id: 'edit', description: 'Edit Markdown or UTF-8 text in place: literal replacements, an append, or a section or block edit.',
     usage: 'edit <note.md|text-file> --if-match sha256 (--find text --replace text | --edits json|@file|- | --append --content text | (--section "A > B" | --block id) (--replace text | --append --content text | --prepend --content text))',
-    scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }], errors: editErrors,
+    scope: 'project', discovery: false, mutating: true, args: [{ name: 'path', description: 'Vault path relative to the command scope.', required: true }], errors: editErrors, output: editOutput,
     options: {
       'if-match': option.string('SHA-256 revision the file must still have (from read).', { required: true }),
       find: option.string('Exact literal text that must occur once.'),
@@ -78,7 +79,9 @@ export function editCommand(): Command {
 export function applyCommand(): Command {
   return {
     id: 'apply', description: 'Run a JSON plan of writes, edits, frontmatter changes, moves and deletions as one guarded batch.', usage: 'apply <plan.json|->',
-    scope: 'project', discovery: false, mutating: true, errors: applyErrors,
+    // Destructive: write, edit and delete replace or remove content. Not idempotent: an operation without ifMatch,
+    // such as an append, applies again on a repeat; only a plan whose every operation carries ifMatch fails instead.
+    scope: 'project', discovery: false, mutating: true, destructive: true, idempotent: false, errors: applyErrors, output: applyOutput,
     args: [{ name: 'plan', description: 'Plan file in the command scope, or - to read the plan from standard input.', required: true, schema: applyPlanSchema }],
     async run(args, _flags, context) {
       arity(args, 1);

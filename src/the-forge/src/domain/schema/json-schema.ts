@@ -1,7 +1,9 @@
 /**
  * The JSON Schema 2020-12 subset Forge emits for command input and accepts for plugin settings. It covers what
  * command options, positional arguments and configuration sections need; unsupported keywords are rejected rather
- * than ignored, so a schema never promises validation it does not get.
+ * than ignored, so a schema never promises validation it does not get. `contentMediaType` and `contentSchema` are
+ * annotations by the specification: they describe the JSON document a string holds or names (`edit --edits`, the
+ * `apply` plan) and are never validated here.
  */
 export type JsonSchemaType = 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean' | 'null';
 export interface JsonSchema {
@@ -13,6 +15,7 @@ export interface JsonSchema {
   /** Exactly one of these schemas must match; the matching one completes the value. */
   oneOf?: JsonSchema[];
   minimum?: number; maximum?: number; minLength?: number; maxLength?: number; pattern?: string;
+  contentMediaType?: string; contentSchema?: JsonSchema;
 }
 
 export const jsonSchemaDialect = 'https://json-schema.org/draft/2020-12/schema';
@@ -39,6 +42,8 @@ const keywords: Record<string, (value: unknown, path: string) => string[]> = {
   const: () => [],
   oneOf: (value, path) => Array.isArray(value) && value.length > 0 ? value.flatMap((schema, index) => schemaIssues(schema, `${path}.oneOf[${index}]`)) : [`${path}.oneOf must be a nonempty array`],
   default: () => [],
+  contentMediaType: (value, path) => typeof value === 'string' && value.length > 0 ? [] : [`${path}.contentMediaType must be a media type`],
+  contentSchema: (value, path) => schemaIssues(value, `${path}.contentSchema`),
   pattern: (value, path) => {
     if (typeof value !== 'string') return [`${path}.pattern must be a string`];
     try { new RegExp(value, 'u'); return []; } catch { return [`${path}.pattern must be a valid regular expression`]; }

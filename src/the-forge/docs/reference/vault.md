@@ -22,6 +22,8 @@ The plugin id is `vault-check`, not `vault`: `vault` is the host's Obsidian even
 | `vault tags [--path glob] [--sort name\|count]` | `{tags}`: `[{tag, count, files}]` for frontmatter and inline tags |
 | `vault properties [--path glob] [--name property]` | `{properties, typesFile}`: `[{name, count, empty, types, type, declared, conflicting, files?}]` |
 
+Each action publishes its result as an output schema (`schema vault`, under `annotations.actions.<action>.outputSchema`); every action is read-only, so `readOnlyHint` is `true` and `idempotentHint` holds.
+
 `--path` takes a [path glob](cli.md#path-globs-and-paging) and selects the files that are checked or inventoried. `--rule` takes comma-separated rule ids; an unknown id, an unknown action, an extra argument or an invalid `--sort` fails with `INVALID_ARGUMENT`. Without `--strict` findings never fail the command. With `--strict`, a check that holds at least one finding of severity `error` fails with [`VAULT_CHECK_FAILED`](errors.md#core-plugin-codes) (exit 2): `error.details` carries `summary`, `rules`, the first 100 error findings in `findings` and `truncated`. Warnings and info findings never fail a strict check.
 
 A finding is:

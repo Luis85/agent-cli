@@ -31,7 +31,7 @@ node bin/forge.js schema read --json     # one command, with only the error code
 | --- | --- |
 | `id`, `description`, `usage` | The command id, what it does and its usage line |
 | `options`, `args` | The declared options and positional arguments, as `help` shows them |
-| `inputSchema` | JSON Schema of one invocation `{args, options}`: positional arguments after the command id and the command's own options. A command with actions publishes one `oneOf` branch per action; see [command metadata](plugins.md#command-metadata) |
+| `inputSchema` | JSON Schema of one invocation `{args, options}`: positional arguments after the command id and the command's own options. A command with actions publishes one `oneOf` branch per action; see [command metadata](plugins.md#command-metadata). A string option or argument that holds or names a JSON document carries that document's schema as `contentMediaType: "application/json"` and `contentSchema`: the `edit --edits` list and the `apply` plan |
 | `outputSchema` | JSON Schema of `data` in a successful response, when the command declares one. An action may declare its own, published as `annotations.actions.<action>.outputSchema`; it replaces the command's for that action |
 | `errors` | Codes the command reports itself, besides `commonErrors` |
 | `annotations` | Behavior hints derived from metadata; see [annotations](#annotations) |
@@ -50,6 +50,10 @@ Output schemas describe the documented fields and their types. Objects stay open
 | `config` | `{path, root, config, sections}` |
 | `schema` | This document |
 | `skills list` / `skills show` | `{skills}` / `{id, content}` |
+| `edit` | `{dryRun, changes: [{path, revision, operation, bytes, diff?}]}`; `diff` is the unified diff of a dry run (`null` for binary content) |
+| `apply` | `{dryRun, operations: [{index, op, path, …}], renames, changes, folders}`: one summary per plan operation (a move adds `to`, `kind` and `links`; a delete adds `kind`, `trashPath` and `brokenLinks`) and the one batch it committed or, with `--dry-run`, planned |
+| `vault check` | `{findings: [{rule, severity, path, line, column, message, hint, suggestion?}], summary: {files, findings, error, warning, info}, rules: [{id, severity, findings}], skipped, strict}` |
+| `vault tags` / `vault properties` | `{tags: [{tag, count, files}]}` / `{properties: [{name, count, empty, types, type, declared, conflicting, files?}], typesFile: {path, status}}` |
 
 ## Annotations
 
@@ -61,7 +65,7 @@ Output schemas describe the documented fields and their types. Objects stay open
 | `destructiveHint` | A mutating invocation may replace or remove existing content | `true` for every mutating mode unless its metadata declares `destructive: false` (`create`, `setup`, `skills install`, `project create/open/close/component`); always `false` when read-only; command level: any mode is destructive |
 | `idempotentHint` | Repeating the identical invocation has no further effect | `true` when read-only, or when the mode declares `--if-match` (a repeat fails on the changed revision), unless the metadata declares `idempotent`; command level: every mode is idempotent |
 
-The hints describe the command's contract, not the outcome of one call: `delete --if-match` is destructive and idempotent, because a second identical call fails with `NOT_FOUND` or `CONFLICT` instead of deleting again. Commands that a plugin adds receive the same derived hints from their metadata.
+The hints describe the command's contract, not the outcome of one call: `delete --if-match` is destructive and idempotent, because a second identical call fails with `NOT_FOUND` or `CONFLICT` instead of deleting again. `apply` declares `idempotent: false`: each operation's `ifMatch` is optional, and an operation without one, such as an `edit` append, applies again on a repeat; a plan whose every operation carries `ifMatch` fails with `CONFLICT` instead. `vault` is read-only in every action. Commands that a plugin adds receive the same derived hints from their metadata.
 
 ## Envelope
 
@@ -74,7 +78,7 @@ The hints describe the command's contract, not the outcome of one call: `delete 
 
 ## Validating
 
-The schemas use only keywords of the JSON Schema 2020-12 vocabulary that any compliant validator understands: `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `oneOf`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `default`, `title` and `description`. The test suite checks every published schema against the 2020-12 meta-schema with Ajv in strict mode and validates real responses of the commands above against their output schemas.
+The schemas use only keywords of the JSON Schema 2020-12 vocabulary that any compliant validator understands: `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `enum`, `const`, `oneOf`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `default`, `title` and `description`, plus the content annotations `contentMediaType` and `contentSchema`. Content annotations describe the JSON document a string holds or names and are not asserted by validators: validate a plan or an edit list against the `contentSchema` yourself before passing it, or let the command report `INVALID_PLAN` or `INVALID_INPUT` with `details.issues`. The test suite checks every published schema against the 2020-12 meta-schema with Ajv in strict mode and validates real responses of the commands above, including `apply --dry-run`, `edit --dry-run` and every `vault` action, against their output schemas.
 
 ```js
 import { execFileSync } from 'node:child_process';

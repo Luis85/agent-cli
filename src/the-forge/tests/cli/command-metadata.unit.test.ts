@@ -6,6 +6,7 @@ import { builtinCommands } from '../support/builtin-commands.ts';
 import { testHost } from '../support/core-plugins.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
+import { applyPlanSchema, literalEditsSchema } from '../../src/domain/documents/apply-plan.ts';
 
 const { commands } = builtinCommands();
 
@@ -85,6 +86,14 @@ describe('built-in command metadata', () => {
     ]);
     const claude = commandInputSchema(commands.get('claude')!);
     expect(validateJsonValue(claude, { args: ['plugins', 'install', 'review@team'], options: {} }, 'input').issues).toEqual([]);
+  });
+
+  it('carries the JSON document schemas of string options and arguments as content annotations', () => {
+    const { $schema: _dialect, ...plan } = applyPlanSchema;
+    expect(commandInputSchema(commands.get('edit')!).properties!.options!.properties!.edits).toMatchObject({ type: 'string', contentMediaType: 'application/json', contentSchema: literalEditsSchema });
+    expect(commandInputSchema(commands.get('apply')!).properties!.args!.prefixItems![0]).toEqual(expect.objectContaining({ type: 'string', contentMediaType: 'application/json', contentSchema: plan }));
+    // Annotations only: the string itself still validates, whatever document it holds or names.
+    expect(validateJsonValue(commandInputSchema(commands.get('apply')!), { args: ['plan.json'], options: {} }, 'input').issues).toEqual([]);
   });
 });
 

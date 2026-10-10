@@ -11,6 +11,7 @@ import {
   compareFindings, effectiveSeverities, isRuleId, ruleIds, severities, type Detection, type Finding, type RuleId, type RuleSetting, type Severity,
 } from '../domain/rules.ts';
 import { fill } from './messages.ts';
+import { vaultOutput } from './output.ts';
 
 const actions = ['check', 'tags', 'properties'] as const;
 /** Error findings a failed `--strict` check carries in `error.details.findings`. */
@@ -75,6 +76,7 @@ export function vaultCommand(service: (context: CommandContext) => VaultService)
     scope: 'project', discovery: false, mutating: false, defaultAction: 'check', unknownAction: 'INVALID_ARGUMENT',
     actions: {
       check: {
+        output: vaultOutput.check,
         description: 'Report findings of every enabled rule with severity, location, message and hint; --strict fails on error findings.',
         usage: 'vault check [--path glob] [--rule id[,id…]] [--strict]',
         options: {
@@ -83,11 +85,13 @@ export function vaultCommand(service: (context: CommandContext) => VaultService)
         },
       },
       tags: {
+        output: vaultOutput.tags,
         description: 'List frontmatter and inline tags with the files that use them; nested tags also count for their parents.',
         usage: 'vault tags [--path glob] [--sort name|count]',
         options: { sort: option.string('Order by tag name or by file count, most used first.', { enum: tagSorts, default: 'name' }) },
       },
       properties: {
+        output: vaultOutput.properties,
         description: 'List frontmatter properties with value counts, inferred types, conflicts and the type declared in .obsidian/types.json.',
         usage: 'vault properties [--path glob] [--name property]',
         options: { name: option.string('Only this property, with the value type of each note.') },
