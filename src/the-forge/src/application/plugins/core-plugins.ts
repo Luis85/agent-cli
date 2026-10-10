@@ -1,5 +1,6 @@
 import { ensure } from '../../domain/shared/errors.ts';
 import type { EventBus } from './events.ts';
+import type { HttpClient } from '../connectors/http.ts';
 import type { PluginContributions, PluginManifest, Registry, Skill } from './registry.ts';
 
 /** Read access to every registered skill: the kernel's, core plugins' and user plugins'. */
@@ -22,6 +23,10 @@ export interface CorePluginHost {
   skills: SkillCatalog;
   /** Filesystem dates, which the repository port does not carry (Bases `file.ctime`/`file.mtime`). */
   fileDates: FileDatesReader;
+  /** Outbound HTTP for connectors to external services. */
+  http: HttpClient;
+  /** Reads one environment variable (a connector's credential source); undefined when unset. */
+  environment: (name: string) => string | undefined;
 }
 
 /**

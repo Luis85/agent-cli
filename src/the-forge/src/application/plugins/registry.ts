@@ -62,6 +62,8 @@ export interface PluginContributions {
   provides?: Record<string, unknown>;
   /** Service ids this plugin needs; it activates after their providers. */
   requires?: string[];
+  /** Service ids this plugin uses when an enabled plugin provides them; it activates after those providers. */
+  optional?: string[];
   /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
   settings?: JsonSchema;
   strings?: PluginStrings;

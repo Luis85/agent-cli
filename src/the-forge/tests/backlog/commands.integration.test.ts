@@ -8,6 +8,7 @@ import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts'
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { backlogVault, runBacklog } from '../support/backlog.ts';
+import { offlineHost } from '../support/core-plugins.ts';
 
 const base = (folder: string, extra = '') => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: ${folder}\n    stateProperty: note.status\n    dependsOnProperty: note.dependsOn\n${extra}`;
 const note = (fields: Record<string, unknown>) => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n`;
@@ -30,7 +31,7 @@ describe('choosing the backlog', () => {
   it('is disabled together with the bases plugin whose service it requires', () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates }, ['bases']);
+    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['bases']);
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases', 'backlog']);
     expect(registry.commands.has('backlog')).toBe(false);
   });

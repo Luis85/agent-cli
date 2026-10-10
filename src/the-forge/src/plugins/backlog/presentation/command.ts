@@ -9,6 +9,8 @@ import { addIteration, addRelease, listReleases, markReleased, readiness, releas
 import { initBacklog } from '../application/scaffold.ts';
 import { openBacklog, type BacklogPorts, type BasesQueryService, type Selection } from '../application/session.ts';
 import { board, check, itemTree, listItems, showItem } from '../application/views.ts';
+import type { SyncServices } from '../application/sync-run.ts';
+import { syncAccepted, syncAction, syncOptions } from './sync-command.ts';
 
 const selection = ['base', 'view', 'today'];
 /** Options each action accepts besides the backlog selection (`--base`, `--view`, `--today`). */
@@ -20,6 +22,7 @@ const accepted: Record<string, readonly string[]> = {
   depend: ['on', 'if-match'], undepend: ['on', 'if-match'],
   iteration: ['name', 'goal', 'start', 'due', 'length', 'if-match'],
   release: ['release-version', 'target-date', 'status', 'description', 'if-match'],
+  sync: ['direction', 'take', 'field'],
 };
 const actions = Object.keys(accepted);
 const options: Readonly<Record<string, CommandOption>> = {
@@ -54,6 +57,7 @@ const options: Readonly<Record<string, CommandOption>> = {
   status: option.string('release add: the release status.'),
   description: option.string('release add: the description.'),
   'if-match': option.string('The revision of the item note the write is planned against.'),
+  ...syncOptions,
 };
 
 const read = { mutating: false };
@@ -76,11 +80,11 @@ function selected(flags: CommandFlags, context: CommandContext): Selection {
 }
 
 /** The `backlog` command: backlog-view compatible planning over a `.base` file's `product-backlog` view. */
-export function backlogCommand(ports: (context: CommandContext) => { bases: BasesQueryService; ports: BacklogPorts }): Command {
+export function backlogCommand(ports: (context: CommandContext) => { bases: BasesQueryService; ports: BacklogPorts; sync: () => SyncServices }): Command {
   return {
     id: 'backlog',
     description: 'Plan a product backlog compatible with the Obsidian Product Backlog view (backlog-view): hierarchy, ranks, states, iterations, releases and dependencies.',
-    usage: 'backlog init [--folder docs] | list | tree | board | show <item> | add <type> <title> | move <item> | ranks seed|respace | set <item> | depend|undepend <item> --on <item> | iteration add|assign | release add|join|mark-released|readiness|notes|list | check',
+    usage: 'backlog init [--folder docs] | list | tree | board | show <item> | add <type> <title> | move <item> | ranks seed|respace | set <item> | depend|undepend <item> --on <item> | iteration add|assign | release add|join|mark-released|readiness|notes|list | check | sync [status | resolve <item> --take local|remote] [--direction push|pull|both]',
     scope: 'project', discovery: false, mutating: true,
     actions: {
       init: { description: 'Write the plugin\'s Product Backlog.base scaffold into a folder (default docs).' },
@@ -97,19 +101,24 @@ export function backlogCommand(ports: (context: CommandContext) => { bases: Base
       iteration: { description: 'add an iteration with the plugin\'s name and date defaults, or assign <item> <iteration>.' },
       release: { description: 'add, join <item> <release>, mark-released, readiness, notes (generated release notes) or list releases.' },
       check: { description: 'Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.', ...read },
+      sync: { description: 'Two-way sync of every view bound to a connection (view option connection: <id>) with explicit conflicts; status reads both sides without writing; resolve settles a conflict.' },
     },
     args: [
       { name: 'action', description: actions.join(', '), required: true, enum: actions },
       { name: 'arguments', description: 'The action\'s arguments: an item, a type and title, or a sub-action and its arguments.', variadic: true },
     ],
     options,
-    errors: ['BACKLOG_NOT_FOUND', 'BACKLOG_AMBIGUOUS', 'BACKLOG_CONFIG_PROBLEM', 'BACKLOG_WRITE_REFUSED', 'BACKLOG_NO_GAP', 'CONFLICT'],
+    errors: ['BACKLOG_NOT_FOUND', 'BACKLOG_AMBIGUOUS', 'BACKLOG_CONFIG_PROBLEM', 'BACKLOG_WRITE_REFUSED', 'BACKLOG_NO_GAP', 'CONFLICT', 'SYNC_CONFLICT', 'CONNECTOR_NOT_FOUND', 'CONNECTION_INVALID', 'CONNECTOR_AUTH_FAILED', 'CONNECTOR_REQUEST_FAILED'],
     async run(args, flags, context) {
       const [action, ...rest] = args;
       ensure(action !== undefined && actions.includes(action), 'INVALID_ARGUMENT', `Use backlog ${actions.join(', backlog ')}.`);
-      only(flags, `backlog ${action}`, accepted[action]!);
+      only(flags, `backlog ${action}`, action === 'sync' ? syncAccepted(rest[0]) : accepted[action]!);
       if (action === 'init') { arity(rest, 0); return initBacklog(context, value(flags, 'folder')); }
-      const { bases, ports: host } = ports(context);
+      const { bases, ports: host, sync } = ports(context);
+      if (action === 'sync') {
+        const today = date(flags, 'today');
+        return syncAction(rest, flags, context, sync(), { ...(value(flags, 'base') === undefined ? {} : { base: value(flags, 'base') }), ...(value(flags, 'view') === undefined ? {} : { view: value(flags, 'view') }), ...(today ? { today } : {}) });
+      }
       const session = await openBacklog(context, bases, host, selected(flags, context));
       const ifMatch = value(flags, 'if-match');
       switch (action) {

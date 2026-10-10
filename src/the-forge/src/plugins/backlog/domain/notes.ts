@@ -81,6 +81,22 @@ export function releaseFrontmatter(settings: ReleaseSettings, id: number, spec: 
 /** A new note: frontmatter only, `---\n<yaml>---\n`. */
 export const noteText = (yaml: string) => `---\n${yaml}---\n`;
 
+const frontmatterEnd = (text: string) => {
+  const opening = /^﻿?---[ \t]*\r?\n/.exec(text);
+  const closing = opening ? /^---[ \t]*(\r?\n|$)/m.exec(text.slice(opening[0].length)) : null;
+  return opening && closing ? opening[0].length + closing.index + closing[0].length : 0;
+};
+
+/** The text after a note's frontmatter, without the blank lines that separate it. */
+export const noteBody = (text: string) => text.slice(frontmatterEnd(text)).replace(/^(\r?\n)+/, '');
+
+/** The note with its body replaced; an empty body leaves only the frontmatter. */
+export function withBody(text: string, body: string): string {
+  const head = text.slice(0, frontmatterEnd(text));
+  const trimmed = body.replace(/\r\n?/g, '\n').trim();
+  return trimmed === '' ? head : `${head}${head === '' || head.endsWith('\n') ? '' : '\n'}${trimmed}\n`;
+}
+
 // Iterations: `<N> - Iteration[ - <goal>]`, starting the day after the latest iteration's target.
 interface IterationLike { title: string; typeName: string | null; outsideFilter: boolean; path: string; plannedStart: { value: CivilDate | null }; plannedTarget: { value: CivilDate | null } }
 

@@ -18,16 +18,18 @@ export interface BasesQueryService {
  */
 export interface BacklogPorts {
   stringifyYaml(value: Frontmatter): string;
+  /** A stable digest of text (the sync engine's field hashes). */
+  hash(text: string): string;
   editFrontmatter(text: string, frontmatter: Frontmatter, changes: Frontmatter, removed: readonly string[]): string;
   today(): CivilDate;
 }
 /** Which backlog to open: `--base`/`--view`, else `plugins.settings.backlog`, else the single backlog view of the scope. */
 export interface Selection { base?: string; view?: string; today?: CivilDate }
 
-const BACKLOG_VIEW = 'product-backlog';
+export const BACKLOG_VIEW = 'product-backlog';
 const RELEASE_VIEW = 'product-release';
 
-interface View { name: string; type: string; options: ViewOptions }
+export interface View { name: string; type: string; options: ViewOptions }
 export interface BaseFile { path: string; views: View[] }
 
 /** One opened backlog: the base and view, their resolved settings and the model the view's results build. */
@@ -44,14 +46,14 @@ function views(data: unknown): View[] {
   return data.views.filter(isRecord).map(view => ({ name: String(view.name), type: String(view.type), options: view }));
 }
 
-async function readBase(context: CommandContext, path: string): Promise<BaseFile> {
+export async function readBase(context: CommandContext, path: string): Promise<BaseFile> {
   const file = await context.workspace.files.read(path);
   const document = context.workspace.codec.inspect(path, file.bytes) as { data: unknown };
   return { path, views: views(document.data) };
 }
 
 /** Every `.base` file of the scope with a `product-backlog` view; unreadable bases are skipped. */
-async function discover(context: CommandContext, cache: MetadataCache): Promise<BaseFile[]> {
+export async function discover(context: CommandContext, cache: MetadataCache): Promise<BaseFile[]> {
   const found: BaseFile[] = [];
   for (const path of cache.files().filter(file => file.toLowerCase().endsWith('.base'))) {
     try {
@@ -62,10 +64,17 @@ async function discover(context: CommandContext, cache: MetadataCache): Promise<
   return found;
 }
 
+/** Views bound to a connection (`connection: <id>`) define sync sets; without a named view, unbound views are preferred. */
+export const isBound = (view: View) => typeof view.options.connection === 'string' && view.options.connection.trim() !== '';
+function preferUnbound<T extends { view: View }>(candidates: T[]): T[] {
+  const unbound = candidates.filter(candidate => !isBound(candidate.view));
+  return unbound.length > 0 ? unbound : candidates;
+}
+
 async function selectView(context: CommandContext, cache: MetadataCache, selection: Selection): Promise<{ base: BaseFile; view: View }> {
   if (selection.base === undefined) {
     const bases = await discover(context, cache);
-    const candidates = bases.flatMap(base => base.views.filter(view => view.type === BACKLOG_VIEW && (selection.view === undefined || view.name === selection.view)).map(view => ({ base, view })));
+    const candidates = preferUnbound(bases.flatMap(base => base.views.filter(view => view.type === BACKLOG_VIEW && (selection.view === undefined || view.name === selection.view)).map(view => ({ base, view }))));
     if (candidates.length === 0) throw backlogError('BACKLOG_NOT_FOUND', 'No .base file in this scope has a product-backlog view; run backlog init or pass --base.', { scope: context.root });
     if (candidates.length > 1) throw backlogError('BACKLOG_AMBIGUOUS', `${candidates.length} product-backlog views exist; pass --base and --view, or set plugins.settings.backlog.base.`, { candidates: candidates.map(({ base, view }) => ({ base: base.path, view: view.name })) });
     return candidates[0]!;
@@ -77,7 +86,7 @@ async function selectView(context: CommandContext, cache: MetadataCache, selecti
     throw error;
   }
   const backlogViews = base.views.filter(view => view.type === BACKLOG_VIEW);
-  const matches = selection.view === undefined ? backlogViews : backlogViews.filter(view => view.name === selection.view);
+  const matches = selection.view === undefined ? preferUnbound(backlogViews.map(view => ({ view }))).map(entry => entry.view) : backlogViews.filter(view => view.name === selection.view);
   if (matches.length === 0) throw backlogError('BACKLOG_NOT_FOUND', `${base.path} has no product-backlog view${selection.view === undefined ? '' : ` named ${selection.view}`}.`, { base: base.path, views: backlogViews.map(view => view.name) });
   if (matches.length > 1) throw backlogError('BACKLOG_AMBIGUOUS', `${base.path} has ${matches.length} product-backlog views; pass --view.`, { base: base.path, candidates: matches.map(view => ({ base: base.path, view: view.name })) });
   return { base, view: matches[0]! };

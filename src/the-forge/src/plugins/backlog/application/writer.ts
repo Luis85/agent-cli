@@ -3,7 +3,7 @@ import { forgeError } from '../../../domain/shared/errors.ts';
 import { revisionConflict } from '../../../domain/documents/write-plan.ts';
 import { backlogError, refused } from '../domain/errors.ts';
 import type { Frontmatter } from '../domain/fields.ts';
-import { noteText } from '../domain/notes.ts';
+import { noteText, withBody } from '../domain/notes.ts';
 import { configProblems } from '../domain/settings.ts';
 import { applyItemWrite, type ItemWrite, type WriteRefusal } from '../domain/writes.ts';
 import { typeOf, wikilink, type BacklogSession } from './session.ts';
@@ -13,6 +13,7 @@ export type Change = FileChange | PlannedChange;
 export interface WriteResult { dryRun: boolean; changes: Change[] }
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
 const json = (value: unknown) => JSON.stringify(value);
 const messages: Record<WriteRefusal, string> = {
   resource: 'Resource notes are never written by the backlog.',
@@ -34,18 +35,21 @@ function ensureInFilter(session: BacklogSession, path: string): void {
   if (item === undefined || item.outsideFilter) throw refused('outside-filter', `${path} is outside the filter of ${session.base.path} › ${session.view.name}; context rows are read-only.`, { path });
 }
 
-/** One note's frontmatter edit: mutate the live properties in place, or return why the note refuses it. */
-export interface NoteEdit { path: string; edit(frontmatter: Frontmatter): Error | null }
+/**
+ * One note's edit: mutate the live properties in place, or return why the note refuses it. `body`, when given,
+ * replaces the text after the frontmatter (the backlog sync engine writes descriptions there).
+ */
+export interface NoteEdit { path: string; edit(frontmatter: Frontmatter): Error | null; body?: string }
 
 /**
- * Applies frontmatter edits in one guarded batch: each note is read, re-checked and changed like backlog-view's
- * `processFrontMatter` callback (changed keys set, removed keys deleted, other keys and their formatting kept).
- * A refusal anywhere refuses the whole batch. `ifMatch` guards the first edited note.
+ * Plans frontmatter edits as guarded write requests without committing them: each note is read, re-checked and
+ * changed like backlog-view's `processFrontMatter` callback (changed keys set, removed keys deleted, other keys and
+ * their formatting kept). A refusal anywhere refuses the whole plan. `ifMatch` guards the first edited note.
  */
-export async function editNotes(session: BacklogSession, edits: readonly NoteEdit[], ifMatch?: string): Promise<WriteResult> {
+export async function planNoteEdits(session: BacklogSession, edits: readonly NoteEdit[], ifMatch?: string): Promise<WriteRequest[]> {
   const { workspace } = session.context;
   const requests: WriteRequest[] = [];
-  for (const [index, { path, edit }] of edits.entries()) {
+  for (const [index, { path, edit, body }] of edits.entries()) {
     const snapshot = await workspace.files.read(path);
     if (index === 0 && ifMatch !== undefined && ifMatch !== snapshot.revision) {
       throw forgeError('CONFLICT', `File changed; read again before editing: ${path}`, revisionConflict(path, ifMatch, snapshot.revision));
@@ -56,27 +60,35 @@ export async function editNotes(session: BacklogSession, edits: readonly NoteEdi
     if (failure) throw failure;
     const changes = Object.fromEntries(Object.entries(after).filter(([key, value]) => json(value) !== json(before[key])));
     const removed = Object.keys(before).filter(key => !Object.hasOwn(after, key));
-    if (Object.keys(changes).length + removed.length === 0) continue;
-    requests.push({ path, bytes: frontmatterBytes(session, snapshot.bytes, after, changes, removed), expectedRevision: snapshot.revision });
+    const text = decoder.decode(snapshot.bytes);
+    const edited = Object.keys(changes).length + removed.length === 0 ? text : session.ports.editFrontmatter(text, after, changes, removed);
+    const next = body === undefined ? edited : withBody(edited, body);
+    if (next !== text) requests.push({ path, bytes: encoder.encode(next), expectedRevision: snapshot.revision });
   }
-  if (requests.length === 0) return { dryRun: workspace.dryRun, changes: [] };
-  return workspace.write(requests, { diff: true });
+  return requests;
+}
+
+/** Applies frontmatter edits in one guarded batch (see `planNoteEdits`). */
+export async function editNotes(session: BacklogSession, edits: readonly NoteEdit[], ifMatch?: string): Promise<WriteResult> {
+  const requests = await planNoteEdits(session, edits, ifMatch);
+  if (requests.length === 0) return { dryRun: session.context.workspace.dryRun, changes: [] };
+  return session.context.workspace.write(requests, { diff: true });
+}
+
+/** One item write as a note edit through backlog-view's live-note refusal rules. */
+export function itemEdit(session: BacklogSession, write: ItemWrite): NoteEdit {
+  const env = { settings: session.settings, wikilink: (target: string, source: string) => wikilink(session, target, source), resolve: (linkpath: string, source: string) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
+  return {
+    path: write.path,
+    edit: frontmatter => { const refusal = applyItemWrite(frontmatter, write, env); return refusal ? refused(refusal, `${write.path}: ${messages[refusal]}`, { path: write.path }) : null; },
+  };
 }
 
 /** Item writes through the write gate: configuration problems and context rows refuse the batch. */
 export async function writeItems(session: BacklogSession, writes: readonly ItemWrite[], ifMatch?: string): Promise<WriteResult> {
   ensureWritable(session);
-  const env = { settings: session.settings, wikilink: (target: string, source: string) => wikilink(session, target, source), resolve: (linkpath: string, source: string) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
   for (const write of writes) ensureInFilter(session, write.path);
-  return editNotes(session, writes.map(write => ({
-    path: write.path,
-    edit: frontmatter => { const refusal = applyItemWrite(frontmatter, write, env); return refusal ? refused(refusal, `${write.path}: ${messages[refusal]}`, { path: write.path }) : null; },
-  })), ifMatch);
-}
-
-/** The note with its frontmatter edited by the `editFrontmatter` port; the body and untouched entries keep their bytes. */
-function frontmatterBytes(session: BacklogSession, bytes: Uint8Array, after: Frontmatter, changes: Frontmatter, removed: string[]): Uint8Array {
-  return encoder.encode(session.ports.editFrontmatter(new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes), after, changes, removed));
+  return editNotes(session, writes.map(write => itemEdit(session, write)), ifMatch);
 }
 
 /** Creates new notes in one batch; an existing path is a conflict, never overwritten. */

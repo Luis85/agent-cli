@@ -7,7 +7,7 @@ import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts'
  */
 export function pluginCatalog(registry: Registry, installed: readonly InstalledPlugin[]) {
   const loaded = registry.plugins.map(plugin => {
-    const services = { provides: Object.keys(plugin.provides ?? {}), requires: [...plugin.requires ?? []] };
+    const services = { provides: Object.keys(plugin.provides ?? {}), requires: [...plugin.requires ?? []], optional: [...plugin.optional ?? []] };
     return {
       ...plugin.manifest, core: registry.origins.get(plugin.manifest.id) === 'core', state: 'enabled' as const,
       contributions: {

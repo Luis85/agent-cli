@@ -25,7 +25,7 @@ const bound = (key: string, name: string) => {
 const declared = (values: readonly string[], value: string) => values.find(entry => sameValue(entry, value)) ?? value;
 
 /** The state write of the item's own workflow; only the requirements workflow stamps started and finished dates. */
-function stateWrite(item: BacklogItem, state: string | null, settings: BacklogSettings, today: string): Partial<ItemWrite> | null {
+export function stateWrite(item: BacklogItem, state: string | null, settings: BacklogSettings, today: string): Partial<ItemWrite> | null {
   if (isDeliverableType(item.typeName)) return sameValue(item.deliverableStateValue, state) ? null : state === null ? { removeDeliverableStateKey: true } : { deliverableState: state };
   if (inCatalog(item)) return sameValue(item.testStateValue, state) ? null : state === null ? { removeTestStateKey: true } : { testState: state };
   if (sameValue(item.stateValue, state)) return null;

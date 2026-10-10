@@ -34,6 +34,9 @@ import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { searchPlugin } from './plugins/search/plugin.ts';
 import { linksPlugin } from './plugins/links/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
+import { connectorPlugin } from './plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from './plugins/connector-azure-devops/plugin.ts';
+import { FetchHttpClient } from './infrastructure/connectors/http-client.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
@@ -63,7 +66,7 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, backlogPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -124,7 +127,9 @@ async function run(): Promise<void> {
       for (const command of commands(registry, services)) registry.add(registry.commands, command);
       registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
-      registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry), fileDates: nodeFileDates }, config.plugins.disabled);
+      registerCorePlugins(registry, events, corePlugins, {
+        skills: registrySkills(registry), fileDates: nodeFileDates, http: new FetchHttpClient(), environment: name => process.env[name],
+      }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = registry.settings.configure(config.plugins.settings, new Set(registry.origins.keys()));
       await registry.publishRegistered(events);
