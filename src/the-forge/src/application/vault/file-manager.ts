@@ -128,6 +128,8 @@ export class FileManager {
     ensure(isRecord(after), 'INVALID_FRONTMATTER', 'Frontmatter must stay a mapping.');
     const changes = Object.fromEntries(Object.entries(after).filter(([key, value]) => json(value) !== json(before[key])));
     const removed = Object.keys(before).filter(key => !Object.hasOwn(after, key));
+    // Like Obsidian, an unchanged frontmatter writes nothing.
+    if (Object.keys(changes).length + removed.length === 0) return { dryRun: this.workspace.dryRun, changes: [] };
     return this.workspace.edit(path, revision, bytes => this.workspace.codec.properties(bytes, changes, removed));
   }
 

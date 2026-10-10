@@ -124,6 +124,7 @@ describe('processFrontMatter', () => {
     // Changed values are re-serialized like `properties --set`; untouched keys and comments keep their text.
     expect(await text('Note.md')).toBe('---\ntitle: New # keep comment\ntags:\n  - a\n  - b\n---\nBody [[Link]]\n');
     await expect(app.fileManager.processFrontMatter('Note.md', () => {}, { ifMatch: 'stale' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(await app.fileManager.processFrontMatter('Note.md', frontmatter => { frontmatter.title = 'New'; })).toEqual({ dryRun: false, changes: [] });
     await expect(app.fileManager.processFrontMatter('Board.canvas', () => {})).rejects.toMatchObject({ code: 'UNSUPPORTED_EDIT' });
     expect((await files.read('Note.md')).revision).toBeTypeOf('string');
   });
