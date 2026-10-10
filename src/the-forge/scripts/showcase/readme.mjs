@@ -30,7 +30,7 @@ const folders = [
   [workflowPath, "The project's own CI workflow on Node 22.12 and 24: install, check and test from this directory. The workspace's `workflows sync` generates its `.github/workflows/forge-showcase--check.yml` entrypoint", '`create`, `workflows list`'],
   ['tests', 'Generated tests plus authored adapter, model and knowledge-graph tests run by this project\'s Vitest', '`project create`, `project component`, `make form`, `create`'],
   [agentTeam.file, 'docker-agent team: a lead with two sub-agents, a GitHub MCP toolset and a `/trace` command, authored with comments and completed with `agents create`', '`create`, `agents create --if-match`, `edit`, `agents validate`, `agents list`'],
-  ['.claude/agents', 'Claude Code agents generated from the team with provenance, plus a native reviewer agent', '`agents generate --target claude --commands` (`--plan`, `--check`), `claude agents create`, `claude agents list`'],
+  ['.claude/agents', 'Claude Code agents generated from the team with provenance, plus a native reviewer agent', '`agents generate --target claude --commands --mcp inline` (`--plan`, `--check`), `claude agents create`, `claude agents list`'],
   ['.claude/skills', 'The team\'s `/trace` command as a Claude skill', '`agents generate --commands`'],
   ['.agents/skills', 'Forge process skills installed into the project', '`skills install`'],
   ['src/index.ts', 'Library public API exporting the Trailhead model, form and adapters', '`write --if-match`'],

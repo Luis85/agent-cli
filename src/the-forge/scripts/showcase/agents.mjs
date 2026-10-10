@@ -1,7 +1,8 @@
 /** The showcase's docker-agent team and the Claude Code agents generated from it with the `agents` core plugin. */
 export const agentTeam = {
   file: 'agents/trailhead-team.yaml',
-  generate: ['agents', 'generate', '--target', 'claude', '--commands'],
+  // The lead's GitHub MCP server starts a process, so the showcase opts in to writing it inline (--mcp inline).
+  generate: ['agents', 'generate', '--target', 'claude', '--commands', '--mcp', 'inline'],
 };
 
 // The lead and the spec writer are authored as YAML with comments; the UI builder is added with agents create.
@@ -78,14 +79,14 @@ export function buildAgents(cli) {
 }
 
 /**
- * The README section for the team: generated files and the mapping diagnostics, counted by code.
- * @param {{ agents: { agent: string, path: string }[], skills: string[], diagnostics: { severity: string, code: string, fidelity?: string }[] }} generated
+ * The README section for the team: generated files, the commands they run and the mapping diagnostics, counted by code.
+ * @param {{ agents: { agent: string, path: string }[], skills: string[], diagnostics: { severity: string, code: string, fidelity?: string, message: string }[] }} generated
  */
 export function agentsSection(generated) {
   /** @type {Map<string, { count: number, severity: string, fidelity: string }>} */
   const codes = new Map();
   for (const entry of generated.diagnostics) {
-    const current = codes.get(entry.code) ?? { count: 0, severity: entry.severity, fidelity: entry.fidelity ?? '' };
+    const current = codes.get(entry.code) ?? { count: 0, severity: entry.severity, fidelity: entry.fidelity ?? '—' };
     codes.set(entry.code, { ...current, count: current.count + 1 });
   }
   return [
@@ -99,6 +100,10 @@ export function agentsSection(generated) {
     '',
     ...generated.agents.map(agent => `- \`${agent.path}\` from \`${agent.agent}\``),
     ...generated.skills.map(path => `- \`${path}\` from the \`/trace\` command`),
+    '',
+    'Generated Claude files can run commands and grant permissions, so `agents generate` writes MCP servers, hooks and permission rules only on request. The showcase passes `--mcp inline` because the lead needs its GitHub tools; the plan listed the one command that opt-in writes:',
+    '',
+    ...generated.diagnostics.filter(entry => entry.code === 'executes-command').map(entry => `- ${entry.message}`),
     '',
     'Each generated file records `x-forge-source` provenance, so `--check` reports drift and hand edits. The mapping reported these diagnostics:',
     '',
