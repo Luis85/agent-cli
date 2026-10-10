@@ -54,7 +54,7 @@ This URL serves the latest `main` branch. For a fixed version, use a reviewed co
 - `templates`, `config`: inspect template inputs and effective configuration; install editable PRD, use-case, build-spec, design, implementation, test and release templates.
 - `data-sources`, `make data-source`: manage Markdown-defined REST/local JSON data sources and generate deterministic TypeScript adapters; see [data sources](docs/reference/data-sources.md).
 - `setup`, `project`: initialize a workspace, discover and select independent TypeScript libraries, and add domain or application components.
-- `create`, `read`, `write`, `edit`, `properties`, `patch`, `validate`, `list`: Markdown/YAML properties, JSON Canvas graphs, Bases YAML, and lossless attachment handling.
+- `create`, `read`, `write`, `edit`, `properties`, `patch`, `validate`, `list`: Markdown/YAML properties, JSON Canvas graphs, Bases YAML, UTF-8 source and data files, and lossless attachment handling.
 - `schema`, `help`, `formats`, `events`, `plugins`: discover the installed contracts and capabilities.
 - `skills`: inspect and install agent workflows for safe file editing, feature development and verification.
 - Explicit runtime plugins: manifest discovery, `onload`/`onunload`, commands, generators, validated events and skills.
@@ -81,9 +81,9 @@ node bin/app.js create plan.canvas
 node bin/app.js create tasks.base
 ```
 
-Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input and report planned hashes and paths without writing files or emitting file events.
+Existing files cannot be overwritten without their current revision. A conflict requires rereading and reconciling the change. Dry runs validate the same input, check `--if-match` like the real write, and report planned hashes, paths and a unified `diff` per text file without writing files or emitting file events. Responses carry only committed file-change events by default; add `--events all` for the full lifecycle history. See [dry-run diffs](docs/reference/cli.md#dry-run-diffs).
 
-If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. Follow the [write and recovery contract](docs/reference/cli.md#write-contract) before removing it.
+If a write reports `WORKSPACE_BUSY`, another writer may still be active or an interrupted process may have left a lock. `error.details.lock` names the holder's pid, host, start time and command, and `error.details.stale` reports `active`, `likely` or `unknown`. Forge never removes the lock itself; follow the [write and recovery contract](docs/reference/cli.md#write-contract) before deleting it.
 
 ## Documentation
 
@@ -95,6 +95,17 @@ Use the [documentation hub](docs/index.md) to choose a learning path or find an 
 - **Explanation:** [architecture](docs/explanation/architecture.md) and [deterministic generation](docs/explanation/deterministic-ui.md).
 
 The [idea-to-production example pack](docs/examples/idea-to-production/README.md) includes filled-in discovery, requirements, design, implementation, testing and production artifacts. [Agent skills](bin/skills/forge-workflow.md) and the [runnable example plugin](docs/examples/plugins/quality/main.mjs) support day-to-day use.
+
+## Showcase
+
+The repository commits `src/forge-showcase`, a fully generated managed project for Trailhead, a small fictional trip-planning web app. It shows the capabilities above working together: workflow documents linked into an Obsidian knowledge graph with Canvas and Bases, components and interactions generated for all seven UI targets with Storybook stories, data sources with adapters and fixtures, domain and application code, forms, a Claude agent, agent skills and the project's own toolchain and CI workflow. Open `src/forge-showcase` as an Obsidian vault and start at `docs/Trailhead.md`; its `README.md` maps each folder to the commands that produced it.
+
+```sh
+npm run showcase        # regenerate src/forge-showcase through the bundled CLI
+npm run showcase:check  # regenerate in a temporary workspace and report drift
+```
+
+See [explore the showcase](docs/how-to/explore-the-showcase.md) for browsing, the project's own checks and the lockfile step.
 
 ## Source organization
 

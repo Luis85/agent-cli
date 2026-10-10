@@ -1,0 +1,29 @@
+# Quality gate for the forge-showcase project, authored inside the project.
+# Assumption: this workflow runs with defaults.run.working-directory set to the
+# project directory (src/forge-showcase in The Forge repository). Synchronizing it
+# into the repository's .github/workflows adds that working directory and path
+# filters for the project; the file itself stays independent of its location.
+name: forge-showcase check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Install, check and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Structure, lint, analysis, types, builds and tests
+        run: npm run check

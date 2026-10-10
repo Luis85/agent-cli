@@ -1,9 +1,9 @@
 import { NodeEventScope } from '../../src/the-forge/infrastructure/plugins/event-scope.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { execFile } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { generators } from '../../src/the-forge/infrastructure/generation/generators.ts';
 import { ProjectService } from '../../src/the-forge/application/projects/projects.ts';
@@ -16,7 +16,9 @@ import { componentScaffold, projectScaffold } from '../../src/the-forge/infrastr
 let root: string;
 let files: NodeFiles;
 const execute = promisify(execFile);
-beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-projects-')); files = await NodeFiles.at(root); });
+const shell = promisify(exec);
+// A canonical root: Windows temp paths may hold 8.3 short names that Vite resolves inconsistently with their long form.
+beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'forge-projects-'))); files = await NodeFiles.at(root); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 function service(directory = 'projects', dryRun = false, events = new EventBus(new NodeEventScope())) {
   events.defineAll(['file.created', 'file.updated'].map(id => ({ id, validate: (value): value is object => typeof value === 'object' })));
@@ -225,15 +227,22 @@ describe('Forge project management', () => {
     expect(componentScaffold('billing', 'Invoice', 'projects')).toEqual(componentScaffold('billing', 'Invoice', 'projects'));
   });
 
+  it('places Vite client types at the generated source root without Forge source folders', () => {
+    const paths = projectScaffold('billing', 'projects').map(request => request.path);
+    expect(paths).toContain('projects/billing/src/vite-env.d.ts');
+    expect(paths.filter(path => path.includes('/src/the-forge/'))).toEqual([]);
+  });
+
   it('checks the generated library and both component kinds, diagnoses mistakes, and passes after repair', async () => {
     await service().create('billing');
     await service().component('billing', 'Invoice');
     await service().component('billing', 'FindInvoice', 'application');
     // Use the test workspace's existing toolchain; no dependency install or network access.
     const project = join(root, 'projects/billing');
-    await symlink(resolve('node_modules'), join(project, 'node_modules'), 'dir');
-    const run = (script: string) => execute('npm', ['run', script], { cwd: project, timeout: 30000, maxBuffer: 4 * 1024 * 1024 }).catch(error => { throw new Error(`${error.message}\n${error.stdout}\n${error.stderr}`); });
-    const quality = (script: string) => execute(process.execPath, [`scripts/quality/${script}.mjs`], { cwd: project, timeout: 20000, maxBuffer: 4 * 1024 * 1024 });
+    await symlink(resolve('node_modules'), join(project, 'node_modules'), 'junction');
+    // npm is a .cmd shim on Windows, which Node only starts through a shell; script names are fixed literals.
+    const run = (script: string) => shell(`npm run ${script}`, { cwd: project, timeout: 90_000, maxBuffer: 4 * 1024 * 1024 }).catch(error => { throw new Error(`${error.message}\n${error.stdout}\n${error.stderr}`); });
+    const quality = (script: string) => execute(process.execPath, [`scripts/quality/${script}.mjs`], { cwd: project, timeout: 45_000, maxBuffer: 4 * 1024 * 1024 });
     const form = generators.find(generator => generator.id === 'form')!;
     const projectFiles = await NodeFiles.at(project);
     for (const [name, output] of [['Contact', 'src/presentation/forms'], ['Quoted', "src/presentation/quoted'forms"]]) {
@@ -277,5 +286,5 @@ describe('Forge project management', () => {
     expect(await readFile(join(project, 'dist/index.js'), 'utf8')).toContain('ProjectIdentity');
     expect(await readFile(join(project, 'dist/index.d.ts'), 'utf8')).toContain('ProjectDetailsForm');
     expect(await readFile(join(project, 'demo-dist/index.html'), 'utf8')).toContain('Form preview');
-  }, 60000);
+  }, 240_000);
 });

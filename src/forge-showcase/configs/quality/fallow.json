@@ -1,0 +1,98 @@
+{
+  "$schema": "../../node_modules/fallow/schema.json",
+  "minimumVersion": "3.31.0",
+  "entry": [
+    "src/index.ts",
+    "src/presentation/demo.ts",
+    "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
+  "ignorePatterns": [
+    "demo-dist/**",
+    "ui/**"
+  ],
+  "failOnParseError": true,
+  "rules": {
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "boundary-violation": "error"
+  },
+  "boundaries": {
+    "zones": [
+      {
+        "name": "domain",
+        "patterns": [
+          "src/domain/**"
+        ]
+      },
+      {
+        "name": "application",
+        "patterns": [
+          "src/application/**"
+        ]
+      },
+      {
+        "name": "infrastructure",
+        "patterns": [
+          "src/infrastructure/**"
+        ]
+      },
+      {
+        "name": "presentation",
+        "patterns": [
+          "src/presentation/**",
+          "index.html"
+        ]
+      },
+      {
+        "name": "public-api",
+        "patterns": [
+          "src/index.ts"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "from": "domain",
+        "allow": [
+          "domain"
+        ]
+      },
+      {
+        "from": "application",
+        "allow": [
+          "domain",
+          "application"
+        ]
+      },
+      {
+        "from": "infrastructure",
+        "allow": [
+          "domain",
+          "application",
+          "infrastructure"
+        ]
+      },
+      {
+        "from": "presentation",
+        "allow": [
+          "domain",
+          "application",
+          "infrastructure",
+          "presentation"
+        ]
+      }
+    ],
+    "coverage": {
+      "requireAllFiles": true,
+      "allowUnmatched": [
+        "tests/**",
+        "scripts/**",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "src/vite-env.d.ts"
+      ]
+    }
+  }
+}

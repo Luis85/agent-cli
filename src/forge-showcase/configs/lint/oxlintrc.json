@@ -1,0 +1,56 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-debugger": "error",
+    "max-lines": [
+      "error",
+      {
+        "max": 400,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
+        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
+        "**/src/the-forge/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",
+        "**/src/the-forge/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"
+      ],
+      "rules": {
+        "typescript/no-require-imports": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^[^.]",
+                "message": "Keep domain and application platform independent; inject a port instead."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"
+      ],
+      "rules": {
+        "max-lines": [
+          "error",
+          {
+            "max": 450,
+            "skipBlankLines": true,
+            "skipComments": true
+          }
+        ]
+      }
+    }
+  ]
+}

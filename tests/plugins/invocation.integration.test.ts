@@ -98,6 +98,6 @@ describe('serializable error presentation', () => {
 
   it('presents a safe diagnostic for an unknown thrown object with a broken toString', () => {
     const thrown = { toString() { throw new Error('Cannot inspect'); } };
-    expect(new Localizer().error(thrown)).toEqual({ code: 'OPERATION_FAILED', message: 'Operation failed with an unreadable error.' });
+    expect(new Localizer().error(thrown)).toEqual({ code: 'OPERATION_FAILED', message: 'Operation failed with an unreadable error.', hint: expect.any(String), retryable: false });
   });
 });

@@ -4,16 +4,17 @@ const minpath = require("node:path");
 const node_async_hooks = require("node:async_hooks");
 const node_crypto = require("node:crypto");
 const promises = require("node:fs/promises");
+const fs = require("node:fs");
+const node_os = require("node:os");
+const promises$1 = require("node:timers/promises");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
 const process$1 = require("node:process");
 const node_url = require("node:url");
 const node_module = require("node:module");
 const node_vm = require("node:vm");
-const node_os = require("node:os");
 const childProcess = require("node:child_process");
 const node_events = require("node:events");
-const fs = require("node:fs");
 const node_util = require("node:util");
 const name = "@luis85/forge";
 const version$1 = "0.1.0";
@@ -22,7 +23,7 @@ const type = "module";
 const license = "MIT";
 const engines = { "node": ">=22.12.0" };
 const bin = { "forge": "bin/app.js" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run --testTimeout=30000 --hookTimeout=30000", "check": "npm run check:fast && npm run build && npm test", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check" };
 const dependencies = { "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "remark-frontmatter": "^5.0.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
 const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^3.2.4", "vue": "3.5.43" };
 const metadata$1 = {
@@ -38,6 +39,145 @@ const metadata$1 = {
   dependencies,
   devDependencies
 };
+const categoryExitCodes = {
+  input: 2,
+  conflict: 2,
+  "not-found": 3,
+  busy: 4,
+  drift: 5,
+  runtime: 1,
+  external: 1,
+  interrupted: 130
+};
+const entry = (category, summary, hint, retryable = false) => ({ exitCode: categoryExitCodes[category], category, summary, hint, retryable });
+const claudeDefinitionHint$1 = "Fix the field named in the message, then rerun the command.";
+const argumentsHint$1 = "Correct the arguments named in the message; run help <command> for usage.";
+const errorCatalog = {
+  // Arguments, options and input
+  UNKNOWN_COMMAND: entry("input", "The command is not registered.", "Run help or schema to list available commands, including enabled plugin commands."),
+  UNKNOWN_OPTION: entry("input", "The option is not accepted by this command.", "Run help <command> to list its options."),
+  MISSING_ARGUMENT: entry("input", "A required argument or option value is missing.", argumentsHint$1),
+  INVALID_ARGUMENT: entry("input", "The arguments or option values are invalid for this command.", argumentsHint$1),
+  DUPLICATE_OPTION: entry("input", "An option was repeated or combined with its negation.", "Pass each option once."),
+  INVALID_INPUT: entry("input", "The input options are invalid or contradictory.", "Use exactly one input source and the option combination named in the message."),
+  INPUT_REQUIRED: entry("input", "--stdin was requested without piped input.", "Pipe the content into the command, or use --content or --from instead."),
+  INVALID_JSON: entry("input", "The input is not valid JSON.", "Pass a valid JSON value; quote it for your shell."),
+  INVALID_ENCODING: entry("input", "The content is not valid in the required encoding.", "Use valid UTF-8 text. For binary content use write or create with --stdin, --from or --encoding base64; edit and structured commands accept only UTF-8 text."),
+  INVALID_LANGUAGE: entry("input", "The language is not supported.", "Use --lang en or --lang de."),
+  INVALID_NAME: entry("input", "The name does not follow the required naming rule.", "Use the name format described in the message, for example PascalCase."),
+  INVALID_KEY: entry("input", "The property key is reserved or unsafe.", "Use a different property key."),
+  INVALID_RESULT: entry("runtime", "The command returned data that cannot be serialized as JSON.", "Inspect committed vault events and reread affected files before retrying; report the failing plugin command."),
+  OPERATION_FAILED: entry("runtime", "An unexpected runtime or I/O error occurred.", "Read the message, check the workspace state and reread affected files before retrying."),
+  // Paths, files and guarded writes
+  INVALID_PATH: entry("input", "The path is not a valid workspace-relative path.", "Use a relative path inside the selected workspace or project, with forward slashes and no .. segments."),
+  UNSAFE_PATH: entry("input", "The path leaves the workspace or crosses a symbolic link.", "Use a path inside the workspace that does not traverse symbolic links."),
+  NOT_FOUND: entry("not-found", "The file or resource does not exist.", "Check the path and the selected project (project current); run list to find files."),
+  CONFLICT: entry("conflict", "The file already exists or its revision changed since it was read.", "Reread the file and reconcile your change with the current content (error.details.currentRevision), then retry with the command's revision guard (--if-match or --revisions-from); create only adds new paths."),
+  NO_MATCH: entry("input", "The --find text does not occur in the file.", "Read the file again and copy the exact current text into --find, including whitespace and line endings."),
+  AMBIGUOUS_EDIT: entry("input", "The --find text occurs more than once, counting overlapping matches.", "Extend --find with surrounding text so it matches exactly once; error.details.lines lists the matching lines."),
+  UNSUPPORTED_EDIT: entry("input", "This edit is not supported for the file kind.", "Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments."),
+  INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
+  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
+  ROLLBACK_FAILED: entry("runtime", "A failed write could not restore every file.", "Inspect the files named in the message and repair them before retrying."),
+  // Documents
+  INVALID_FRONTMATTER: entry("input", "The YAML frontmatter is invalid.", "Fix the frontmatter so it is a YAML mapping, then validate the note."),
+  INVALID_YAML: entry("input", "The YAML document is invalid.", "Fix the YAML syntax, keys or aliases named in the message."),
+  INVALID_CANVAS: entry("input", "The Canvas structure is invalid.", "Fix the nodes, edges or ids named in the message; run validate <file.canvas>."),
+  INVALID_BASE: entry("input", "The Base structure is invalid.", "Fix the Base definition named in the message; run validate <file.base>."),
+  INVALID_POINTER: entry("input", "The JSON Pointer is invalid or does not address a valid location.", "Read the document and use an existing pointer path; /- appends only to an existing array."),
+  // Bases queries
+  INVALID_BASE_QUERY: entry("input", "The Bases query is invalid.", "Check the view, context and expressions named in the message."),
+  INVALID_BASE_EXPRESSION: entry("input", "A Bases expression cannot be parsed.", "Fix the expression named in the message."),
+  BASE_EVALUATION_ERROR: entry("input", "A Bases expression failed while evaluating a file.", "Check the view, file and expression named in the message."),
+  BASE_VIEW_NOT_FOUND: entry("input", "The requested Bases view does not exist.", "Run bases inspect <file.base> and pass an existing --view."),
+  BASE_CONTEXT_NOT_FOUND: entry("input", "The context file is not an indexed vault file.", "Pass an existing vault file to --context."),
+  BASE_INDEX_ERROR: entry("input", "A vault file could not be indexed.", "Fix or validate the file named in the message."),
+  AMBIGUOUS_BASE_LINK: entry("input", "An internal link matches several files.", "Use a longer link path that identifies one file."),
+  INVALID_BASE_PROPERTY_TYPES: entry("input", "The Obsidian property type registry is invalid.", "Fix .obsidian/types.json so it is a JSON object of property types."),
+  UNSUPPORTED_BASE_PROPERTY_TYPE: entry("input", "An Obsidian property type is not supported.", "Use a supported type in .obsidian/types.json."),
+  // Configuration, setup and projects
+  INVALID_CONFIG: entry("input", "The configuration is invalid or unreadable.", "Fix bin/config.json at the location named in the message, then run config."),
+  INVALID_SETUP: entry("input", "Setup cannot complete with the current distribution files.", "Repair the bin path named in the message, then run setup again."),
+  INVALID_PROJECT: entry("input", "The project metadata is invalid.", "Fix .forge/project.json in the project directory."),
+  INVALID_PROJECT_NAME: entry("input", "The project name is invalid.", "Use a lowercase kebab-case name, for example billing-service."),
+  INVALID_PROJECT_CONTEXT: entry("input", "The saved project selection is invalid.", "Run project open <name> or project close."),
+  INVALID_COMPONENT_KIND: entry("input", "The component kind is invalid.", "Use domain or application."),
+  PROJECT_EXISTS: entry("conflict", "The project already exists.", "Choose another name or run project open <name>."),
+  PROJECT_NOT_FOUND: entry("not-found", "The project does not exist.", "Run project list and open an existing project."),
+  PROJECT_REQUIRED: entry("input", "This command needs a selected project.", "Run project open <name> first."),
+  STALE_PROJECT_CONTEXT: entry("not-found", "The selected project is missing or no longer matches the configuration.", "Run project open <name> to select a valid project, or project close."),
+  // Templates and generation
+  INVALID_TEMPLATE: entry("input", "The Markdown template is invalid.", "Fix the template frontmatter or placeholders named in the message."),
+  INVALID_TEMPLATE_DATE: entry("input", "A template date or date format is invalid.", "Use an ISO date and a supported date format."),
+  INVALID_TEMPLATE_PACK: entry("input", "The template pack is invalid.", "Use unique template ids and destinations."),
+  INVALID_TEMPLATE_VALUES: entry("input", "Template values are missing or have the wrong type.", "Run templates inspect <template.md> and supply its required values."),
+  UNKNOWN_TEMPLATE_VARIABLE: entry("input", "The template uses an undeclared variable.", "Declare the variable in the template or remove the placeholder; run templates inspect <template.md>."),
+  UNKNOWN_GENERATOR: entry("input", "The generator is not registered.", "Run make to list generators."),
+  INVALID_GENERATION_PLAN: entry("input", "The generation plan has overlapping outputs or invalid options.", "Use separate output and manifest paths, and do not combine planning with --revisions-from."),
+  INVALID_GENERATION_REVISIONS: entry("input", "The revision approval does not match the reviewed plan.", "Create a new plan with --plan-out and pass that file to --revisions-from."),
+  UI_DRIFT: entry("drift", "Generated UI files are missing or differ from their definitions.", "Run the same command with --plan to review, then regenerate."),
+  DATA_SOURCE_DRIFT: entry("drift", "Generated data-source files are missing or differ from their definitions.", "Run the same command with --plan to review, then regenerate."),
+  // UI, interactions and data sources
+  INVALID_UI: entry("input", "A component definition is invalid.", "Fix the definition named in the message; run components validate."),
+  INVALID_UI_LIBRARY: entry("input", "The component library is invalid.", "Run components validate and fix the reported definitions."),
+  INVALID_UI_FRAMEWORK: entry("input", "The UI target is not supported.", "Use html, htmx, vanilla, vue, svelte, react or angular."),
+  EMPTY_UI_LIBRARY: entry("input", "The component library has no definitions.", "Run components init or add a Markdown definition."),
+  DUPLICATE_UI_COMPONENT: entry("input", "Two component definitions share an id.", "Give each component a unique id."),
+  UNKNOWN_UI_COMPONENT: entry("input", "The component is not defined.", "Run components list and use an existing id."),
+  CYCLIC_UI_COMPONENT: entry("input", "Component references form a cycle.", "Remove the cyclic reference named in the message."),
+  UI_RENDERER_UNAVAILABLE: entry("input", "No renderer is available for this UI target.", "Choose a supported --framework."),
+  INVALID_INTERACTION: entry("input", "An interaction definition is invalid.", "Fix the event, actions or bindings named in the message; run interactions validate."),
+  DUPLICATE_INTERACTION: entry("input", "Two interaction definitions share an id.", "Give each interaction a unique id."),
+  EMPTY_INTERACTION_LIBRARY: entry("input", "The interaction library has no definitions.", "Run interactions init or add a Markdown definition."),
+  UNKNOWN_INTERACTION: entry("input", "The interaction is not defined.", "Run interactions list and check the component's interaction references."),
+  INVALID_DATA_SOURCE: entry("input", "A data-source definition is invalid.", "Fix the fields named in the message; run data-sources validate."),
+  DUPLICATE_DATA_SOURCE: entry("input", "Two data-source definitions share an id.", "Give each data source a unique id."),
+  EMPTY_DATA_SOURCE_LIBRARY: entry("input", "The data-source library has no definitions.", "Run data-sources init or add a Markdown definition."),
+  UNKNOWN_DATA_SOURCE: entry("input", "The data source is not defined.", "Run data-sources list and use an existing id."),
+  DATA_SOURCE_RENDERER_UNAVAILABLE: entry("input", "No generator is available for this data source.", "Use a supported data-source kind; run help make for data-source generation."),
+  // Plugins, skills and events
+  INVALID_PLUGIN: entry("input", "A plugin manifest or implementation is invalid.", "Fix the plugin named in the message, or disable it with --no-plugins."),
+  INVALID_PLUGIN_CONFIG: entry("input", "The enabled plugin list is invalid.", "List unique lowercase kebab-case plugin ids in plugins.enabled in bin/config.json."),
+  INCOMPATIBLE_PLUGIN: entry("input", "The plugin requires a newer Forge version.", "Update The Forge or disable the plugin."),
+  DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
+  PLUGIN_NAMESPACE: entry("input", "A plugin contribution is outside its namespace.", "Prefix plugin command, generator, skill and event ids with the plugin id and a dot."),
+  PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
+  DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
+  UNKNOWN_SKILL: entry("input", "The skill is not registered.", "Run skills list."),
+  INVALID_EVENT: entry("input", "An event definition or event state is invalid.", "Define events with a dotted id and validator before disposal."),
+  INVALID_EVENT_LISTENER: entry("input", "An event listener is not a function.", "Pass a function as the listener."),
+  INVALID_EVENT_PAYLOAD: entry("input", "The event payload does not match its contract.", "Run events and emit a payload that matches the contract."),
+  DUPLICATE_EVENT: entry("input", "The event id is already registered.", "Use a unique event id."),
+  UNKNOWN_EVENT: entry("input", "The event is not registered.", "Run events to list registered event ids."),
+  EVENT_RECURSION: entry("input", "Event handlers recursed too deeply.", "Stop handlers from emitting the events that trigger them."),
+  // Claude Code definitions
+  INVALID_CLAUDE_AGENT: entry("input", "The Claude agent definition is invalid.", claudeDefinitionHint$1),
+  INVALID_CLAUDE_HOOKS: entry("input", "The Claude hook configuration is invalid.", claudeDefinitionHint$1),
+  INVALID_CLAUDE_PLUGIN: entry("input", "The Claude plugin manifest or a plugin file is invalid.", claudeDefinitionHint$1),
+  INVALID_CLAUDE_SETTINGS: entry("input", "The Claude settings file is invalid.", "Fix the JSON structure of the settings file named in the message."),
+  INVALID_CLAUDE_COMMAND: entry("input", "The Claude command is not supported.", "Run claude capabilities."),
+  INVALID_CLAUDE_ARGUMENT: entry("input", "A Claude command argument is invalid.", argumentsHint$1),
+  INVALID_CLAUDE_OPTION: entry("input", "The option is not allowed for this Claude command.", "Run help claude and remove the option."),
+  INVALID_CLAUDE_SCOPE: entry("input", "The Claude scope is invalid.", "Run help claude and pass a --scope value supported by that action."),
+  INVALID_CLAUDE_INPUT: entry("input", "The Claude input is invalid or too large.", "Pass valid input within the size limit."),
+  INVALID_CLAUDE_OUTPUT: entry("input", "The Claude output format is invalid.", "Use text, json or json-last-line."),
+  INVALID_CLAUDE_OUTPUT_LIMIT: entry("input", "The Claude output limit is invalid.", "Use a positive integer number of bytes."),
+  INVALID_CLAUDE_TIMEOUT: entry("input", "The Claude timeout is invalid.", "Pass the timeout in milliseconds within the range named in the message."),
+  INVALID_CLAUDE_EXECUTABLE: entry("input", "The Claude executable path is invalid.", "Pass an executable path to --claude-bin."),
+  // Claude Code process
+  CLAUDE_NOT_INSTALLED: entry("external", "The Claude Code executable was not found.", "Install Claude Code and put claude on PATH, or pass --claude-bin."),
+  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: entry("external", "The Claude working directory is unavailable.", "Check that the selected project or workspace root exists and is a directory."),
+  CLAUDE_COMMAND_FAILED: entry("external", "Claude Code could not be started or stopped unexpectedly.", "Read error.details, inspect external state, then retry deliberately."),
+  CLAUDE_COMMAND_TIMEOUT: entry("external", "The Claude command exceeded its timeout.", "Inspect external state; retry with a larger --timeout only if the work did not complete."),
+  CLAUDE_OUTPUT_LIMIT: entry("external", "Claude output exceeded the size limit.", "Inspect external state; retry with a larger output limit only if needed."),
+  CLAUDE_COMMAND_INTERRUPTED: entry("interrupted", "The Claude command was interrupted by a signal (exit 130 for SIGINT, 143 for SIGTERM).", "Inspect external state before running the command again."),
+  CLAUDE_RUNTIME_FAILED: entry("external", "Claude Code exited with a nonzero status.", "Inspect error.details (native status, output and parsed result) and external state before retrying."),
+  CLAUDE_INVALID_OUTPUT: entry("external", "Claude Code succeeded but did not return the requested JSON.", "Inspect stdout and external state before retrying.")
+};
+const errorCodes = Object.keys(errorCatalog);
+function errorDefinition(code2) {
+  return Object.hasOwn(errorCatalog, code2) ? errorCatalog[code2] : void 0;
+}
 class AppError extends Error {
   constructor(code2, message, exitCode = 1, details) {
     super(message);
@@ -49,8 +189,11 @@ class AppError extends Error {
   exitCode;
   details;
 }
+function forgeError(code2, message, details, exitCode = errorCatalog[code2].exitCode) {
+  return new AppError(code2, message, exitCode, details);
+}
 function summarizeError(error2) {
-  return error2 instanceof AppError ? { code: error2.code, exitCode: error2.exitCode } : { code: "OPERATION_FAILED", exitCode: 1 };
+  return error2 instanceof AppError ? { code: error2.code, exitCode: error2.exitCode } : { code: "OPERATION_FAILED", exitCode: errorCatalog.OPERATION_FAILED.exitCode };
 }
 function errorMessage(error2) {
   try {
@@ -59,8 +202,8 @@ function errorMessage(error2) {
     return "Operation failed with an unreadable error.";
   }
 }
-function ensure(condition, code2, message) {
-  if (!condition) throw new AppError(code2, message, 2);
+function ensure(condition, code2, message, details) {
+  if (!condition) throw forgeError(code2, message, details);
 }
 const isRecord = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
@@ -140,11 +283,11 @@ class EventBus {
       }
     });
   }
-  subscribe(entry) {
-    this.listeners.add(entry);
+  subscribe(entry2) {
+    this.listeners.add(entry2);
     return () => {
-      entry.active = false;
-      this.listeners.delete(entry);
+      entry2.active = false;
+      this.listeners.delete(entry2);
     };
   }
   once(id2, listener) {
@@ -167,7 +310,7 @@ class EventBus {
       });
       ensure(valid2 === true, "INVALID_EVENT_PAYLOAD", id2);
     } catch {
-      throw new AppError("INVALID_EVENT_PAYLOAD", `Invalid payload for ${id2}.`, 2);
+      throw forgeError("INVALID_EVENT_PAYLOAD", `Invalid payload for ${id2}.`);
     }
     const depth = this.delivery.depth();
     ensure(depth < 32, "EVENT_RECURSION", "Event recursion exceeds 32.");
@@ -177,10 +320,10 @@ class EventBus {
       this.warn("Event history reached 1000 records; later notifications are delivered but omitted from history and replay.");
     }
     await this.delivery.run(async () => {
-      for (const entry of Array.from(this.listeners).filter((listener) => listener.id === void 0 || listener.id === id2)) {
-        if (!entry.active || this.disposed) continue;
+      for (const entry2 of Array.from(this.listeners).filter((listener) => listener.id === void 0 || listener.id === id2)) {
+        if (!entry2.active || this.disposed) continue;
         try {
-          await entry.invoke(structuredClone(entry.id === void 0 ? { id: id2, payload: snapshot } : snapshot));
+          await entry2.invoke(structuredClone(entry2.id === void 0 ? { id: id2, payload: snapshot } : snapshot));
         } catch (error2) {
           this.warn(`Listener ${id2}: ${errorMessage(error2)}`);
         }
@@ -195,16 +338,16 @@ class EventBus {
     this.listeners.clear();
   }
 }
-const text$4 = (value2) => typeof value2 === "string" && value2.length > 0;
+const text$5 = (value2) => typeof value2 === "string" && value2.length > 0;
 const count = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status = (value2) => Number.isSafeInteger(value2);
 const operation$1 = (value2) => count(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$1 = (value2) => isRecord(value2) && text$4(value2.code) && status(value2.exitCode);
-const command = (value2) => operation$1(value2) && text$4(value2.command) && text$4(value2.root) && text$4(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove"].includes(String(value2.operation)) && (value2.root === null || text$4(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$4);
-const claude = (value2) => operation$1(value2) && text$4(value2.executable) && text$4(value2.cwd);
-const plugin = (value2) => text$4(value2.pluginId);
-const change = (value2) => isRecord(value2) && text$4(value2.path) && text$4(value2.revision) && count(value2.bytes) && ["created", "updated", "deleted"].includes(String(value2.operation));
+const error$1 = (value2) => isRecord(value2) && text$5(value2.code) && status(value2.exitCode);
+const command = (value2) => operation$1(value2) && text$5(value2.command) && text$5(value2.root) && text$5(value2.workspaceRoot);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove"].includes(String(value2.operation)) && (value2.root === null || text$5(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$5);
+const claude = (value2) => operation$1(value2) && text$5(value2.executable) && text$5(value2.cwd);
+const plugin = (value2) => text$5(value2.pluginId);
+const change = (value2) => isRecord(value2) && text$5(value2.path) && text$5(value2.revision) && count(value2.bytes) && ["created", "updated", "deleted"].includes(String(value2.operation));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
 function definition$1(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
@@ -219,7 +362,7 @@ const hostEventDefinitions = [
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$1(value2.error) && optionalStatus(value2)),
-  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$4(value2.executable) && text$4(value2.cwd) && status(value2.exitCode)),
+  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$5(value2.executable) && text$5(value2.cwd) && status(value2.exitCode)),
   definition$1("file.created", "A file was committed after successful persistence.", (value2) => change(value2) && value2.operation === "created"),
   definition$1("file.updated", "An existing file was committed after successful persistence.", (value2) => change(value2) && value2.operation === "updated"),
   definition$1("file.deleted", "A file was removed; revision and bytes describe its prior content.", (value2) => change(value2) && value2.operation === "deleted"),
@@ -256,7 +399,7 @@ async function invokeCommand(events, metadata2, activate, run2) {
       const serialized = JSON.stringify(data);
       snapshot = serialized === void 0 ? void 0 : JSON.parse(serialized);
     } catch {
-      throw new AppError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.");
+      throw forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.");
     }
     await publishHostEvent(events, "command.succeeded", operation2);
     return snapshot;
@@ -264,6 +407,18 @@ async function invokeCommand(events, metadata2, activate, run2) {
     await publishHostEvent(events, "command.failed", { ...operation2, error: summarizeError(error2) });
     throw error2;
   }
+}
+const eventOutputLevels = ["none", "changes", "all"];
+function eventOutput(value2) {
+  ensure(eventOutputLevels.includes(value2), "INVALID_ARGUMENT", `--events must be one of: ${eventOutputLevels.join(", ")}.`);
+  return value2;
+}
+function isChangeRecord(record2) {
+  return record2.id === "file.created" || record2.id === "file.updated" || record2.id === "file.deleted";
+}
+function selectEventOutput(history, level) {
+  if (level === "all") return [...history];
+  return level === "changes" ? history.filter(isChangeRecord) : [];
 }
 class NodeEventScope {
   storage = new node_async_hooks.AsyncLocalStorage();
@@ -362,8 +517,8 @@ class ClaudeLifecycle {
       malformed = true;
     }
     const details = { ...plan, ...result, ...data === void 0 ? {} : { result: data } };
-    if (result.exitCode !== 0) throw new AppError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, 1, details);
-    if (malformed) throw new AppError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", 1, details);
+    if (result.exitCode !== 0) throw forgeError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, details);
+    if (malformed) throw forgeError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", details);
     return { dryRun: false, executed: true, ...details };
   }
 }
@@ -388,18 +543,159 @@ const nativeFormats = {
   video: ["mkv", "mov", "mp4", "ogv", "webm"],
   pdf: ["pdf"]
 };
+const textExtensions = [
+  "ts",
+  "tsx",
+  "mts",
+  "cts",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "json",
+  "jsonc",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "css",
+  "scss",
+  "less",
+  "html",
+  "htm",
+  "xml",
+  "vue",
+  "svelte",
+  "txt",
+  "log",
+  "csv",
+  "tsv",
+  "sh",
+  "py",
+  "sql"
+];
+const fileKinds = [...Object.keys(nativeFormats), "text", "attachment"];
 function fileKind(path) {
   const basename = path.slice(path.lastIndexOf("/") + 1);
   const dot = basename.lastIndexOf(".");
   const ext = dot < 0 ? "" : basename.slice(dot + 1).toLowerCase();
-  return Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0] ?? "attachment";
+  const native = Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0];
+  return native ?? (textExtensions.includes(ext) ? "text" : "attachment");
 }
 const isStructured = (path) => ["markdown", "canvas", "base"].includes(fileKind(path));
+const isTextLike = (path) => isStructured(path) || fileKind(path) === "text";
 function snapshotWriteRequests(writes) {
   ensure(Array.isArray(writes) && Array.from(writes).every((write) => isRecord(write) && typeof write.path === "string" && write.bytes instanceof Uint8Array && (write.expectedRevision === void 0 || typeof write.expectedRevision === "string")), "INVALID_PLAN", "Write plans must contain file requests with Uint8Array bytes.");
   return writes.map((write) => ({ path: vaultPath(write.path), bytes: Uint8Array.from(write.bytes), expectedRevision: write.expectedRevision }));
 }
-const changeSummary = (result) => ({ changes: result.changes, bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0) });
+function revisionConflict(path, expectedRevision, currentRevision) {
+  return { path, expectedRevision: expectedRevision ?? null, currentRevision: currentRevision ?? null };
+}
+const editSearchLimit = 2e3;
+function lines(text2) {
+  return text2 === "" ? [] : text2.split(/(?<=\n)/);
+}
+function shortestEdit(before, after) {
+  const n = before.length, m = after.length, max = n + m, offset = max + 1;
+  const removeAll = () => [...before.map((line) => ({ type: "-", line })), ...after.map((line) => ({ type: "+", line }))];
+  if (n === 0 || m === 0) return removeAll();
+  const v = new Int32Array(2 * max + 3);
+  const trace = [];
+  for (let d = 0; d <= Math.min(max, editSearchLimit); d++) {
+    trace.push(v.slice(offset - d - 1, offset + d + 2));
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || k !== d && v[offset + k - 1] < v[offset + k + 1] ? v[offset + k + 1] : v[offset + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && before[x] === after[y]) {
+        x++;
+        y++;
+      }
+      v[offset + k] = x;
+      if (x >= n && y >= m) return backtrack(trace, before, after);
+    }
+  }
+  return removeAll();
+}
+function backtrack(trace, before, after) {
+  const operations2 = [];
+  let x = before.length, y = after.length;
+  for (let d = trace.length - 1; d >= 0; d--) {
+    const snapshot = trace[d], at = (k2) => snapshot[k2 + d + 1];
+    const k = x - y;
+    const previousK = k === -d || k !== d && at(k - 1) < at(k + 1) ? k + 1 : k - 1;
+    const previousX = at(previousK), previousY = previousX - previousK;
+    while (x > previousX && y > previousY) {
+      x--;
+      y--;
+      operations2.push({ type: " ", line: before[x] });
+    }
+    if (d > 0) {
+      if (x === previousX) operations2.push({ type: "+", line: after[--y] });
+      else operations2.push({ type: "-", line: before[--x] });
+    }
+  }
+  return operations2.reverse();
+}
+function editScript(before, after) {
+  let start = 0, endBefore = before.length, endAfter = after.length;
+  while (start < endBefore && start < endAfter && before[start] === after[start]) start++;
+  while (endBefore > start && endAfter > start && before[endBefore - 1] === after[endAfter - 1]) {
+    endBefore--;
+    endAfter--;
+  }
+  const keep = (line) => ({ type: " ", line });
+  return [...before.slice(0, start).map(keep), ...shortestEdit(before.slice(start, endBefore), after.slice(start, endAfter)), ...before.slice(endBefore).map(keep)];
+}
+function range(start, count2) {
+  if (count2 === 0) return `${start - 1},0`;
+  return count2 === 1 ? `${start}` : `${start},${count2}`;
+}
+function formatLine({ type: type2, line }) {
+  return line.endsWith("\n") ? `${type2}${line}` : `${type2}${line}
+\\ No newline at end of file
+`;
+}
+function unifiedDiff({ path, before, after, created = false, context = 3 }) {
+  const operations2 = editScript(lines(before), lines(after));
+  const changed = operations2.flatMap((operation2, index2) => operation2.type === " " ? [] : [index2]);
+  if (changed.length === 0) return "";
+  const groups = [];
+  for (const index2 of changed) {
+    const start = Math.max(0, index2 - context), end = Math.min(operations2.length, index2 + context + 1);
+    const last = groups.at(-1);
+    if (last && start <= last[1]) last[1] = end;
+    else groups.push([start, end]);
+  }
+  let output = `--- ${created ? "/dev/null" : `a/${path}`}
++++ b/${path}
+`;
+  let cursor = 0, oldLine = 1, newLine = 1;
+  for (const [start, end] of groups) {
+    for (; cursor < start; cursor++) {
+      if (operations2[cursor].type !== "+") oldLine++;
+      if (operations2[cursor].type !== "-") newLine++;
+    }
+    const hunk = operations2.slice(start, end);
+    const oldCount = hunk.filter((operation2) => operation2.type !== "+").length, newCount = hunk.filter((operation2) => operation2.type !== "-").length;
+    output += `@@ -${range(oldLine, oldCount)} +${range(newLine, newCount)} @@
+${hunk.map(formatLine).join("")}`;
+    oldLine += oldCount;
+    newLine += newCount;
+    cursor = end;
+  }
+  return output;
+}
+const changeSummary = (result) => ({
+  changes: result.changes.map(({ path, revision, operation: operation2, bytes }) => ({ path, revision, operation: operation2, bytes })),
+  bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0)
+});
+const utf8 = (bytes) => {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return void 0;
+  }
+};
 class Workspace {
   constructor(files, codec, events, dryRun, root = null) {
     this.files = files;
@@ -421,7 +717,11 @@ class Workspace {
       return { path, revision: file.revision, bytes: file.bytes.length, document: this.codec.inspect(path, file.bytes) };
     }, (result) => ({ bytes: result.bytes }));
   }
-  async write(writes) {
+  async write(writes, options = {}) {
+    return this.guardedWrite(writes, options.diff === true ? /* @__PURE__ */ new Map() : void 0);
+  }
+  /** `previous` enables preview diffs and supplies snapshots the caller already read. */
+  async guardedWrite(writes, previous2) {
     let requests;
     try {
       requests = snapshotWriteRequests(writes);
@@ -433,8 +733,21 @@ class Workspace {
     return this.observe("write", requests.map((request) => request.path), async () => {
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
       const changes = await this.files.writeBatch(requests, this.dryRun);
-      return this.committed(changes);
+      const result = await this.committed(changes);
+      return this.dryRun && previous2 ? { ...result, changes: await this.preview(changes, requests, previous2) } : result;
     }, changeSummary);
+  }
+  /** Diff each planned file against the revision that the dry run checked; binary content has no diff. */
+  async preview(changes, requests, previous2) {
+    return Promise.all(changes.map(async (change2) => {
+      const request = requests.find((candidate) => candidate.path === change2.path);
+      const after = request && isTextLike(change2.path) ? utf8(request.bytes) : void 0;
+      if (after === void 0) return { ...change2, diff: null };
+      if (change2.operation === "created") return { ...change2, diff: unifiedDiff({ path: change2.path, before: "", after, created: true }) };
+      const snapshot = previous2.get(change2.path) ?? await this.files.read(change2.path);
+      const before = snapshot.revision === request.expectedRevision ? utf8(snapshot.bytes) : void 0;
+      return { ...change2, diff: before === void 0 ? null : unifiedDiff({ path: change2.path, before, after }) };
+    }));
   }
   async remove(path, expectedRevision) {
     return this.observe("remove", [path], async () => {
@@ -456,11 +769,12 @@ class Workspace {
     return { dryRun: this.dryRun, changes };
   }
   // CLI handlers and external plugins use this guarded editing API through CommandContext.
+  // Dry-run edits always include a unified diff of the transformed file.
   async edit(path, revision, transform2) {
     return this.observe("edit", [path], async () => {
       const file = await this.files.read(path);
-      ensure(file.revision === revision, "CONFLICT", "File changed; read again before editing.");
-      return this.write([{ path, bytes: transform2(file.bytes), expectedRevision: revision }]);
+      ensure(file.revision === revision, "CONFLICT", `File changed; read again before editing: ${path}`, revisionConflict(path, revision, file.revision));
+      return this.guardedWrite([{ path, bytes: transform2(file.bytes), expectedRevision: revision }], /* @__PURE__ */ new Map([[path, file]]));
     }, changeSummary);
   }
   async observe(operation2, paths2, action2, summarize) {
@@ -542,7 +856,7 @@ class Registry {
     for (const command2 of plugin2.commands ?? []) {
       ensure(typeof command2.run === "function" && typeof command2.description === "string" && typeof command2.usage === "string", "INVALID_PLUGIN", "Invalid command.");
       ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", "Command options must be an object.");
-      for (const [key, type2] of Object.entries(command2.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "lang", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
+      for (const [key, type2] of Object.entries(command2.options ?? {})) ensure(/^[a-z][a-z0-9-]*$/.test(key) && !["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"].includes(key) && ["boolean", "string"].includes(type2), "INVALID_PLUGIN", `Invalid command option ${key}.`);
       this.add(commands2, command2);
     }
     for (const generator of plugin2.generators ?? []) {
@@ -637,14 +951,14 @@ class ProjectService {
     try {
       marker = await this.files.read(`${directory}/.forge/project.json`);
     } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw new AppError("PROJECT_NOT_FOUND", `No Forge project named ${name2} in ${this.projectsDirectory}.`, 3);
+      if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw forgeError("PROJECT_NOT_FOUND", `No Forge project named ${name2} in ${this.projectsDirectory}.`);
       throw error2;
     }
     let metadata2;
     try {
       metadata2 = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(marker.bytes));
     } catch {
-      throw new AppError("INVALID_PROJECT", `Invalid project metadata: ${directory}/.forge/project.json`, 2);
+      throw forgeError("INVALID_PROJECT", `Invalid project metadata: ${directory}/.forge/project.json`);
     }
     ensure(isRecord(metadata2) && metadata2.schemaVersion === 1 && metadata2.name === name2 && metadata2.type === "library", "INVALID_PROJECT", `Expected schemaVersion 1, matching name and library type in ${directory}/.forge/project.json.`);
     return { schemaVersion: 1, name: name2, type: "library", directory };
@@ -655,13 +969,13 @@ class ProjectService {
     if (selection === null) return null;
     const { name: name2, directory } = selection;
     if (directory !== `${this.projectsDirectory}/${name2}`) {
-      throw new AppError("STALE_PROJECT_CONTEXT", `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`, 3);
+      throw forgeError("STALE_PROJECT_CONTEXT", `Selected project ${directory} differs from the configured projects directory. Run project open <name> to explicitly select a project, or project close to clear the selection.`);
     }
     try {
       return await this.inspect(name2);
     } catch (error2) {
       if (error2 instanceof AppError && ["PROJECT_NOT_FOUND", "INVALID_PROJECT"].includes(error2.code)) {
-        throw new AppError("STALE_PROJECT_CONTEXT", `Selected project ${name2} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`, 3);
+        throw forgeError("STALE_PROJECT_CONTEXT", `Selected project ${name2} is missing or invalid. Run project open <name> to select a valid project, or project close to clear the selection.`);
       }
       throw error2;
     }
@@ -713,7 +1027,7 @@ class ProjectService {
       ensure(typeof context.directory === "string" && vaultPath(context.directory).endsWith(`/${name2}`), "INVALID_PROJECT_CONTEXT", "Project selection requires its workspace-relative directory.");
       return { name: name2, directory: context.directory };
     } catch {
-      throw new AppError("INVALID_PROJECT_CONTEXT", "Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.", 2);
+      throw forgeError("INVALID_PROJECT_CONTEXT", "Invalid bin/data/context.json. Run project open <name> to select a valid project, or project close to clear the selection.");
     }
   }
   async select(project) {
@@ -1049,7 +1363,7 @@ class GenerationService {
     try {
       return await this.write(plan);
     } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "CONFLICT") throw new AppError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.exitCode);
+      if (error2 instanceof AppError && error2.code === "CONFLICT") throw forgeError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.details);
       throw error2;
     }
   }
@@ -1078,9 +1392,9 @@ class GenerationService {
     }
     return { matches: outputs.every((output) => output.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
   }
-  async check(writes, errorCode = "GENERATION_DRIFT") {
+  async check(writes, errorCode2) {
     const plan = await this.plan(writes);
-    if (!plan.matches) throw new AppError(errorCode, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", 5, { outputs: plan.outputs.map(({ path, status: status2 }) => ({ path, status: status2 })) });
+    if (!plan.matches) throw forgeError(errorCode2, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path, status: status2 }) => ({ path, status: status2 })) });
     return plan;
   }
   validate(writes) {
@@ -1198,7 +1512,7 @@ Describe this component.
       try {
         await this.workspace.files.read(definition2.storybook.extension);
       } catch (error2) {
-        if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw new AppError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`, 2);
+        if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw forgeError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`);
         throw error2;
       }
     }
@@ -1475,18 +1789,221 @@ class TemplateInstaller {
     return { directory: "bin/templates", ...result, skipped, ...this.workspace.dryRun ? { preview: writes.map((write) => ({ path: write.path, content: new TextDecoder().decode(write.bytes) })) } : {} };
   }
 }
+const unsupported = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
+const isUnsupported = (error2) => unsupported.has(String(error2?.code));
+async function syncDirectory(path, openDirectory = (directory) => promises.open(directory, "r")) {
+  let handle;
+  try {
+    handle = await openDirectory(path);
+  } catch (error2) {
+    if (isUnsupported(error2)) return;
+    throw error2;
+  }
+  try {
+    await handle.sync();
+  } catch (error2) {
+    if (!isUnsupported(error2)) throw error2;
+  } finally {
+    await handle.close();
+  }
+}
+const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
+const lockedFileDelays = [10, 20, 40, 80, 160, 320];
+const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
+async function retryTransient(operation2, options = {}) {
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation2();
+    } catch (error2) {
+      const code2 = errorCode$1(error2);
+      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
+      await sleep(delays[attempt]);
+    }
+  }
+}
+const lockName = ".agent-cli.lock";
+const writingWindowMs = 5e3;
+const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
+const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
+const heldTokens = /* @__PURE__ */ new Set();
+const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
+const text$4 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const errorCode = (error2) => error2.code ?? "";
+function ownerDetails(owner) {
+  try {
+    const { command: command2, operationId } = owner();
+    return { ...text$4(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
+  } catch {
+    return {};
+  }
+}
+let identity$1;
+function hostIdentity() {
+  identity$1 ??= (async () => {
+    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    return { ...text$4(pidNamespace) ? { pidNamespace } : {}, ...text$4(bootId) ? { bootId } : {} };
+  })();
+  return identity$1;
+}
+async function acquireLock(path, owner) {
+  const token = node_crypto.randomUUID();
+  const record2 = {
+    pid: process.pid,
+    hostname: node_os.hostname(),
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    ...ownerDetails(owner),
+    forgeVersion: metadata$1.version,
+    ...await hostIdentity(),
+    token
+  };
+  const content2 = JSON.stringify(record2) + "\n";
+  const temporary = minpath.join(minpath.dirname(path), `.agent-cli-tmp-lock-${token}`);
+  let linked = false;
+  try {
+    await writeDurably(temporary, content2);
+    await retryTransient(() => promises.link(temporary, path), { codes: ["EBUSY"] });
+    linked = true;
+  } catch (error2) {
+    if (errorCode(error2) === "EEXIST") throw await busy(path);
+    if (!linkUnsupported.has(errorCode(error2))) throw error2;
+  } finally {
+    await retryTransient(() => promises.rm(temporary, { force: true })).catch(() => {
+    });
+  }
+  if (!linked) await createExclusively(path, content2);
+  heldTokens.add(token);
+  return token;
+}
+async function record$1(handle, content2) {
+  try {
+    await handle.writeFile(content2);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function writeDurably(path, content2) {
+  await record$1(await retryTransient(() => promises.open(path, "wx")), content2);
+}
+async function createExclusively(path, content2) {
+  let handle;
+  try {
+    handle = await retryTransient(() => promises.open(path, "wx"));
+  } catch (error2) {
+    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path);
+    throw error2;
+  }
+  try {
+    await record$1(handle, content2);
+  } catch (error2) {
+    await retryTransient(() => promises.rm(path, { force: true })).catch(() => {
+    });
+    throw error2;
+  }
+}
+async function releaseLock(path, token) {
+  heldTokens.delete(token);
+  let content2;
+  try {
+    content2 = await retryTransient(() => promises.readFile(path, "utf8"));
+  } catch (error2) {
+    if (errorCode(error2) === "ENOENT") return "missing";
+    throw error2;
+  }
+  let recorded;
+  try {
+    recorded = JSON.parse(content2).token;
+  } catch {
+    return "foreign";
+  }
+  if (recorded !== token) return "foreign";
+  await retryTransient(() => promises.unlink(path));
+  return "released";
+}
+function parseMetadata(content2) {
+  let value2;
+  try {
+    value2 = JSON.parse(content2);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$4(value2.hostname) || !text$4(value2.startedAt)) return null;
+  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
+  return {
+    pid,
+    hostname: host,
+    startedAt,
+    ...text$4(command2) ? { command: command2 } : {},
+    ...positiveInteger(operationId) ? { operationId } : {},
+    ...text$4(forgeVersion) ? { forgeVersion } : {},
+    ...text$4(pidNamespace) ? { pidNamespace } : {},
+    ...text$4(bootId) ? { bootId } : {}
+  };
+}
+async function readLock(path) {
+  try {
+    const entry2 = await promises.lstat(path);
+    if (!entry2.isFile()) return { lock: null, young: false };
+    const young = Date.now() - entry2.mtimeMs < writingWindowMs;
+    const handle = await promises.open(path, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    try {
+      const buffer = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      const content2 = buffer.subarray(0, bytesRead).toString("utf8");
+      let token;
+      try {
+        token = JSON.parse(content2)?.token;
+      } catch {
+      }
+      return { lock: parseMetadata(content2), token, young };
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return { lock: null, young: false };
+  }
+}
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error2) {
+    return errorCode(error2) === "ESRCH" ? false : errorCode(error2) === "EPERM" ? true : void 0;
+  }
+}
+async function inspectLock(path) {
+  const { lock, token, young } = await readLock(path);
+  if (lock === null) return { lock, stale: young ? "active" : "unknown" };
+  const current = await hostIdentity();
+  if (lock.hostname !== node_os.hostname() || lock.pidNamespace !== current.pidNamespace || lock.bootId !== current.bootId) return { lock, stale: "unknown" };
+  if (lock.pid === process.pid) return { lock, stale: typeof token === "string" && heldTokens.has(token) ? "active" : "likely" };
+  const alive = processAlive(lock.pid);
+  return { lock, stale: alive === void 0 ? "unknown" : alive ? "active" : "likely" };
+}
+async function busy(path) {
+  const details = await inspectLock(path);
+  const { lock, stale } = details;
+  const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
+  return forgeError("WORKSPACE_BUSY", `Workspace lock ${lockName} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
+}
 const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
 const missing = (error2) => error2.code === "ENOENT";
+const stagingConcurrency = 8;
 class NodeFiles {
-  constructor(root, warn) {
+  constructor(root, warn, owner) {
     this.root = root;
     this.warn = warn;
+    this.owner = owner;
   }
   root;
   warn;
+  owner;
+  /** `owner` names the invocation recorded in the writer lock; composition code supplies it. */
   static async at(root, warn = () => {
-  }) {
-    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn);
+  }, owner = () => ({})) {
+    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner);
   }
   async resolvePath(path) {
     const parts = vaultPath(path).split("/");
@@ -1508,18 +2025,18 @@ class NodeFiles {
       const bytes = await promises.readFile(await this.resolvePath(path));
       return { path, bytes, revision: revisionOf(bytes) };
     } catch (error2) {
-      if (missing(error2)) throw new AppError("NOT_FOUND", `File not found: ${path}`, 3);
+      if (missing(error2)) throw forgeError("NOT_FOUND", `File not found: ${path}`);
       throw error2;
     }
   }
   async list() {
     const result = [];
     const walk = async (directory, prefix) => {
-      for (const entry of await promises.readdir(directory, { withFileTypes: true })) {
-        if ([".git", "node_modules", ".agent-cli.lock"].includes(entry.name) || entry.name.startsWith(".agent-cli-tmp-")) continue;
-        const path = prefix + entry.name;
-        if (entry.isDirectory()) await walk(minpath.join(directory, entry.name), path + "/");
-        else if (entry.isFile()) result.push(path);
+      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
+        if ([".git", "node_modules", lockName].includes(entry2.name) || entry2.name.startsWith(".agent-cli-tmp-")) continue;
+        const path = prefix + entry2.name;
+        if (entry2.isDirectory()) await walk(minpath.join(directory, entry2.name), path + "/");
+        else if (entry2.isFile()) result.push(path);
       }
     };
     await walk(this.root, "");
@@ -1537,136 +2054,185 @@ class NodeFiles {
     }
   }
   async assertRevision(path, expected) {
-    ensure((await this.stored(path))?.revision === expected, "CONFLICT", `File changed; read again before modifying: ${path}`);
+    const current = (await this.stored(path))?.revision;
+    ensure(current === expected, "CONFLICT", `File changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
   async remove(path, expectedRevision, dryRun) {
     path = vaultPath(path);
-    ensure(typeof expectedRevision === "string" && expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${path}`);
-    const lock = minpath.join(this.root, ".agent-cli.lock");
-    let locked = false;
+    const guarded2 = typeof expectedRevision === "string" && expectedRevision.length > 0;
+    const lock = minpath.join(this.root, lockName);
+    let token;
     try {
-      if (!dryRun) {
-        try {
-          const handle = await promises.open(lock, "wx");
-          locked = true;
-          await handle.close();
-        } catch (error2) {
-          if (error2.code === "EEXIST") throw this.busy();
-          throw error2;
-        }
-      }
+      if (!dryRun) token = await acquireLock(lock, this.owner);
       const target = await this.resolvePath(path);
       const before = await this.stored(path);
-      if (before === void 0) throw new AppError("NOT_FOUND", `File not found: ${path}`, 3);
-      ensure(before.revision === expectedRevision, "CONFLICT", `File changed; read again before removing: ${path}`);
+      if (before === void 0) throw forgeError("NOT_FOUND", `File not found: ${path}`);
+      ensure(guarded2, "CONFLICT", `Removing a file requires its current --if-match revision: ${path}`, revisionConflict(path, null, before.revision));
+      ensure(before.revision === expectedRevision, "CONFLICT", `File changed; read again before removing: ${path}`, revisionConflict(path, expectedRevision, before.revision));
       if (!dryRun) {
         await this.assertRevision(path, expectedRevision);
-        await promises.unlink(target);
+        await retryTransient(() => promises.unlink(target));
+        await this.syncDirectories([minpath.dirname(target)]);
       }
       return { path, revision: before.revision, operation: "deleted", bytes: before.bytes.length };
     } finally {
-      if (locked) await this.cleanupLock(lock);
+      if (token !== void 0) await this.cleanupLock(lock, token);
     }
   }
   async writeBatch(writes, dryRun) {
     const requests = snapshotWriteRequests(writes);
     ensure(requests.length > 0 && new Set(requests.map((w) => w.path)).size === requests.length, "INVALID_PLAN", "Plan must contain unique file paths.");
     ensure(!requests.some((a) => requests.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
-    const lock = minpath.join(this.root, ".agent-cli.lock");
-    let locked = false;
+    const lock = minpath.join(this.root, lockName);
+    let token;
     const createdDirectories = [];
     const committed = [];
+    const staged = [];
+    const touched = /* @__PURE__ */ new Set();
     try {
-      if (!dryRun) {
-        try {
-          const handle = await promises.open(lock, "wx");
-          locked = true;
-          await handle.close();
-        } catch (error2) {
-          if (error2.code === "EEXIST") throw this.busy();
-          throw error2;
-        }
-      }
+      if (!dryRun) token = await acquireLock(lock, this.owner);
       const plans = [];
+      const conflicts = [];
       for (const write of requests) {
         const target = await this.resolvePath(write.path);
         const before = await this.stored(write.path);
-        ensure(before === void 0 ? write.expectedRevision === void 0 : write.expectedRevision === before.revision, "CONFLICT", `Existing files require their current --if-match revision: ${write.path}`);
+        if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
         plans.push({ write, target, before });
       }
-      if (!dryRun) for (const plan of plans) {
-        const parts = plan.write.path.split("/").slice(0, -1);
-        let directory = this.root;
-        for (const part of parts) {
-          directory = minpath.join(directory, part);
-          try {
-            await promises.mkdir(directory);
-            createdDirectories.push(directory);
-          } catch (error2) {
-            if (error2.code !== "EEXIST") throw error2;
+      const [conflict] = conflicts;
+      ensure(
+        conflict === void 0,
+        "CONFLICT",
+        `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`,
+        conflict && { ...conflict, ...requests.length > 1 ? { conflicts } : {} }
+      );
+      if (!dryRun) {
+        for (const plan of plans) {
+          let directory = this.root;
+          for (const part of plan.write.path.split("/").slice(0, -1)) {
+            directory = minpath.join(directory, part);
+            try {
+              await promises.mkdir(directory);
+              createdDirectories.push(directory);
+              touched.add(minpath.dirname(directory));
+            } catch (error2) {
+              if (error2.code !== "EEXIST") throw error2;
+            }
           }
         }
-        await this.resolvePath(plan.write.path);
-        await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision));
-        committed.push(plan);
+        await this.stageAll(plans, staged);
+        for (const [index2, plan] of plans.entries()) {
+          await this.resolvePath(plan.write.path);
+          await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision), staged[index2]);
+          committed.push(plan);
+          touched.add(minpath.dirname(plan.target));
+        }
+        await this.syncDirectories(touched);
       }
       return plans.map(({ write, before }) => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
     } catch (error2) {
+      for (const temp of staged) if (temp) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      });
       const failures = [];
-      for (const entry of committed.reverse()) {
+      for (const entry2 of committed.reverse()) {
         try {
-          const verify = () => this.assertRevision(entry.write.path, revisionOf(entry.write.bytes));
-          if (entry.before) await this.replace(entry.target, entry.before.bytes, entry.before.mode, verify);
+          const verify = () => this.assertRevision(entry2.write.path, revisionOf(entry2.write.bytes));
+          if (entry2.before) await this.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
           else {
             await verify();
-            await promises.rm(entry.target);
+            await retryTransient(() => promises.rm(entry2.target));
           }
         } catch {
-          failures.push(entry.target);
+          failures.push(entry2.target);
         }
       }
-      for (const directory of createdDirectories.reverse()) await promises.rmdir(directory).catch(() => {
-      });
-      if (failures.length) throw new AppError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
+      for (const directory of createdDirectories.reverse()) {
+        try {
+          await retryTransient(() => promises.rmdir(directory));
+          touched.delete(directory);
+        } catch {
+        }
+      }
+      for (const directory of touched) {
+        try {
+          await syncDirectory(directory);
+        } catch {
+          failures.push(directory);
+        }
+      }
+      if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
       throw error2;
     } finally {
-      if (locked) await this.cleanupLock(lock);
+      if (token !== void 0) await this.cleanupLock(lock, token);
     }
   }
-  busy() {
-    return new AppError("WORKSPACE_BUSY", "Workspace lock .agent-cli.lock exists. Wait for the active writer. If a previous process was interrupted, inspect its changes and confirm no writer is running before removing the lock.", 4);
-  }
-  async cleanupLock(lock) {
+  async cleanupLock(lock, token) {
+    let warning;
     try {
-      await this.releaseLock(lock);
+      const outcome = await this.releaseLock(lock, token);
+      if (outcome === "foreign") warning = `Left ${lockName} in place: it no longer carries this writer's token, so another writer may hold it.`;
+      else if (outcome === "missing") warning = `${lockName} was removed by someone else while this writer held it; inspect concurrent changes.`;
     } catch (error2) {
-      try {
-        this.warn(`Could not remove .agent-cli.lock; inspect the lock before retrying: ${errorMessage(error2)}`);
-      } catch {
-      }
+      warning = `Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error2)}`;
+    }
+    if (warning === void 0) return;
+    try {
+      this.warn(warning);
+    } catch {
     }
   }
-  async releaseLock(lock) {
-    await promises.rm(lock, { force: true });
+  async releaseLock(lock, token) {
+    return releaseLock(lock, token);
   }
-  async replace(target, bytes, mode, verify) {
+  async syncDirectories(directories) {
+    for (const directory of new Set(directories)) await syncDirectory(directory);
+  }
+  /** Stage every plan, waiting for all workers so that no temporary file escapes cleanup. */
+  async stageAll(plans, staged) {
+    let next = 0;
+    const failures = [];
+    const worker = async () => {
+      while (next < plans.length && failures.length === 0) {
+        const index2 = next++, plan = plans[index2];
+        try {
+          staged[index2] = await this.stage(plan.target, plan.write.bytes, plan.before?.mode);
+        } catch (error2) {
+          failures.push(error2);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(stagingConcurrency, plans.length) }, worker));
+    if (failures.length) throw failures[0];
+  }
+  /** Write a same-directory temporary file whose data is durable before any rename publishes it. */
+  async stage(target, bytes, mode) {
     const temp = minpath.join(minpath.resolve(target, ".."), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-    let created = false;
-    let renamed = false;
+    const handle = await promises.open(temp, "wx", mode ?? 438);
     try {
-      const handle = await promises.open(temp, "wx", mode ?? 438);
-      created = true;
       try {
         await handle.writeFile(bytes);
         if (mode !== void 0) await handle.chmod(mode);
+        await handle.sync();
       } finally {
         await handle.close();
       }
+    } catch (error2) {
+      await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      });
+      throw error2;
+    }
+    return temp;
+  }
+  /** Publish `staged` (or freshly staged bytes) over the target; the caller fsyncs the directory entry. */
+  async replace(target, bytes, mode, verify, staged) {
+    const temp = staged ?? await this.stage(target, bytes, mode);
+    let renamed = false;
+    try {
       await verify?.();
-      await promises.rename(temp, target);
+      await retryTransient(() => promises.rename(temp, target));
       renamed = true;
     } finally {
-      if (created && !renamed) await promises.rm(temp, { force: true }).catch(() => {
+      if (!renamed) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
       });
     }
   }
@@ -2036,7 +2602,7 @@ function requireDirectives() {
       return tag[0] === "!" ? tag : `!<${tag}>`;
     }
     toString(doc) {
-      const lines = this.yaml.explicit ? [`%YAML ${this.yaml.version || "1.2"}`] : [];
+      const lines2 = this.yaml.explicit ? [`%YAML ${this.yaml.version || "1.2"}`] : [];
       const tagEntries = Object.entries(this.tags);
       let tagNames;
       if (doc && tagEntries.length > 0 && identity2.isNode(doc.contents)) {
@@ -2052,9 +2618,9 @@ function requireDirectives() {
         if (handle === "!!" && prefix === "tag:yaml.org,2002:")
           continue;
         if (!doc || tagNames.some((tn) => tn.startsWith(prefix)))
-          lines.push(`%TAG ${handle} ${prefix}`);
+          lines2.push(`%TAG ${handle} ${prefix}`);
       }
-      return lines.join("\n");
+      return lines2.join("\n");
     }
   }
   Directives.defaultYaml = { explicit: false, version: "1.2" };
@@ -3519,22 +4085,22 @@ function requireStringifyCollection() {
     const { indent, options: { commentString } } = ctx;
     const itemCtx = Object.assign({}, ctx, { indent: itemIndent, type: null });
     let chompKeep = false;
-    const lines = [];
+    const lines2 = [];
     for (let i = 0; i < items.length; ++i) {
       const item = items[i];
       let comment2 = null;
       if (identity2.isNode(item)) {
         if (!chompKeep && item.spaceBefore)
-          lines.push("");
-        addCommentBefore(ctx, lines, item.commentBefore, chompKeep);
+          lines2.push("");
+        addCommentBefore(ctx, lines2, item.commentBefore, chompKeep);
         if (item.comment)
           comment2 = item.comment;
       } else if (identity2.isPair(item)) {
         const ik = identity2.isNode(item.key) ? item.key : null;
         if (ik) {
           if (!chompKeep && ik.spaceBefore)
-            lines.push("");
-          addCommentBefore(ctx, lines, ik.commentBefore, chompKeep);
+            lines2.push("");
+          addCommentBefore(ctx, lines2, ik.commentBefore, chompKeep);
         }
       }
       chompKeep = false;
@@ -3543,15 +4109,15 @@ function requireStringifyCollection() {
         str2 += stringifyComment2.lineComment(str2, itemIndent, commentString(comment2));
       if (chompKeep && comment2)
         chompKeep = false;
-      lines.push(blockItemPrefix + str2);
+      lines2.push(blockItemPrefix + str2);
     }
     let str;
-    if (lines.length === 0) {
+    if (lines2.length === 0) {
       str = flowChars.start + flowChars.end;
     } else {
-      str = lines[0];
-      for (let i = 1; i < lines.length; ++i) {
-        const line = lines[i];
+      str = lines2[0];
+      for (let i = 1; i < lines2.length; ++i) {
+        const line = lines2[i];
         str += line ? `
 ${indent}${line}` : "\n";
       }
@@ -3574,22 +4140,22 @@ ${indent}${line}` : "\n";
     });
     let reqNewline = false;
     let linesAtValue = 0;
-    const lines = [];
+    const lines2 = [];
     for (let i = 0; i < items.length; ++i) {
       const item = items[i];
       let comment = null;
       if (identity2.isNode(item)) {
         if (item.spaceBefore)
-          lines.push("");
-        addCommentBefore(ctx, lines, item.commentBefore, false);
+          lines2.push("");
+        addCommentBefore(ctx, lines2, item.commentBefore, false);
         if (item.comment)
           comment = item.comment;
       } else if (identity2.isPair(item)) {
         const ik = identity2.isNode(item.key) ? item.key : null;
         if (ik) {
           if (ik.spaceBefore)
-            lines.push("");
-          addCommentBefore(ctx, lines, ik.commentBefore, false);
+            lines2.push("");
+          addCommentBefore(ctx, lines2, ik.commentBefore, false);
           if (ik.comment)
             reqNewline = true;
         }
@@ -3606,12 +4172,12 @@ ${indent}${line}` : "\n";
       if (comment)
         reqNewline = true;
       let str = stringify2.stringify(item, itemCtx, () => comment = null);
-      reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
+      reqNewline || (reqNewline = lines2.length > linesAtValue || str.includes("\n"));
       if (i < items.length - 1) {
         str += ",";
       } else if (ctx.options.trailingComma) {
         if (ctx.options.lineWidth > 0) {
-          reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+          reqNewline || (reqNewline = lines2.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
         }
         if (reqNewline) {
           str += ",";
@@ -3619,35 +4185,35 @@ ${indent}${line}` : "\n";
       }
       if (comment)
         str += stringifyComment2.lineComment(str, itemIndent, commentString(comment));
-      lines.push(str);
-      linesAtValue = lines.length;
+      lines2.push(str);
+      linesAtValue = lines2.length;
     }
     const { start, end } = flowChars;
-    if (lines.length === 0) {
+    if (lines2.length === 0) {
       return start + end;
     } else {
       if (!reqNewline) {
-        const len = lines.reduce((sum, line) => sum + line.length + 2, 2);
+        const len = lines2.reduce((sum, line) => sum + line.length + 2, 2);
         reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
       }
       if (reqNewline) {
         let str = start;
-        for (const line of lines)
+        for (const line of lines2)
           str += line ? `
 ${indentStep}${indent}${line}` : "\n";
         return `${str}
 ${indent}${end}`;
       } else {
-        return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
+        return `${start}${fcPadding}${lines2.join(" ")}${fcPadding}${end}`;
       }
     }
   }
-  function addCommentBefore({ indent, options: { commentString } }, lines, comment, chompKeep) {
+  function addCommentBefore({ indent, options: { commentString } }, lines2, comment, chompKeep) {
     if (comment && chompKeep)
       comment = comment.replace(/^\n+/, "");
     if (comment) {
       const ic = stringifyComment2.indentComment(commentString(comment), indent);
-      lines.push(ic.trimStart());
+      lines2.push(ic.trimStart());
     }
   }
   stringifyCollection.stringifyCollection = stringifyCollection$1;
@@ -4284,11 +4850,11 @@ function requireBinary() {
       if (type2 !== Scalar2.Scalar.QUOTE_DOUBLE) {
         const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
         const n = Math.ceil(str.length / lineWidth);
-        const lines = new Array(n);
+        const lines2 = new Array(n);
         for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-          lines[i] = str.substr(o, lineWidth);
+          lines2[i] = str.substr(o, lineWidth);
         }
-        str = lines.join(type2 === Scalar2.Scalar.BLOCK_LITERAL ? "\n" : " ");
+        str = lines2.join(type2 === Scalar2.Scalar.BLOCK_LITERAL ? "\n" : " ");
       }
       return stringifyString2.stringifyString({ comment, type: type2, value: str }, ctx, onComment, onChompKeep);
     }
@@ -4966,35 +5532,35 @@ function requireStringifyDocument() {
   var stringify2 = requireStringify();
   var stringifyComment2 = requireStringifyComment();
   function stringifyDocument$1(doc, options) {
-    const lines = [];
+    const lines2 = [];
     let hasDirectives = options.directives === true;
     if (options.directives !== false && doc.directives) {
       const dir = doc.directives.toString(doc);
       if (dir) {
-        lines.push(dir);
+        lines2.push(dir);
         hasDirectives = true;
       } else if (doc.directives.docStart)
         hasDirectives = true;
     }
     if (hasDirectives)
-      lines.push("---");
+      lines2.push("---");
     const ctx = stringify2.createStringifyContext(doc, options);
     const { commentString } = ctx.options;
     if (doc.commentBefore) {
-      if (lines.length !== 1)
-        lines.unshift("");
+      if (lines2.length !== 1)
+        lines2.unshift("");
       const cs = commentString(doc.commentBefore);
-      lines.unshift(stringifyComment2.indentComment(cs, ""));
+      lines2.unshift(stringifyComment2.indentComment(cs, ""));
     }
     let chompKeep = false;
     let contentComment = null;
     if (doc.contents) {
       if (identity2.isNode(doc.contents)) {
         if (doc.contents.spaceBefore && hasDirectives)
-          lines.push("");
+          lines2.push("");
         if (doc.contents.commentBefore) {
           const cs = commentString(doc.contents.commentBefore);
-          lines.push(stringifyComment2.indentComment(cs, ""));
+          lines2.push(stringifyComment2.indentComment(cs, ""));
         }
         ctx.forceBlockIndent = !!doc.comment;
         contentComment = doc.contents.comment;
@@ -5003,36 +5569,36 @@ function requireStringifyDocument() {
       let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
       if (contentComment)
         body += stringifyComment2.lineComment(body, "", commentString(contentComment));
-      if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
-        lines[lines.length - 1] = `--- ${body}`;
+      if ((body[0] === "|" || body[0] === ">") && lines2[lines2.length - 1] === "---") {
+        lines2[lines2.length - 1] = `--- ${body}`;
       } else
-        lines.push(body);
+        lines2.push(body);
     } else {
-      lines.push(stringify2.stringify(doc.contents, ctx));
+      lines2.push(stringify2.stringify(doc.contents, ctx));
     }
     if (doc.directives?.docEnd) {
       if (doc.comment) {
         const cs = commentString(doc.comment);
         if (cs.includes("\n")) {
-          lines.push("...");
-          lines.push(stringifyComment2.indentComment(cs, ""));
+          lines2.push("...");
+          lines2.push(stringifyComment2.indentComment(cs, ""));
         } else {
-          lines.push(`... ${cs}`);
+          lines2.push(`... ${cs}`);
         }
       } else {
-        lines.push("...");
+        lines2.push("...");
       }
     } else {
       let dc = doc.comment;
       if (dc && chompKeep)
         dc = dc.replace(/^\n+/, "");
       if (dc) {
-        if ((!chompKeep || contentComment) && lines[lines.length - 1] !== "")
-          lines.push("");
-        lines.push(stringifyComment2.indentComment(commentString(dc), ""));
+        if ((!chompKeep || contentComment) && lines2[lines2.length - 1] !== "")
+          lines2.push("");
+        lines2.push(stringifyComment2.indentComment(commentString(dc), ""));
       }
     }
-    return lines.join("\n") + "\n";
+    return lines2.join("\n") + "\n";
   }
   stringifyDocument.stringifyDocument = stringifyDocument$1;
   return stringifyDocument;
@@ -6096,17 +6662,17 @@ function requireResolveBlockScalar() {
     if (!header)
       return { value: "", type: null, comment: "", range: [start, start, start] };
     const type2 = header.mode === ">" ? Scalar2.Scalar.BLOCK_FOLDED : Scalar2.Scalar.BLOCK_LITERAL;
-    const lines = scalar2.source ? splitLines(scalar2.source) : [];
-    let chompStart = lines.length;
-    for (let i = lines.length - 1; i >= 0; --i) {
-      const content2 = lines[i][1];
+    const lines2 = scalar2.source ? splitLines(scalar2.source) : [];
+    let chompStart = lines2.length;
+    for (let i = lines2.length - 1; i >= 0; --i) {
+      const content2 = lines2[i][1];
       if (content2 === "" || content2 === "\r")
         chompStart = i;
       else
         break;
     }
     if (chompStart === 0) {
-      const value3 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+      const value3 = header.chomp === "+" && lines2.length > 0 ? "\n".repeat(Math.max(1, lines2.length - 1)) : "";
       let end2 = start + header.length;
       if (scalar2.source)
         end2 += scalar2.source.length;
@@ -6116,7 +6682,7 @@ function requireResolveBlockScalar() {
     let offset = scalar2.offset + header.length;
     let contentStart = 0;
     for (let i = 0; i < chompStart; ++i) {
-      const [indent, content2] = lines[i];
+      const [indent, content2] = lines2[i];
       if (content2 === "" || content2 === "\r") {
         if (header.indent === 0 && indent.length > trimIndent)
           trimIndent = indent.length;
@@ -6136,17 +6702,17 @@ function requireResolveBlockScalar() {
       }
       offset += indent.length + content2.length + 1;
     }
-    for (let i = lines.length - 1; i >= chompStart; --i) {
-      if (lines[i][0].length > trimIndent)
+    for (let i = lines2.length - 1; i >= chompStart; --i) {
+      if (lines2[i][0].length > trimIndent)
         chompStart = i + 1;
     }
     let value2 = "";
     let sep = "";
     let prevMoreIndented = false;
     for (let i = 0; i < contentStart; ++i)
-      value2 += lines[i][0].slice(trimIndent) + "\n";
+      value2 += lines2[i][0].slice(trimIndent) + "\n";
     for (let i = contentStart; i < chompStart; ++i) {
-      let [indent, content2] = lines[i];
+      let [indent, content2] = lines2[i];
       offset += indent.length + content2.length + 1;
       const crlf = content2[content2.length - 1] === "\r";
       if (crlf)
@@ -6183,8 +6749,8 @@ function requireResolveBlockScalar() {
       case "-":
         break;
       case "+":
-        for (let i = chompStart; i < lines.length; ++i)
-          value2 += "\n" + lines[i][0].slice(trimIndent);
+        for (let i = chompStart; i < lines2.length; ++i)
+          value2 += "\n" + lines2[i][0].slice(trimIndent);
         if (value2[value2.length - 1] !== "\n")
           value2 += "\n";
         break;
@@ -6259,10 +6825,10 @@ function requireResolveBlockScalar() {
     const first = split[0];
     const m = first.match(/^( *)/);
     const line0 = m?.[1] ? [m[1], first.slice(m[1].length)] : ["", first];
-    const lines = [line0];
+    const lines2 = [line0];
     for (let i = 1; i < split.length; i += 2)
-      lines.push([split[i], split[i + 1]]);
-    return lines;
+      lines2.push([split[i], split[i + 1]]);
+    return lines2;
   }
   resolveBlockScalar.resolveBlockScalar = resolveBlockScalar$1;
   return resolveBlockScalar;
@@ -6497,7 +7063,7 @@ function requireComposeScalar() {
   var resolveBlockScalar2 = requireResolveBlockScalar();
   var resolveFlowScalar2 = requireResolveFlowScalar();
   function composeScalar$1(ctx, token, tagToken, onError) {
-    const { value: value2, type: type2, comment, range } = token.type === "block-scalar" ? resolveBlockScalar2.resolveBlockScalar(ctx, token, onError) : resolveFlowScalar2.resolveFlowScalar(token, ctx.options.strict, onError);
+    const { value: value2, type: type2, comment, range: range2 } = token.type === "block-scalar" ? resolveBlockScalar2.resolveBlockScalar(ctx, token, onError) : resolveFlowScalar2.resolveFlowScalar(token, ctx.options.strict, onError);
     const tagName = tagToken ? ctx.directives.tagName(tagToken.source, (msg) => onError(tagToken, "TAG_RESOLVE_FAILED", msg)) : null;
     let tag;
     if (ctx.options.stringKeys && ctx.atKey) {
@@ -6517,7 +7083,7 @@ function requireComposeScalar() {
       onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg);
       scalar2 = new Scalar2.Scalar(value2);
     }
-    scalar2.range = range;
+    scalar2.range = range2;
     scalar2.source = value2;
     if (type2)
       scalar2.type = type2;
@@ -13110,9 +13676,9 @@ function initializeDocument(effects) {
   function exitContainers(size) {
     let index2 = stack.length;
     while (index2-- > size) {
-      const entry = stack[index2];
-      self.containerState = entry[1];
-      entry[0].exit.call(self, effects);
+      const entry2 = stack[index2];
+      self.containerState = entry2[1];
+      entry2[0].exit.call(self, effects);
     }
     stack.length = size;
   }
@@ -17903,7 +18469,7 @@ function textOf$1(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    throw new AppError("INVALID_ENCODING", "Structured documents must be valid UTF-8.", 2);
+    throw forgeError("INVALID_ENCODING", "Structured documents and text files must be valid UTF-8.");
   }
 }
 function yamlDocument(text2) {
@@ -17933,7 +18499,7 @@ function yamlValue(document2) {
   try {
     value2 = document2.toJS({ maxAliasCount: 100 });
   } catch (error2) {
-    throw new AppError("INVALID_YAML", error2 instanceof Error ? error2.message : "Invalid YAML aliases.", 2);
+    throw forgeError("INVALID_YAML", error2 instanceof Error ? error2.message : "Invalid YAML aliases.");
   }
   jsonValue$2(value2, "INVALID_YAML");
   return value2;
@@ -17979,6 +18545,13 @@ function validateBase(value2) {
 class ObsidianDocuments {
   inspect(path, bytes) {
     const kind = fileKind(path);
+    if (kind === "text") {
+      try {
+        return { kind, content: textOf$1(bytes) };
+      } catch {
+        return { kind: "attachment", encoding: "base64", content: Buffer.from(bytes).toString("base64") };
+      }
+    }
     if (!["markdown", "canvas", "base"].includes(kind)) return { kind, encoding: "base64", content: Buffer.from(bytes).toString("base64") };
     const text2 = textOf$1(bytes);
     if (kind === "markdown") {
@@ -17991,7 +18564,7 @@ class ObsidianDocuments {
       try {
         data = JSON.parse(text2.replace(/^\uFEFF/, ""));
       } catch {
-        throw new AppError("INVALID_CANVAS", "Canvas must contain valid JSON.", 2);
+        throw forgeError("INVALID_CANVAS", "Canvas must contain valid JSON.");
       }
       jsonValue$2(data, "INVALID_CANVAS");
     } else data = yamlValue(yamlDocument(text2));
@@ -18000,7 +18573,8 @@ class ObsidianDocuments {
     return { kind, data };
   }
   validate(path, bytes) {
-    this.inspect(path, bytes);
+    if (fileKind(path) === "text") textOf$1(bytes);
+    else this.inspect(path, bytes);
   }
   properties(bytes, changes) {
     const parts = parseMarkdownParts(textOf$1(bytes));
@@ -18063,7 +18637,7 @@ async function readManifest(path, files) {
   try {
     value2 = JSON.parse(text2);
   } catch {
-    throw new AppError("INVALID_PLUGIN", `Invalid JSON in plugin manifest: ${path}`, 2);
+    throw forgeError("INVALID_PLUGIN", `Invalid JSON in plugin manifest: ${path}`);
   }
   validatePluginManifest(value2);
   return value2;
@@ -19439,9 +20013,9 @@ class Doc {
       return;
     }
     const content2 = arg;
-    const lines = content2.split("\n").filter((x) => x);
-    const minIndent = Math.min(...lines.map((x) => x.length - x.trimStart().length));
-    const dedented = lines.map((x) => x.slice(minIndent)).map((x) => " ".repeat(this.indent * 2) + x);
+    const lines2 = content2.split("\n").filter((x) => x);
+    const minIndent = Math.min(...lines2.map((x) => x.length - x.trimStart().length));
+    const dedented = lines2.map((x) => x.slice(minIndent)).map((x) => " ".repeat(this.indent * 2) + x);
     for (const line of dedented) {
       this.content.push(line);
     }
@@ -21202,9 +21776,9 @@ const memo = {
     if (!bucket)
       return empty;
     handoff = void 0;
-    const entry = { value: empty, issues: null };
-    bucket.set(payload.value, entry);
-    open.push(entry);
+    const entry2 = { value: empty, issues: null };
+    bucket.set(payload.value, entry2);
+    open.push(entry2);
     return empty;
   },
   guard(inst) {
@@ -21278,16 +21852,16 @@ const memo = {
         const depth = open.length;
         const result = base(payload, ctx);
         handoff = void 0;
-        const entry = open.length > depth ? open.pop() : void 0;
+        const entry2 = open.length > depth ? open.pop() : void 0;
         if (result instanceof Promise) {
           return result.then((r) => {
-            if (entry)
-              entry.issues = r.issues.length ? cloneIssues(r.issues) : NO_ISSUES;
+            if (entry2)
+              entry2.issues = r.issues.length ? cloneIssues(r.issues) : NO_ISSUES;
             return r;
           });
         }
-        if (entry)
-          entry.issues = result.issues.length ? cloneIssues(result.issues) : NO_ISSUES;
+        if (entry2)
+          entry2.issues = result.issues.length ? cloneIssues(result.issues) : NO_ISSUES;
         return result;
       };
       inst._zod.parse = wrapped;
@@ -22095,42 +22669,42 @@ function extractDefs(ctx, schema2) {
   if (ctx.external && ctx.sharedDefsExtractedFor === ctx.external)
     return;
   const idToSchema = /* @__PURE__ */ new Map();
-  for (const entry of ctx.seen.entries()) {
-    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+  for (const entry2 of ctx.seen.entries()) {
+    const id2 = ctx.metadataRegistry.get(entry2[0])?.id;
     if (id2) {
       const existing = idToSchema.get(id2);
-      if (existing && existing !== entry[0]) {
+      if (existing && existing !== entry2[0]) {
         throw new Error(`Duplicate schema id "${id2}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
       }
-      idToSchema.set(id2, entry[0]);
+      idToSchema.set(id2, entry2[0]);
     }
   }
-  const makeURI = (entry) => {
+  const makeURI = (entry2) => {
     const defsSegment = ctx.target === "draft-2020-12" ? "$defs" : "definitions";
     if (ctx.external) {
-      const externalId = ctx.external.registry.get(entry[0])?.id;
+      const externalId = ctx.external.registry.get(entry2[0])?.id;
       const uriGenerator = ctx.external.uri ?? ((id3) => id3);
       if (externalId) {
         return { ref: uriGenerator(externalId) };
       }
-      const id2 = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
-      entry[1].defId = id2;
+      const id2 = entry2[1].defId ?? entry2[1].schema.id ?? `schema${ctx.counter++}`;
+      entry2[1].defId = id2;
       return { defId: id2, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id2)}` };
     }
     const uriPrefix = `#`;
     const defUriPrefix = `${uriPrefix}/${defsSegment}/`;
-    if (entry[1] === root && !entry[1].schema.id) {
+    if (entry2[1] === root && !entry2[1].schema.id) {
       return { ref: uriPrefix };
     }
-    const defId = entry[1].schema.id ?? `__schema${ctx.counter++}`;
+    const defId = entry2[1].schema.id ?? `__schema${ctx.counter++}`;
     return { defId, ref: defUriPrefix + encodeJSONPointerSegment(defId) };
   };
-  const extractToDef = (entry) => {
-    if (entry[1].schema.$ref) {
+  const extractToDef = (entry2) => {
+    if (entry2[1].schema.$ref) {
       return;
     }
-    const seen = entry[1];
-    const { ref, defId } = makeURI(entry);
+    const seen = entry2[1];
+    const { ref, defId } = makeURI(entry2);
     seen.def = { ...seen.schema };
     if (defId)
       seen.defId = defId;
@@ -22141,8 +22715,8 @@ function extractDefs(ctx, schema2) {
     schema3.$ref = ref;
   };
   if (ctx.cycles === "throw") {
-    for (const entry of ctx.seen.entries()) {
-      const seen = entry[1];
+    for (const entry2 of ctx.seen.entries()) {
+      const seen = entry2[1];
       if (seen.cycle) {
         throw new Error(`Cycle detected: #/${seen.cycle?.join("/")}/<root>
 
@@ -22150,31 +22724,31 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
     }
   }
-  for (const entry of ctx.seen.entries()) {
-    const seen = entry[1];
-    if (schema2 === entry[0]) {
-      extractToDef(entry);
+  for (const entry2 of ctx.seen.entries()) {
+    const seen = entry2[1];
+    if (schema2 === entry2[0]) {
+      extractToDef(entry2);
       continue;
     }
     if (ctx.external) {
-      const ext = ctx.external.registry.get(entry[0])?.id;
-      if (schema2 !== entry[0] && ext) {
-        extractToDef(entry);
+      const ext = ctx.external.registry.get(entry2[0])?.id;
+      if (schema2 !== entry2[0] && ext) {
+        extractToDef(entry2);
         continue;
       }
     }
-    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    const id2 = ctx.metadataRegistry.get(entry2[0])?.id;
     if (id2) {
-      extractToDef(entry);
+      extractToDef(entry2);
       continue;
     }
     if (seen.cycle) {
-      extractToDef(entry);
+      extractToDef(entry2);
       continue;
     }
     if (seen.count > 1) {
       if (ctx.reused === "ref") {
-        extractToDef(entry);
+        extractToDef(entry2);
       }
     }
   }
@@ -22356,12 +22930,12 @@ function finalize(ctx, schema2) {
     });
   };
   if (!ctx.external || ctx.sharedEmitDoneFor !== ctx.external) {
-    for (const entry of [...ctx.seen.entries()].reverse()) {
-      flattenRef(entry[0]);
+    for (const entry2 of [...ctx.seen.entries()].reverse()) {
+      flattenRef(entry2[0]);
     }
     if (ctx.target !== "openapi-3.0") {
-      for (const entry of ctx.seen.entries()) {
-        compactTypeUnion(entry[1].def ?? entry[1].schema);
+      for (const entry2 of ctx.seen.entries()) {
+        compactTypeUnion(entry2[1].def ?? entry2[1].schema);
       }
     }
     for (const rewrite of ctx.deferred)
@@ -22407,8 +22981,8 @@ function finalize(ctx, schema2) {
     delete result.id;
   const defs = ctx.external?.defs ?? {};
   if (!ctx.external || ctx.sharedEmitDoneFor !== ctx.external) {
-    for (const entry of ctx.seen.entries()) {
-      const seen = entry[1];
+    for (const entry2 of ctx.seen.entries()) {
+      const seen = entry2[1];
       if (seen.def && seen.defId) {
         if (seen.def.id === seen.defId)
           delete seen.def.id;
@@ -22895,9 +23469,9 @@ function stringifyKeyNames(bySchema, json2, visited) {
 const pendingRecords = /* @__PURE__ */ new WeakMap();
 function rewriteKeyNames(ctx) {
   const bySchema = /* @__PURE__ */ new Map();
-  for (const entry of ctx.seen.values()) {
-    if (entry.def && !bySchema.has(entry.schema))
-      bySchema.set(entry.schema, entry);
+  for (const entry2 of ctx.seen.values()) {
+    if (entry2.def && !bySchema.has(entry2.schema))
+      bySchema.set(entry2.schema, entry2);
   }
   const rewrites = /* @__PURE__ */ new Map();
   for (const record2 of pendingRecords.get(ctx) ?? []) {
@@ -22911,8 +23485,8 @@ function rewriteKeyNames(ctx) {
   }
   if (!rewrites.size)
     return;
-  for (const entry of ctx.seen.values()) {
-    for (const carrier of [entry.schema, entry.def]) {
+  for (const entry2 of ctx.seen.values()) {
+    for (const carrier of [entry2.schema, entry2.def]) {
       const rewritten = carrier && rewrites.get(carrier.propertyNames);
       if (rewritten)
         carrier.propertyNames = rewritten;
@@ -24055,7 +24629,7 @@ const configSchema = strictObject({
     dataImports: relativePath.default("imports/data-sources"),
     dataExports: relativePath.default("exports/data-sources")
   }).prefault({}),
-  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false) }).prefault({}),
+  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
   templates: strictObject({ dateFormat: string$1().min(1).default("YYYY-MM-DD"), timeFormat: string$1().min(1).default("HH:mm") }).prefault({}),
   plugins: strictObject({ enabled: array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]) }).prefault({}),
   ui: strictObject({ framework: _enum(["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"]).default("html") }).prefault({})
@@ -24071,10 +24645,10 @@ async function loadConfig(options) {
     if (error2.code === "ENOENT") {
       content2 = {};
       exists = false;
-    } else throw new AppError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`, 2);
+    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`);
   }
   const parsed = configSchema.safeParse(content2);
-  if (!parsed.success) throw new AppError("INVALID_CONFIG", parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "), 2);
+  if (!parsed.success) throw forgeError("INVALID_CONFIG", parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
   const config2 = parsed.data;
   return { path: exists ? path : null, root, config: config2 };
 }
@@ -24541,7 +25115,7 @@ function textOf(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    throw new AppError("INVALID_ENCODING", "Templates must be valid UTF-8.", 2);
+    throw forgeError("INVALID_ENCODING", "Templates must be valid UTF-8.");
   }
 }
 function placeholders(text2) {
@@ -24626,12 +25200,12 @@ function renderYaml(source, resolve) {
   try {
     data = document2.toJS({ maxAliasCount: 100 });
   } catch {
-    throw new AppError("INVALID_TEMPLATE", "Template YAML aliases are invalid or excessive.", 2);
+    throw forgeError("INVALID_TEMPLATE", "Template YAML aliases are invalid or excessive.");
   }
   try {
     jsonValue$1(data);
   } catch {
-    throw new AppError("INVALID_TEMPLATE", "Template YAML must contain JSON-compatible values without cycles.", 2);
+    throw forgeError("INVALID_TEMPLATE", "Template YAML must contain JSON-compatible values without cycles.");
   }
   return document2.toString();
 }
@@ -24674,7 +25248,7 @@ class MarkdownTemplates {
         try {
           return date2.format(format2);
         } catch {
-          throw new AppError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`, 2);
+          throw forgeError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`);
         }
       }
       ensure(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
@@ -24757,7 +25331,7 @@ it('reports invalid required fields without submitting data', () => {
 const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/the-forge/main.ts', 'src/the-forge/sdk.ts', 'src/the-forge/vite-env.d.ts'].includes(path)) {\n      if (!/^src\\/the-forge\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path)) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/the-forge/<layer>/<concern>/...; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
 const testConfig = "import { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Classification patterns define the full scope; Vitest defaults hide cypress/dist directories.\n    projects: [\n      { test: { name: 'unit', environment: 'node', exclude: [], include: ['tests/**/*.unit.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'integration', environment: 'node', exclude: [], include: ['tests/**/*.integration.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'e2e', environment: 'node', exclude: [], include: ['tests/**/*.e2e.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n    ],\n  },\n});\n";
 const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
-const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  const discovered = new Set(discovery.report.files);\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
+const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  // The inventory uses POSIX separators on every platform; compare Windows reports the same way.\n  const discovered = new Set(discovery.report.files.map(file => String(file).replaceAll('\\\\', '/')));\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
 const qualityShared = "import { readdirSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n/** @param {string} value */\nfunction containedPath(value) {\n  // oxlint-disable-next-line no-control-regex -- Source roots must reject control characters and Windows/URL separators.\n  return value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\\:\\x00-\\x1f]/.test(part));\n}\n\n/** @param {unknown} error */\nfunction missing(error) { return error instanceof Error && 'code' in error && error.code === 'ENOENT'; }\n\n/** @param {string} root */\nfunction sourceDirectories(root) {\n  const path = resolve(root, 'configs/quality/source.json');\n  /** @type {unknown} */\n  let config;\n  try { config = JSON.parse(readFileSync(path, 'utf8')); }\n  catch (error) {\n    if (missing(error)) return { sourceRoot: 'src', additionalRoots: [] };\n    throw new Error(`Cannot read source inventory configuration configs/quality/source.json: ${error instanceof Error ? error.message : String(error)}`);\n  }\n  if (!config || typeof config !== 'object' || Array.isArray(config) || !('sourceRoot' in config) || typeof config.sourceRoot !== 'string' || Object.keys(config).some(key => !['sourceRoot', 'additionalRoots'].includes(key))) {\n    throw new Error('configs/quality/source.json requires a sourceRoot string and optional additionalRoots list.');\n  }\n  if (config.sourceRoot.split('/')[0] !== 'src' || !containedPath(config.sourceRoot)) {\n    throw new Error('sourceRoot must be src or a contained POSIX subdirectory such as src/the-forge.');\n  }\n  const additional = 'additionalRoots' in config ? config.additionalRoots : [];\n  if (!Array.isArray(additional) || additional.some(value => typeof value !== 'string' || !containedPath(value))) {\n    throw new Error('additionalRoots must contain relative POSIX directory paths.');\n  }\n  /** @type {string[]} */\n  const additionalRoots = additional;\n  const roots = [config.sourceRoot, ...additionalRoots];\n  if (roots.some((root, index) => roots.some((other, otherIndex) => index !== otherIndex && (root === other || root.startsWith(other + '/'))))) {\n    throw new Error('Source inventory roots must be unique and must not contain one another.');\n  }\n  return { sourceRoot: config.sourceRoot, additionalRoots };\n}\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  /** @type {string[]} */\n  const files = [];\n  const { sourceRoot, additionalRoots } = sourceDirectories(root);\n  /** @param {string} directory */\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  for (const selected of [sourceRoot, ...additionalRoots]) {\n    let directory = root;\n    for (const part of selected.split('/')) {\n      directory = join(directory, part);\n      let entry;\n      try { entry = lstatSync(directory); }\n      catch (error) {\n        if (missing(error)) throw new Error(`Required source directory ${selected} is missing`);\n        throw error;\n      }\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${selected}`);\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${selected}`);\n    }\n    visit(selected);\n  }\n  for (const entry of entries) {\n    if (['tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith(sourceRoot + '/'))) throw new Error(`Source inventory is empty: ${sourceRoot}`);\n  return [...new Set(files)].sort();\n}\n\n/** @param {string} name @param {string[]} args */\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\n/** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
 const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/the-forge/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/the-forge/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
 const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
@@ -24873,7 +25447,7 @@ function projectScaffold(name2, projectsDirectory) {
           { from: "infrastructure", allow: ["domain", "application", "infrastructure"] },
           { from: "presentation", allow: ["domain", "application", "infrastructure", "presentation"] }
         ],
-        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/the-forge/vite-env.d.ts"] }
+        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
       }
     }),
     "tsconfig.json": json$3({
@@ -24897,7 +25471,7 @@ export default defineConfig(({ mode }) => ({
 }));
 `,
     "index.html": demoHtml,
-    "src/the-forge/vite-env.d.ts": '/// <reference types="vite/client" />\n',
+    "src/vite-env.d.ts": '/// <reference types="vite/client" />\n',
     "src/presentation/demo.ts": demoScript,
     "src/presentation/demo.css": demoStyle,
     "src/presentation/forms/form-model.ts": formModel,
@@ -24976,8 +25550,8 @@ async function readSetupArtifacts(bundleDir) {
     let current = bundleDir;
     for (const [index2, segment] of segments.entries()) {
       current = minpath.join(current, segment);
-      const entry = await promises.lstat(current);
-      ensure(!entry.isSymbolicLink() && (index2 === segments.length - 1 ? entry.isFile() : entry.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path}`);
+      const entry2 = await promises.lstat(current);
+      ensure(!entry2.isSymbolicLink() && (index2 === segments.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path}`);
     }
     return promises.readFile(current);
   };
@@ -25118,7 +25692,7 @@ const storybook = strictObject({
   stories: array(story).optional(),
   extension: string$1().optional()
 }).superRefine((settings2, context) => {
-  const names2 = settings2.stories?.map((entry) => entry.name) ?? [];
+  const names2 = settings2.stories?.map((entry2) => entry2.name) ?? [];
   if (new Set(names2).size !== names2.length) context.addIssue({ code: "custom", message: "Story names must be unique." });
 });
 const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record(identifier$2, prop).default({}), state: record(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
@@ -25138,7 +25712,7 @@ class MarkdownUiDefinitions {
       return { ...result.data, description: document2.body, sourcePath: path };
     } catch (error2) {
       if (error2 instanceof AppError && error2.code === "INVALID_UI") throw error2;
-      throw new AppError("INVALID_UI", `${path}: ${error2 instanceof Error ? error2.message : "Invalid component definition."}`, 2);
+      throw forgeError("INVALID_UI", `${path}: ${error2 instanceof Error ? error2.message : "Invalid component definition."}`);
     }
   }
   serialize(definition2) {
@@ -25320,34 +25894,34 @@ function renderInteractionHandlers(definition2, interactions, options) {
   const functions = selected.map((interaction) => {
     const asynchronous = interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type));
     const currentTarget = asynchronous ? `${prefix}Target` : `${event}.currentTarget`;
-    const lines = [`${asynchronous ? "async " : ""}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
-    if (interaction.keys) lines.push(`  if (!${json$1(interaction.keys)}.includes(${event}.key ?? '')) return;`);
-    if (interaction.preventDefault) lines.push(`  ${event}.preventDefault();`);
-    if (interaction.stopPropagation) lines.push(`  ${event}.stopPropagation();`);
-    if (asynchronous) lines.push(`  const ${currentTarget} = ${event}.currentTarget;`);
-    if (interactionUsesState(interaction)) lines.push(`  const ${next} = { ...${options.stateScope ?? "_uiState"} };`);
+    const lines2 = [`${asynchronous ? "async " : ""}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
+    if (interaction.keys) lines2.push(`  if (!${json$1(interaction.keys)}.includes(${event}.key ?? '')) return;`);
+    if (interaction.preventDefault) lines2.push(`  ${event}.preventDefault();`);
+    if (interaction.stopPropagation) lines2.push(`  ${event}.stopPropagation();`);
+    if (asynchronous) lines2.push(`  const ${currentTarget} = ${event}.currentTarget;`);
+    if (interactionUsesState(interaction)) lines2.push(`  const ${next} = { ...${options.stateScope ?? "_uiState"} };`);
     for (const [index2, action2] of interaction.actions.entries()) {
       if (action2.type === "toggle-state" || action2.type === "set-state") {
         let assigned = action2.type === "toggle-state" ? `!${next}[${json$1(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
         if (action2.type === "set-state" && "fromEvent" in action2) {
           const field2 = `${prefix}Value${index2}`;
-          lines.push(`  const ${field2} = (${currentTarget}${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
-          lines.push(`  if (typeof ${field2} !== ${json$1(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$1(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
+          lines2.push(`  const ${field2} = (${currentTarget}${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
+          lines2.push(`  if (typeof ${field2} !== ${json$1(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$1(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
           assigned = field2;
         }
-        lines.push(`  ${next}[${json$1(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
+        lines2.push(`  ${next}[${json$1(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
       } else if (action2.type === "emit") {
         const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json$1(key)}]` : json$1(key)}: ${value2(item)}`).join(", ")} }`;
-        lines.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$1(action2.event)}, ${detail});`);
+        lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$1(action2.event)}, ${detail});`);
       } else if (action2.type === "navigate") {
-        lines.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${currentTarget}, ${value2(action2.url)});`);
+        lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${currentTarget}, ${value2(action2.url)});`);
       } else {
         const option = action2.type === "save-form" ? action2.key : action2.type === "upload-form" ? action2.url : action2.filename;
-        lines.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$1(action2.type)}, ${value2(option)})) return;`);
+        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$1(action2.type)}, ${value2(option)})) return;`);
       }
     }
-    lines.push("}");
-    return lines.join("\n");
+    lines2.push("}");
+    return lines2.join("\n");
   });
   const needsForms = selected.some((interaction) => interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type)));
   const needsEmit = needsForms || selected.some((interaction) => interaction.actions.some((action2) => action2.type === "emit"));
@@ -25837,7 +26411,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
     };
     const extension2 = settings2?.extension;
     if (extension2) vaultPath(extension2);
-    const lines = [
+    const lines2 = [
       "// Generated by Forge from Markdown. Edit the definition or its Storybook extension module.",
       `import type { Meta as _Meta, StoryObj as _StoryObj } from ${JSON.stringify(storybookPackages[framework])};`,
       `import ${artifact.namedExport ? `{ ${artifact.exportName} as component }` : "component"} from ${JSON.stringify(componentImport)};`,
@@ -25858,7 +26432,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
     ];
     for (const story2 of settings2?.stories?.length ? settings2.stories : [{ name: "Default" }]) {
       const { name: name2, ...fields } = story2;
-      lines.push(
+      lines2.push(
         "",
         `export const ${name2}: _Story = {`,
         ...Object.keys(fields).length ? [`${literal(fields).slice(2, -2)},`] : [],
@@ -25866,7 +26440,7 @@ function renderUiStories(definitions, framework, componentDirectory, storiesDire
         "} satisfies _Story;"
       );
     }
-    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: encodeText$1(lines.join("\n") + "\n") };
+    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: encodeText$1(lines2.join("\n") + "\n") };
   });
 }
 const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
@@ -25964,7 +26538,7 @@ class MarkdownDataSourceDefinitions {
       return { ...result.data, description: document2.body, sourcePath: path };
     } catch (error2) {
       if (error2 instanceof AppError && error2.code === "INVALID_DATA_SOURCE") throw error2;
-      throw new AppError("INVALID_DATA_SOURCE", `${path}: ${error2 instanceof Error ? error2.message : "Invalid data-source definition."}`, 2);
+      throw forgeError("INVALID_DATA_SOURCE", `${path}: ${error2 instanceof Error ? error2.message : "Invalid data-source definition."}`);
     }
   }
   serialize(definition2) {
@@ -26177,11 +26751,11 @@ const schema = strictObject({
 }).superRefine((definition2, context) => {
   if (definition2.keys && !["keydown", "keyup"].includes(definition2.event)) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters require keydown or keyup." });
   if (definition2.keys && new Set(definition2.keys).size !== definition2.keys.length) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters must be unique." });
-  for (const [index2, entry] of definition2.actions.entries()) {
-    if (entry.type === "set-state" && "fromEvent" in entry && !["input", "change"].includes(definition2.event)) {
+  for (const [index2, entry2] of definition2.actions.entries()) {
+    if (entry2.type === "set-state" && "fromEvent" in entry2 && !["input", "change"].includes(definition2.event)) {
       context.addIssue({ code: "custom", path: ["actions", index2, "fromEvent"], message: "Event value and checked sources require input or change." });
     }
-    if (["save-form", "upload-form", "download-form"].includes(entry.type) && !["submit", "click"].includes(definition2.event)) {
+    if (["save-form", "upload-form", "download-form"].includes(entry2.type) && !["submit", "click"].includes(definition2.event)) {
       context.addIssue({ code: "custom", path: ["actions", index2], message: "Form actions require submit or click." });
     }
   }
@@ -26197,7 +26771,7 @@ class MarkdownInteractionDefinitions {
       return { ...result.data, description: document2.body, sourcePath: path };
     } catch (error2) {
       if (error2 instanceof AppError && error2.code === "INVALID_INTERACTION") throw error2;
-      throw new AppError("INVALID_INTERACTION", `${path}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`, 2);
+      throw forgeError("INVALID_INTERACTION", `${path}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`);
     }
   }
   serialize(definition2) {
@@ -26209,8 +26783,8 @@ ${description2}`);
     return bytes;
   }
 }
-const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `app.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/app.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/app.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A CONFLICT means reread and reconcile; never blindly retry with a new revision.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. File events report committed changes; dry runs emit none. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
-const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/app.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nAlways preview edits with `--dry-run`, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n';
+const workflow = "---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `app.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/app.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/app.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/app.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `file.*` changes by default; reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/app.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
+const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/app.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
 const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/app.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. For changes to The Forge itself, run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit its rebuilt executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const builtinSkills = [
   { id: "forge-workflow", content: workflow },
@@ -26306,7 +26880,7 @@ function validateClaudeHooks(value2) {
       ensure(isRecord(group), code, `${location} must be a matcher group object.`);
       stringField(group, "matcher", location);
       ensure(Array.isArray(group.hooks), code, `${location}.hooks must be an array of hook handlers.`);
-      for (const [handlerIndex, entry] of group.hooks.entries()) handler(entry, event, `${location}.hooks[${handlerIndex}]`);
+      for (const [handlerIndex, entry2] of group.hooks.entries()) handler(entry2, event, `${location}.hooks[${handlerIndex}]`);
     }
   }
 }
@@ -26333,14 +26907,14 @@ function nativeValue(value2, ancestors = /* @__PURE__ */ new Set(), depth = 0) {
   ancestors.delete(value2);
 }
 function stringMap$1(value2, field2) {
-  valid(isRecord(value2) && Object.values(value2).every((entry) => typeof entry === "string"), `${field2} must map names to strings.`);
+  valid(isRecord(value2) && Object.values(value2).every((entry2) => typeof entry2 === "string"), `${field2} must map names to strings.`);
 }
 function mcpServers$1(value2) {
   valid(Array.isArray(value2), "mcpServers must be a list of server names or inline server definitions.");
-  for (const entry of value2) {
-    if (nonempty(entry)) continue;
-    valid(isRecord(entry) && Object.keys(entry).length > 0, "Inline MCP entries must map server names to configurations.");
-    for (const [name2, config2] of Object.entries(entry)) {
+  for (const entry2 of value2) {
+    if (nonempty(entry2)) continue;
+    valid(isRecord(entry2) && Object.keys(entry2).length > 0, "Inline MCP entries must map server names to configurations.");
+    for (const [name2, config2] of Object.entries(entry2)) {
       valid(nonempty(name2) && isRecord(config2), "Inline MCP servers require a name and configuration mapping.");
       const type2 = config2.type ?? "stdio";
       valid(typeof type2 === "string" && ["stdio", "http", "sse", "ws"].includes(type2), `MCP server ${name2} has an unsupported transport.`);
@@ -26385,7 +26959,7 @@ function validateClaudeAgent(metadata2, prompt) {
     try {
       validateClaudeHooks(metadata2.hooks);
     } catch (error2) {
-      throw new AppError("INVALID_CLAUDE_AGENT", `Agent hooks: ${error2 instanceof Error ? error2.message : "Invalid hooks."}`, 2);
+      throw forgeError("INVALID_CLAUDE_AGENT", `Agent hooks: ${error2 instanceof Error ? error2.message : "Invalid hooks."}`);
     }
   }
 }
@@ -26399,7 +26973,7 @@ function parseClaudeAgent(text2) {
     return { metadata: document2.properties, prompt: document2.body };
   } catch (error2) {
     if (error2 instanceof AppError && error2.code === "INVALID_CLAUDE_AGENT") throw error2;
-    throw new AppError("INVALID_CLAUDE_AGENT", `Invalid agent definition: ${errorMessage(error2)}`, 2);
+    throw forgeError("INVALID_CLAUDE_AGENT", `Invalid agent definition: ${errorMessage(error2)}`);
   }
 }
 function renderClaudeAgent(document2) {
@@ -26454,6 +27028,7 @@ async function claudeTarget(context, flags) {
     settingsPath: scope === "local" ? ".claude/settings.local.json" : ".claude/settings.json"
   };
 }
+const closedInputCodes = /* @__PURE__ */ new Set(["EPIPE", "EOF"]);
 class NodeClaudeRuntime {
   executable;
   maxOutputBytes;
@@ -26484,12 +27059,7 @@ class NodeClaudeRuntime {
     try {
       directory = (await promises.stat(options.cwd)).isDirectory();
     } catch (error2) {
-      throw new AppError(
-        "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE",
-        `Cannot access Claude working directory: ${options.cwd}`,
-        1,
-        { cause: errorMessage(error2) }
-      );
+      throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options.cwd}`, { cause: errorMessage(error2) });
     }
     ensure(directory, "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Claude working directory is not a directory: ${options.cwd}`);
     return new Promise((resolve, reject) => {
@@ -26518,7 +27088,7 @@ class NodeClaudeRuntime {
         process.removeListener("SIGTERM", terminate);
         process.removeListener("exit", exit2);
       };
-      const fail = (code2, message, details = {}, exitCode = 1) => {
+      const fail = (code2, message, details = {}, exitCode) => {
         if (settled) return;
         settled = true;
         cleanup();
@@ -26534,15 +27104,15 @@ class NodeClaudeRuntime {
         if (["CLAUDE_COMMAND_TIMEOUT", "CLAUDE_OUTPUT_LIMIT", "CLAUDE_COMMAND_INTERRUPTED"].includes(code2)) {
           message += ` ${terminationRequested ? "Termination requested." : "Termination could not be requested."} Inspect its state before retrying.`;
         }
-        reject(new AppError(code2, message, exitCode, {
+        reject(forgeError(code2, message, {
           executable: this.executable,
           ...details,
           terminationScope: grouped ? "process-group" : "direct-process",
           terminationRequested,
           ...output()
-        }));
+        }, exitCode));
       };
-      const interrupt = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" }, 130);
+      const interrupt = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" });
       const terminate = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGTERM while running Claude.", { signal: "SIGTERM" }, 143);
       const exit2 = () => {
         try {
@@ -26592,7 +27162,7 @@ class NodeClaudeRuntime {
       });
       child.stdin?.on("error", (error2) => {
         inputError = error2;
-        if (error2.code !== "EPIPE") fail("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
+        if (!closedInputCodes.has(error2.code ?? "")) fail("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
       });
       child.stdin?.end(options.stdin);
     });
@@ -26602,7 +27172,7 @@ function text$1(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    throw new AppError("INVALID_ENCODING", "Agent definitions must be valid UTF-8.", 2);
+    throw forgeError("INVALID_ENCODING", "Agent definitions must be valid UTF-8.");
   }
 }
 class ClaudeAgents {
@@ -26621,20 +27191,20 @@ class ClaudeAgents {
     const agents = [];
     const names2 = /* @__PURE__ */ new Set(), duplicates = /* @__PURE__ */ new Set();
     for (const path of paths2) {
-      const entry = { id: path.slice(prefix.length, -3), path, valid: false };
+      const entry2 = { id: path.slice(prefix.length, -3), path, valid: false };
       try {
         const snapshot = await this.workspace.files.read(path);
-        entry.revision = snapshot.revision;
+        entry2.revision = snapshot.revision;
         const { metadata: metadata2 } = this.codec.parse(text$1(snapshot.bytes));
-        entry.name = metadata2.name;
-        entry.description = metadata2.description;
-        entry.valid = true;
-        if (names2.has(entry.name)) duplicates.add(entry.name);
-        names2.add(entry.name);
+        entry2.name = metadata2.name;
+        entry2.description = metadata2.description;
+        entry2.valid = true;
+        if (names2.has(entry2.name)) duplicates.add(entry2.name);
+        names2.add(entry2.name);
       } catch (error2) {
-        entry.error = { code: error2 instanceof AppError ? error2.code : "OPERATION_FAILED", message: errorMessage(error2) };
+        entry2.error = { code: error2 instanceof AppError ? error2.code : "OPERATION_FAILED", message: errorMessage(error2) };
       }
-      agents.push(entry);
+      agents.push(entry2);
     }
     return { agents, duplicates: [...duplicates].sort() };
   }
@@ -26680,7 +27250,7 @@ function validateHookPolicy(settings2) {
     ensure(typeof settings2[key] === "boolean", "INVALID_CLAUDE_SETTINGS", `${key} must be a boolean.`);
   }
   for (const key of policyLists) if (Object.hasOwn(settings2, key)) {
-    ensure(Array.isArray(settings2[key]) && settings2[key].every((entry) => typeof entry === "string"), "INVALID_CLAUDE_SETTINGS", `${key} must be an array of strings.`);
+    ensure(Array.isArray(settings2[key]) && settings2[key].every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_SETTINGS", `${key} must be an array of strings.`);
   }
 }
 class ClaudeSettings {
@@ -26699,7 +27269,7 @@ class ClaudeSettings {
       try {
         settings2 = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
       } catch {
-        throw new AppError("INVALID_CLAUDE_SETTINGS", `Expected UTF-8 JSON settings at ${this.path}.`, 2);
+        throw forgeError("INVALID_CLAUDE_SETTINGS", `Expected UTF-8 JSON settings at ${this.path}.`);
       }
       ensure(isRecord(settings2), "INVALID_CLAUDE_SETTINGS", "Claude settings must be a JSON object.");
       return { path: this.path, revision: file.revision, settings: settings2, hooks: Object.hasOwn(settings2, "hooks") ? settings2.hooks : {} };
@@ -26766,7 +27336,7 @@ class ClaudeSettings {
     return { ...result, rule, enabled, note: "Other permission rules and managed settings may still restrict this agent." };
   }
   async save(settings2, actual, expected) {
-    ensure(actual === (expected ?? null), "CONFLICT", `Inspect ${this.path} and supply its current --if-match revision before updating existing settings.`);
+    ensure(actual === (expected ?? null), "CONFLICT", `Inspect ${this.path} and supply its current --if-match revision before updating existing settings.`, revisionConflict(this.path, expected, actual));
     const content2 = JSON.stringify(settings2, null, 2) + "\n";
     const result = await this.workspace.write([{ path: this.path, bytes: new TextEncoder().encode(content2), ...expected ? { expectedRevision: expected } : {} }]);
     return { path: this.path, ...result, ...result.dryRun ? { preview: [{ path: this.path, content: content2 }] } : {} };
@@ -30119,6 +30689,7 @@ new Command();
 const globalOptions = {
   root: "string",
   lang: "string",
+  events: "string",
   json: "boolean",
   "no-json": "boolean",
   "dry-run": "boolean",
@@ -30165,7 +30736,7 @@ function parseArguments(tokens, options, allowUnknown = false) {
   } catch (error2) {
     if (!(error2 instanceof CommanderError)) throw error2;
     const code2 = error2.code === "commander.unknownOption" ? "UNKNOWN_OPTION" : error2.code === "commander.optionMissingArgument" ? "MISSING_ARGUMENT" : "INVALID_ARGUMENT";
-    throw new AppError(code2, error2.message.replace(/^error: /, ""), 2);
+    throw forgeError(code2, error2.message.replace(/^error: /, ""));
   }
   const flags = /* @__PURE__ */ Object.create(null);
   for (const { key, option } of descriptors) {
@@ -30197,7 +30768,7 @@ function parseJson(text2) {
   try {
     return JSON.parse(text2);
   } catch {
-    throw new AppError("INVALID_JSON", "Expected valid JSON input.", 2);
+    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
   }
 }
 function claudeOptions(flags, allowed) {
@@ -30403,10 +30974,10 @@ function paths(value2, path, extensions, allowRoot = false, prefixRequired = tru
 }
 function mixed(value2, path, validatePath, validateInline) {
   const entries = Array.isArray(value2) ? value2 : [value2];
-  entries.forEach((entry, index2) => {
+  entries.forEach((entry2, index2) => {
     const location = Array.isArray(value2) ? `${path}[${index2}]` : path;
-    if (typeof entry === "string") validatePath(entry, location);
-    else validateInline(entry, location);
+    if (typeof entry2 === "string") validatePath(entry2, location);
+    else validateInline(entry2, location);
   });
 }
 function noShellOptions(value2, path) {
@@ -30418,13 +30989,13 @@ function commands$2(value2, path) {
     return;
   }
   object(value2, path);
-  for (const [name2, entry] of Object.entries(value2)) {
+  for (const [name2, entry2] of Object.entries(value2)) {
     const location = `${path}.${name2}`;
-    object(entry, location);
-    check(entry.source !== void 0 !== (entry.content !== void 0), location, "must define exactly one of source or content.");
-    if (entry.source !== void 0) componentPath(entry.source, `${location}.source`, [".md"]);
-    optionalStrings(entry, ["content", "description", "argumentHint", "model"], location);
-    if (entry.allowedTools !== void 0) strings(entry.allowedTools, `${location}.allowedTools`);
+    object(entry2, location);
+    check(entry2.source !== void 0 !== (entry2.content !== void 0), location, "must define exactly one of source or content.");
+    if (entry2.source !== void 0) componentPath(entry2.source, `${location}.source`, [".md"]);
+    optionalStrings(entry2, ["content", "description", "argumentHint", "model"], location);
+    if (entry2.allowedTools !== void 0) strings(entry2.allowedTools, `${location}.allowedTools`);
   }
 }
 function mcpServers(value2, path) {
@@ -30506,16 +31077,16 @@ function monitors(value2, path) {
   }
   check(Array.isArray(value2), path, "must be a JSON path or an array of monitors.");
   const names2 = /* @__PURE__ */ new Set();
-  for (const [index2, entry] of value2.entries()) {
+  for (const [index2, entry2] of value2.entries()) {
     const location = `${path}[${index2}]`;
-    object(entry, location);
-    text(entry.name, `${location}.name`, true);
-    check(!names2.has(entry.name), `${location}.name`, "must be unique within the plugin.");
-    names2.add(entry.name);
-    text(entry.command, `${location}.command`, true);
-    text(entry.description, `${location}.description`);
-    noShellOptions(entry.command, `${location}.command`);
-    if (entry.when !== void 0) check(typeof entry.when === "string" && (entry.when === "always" || /^on-skill-invoke:.+$/.test(entry.when)), `${location}.when`, "must be always or on-skill-invoke:<skill>.");
+    object(entry2, location);
+    text(entry2.name, `${location}.name`, true);
+    check(!names2.has(entry2.name), `${location}.name`, "must be unique within the plugin.");
+    names2.add(entry2.name);
+    text(entry2.command, `${location}.command`, true);
+    text(entry2.description, `${location}.description`);
+    noShellOptions(entry2.command, `${location}.command`);
+    if (entry2.when !== void 0) check(typeof entry2.when === "string" && (entry2.when === "always" || /^on-skill-invoke:.+$/.test(entry2.when)), `${location}.when`, "must be always or on-skill-invoke:<skill>.");
   }
 }
 function settings(value2, path) {
@@ -30531,7 +31102,7 @@ function hooks(value2, path) {
   try {
     validateClaudeHooks(value2);
   } catch (error2) {
-    if (error2 instanceof AppError) throw new AppError("INVALID_CLAUDE_PLUGIN", `${path}: ${error2.message}`, 2);
+    if (error2 instanceof AppError) throw forgeError("INVALID_CLAUDE_PLUGIN", `${path}: ${error2.message}`);
     throw error2;
   }
 }
@@ -30551,17 +31122,17 @@ function validateClaudePlugin(value2) {
   }
   if (value2.dependencies !== void 0) {
     check(Array.isArray(value2.dependencies), "plugin.dependencies", "must be an array.");
-    for (const [index2, entry] of value2.dependencies.entries()) {
+    for (const [index2, entry2] of value2.dependencies.entries()) {
       const location = `plugin.dependencies[${index2}]`;
-      if (typeof entry === "string") {
-        const names2 = entry.split("@");
+      if (typeof entry2 === "string") {
+        const names2 = entry2.split("@");
         check(names2.length <= 2, location, "must be a name or name@marketplace.");
         names2.forEach((name2) => pluginName(name2, location));
       } else {
-        object(entry, location);
-        pluginName(entry.name, `${location}.name`);
-        optionalStrings(entry, ["version"], location);
-        if (entry.marketplace !== void 0) pluginName(entry.marketplace, `${location}.marketplace`);
+        object(entry2, location);
+        pluginName(entry2.name, `${location}.name`);
+        optionalStrings(entry2, ["version"], location);
+        if (entry2.marketplace !== void 0) pluginName(entry2.marketplace, `${location}.marketplace`);
       }
     }
   }
@@ -30570,7 +31141,7 @@ function validateClaudePlugin(value2) {
   }
   if (value2.types !== void 0) componentPath(value2.types, "plugin.types", [".d.ts"]);
   if (value2.commands !== void 0) commands$2(value2.commands, "plugin.commands");
-  const jsonPath = (entry, path) => componentPath(entry, path, [".json"]);
+  const jsonPath = (entry2, path) => componentPath(entry2, path, [".json"]);
   if (value2.hooks !== void 0) mixed(value2.hooks, "plugin.hooks", jsonPath, hooks);
   if (value2.mcpServers !== void 0) mixed(value2.mcpServers, "plugin.mcpServers", mcpPath, mcpServers);
   if (value2.lspServers !== void 0) mixed(value2.lspServers, "plugin.lspServers", jsonPath, lspServers);
@@ -30599,7 +31170,7 @@ function decode(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    throw new AppError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.", 2);
+    throw forgeError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.");
   }
 }
 function json(bytes, path) {
@@ -30607,7 +31178,7 @@ function json(bytes, path) {
   try {
     value2 = JSON.parse(decode(bytes));
   } catch (error2) {
-    throw new AppError("INVALID_CLAUDE_PLUGIN", `${path}: ${errorMessage(error2)}`, 2);
+    throw forgeError("INVALID_CLAUDE_PLUGIN", `${path}: ${errorMessage(error2)}`);
   }
   ensure(isRecord(value2), "INVALID_CLAUDE_PLUGIN", `${path} must contain a JSON object.`);
   return value2;
@@ -30615,9 +31186,9 @@ function json(bytes, path) {
 function nativeReferences(manifest) {
   const result = [];
   const add = (value2, kind = "other", file = false) => {
-    for (const entry of Array.isArray(value2) ? value2 : [value2]) {
-      if (typeof entry !== "string" || entry.startsWith("https://")) continue;
-      const path = entry.replace(/^\.\//, "").replace(/\/+$/, "");
+    for (const entry2 of Array.isArray(value2) ? value2 : [value2]) {
+      if (typeof entry2 !== "string" || entry2.startsWith("https://")) continue;
+      const path = entry2.replace(/^\.\//, "").replace(/\/+$/, "");
       result.push({ path: path === "." ? "" : path, kind, file });
     }
   };
@@ -30629,7 +31200,7 @@ function nativeReferences(manifest) {
   add(manifest.mcpServers, "mcp", true);
   add(manifest.monitors, "other", true);
   if (isRecord(manifest.commands)) {
-    for (const entry of Object.values(manifest.commands)) if (isRecord(entry)) add(entry.source, "other", true);
+    for (const entry2 of Object.values(manifest.commands)) if (isRecord(entry2)) add(entry2.source, "other", true);
   } else add(manifest.commands);
   if (isRecord(manifest.experimental)) {
     add(manifest.experimental.themes);
@@ -30766,7 +31337,7 @@ class ClaudePluginService {
       const config2 = json(bytes, path);
       ensure(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
       if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
-      if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry) => typeof entry === "string"), "INVALID_CLAUDE_PLUGIN", `${path}: modules must be an array of module paths.`);
+      if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_PLUGIN", `${path}: modules must be an array of module paths.`);
     }
     if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path)) {
       const config2 = json(bytes, path);
@@ -35989,56 +36560,6 @@ function formatDuration(duration2) {
 function formatDateValue(value2) {
   return moment(value2.value).format(value2.dateOnly ? "YYYY-MM-DD" : "YYYY-MM-DDTHH:mm:ss");
 }
-function createEvaluationContext(input = {}) {
-  const normalizedInputResolutions = normalizeResolutionInput(input.linkResolutions);
-  const frontmatterOptions = { linkResolutions: normalizedInputResolutions };
-  if (input.propertyTypes)
-    frontmatterOptions.propertyTypes = input.propertyTypes;
-  const note = normalizeFrontmatterProperties(input.note ?? input.properties ?? {}, frontmatterOptions);
-  const files = input.files?.map(createFileContext) ?? [];
-  const currentFileInput = {
-    ...input.file ?? {},
-    path: input.file?.path ?? "",
-    properties: input.file?.properties ?? note
-  };
-  const currentLinks = input.file?.links ?? input.links;
-  const currentEmbeds = input.file?.embeds ?? input.embeds;
-  const currentBacklinks = input.file?.backlinks ?? input.backlinks;
-  if (currentLinks)
-    currentFileInput.links = currentLinks;
-  if (currentEmbeds)
-    currentFileInput.embeds = currentEmbeds;
-  if (currentBacklinks)
-    currentFileInput.backlinks = currentBacklinks;
-  const currentFile = createFileContext(currentFileInput);
-  const thisFile = input.thisFile ? createFileContext({ ...input.thisFile, path: input.thisFile.path ?? "" }) : void 0;
-  const allFiles = mergeFiles(currentFile.path ? [currentFile, ...files] : files);
-  const linkResolutions = {
-    ...createLinkResolutionMap(allFiles),
-    ...normalizedInputResolutions
-  };
-  const context = {
-    note,
-    file: currentFile,
-    files: allFiles,
-    linkResolutions
-  };
-  if (input.objects)
-    context.objects = input.objects;
-  if (thisFile)
-    context.thisFile = thisFile;
-  if (input.formulas)
-    context.formulas = input.formulas;
-  if (input.propertyTypes)
-    context.propertyTypes = input.propertyTypes;
-  if (input.now !== void 0)
-    context.now = input.now;
-  if (input.random)
-    context.random = input.random;
-  if (input.functions)
-    context.functions = input.functions;
-  return context;
-}
 function createFileContext(input) {
   const name2 = input.name ?? input.path.split("/").pop() ?? input.path;
   const dot = name2.lastIndexOf(".");
@@ -36090,8 +36611,8 @@ function createLinkResolutionMap(files = [], entries = []) {
   const map2 = {};
   for (const file of files)
     addFileResolution(map2, file);
-  for (const entry of entries)
-    addLinkResolution(map2, entry.target, entry.resolvedPath);
+  for (const entry2 of entries)
+    addLinkResolution(map2, entry2.target, entry2.resolvedPath);
   return map2;
 }
 function addLinkResolution(map2, target, resolvedPath) {
@@ -36108,25 +36629,6 @@ function addFileResolution(map2, file) {
     map2[key] = normalized.path;
     map2[key.toLowerCase()] = normalized.path;
   }
-}
-function normalizeResolutionInput(input) {
-  if (!input)
-    return {};
-  if (!Array.isArray(input))
-    return { ...input };
-  const map2 = {};
-  for (const entry of input)
-    addLinkResolution(map2, entry.target, entry.resolvedPath);
-  return map2;
-}
-function mergeFiles(files) {
-  const seen = /* @__PURE__ */ new Set();
-  return files.filter((file) => {
-    if (seen.has(file.path))
-      return false;
-    seen.add(file.path);
-    return true;
-  });
 }
 function parseLinkText$1(input) {
   let value2 = input.trim();
@@ -37004,7 +37506,7 @@ function compileFormulaSet(formulas) {
   diagnostics2.push(...cycleDiagnostics(dependencies2));
   const evaluationOrder = sortFormulas(dependencies2);
   const evaluate2 = (context = {}, options = {}) => {
-    const formulaAsts = Object.fromEntries(Object.entries(compiled).filter((entry) => Boolean(entry[1])));
+    const formulaAsts = Object.fromEntries(Object.entries(compiled).filter((entry2) => Boolean(entry2[1])));
     const evaluator = new Evaluator({ ...context, formulas: formulaAsts });
     const values2 = {};
     for (const name2 of evaluationOrder) {
@@ -37140,6 +37642,80 @@ const compatibilityProfile = {
     "The oracle has not been repeated across multiple Obsidian versions."
   ]
 };
+class BaseRowContexts {
+  constructor(files, shared) {
+    this.files = files;
+    this.shared = shared;
+    this.contexts = files.map(createFileContext);
+    this.table = createLinkResolutionMap(this.contexts);
+    const writers = /* @__PURE__ */ new Map();
+    this.writtenKeys = this.contexts.map((file) => {
+      const keys = Object.keys(createLinkResolutionMap([file]));
+      for (const key of keys) {
+        const previous2 = writers.get(key);
+        if (previous2 !== void 0) this.shadowed.set(key, previous2);
+        writers.set(key, file.path);
+      }
+      return keys;
+    });
+    this.thisFile = createFileContext({ ...shared.thisFile, path: shared.thisFile.path ?? "" });
+    this.dateTypes = Object.keys(shared.propertyTypes).filter((name2) => shared.propertyTypes[name2] === "date");
+  }
+  files;
+  shared;
+  contexts;
+  table;
+  writtenKeys;
+  // Map key -> the last writer before the map's final writer, which wins when the final writer is listed first.
+  shadowed = /* @__PURE__ */ new Map();
+  thisFile;
+  dateTypes;
+  *rows() {
+    const ordered2 = [...this.contexts];
+    const original = /* @__PURE__ */ new Map();
+    const define = (key, value2) => {
+      if (!original.has(key)) original.set(key, Object.getOwnPropertyDescriptor(this.table, key));
+      Object.defineProperty(this.table, key, { value: value2, writable: true, enumerable: true, configurable: true });
+    };
+    for (const [index2, file] of this.files.entries()) {
+      const current = this.contexts[index2];
+      if (index2 > 0) {
+        ordered2[index2] = this.contexts[index2 - 1];
+        ordered2[0] = current;
+      }
+      for (const key of this.writtenKeys[index2]) {
+        const previous2 = this.shadowed.get(key);
+        if (previous2 !== void 0 && this.table[key] === current.path) define(key, previous2);
+      }
+      const linkResolutions = Object.fromEntries((file.links ?? []).map((link) => [link.path, link.resolvedPath ?? null]));
+      for (const [key, value2] of Object.entries(linkResolutions)) define(key, value2);
+      try {
+        yield { file, context: this.context(file, current, ordered2, linkResolutions) };
+      } finally {
+        for (const [key, descriptor] of original) {
+          if (descriptor) Object.defineProperty(this.table, key, descriptor);
+          else Reflect.deleteProperty(this.table, key);
+        }
+        original.clear();
+      }
+    }
+  }
+  context(file, current, files, linkResolutions) {
+    const propertyTypes = this.propertyTypes(file);
+    const note = normalizeFrontmatterProperties(file.properties ?? {}, { linkResolutions, propertyTypes });
+    const { formulas, objects, now } = this.shared;
+    return { note, file: current, files, linkResolutions: this.table, objects, thisFile: this.thisFile, formulas, propertyTypes, now };
+  }
+  // Date types apply only where the row has a value, so empty dates evaluate as null rather than invalid dates.
+  propertyTypes(file) {
+    const empty = (name2) => {
+      const value2 = file.properties?.[name2];
+      return value2 === void 0 || value2 === null || value2 === "";
+    };
+    if (!this.dateTypes.some(empty)) return this.shared.propertyTypes;
+    return Object.fromEntries(Object.entries(this.shared.propertyTypes).filter(([name2, type2]) => type2 !== "date" || !empty(name2)));
+  }
+}
 const UNDEFINED_CODE_POINTS = /* @__PURE__ */ new Set([
   65534,
   65535,
@@ -41314,11 +41890,11 @@ class FormattingElementList {
     const neTagName = this.treeAdapter.getTagName(newElement);
     const neNamespaceURI = this.treeAdapter.getNamespaceURI(newElement);
     for (let i = 0; i < this.entries.length; i++) {
-      const entry = this.entries[i];
-      if (entry.type === EntryType.Marker) {
+      const entry2 = this.entries[i];
+      if (entry2.type === EntryType.Marker) {
         break;
       }
-      const { element: element2 } = entry;
+      const { element: element2 } = entry2;
       if (this.treeAdapter.getTagName(element2) === neTagName && this.treeAdapter.getNamespaceURI(element2) === neNamespaceURI) {
         const elementAttrs = this.treeAdapter.getAttrList(element2);
         if (elementAttrs.length === neAttrsLength) {
@@ -41367,8 +41943,8 @@ class FormattingElementList {
       token
     });
   }
-  removeEntry(entry) {
-    const entryIndex = this.entries.indexOf(entry);
+  removeEntry(entry2) {
+    const entryIndex = this.entries.indexOf(entry2);
     if (entryIndex !== -1) {
       this.entries.splice(entryIndex, 1);
     }
@@ -41388,11 +41964,11 @@ class FormattingElementList {
   }
   //Search
   getElementEntryInScopeWithTagName(tagName) {
-    const entry = this.entries.find((entry2) => entry2.type === EntryType.Marker || this.treeAdapter.getTagName(entry2.element) === tagName);
-    return entry && entry.type === EntryType.Element ? entry : null;
+    const entry2 = this.entries.find((entry3) => entry3.type === EntryType.Marker || this.treeAdapter.getTagName(entry3.element) === tagName);
+    return entry2 && entry2.type === EntryType.Element ? entry2 : null;
   }
   getElementEntry(element2) {
-    return this.entries.find((entry) => entry.type === EntryType.Element && entry.element === element2);
+    return this.entries.find((entry2) => entry2.type === EntryType.Element && entry2.element === element2);
   }
 }
 const defaultTreeAdapter = {
@@ -42309,12 +42885,12 @@ class Parser2 {
   _reconstructActiveFormattingElements() {
     const listLength = this.activeFormattingElements.entries.length;
     if (listLength) {
-      const endIndex = this.activeFormattingElements.entries.findIndex((entry) => entry.type === EntryType.Marker || this.openElements.contains(entry.element));
+      const endIndex = this.activeFormattingElements.entries.findIndex((entry2) => entry2.type === EntryType.Marker || this.openElements.contains(entry2.element));
       const unopenIdx = endIndex === -1 ? listLength - 1 : endIndex - 1;
       for (let i = unopenIdx; i >= 0; i--) {
-        const entry = this.activeFormattingElements.entries[i];
-        this._insertElement(entry.token, this.treeAdapter.getNamespaceURI(entry.element));
-        entry.element = this.openElements.current;
+        const entry2 = this.activeFormattingElements.entries[i];
+        this._insertElement(entry2.token, this.treeAdapter.getNamespaceURI(entry2.element));
+        entry2.element = this.openElements.current;
       }
     }
   }
@@ -44929,7 +45505,25 @@ function parseFragment(fragmentContext, html2, options) {
 }
 const parser = unified().use(remarkParse);
 const external = (target) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target);
-function resolveBaseLink(target, source, paths2, relative = false) {
+function baseLinkIndex(paths2) {
+  const lower = /* @__PURE__ */ new Map(), suffixes = /* @__PURE__ */ new Map();
+  const add = (map2, key, position2) => {
+    const positions2 = map2.get(key);
+    if (positions2) positions2.push(position2);
+    else map2.set(key, [position2]);
+  };
+  for (const [position2, path] of paths2.entries()) {
+    const folded = path.toLowerCase();
+    add(lower, folded, position2);
+    for (let slash = folded.indexOf("/"); slash >= 0; slash = folded.indexOf("/", slash + 1)) add(suffixes, folded.slice(slash + 1), position2);
+  }
+  return { paths: paths2, exact: new Set(paths2), lower, suffixes };
+}
+function lookup(index2, keys, spelling) {
+  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
+  return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
+}
+function resolveBaseLink(target, source, index2, relative = false) {
   target = target.split("#")[0] ?? "";
   if (!target) return source;
   if (external(target)) return null;
@@ -44939,18 +45533,17 @@ function resolveBaseLink(target, source, paths2, relative = false) {
   const candidates = relative ? [local, target] : [target, local];
   for (const candidate of candidates) {
     for (const spelling of [candidate, `${candidate}.md`]) {
-      const exact = paths2.find((path) => path === spelling);
-      if (exact) return exact;
+      if (index2.exact.has(spelling)) return spelling;
     }
   }
   for (const candidate of candidates) {
-    const found = paths2.filter((path) => [candidate, `${candidate}.md`].some((spelling) => path.toLowerCase() === spelling.toLowerCase()));
+    const found = lookup(index2, index2.lower, candidate);
     if (found.length === 1) return found[0];
-    if (found.length > 1) throw new AppError("AMBIGUOUS_BASE_LINK", `Link ${target} in ${source} matches multiple files: ${found.join(", ")}`, 2);
+    if (found.length > 1) throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${target} in ${source} matches multiple files: ${found.join(", ")}`);
   }
   if (relative || target.startsWith("../")) return null;
-  const matches2 = paths2.filter((path) => [target, `${target}.md`].some((spelling) => path.toLowerCase().endsWith("/" + spelling.toLowerCase())));
-  if (matches2.length > 1) throw new AppError("AMBIGUOUS_BASE_LINK", `Link ${target} in ${source} matches multiple files: ${matches2.join(", ")}`, 2);
+  const matches2 = lookup(index2, index2.suffixes, target);
+  if (matches2.length > 1) throw forgeError("AMBIGUOUS_BASE_LINK", `Link ${target} in ${source} matches multiple files: ${matches2.join(", ")}`);
   return matches2[0] ?? null;
 }
 function indexBaseLinks(body, properties, source, paths2) {
@@ -44981,6 +45574,7 @@ function indexBaseLinks(body, properties, source, paths2) {
     }
   };
   const parse2 = (value2, inlineTags) => {
+    if (!/[[<]/.test(value2) && !(inlineTags && value2.includes("#"))) return;
     value2 = value2.replace(/%%[\s\S]*?%%/g, (comment) => comment.replace(/[^\r\n]/g, " "));
     const tree = parser.parse(value2);
     const definitions = /* @__PURE__ */ new Map();
@@ -45026,6 +45620,7 @@ function indexBaseLinks(body, properties, source, paths2) {
   }
   return { links, embeds, tags: [...tags2] };
 }
+const pendingFileReads = 16;
 function typedLinks(value2, source, paths2) {
   if (typeof value2 === "string") {
     const match = /^\[\[([^\]]+)\]\]$/.exec(value2);
@@ -45037,24 +45632,42 @@ function typedLinks(value2, source, paths2) {
   if (isRecord(value2)) return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, typedLinks(item, source, paths2)]));
   return value2;
 }
-async function indexBaseFiles(files, codec) {
-  const paths2 = (await files.list()).filter((path) => !path.split("/").some((part) => part.startsWith(".")));
-  const result = [];
-  for (const path of paths2) {
-    const info = await promises.stat(await files.resolvePath(path));
-    let properties = {}, body = "";
-    if (path.toLowerCase().endsWith(".md")) {
+async function mapInOrder(items, limit, map2) {
+  const results = [], failures = /* @__PURE__ */ new Map();
+  let next = 0;
+  const work = async () => {
+    while (failures.size === 0 && next < items.length) {
+      const position2 = next++;
       try {
-        const document2 = codec.inspect(path, (await files.read(path)).bytes);
-        properties = document2.properties;
-        body = document2.body;
+        results[position2] = await map2(items[position2]);
       } catch (error2) {
-        throw new AppError("BASE_INDEX_ERROR", `Cannot index ${path}: ${errorMessage(error2)}`, 2);
+        failures.set(position2, error2);
       }
     }
-    const links = indexBaseLinks(body, properties, path, paths2);
-    result.push({ path, properties: typedLinks(properties, path, paths2), size: info.size, ctime: info.birthtime, mtime: info.mtime, ...links, backlinks: [] });
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, work));
+  if (failures.size > 0) throw failures.get(Math.min(...failures.keys()));
+  return results;
+}
+async function indexBaseFile(files, codec, path, paths2) {
+  const info = await promises.stat(await files.resolvePath(path));
+  let properties = {}, body = "";
+  if (path.toLowerCase().endsWith(".md")) {
+    try {
+      const document2 = codec.inspect(path, (await files.read(path)).bytes);
+      properties = document2.properties;
+      body = document2.body;
+    } catch (error2) {
+      throw forgeError("BASE_INDEX_ERROR", `Cannot index ${path}: ${errorMessage(error2)}`);
+    }
   }
+  const links = indexBaseLinks(body, properties, path, paths2);
+  return { path, properties: typedLinks(properties, path, paths2), size: info.size, ctime: info.birthtime, mtime: info.mtime, ...links, backlinks: [] };
+}
+async function indexBaseFiles(files, codec) {
+  const paths2 = (await files.list()).filter((path) => !path.split("/").some((part) => part.startsWith(".")));
+  const links = baseLinkIndex(paths2);
+  const result = await mapInOrder(paths2, pendingFileReads, (path) => indexBaseFile(files, codec, path, links));
   const byPath = new Map(result.map((file) => [file.path, file]));
   for (const source of result) {
     for (const target of new Set(source.links?.map((link) => link.resolvedPath).filter((path) => Boolean(path)))) {
@@ -45069,7 +45682,7 @@ async function basePropertyTypes(files) {
     data = JSON.parse(new TextDecoder().decode((await files.read(".obsidian/types.json")).bytes));
   } catch (error2) {
     if (error2 instanceof AppError && error2.code === "NOT_FOUND") return {};
-    if (error2 instanceof SyntaxError) throw new AppError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.", 2);
+    if (error2 instanceof SyntaxError) throw forgeError("INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain valid JSON.");
     throw error2;
   }
   ensure(isRecord(data) && isRecord(data.types), "INVALID_BASE_PROPERTY_TYPES", ".obsidian/types.json must contain a types mapping.");
@@ -45180,6 +45793,14 @@ function compare(a, b) {
 function groupIdentity(value2) {
   return JSON.stringify(value2 ?? null);
 }
+function positions(groupOrder) {
+  const result = /* @__PURE__ */ new Map();
+  for (const [index2, value2] of groupOrder.entries()) {
+    const identity2 = groupIdentity(value2);
+    if (!result.has(identity2)) result.set(identity2, index2);
+  }
+  return result;
+}
 class NodeBasesQueryEngine {
   constructor(files, codec) {
     this.files = files;
@@ -45228,23 +45849,22 @@ class NodeBasesQueryEngine {
     ensure(thisFile, "BASE_CONTEXT_NOT_FOUND", `Base context is not an indexed vault file: ${contextPath}`);
     const propertyTypes = await basePropertyTypes(this.files);
     const contextNote = Object.fromEntries(Object.entries(thisFile.properties ?? {}).map(([name2, value2]) => [name2, value2 === null || value2 === "" ? fromJs(value2) : fromJs(value2, propertyTypes[name2])]));
-    const now = /* @__PURE__ */ new Date();
+    const objects = { [internalContext]: { file: fileValue(thisFile), note: contextNote } };
+    const compiledFormulaByName = new Map(Object.entries(formulaAsts).map(([name2, ast]) => [name2, compileExpression(ast)]));
+    const groupPositions = groupOrder && positions(groupOrder);
     const rows = [];
-    for (const file of indexed) {
+    for (const { file, context } of new BaseRowContexts(indexed, { thisFile, formulas: formulaAsts, propertyTypes, objects, now: /* @__PURE__ */ new Date() }).rows()) {
       try {
-        const linkResolutions = Object.fromEntries((file.links ?? []).map((link) => [link.path, link.resolvedPath ?? null]));
-        const rowTypes = Object.fromEntries(Object.entries(propertyTypes).filter(([name2, type2]) => type2 !== "date" || file.properties?.[name2] !== void 0 && file.properties[name2] !== null && file.properties[name2] !== ""));
-        const context = createEvaluationContext({ note: file.properties, file, files: indexed, thisFile, formulas: formulaAsts, propertyTypes: rowTypes, now, linkResolutions, objects: { [internalContext]: { file: fileValue(thisFile), note: contextNote } } });
         const evaluating = /* @__PURE__ */ new Set();
         let evaluationError;
         context.functions = { [internalFormula]: (name2) => {
           const key = stringifyValue(name2);
           if (evaluating.has(key)) return errorValue(`Circular formula reference: ${key}`);
-          const ast = Object.hasOwn(formulaAsts, key) ? formulaAsts[key] : void 0;
-          if (!ast) return nullValue();
+          const formula = compiledFormulaByName.get(key);
+          if (!formula) return nullValue();
           evaluating.add(key);
           try {
-            return compileExpression(ast).evaluateValue(context, strict);
+            return formula.evaluateValue(context, strict);
           } finally {
             evaluating.delete(key);
           }
@@ -45263,13 +45883,13 @@ class NodeBasesQueryEngine {
         ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
         if (!matches2) continue;
         const group = grouping?.expression.evaluateValue(context, strict);
-        const groupIndex = groupOrder?.findIndex((value2) => groupIdentity(value2) === groupIdentity(group && toPlain(group)));
+        const groupIndex = groupPositions && (groupPositions.size === 0 ? -1 : groupPositions.get(groupIdentity(group && toPlain(group))) ?? -1);
         if (groupIndex === -1) continue;
         const sort = sorts.map((item) => item.expression.evaluateValue(context, strict));
         ensure(evaluationError === void 0, "BASE_EVALUATION_ERROR", evaluationError ?? "Expression evaluation failed.");
         rows.push({ path: file.path, sort, group, groupIndex });
       } catch (error2) {
-        throw new AppError("BASE_EVALUATION_ERROR", `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`, 2);
+        throw forgeError("BASE_EVALUATION_ERROR", `${path}, view ${String(view.name)}, file ${file.path}: ${errorMessage(error2)}`);
       }
     }
     rows.sort((a, b) => {
@@ -45625,7 +46245,8 @@ function catalogCommands(registry2) {
     apiVersion: 1,
     node: metadata$1.engines.node,
     globalOptions,
-    output: "{ ok, data?, error?: {code,message,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
+    output: "{ ok, data?, error?: {code,message,hint?,retryable?,details?}, context?: {workspaceRoot,root,project}, events, warnings }",
+    eventOutput: { option: "--events", setting: "settings.events", levels: eventOutputLevels, default: "changes", changes: "Only committed file.created, file.updated and file.deleted records." },
     commands: [...registry2.commands.values()].map(({ id: id2, description: description2, usage, options }) => ({ id: id2, description: description2, usage, options: options ?? {} })),
     generators: generatorCatalog(registry2),
     skills: [...registry2.skills.keys()]
@@ -45641,11 +46262,14 @@ function catalogCommands(registry2) {
     } },
     { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", run(args) {
       arity(args, 0);
-      return catalog();
+      return { ...catalog(), errors: errorCodes.map((code2) => {
+        const { exitCode, category, retryable, summary } = errorCatalog[code2];
+        return { code: code2, exitCode, category, retryable, summary };
+      }) };
     } },
     { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", run(args) {
       arity(args, 0);
-      return { nativeFormats, structured: ["md", "canvas", "base"], attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
+      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } }
   ];
 }
@@ -45653,7 +46277,7 @@ function extensionCommands(registry2) {
   return [
     { id: "events", description: "List invocation event contracts.", usage: "events", run(args, _, { events }) {
       arity(args, 0);
-      return { events: events.ids(), contracts: events.catalog(), delivery: "Ordered, awaited, per-listener snapshots; failures become warnings. Lifecycle phases cover commands, workspace operations, Claude execution and plugins. File events follow commits. onAny observes all events; replay reads bounded invocation history. No persistent replay." };
+      return { events: events.ids(), contracts: events.catalog(), delivery: "Ordered, awaited, per-listener snapshots; failures become warnings. Lifecycle phases cover commands, workspace operations, Claude execution and plugins. File events follow commits. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only file-change records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay." };
     } },
     { id: "plugins", description: "List explicitly loaded plugin manifests.", usage: "plugins", run(args) {
       arity(args, 0);
@@ -45720,6 +46344,36 @@ function interactionCommands(services) {
     }
   }];
 }
+const reportedMatchLines = 20;
+function literalMatches(text2, find) {
+  const offsets = [];
+  if (find.length === 0) return offsets;
+  for (let offset = text2.indexOf(find); offset >= 0; offset = text2.indexOf(find, offset + 1)) offsets.push(offset);
+  return offsets;
+}
+function lineNumbers(text2, offsets) {
+  const lines2 = [];
+  let line = 1, scanned = 0;
+  for (const offset of offsets) {
+    for (let index2 = text2.indexOf("\n", scanned); index2 >= 0 && index2 < offset; index2 = text2.indexOf("\n", index2 + 1)) line++;
+    scanned = offset;
+    lines2.push(line);
+  }
+  return lines2;
+}
+function replaceUniqueLiteral(text2, find, replacement) {
+  ensure(find.length > 0, "INVALID_INPUT", "--find must not be empty.");
+  const matches2 = literalMatches(text2, find);
+  ensure(matches2.length > 0, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
+  ensure(
+    matches2.length === 1,
+    "AMBIGUOUS_EDIT",
+    `The find text matches ${matches2.length} times, including overlapping matches; it must match exactly once.`,
+    { matches: matches2.length, lines: lineNumbers(text2, matches2.slice(0, reportedMatchLines)) }
+  );
+  const [offset] = matches2;
+  return text2.slice(0, offset) + replacement + text2.slice(offset + find.length);
+}
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
   const encoding = value(flags, "encoding") ?? "utf8";
@@ -45732,29 +46386,50 @@ async function content(flags, context) {
   return bytes;
 }
 const contentOptions = { content: "string", from: "string", stdin: "boolean", encoding: "string" };
+const readParts = ["body"];
+function selectedParts(flags, kind) {
+  const requested = value(flags, "parts");
+  if (requested === void 0) return /* @__PURE__ */ new Set();
+  const parts = requested.split(",").map((part) => part.trim());
+  ensure(parts.every((part) => readParts.includes(part)), "INVALID_ARGUMENT", `--parts accepts a comma-separated list of: ${readParts.join(", ")}.`);
+  ensure(kind === "markdown", "INVALID_ARGUMENT", "--parts body requires a Markdown file.");
+  return new Set(parts);
+}
+function utf8Text(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw forgeError("INVALID_ENCODING", "Edits require valid UTF-8 text; use write for binary content.");
+  }
+}
 function defaultDocument(kind) {
   if (kind === "canvas") return encodeText('{"nodes":[],"edges":[]}\n');
   if (kind === "base") return encodeText("views:\n  - type: table\n    name: Table\n");
   return encodeText("");
 }
+const defaultable = ["markdown", "canvas", "base", "text"];
 function documentCommands() {
   return [
-    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|attachment]", options: { kind: "string" }, async run(args, flags, { workspace: workspace2 }) {
+    { id: "list", description: "List regular files in stable path order; skip symlinks, Git and node_modules.", usage: "list [--kind markdown|canvas|base|image|audio|video|pdf|text|attachment]", options: { kind: "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 0);
       const kind = value(flags, "kind");
-      const kinds = [...Object.keys(nativeFormats), "attachment"];
-      ensure(kind === void 0 || kinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${kinds.join(", ")}.`);
+      ensure(kind === void 0 || fileKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${fileKinds.join(", ")}.`);
       return { files: (await workspace2.files.list()).filter((p) => !kind || fileKind(p) === kind).map((path) => ({ path, kind: fileKind(path) })) };
     } },
-    { id: "read", description: "Read a document or base64 attachment with its SHA-256 revision.", usage: "read <path>", async run(args, _, { workspace: workspace2 }) {
+    { id: "read", description: "Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.", usage: "read <path> [--parts body]", options: { parts: "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 1);
-      return workspace2.read(args[0]);
+      const parts = selectedParts(flags, fileKind(args[0]));
+      const result = await workspace2.read(args[0]);
+      if (!isRecord(result.document) || result.document.kind !== "markdown" || parts.has("body")) return result;
+      const { body: _body, ...document2 } = result.document;
+      return { ...result, document: document2 };
     } },
-    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, or Base structure.", usage: "validate <path>", async run(args, _, { workspace: workspace2 }) {
+    { id: "validate", description: "Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.", usage: "validate <path>", async run(args, _, { workspace: workspace2 }) {
       arity(args, 1);
       const file = await workspace2.files.read(args[0]);
       workspace2.codec.validate(file.path, file.bytes);
-      return { path: file.path, valid: true, kind: fileKind(file.path), validation: ["markdown", "canvas", "base"].includes(fileKind(file.path)) ? "structure" : "opaque-bytes" };
+      const kind = fileKind(file.path);
+      return { path: file.path, valid: true, kind, validation: ["markdown", "canvas", "base"].includes(kind) ? "structure" : kind === "text" ? "utf8" : "opaque-bytes" };
     } },
     { id: "create", description: "Create a note, Canvas, Base, or file. Existing files are refused.", usage: "create <path> [--content text | --from path | --stdin] [--encoding base64]", options: contentOptions, async run(args, flags, context) {
       arity(args, 1);
@@ -45762,30 +46437,27 @@ function documentCommands() {
       const hasInput = flags.content !== void 0 || flags.from !== void 0 || flags.stdin === true;
       const kind = fileKind(path);
       ensure(hasInput || flags.encoding === void 0, "INVALID_INPUT", "--encoding requires an input source.");
-      ensure(hasInput || ["markdown", "canvas", "base"].includes(kind), "INVALID_INPUT", "Attachments require content, from, or stdin.");
+      ensure(hasInput || defaultable.includes(kind), "INVALID_INPUT", "Attachments require content, from, or stdin.");
       const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
-      return context.workspace.write([{ path, bytes }]);
+      return context.workspace.write([{ path, bytes }], { diff: true });
     } },
     { id: "write", description: "Create or replace a file; replacement requires its current revision.", usage: "write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]", options: { ...contentOptions, "if-match": "string" }, async run(args, flags, context) {
       arity(args, 1);
-      return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value(flags, "if-match") }]);
+      return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value(flags, "if-match") }], { diff: true });
     } },
-    { id: "edit", description: "Append to Markdown or replace exactly one literal match.", usage: "edit <note.md> --if-match sha256 (--append --content text | --find text --replace text)", options: { "if-match": "string", append: "boolean", content: "string", find: "string", replace: "string" }, async run(args, flags, { workspace: workspace2 }) {
+    { id: "edit", description: "Append to Markdown or UTF-8 text, or replace exactly one literal match.", usage: "edit <note.md|text-file> --if-match sha256 (--append --content text | --find text --replace text)", options: { "if-match": "string", append: "boolean", content: "string", find: "string", replace: "string" }, async run(args, flags, { workspace: workspace2 }) {
       arity(args, 1);
       const path = args[0];
-      ensure(fileKind(path) === "markdown", "UNSUPPORTED_EDIT", "Use edit for Markdown, patch for Canvas/Bases, and write for attachments.");
+      ensure(["markdown", "text"].includes(fileKind(path)), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
       const revision = value(flags, "if-match", true);
       return workspace2.edit(path, revision, (bytes) => {
-        const text2 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+        const text2 = utf8Text(bytes);
         if (flags.append) {
           ensure(flags.find === void 0 && flags.replace === void 0, "INVALID_INPUT", "Do not combine append and replace.");
           return encodeText(text2 + value(flags, "content", true));
         }
         ensure(flags.content === void 0, "INVALID_INPUT", "--content requires --append.");
-        const find = value(flags, "find", true), replacement = value(flags, "replace", true);
-        const first = text2.indexOf(find);
-        ensure(find.length > 0 && first >= 0 && text2.indexOf(find, first + 1) < 0, "AMBIGUOUS_EDIT", "The find text must match exactly once, including overlapping matches.");
-        return encodeText(text2.replace(find, () => replacement));
+        return encodeText(replaceUniqueLiteral(text2, value(flags, "find", true), value(flags, "replace", true)));
       });
     } },
     { id: "properties", description: "Merge YAML frontmatter properties while preserving the Markdown body.", usage: "properties <note.md> --set JSON --if-match sha256", options: { set: "string", "if-match": "string" }, async run(args, flags, { workspace: workspace2 }) {
@@ -45866,11 +46538,11 @@ const germanCommands = {
   bases: "Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.",
   formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
   list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
-  read: "Ein Dokument oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
-  validate: "Markdown-Frontmatter, Canvas-Graphen oder Base-Strukturen prüfen.",
+  read: "Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
+  validate: "Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.",
   create: "Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.",
   write: "Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.",
-  edit: "Markdown ergänzen oder genau einen wörtlichen Treffer ersetzen.",
+  edit: "Markdown oder UTF-8-Text ergänzen oder genau einen wörtlichen Treffer ersetzen.",
   properties: "YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.",
   patch: "Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.",
   make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
@@ -45893,125 +46565,138 @@ const germanGenerators = {
 const germanGuidance = {
   attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
   otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
-  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Lebenszyklus-Ereignisse begleiten Befehle, Workspace-Vorgänge, Claude und Plugins. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung.",
+  textFiles: "UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.",
+  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Lebenszyklus-Ereignisse begleiten Befehle, Workspace-Vorgänge, Claude und Plugins. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur Dateiänderungen; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
   setup: {
     "node bin/app.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
     "node bin/app.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
     "node bin/app.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
   }
 };
+const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
+const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
+const regenerateHint = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
 const germanErrors = {
-  INVALID_CLAUDE_OUTPUT: "Das Ausgabeformat für Claude Code muss text, json oder json-last-line sein.",
-  CLAUDE_INVALID_OUTPUT: "Claude Code wurde beendet, lieferte aber nicht das angeforderte JSON. Prüfen Sie Ausgabe und externen Zustand vor einer Wiederholung.",
-  CLAUDE_COMMAND_INTERRUPTED: "Der Claude-Code-Befehl wurde unterbrochen. Prüfen Sie den externen Zustand vor einer Wiederholung.",
-  AMBIGUOUS_BASE_LINK: "Ein interner Link verweist auf mehrere mögliche Dateien. Prüfen Sie Quellpfad und Linkziel.",
-  BASE_CONTEXT_NOT_FOUND: "Die Kontextdatei ist nicht im Tresorindex enthalten. Prüfen Sie --context.",
-  BASE_EVALUATION_ERROR: "Ein Bases-Ausdruck konnte nicht ausgewertet werden. Prüfen Sie Ansicht, Datei und Diagnose.",
-  BASE_VIEW_NOT_FOUND: "Die angegebene Bases-Ansicht fehlt. Prüfen Sie bases inspect und --view.",
-  INVALID_BASE_EXPRESSION: "Der Bases-Ausdruck ist ungültig. Prüfen Sie die Ausdrucksdiagnose.",
-  INVALID_BASE_PROPERTY_TYPES: "Die Obsidian-Eigenschaftstypen sind ungültig. Prüfen Sie .obsidian/types.json.",
-  UNSUPPORTED_BASE_PROPERTY_TYPE: "Dieser Obsidian-Eigenschaftstyp wird nicht unterstützt. Prüfen Sie die Diagnose.",
-  CLAUDE_COMMAND_FAILED: "Claude Code konnte nicht erfolgreich gestartet oder ausgeführt werden. Prüfen Sie die Diagnose.",
-  CLAUDE_COMMAND_TIMEOUT: "Der Claude-Code-Befehl hat sein Zeitlimit überschritten. Prüfen Sie den Installationszustand vor einer Wiederholung.",
-  CLAUDE_NOT_INSTALLED: "Claude Code wurde nicht gefunden. Installieren Sie die CLI oder geben Sie --claude-bin an.",
-  CLAUDE_OUTPUT_LIMIT: "Die Claude-Code-Ausgabe hat das Größenlimit überschritten. Prüfen Sie den Vorgang vor einer Wiederholung.",
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.",
-  INVALID_CLAUDE_ARGUMENT: "Ein Claude-Code-Argument ist ungültig. Prüfen Sie die Diagnose und den Befehlsvertrag.",
-  INVALID_CLAUDE_COMMAND: "Dieser Claude-Code-Befehl wird nicht unterstützt. Prüfen Sie claude capabilities.",
-  INVALID_CLAUDE_EXECUTABLE: "Der Pfad zur Claude-Code-CLI ist ungültig. Prüfen Sie --claude-bin.",
-  INVALID_CLAUDE_INPUT: "Die Claude-Code-Eingabe ist ungültig oder überschreitet das Größenlimit.",
-  INVALID_CLAUDE_OPTION: "Diese Option ist für den Claude-Code-Befehl nicht zulässig. Prüfen Sie die Diagnose.",
-  INVALID_CLAUDE_OUTPUT_LIMIT: "Das Ausgabelimit für Claude Code ist ungültig.",
-  INVALID_CLAUDE_SCOPE: "Der Claude-Code-Geltungsbereich ist ungültig. Prüfen Sie --scope.",
-  INVALID_CLAUDE_TIMEOUT: "Das Zeitlimit für Claude Code ist ungültig.",
-  INVALID_BASE_QUERY: "Die Bases-Abfrage ist ungültig. Prüfen Sie Ansicht, Kontext, Ausdrücke und Diagnose.",
-  BASE_INDEX_ERROR: "Eine Tresordatei konnte nicht indexiert werden. Prüfen Sie Dateipfad und Diagnose.",
-  INVALID_CLAUDE_AGENT: "Die Claude-Agentendefinition ist ungültig. Prüfen Sie Metadaten, Fähigkeiten und Diagnose.",
-  INVALID_CLAUDE_HOOKS: "Die Claude-Hook-Konfiguration ist ungültig. Prüfen Sie Ereignisse, Handler und Diagnose.",
-  INVALID_CLAUDE_PLUGIN: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig. Prüfen Sie die Diagnose.",
-  INVALID_CLAUDE_SETTINGS: "Die Claude-Einstellungen sind ungültig. Prüfen Sie die JSON-Struktur und Diagnose.",
-  CLAUDE_RUNTIME_FAILED: "Der Claude-Code-Befehl ist fehlgeschlagen. Prüfen Sie Ausgabe und Installationszustand vor einer Wiederholung.",
-  AMBIGUOUS_EDIT: "Der Suchtext muss genau einmal vorkommen; überlappende Treffer zählen mit.",
-  CONFLICT: "Die Datei existiert bereits oder wurde geändert. Lesen Sie die aktuelle Revision erneut; prüfen Sie generierte Änderungen mit --plan, bevor Sie sie mit --revisions-from übernehmen.",
-  CYCLIC_UI_COMPONENT: "Die Komponenten enthalten einen Zyklus. Entfernen Sie die zyklische Referenz.",
-  DATA_SOURCE_RENDERER_UNAVAILABLE: "Für diese Datenquelle ist kein Generator verfügbar.",
-  DUPLICATE_DATA_SOURCE: "Die Datenquellen-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
-  DUPLICATE_INTERACTION: "Die Interaktions-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
-  DUPLICATE_EVENT: "Die Ereignis-ID ist bereits registriert.",
-  DUPLICATE_OPTION: "Eine Option wurde mehrfach oder widersprüchlich angegeben.",
-  DUPLICATE_OR_INVALID_ID: "Eine ID ist ungültig oder bereits vergeben.",
-  DUPLICATE_PLUGIN: "Das Plugin ist bereits registriert.",
-  DUPLICATE_UI_COMPONENT: "Die Komponenten-ID ist mehrfach vergeben. Verwenden Sie eindeutige IDs.",
-  EMPTY_DATA_SOURCE_LIBRARY: "Die Datenquellenbibliothek ist leer. Führen Sie data-sources init aus oder fügen Sie eine Definition hinzu.",
-  EMPTY_INTERACTION_LIBRARY: "Die Interaktionsbibliothek ist leer. Führen Sie interactions init aus oder fügen Sie eine Definition hinzu.",
-  EMPTY_UI_LIBRARY: "Die Komponentenbibliothek ist leer. Führen Sie components init aus oder fügen Sie eine Definition hinzu.",
-  EVENT_RECURSION: "Die maximale Ereignistiefe wurde überschritten. Prüfen Sie rekursive Ereignisbehandler.",
-  INCOMPATIBLE_PLUGIN: "Das Plugin unterstützt diese API-Version nicht.",
-  INPUT_REQUIRED: "Leiten Sie die erforderliche Eingabe über stdin weiter.",
-  INVALID_ARGUMENT: "Die Argumente sind ungültig. Prüfen Sie die Diagnose und die Hilfe mit help <command>.",
-  INVALID_BASE: "Die Base-Struktur ist ungültig. Prüfen Sie die Definition.",
-  INVALID_CANVAS: "Die Canvas-Struktur ist ungültig. Prüfen Sie Knoten, Kanten und IDs.",
-  INVALID_COMPONENT_KIND: "Der Komponententyp ist ungültig. Verwenden Sie domain oder application.",
-  INVALID_CONFIG: "Die Konfiguration ist ungültig oder nicht lesbar. Prüfen Sie bin/config.json und die Diagnose.",
-  INVALID_DATA_SOURCE: "Die Datenquellendefinition ist ungültig. Prüfen Sie die angegebenen Felder.",
-  INVALID_INTERACTION: "Die Interaktionsdefinition ist ungültig. Prüfen Sie Ereignis, Aktionen und Bindungen.",
-  INVALID_INTERACTION_STATE: "Der Interaktionszustand ist ungültig. Prüfen Sie Zustandstypen, Anfangswerte und Aktionsziele.",
-  INVALID_ENCODING: "Die Eingabekodierung ist ungültig. Verwenden Sie gültiges UTF-8 oder Base64.",
-  INVALID_EVENT: "Die Ereignisdefinition oder der Ereigniszustand ist ungültig.",
-  INVALID_EVENT_LISTENER: "Ein Ereignisbehandler muss eine Funktion sein.",
-  INVALID_EVENT_PAYLOAD: "Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.",
-  INVALID_FRONTMATTER: "Das YAML-Frontmatter ist ungültig. Prüfen Sie die Dokumenteigenschaften.",
-  INVALID_GENERATION_PLAN: "Der Generierungsplan ist ungültig. Prüfen Sie die Ausgabepfade.",
-  INVALID_GENERATION_REVISIONS: "Die Revisionsfreigabe ist ungültig. Verwenden Sie die geprüften SHA-256-Revisionen aus dem Plan.",
-  INVALID_INPUT: "Die Eingabe ist ungültig. Prüfen Sie die Diagnose und die zulässigen Eingabeoptionen.",
-  INVALID_JSON: "Die Eingabe muss gültiges JSON enthalten.",
-  INVALID_KEY: "Der Eigenschaftsschlüssel ist ungültig.",
-  INVALID_LANGUAGE: "Die Sprache wird nicht unterstützt. Verwenden Sie --lang en oder --lang de.",
-  INVALID_NAME: "Der Name ist ungültig. Prüfen Sie die erlaubten Zeichen.",
-  INVALID_PATH: "Der Pfad ist ungültig. Verwenden Sie einen relativen Pfad innerhalb des Arbeitsbereichs.",
-  INVALID_PLAN: "Der Schreibplan ist ungültig. Prüfen Sie doppelte und überlappende Pfade.",
-  INVALID_PLUGIN: "Das Plugin ist ungültig. Prüfen Sie Manifest und Implementierung.",
-  INVALID_PLUGIN_CONFIG: "Die Plugin-Konfiguration ist ungültig. Prüfen Sie die aktivierten Plugin-IDs.",
-  INVALID_POINTER: "Der JSON Pointer ist ungültig oder verweist auf keine passende Position.",
-  INVALID_PROJECT: "Die Projektmetadaten sind ungültig. Prüfen Sie .forge/project.json.",
-  INVALID_PROJECT_CONTEXT: "Die gespeicherte Projektauswahl ist ungültig. Verwenden Sie project open <name> oder project close.",
-  INVALID_PROJECT_NAME: "Der Projektname ist ungültig. Verwenden Sie einen gültigen Projektnamen.",
-  INVALID_RESULT: "Der Befehl lieferte nicht serialisierbare Daten. Prüfen Sie vor einem erneuten Versuch die bereits bestätigten Ereignisse.",
-  INVALID_SETUP: "Die Installation kann nicht abgeschlossen werden. Prüfen Sie die Diagnose.",
-  INVALID_TEMPLATE: "Die Markdown-Vorlage ist ungültig. Prüfen Sie Frontmatter und Platzhalter.",
-  INVALID_TEMPLATE_DATE: "Das Datum oder Datumsformat der Vorlage ist ungültig.",
-  INVALID_TEMPLATE_PACK: "Das Vorlagenpaket ist ungültig. Prüfen Sie IDs und Pfade.",
-  INVALID_TEMPLATE_VALUES: "Die Vorlagenwerte sind ungültig. Prüfen Sie Pflichtfelder und Datentypen.",
-  INVALID_UI: "Die UI-Definition ist ungültig. Prüfen Sie Eigenschaften und Komponentenreferenzen.",
-  INVALID_UI_FRAMEWORK: "Das UI-Ziel ist ungültig. Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular.",
-  INVALID_UI_LIBRARY: "Die Komponentenbibliothek ist ungültig. Prüfen Sie die Definitionen.",
-  INVALID_YAML: "Das YAML-Dokument ist ungültig. Prüfen Sie die Syntax und Aliase.",
-  MISSING_ARGUMENT: "Ein erforderliches Argument fehlt. Prüfen Sie help <command>.",
-  NOT_FOUND: "Die angegebene Datei wurde nicht gefunden. Prüfen Sie Pfad und Projektkontext.",
-  OPERATION_FAILED: "Der Vorgang ist fehlgeschlagen. Prüfen Sie die ursprüngliche Diagnose.",
-  PLUGIN_LIFECYCLE: "Der Plugin-Lebenszyklus ist ungültig. Prüfen Sie die Plugin-Implementierung.",
-  PLUGIN_NAMESPACE: "Der Plugin-Beitrag liegt außerhalb seines erlaubten Namensraums.",
-  PROJECT_EXISTS: "Das Projekt existiert bereits. Verwenden Sie einen anderen Namen oder öffnen Sie das vorhandene Projekt.",
-  PROJECT_NOT_FOUND: "Das Projekt wurde nicht gefunden. Prüfen Sie project list.",
-  PROJECT_REQUIRED: "Öffnen Sie zuerst mit project open <name> ein Forge-Projekt.",
-  ROLLBACK_FAILED: "Die Wiederherstellung ist fehlgeschlagen. Prüfen Sie die in der Diagnose genannten Dateien vor einem erneuten Versuch.",
-  STALE_PROJECT_CONTEXT: "Das ausgewählte Projekt fehlt, ist ungültig oder sein Verzeichnis stimmt nicht mehr mit der Konfiguration überein. Verwenden Sie project open <name> oder project close.",
-  UI_RENDERER_UNAVAILABLE: "Für dieses UI-Ziel ist kein Generator verfügbar.",
-  UNKNOWN_COMMAND: "Der Befehl ist unbekannt. Verfügbare Befehle finden Sie mit help oder schema.",
-  UNKNOWN_DATA_SOURCE: "Die Datenquelle ist unbekannt. Prüfen Sie data-sources list.",
-  UNKNOWN_INTERACTION: "Die Interaktion ist unbekannt. Prüfen Sie interactions list und die zugeordnete Interaktionsbibliothek.",
-  UNKNOWN_EVENT: "Das Ereignis ist nicht registriert.",
-  UNKNOWN_GENERATOR: "Der Generator ist unbekannt. Verfügbare Generatoren finden Sie mit make.",
-  UNKNOWN_OPTION: "Die Option ist unbekannt. Prüfen Sie help <command>.",
-  UNKNOWN_SKILL: "Der Skill ist unbekannt. Prüfen Sie skills list.",
-  UNKNOWN_TEMPLATE_VARIABLE: "Die Vorlage enthält eine unbekannte Variable. Prüfen Sie templates inspect <template.md>.",
-  UNKNOWN_UI_COMPONENT: "Die Komponente ist unbekannt. Prüfen Sie components list.",
-  UNSAFE_PATH: "Der Pfad ist nicht sicher. Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen.",
-  UNSUPPORTED_EDIT: "Diese Bearbeitung wird für den Dateityp nicht unterstützt. Prüfen Sie help edit, help patch oder help write.",
-  WORKSPACE_BUSY: "Ein anderer Schreibvorgang sperrt den Arbeitsbereich. Versuchen Sie es nach dessen Abschluss erneut.",
-  GENERATION_DRIFT: "Generierte Dateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.",
-  UI_DRIFT: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan.",
-  DATA_SOURCE_DRIFT: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab. Prüfen Sie die Änderungen mit --plan."
+  // Argumente, Optionen und Eingaben
+  UNKNOWN_COMMAND: { summary: "Der Befehl ist nicht registriert.", hint: "Verfügbare Befehle, auch aktivierte Plugin-Befehle, zeigen help oder schema." },
+  UNKNOWN_OPTION: { summary: "Dieser Befehl akzeptiert die Option nicht.", hint: "Die Optionen des Befehls zeigt help <command>." },
+  MISSING_ARGUMENT: { summary: "Ein erforderliches Argument oder ein Optionswert fehlt.", hint: argumentsHint },
+  INVALID_ARGUMENT: { summary: "Die Argumente oder Optionswerte sind für diesen Befehl ungültig.", hint: argumentsHint },
+  DUPLICATE_OPTION: { summary: "Eine Option wurde wiederholt oder mit ihrer Verneinung kombiniert.", hint: "Geben Sie jede Option nur einmal an." },
+  INVALID_INPUT: { summary: "Die Eingabeoptionen sind ungültig oder widersprüchlich.", hint: "Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination." },
+  INPUT_REQUIRED: { summary: "--stdin wurde ohne weitergeleitete Eingabe angegeben.", hint: "Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from." },
+  INVALID_JSON: { summary: "Die Eingabe ist kein gültiges JSON.", hint: "Übergeben Sie einen gültigen JSON-Wert und maskieren Sie ihn für Ihre Shell." },
+  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text." },
+  INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
+  INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
+  INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
+  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
+  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
+  // Pfade, Dateien und geschützte Schreibvorgänge
+  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
+  UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
+  NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien." },
+  CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Lesen Sie die Datei erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab (error.details.currentRevision) und versuchen Sie es dann mit dem Revisionsschutz des Befehls erneut (--if-match oder --revisions-from); create legt nur neue Pfade an." },
+  NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find." },
+  AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen." },
+  UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
+  INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },
+  // Dokumente
+  INVALID_FRONTMATTER: { summary: "Das YAML-Frontmatter ist ungültig.", hint: "Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate." },
+  INVALID_YAML: { summary: "Das YAML-Dokument ist ungültig.", hint: "Korrigieren Sie die in der Meldung genannte Syntax, Schlüssel oder Aliase." },
+  INVALID_CANVAS: { summary: "Die Canvas-Struktur ist ungültig.", hint: "Korrigieren Sie die genannten Knoten, Kanten oder IDs; prüfen Sie mit validate <file.canvas>." },
+  INVALID_BASE: { summary: "Die Base-Struktur ist ungültig.", hint: "Korrigieren Sie die genannte Base-Definition; prüfen Sie mit validate <file.base>." },
+  INVALID_POINTER: { summary: "Der JSON Pointer ist ungültig oder verweist auf keine gültige Position.", hint: "Lesen Sie das Dokument und verwenden Sie einen vorhandenen Pointer-Pfad; /- hängt nur an ein vorhandenes Array an." },
+  // Bases-Abfragen
+  INVALID_BASE_QUERY: { summary: "Die Bases-Abfrage ist ungültig.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke." },
+  INVALID_BASE_EXPRESSION: { summary: "Ein Bases-Ausdruck kann nicht geparst werden.", hint: "Korrigieren Sie den in der Meldung genannten Ausdruck." },
+  BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
+  BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
+  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Tresordatei.", hint: "Übergeben Sie eine vorhandene Tresordatei an --context." },
+  BASE_INDEX_ERROR: { summary: "Eine Tresordatei konnte nicht indexiert werden.", hint: "Korrigieren oder prüfen Sie die in der Meldung genannte Datei." },
+  AMBIGUOUS_BASE_LINK: { summary: "Ein interner Link passt auf mehrere Dateien.", hint: "Verwenden Sie einen längeren Linkpfad, der genau eine Datei bezeichnet." },
+  INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
+  UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
+  // Konfiguration, Installation und Projekte
+  INVALID_CONFIG: { summary: "Die Konfiguration ist ungültig oder nicht lesbar.", hint: "Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config." },
+  INVALID_SETUP: { summary: "Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.", hint: "Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus." },
+  INVALID_PROJECT: { summary: "Die Projektmetadaten sind ungültig.", hint: "Korrigieren Sie .forge/project.json im Projektverzeichnis." },
+  INVALID_PROJECT_NAME: { summary: "Der Projektname ist ungültig.", hint: "Verwenden Sie einen kleingeschriebenen Kebab-Case-Namen, zum Beispiel billing-service." },
+  INVALID_PROJECT_CONTEXT: { summary: "Die gespeicherte Projektauswahl ist ungültig.", hint: "Verwenden Sie project open <name> oder project close." },
+  INVALID_COMPONENT_KIND: { summary: "Der Komponententyp ist ungültig.", hint: "Verwenden Sie domain oder application." },
+  PROJECT_EXISTS: { summary: "Das Projekt existiert bereits.", hint: "Wählen Sie einen anderen Namen oder öffnen Sie es mit project open <name>." },
+  PROJECT_NOT_FOUND: { summary: "Das Projekt existiert nicht.", hint: "Führen Sie project list aus und öffnen Sie ein vorhandenes Projekt." },
+  PROJECT_REQUIRED: { summary: "Dieser Befehl benötigt ein ausgewähltes Projekt.", hint: "Öffnen Sie zuerst mit project open <name> ein Projekt." },
+  STALE_PROJECT_CONTEXT: { summary: "Das ausgewählte Projekt fehlt oder stimmt nicht mehr mit der Konfiguration überein.", hint: "Wählen Sie mit project open <name> ein gültiges Projekt oder verwenden Sie project close." },
+  // Vorlagen und Generierung
+  INVALID_TEMPLATE: { summary: "Die Markdown-Vorlage ist ungültig.", hint: "Korrigieren Sie das in der Meldung genannte Frontmatter oder die Platzhalter." },
+  INVALID_TEMPLATE_DATE: { summary: "Ein Datum oder Datumsformat der Vorlage ist ungültig.", hint: "Verwenden Sie ein ISO-Datum und ein unterstütztes Datumsformat." },
+  INVALID_TEMPLATE_PACK: { summary: "Das Vorlagenpaket ist ungültig.", hint: "Verwenden Sie eindeutige Vorlagen-IDs und Zielpfade." },
+  INVALID_TEMPLATE_VALUES: { summary: "Vorlagenwerte fehlen oder haben den falschen Typ.", hint: "Führen Sie templates inspect <template.md> aus und geben Sie die Pflichtwerte an." },
+  UNKNOWN_TEMPLATE_VARIABLE: { summary: "Die Vorlage verwendet eine nicht deklarierte Variable.", hint: "Deklarieren Sie die Variable oder entfernen Sie den Platzhalter; prüfen Sie mit templates inspect <template.md>." },
+  UNKNOWN_GENERATOR: { summary: "Der Generator ist nicht registriert.", hint: "Verfügbare Generatoren zeigt make." },
+  INVALID_GENERATION_PLAN: { summary: "Der Generierungsplan hat überlappende Ausgaben oder ungültige Optionen.", hint: "Verwenden Sie getrennte Ausgabe- und Manifestpfade und kombinieren Sie die Planung nicht mit --revisions-from." },
+  INVALID_GENERATION_REVISIONS: { summary: "Die Revisionsfreigabe passt nicht zum geprüften Plan.", hint: "Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from." },
+  UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
+  DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
+  // UI, Interaktionen und Datenquellen
+  INVALID_UI: { summary: "Eine Komponentendefinition ist ungültig.", hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate." },
+  INVALID_UI_LIBRARY: { summary: "Die Komponentenbibliothek ist ungültig.", hint: "Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen." },
+  INVALID_UI_FRAMEWORK: { summary: "Das UI-Ziel wird nicht unterstützt.", hint: "Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular." },
+  EMPTY_UI_LIBRARY: { summary: "Die Komponentenbibliothek enthält keine Definitionen.", hint: "Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  DUPLICATE_UI_COMPONENT: { summary: "Zwei Komponentendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Komponente eine eindeutige ID." },
+  UNKNOWN_UI_COMPONENT: { summary: "Die Komponente ist nicht definiert.", hint: "Führen Sie components list aus und verwenden Sie eine vorhandene ID." },
+  CYCLIC_UI_COMPONENT: { summary: "Die Komponentenreferenzen bilden einen Zyklus.", hint: "Entfernen Sie die in der Meldung genannte zyklische Referenz." },
+  UI_RENDERER_UNAVAILABLE: { summary: "Für dieses UI-Ziel ist kein Generator verfügbar.", hint: "Wählen Sie ein unterstütztes --framework." },
+  INVALID_INTERACTION: { summary: "Eine Interaktionsdefinition ist ungültig.", hint: "Korrigieren Sie das genannte Ereignis, die Aktionen oder Bindungen; prüfen Sie mit interactions validate." },
+  DUPLICATE_INTERACTION: { summary: "Zwei Interaktionsdefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Interaktion eine eindeutige ID." },
+  EMPTY_INTERACTION_LIBRARY: { summary: "Die Interaktionsbibliothek enthält keine Definitionen.", hint: "Führen Sie interactions init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  UNKNOWN_INTERACTION: { summary: "Die Interaktion ist nicht definiert.", hint: "Führen Sie interactions list aus und prüfen Sie die Interaktionsreferenzen der Komponente." },
+  INVALID_DATA_SOURCE: { summary: "Eine Datenquellendefinition ist ungültig.", hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate." },
+  DUPLICATE_DATA_SOURCE: { summary: "Zwei Datenquellendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Datenquelle eine eindeutige ID." },
+  EMPTY_DATA_SOURCE_LIBRARY: { summary: "Die Datenquellenbibliothek enthält keine Definitionen.", hint: "Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  UNKNOWN_DATA_SOURCE: { summary: "Die Datenquelle ist nicht definiert.", hint: "Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID." },
+  DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: "Für diese Datenquelle ist kein Generator verfügbar.", hint: "Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make." },
+  // Plugins, Skills und Ereignisse
+  INVALID_PLUGIN: { summary: "Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.", hint: "Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins." },
+  INVALID_PLUGIN_CONFIG: { summary: "Die Liste aktivierter Plugins ist ungültig.", hint: "Tragen Sie in plugins.enabled in bin/config.json eindeutige Kebab-Case-Plugin-IDs ein." },
+  INCOMPATIBLE_PLUGIN: { summary: "Das Plugin benötigt eine neuere Forge-Version.", hint: "Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin." },
+  DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
+  PLUGIN_NAMESPACE: { summary: "Ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs die Plugin-ID und einen Punkt voran." },
+  PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
+  DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
+  UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." },
+  INVALID_EVENT: { summary: "Eine Ereignisdefinition oder der Ereigniszustand ist ungültig.", hint: "Definieren Sie Ereignisse vor der Freigabe mit einer ID mit Punkten und einem Validator." },
+  INVALID_EVENT_LISTENER: { summary: "Ein Ereignisbehandler ist keine Funktion.", hint: "Übergeben Sie eine Funktion als Behandler." },
+  INVALID_EVENT_PAYLOAD: { summary: "Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.", hint: "Prüfen Sie den Vertrag mit events und senden Sie passende Daten." },
+  DUPLICATE_EVENT: { summary: "Die Ereignis-ID ist bereits registriert.", hint: "Verwenden Sie eine eindeutige Ereignis-ID." },
+  UNKNOWN_EVENT: { summary: "Das Ereignis ist nicht registriert.", hint: "Registrierte Ereignis-IDs zeigt events." },
+  EVENT_RECURSION: { summary: "Ereignisbehandler haben die maximale Rekursionstiefe überschritten.", hint: "Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen." },
+  // Claude-Code-Definitionen
+  INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
+  INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
+  INVALID_CLAUDE_PLUGIN: { summary: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.", hint: claudeDefinitionHint },
+  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei." },
+  INVALID_CLAUDE_COMMAND: { summary: "Dieser Claude-Befehl wird nicht unterstützt.", hint: "Unterstützte Befehle zeigt claude capabilities." },
+  INVALID_CLAUDE_ARGUMENT: { summary: "Ein Argument des Claude-Befehls ist ungültig.", hint: argumentsHint },
+  INVALID_CLAUDE_OPTION: { summary: "Diese Option ist für den Claude-Befehl nicht zulässig.", hint: "Prüfen Sie help claude und entfernen Sie die Option." },
+  INVALID_CLAUDE_SCOPE: { summary: "Der Claude-Geltungsbereich ist ungültig.", hint: "Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope." },
+  INVALID_CLAUDE_INPUT: { summary: "Die Claude-Eingabe ist ungültig oder zu groß.", hint: "Übergeben Sie gültige Eingaben innerhalb des Größenlimits." },
+  INVALID_CLAUDE_OUTPUT: { summary: "Das Claude-Ausgabeformat ist ungültig.", hint: "Verwenden Sie text, json oder json-last-line." },
+  INVALID_CLAUDE_OUTPUT_LIMIT: { summary: "Das Claude-Ausgabelimit ist ungültig.", hint: "Verwenden Sie eine positive ganze Zahl von Bytes." },
+  INVALID_CLAUDE_TIMEOUT: { summary: "Das Claude-Zeitlimit ist ungültig.", hint: "Geben Sie das Zeitlimit in Millisekunden innerhalb des in der Meldung genannten Bereichs an." },
+  INVALID_CLAUDE_EXECUTABLE: { summary: "Der Pfad zur Claude-Code-CLI ist ungültig.", hint: "Übergeben Sie einen ausführbaren Pfad an --claude-bin." },
+  // Claude-Code-Prozess
+  CLAUDE_NOT_INSTALLED: { summary: "Die Claude-Code-CLI wurde nicht gefunden.", hint: "Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin." },
+  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Arbeitsbereich existiert und ein Verzeichnis ist." },
+  CLAUDE_COMMAND_FAILED: { summary: "Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.", hint: "Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst." },
+  CLAUDE_COMMAND_TIMEOUT: { summary: "Der Claude-Befehl hat sein Zeitlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde." },
+  CLAUDE_OUTPUT_LIMIT: { summary: "Die Claude-Ausgabe hat das Größenlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit." },
+  CLAUDE_COMMAND_INTERRUPTED: { summary: "Der Claude-Befehl wurde durch ein Signal unterbrochen (Exit 130 bei SIGINT, 143 bei SIGTERM).", hint: "Prüfen Sie den externen Zustand, bevor Sie den Befehl erneut ausführen." },
+  CLAUDE_RUNTIME_FAILED: { summary: "Claude Code wurde mit einem Status ungleich null beendet.", hint: "Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung." },
+  CLAUDE_INVALID_OUTPUT: { summary: "Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.", hint: "Prüfen Sie stdout und den externen Zustand vor einer Wiederholung." }
 };
 function language(value2) {
   ensure(value2 === "en" || value2 === "de", "INVALID_LANGUAGE", "Unsupported language. Use --lang en or --lang de.");
@@ -46037,13 +46722,20 @@ class Localizer {
       return description2 ? { ...item, description: description2 } : item;
     });
   }
+  errors(items) {
+    return items.map((item) => {
+      if (!isRecord(item) || typeof item.code !== "string" || !errorDefinition(item.code)) return item;
+      return { ...item, summary: germanErrors[item.code].summary };
+    });
+  }
   result(command2, data) {
     if (this.language === "en" || !isRecord(data)) return data;
+    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, generators: this.generators(data.generators), errors: this.errors(data.errors) };
     if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, generators: this.generators(data.generators) };
     if (["components", "data-sources", "interactions"].includes(command2) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
       return { ...data, nextStep: `Führen Sie ${command2} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
     }
-    if (command2 === "formats") return { ...data, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
+    if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
     if (command2 === "events") return { ...data, delivery: germanGuidance.delivery };
     if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
       ...data,
@@ -46055,6 +46747,7 @@ class Localizer {
     };
     return data;
   }
+  /** Built-in codes add a catalog hint and retryability; plugin-defined codes keep their own shape. */
   error(error2) {
     const code2 = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
     const diagnostic = errorMessage(error2);
@@ -46066,9 +46759,11 @@ class Localizer {
         details = { diagnostic: "Error details were not JSON-serializable." };
       }
     }
-    const message = this.language === "de" ? translated(germanErrors, code2) : void 0;
-    if (!message) return { code: code2, message: diagnostic, ...details ? { details } : {} };
-    return { code: code2, message, details: { ...details, localization: { originalMessage: diagnostic, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
+    const definition2 = errorDefinition(code2);
+    if (!definition2) return { code: code2, message: diagnostic, ...details ? { details } : {} };
+    const german = this.language === "de" ? germanErrors[code2] : void 0;
+    if (!german) return { code: code2, message: diagnostic, hint: definition2.hint, retryable: definition2.retryable, ...details ? { details } : {} };
+    return { code: code2, message: german.summary, hint: german.hint, retryable: definition2.retryable, details: { ...details, localization: { originalMessage: diagnostic, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
 async function run() {
@@ -46078,10 +46773,13 @@ async function run() {
   let activeContext;
   let localizer = new Localizer();
   let compact = tokens.includes("--json");
+  let eventLevel = "changes";
   try {
     const bootstrap = parseBootstrap(tokens);
     const requestedLanguage = value(bootstrap.flags, "lang");
     if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
+    const requestedEvents = value(bootstrap.flags, "events");
+    if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
     if (bootstrap.flags.version) {
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
@@ -46093,10 +46791,16 @@ async function run() {
       config2.settings.language = localizer.language;
       config2.settings.json = bootstrap.flags["no-json"] ? false : bootstrap.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = bootstrap.flags["no-dry-run"] ? false : bootstrap.flags["dry-run"] ? true : config2.settings.dryRun;
+      if (requestedEvents !== void 0) config2.settings.events = eventLevel;
+      else eventLevel = config2.settings.events;
       compact = config2.settings.json;
-      const files = await NodeFiles.at(loaded.root, (message) => events.warn(message));
+      let lockOwner = {};
+      const files = await NodeFiles.at(loaded.root, (message) => events.warn(message), () => lockOwner);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events);
+      events.on("command.started", ({ command: command22, operationId }) => {
+        lockOwner = { command: command22, operationId };
+      });
       let environment;
       for (const generator of generators) registry2.add(registry2.generators, generator);
       for (const skill of builtinSkills) registry2.add(registry2.skills, skill);
@@ -46136,6 +46840,8 @@ async function run() {
       const parsedLanguage = value(parsed.flags, "lang");
       if (parsedLanguage !== void 0) localizer = new Localizer(language(parsedLanguage));
       config2.settings.language = localizer.language;
+      const parsedEvents = value(parsed.flags, "events");
+      if (parsedEvents !== void 0) eventLevel = config2.settings.events = eventOutput(parsedEvents);
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
       for (const option of ["root", "no-plugins"]) ensure(parsed.flags[option] === bootstrap.flags[option], "INVALID_ARGUMENT", `--${option} must precede the command.`);
@@ -46176,10 +46882,10 @@ async function run() {
     await registry2.dispose(events);
   }
   try {
-    process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: events.history, warnings: events.warnings }, null, compact ? void 0 : 2) + "\n");
+    process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }, null, compact ? void 0 : 2) + "\n");
   } catch {
     process.exitCode = 1;
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(new AppError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: events.history, warnings: events.warnings }) + "\n");
+    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }) + "\n");
   }
 }
 void run();

@@ -31,6 +31,10 @@ These file paths resolve under `src/the-forge`. Specify a layer/concern output f
 
 The repository's `configs/quality/source.json` declares `sourceRoot: "src/the-forge"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source and authored asset code rather than all sibling managed projects in `src`. This quality policy is independent of the CLI's selected project. Run another project's own checks from its directory. Portable generated projects without this policy continue to use their ordinary `src` source root.
 
+## Showcase drift check
+
+`src/forge-showcase` is a committed, fully generated example project; see [explore the showcase](explore-the-showcase.md). `npm run showcase:check` regenerates it into a temporary workspace through the current `bin/app.js` and lists every differing path; it never modifies the checkout. The end-to-end test `tests/showcase/showcase.e2e.test.ts` runs the same check (about 45 seconds alone, up to about 90 seconds under the full parallel suite) and also queries its Bases, validates its Canvas and checks UI and adapter drift through the CLI. When a change alters generated output, rebuild, run `npm run showcase`, review the showcase diff and commit it with the change. Forge's quality inventory excludes the showcase; run its own `npm ci` and `npm run check` from `src/forge-showcase` when its toolchain or generated code changes.
+
 ## Agent feedback loop
 
 Read `AGENTS.md`, establish acceptance examples and inspect the affected boundary. After a focused edit, run the relevant behavioral test and `npm run check:fast`. This gate runs structure validation first, then Oxlint, fallow and the TypeScript compiler without rebuilding the distribution. Static analysis complements tests; a clean report does not prove business behavior or filesystem integrity. Analysis includes test entry points, so code referenced only by tests counts as used; this is not proof of production reachability.
@@ -52,7 +56,7 @@ After the targeted checks pass, run `npm run check` once as the final gate. It r
 
 ## Verification
 
-Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, templates, UI and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
+Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, showcase, templates, UI and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
 
 Every test has an explicit pyramid rank in its filename and runs in the matching named Vitest project:
 
@@ -81,5 +85,34 @@ Generated boilerplate must be reviewed and tested in its destination project. Do
 5. Diagnose and fix failed checks, rerun the failed stage, then run `npm run check`. Review the source and rebuilt artifact diff and commit both.
 
 No global dependency container, Obsidian process or npm runtime installation is required. Prefer explicit collaborators and domain terms over generic helper layers.
+
+## Platform matrix
+
+GitHub Actions runs the full gate (`npm ci`, then `npm run check`) for every pull request, every push to `main` and manual dispatches. Pushes to other branches run only through their pull request, so each change runs the matrix once:
+
+| Runner | Node | Additional steps |
+| --- | --- | --- |
+| `ubuntu-latest` | 22.12.0, 24 | Verifies that the committed `bin/` matches the fresh build, then builds and uploads the release archive |
+| `windows-latest` | 22.12.0, 24 | Runs steps in Git Bash and puts Git's GNU tar first on `PATH` |
+| `macos-latest` | 22.12.0, 24 | Puts Homebrew's GNU tar (`gnubin`) first on `PATH` |
+
+The committed bundle is the Linux build. Windows and macOS verify behavior, not identical bundle bytes. Workflow actions are pinned to full commit SHAs.
+
+`.gitattributes` checks out text files with LF line endings on every platform, regardless of `core.autocrlf`, and marks media and archive types as binary. Revisions hash raw bytes, so a checkout that converted line endings would change every revision and break byte comparisons between packaged and source files.
+
+Keep tests portable:
+
+- Build expected OS paths with `node:path` (`join`, `basename`), and pass POSIX workspace paths (`notes/a.md`) to the CLI and repository ports.
+- The CLI reports canonical roots (`realpath`). Canonicalize temporary directories before comparing them or running toolchains such as Vite in them, because macOS `/var` links to `/private/var` and Windows can report 8.3 short names. `tests/support/portable-cli.ts` already does this.
+- Start npm through a shell (`exec('npm run ...')`). On Windows, npm is a `.cmd` shim that Node only starts through a shell.
+- Use `'junction'` when linking `node_modules` into fixtures. Junctions need no symlink privilege on Windows, and other platforms ignore the type. Symlink-rejection tests still create real symlinks, which the Windows runners allow.
+- Run `tar` with relative paths from a working directory. GNU tar reads `C:\...` as a remote host name.
+- Pass `-c core.autocrlf=false` when a test lets Git write files. Git for Windows enables `core.autocrlf` globally and would write CRLF.
+- Remove temporary directories that a terminated child process used with `rm(..., { maxRetries })`. Windows can keep the working directory busy (`EBUSY`) for a moment after termination.
+- A child that closes its input early fails the parent's write with `EPIPE` on POSIX but `EOF` on Windows.
+- Do not assume POSIX permission bits, signals or process groups. Windows reports writable files as `0o666`. Skip a test on `win32` only when the behavior it checks cannot exist there, and give the reason in a comment. The current skips are the Claude runtime signal and process-group cases and the installed-lifecycle fixture that executes a script through its shebang.
+- macOS and Windows file systems are case-insensitive by default. Detect case sensitivity at runtime when a test depends on it, as `tests/workspace/portability.integration.test.ts` does.
+
+`npm test` raises Vitest's default test and hook timeouts to 30 seconds, because creating processes on Windows runners is much slower than on Linux.
 
 For publishing a validated distribution archive, see [build a release](release.md).

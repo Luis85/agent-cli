@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { stringify } from 'yaml';
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import { interactionEvents, interactionTriggerEvents, isSafeNavigationUrl, type InteractionDefinition } from '../../domain/interactions/definition.ts';
 import { uiBindingParts, uiHasMalformedBinding, uiWholeBinding } from '../../domain/ui/syntax.ts';
@@ -55,7 +55,7 @@ export class MarkdownInteractionDefinitions implements InteractionDefinitionCode
       return { ...result.data, description: document.body, sourcePath: path };
     } catch (error) {
       if (error instanceof AppError && error.code === 'INVALID_INTERACTION') throw error;
-      throw new AppError('INVALID_INTERACTION', `${path}: ${error instanceof Error ? error.message : 'Invalid interaction definition.'}`, 2);
+      throw forgeError('INVALID_INTERACTION', `${path}: ${error instanceof Error ? error.message : 'Invalid interaction definition.'}`);
     }
   }
   serialize(definition: InteractionDefinition): Uint8Array {

@@ -1,4 +1,4 @@
-import { errorMessage, AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, AppError, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import type { ClaudeAgentDocument } from '../../domain/claude/agents.ts';
 import type { Workspace } from '../workspace/workspace.ts';
@@ -14,7 +14,7 @@ interface AgentSummary {
 
 function text(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Agent definitions must be valid UTF-8.', 2); }
+  catch { throw forgeError('INVALID_ENCODING', 'Agent definitions must be valid UTF-8.'); }
 }
 
 /** Native definitions are addressed by filename, independently of their Claude agent names. */

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { access, readFile, readdir } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { MarkdownUiDefinitions } from '../../src/the-forge/infrastructure/ui/definitions.ts';
@@ -14,7 +14,8 @@ import { TypeScriptDataSourceRenderer } from '../../src/the-forge/infrastructure
 async function markdownFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
+    // Keep repository-relative POSIX paths: definition codecs reject Windows separators.
+    const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) files.push(...await markdownFiles(path));
     else if (entry.isFile() && extname(path) === '.md') files.push(path);
   }

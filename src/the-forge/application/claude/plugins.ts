@@ -1,4 +1,4 @@
-import { errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, errorMessage, AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import { claudePluginCapabilities, validateClaudePlugin } from '../../domain/claude/plugins.ts';
 import { validateClaudeHooks } from '../../domain/claude/hooks.ts';
@@ -12,12 +12,12 @@ interface Diagnostic { path: string; severity: 'error' | 'warning'; message: str
 
 function decode(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Claude plugin text assets must be valid UTF-8.', 2); }
+  catch { throw forgeError('INVALID_ENCODING', 'Claude plugin text assets must be valid UTF-8.'); }
 }
 function json(bytes: Uint8Array, path: string): Record<string, unknown> {
   let value: unknown;
   try { value = JSON.parse(decode(bytes)); }
-  catch (error) { throw new AppError('INVALID_CLAUDE_PLUGIN', `${path}: ${errorMessage(error)}`, 2); }
+  catch (error) { throw forgeError('INVALID_CLAUDE_PLUGIN', `${path}: ${errorMessage(error)}`); }
   ensure(isRecord(value), 'INVALID_CLAUDE_PLUGIN', `${path} must contain a JSON object.`);
   return value;
 }

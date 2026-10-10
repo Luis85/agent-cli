@@ -60,6 +60,7 @@ describe('localized portable CLI', () => {
     expect(german.status).toBe(3); expect(english.status).toBe(3);
     expect(german.body.error.code).toBe(english.body.error.code);
     expect(german.body.error.message).toContain('nicht gefunden');
+    expect(german.body.error.hint).toContain('project current'); expect(english.body.error.hint).toContain('project current');
     expect(german.body.error.details.localization.originalMessage).toBe(english.body.error.message);
     expect(committedEvents(german.body.events)).toEqual([]);
     for (const args of [['--lang', 'fr', 'help'], ['help', '--lang', 'fr'], ['--lang', 'en', 'help', '--lang', 'de']]) {

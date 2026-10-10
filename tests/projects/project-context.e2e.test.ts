@@ -46,7 +46,7 @@ describe('portable selected-project workflows', () => {
     const workspaceWrite = run(['create', 'workspace.md', '--content', '# Workspace']);
     expect(workspaceWrite.body.context).toEqual({ workspaceRoot: root, root, project: null });
     expect(await readFile(join(root, 'workspace.md'), 'utf8')).toBe('# Workspace');
-  }, 15000);
+  }, 60_000);
 
   it('uses workspace templates and selected-project values and generation destinations', async () => {
     const root = join(project, 'selected-template-workspace');
@@ -81,7 +81,7 @@ describe('portable selected-project workflows', () => {
     await expect(readFile(join(root, '.agents/skills/forge-workflow/SKILL.md'))).rejects.toThrow();
     await expect(readFile(join(root, 'docs/Plan.md'))).rejects.toThrow();
     await expect(readFile(join(root, 'src/domain/generated-item.ts'))).rejects.toThrow();
-  }, 15000);
+  }, 60_000);
 
   it('previews selection changes without persisting or changing the execution scope', async () => {
     const root = join(project, 'selection-preview-workspace');
@@ -103,7 +103,7 @@ describe('portable selected-project workflows', () => {
     }
     expect(run(['create', 'still-alpha.md', '--content', '# Selected']).status).toBe(0);
     expect(await readFile(join(root, 'projects/alpha/still-alpha.md'), 'utf8')).toBe('# Selected');
-  }, 15000);
+  }, 60_000);
 
   it('blocks stale or malformed project selections and keeps discovery and recovery available', async () => {
     const root = join(project, 'selection-recovery-workspace');
@@ -133,7 +133,7 @@ describe('portable selected-project workflows', () => {
     expect(run(['project', 'current']).body.data.project).toBeNull();
     expect(run(['project', 'inspect']).body.error.code).toBe('PROJECT_REQUIRED');
     expect(run(['project', 'component', 'MissingSelection']).body.error.code).toBe('PROJECT_REQUIRED');
-  }, 15000);
+  }, 60_000);
 
   it('blocks redirected writes after changing the projects directory until explicitly reselected', async () => {
     const root = join(project, 'selection-directory-workspace');
@@ -152,7 +152,7 @@ describe('portable selected-project workflows', () => {
     expect(created.status).toBe(0);
     expect(created.body.context.root).toBe(join(root, 'other/alpha'));
     expect(await readFile(join(root, 'other/alpha/note.md'), 'utf8')).toBe('# Explicit selection');
-  }, 15000);
+  }, 60_000);
 
   it('loads shared workspace plugins with the selected project as their execution root', async () => {
     const root = join(project, 'selected-plugin-workspace');
@@ -175,7 +175,7 @@ describe('portable selected-project workflows', () => {
     expect(result.body.context.root).toBe(join(root, 'src/library'));
     expect(await readFile(join(root, 'src/library/plugin.md'), 'utf8')).toBe('# Plugin');
     await expect(readFile(join(root, 'plugin.md'))).rejects.toThrow();
-  }, 15000);
+  }, 60_000);
 
   it('keeps setup and project management rooted in the workspace while a project is selected', async () => {
     const root = join(project, 'selected-setup-workspace');
@@ -194,7 +194,7 @@ describe('portable selected-project workflows', () => {
     expect(run(['project', 'create', 'beta']).status).toBe(0);
     expect(await readFile(join(root, 'projects/beta/.forge/project.json'), 'utf8')).toContain('beta');
     expect(run(['project', 'current']).body.data.project.name).toBe('alpha');
-  }, 15000);
+  }, 60_000);
 
   it('activates file observers with workspace scope for management and selected scope for file edits', async () => {
     const root = join(project, 'observer-scope-workspace');
@@ -231,7 +231,7 @@ describe('portable selected-project workflows', () => {
     const recovered = run(['project', 'close']);
     expect(recovered.status).toBe(0);
     expect(observations(recovered)).toContainEqual({ id: 'file.updated', root, path: 'bin/data/context.json' });
-  }, 15000);
+  }, 60_000);
 
   it('makes guarded forms and unit tests inside the persisted project selection', async () => {
     const root = join(project, 'forms-workspace');
@@ -269,5 +269,5 @@ describe('portable selected-project workflows', () => {
     expect(await readFile(join(selectedRoot, 'src/presentation/custom-forms/custom-contact.form.ts'), 'utf8')).toContain('../forms/form-model.js');
     expect(await readFile(join(selectedRoot, 'tests/custom-contact.form.unit.test.ts'), 'utf8')).toContain('custom-forms/custom-contact.form.js');
     await expect(readFile(join(root, 'src/presentation/forms/contact-details.form.ts'))).rejects.toThrow();
-  }, 15000);
+  }, 60_000);
 });

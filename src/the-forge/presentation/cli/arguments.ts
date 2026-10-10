@@ -1,7 +1,7 @@
 import { Command, CommanderError, Option } from 'commander';
-import { AppError, ensure } from '../../domain/shared/errors.ts';
+import { forgeError, ensure } from '../../domain/shared/errors.ts';
 export const globalOptions = {
-  root: 'string', lang: 'string', json: 'boolean', 'no-json': 'boolean',
+  root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
   'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
   help: 'boolean', version: 'boolean',
 } as const;
@@ -48,7 +48,7 @@ export function parseArguments(tokens: string[], options: Record<string, 'string
   catch (error) {
     if (!(error instanceof CommanderError)) throw error;
     const code = error.code === 'commander.unknownOption' ? 'UNKNOWN_OPTION' : error.code === 'commander.optionMissingArgument' ? 'MISSING_ARGUMENT' : 'INVALID_ARGUMENT';
-    throw new AppError(code, error.message.replace(/^error: /, ''), 2);
+    throw forgeError(code, error.message.replace(/^error: /, ''));
   }
   const flags: Record<string, string | boolean> = Object.create(null) as Record<string, string | boolean>;
   for (const { key, option } of descriptors) {

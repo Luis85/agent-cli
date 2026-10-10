@@ -2,7 +2,8 @@ import { parseDocument, isMap, isScalar, isAlias, visit, type Document } from 'y
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkFrontmatter from 'remark-frontmatter';
-import { AppError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
 import type { DocumentCodec } from '../../application/workspace/ports.ts';
@@ -10,7 +11,7 @@ import type { DocumentCodec } from '../../application/workspace/ports.ts';
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw new AppError('INVALID_ENCODING', 'Structured documents must be valid UTF-8.', 2); }
+  catch { throw forgeError('INVALID_ENCODING', 'Structured documents and text files must be valid UTF-8.'); }
 }
 function yamlDocument(text: string): Document {
   const document = parseDocument(text, { uniqueKeys: true });
@@ -21,7 +22,7 @@ function yamlDocument(text: string): Document {
   });
   return document;
 }
-function jsonValue(value: unknown, code: string, ancestors = new Set<object>(), depth = 0): void {
+function jsonValue(value: unknown, code: ErrorCode, ancestors = new Set<object>(), depth = 0): void {
   ensure(depth < 100, code, 'Document nesting is too deep.');
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
   if (typeof value === 'number') { ensure(Number.isFinite(value), code, 'Document numbers must be finite.'); return; }
@@ -34,7 +35,7 @@ function jsonValue(value: unknown, code: string, ancestors = new Set<object>(), 
 function yamlValue(document: Document): unknown {
   let value: unknown;
   try { value = document.toJS({ maxAliasCount: 100 }); }
-  catch (error) { throw new AppError('INVALID_YAML', error instanceof Error ? error.message : 'Invalid YAML aliases.', 2); }
+  catch (error) { throw forgeError('INVALID_YAML', error instanceof Error ? error.message : 'Invalid YAML aliases.'); }
   jsonValue(value, 'INVALID_YAML');
   return value;
 }
@@ -81,6 +82,11 @@ function validateBase(value: unknown) {
 export class ObsidianDocuments implements DocumentCodec {
   inspect(path: string, bytes: Uint8Array): unknown {
     const kind = fileKind(path);
+    if (kind === 'text') {
+      // Text extensions are a hint, not a guarantee; undecodable bytes keep the lossless attachment form.
+      try { return { kind, content: textOf(bytes) }; }
+      catch { return { kind: 'attachment', encoding: 'base64', content: Buffer.from(bytes).toString('base64') }; }
+    }
     if (!['markdown', 'canvas', 'base'].includes(kind)) return { kind, encoding: 'base64', content: Buffer.from(bytes).toString('base64') };
     const text = textOf(bytes);
     if (kind === 'markdown') {
@@ -91,13 +97,15 @@ export class ObsidianDocuments implements DocumentCodec {
     let data: unknown;
     if (kind === 'canvas') {
       try { data = JSON.parse(text.replace(/^\uFEFF/, '')); }
-      catch { throw new AppError('INVALID_CANVAS', 'Canvas must contain valid JSON.', 2); }
+      catch { throw forgeError('INVALID_CANVAS', 'Canvas must contain valid JSON.'); }
       jsonValue(data, 'INVALID_CANVAS');
     } else data = yamlValue(yamlDocument(text));
     if (kind === 'canvas') validateCanvas(data); else validateBase(data);
     return { kind, data };
   }
-  validate(path: string, bytes: Uint8Array): void { this.inspect(path, bytes); }
+  validate(path: string, bytes: Uint8Array): void {
+    if (fileKind(path) === 'text') textOf(bytes); else this.inspect(path, bytes);
+  }
   properties(bytes: Uint8Array, changes: Record<string, unknown>): Uint8Array {
     const parts = parseMarkdownParts(textOf(bytes));
     const doc = yamlDocument(parts.yaml || '{}');

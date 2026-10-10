@@ -29,6 +29,7 @@ For users who already know their goal. Each guide states the needed context and 
 | Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
 | Extend the CLI with trusted Node modules | [Enable or disable plugins](how-to/enable-plugins.md) |
 | Maintain native Claude agents, hooks and plugin installations | [Manage Claude Code](how-to/manage-claude.md) |
+| Browse the committed example project, regenerate it and check drift | [Explore the showcase](how-to/explore-the-showcase.md) |
 | Diagnose checks and deliver a verified repository change | [Develop and test](how-to/develop-and-test.md) |
 | Package or upgrade the portable executable | [Build a release](how-to/release.md) |
 
@@ -39,6 +40,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | Reference | Contents |
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
+| [Error catalog](reference/errors.md) | Every error code with its exit status, hint, retryability and recovery details |
 | [CLI language](reference/language.md) | English/German selection, translated guidance and stable machine output |
 | [Configuration](reference/configuration.md) | Defaults, precedence, paths and workspace/project scope |
 | [Component definitions and targets](reference/ui-components.md) | YAML fields, composition, bindings, output artifacts and target dependencies |

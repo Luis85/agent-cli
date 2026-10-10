@@ -3,14 +3,38 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { parseFragment, type DefaultTreeAdapterTypes } from 'parse5';
 import type { LinkValueInput } from 'obsidian-bases-expression';
-import { AppError } from '../../domain/shared/errors.ts';
+import { forgeError } from '../../domain/shared/errors.ts';
 
 interface MarkdownNode { type: string; value?: string; url?: string; identifier?: string; children?: MarkdownNode[]; position?: { start: { offset?: number }; end: { offset?: number } } }
 export interface IndexedLinks { links: LinkValueInput[]; embeds: LinkValueInput[]; tags: string[] }
 const parser = unified().use(remarkParse);
 const external = (target: string) => /^[a-z][a-z\d+.-]*:|^\/\//i.test(target);
 
-export function resolveBaseLink(target: string, source: string, paths: readonly string[], relative = false): string | null {
+/** Vault paths in index order, keyed by exact spelling, lowercase spelling and each lowercase suffix that follows a `/`. */
+export interface BaseLinkIndex { paths: readonly string[]; exact: ReadonlySet<string>; lower: ReadonlyMap<string, number[]>; suffixes: ReadonlyMap<string, number[]> }
+
+export function baseLinkIndex(paths: readonly string[]): BaseLinkIndex {
+  const lower = new Map<string, number[]>(), suffixes = new Map<string, number[]>();
+  const add = (map: Map<string, number[]>, key: string, position: number) => {
+    const positions = map.get(key);
+    if (positions) positions.push(position);
+    else map.set(key, [position]);
+  };
+  for (const [position, path] of paths.entries()) {
+    const folded = path.toLowerCase();
+    add(lower, folded, position);
+    for (let slash = folded.indexOf('/'); slash >= 0; slash = folded.indexOf('/', slash + 1)) add(suffixes, folded.slice(slash + 1), position);
+  }
+  return { paths, exact: new Set(paths), lower, suffixes };
+}
+
+// Paths whose key equals the lowercase spelling with or without `.md`, in vault path order.
+function lookup(index: BaseLinkIndex, keys: ReadonlyMap<string, number[]>, spelling: string): string[] {
+  const positions = new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
+  return [...positions].sort((a, b) => a - b).map(position => index.paths[position]!);
+}
+
+export function resolveBaseLink(target: string, source: string, index: BaseLinkIndex, relative = false): string | null {
   target = target.split('#')[0] ?? '';
   if (!target) return source;
   if (external(target)) return null;
@@ -20,22 +44,21 @@ export function resolveBaseLink(target: string, source: string, paths: readonly 
   const candidates = relative ? [local, target] : [target, local];
   for (const candidate of candidates) {
     for (const spelling of [candidate, `${candidate}.md`]) {
-      const exact = paths.find(path => path === spelling);
-      if (exact) return exact;
+      if (index.exact.has(spelling)) return spelling;
     }
   }
   for (const candidate of candidates) {
-    const found = paths.filter(path => [candidate, `${candidate}.md`].some(spelling => path.toLowerCase() === spelling.toLowerCase()));
+    const found = lookup(index, index.lower, candidate);
     if (found.length === 1) return found[0]!;
-    if (found.length > 1) throw new AppError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${found.join(', ')}`, 2);
+    if (found.length > 1) throw forgeError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${found.join(', ')}`);
   }
   if (relative || target.startsWith('../')) return null;
-  const matches = paths.filter(path => [target, `${target}.md`].some(spelling => path.toLowerCase().endsWith('/' + spelling.toLowerCase())));
-  if (matches.length > 1) throw new AppError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${matches.join(', ')}`, 2);
+  const matches = lookup(index, index.suffixes, target);
+  if (matches.length > 1) throw forgeError('AMBIGUOUS_BASE_LINK', `Link ${target} in ${source} matches multiple files: ${matches.join(', ')}`);
   return matches[0] ?? null;
 }
 
-export function indexBaseLinks(body: string, properties: Record<string, unknown>, source: string, paths: readonly string[]): IndexedLinks {
+export function indexBaseLinks(body: string, properties: Record<string, unknown>, source: string, paths: BaseLinkIndex): IndexedLinks {
   const links: LinkValueInput[] = [], embeds: LinkValueInput[] = [], tags = new Set<string>();
   const add = (target: string, embedded: boolean, relative: boolean) => {
     if (external(target)) return;
@@ -58,6 +81,8 @@ export function indexBaseLinks(body: string, properties: Record<string, unknown>
     }
   };
   const parse = (value: string, inlineTags: boolean) => {
+    // Every link form needs a literal `[` or `<` and inline tags need `#`; skip text that has none.
+    if (!/[[<]/.test(value) && !(inlineTags && value.includes('#'))) return;
     value = value.replace(/%%[\s\S]*?%%/g, comment => comment.replace(/[^\r\n]/g, ' '));
     const tree = parser.parse(value) as MarkdownNode;
     const definitions = new Map<string, string>();

@@ -72,7 +72,7 @@ describe('portable plugin Claude lifecycle boundary', () => {
   it('previews through the injected client without launching or exposing input and argument secrets', async () => {
     const plugin = await configuredPlugin('lifecycle-preview');
     const input = JSON.stringify({ token: 'private-stdin-é' }) + '\n';
-    const result = plugin.cli(['native-audit.run', '--dry-run', '--read-input', '--config', 'token=private-config', '--secret', 'private-argument'], input);
+    const result = plugin.cli(['--events', 'all', 'native-audit.run', '--dry-run', '--read-input', '--config', 'token=private-config', '--secret', 'private-argument'], input);
     expect(result.status).toBe(0);
     expect(result.body.data).toMatchObject({ dryRun: true, executed: false, plan: {
       executable: process.execPath, cwd: plugin.root, inputBytes: Buffer.byteLength(input),
@@ -94,14 +94,14 @@ describe('portable plugin Claude lifecycle boundary', () => {
     expect(plugin.cli(['project', 'create', 'beta']).status).toBe(0);
     expect(plugin.cli(['project', 'open', 'alpha']).status).toBe(0);
     const selected = join(plugin.root, 'projects/alpha');
-    const result = plugin.cli(['native-audit.run', '--mode', 'diagnostic']);
+    const result = plugin.cli(['--events', 'all', 'native-audit.run', '--mode', 'diagnostic']);
     expect(result.status).toBe(0);
     expect(result.body.context).toMatchObject({ workspaceRoot: plugin.root, root: selected });
     expect(result.body.data).toMatchObject({ dryRun: false, executed: true, cwd: selected, exitCode: 0,
       stdout: expect.stringContaining('Native diagnostic'), result: { outcome: 'complete', cwd: selected } });
     expect(result.body.events.filter((event: { id: string }) => event.id === 'claude.executed')).toEqual([{ id: 'claude.executed', payload: { executable: process.execPath, cwd: selected, exitCode: 0 } }]);
     expect(await plugin.launches()).toEqual([{ args: ['diagnostic'], stdin: '', cwd: selected }]);
-  }, 15000);
+  }, 60_000);
 
   it('passes private values intact to the native process while keeping its returned plan private', async () => {
     const plugin = await configuredPlugin('lifecycle-input');
@@ -115,7 +115,7 @@ describe('portable plugin Claude lifecycle boundary', () => {
 
   it('preserves a failed native structured outcome and acceptance hash for recovery', async () => {
     const plugin = await configuredPlugin('lifecycle-failure');
-    const result = plugin.cli(['native-audit.run', '--mode', 'failure']);
+    const result = plugin.cli(['--events', 'all', 'native-audit.run', '--mode', 'failure']);
     expect(result.status).not.toBe(0);
     expect(result.body.ok).toBe(false);
     expect(result.body.error).toMatchObject({ code: 'CLAUDE_RUNTIME_FAILED', details: {

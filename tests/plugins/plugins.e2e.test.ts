@@ -22,7 +22,7 @@ it('loads runtime plugins, generators, skills and event subscriptions from a por
     const pluginConfig = join(project, 'bin/config.json');
     await writeFile(pluginConfig, JSON.stringify({ plugins: { enabled: ['quality'] } }));
     const args: string[] = [];
-    const check = cli([...args, 'quality.check', '--label', 'ready']);
+    const check = cli([...args, 'quality.check', '--label', 'ready', '--events', 'all']);
     expect(check.status).toBe(0); expect(check.body.data.label).toBe('ready');
     expect(check.body.events.filter((event: { id: string }) => event.id === 'quality.checked')).toEqual([{ id: 'quality.checked', payload: 'ready' }]);
     expect(check.body.warnings).toContain('cleaned up');

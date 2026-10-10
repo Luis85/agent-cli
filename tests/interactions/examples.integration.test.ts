@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { MarkdownUiDefinitions } from '../../src/the-forge/infrastructure/ui/definitions.ts';
 import { MarkdownInteractionDefinitions } from '../../src/the-forge/infrastructure/interactions/definitions.ts';
 import { validateUiLibrary } from '../../src/the-forge/domain/ui/library.ts';
@@ -11,7 +10,8 @@ it('keeps the interactive-form tutorial examples schema-valid and mutually compa
   const directory = 'docs/examples/interactions/definitions';
   const codec = new MarkdownInteractionDefinitions();
   const interactions = await Promise.all((await readdir(directory)).sort().map(async name => {
-    const path = join(directory, name);
+    // Definition source paths are vault paths, which are POSIX on every platform.
+    const path = `${directory}/${name}`;
     return codec.parse(await readFile(path), path);
   }));
   expect(() => validateUiLibrary([component], interactions)).not.toThrow();

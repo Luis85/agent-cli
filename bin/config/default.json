@@ -19,7 +19,8 @@
   "settings": {
     "language": "en",
     "json": false,
-    "dryRun": false
+    "dryRun": false,
+    "events": "changes"
   },
   "templates": {
     "dateFormat": "YYYY-MM-DD",
