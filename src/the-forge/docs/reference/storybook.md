@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-This reference describes generated CSF modules and their native extension API. It assumes an existing component library and a consuming project configured for its chosen Storybook renderer. See [your first UI](../tutorials/first-ui.md) for the sample dashboard used below.
+This reference describes generated CSF modules and their native extension API. `make stories` and `make ui --stories` belong to the bundled `ui` core plugin; the default story folder is `plugins.settings.ui.stories` (`stories`), relative to the output project. It assumes an existing component library and a consuming project configured for its chosen Storybook renderer. See [your first UI](../tutorials/first-ui.md) for the sample dashboard used below.
 
 
 `make ui <id> --stories` writes UI and stories in the same planned batch. `make stories <id>` writes only stories, using `--out` as the location of previously generated UI and `--stories-out` as the story destination:

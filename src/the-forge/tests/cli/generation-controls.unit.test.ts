@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generationOutputPath } from '../../src/presentation/generation/controls.ts';
-import { generationControls } from '../../src/application/generation/controls.ts';
+import { generationControls, generationOutputPath } from '../../src/application/generation/controls.ts';
 import type { FileSnapshot } from '../../src/domain/documents/file.ts';
 
 const snapshot = (content: string): FileSnapshot => ({ path: 'review.json', bytes: new TextEncoder().encode(content), revision: 'a'.repeat(64) });

@@ -15,9 +15,7 @@ import type { CommitObserver } from './application/workspace/ports.ts';
 import { Registry, type CommandContext } from './application/plugins/registry.ts';
 import { ProjectService } from './application/projects/projects.ts';
 import { SetupService } from './application/workspace/setup.ts';
-import { UiLibrary } from './application/ui/library.ts';
 import { DataSourceLibrary } from './application/data-sources/library.ts';
-import { InteractionLibrary } from './application/interactions/library.ts';
 import { TemplateInstaller } from './application/templates/templates.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
@@ -35,6 +33,7 @@ import { searchPlugin } from './plugins/search/plugin.ts';
 import { linksPlugin } from './plugins/links/plugin.ts';
 import { agentsPlugin } from './plugins/agents/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
+import { uiPlugin } from './plugins/ui/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
@@ -43,13 +42,8 @@ import { workflowTemplates } from './infrastructure/templates/workflows.ts';
 import { projectScaffold, componentScaffold } from './infrastructure/projects/scaffolds.ts';
 import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
 import { generators } from './infrastructure/generation/generators.ts';
-import { MarkdownUiDefinitions } from './infrastructure/ui/definitions.ts';
-import { standardUiCatalog } from './infrastructure/ui/catalog.ts';
-import { componentArtifact, renderUiComponents } from './infrastructure/ui/renderers.ts';
-import { renderUiStories } from './infrastructure/ui/stories.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/data-sources/definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/data-sources/generator.ts';
-import { MarkdownInteractionDefinitions } from './infrastructure/interactions/definitions.ts';
 import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude/agents.ts';
 import { claudeTarget } from './infrastructure/claude/target.ts';
 import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
@@ -64,7 +58,7 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, uiPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -107,15 +101,7 @@ async function run(): Promise<void> {
         loaded, files, templates: new MarkdownTemplates(),
         get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
-        get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
         get workflows() { return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer); },
-        get uiLibrary() { return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
-          componentPaths: (definitions, options) => definitions.map(definition => `${options.outputDirectory}/${componentArtifact(definition, options.framework).fileName}`),
-          generate: (definitions, options) => [
-            ...(options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory, options.interactions)),
-            ...(options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory!) : []),
-          ],
-        }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config.paths.interactions); },
         installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
         setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
         configSections: () => registry.settings.sections(),

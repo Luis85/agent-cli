@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { interactionTriggerEvents } from '../../src/domain/interactions/definition.ts';
-import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
+import { interactionTriggerEvents } from '../../src/plugins/ui/domain/interactions/definition.ts';
+import { MarkdownInteractionDefinitions } from '../../src/plugins/ui/infrastructure/interactions/definitions.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
-const codec = new MarkdownInteractionDefinitions();
+const codec = new MarkdownInteractionDefinitions(new ObsidianDocuments());
 const base = { schemaVersion: 1, id: 'toggle-expanded', event: 'click', actions: [{ type: 'toggle-state', state: 'expanded' }] };
 const parse = (patch: Record<string, unknown> = {}) => codec.parse(new TextEncoder().encode(`---\n${stringify({ ...base, ...patch })}---\n# Interaction\n\nKeep **Markdown**, {{state.expanded}} and examples intact.\n`), 'interactions/toggle-expanded.md');
 

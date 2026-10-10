@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { componentDependencies, selectUiComponents, validateUiLibrary } from '../../src/domain/ui/library.ts';
+import { componentDependencies, selectUiComponents, validateUiLibrary } from '../../src/plugins/ui/domain/components/library.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import { standardUiCatalog } from '../../src/infrastructure/ui/catalog.ts';
+import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
+import { standardUiCatalog } from '../../src/plugins/ui/infrastructure/components/catalog.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
-const codec = new MarkdownUiDefinitions();
+const codec = new MarkdownUiDefinitions(new ObsidianDocuments());
 const source = (id: string, fields: Record<string, unknown> = {}, body = '# Description\n\nKeep **Markdown** and {{prose}} intact.\n') => encodeText(`---\n${stringify({ schemaVersion: 1, id, root: { tag: 'div', children: [{ slot: 'children' }] }, ...fields })}---\n${body}`);
 const definition = (id: string, fields: Record<string, unknown> = {}) => codec.parse(source(id, fields), `library/${id}.md`);
 

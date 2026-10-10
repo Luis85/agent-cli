@@ -3,14 +3,14 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { UiLibrary, type UiRenderer } from '../../src/application/ui/library.ts';
+import { UiLibrary, type UiRenderer } from '../../src/plugins/ui/application/components/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import type { UiDefinition } from '../../src/domain/ui/definition.ts';
-import type { InteractionDefinition } from '../../src/domain/interactions/definition.ts';
+import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
+import type { UiDefinition } from '../../src/plugins/ui/domain/components/definition.ts';
+import type { InteractionDefinition } from '../../src/plugins/ui/domain/interactions/definition.ts';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -20,7 +20,7 @@ const child: UiDefinition = { schemaVersion: 1, id: 'child', props: {}, state: {
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'forge-interaction-graph-')); roots.push(root);
   const workspace = new Workspace(await NodeFiles.at(root), new ObsidianDocuments(), new EventBus(new NodeEventScope()), false);
-  const codec = new MarkdownUiDefinitions();
+  const codec = new MarkdownUiDefinitions(new ObsidianDocuments());
   const source = { list: vi.fn(async (_directory: string) => [toggle, { ...toggle, id: 'unused' }]) };
   const generate = vi.fn<UiRenderer['generate']>(() => [{ path: 'generated/parent.js', bytes: new TextEncoder().encode('// generated\n') }]);
   const library = new UiLibrary(workspace, codec, [], { generate }, source, 'shared/interactions');

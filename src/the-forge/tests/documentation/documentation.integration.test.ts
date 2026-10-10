@@ -4,13 +4,14 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { distribution, workspaceRoot } from '../support/workspace.ts';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import { validateUiLibrary } from '../../src/domain/ui/library.ts';
-import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
-import { renderUiStories } from '../../src/infrastructure/ui/stories.ts';
-import { uiFrameworks } from '../../src/domain/ui/definition.ts';
+import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
+import { validateUiLibrary } from '../../src/plugins/ui/domain/components/library.ts';
+import { renderUiComponents } from '../../src/plugins/ui/infrastructure/components/renderers.ts';
+import { renderUiStories } from '../../src/plugins/ui/infrastructure/components/stories.ts';
+import { uiFrameworks } from '../../src/plugins/ui/domain/components/definition.ts';
 import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
 import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
 async function markdownFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
@@ -52,7 +53,7 @@ it('keeps Diátaxis, distributed skills, and worked-example navigation connected
 });
 
 it('keeps the worked UI and data-source documents valid and deterministically generatable', async () => {
-  const codec = new MarkdownUiDefinitions();
+  const codec = new MarkdownUiDefinitions(new ObsidianDocuments());
   const definitions = await Promise.all((await markdownFiles('docs/examples/idea-to-production/components')).map(async path => codec.parse(await readFile(path), path)));
   validateUiLibrary(definitions);
   for (const framework of uiFrameworks) {

@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
-import { isSafeNavigationUrl, type InteractionDefinition } from '../../src/domain/interactions/definition.ts';
-import type { UiDefinition } from '../../src/domain/ui/definition.ts';
-import { validateUiLibrary } from '../../src/domain/ui/library.ts';
-import { componentInteractionIds } from '../../src/domain/ui/interactions.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
+import { isSafeNavigationUrl, type InteractionDefinition } from '../../src/plugins/ui/domain/interactions/definition.ts';
+import type { UiDefinition } from '../../src/plugins/ui/domain/components/definition.ts';
+import { validateUiLibrary } from '../../src/plugins/ui/domain/components/library.ts';
+import { componentInteractionIds } from '../../src/plugins/ui/domain/components/interactions.ts';
+import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
 const component = (overrides: Partial<UiDefinition> = {}): UiDefinition => ({
   schemaVersion: 1, id: 'toggle', sourcePath: 'components/toggle.md', description: '# Toggle\n', props: {},
@@ -16,7 +17,7 @@ const interaction = (overrides: Partial<InteractionDefinition> = {}): Interactio
 });
 
 it('round trips typed state and attachments without adding defaults to old definitions', () => {
-  const codec = new MarkdownUiDefinitions(), original = component();
+  const codec = new MarkdownUiDefinitions(new ObsidianDocuments()), original = component();
   expect(codec.parse(codec.serialize(original), original.sourcePath)).toEqual(original);
   expect(() => validateUiLibrary([original], [interaction()])).not.toThrow();
   expect(() => codec.serialize(component({ state: { expanded: { type: 'boolean', default: 'false' } } }))).toThrow(expect.objectContaining({ code: 'INVALID_UI' }));

@@ -2,19 +2,11 @@
   "schemaVersion": 1,
   "paths": {
     "projects": "src",
-    "components": "components",
-    "ui": "src/ui",
-    "stories": "stories",
-    "componentImports": "imports/components",
-    "componentExports": "exports/components",
     "dataSources": "data-sources",
     "dataGenerated": "src/data-sources",
     "dataFixtures": "test-data",
     "dataImports": "imports/data-sources",
-    "dataExports": "exports/data-sources",
-    "interactions": "interactions",
-    "interactionImports": "imports/interactions",
-    "interactionExports": "exports/interactions"
+    "dataExports": "exports/data-sources"
   },
   "settings": {
     "json": false,
@@ -26,8 +18,5 @@
   },
   "plugins": {
     "enabled": []
-  },
-  "ui": {
-    "framework": "html"
   }
 }

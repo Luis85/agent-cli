@@ -11,14 +11,6 @@ The shipped configuration is:
   "schemaVersion": 1,
   "paths": {
     "projects": "projects",
-    "components": "components",
-    "interactions": "interactions",
-    "interactionImports": "imports/interactions",
-    "interactionExports": "exports/interactions",
-    "ui": "src/ui",
-    "stories": "stories",
-    "componentImports": "imports/components",
-    "componentExports": "exports/components",
     "dataSources": "data-sources",
     "dataGenerated": "src/data-sources",
     "dataFixtures": "test-data",
@@ -39,9 +31,6 @@ The shipped configuration is:
     "enabled": [],
     "disabled": [],
     "settings": {}
-  },
-  "ui": {
-    "framework": "html"
   }
 }
 ```
@@ -56,19 +45,21 @@ The workspace layout is fixed: `bin/forge.js` is the executable, `bin/config.jso
 
 Command-line values take precedence: `--root` selects the workspace and `--json` / `--no-json`, `--dry-run` / `--no-dry-run` and `--events` override settings. `settings.events` (`none`, `changes` or `all`, default `changes`) selects which events the response envelope carries; see [output and errors](cli.md#output-and-errors). It never changes listener delivery or replay. `config` reports the effective level. Put routing options `--root` and `--no-plugins` before the command, for example `node bin/forge.js --root /path/to/workspace setup --dry-run`. Formatting, dry-run and `--lang en|de` flags may appear on either side of the command. `settings.language` defaults to `en`; `--lang` overrides it for the invocation. `config` reports the effective language, and `setup --lang de` stores it when creating a missing configuration. Existing configuration files are preserved. See [language selection and diagnostic scope](language.md). Do not pass `--json=false`; use the negated flag. `settings.json` controls compact formatting, not whether results use JSON.
 
-UI generation adds configurable paths without changing the fixed `bin` layout:
+UI generation belongs to the `ui` core plugin, whose section `plugins.settings.ui` holds its settings without changing the fixed `bin` layout. Folders must be contained relative paths; a trailing slash is dropped. The former kernel keys `paths.components`, `paths.ui`, `paths.stories`, `paths.componentImports`, `paths.componentExports`, `paths.interactions*` and `ui.framework` are rejected with `INVALID_CONFIG`; move them into this section:
 
-| Setting | Default | Scope and override |
+| Setting in `plugins.settings.ui` | Default | Scope and override |
 | --- | --- | --- |
-| `paths.components` | `components` | Workspace component library; `--library` |
-| `paths.interactions` | `interactions` | Workspace interaction library; management `--library`, UI/component `--interactions-library` |
-| `paths.interactionImports` | `imports/interactions` | Workspace import source; `interactions import --from` |
-| `paths.interactionExports` | `exports/interactions` | Workspace export destination; `interactions export --out` |
-| `paths.ui` | `src/ui` | Active project or workspace; `make ui/stories --out` |
-| `paths.stories` | `stories` | Active project or workspace; `--stories-out` |
-| `paths.componentImports` | `imports/components` | Workspace import source; `components import --from` |
-| `paths.componentExports` | `exports/components` | Workspace export destination; `components export --out` |
-| `ui.framework` | `html` | `html`, `htmx`, `vanilla`, `vue`, `svelte`, `react` or `angular`; `--framework` |
+| `framework` | `html` | `html`, `htmx`, `vanilla`, `vue`, `svelte`, `react` or `angular`; `--framework` |
+| `components` | `components` | Workspace component library; `--library` |
+| `interactions` | `interactions` | Workspace interaction library; management `--library`, UI/component `--interactions-library` |
+| `interactionImports` | `imports/interactions` | Workspace import source; `interactions import --from` |
+| `interactionExports` | `exports/interactions` | Workspace export destination; `interactions export --out` |
+| `output` | `src/ui` | Active project or workspace; `make ui/stories --out` |
+| `stories` | `stories` | Active project or workspace; `--stories-out` |
+| `componentImports` | `imports/components` | Workspace import source; `components import --from` |
+| `componentExports` | `exports/components` | Workspace export destination; `components export --out` |
+
+For example, `{"plugins": {"settings": {"ui": {"framework": "react", "output": "src/components"}}}}` makes React the default target and writes generated components to `src/components` of the selected project. An invalid section makes the `ui` plugin unavailable with a warning: `components`, `interactions`, `make ui` and `make stories` then fail with `PLUGIN_UNAVAILABLE` and list the problems in `error.details.issues`.
 
 `components` commands always manage the workspace library. UI and story output follows the selected project. `make ui/stories --project <id>` selects a project for that invocation without changing the persisted selection; otherwise the open project is used. Both default directories and explicit `--out`/`--stories-out` paths are relative to that selected project, or to the workspace when none is selected. The library and Storybook extension module paths remain workspace-relative. Inspect the response's `context` to verify the destination. See [UI components](ui-components.md).
 
@@ -78,7 +69,7 @@ The `plugins` section has three keys:
 | --- | --- | --- |
 | `plugins.enabled` | `[]` | User plugin ids that load from `bin/plugins`, in load order. Installing a directory does not enable it |
 | `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; other ids are ignored with a warning. A plugin that requires a service of a disabled core plugin becomes unavailable (`backlog` without `bases`) |
-| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), and `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog). See [config sections](plugins.md#config-sections) |
+| `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), and `ui` holds the UI framework and folders described above. See [config sections](plugins.md#config-sections) |
 
 Use `node bin/forge.js --no-plugins <command>` to skip user plugins for one invocation, including recovery from a broken plugin; core plugins still load. `node bin/forge.js plugins` lists every plugin with its state.
 

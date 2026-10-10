@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { UiDefinition, UiFramework } from '../../src/domain/ui/definition.ts';
-import { uiFrameworks } from '../../src/domain/ui/definition.ts';
-import { componentArtifact, renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
+import type { UiDefinition, UiFramework } from '../../src/plugins/ui/domain/components/definition.ts';
+import { uiFrameworks } from '../../src/plugins/ui/domain/components/definition.ts';
+import { componentArtifact, renderUiComponents } from '../../src/plugins/ui/infrastructure/components/renderers.ts';
 
 const button: UiDefinition = {
   schemaVersion: 1, id: 'action-button', description: 'A button', sourcePath: 'components/action-button.md',

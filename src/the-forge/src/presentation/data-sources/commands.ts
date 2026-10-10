@@ -1,11 +1,10 @@
 import { ensure } from '../../domain/shared/errors.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import type { WorkflowServices } from '../cli/services.ts';
-import { generationOutputPath } from '../generation/controls.ts';
-import { generationControls } from '../../application/generation/controls.ts';
+import { generationControls, generationOutputPath } from '../../application/generation/controls.ts';
 import { arity, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
-import { libraryMetadata, libraryOptions } from '../cli/library-metadata.ts';
+import { libraryMetadata, libraryOptions } from '../../application/plugins/library-commands.ts';
 
 export const dataSourceGenerationOptions = { 'test-data-out': option.string('Test-data output directory; defaults to paths.dataFixtures.') };
 

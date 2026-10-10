@@ -1,5 +1,5 @@
-import type { InteractionDefinition } from '../../src/domain/interactions/definition.ts';
-import type { UiDefinition } from '../../src/domain/ui/definition.ts';
+import type { InteractionDefinition } from '../../src/plugins/ui/domain/interactions/definition.ts';
+import type { UiDefinition } from '../../src/plugins/ui/domain/components/definition.ts';
 
 export const formInteractions: InteractionDefinition[] = [
   { schemaVersion: 1, id: 'save', event: 'submit', preventDefault: true, actions: [{ type: 'save-form', key: 'forge-form' }], description: 'Save form.', sourcePath: 'save.md' },
