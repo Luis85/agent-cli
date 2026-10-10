@@ -87,6 +87,6 @@ export const relativePathSetting = (value: unknown): string => String(value).rep
 export function relativePathIssues(pluginId: string, settings: Readonly<Record<string, unknown>>, keys: readonly string[]): string[] {
   return keys.flatMap(key => {
     try { vaultPath(relativePathSetting(settings[key])); return []; }
-    catch { return [`plugins.settings.${pluginId}.${key}: Must be a contained workspace-relative path.`]; }
+    catch { return [`plugins.settings.${pluginId}.${key}: must be a contained workspace-relative path`]; }
   });
 }

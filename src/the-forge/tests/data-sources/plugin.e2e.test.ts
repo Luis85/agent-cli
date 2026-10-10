@@ -28,7 +28,7 @@ describe('the data-sources core plugin', () => {
     await configure({ plugins: { settings: { 'data-sources': { fixtures: '../escape' } } } });
     try {
       const failed = fixture.cli(['make', 'data-source', 'requests']);
-      expect(failed.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { generator: 'data-source', plugin: 'data-sources', issues: ['plugins.settings.data-sources.fixtures: Must be a contained workspace-relative path.'] } });
+      expect(failed.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { generator: 'data-source', plugin: 'data-sources', issues: ['plugins.settings.data-sources.fixtures: must be a contained workspace-relative path'] } });
       expect(fixture.cli(['data-sources']).body.error.code).toBe('PLUGIN_UNAVAILABLE');
       // The ui plugin does not depend on data-sources and keeps working.
       expect(fixture.cli(['components']).status).toBe(0);

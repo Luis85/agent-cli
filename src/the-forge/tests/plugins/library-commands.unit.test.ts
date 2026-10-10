@@ -25,8 +25,8 @@ describe('definition library command helpers for core plugins', () => {
     expect(relativePathSetting('library//')).toBe('library');
     expect(relativePathIssues('things', { library: 'library/', output: 'src/things' }, ['library', 'output'])).toEqual([]);
     expect(relativePathIssues('things', { library: '../escape', output: '/absolute' }, ['library', 'output'])).toEqual([
-      'plugins.settings.things.library: Must be a contained workspace-relative path.',
-      'plugins.settings.things.output: Must be a contained workspace-relative path.',
+      'plugins.settings.things.library: must be a contained workspace-relative path',
+      'plugins.settings.things.output: must be a contained workspace-relative path',
     ]);
   });
 });

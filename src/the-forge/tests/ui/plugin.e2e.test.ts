@@ -37,7 +37,10 @@ describe('the ui core plugin', () => {
       expect(listed.body.error.details.issues).toEqual([expect.stringContaining('plugins.settings.ui.framework')]);
       expect(fixture.cli(['make', 'ui', 'page']).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { generator: 'ui', plugin: 'ui' } });
       await configure({ plugins: { settings: { ui: { componentExports: '../escape' } } } });
-      expect(fixture.cli(['interactions']).body.error.details.issues).toEqual(['plugins.settings.ui.componentExports: Must be a contained workspace-relative path.']);
+      expect(fixture.cli(['interactions']).body.error.details).toMatchObject({
+        issues: ['plugins.settings.ui.componentExports: must be a contained workspace-relative path'],
+        reason: 'plugins.settings.ui is invalid: plugins.settings.ui.componentExports: must be a contained workspace-relative path.',
+      });
       // Former kernel keys are rejected; the settings moved without aliases.
       await configure({ paths: { components: 'library' } });
       expect(fixture.cli(['components']).body.error.code).toBe('INVALID_CONFIG');
