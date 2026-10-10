@@ -65,6 +65,17 @@ describe('moving notes with link updates', () => {
     expect(Object.values(cache.unresolvedLinks).every(links => Object.keys(links).length === 0)).toBe(true);
   });
 
+  it('rewrites quoted frontmatter, table-escaped and nested links without conflicts', async () => {
+    await writeVault(root, {
+      'Note.md': 'note', 'F/a.png': 'png',
+      'n.md': "---\nup: '[[Note]]'\nsame: \"[[Note]]\"\n---\n| x | [[Note\\|alias]] |\n\n[about [[Note]]](Note.md) [![t](F/a.png)](Note.md)\n",
+    });
+    const { app } = await vaultScope(root);
+    const result = await app.fileManager.rename('Note.md', "Bob's Note");
+    expect(result.links).toEqual({ updated: 6, files: 1, unrewritten: [] });
+    expect(await text('n.md')).toBe("---\nup: '[[Bob''s Note]]'\nsame: \"[[Bob's Note]]\"\n---\n| x | [[Bob's Note\\|alias]] |\n\n[about [[Bob's Note]]](Bob's%20Note.md) [![t](F/a.png)](Bob's%20Note.md)\n");
+  });
+
   it('refuses protected paths and invalid renames', async () => {
     await writeVault(root, { 'bin/forge.js': 'x', '.obsidian/app.json': '{}', 'a.md': 'A' });
     const { app } = await vaultScope(root);
@@ -96,6 +107,14 @@ describe('deleting files and folders', () => {
     expect(deleted).toMatchObject({ permanent: false, trashPath: '.trash/notes/Plan 1.md', deleted: [{ path: 'notes/Plan.md', revision }], brokenLinks: details });
     expect(await text('.trash/notes/Plan 1.md')).toBe(vault['notes/Plan.md']);
     expect(records()).toEqual([['vault.delete', 'notes/Plan.md'], ['metadataCache.deleted', 'notes/Plan.md'], ['metadataCache.resolve', 'Board.canvas'], ['metadataCache.resolve', 'Index.md'], ['metadataCache.resolved', undefined]]);
+  });
+
+  it('counts table-escaped wikilinks as links into a deleted note', async () => {
+    await writeVault(root, { 'Note.md': 'note', 'Table.md': '| a |\n| --- |\n| [[Note\\|alias]] |\n' });
+    const { app } = await vaultScope(root);
+    await expect(app.fileManager.delete('Note.md')).rejects.toMatchObject({
+      code: 'HAS_BACKLINKS', details: { backlinks: [{ source: 'Table.md', target: 'Note.md', kind: 'link', line: 3, original: '[[Note\\|alias]]' }] },
+    });
   });
 
   it('deletes folders recursively, checking only links from outside them', async () => {

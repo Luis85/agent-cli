@@ -35,10 +35,18 @@ export interface CommittedBatch { renames: readonly (FileRename & { kind: 'file'
  * relative to the committing workspace. A failure is reported as a warning and cannot undo the commit.
  */
 export interface CommitObserver { committed(batch: CommittedBatch): Promise<void> }
+/** Replaces `original` by `text` inside the YAML string value at the dotted `key` (list items by index), as frontmatter links name it. */
+export interface YamlStringReplacement { key: string; original: string; text: string }
 export interface DocumentCodec {
   inspect(path: string, bytes: Uint8Array): unknown;
   validate(path: string, bytes: Uint8Array): void;
   /** Sets each top-level frontmatter property in `changes` and deletes each key in `remove`, preserving the body and YAML formatting. */
   properties(bytes: Uint8Array, changes: Record<string, unknown>, remove?: readonly string[]): Uint8Array;
   patch(path: string, bytes: Uint8Array, pointer: string, value: unknown): Uint8Array;
+  /**
+   * Applies replacements inside the string values of a YAML text in one pass per value, so no replacement rewrites
+   * another's output. A changed value keeps its quoting style when it fits, otherwise it becomes double-quoted; all
+   * other bytes stay. `applied` lists the indexes of the replacements made.
+   */
+  replaceInYamlStrings(yaml: string, replacements: readonly YamlStringReplacement[]): { yaml: string; applied: number[] };
 }

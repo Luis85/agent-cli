@@ -4,14 +4,15 @@ import {
   applyEdits, attributeDestination, definitionDestination, markdownDestination, rewriteDestination, rewriteWikilink, vaultLinkpath, type Destination, type TextEdit,
 } from '../../domain/metadata/link-text.ts';
 import type { MetadataCache } from '../metadata/ports.ts';
+import type { DocumentCodec, YamlStringReplacement } from '../workspace/ports.ts';
 
 /** A reference the planner could not rewrite safely, such as a frontmatter value whose YAML spelling differs from its link text. */
 export interface UnrewrittenLink { source: string; original: string; reason: string }
-/** One file's planned link updates: body edits by offset, frontmatter text replacements, and Canvas file node values by node id. */
+/** One file's planned link updates: body edits by offset, link replacements in frontmatter values by key, and Canvas file node values by node id. */
 export interface FileLinkPlan {
   source: string;
   edits: TextEdit[];
-  frontmatter: Array<{ original: string; text: string }>;
+  frontmatter: YamlStringReplacement[];
   canvas: Array<{ node: string; original: string; file: string }>;
 }
 export interface LinkPlan { files: FileLinkPlan[]; references: number; unrewritten: UnrewrittenLink[] }
@@ -83,7 +84,7 @@ function candidates(metadata: CachedMetadata, plan: FileLinkPlan): Candidate[] {
   }
   for (const item of metadata.frontmatterLinks ?? []) {
     result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: text => {
-      if (!plan.frontmatter.some(entry => entry.original === item.original)) plan.frontmatter.push({ original: item.original, text });
+      if (!plan.frontmatter.some(entry => entry.key === item.key && entry.original === item.original)) plan.frontmatter.push({ key: item.key, original: item.original, text });
     } });
   }
   for (const item of metadata.canvasLinks ?? []) {
@@ -104,24 +105,32 @@ function replacement(candidate: Candidate, index: LinkIndex, oldSource: string, 
 
 /**
  * Applies one file's planned updates to its decoded text (BOM included, as cache offsets count it). Body edits
- * replace exact offsets; frontmatter links are replaced literally inside the frontmatter block; Canvas file nodes
- * are replaced in their JSON string values, falling back to re-serializing the Canvas. Returns undefined when the
- * text no longer matches the cache, and lists frontmatter links whose YAML spelling was not found.
+ * replace exact offsets; frontmatter links are replaced inside their YAML values through `replaceInYaml`, which
+ * re-serializes each changed value in its own quoting style; Canvas file nodes are replaced in their JSON string
+ * values, falling back to re-serializing the Canvas. Returns undefined when the body no longer matches the cache,
+ * and lists the links it could not rewrite.
  */
-export function rewriteText(plan: FileLinkPlan, text: string, metadata: CachedMetadata): { text: string; unrewritten: UnrewrittenLink[] } | undefined {
+export function rewriteText(plan: FileLinkPlan, text: string, metadata: CachedMetadata, replaceInYaml: DocumentCodec['replaceInYamlStrings']): { text: string; unrewritten: UnrewrittenLink[] } | undefined {
   const unrewritten: UnrewrittenLink[] = [];
   if (plan.canvas.length > 0) return { text: rewriteCanvas(text, plan.canvas), unrewritten };
-  let result = applyEdits(text, plan.edits);
-  if (result === undefined) return undefined;
-  const block = metadata.frontmatterPosition;
+  const edited = applyEdits(text, plan.edits);
+  if (edited === undefined) return undefined;
+  for (const edit of edited.skipped) unrewritten.push({ source: plan.source, original: edit.original, reason: 'It overlaps another rewritten reference it is nested in; edit it by hand.' });
+  let result = edited.text;
+  const applied = new Set<number>(), block = metadata.frontmatterPosition;
   if (block && plan.frontmatter.length > 0) {
-    let yaml = result.slice(block.start.offset, block.end.offset);
-    for (const { original, text: replacement } of plan.frontmatter) {
-      if (yaml.includes(original)) yaml = yaml.split(original).join(replacement);
-      else unrewritten.push({ source: plan.source, original, reason: 'The frontmatter spells this link differently, for example with YAML escapes; edit it with properties.' });
-    }
-    result = result.slice(0, block.start.offset) + yaml + result.slice(block.end.offset);
+    // The YAML lies between the opening `---` line and the closing line of the block.
+    const frontmatter = result.slice(block.start.offset, block.end.offset);
+    const opening = /\r\n|\n|\r/.exec(frontmatter);
+    const start = block.start.offset + (opening ? opening.index + opening[0].length : frontmatter.length);
+    const end = block.start.offset + Math.max(frontmatter.lastIndexOf('\n'), frontmatter.lastIndexOf('\r')) + 1;
+    const replaced = replaceInYaml(result.slice(start, Math.max(start, end)), plan.frontmatter);
+    result = result.slice(0, start) + replaced.yaml + result.slice(Math.max(start, end));
+    for (const index of replaced.applied) applied.add(index);
   }
+  plan.frontmatter.forEach((entry, index) => {
+    if (!applied.has(index)) unrewritten.push({ source: plan.source, original: entry.original, reason: 'The frontmatter value no longer holds this link; read the note again or edit it with properties.' });
+  });
   return { text: result, unrewritten };
 }
 

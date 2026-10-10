@@ -6,7 +6,8 @@ import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
-import type { DocumentCodec } from '../../application/workspace/ports.ts';
+import type { DocumentCodec, YamlStringReplacement } from '../../application/workspace/ports.ts';
+import { replaceInYamlStrings } from './yaml-strings.ts';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 function textOf(bytes: Uint8Array): string {
@@ -156,6 +157,9 @@ export class ObsidianDocuments implements DocumentCodec {
       doc.setIn(pathKeys, value); result = styledText(doc.toString(), textOf(bytes));
     } else result = styledText(JSON.stringify(parsed.data, null, 2) + '\n', textOf(bytes));
     this.validate(path, result); return result;
+  }
+  replaceInYamlStrings(yaml: string, replacements: readonly YamlStringReplacement[]): { yaml: string; applied: number[] } {
+    return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
   }
 }
 export const encodeText = encode;

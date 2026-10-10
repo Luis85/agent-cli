@@ -119,14 +119,32 @@ export function rewriteDestination(destination: Destination, oldSource: string, 
   return (encode ? encodeURI(path) : path) + fragment;
 }
 
-/** Applies non-overlapping edits after checking that each still replaces its original text. */
-export function applyEdits(text: string, edits: readonly TextEdit[]): string | undefined {
-  const ordered = [...edits].sort((a, b) => b.start - a.start);
-  let result = text, limit = Infinity;
-  for (const edit of ordered) {
-    if (edit.end > limit || text.slice(edit.start, edit.end) !== edit.original) return undefined;
-    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
-    limit = edit.start;
+/** The edit narrowed to the characters it changes: the text its original and new text share at both ends stays. */
+function narrowed(edit: TextEdit): TextEdit {
+  const { original, text } = edit, shortest = Math.min(original.length, text.length);
+  let prefix = 0, suffix = 0;
+  while (prefix < shortest && original[prefix] === text[prefix]) prefix++;
+  while (suffix < shortest - prefix && original[original.length - 1 - suffix] === text[text.length - 1 - suffix]) suffix++;
+  return { start: edit.start + prefix, end: edit.end - suffix, original: original.slice(prefix, original.length - suffix), text: text.slice(prefix, text.length - suffix) };
+}
+
+/**
+ * Applies edits after checking that each still replaces its original text; undefined when one does not. Each edit
+ * is narrowed to the characters it changes first, so a reference nested in another one, such as an image inside a
+ * link's text or a wikilink in a link label, is rewritten together with it. An edit whose changed characters still
+ * overlap an applied edit is left out and returned in `skipped`.
+ */
+export function applyEdits(text: string, edits: readonly TextEdit[]): { text: string; skipped: TextEdit[] } | undefined {
+  if (edits.some(edit => text.slice(edit.start, edit.end) !== edit.original)) return undefined;
+  const ordered = edits.map(edit => ({ edit, narrow: narrowed(edit) })).sort((a, b) => b.narrow.start - a.narrow.start || b.narrow.end - a.narrow.end);
+  const skipped: TextEdit[] = [];
+  let result = text, limit = Infinity, last: TextEdit | undefined;
+  for (const { edit, narrow } of ordered) {
+    // The same change listed twice is applied once.
+    if (last && narrow.start === last.start && narrow.end === last.end && narrow.text === last.text) continue;
+    if (narrow.end > limit) { skipped.push(edit); continue; }
+    result = result.slice(0, narrow.start) + narrow.text + result.slice(narrow.end);
+    limit = narrow.start; last = narrow;
   }
-  return result;
+  return { text: result, skipped };
 }
