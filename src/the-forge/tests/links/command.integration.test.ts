@@ -53,9 +53,16 @@ describe('the links command', () => {
     expect((await run(['orphans'])).files).toEqual(['notes/lonely.md']);
   });
 
+  it('rejects malformed root globs when the configuration loads', async () => {
+    await expect(links({ links: { roots: ['index.md', '[z-a]', 'x\\'] } })).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      details: { issues: ['plugins.settings.links.roots[1]: has the reversed class range [z-a].', 'plugins.settings.links.roots[2]: ends with an unescaped backslash.'] },
+    });
+  });
+
   it('validates actions, arguments and options', async () => {
     const run = await links();
-    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['back', 'notes/a.md'], { path: '**' }], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }]] as const) {
+    for (const [args, flags] of [[[], {}], [['sideways'], {}], [['out'], {}], [['out', 'a.md', 'b.md'], {}], [['back', 'notes/a.md'], { path: '**' }], [['orphans', 'x'], {}], [['unresolved'], { path: '{' }], [['orphans'], { path: '[z-a]' }]] as const) {
       await expect(run([...args], { ...flags }), JSON.stringify(args)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
     await expect(run(['out', 'notes/missing.md'])).rejects.toMatchObject({ code: 'NOT_FOUND' });

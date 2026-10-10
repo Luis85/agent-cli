@@ -57,6 +57,6 @@ A note is a Markdown or Canvas file. It is an orphan when no other file links to
 { "plugins": { "settings": { "links": { "roots": ["Home.md", "maps/**"] } } } }
 ```
 
-Roots default to `[]`; an empty string fails with `INVALID_CONFIG`, and a malformed glob with `INVALID_ARGUMENT`. Roots affect only `orphans`.
+Roots default to `[]`; an empty string or a malformed glob, such as the reversed class `[z-a]`, fails with `INVALID_CONFIG` when the configuration loads, naming the root in `error.details.issues`. Roots affect only `orphans`.
 
 A dead end is a parsed note without any reference to another file. Unresolved and ambiguous links count as references, because they are links the author wrote; `links unresolved` reports them. External URLs and links to the note itself (`[[#Heading]]`) do not count. Unparseable notes are never dead ends; they appear in `issues`.

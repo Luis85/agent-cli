@@ -56,7 +56,7 @@ Searching reads files through the repository port: it publishes no `vault.*`, `w
 
 ## Regular-expression safety
 
-JavaScript regular expressions backtrack, and a pattern such as `^(a+)+$` can take exponential time on a long line. Search bounds matching instead of guessing which patterns are dangerous: matching runs inside a `node:vm` timeout whose watchdog interrupts even a running regular expression, and all files of one search share one budget. When the budget is spent, the search fails with `SEARCH_TIMEOUT` (exit 2, `details.timeoutMs`) rather than returning partial results. Reading files does not count against the budget. Patterns are limited to 1,000 characters.
+JavaScript regular expressions backtrack, and a pattern such as `^(a+)+$` can take exponential time on a long line. Search bounds matching instead of guessing which patterns are dangerous: matching runs inside a `node:vm` timeout whose watchdog interrupts even a running regular expression, and path filtering and all files of one search share one budget. When the budget is spent, the search fails with `SEARCH_TIMEOUT` (exit 2, `details.timeoutMs`) rather than returning partial results. Reading files does not count against the budget. Patterns are limited to 1,000 characters.
 
 The budget is `plugins.settings.search.timeoutMs` in `bin/config.json` (default `10000`, 100 to 600000 milliseconds):
 

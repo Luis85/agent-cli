@@ -64,6 +64,11 @@ export interface PluginContributions {
   requires?: string[];
   /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
   settings?: JsonSchema;
+  /**
+   * Checks the schema-valid section (with defaults) beyond what JSON Schema expresses, such as glob syntax. Each
+   * returned issue `<path>: <problem>` makes the section invalid like a schema violation. Runs without I/O.
+   */
+  validateSettings?(settings: Readonly<Record<string, unknown>>): readonly string[];
   strings?: PluginStrings;
   errors?: PluginErrorDefinition[];
   onload?(context: PluginContext): void | Promise<void>;
@@ -126,7 +131,7 @@ export class Registry {
     for (const entry of plugin.errors ?? []) ensure(!this.catalog.error(entry.code), 'DUPLICATE_OR_INVALID_ID', entry.code);
     events.defineAll(plugin.events ?? []);
     this.catalog.add(pluginId, plugin.strings, plugin.errors);
-    if (plugin.settings) this.settings.declare(pluginId, plugin.settings);
+    if (plugin.settings) this.settings.declare(pluginId, plugin.settings, plugin.validateSettings?.bind(plugin));
     for (const command of plugin.commands ?? []) this.commands.set(command.id, this.ownedCommand(plugin, command, events));
     for (const generator of plugin.generators ?? []) this.generators.set(generator.id, this.ownedGenerator(plugin, generator, events));
     for (const skill of plugin.skills ?? []) this.skills.set(skill.id, skill);

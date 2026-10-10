@@ -1,6 +1,8 @@
 import { forgeError, isRecord } from '../../domain/shared/errors.ts';
 import { validateJsonValue, type JsonSchema } from '../../domain/schema/json-schema.ts';
 
+/** A plugin's own check of its schema-valid section; returns `<path>: <problem>` issues. */
+export type SettingsCheck = (settings: Readonly<Record<string, unknown>>) => readonly string[];
 /** One plugin's config section as `config` describes it. */
 export interface SettingsSection { plugin: string; path: string; schema: JsonSchema }
 
@@ -12,9 +14,13 @@ export interface SettingsSection { plugin: string; path: string; schema: JsonSch
  */
 export class PluginSettings {
   private readonly schemas = new Map<string, JsonSchema>();
+  private readonly checks = new Map<string, SettingsCheck>();
   private readonly values = new Map<string, Record<string, unknown>>();
 
-  declare(pluginId: string, schema: JsonSchema): void { this.schemas.set(pluginId, schema); }
+  declare(pluginId: string, schema: JsonSchema, check?: SettingsCheck): void {
+    this.schemas.set(pluginId, schema);
+    if (check) this.checks.set(pluginId, check);
+  }
 
   /** Validates every declared section and returns the effective `plugins.settings` object. INVALID_CONFIG on failure. */
   configure(sections: Readonly<Record<string, unknown>>, loaded: ReadonlySet<string>): Record<string, unknown> {
@@ -25,6 +31,7 @@ export class PluginSettings {
     }
     for (const [pluginId, schema] of this.schemas) {
       const result = validateJsonValue(schema, Object.hasOwn(sections, pluginId) ? sections[pluginId] : {}, `plugins.settings.${pluginId}`);
+      if (result.issues.length === 0 && isRecord(result.value)) result.issues.push(...this.checks.get(pluginId)?.(result.value) ?? []);
       issues.push(...result.issues);
       if (result.issues.length === 0 && isRecord(result.value)) {
         this.values.set(pluginId, result.value);

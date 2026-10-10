@@ -86,4 +86,13 @@ describe('searching vault text files', () => {
     expect(performance.now() - started).toBeLessThan(10_000);
     await expect(search('(', { regex: true })).rejects.toMatchObject({ code: 'INVALID_SEARCH_PATTERN' });
   });
+
+  it('filters paths with an adversarial glob in polynomial time', async () => {
+    await put(`g/${'a'.repeat(200)}.md`, 'plan\n');
+    const started = performance.now();
+    expect((await search('plan', { path: `g/${'*a'.repeat(40)}*c` })).total).toBe(0);
+    expect((await search('plan', { path: `g/${'*a'.repeat(40)}*` })).total).toBe(1);
+    expect(performance.now() - started).toBeLessThan(2000);
+    await expect(search('plan', { path: 'notes/[z-a]' })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+  });
 });

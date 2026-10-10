@@ -4,7 +4,7 @@ import { validateCommandMetadata } from './command-metadata.ts';
 import { PluginCatalog } from './plugin-catalog.ts';
 
 export type PluginOrigin = 'core' | 'user';
-const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload'] as const;
+const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload', 'validateSettings'] as const;
 const lists = ['commands', 'generators', 'events', 'skills'] as const;
 const id = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
 
@@ -36,6 +36,7 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
     ensure(id.test(service), 'DUPLICATE_OR_INVALID_ID', service);
     ensure(origin === 'core' || inNamespace(service), 'PLUGIN_NAMESPACE', `Service ${service} must start with ${pluginId}.`);
   }
+  ensure(plugin.validateSettings === undefined || plugin.settings !== undefined, 'INVALID_PLUGIN', 'validateSettings requires settings.');
   ensure(plugin.settings === undefined || (isRecord(plugin.settings) && plugin.settings.type === 'object' && schemaIssues(plugin.settings).length === 0), 'INVALID_PLUGIN', `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin.settings).join('; ')}`);
   const owned = (key: typeof lists[number]) => ((plugin[key] ?? []) as Array<{ id: string }>).map(item => item.id);
   PluginCatalog.validate(pluginId, plugin.strings, plugin.errors, { commands: owned('commands'), generators: owned('generators'), events: owned('events') }, origin === 'core' ? null : `${pluginId.replaceAll('-', '_').toUpperCase()}_`);

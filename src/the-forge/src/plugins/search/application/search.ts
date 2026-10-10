@@ -57,7 +57,9 @@ export async function searchFiles(sources: SearchSources, query: SearchQuery, pa
   const pager = new Pager<SearchHit>(page, { command: 'search', ...ordering }, hit => [hit.path, hit.line, hit.column]);
   const inPath = query.path === undefined ? () => true : pathGlob(query.path);
   const kinds: readonly string[] = query.kind ? [query.kind] : searchKinds;
-  const candidates = (await sources.files.list()).filter(path => visiblePath(path) && kinds.includes(fileKind(path)) && inPath(path));
+  const listed = await sources.files.list();
+  // Path filtering spends the same budget as matching, so no part of a search runs unbounded.
+  const candidates = sources.budget.run(() => listed.filter(path => visiblePath(path) && kinds.includes(fileKind(path)) && inPath(path)));
   const cache = query.tag !== undefined || query.property !== undefined || query.skipCode ? await sources.metadata() : undefined;
   const selected = cache ? candidates.filter(path => metadataMatches(cache.getFileCache(path), query)) : candidates;
   for (let start = 0; start < selected.length; start += batchSize) {
