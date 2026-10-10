@@ -4,7 +4,7 @@ import type { EventBus, EventDefinition } from './events.ts';
 
 interface HostError { code: string; exitCode: number }
 interface CommandOperation { operationId: number; command: string; root: string; workspaceRoot: string; dryRun: boolean }
-interface WorkspaceOperation { operationId: number; operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete'; root: string | null; paths: string[]; dryRun: boolean }
+interface WorkspaceOperation { operationId: number; operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete' | 'apply'; root: string | null; paths: string[]; dryRun: boolean }
 interface PluginOperation { pluginId: string }
 type Empty = Record<string, never>;
 /** Obsidian's `CachedMetadata` shape as a JSON object; the kernel MetadataCache defines its fields. */
@@ -57,7 +57,7 @@ const empty = (value: Record<string, unknown>) => Object.keys(value).length === 
 const operation = (value: Record<string, unknown>) => count(value.operationId) && Number(value.operationId) > 0 && typeof value.dryRun === 'boolean';
 const error = (value: unknown) => isRecord(value) && text(value.code) && status(value.exitCode);
 const command = (value: Record<string, unknown>) => operation(value) && text(value.command) && text(value.root) && text(value.workspaceRoot);
-const workspace = (value: Record<string, unknown>) => operation(value) && ['read', 'write', 'edit', 'remove', 'move', 'delete'].includes(String(value.operation)) && (value.root === null || text(value.root)) && Array.isArray(value.paths) && value.paths.every(text);
+const workspace = (value: Record<string, unknown>) => operation(value) && ['read', 'write', 'edit', 'remove', 'move', 'delete', 'apply'].includes(String(value.operation)) && (value.root === null || text(value.root)) && Array.isArray(value.paths) && value.paths.every(text);
 const plugin = (value: Record<string, unknown>) => text(value.pluginId);
 const changeOperations = ['created', 'updated', 'deleted'];
 const change = (value: unknown): value is FileChange => isRecord(value) && text(value.path) && text(value.revision) && count(value.bytes) && changeOperations.includes(String(value.operation));

@@ -50,9 +50,10 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `validate` | `<path>` | Structural document check; text files are checked as UTF-8 (`utf8`); attachments are marked `opaque-bytes` |
 | `create` | `<path> [--content text / --from path / --stdin] [--encoding base64]` | New file only; Markdown/Canvas/Base/text can use default empty documents |
 | `write` | `<path> (--content text / --from path / --stdin) [--encoding base64] [--if-match hash]` | Create or replace; existing files require exact hash |
-| `edit` | `<note.md or text file> --if-match hash (--append --content text / --find text --replace text)` | Append or replace exactly one literal match in Markdown or UTF-8 text; no match fails with `NO_MATCH`, and multiple matches, including overlapping matches, fail with `AMBIGUOUS_EDIT` |
+| `edit` | `<note.md or text file> --if-match hash (--find text --replace text / --edits json, @file or - / --append --content text / (--section "A > B" / --block id) (--replace text / --append --content text / --prepend --content text))` | Replace exactly one literal match, apply an ordered list of literal edits, append to the file, or replace, append or prepend inside a Markdown section or block; see [precise edits](#precise-edits) |
 | `properties` | `<note.md> --set JSON --if-match hash` | Merge top-level frontmatter properties; `null` stores YAML null |
 | `patch` | `<file.canvas/base> --pointer /path --value JSON --if-match hash` | Set a key or existing array element; `-` appends |
+| `apply` | `<plan.json / ->` | Run a JSON plan of `write`, `edit`, `frontmatter`, `move` and `delete` operations in order and commit them as one guarded batch; see [apply plans](#apply-plans) |
 | `move` | `<from> <to> --if-match hash [--no-update-links]` | Move or rename a file or folder and rewrite every link to it in the same batch; see [moving and deleting](#moving-and-deleting) |
 | `rename` | `<path> <new-name> --if-match hash [--no-update-links]` | `move` within the same folder; a file keeps its extension when `<new-name>` omits it |
 | `delete` | `<path> --if-match hash [--recursive] [--permanent] [--allow-broken-links]` | Move a file, or a folder with `--recursive`, to `.trash/`; `--permanent` removes it. Refuses with `HAS_BACKLINKS` while other files link into it |
@@ -94,7 +95,7 @@ node bin/forge.js read assets/diagram.png --json | node -e 'let s="";process.std
 
 ## Dry-run diffs
 
-Dry-run `create`, `write`, `edit`, `properties`, `patch`, `move` and `rename` add `diff` to each entry of `data.changes`. For Markdown, Canvas, Bases and text files with valid UTF-8 content, it is a unified diff with three context lines, `--- a/<path>` and `+++ b/<path>` headers (`--- /dev/null` for a new file) and paths relative to `context.root`. Unchanged content yields `""`. Binary or undecodable content has `diff: null`; compare `bytes` and `revision` instead. Real writes return no `diff`. The text applies with standard tools such as `git apply` from the command root:
+Dry-run `create`, `write`, `edit`, `properties`, `patch`, `move`, `rename` and `apply` add `diff` to each entry of `data.changes`. For Markdown, Canvas, Bases and text files with valid UTF-8 content, it is a unified diff with three context lines, `--- a/<path>` and `+++ b/<path>` headers (`--- /dev/null` for a new file) and paths relative to `context.root`. Unchanged content yields `""`. Binary or undecodable content has `diff: null`; compare `bytes` and `revision` instead. Real writes return no `diff`. The text applies with standard tools such as `git apply` from the command root:
 
 ```sh
 node bin/forge.js edit notes/plan.md --find 'Draft' --replace 'Ready' --if-match YOUR_REVISION --dry-run --json
@@ -105,6 +106,58 @@ node bin/forge.js edit notes/plan.md --find 'Draft' --replace 'Ready' --if-match
 ```
 
 A dry run checks `--if-match` exactly like the real write: a stale or missing revision for an existing file fails with `CONFLICT` (exit 2), with the same `details.currentRevision`, and nothing is written.
+
+## Precise edits
+
+`edit` changes Markdown or UTF-8 text in memory and writes it once, guarded by `--if-match`; a dry run returns the unified diff. Choose one mode:
+
+| Mode | Options | Behavior |
+| --- | --- | --- |
+| Single literal | `--find text --replace text` | `--find` must occur exactly once, counting overlapping matches: none is `NO_MATCH`, several are `AMBIGUOUS_EDIT` with their lines |
+| Multi-edit | `--edits <json / @file / ->` | A JSON list of `{find, replace, all?}` applied in order, each to the result of the previous one. Each `find` must match exactly once, or at least once with `all: true`, which replaces every non-overlapping occurrence. A failing edit reports its code with `details.edit`, its 0-based position; nothing is written. `@file` reads a file in the command scope and `-` standard input. The list's JSON Schema is published as the option's `schema` in `help edit` and `schema` |
+| Append | `--append --content text` | Adds `--content` to the end of the file |
+| Section | `--section "Plan > Risks"` with `--replace text`, `--append --content text` or `--prepend --content text` | Edits the Markdown section under a heading; see below |
+| Block | `--block id` with the same three modes | Edits the block a `^id` marker names; see below |
+
+A section path lists heading texts separated by ` > `: the last segment is the heading, the others its ancestor headings in order, not necessarily direct parents. Headings match their text exactly, or ignoring letter case when no heading matches exactly. Only headings the metadata cache indexes count, so a `#` line inside a code block is not a heading. A section runs from its heading line to the next heading of the same or a higher level, so it includes its subsections. The heading line always stays: `--replace` swaps the section's content, the text between the blank lines that follow the heading and the blank lines before the next heading, keeping both; `--append` inserts after the last content line and `--prepend` before the first one. A path that matches no heading fails with `SECTION_NOT_FOUND` and `details.headings` (each heading's full path and 1-based line); one that matches several fails with `AMBIGUOUS_SECTION` and `details.candidates`.
+
+`--block id` (with or without `^`) addresses a paragraph or list item ending with `^id`, or the table, list, quote or other section before a line holding only `^id`, as Obsidian's block links do. `--replace` swaps the block's text and keeps its marker: a replacement without the marker gets ` ^id` appended to its last line. For a list item the block starts at its list marker and covers the item's own text, not its nested list. `--append` inserts after the block (after a marker line that follows it) and `--prepend` before the block's first line. A missing id fails with `SECTION_NOT_FOUND` and `details.blocks`; an id on several blocks fails with `AMBIGUOUS_SECTION`, because Obsidian links only the first.
+
+Content is inserted literally as whole lines: Forge adds a line break when the content lacks one and never joins it to an existing line, using the file's first line ending (LF or CRLF). Add blank lines to the content yourself where Markdown needs them to separate paragraphs.
+
+```sh
+node bin/forge.js edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match YOUR_REVISION --dry-run
+node bin/forge.js edit notes/plan.md --block ship --replace "Ship the beta in May." --if-match YOUR_REVISION
+node bin/forge.js edit src/config.ts --edits '[{"find":"retries: 3","replace":"retries: 5"},{"find":"TODO","replace":"DONE","all":true}]' --if-match YOUR_REVISION
+```
+
+## Apply plans
+
+`apply <plan.json|->` runs a JSON plan, from a file in the command scope or standard input, as one guarded change:
+
+```json
+{"version":1,"operations":[
+  {"op":"edit","path":"notes/Plan.md","section":"Plan > Risks","append":"- Staffing","ifMatch":"REVISION"},
+  {"op":"frontmatter","path":"notes/Plan.md","set":{"status":"active"},"unset":["draft"]},
+  {"op":"move","from":"notes/Plan.md","to":"specs/Roadmap.md"},
+  {"op":"write","path":"specs/README.md","content":"Start at [[Roadmap]].\n"},
+  {"op":"delete","path":"notes/Scratch.md"}
+]}
+```
+
+| `op` | Fields | Behavior |
+| --- | --- | --- |
+| `write` | `path`, `content`, `encoding?` (`utf8` or `base64`) | Creates a file, or replaces one; replacing a file that existed before the plan requires `ifMatch`, like `write --if-match` |
+| `edit` | `path` and one of `edits` (the `--edits` list), `append`, or `section`/`block` with one of `replace`, `append`, `prepend` | The `edit` modes above; the text values carry the content |
+| `frontmatter` | `path`, `set?` (object), `unset?` (property names) | Sets and removes top-level properties like Obsidian's `processFrontMatter`, keeping the body and YAML formatting; an unchanged note is not written |
+| `move` | `from`, `to`, `updateLinks?` (default `true`) | Moves or renames a file or folder and rewrites links to it, as `move` does |
+| `delete` | `path`, `recursive?`, `allowBrokenLinks?` | Moves a file, or a folder with `recursive: true`, to `.trash/` and refuses with `HAS_BACKLINKS` while other files link into it, as `delete` does; plans never delete permanently |
+
+Every operation accepts `ifMatch`: the revision the file had before the plan ran, as `read` returned it (for a folder, its folder revision). A file keeps that revision across earlier moves in the same plan, so `move a.md b.md` followed by an `edit` of `b.md` can both carry `a.md`'s revision. Without `ifMatch` an operation applies to the planned state; the final commit still guards every touched file with the revision it had when the plan read it.
+
+Operations run in order against the planned state of the vault, through the same code as the single commands: each sees the content, paths and links the operations before it produced, so a `move` rewrites links in notes an earlier `write` or `edit` produced, and an `edit` after a `move` names the new path. Nothing is written until every operation has succeeded. Then the planned state commits as one batch under the writer lock: each original file that ended at another path is renamed (a moved folder whose files stayed together is renamed as one folder), each file with new content is written guarded by its original revision, and a failure while applying rolls every applied step back. A plan that writes or moves a file into a path the same plan vacates fails with `INVALID_PLAN`, because one batch cannot reuse that path; split it into two plans.
+
+The plan is validated against its JSON Schema 2020-12, published as the `plan` argument's `schema` in `help apply` and `schema`. A schema violation fails with `INVALID_PLAN` and `details.issues`. A failing operation keeps its own code and details, adds `details.operation` (its 0-based index) and prefixes the message with `Operation <n> (<op>):`; a file that changed between planning and commit fails with `CONFLICT` for the operation that last touched it. A dry run returns the whole plan's diff, each written file against its original content. The result is `{dryRun, operations, renames, changes, folders}`: `operations` lists each operation's `index`, `op` and `path` with what it did (`to`, `kind` and `links` for a move, `trashPath` and `brokenLinks` for a delete, `changed` for frontmatter), and `renames`, `changes` and `folders` describe the committed batch. A committed plan publishes one `operation.started`/`operation.succeeded` pair with operation `apply` and one set of records: `vault.create` for new folders, `vault.rename` for moves, `vault.delete` for files moved to the trash, then `vault.create` or `vault.modify` for written files in path order, and, when the metadata cache is loaded (a plan with a move or delete loads it), one round of `metadataCache.*` records.
 
 ## Canvas and Bases
 
