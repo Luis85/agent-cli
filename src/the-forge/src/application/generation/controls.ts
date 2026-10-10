@@ -1,4 +1,5 @@
 import { ensure, forgeError, isRecord } from '../../domain/shared/errors.ts';
+import { vaultPath } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import { value } from '../plugins/command-input.ts';
 import { option, type CommandFlags, type CommandOption } from '../plugins/command-metadata.ts';
@@ -34,4 +35,20 @@ export async function generationControls(flags: CommandFlags, files: Pick<FileRe
   }
   const mode: GenerationMode = flags.check ? 'check' : planning ? 'plan' : 'generate';
   return { mode, manifestPath, revisions };
+}
+
+/**
+ * Options of a generator that renders a workspace definition library into a project (`make ui`, `make stories`,
+ * `make data-source`): `--project` selects the output project for one invocation and `--library` the definitions.
+ * Such generators set `review`, so `make` adds the review controls after their own options.
+ */
+export const libraryGenerationOptions = {
+  project: option.string('Generate into this project instead of the selected one.'),
+  library: option.string('Definition library directory; defaults to the configured path.'),
+};
+
+/** Output writes use workspace paths; input manifests remain in the selected scope. */
+export function generationOutputPath(path: string, project: { directory: string } | null): string {
+  const relative = vaultPath(path);
+  return project ? `${project.directory}/${relative}` : relative;
 }

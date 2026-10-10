@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/plugins/data-sources/infrastructure/definitions.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
-const codec = new MarkdownDataSourceDefinitions();
+const codec = new MarkdownDataSourceDefinitions(new ObsidianDocuments());
 const base = { schemaVersion: 1, id: 'products', kind: 'rest', model: { name: 'Product', fields: { id: { type: 'string' }, name: { type: 'string' }, price: { type: 'number' }, available: { type: 'boolean', optional: true } } }, rest: { baseUrl: 'https://api.example.test/v1', operations: { list: { method: 'GET', path: '/products', responsePath: 'data.items' }, get: { method: 'GET', path: '/products/{id}' } } } };
 const parse = (patch: Record<string, unknown> = {}) => codec.parse(new TextEncoder().encode(`---\n${stringify({ ...base, ...patch })}---\n# Products\n\nKeep **Markdown** and {{expressions}} intact.\n`), 'sources/products.md');
 

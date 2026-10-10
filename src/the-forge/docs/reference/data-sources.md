@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-A data source is a Markdown file with strict YAML frontmatter. Its body documents the contract; generation never executes the prose or contacts the source. The library supports REST APIs and local JSON files. See [manage data sources](../how-to/manage-data-sources.md) for generation, runtime integration and regeneration steps.
+A data source is a Markdown file with strict YAML frontmatter. Its body documents the contract; generation never executes the prose or contacts the source. The library supports REST APIs and local JSON files. The bundled `data-sources` core plugin provides the `data-sources` command and the `make data-source` generator; `{"plugins": {"disabled": ["data-sources"]}}` removes both. See [manage data sources](../how-to/manage-data-sources.md) for generation, runtime integration and regeneration steps.
 
 ## Commands and paths
 
@@ -19,15 +19,15 @@ make data-source <id> [--library directory] [--project id]
 
 Every `data-sources` action accepts `--library`. `create` defaults to `rest`. `init` adds `example-rest` and `example-json`, preserving existing definitions with those IDs. Discovery recursively reads `.md` files, validates every definition and rejects duplicate IDs. `inspect` returns the definition, its source path, Markdown description and the revision of that same file snapshot. `list` returns compact metadata. Import/export preserve exact Markdown bytes and nested paths; they transfer definitions only, and never overwrite existing files.
 
-| Purpose | Configuration key | Default | Command override | Scope |
+| Purpose | Setting in `plugins.settings.data-sources` | Default | Command override | Scope |
 | --- | --- | --- | --- | --- |
-| Definitions | `paths.dataSources` | `data-sources` | `--library` | Workspace |
-| Generated adapters | `paths.dataGenerated` | `src/data-sources` | `make data-source --out` | Active project, otherwise workspace |
-| Generated fixtures | `paths.dataFixtures` | `test-data` | `make data-source --test-data-out` | Active project, otherwise workspace |
-| Import source | `paths.dataImports` | `imports/data-sources` | `data-sources import --from` | Workspace |
-| Export destination | `paths.dataExports` | `exports/data-sources` | `data-sources export --out` | Workspace |
+| Definitions | `library` | `data-sources` | `--library` | Workspace |
+| Generated adapters | `output` | `src/data-sources` | `make data-source --out` | Active project, otherwise workspace |
+| Generated fixtures | `fixtures` | `test-data` | `make data-source --test-data-out` | Active project, otherwise workspace |
+| Import source | `imports` | `imports/data-sources` | `data-sources import --from` | Workspace |
+| Export destination | `exports` | `exports/data-sources` | `data-sources export --out` | Workspace |
 
-Configure these keys in `bin/config.json`; see [configuration](configuration.md). Paths must be contained relative POSIX paths, with no traversal or reserved workspace segments. The source's `json.path` is a separate runtime input to the application's loader. It is neither the definition directory nor an instruction to write a file. `--plan-out` is also configurable per invocation and writes its revision-map file in the active output scope.
+Configure these settings in the plugin's section of `bin/config.json`, for example `{"plugins": {"settings": {"data-sources": {"output": "src/data"}}}}`; see [configuration](configuration.md). An invalid section makes the plugin unavailable, and its command and generator fail with `PLUGIN_UNAVAILABLE`. Paths must be contained relative POSIX paths, with no traversal or reserved workspace segments. The source's `json.path` is a separate runtime input to the application's loader. It is neither the definition directory nor an instruction to write a file. `--plan-out` is also configurable per invocation and writes its revision-map file in the active output scope.
 
 ## Frontmatter schema, version 1
 

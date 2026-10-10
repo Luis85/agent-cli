@@ -2,8 +2,9 @@
 
 [Documentation](../index.md) · Reference
 
-Interactions are reusable Markdown files with strict YAML frontmatter. Components
-attach their IDs to elements; UI generation resolves those references and emits
+Interactions are reusable Markdown files with strict YAML frontmatter. The
+`interactions` command belongs to the bundled `ui` core plugin, because the UI
+renderers emit the handlers. Components attach their IDs to elements; UI generation resolves those references and emits
 executable handlers for HTML, HTMX, vanilla JavaScript, React, Vue, Svelte and
 Angular. Follow [the interactive-form tutorial](../tutorials/interactive-form.md)
 for a complete example, or [manage interactions](../how-to/manage-interactions.md)
@@ -155,11 +156,11 @@ by components with compatible state contracts.
 
 ## Libraries, paths and generation
 
-| Configuration key | Default | Scope |
+| Setting in `plugins.settings.ui` | Default | Scope |
 | --- | --- | --- |
-| `paths.interactions` | `interactions` | Workspace definition library |
-| `paths.interactionImports` | `imports/interactions` | Workspace import source |
-| `paths.interactionExports` | `exports/interactions` | Workspace export destination |
+| `interactions` | `interactions` | Workspace definition library |
+| `interactionImports` | `imports/interactions` | Workspace import source |
+| `interactionExports` | `exports/interactions` | Workspace export destination |
 
 `interactions list/init/inspect/validate/create/import/export` manage the library;
 `--library` overrides its location. `create <id> --event <event>` creates an

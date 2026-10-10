@@ -8,13 +8,13 @@ Tests live under the concern they verify. Every executable test file declares it
 | [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
-| [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
+| [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |
 | [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
-| [interactions](interactions/) | Declarative event/action schemas, component attachment, generated behavior, and portable workflows |
+| [interactions](interactions/) | The `ui` core plugin's declarative event/action schemas, component attachment, generated behavior, and portable workflows |
 | [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
 | [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
@@ -25,7 +25,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
 | [templates](templates/) | Template rendering, required inputs, planning-pack installation, and project workflows |
-| [ui](ui/) | Component definitions, composition, renderers, Storybook, real framework compilation, and CLI workflows |
+| [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, settings, disabling, and CLI workflows |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |

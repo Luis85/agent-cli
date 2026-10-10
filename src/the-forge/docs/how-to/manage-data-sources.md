@@ -40,7 +40,7 @@ Review the preview, then repeat without `--dry-run` to apply that edit if it mat
 
 ## Choose output locations and generate
 
-Configure the five `paths.dataSources`, `dataGenerated`, `dataFixtures`, `dataImports` and `dataExports` values in `bin/config.json`, or override the relevant paths per invocation. These commands explicitly select the project and both generated directories:
+Configure the five folders `library`, `output`, `fixtures`, `imports` and `exports` of the `data-sources` core plugin under `plugins.settings.data-sources` in `bin/config.json`, or override the relevant paths per invocation. These commands explicitly select the project and both generated directories:
 
 ```sh
 node bin/forge.js make data-source purchase-requests --library contracts/data --project portal --out src/data --test-data-out testdata/generated --dry-run

@@ -1,17 +1,15 @@
 import type { EventOutput } from '../plugins/event-output.ts';
 
-/** Library paths are workspace-relative; UI/story paths follow the active project. Bin locations are fixed. */
+/**
+ * Library paths are workspace-relative; generated output follows the active project. Bin locations are fixed. Feature
+ * settings, such as the ui and data-sources plugins' folders, live in their plugin's section under `plugins.settings`.
+ */
 export interface AppConfig {
   schemaVersion: 1;
-  paths: {
-    projects: string; components: string; ui: string; stories: string; componentImports: string; componentExports: string;
-    dataSources: string; dataGenerated: string; dataFixtures: string; dataImports: string; dataExports: string;
-    interactions: string; interactionImports: string; interactionExports: string;
-  };
+  paths: { projects: string };
   settings: { json: boolean; dryRun: boolean; language: 'en' | 'de'; events: EventOutput };
   templates: { dateFormat: string; timeFormat: string };
   /** `enabled` user plugins in load order, `disabled` bundled core plugins, and each plugin's settings section. */
   plugins: { enabled: string[]; disabled: string[]; settings: Record<string, unknown> };
-  ui: { framework: 'html' | 'htmx' | 'vanilla' | 'vue' | 'svelte' | 'react' | 'angular' };
 }
 export interface LoadedConfig { path: string | null; root: string; config: AppConfig }

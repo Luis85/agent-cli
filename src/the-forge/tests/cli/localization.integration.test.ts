@@ -21,6 +21,8 @@ import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
+import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
+import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
 import { bundledCorePlugins } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
@@ -34,9 +36,6 @@ describe('built-in localization catalog coverage', () => {
         get files(): never { throw new Error('Catalog must not access files'); },
         get templates(): never { throw new Error('Catalog must not access templates'); },
         get projects(): never { throw new Error('Catalog must not access projects'); },
-        get uiLibrary(): never { throw new Error('Catalog must not access UI library'); },
-        get dataSources(): never { throw new Error('Catalog must not access data sources'); },
-        get interactions(): never { throw new Error('Catalog must not access interactions'); },
         get workflows(): never { throw new Error('Catalog must not access workflows'); },
         async installTemplates() { throw new Error('Catalog must not install templates'); },
         async setup() { throw new Error('Catalog must not run setup'); },
@@ -64,10 +63,12 @@ describe('built-in localization catalog coverage', () => {
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
+    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, uiPlugin, dataSourcesPlugin];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); } }, []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));
+    expect(registry.generators.size).toBeGreaterThan(0);
+    for (const id of registry.generators.keys()) expect(registry.catalog.text('de', 'generators', id), id).toEqual(expect.any(String));
     const german = new Localizer('de', registry.catalog);
     for (const command of registry.commands.values()) {
       for (const [action, { description }] of Object.entries(german.command(command).actions ?? {})) {

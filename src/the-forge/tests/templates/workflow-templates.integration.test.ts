@@ -17,8 +17,8 @@ let root: string, files: NodeFiles, events: EventBus;
 const documents = new ObsidianDocuments(), templates = new MarkdownTemplates();
 const config: AppConfig = {
   schemaVersion: 1,
-  paths: { projects: 'projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' },
-  ui: { framework: 'html' }, settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [], disabled: [], settings: {} },
+  paths: { projects: 'projects' },
+  settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [], disabled: [], settings: {} },
 };
 const workspace = (dryRun = false) => new Workspace(files, documents, events, dryRun);
 const setup = (dryRun = false) => new SetupService(workspace(dryRun), config, [

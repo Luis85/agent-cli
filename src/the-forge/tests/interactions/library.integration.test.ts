@@ -4,14 +4,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventBus } from '../../src/application/plugins/events.ts';
-import { InteractionLibrary } from '../../src/application/interactions/library.ts';
+import { InteractionLibrary } from '../../src/plugins/ui/application/interactions/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
+import { MarkdownInteractionDefinitions } from '../../src/plugins/ui/infrastructure/interactions/definitions.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
-const codec = new MarkdownInteractionDefinitions();
+const codec = new MarkdownInteractionDefinitions(new ObsidianDocuments());
 const library = (dryRun = false) => new InteractionLibrary(new Workspace(files, new ObsidianDocuments(), events, dryRun), codec);
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-interactions-')); files = await NodeFiles.at(root); events = new EventBus(new NodeEventScope());

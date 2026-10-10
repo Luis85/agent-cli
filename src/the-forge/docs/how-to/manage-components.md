@@ -6,15 +6,16 @@ Use this guide for an existing component library. To create your first definitio
 
 ## Choose source and output paths
 
-All feature paths are configurable; the executable's fixed `bin` layout remains unchanged:
+All feature paths are configurable in the `ui` core plugin's section `plugins.settings.ui`; the executable's fixed `bin` layout remains unchanged:
 
 | Purpose | Configuration | Override | Relative to |
 | --- | --- | --- | --- |
-| Definitions | `paths.components` | `--library` | Workspace |
-| Generated UI | `paths.ui` | `--out` on `make ui/stories` | Selected project, otherwise workspace |
-| Stories | `paths.stories` | `--stories-out` | Selected project, otherwise workspace |
-| Import source | `paths.componentImports` | `components import --from` | Workspace |
-| Export destination | `paths.componentExports` | `components export --out` | Workspace |
+| Definitions | `plugins.settings.ui.components` | `--library` | Workspace |
+| Generated UI | `plugins.settings.ui.output` | `--out` on `make ui/stories` | Selected project, otherwise workspace |
+| Stories | `plugins.settings.ui.stories` | `--stories-out` | Selected project, otherwise workspace |
+| Import source | `plugins.settings.ui.componentImports` | `components import --from` | Workspace |
+| Export destination | `plugins.settings.ui.componentExports` | `components export --out` | Workspace |
+| Default target | `plugins.settings.ui.framework` | `--framework` | Not a path |
 | Managed projects | `paths.projects` | Project selection with `--project` on UI generation | Workspace |
 
 See [configuration](../reference/configuration.md) for defaults. Source and destination paths must remain contained in the workspace/selected scope. Both explicit output overrides and configured defaults follow the same project scope; check response `context.root`.

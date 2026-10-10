@@ -102,7 +102,7 @@ describe('portable interaction library and executable UI', () => {
 
   it('honors configured and overridden shared paths while generated output follows the project', async () => {
     await mkdir(join(root, 'bin'));
-    await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: { projects: 'apps', interactions: 'shared/actions', interactionImports: 'incoming', interactionExports: 'outgoing' } }));
+    await writeFile(join(root, 'bin/config.json'), JSON.stringify({ paths: { projects: 'apps' }, plugins: { settings: { ui: { interactions: 'shared/actions', interactionImports: 'incoming', interactionExports: 'outgoing' } } } }));
     await cp('docs/examples/interactions/definitions', join(root, 'incoming'), { recursive: true });
     expect(cli(['interactions', 'import']).status).toBe(0);
     await cp('docs/examples/interactions/components', join(root, 'components'), { recursive: true });

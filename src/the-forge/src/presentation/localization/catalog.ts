@@ -5,9 +5,6 @@ export const germanCommands = {
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
   templates: 'Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.',
   project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
-  components: 'Markdown-Komponenten verwalten, prüfen, importieren und exportieren.',
-  'data-sources': 'Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.',
-  interactions: 'Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.',
   workflows: 'Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.',
   claude: 'Native Claude-Code-Agenten, Hooks und Plugins mit Revisionsschutz und installiertem CLI verwalten.',
   formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
@@ -27,19 +24,6 @@ export const germanCommands = {
   plugins: 'Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten.',
 } satisfies Record<string, string>;
 
-/** The library actions of `components`, `data-sources` and `interactions`, for one German noun (genitive plural). */
-function libraryActions(command: string, noun: string): Record<string, string> {
-  return {
-    [`${command} list`]: `Die ${noun}definitionen der Bibliothek auflisten.`,
-    [`${command} init`]: `Die Bibliothek mit ${noun}definitionen als Ausgangspunkt anlegen.`,
-    [`${command} inspect`]: `Eine geparste ${noun}definition zurückgeben.`,
-    [`${command} validate`]: `Jede ${noun}definition prüfen.`,
-    [`${command} create`]: `Eine neue ${noun}definition anlegen.`,
-    [`${command} import`]: `${noun}definitionen aus dem Importverzeichnis in die Bibliothek kopieren.`,
-    [`${command} export`]: `Die ${noun}definitionen der Bibliothek in das Exportverzeichnis kopieren.`,
-  };
-}
-
 /** German descriptions of kernel command actions, keyed `<command> <action>`; `make` actions use the generator catalog. */
 export const germanActions: Record<string, string> = {
   'templates list': 'Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.',
@@ -52,9 +36,6 @@ export const germanActions: Record<string, string> = {
   'project close': 'Die Projektauswahl aufheben.',
   'project inspect': 'Ein Projekt oder das ausgewählte Projekt beschreiben.',
   'project component': 'Einem Projekt eine getestete Domain- oder Anwendungskomponente hinzufügen.',
-  ...libraryActions('components', 'Komponenten'),
-  ...libraryActions('data-sources', 'Datenquellen'),
-  ...libraryActions('interactions', 'Interaktions'),
   'workflows list': 'Die erstellten Workflows jedes verwalteten Projekts und ihre generierten Einstiegspunkte auflisten.',
   'workflows sync': 'Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben.',
   'claude capabilities': 'Unterstützte Formate, Bereiche und Vorgänge beschreiben.',
@@ -73,9 +54,6 @@ export const germanGenerators = {
   event: 'Typisierte Ereignisdaten mit Laufzeitbeschreibung.',
   plugin: 'Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.',
   document: 'Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.',
-  ui: 'Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.',
-  stories: 'Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren.',
-  'data-source': 'Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren.',
 } satisfies Record<string, string>;
 
 export const germanGuidance = {

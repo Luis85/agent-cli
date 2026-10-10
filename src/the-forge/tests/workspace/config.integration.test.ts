@@ -8,16 +8,15 @@ beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'forge-config-')); 
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const configPath = () => join(root, 'bin/config.json');
 const load = (extra: { root?: string; cwd?: string } = {}) => loadConfig({ defaultPath: configPath(), cwd: root, ...extra });
-const uiPaths = { components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' };
 describe('Forge configuration', () => {
   it('resolves the environment root from its config and normalizes the projects directory', async () => {
     await writeFile(configPath(), JSON.stringify({ paths: { projects: 'src/' }, settings: { json: true } }));
     const result = await load();
     expect(result.path).toBe(configPath()); expect(result.root).toBe(root);
-    expect(result.config.paths).toEqual({ projects: 'src', ...uiPaths });
+    expect(result.config.paths).toEqual({ projects: 'src' });
     expect(result.config.settings).toEqual({ json: true, dryRun: false, language: 'en', events: 'changes' });
     expect(result.config.plugins.enabled).toEqual([]);
-    expect(result.config.ui).toEqual({ framework: 'html' });
+    expect(result.config).not.toHaveProperty('ui');
   });
   it('loads only fixed bin/config.json from the explicitly selected environment', async () => {
     const target = join(root, 'another');
@@ -32,7 +31,7 @@ describe('Forge configuration', () => {
   it('keeps the bundle environment root independent of the working directory when config is missing', async () => {
     const result = await load({ cwd: join(root, 'unrelated-working-directory') });
     expect(result.root).toBe(root);
-    expect(result.config.paths).toEqual({ projects: 'projects', ...uiPaths });
+    expect(result.config.paths).toEqual({ projects: 'projects' });
     expect(result.path).toBeNull();
   });
   it('uses defaults for an explicitly selected environment without importing the source config', async () => {
@@ -40,7 +39,7 @@ describe('Forge configuration', () => {
     const result = await load({ root: 'fresh-environment' });
     expect(result.root).toBe(join(root, 'fresh-environment'));
     expect(result.path).toBeNull();
-    expect(result.config.paths).toEqual({ projects: 'projects', ...uiPaths });
+    expect(result.config.paths).toEqual({ projects: 'projects' });
     expect(result.config.settings.dryRun).toBe(false);
   });
   it('does not fall back to source defaults when the selected environment config is invalid', async () => {
@@ -54,14 +53,21 @@ describe('Forge configuration', () => {
     { paths: { projects: '/absolute' } }, { paths: { projects: 'bin' } }, { paths: { projects: 'bin/projects' } },
     { plugins: { enabled: ['quality', 'quality'] } },
     { plugins: { enabled: ['../bad'] } }, { settings: { json: 'true' } }, { unknown: true },
-    { paths: { components: '../escape' } }, { paths: { ui: '/absolute' } }, { paths: { stories: '../escape' } },
-    { paths: { componentImports: '../escape' } }, { paths: { componentExports: '../escape' } }, { ui: { framework: 'unsupported' } },
   ])('rejects invalid configuration %j', async input => {
     await writeFile(configPath(), JSON.stringify(input));
     await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
   });
   it.each(['root', 'config', 'bin', 'templates', 'output', 'generated', 'plugins', 'skills'])('rejects the removed configurable %s path', async key => {
     await writeFile(configPath(), JSON.stringify({ paths: { [key]: 'custom' } }));
+    await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+  });
+  // UI and data-source settings moved to plugins.settings.ui and plugins.settings.data-sources without aliases; the kernel rejects their former keys.
+  it.each(['components', 'ui', 'stories', 'componentImports', 'componentExports', 'interactions', 'interactionImports', 'interactionExports', 'dataSources', 'dataGenerated', 'dataFixtures', 'dataImports', 'dataExports'])('rejects the moved paths.%s setting', async key => {
+    await writeFile(configPath(), JSON.stringify({ paths: { [key]: 'custom' } }));
+    await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining(key) });
+  });
+  it('rejects the moved ui section', async () => {
+    await writeFile(configPath(), JSON.stringify({ ui: { framework: 'react' } }));
     await expect(load()).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
   });
   it('reports malformed JSON as configuration failure', async () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
-import { uiFrameworks, type UiDefinition, type UiFramework } from '../../src/domain/ui/definition.ts';
-import { renderUiStories } from '../../src/infrastructure/ui/stories.ts';
+import { uiFrameworks, type UiDefinition, type UiFramework } from '../../src/plugins/ui/domain/components/definition.ts';
+import { renderUiStories } from '../../src/plugins/ui/infrastructure/components/stories.ts';
 
 const button: UiDefinition = {
   schemaVersion: 1, id: 'action-button', name: 'ActionButton', sourcePath: 'library/action-button.md',

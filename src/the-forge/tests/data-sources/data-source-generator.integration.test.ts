@@ -3,14 +3,15 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import ts from 'typescript';
-import type { DataSourceDefinition, DataSourceRecord } from '../../src/domain/data-sources/definition.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import type { DataSourceDefinition, DataSourceRecord } from '../../src/plugins/data-sources/domain/definition.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/plugins/data-sources/infrastructure/definitions.ts';
+import { TypeScriptDataSourceRenderer } from '../../src/plugins/data-sources/infrastructure/generator.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { await Promise.all(temporary.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 const renderer = new TypeScriptDataSourceRenderer();
-const codec = new MarkdownDataSourceDefinitions();
+const codec = new MarkdownDataSourceDefinitions(new ObsidianDocuments());
 const options = { outputDirectory: 'custom/adapters', testDataDirectory: 'custom/test-data' };
 const source: DataSourceDefinition = {
   schemaVersion: 1, id: 'tasks', kind: 'rest', description: 'Task service.', sourcePath: 'sources/tasks.md',
