@@ -115,6 +115,8 @@ export async function markReleased(session: BacklogSession, bases: BasesQuerySer
     ['releasedTransitionValue', settings.releasedTransition === '' || !settings.releasedValues.some(value => sameValue(value, settings.releasedTransition))],
     ['releasedDateProperty', settings.releasedDateKey === '']].filter(([, gap]) => gap).map(([name]) => name);
   if (missing.length > 0) throw backlogError('BACKLOG_CONFIG_PROBLEM', `Bind ${missing.join(', ')} in the product-release view to mark releases released.`, { missing });
+  const problems = [...configProblems(context.plan), ...releaseNoteProblems(settings)];
+  if (problems.length > 0) throw backlogError('BACKLOG_CONFIG_PROBLEM', `Fix the release configuration first: ${problems[0]}`, { problems });
   if (row.status.invalid || row.released.invalid) throw refused('unreadable', `The status or released date of ${row.name} is unreadable.`, { path: row.path });
   if ((row.status.value !== null && settings.releasedValues.some(value => sameValue(value, row.status.value))) || row.released.value !== null) throw refused('already-released', `${row.name} is already released.`, { path: row.path });
   const today = formatCivil(session.today);

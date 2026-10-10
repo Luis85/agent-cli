@@ -28960,7 +28960,7 @@ async function assignIteration(session, reference, iterationRef, ifMatch2) {
 async function joinRelease(session, reference, releaseRef, ifMatch2) {
   bound(session.settings.releaseKey, "releaseProperty");
   const item = findItem(session, reference), release2 = findItem(session, releaseRef);
-  if (!isReleaseType(release2.typeName)) throw refused("not-a-release", `${release2.title} is not a Release.`, { release: release2.path });
+  if (!isReleaseType(release2.typeName) || release2.outsideFilter) throw refused("not-a-release", `${release2.title} is not a Release of this backlog.`, { release: release2.path });
   const settled = !item.releaseMultiple && item.releaseEntry?.path === release2.path;
   const due = release2.releaseDate.value;
   const write = { path: item.path, release: release2.path, axis: { fillOnly: true, start: formatCivil(session.today), ...due ? { target: formatCivil(due) } : {} } };
@@ -29273,6 +29273,8 @@ async function markReleased(session, bases, reference, ifMatch2) {
     ["releasedDateProperty", settings2.releasedDateKey === ""]
   ].filter(([, gap]) => gap).map(([name2]) => name2);
   if (missing2.length > 0) throw backlogError("BACKLOG_CONFIG_PROBLEM", `Bind ${missing2.join(", ")} in the product-release view to mark releases released.`, { missing: missing2 });
+  const problems = [...configProblems(context.plan), ...releaseNoteProblems(settings2)];
+  if (problems.length > 0) throw backlogError("BACKLOG_CONFIG_PROBLEM", `Fix the release configuration first: ${problems[0]}`, { problems });
   if (row.status.invalid || row.released.invalid) throw refused("unreadable", `The status or released date of ${row.name} is unreadable.`, { path: row.path });
   if (row.status.value !== null && settings2.releasedValues.some((value2) => sameValue(value2, row.status.value)) || row.released.value !== null) throw refused("already-released", `${row.name} is already released.`, { path: row.path });
   const today2 = formatCivil(session.today);

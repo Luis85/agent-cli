@@ -149,7 +149,7 @@ export async function assignIteration(session: BacklogSession, reference: string
 export async function joinRelease(session: BacklogSession, reference: string, releaseRef: string, ifMatch?: string): Promise<WriteResult & { item: Record<string, unknown> }> {
   bound(session.settings.releaseKey, 'releaseProperty');
   const item = findItem(session, reference), release = findItem(session, releaseRef);
-  if (!isReleaseType(release.typeName)) throw refused('not-a-release', `${release.title} is not a Release.`, { release: release.path });
+  if (!isReleaseType(release.typeName) || release.outsideFilter) throw refused('not-a-release', `${release.title} is not a Release of this backlog.`, { release: release.path });
   const settled = !item.releaseMultiple && item.releaseEntry?.path === release.path;
   const due = release.releaseDate.value;
   const write: ItemWrite = { path: item.path, release: release.path, axis: { fillOnly: true, start: formatCivil(session.today), ...(due ? { target: formatCivil(due) } : {}) } };
