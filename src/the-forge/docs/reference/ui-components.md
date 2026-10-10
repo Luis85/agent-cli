@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-Markdown files describe a framework-neutral component tree; YAML frontmatter is the strict schema and the body is documentation. For a worked example, follow [your first UI](../tutorials/first-ui.md). For path configuration, transfer and guarded regeneration, use [manage components](../how-to/manage-components.md).
+Markdown files describe a framework-neutral component tree; YAML frontmatter is the strict schema and the body is documentation. The bundled `ui` core plugin provides the `components` command and the `make ui` and `make stories` generators; its settings live in `plugins.settings.ui` (`framework`, `components`, `componentImports`, `componentExports`, `output`, `stories` and the interaction folders), and `{"plugins": {"disabled": ["ui"]}}` removes it, together with `interactions`. For a worked example, follow [your first UI](../tutorials/first-ui.md). For path configuration, transfer and guarded regeneration, use [manage components](../how-to/manage-components.md).
 
 ## Definition contract
 

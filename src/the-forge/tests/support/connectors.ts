@@ -18,6 +18,7 @@ import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import type { FakeAzureDevOps } from './azure-devops.ts';
+import { testHost } from './core-plugins.ts';
 
 export const TOKEN_ENV = 'FORGE_TEST_AZURE_PAT';
 
@@ -38,9 +39,9 @@ export async function invocation(root: string, connections: Record<string, unkno
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   const env = options.env ?? {};
-  registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], {
+  registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({
     skills: registrySkills(registry), fileDates: nodeFileDates, locks: nodeLockFiles, http: new FetchHttpClient({ sleep: async () => {} }), environment: name => env[name],
-  }, []);
+  }), []);
   registry.settings.configure({ connector: { connections } }, new Set(registry.origins.keys()));
   const files = await NodeFiles.at(root);
   const codec = new ObsidianDocuments();

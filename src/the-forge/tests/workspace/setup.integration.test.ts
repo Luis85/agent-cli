@@ -9,7 +9,6 @@ import { EventBus } from '../../src/application/plugins/events.ts';
 import type { AppConfig } from '../../src/application/workspace/config.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
 import { readSetupArtifacts } from '../../src/infrastructure/workspace/setup-artifacts.ts';
 
 const temporary: string[] = [];
@@ -27,16 +26,17 @@ async function fixture(dryRun = false) {
   await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['forge.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json'] }));
   const config: AppConfig = {
     schemaVersion: 1,
-    paths: { projects: 'work/projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' },
-    ui: { framework: 'html' },
-    settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, plugins: { enabled: [], disabled: [], settings: {} },
+    paths: { projects: 'work/projects' },
+    settings: { json: true, dryRun: false, language: 'en', events: 'changes' }, plugins: { enabled: [], disabled: [], settings: {} },
   };
   const files = await NodeFiles.at(root), events = new EventBus(new NodeEventScope());
   for (const id of ['vault.create', 'vault.modify']) events.define({ id, validate: (_v): _v is unknown => true });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, dryRun);
   const artifacts = await readSetupArtifacts(bundle);
   const skills = [{ id: 'forge-workflow', content: '---\nname: forge-workflow\ndescription: Safe workflow\n---\nRead first.\n' }];
-  return { root, bundle, config, files, events, workspace, artifacts, skills, setup: new SetupService(workspace, config, artifacts, skills) };
+  // The templates core plugin supplies the real templates (tests/templates); setup installs whatever it receives.
+  const templates = [{ path: 'entity.md', content: '# {{title}}\n' }];
+  return { root, bundle, config, files, events, workspace, artifacts, skills, templates, setup: new SetupService(workspace, config, artifacts, skills, templates) };
 }
 it('installs fixed environment directories and configured projects through workspace writes', async () => {
   const { root, setup, events, config } = await fixture();
@@ -116,20 +116,16 @@ it('fails safely on destination symlinks instead of treating access errors as mi
   expect(events.history).toEqual([]); expect(await readdir(root)).toEqual(['bin']);
 });
 it('rejects incomplete distributions and overlapping setup destinations before any write', async () => {
-  const { root, workspace, config, artifacts, skills } = await fixture();
-  await expect(new SetupService(workspace, config, [], skills).run()).rejects.toThrowError(expect.objectContaining({ code: 'INVALID_SETUP' }));
-  await expect(new SetupService(workspace, config, [...artifacts, artifacts[0]!], skills).run()).rejects.toThrowError(expect.objectContaining({ code: 'INVALID_SETUP' }));
+  const { root, workspace, config, artifacts, skills, templates } = await fixture();
+  await expect(new SetupService(workspace, config, [], skills, templates).run()).rejects.toThrowError(expect.objectContaining({ code: 'INVALID_SETUP' }));
+  await expect(new SetupService(workspace, config, [...artifacts, artifacts[0]!], skills, templates).run()).rejects.toThrowError(expect.objectContaining({ code: 'INVALID_SETUP' }));
   expect(await readdir(root)).toEqual([]);
 });
 
-it('installs a frontmatter and Markdown template that renders arbitrary titles as YAML data', async () => {
-  const { root, setup } = await fixture();
-  await setup.run();
-  const source = await readFile(join(root, 'bin/templates/entity.md'));
-  const title = "Engineer's Work: Item";
-  const rendered = new MarkdownTemplates().render(source, { title, date: '2026-10-07' });
-  const codec = new ObsidianDocuments();
-  codec.validate('entity.md', rendered);
-  expect(codec.inspect('entity.md', rendered)).toMatchObject({ properties: { type: 'entity', title, created: '2026-10-07' } });
-  expect(new TextDecoder().decode(rendered)).toContain(`# ${title}`);
+it('installs no templates and omits the template next steps without the templates core plugin', async () => {
+  const { root, workspace, config, artifacts, skills } = await fixture();
+  const result = await new SetupService(workspace, config, artifacts, skills, null).run();
+  expect(result.changes.map(change => change.path)).not.toContain('bin/templates/entity.md');
+  expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge.js', 'package.json', 'plugins']);
+  expect(result.nextSteps.map(step => step.command)).toEqual(['node bin/forge.js project list']);
 });

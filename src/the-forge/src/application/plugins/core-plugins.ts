@@ -1,6 +1,7 @@
 import type { EventBus } from './events.ts';
 import type { HttpClient } from '../connectors/http.ts';
 import type { PluginContributions, PluginManifest, Registry, Skill } from './registry.ts';
+import type { FileRepository } from '../workspace/ports.ts';
 
 /** Read access to every registered skill: the kernel's, core plugins' and user plugins'. */
 export interface SkillCatalog { list(): Skill[]; get(id: string): Skill | undefined }
@@ -31,6 +32,13 @@ export interface CorePluginHost {
   skills: SkillCatalog;
   /** Filesystem dates, which the repository port does not carry (Bases `file.ctime`/`file.mtime`). */
   fileDates: FileDatesReader;
+  /**
+   * Opens the guarded file repository at an existing absolute directory outside the workspace, such as Claude Code's
+   * user configuration directory; `warn` receives its diagnostics.
+   */
+  openFiles(root: string, warn: (message: string) => void): Promise<FileRepository>;
+  /** The next invocation-wide operation id, shared with the host's command.* and operation.* records. */
+  operationId(): number;
   /** Outbound HTTP for connectors to external services. */
   http: HttpClient;
   /** Lock files that keep long-running operations (a backlog sync of one connection) apart across processes. */

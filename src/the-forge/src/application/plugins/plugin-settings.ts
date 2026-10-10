@@ -1,4 +1,5 @@
 import { isRecord } from '../../domain/shared/errors.ts';
+import { vaultPath } from '../../domain/documents/file.ts';
 import { validateJsonValue, type JsonSchema } from '../../domain/schema/json-schema.ts';
 
 /** A plugin's own check of its schema-valid section; returns `<path>: <problem>` issues. */
@@ -74,4 +75,18 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (isRecord(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
+}
+
+/** A workspace-relative path setting without trailing slashes, as `paths.*` in the kernel configuration. */
+export const relativePathSetting = (value: unknown): string => String(value).replace(/\/+$/, '');
+
+/**
+ * `validateSettings` issues for string settings that must be contained workspace-relative paths; a trailing slash is
+ * accepted and dropped by `relativePathSetting`.
+ */
+export function relativePathIssues(pluginId: string, settings: Readonly<Record<string, unknown>>, keys: readonly string[]): string[] {
+  return keys.flatMap(key => {
+    try { vaultPath(relativePathSetting(settings[key])); return []; }
+    catch { return [`plugins.settings.${pluginId}.${key}: must be a contained workspace-relative path`]; }
+  });
 }

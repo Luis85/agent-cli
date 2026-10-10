@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { offlineHost, testHost } from '../support/core-plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
@@ -10,7 +11,6 @@ import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { backlogVault, runBacklog } from '../support/backlog.ts';
-import { offlineHost } from '../support/core-plugins.ts';
 
 const base = (folder: string, extra = '') => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: ${folder}\n    stateProperty: note.status\n    dependsOnProperty: note.dependsOn\n${extra}`;
 const note = (fields: Record<string, unknown>) => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n`;
@@ -33,7 +33,7 @@ describe('choosing the backlog', () => {
   it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['bases']);
+    registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['bases']);
     const warnings: string[] = [];
     await registry.configure({}, async () => [], message => warnings.push(message));
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
@@ -48,7 +48,7 @@ describe('choosing the backlog', () => {
   it('stays enabled without the connector plugins, whose service only backlog sync uses', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['connector']);
+    registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['connector']);
     await registry.configure({}, async () => [], () => undefined);
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['connector']);
     // The Azure DevOps connector requires the hub and becomes unavailable; backlog only optionally uses it.

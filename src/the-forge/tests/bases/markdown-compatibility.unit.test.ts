@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
+import { MarkdownTemplates } from '../../src/plugins/templates/infrastructure/markdown.ts';
 
 const documents = new ObsidianDocuments();
-const templates = new MarkdownTemplates();
+const templates = new MarkdownTemplates(parseMarkdownParts);
 const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
 const body = [
   '# {{title}}  ',

@@ -37,7 +37,15 @@ export interface CommittedBatch { renames: readonly (FileRename & { kind: 'file'
 export interface CommitObserver { committed(batch: CommittedBatch): Promise<void> }
 /** Replaces `original` by `text` inside the YAML string value at the dotted `key` (list items by index), as frontmatter links name it. */
 export interface YamlStringReplacement { key: string; original: string; text: string }
+/**
+ * A Markdown text split at its YAML frontmatter as Obsidian reads it: `prefix` is a byte order mark or empty,
+ * `yaml` the frontmatter source without its fences, `body` everything after the closing fence verbatim and
+ * `newline` the text's first line ending. Without frontmatter `exists` is false, `yaml` is empty and `body` is the text.
+ */
+export interface MarkdownParts { prefix: string; yaml: string; body: string; newline: string; exists: boolean }
 export interface DocumentCodec {
+  /** Splits Markdown text at its frontmatter without changing any body byte; unclosed frontmatter is INVALID_FRONTMATTER. */
+  markdownParts(text: string): MarkdownParts;
   inspect(path: string, bytes: Uint8Array): unknown;
   validate(path: string, bytes: Uint8Array): void;
   /** Sets each top-level frontmatter property in `changes` and deletes each key in `remove`, preserving the body and YAML formatting. */

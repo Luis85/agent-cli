@@ -7,6 +7,11 @@ import { bundledCorePlugins } from '../support/core-plugins.ts';
 const fixture = portableCli();
 let root: string;
 const run = (...args: string[]) => fixture.cli(args, undefined, { root });
+const uiDefaults = {
+  framework: 'html', components: 'components', componentImports: 'imports/components', componentExports: 'exports/components',
+  interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions', output: 'src/ui', stories: 'stories',
+};
+const dataSourceDefaults = { library: 'data-sources', imports: 'imports/data-sources', exports: 'exports/data-sources', output: 'src/data-sources', fixtures: 'test-data' };
 const configure = (settings: Record<string, unknown>) => writeFile(join(root, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['quality'], settings: { quality: settings } } }));
 
 beforeAll(async () => {
@@ -37,10 +42,10 @@ describe('the packaged quality example plugin', () => {
 
   it('contributes a validated config section shown by config, with defaults and change notifications', async () => {
     const config = run('config');
-    // Core plugin sections (search, links, agents, connector, backlog) come first, in bundle order; each section lists the plugin that declares it.
-    expect(config.body.data.config.plugins.settings).toEqual({ search: { timeoutMs: 10_000 }, links: { roots: [] }, agents: { directory: 'agents', defaultModel: 'anthropic/claude-sonnet-5' }, connector: { connections: {} }, backlog: {}, quality: { ownerProperty: 'owner' } });
+    // Core plugin sections (templates, ui, data-sources, search, links, agents, connector, backlog) come first, in bundle order; each section lists the plugin that declares it.
+    expect(config.body.data.config.plugins.settings).toEqual({ templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, ui: uiDefaults, 'data-sources': dataSourceDefaults, search: { timeoutMs: 10_000 }, links: { roots: [] }, agents: { directory: 'agents', defaultModel: 'anthropic/claude-sonnet-5' }, connector: { connections: {} }, backlog: {}, quality: { ownerProperty: 'owner' } });
     expect(config.body.data.sections.map((section: { plugin: string; path: string }) => [section.plugin, section.path])).toEqual([
-      ['search', 'plugins.settings.search'], ['links', 'plugins.settings.links'], ['agents', 'plugins.settings.agents'], ['connector', 'plugins.settings.connector'], ['backlog', 'plugins.settings.backlog'], ['quality', 'plugins.settings.quality'],
+      ['templates', 'plugins.settings.templates'], ['ui', 'plugins.settings.ui'], ['data-sources', 'plugins.settings.data-sources'], ['search', 'plugins.settings.search'], ['links', 'plugins.settings.links'], ['agents', 'plugins.settings.agents'], ['connector', 'plugins.settings.connector'], ['backlog', 'plugins.settings.backlog'], ['quality', 'plugins.settings.quality'],
     ]);
     expect(config.body.data.sections.at(-1).schema).toMatchObject({ type: 'object' });
     await configure({ ownerProperty: '' });

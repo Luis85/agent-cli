@@ -4,9 +4,9 @@ import { replaceUniqueLiteral } from '../../domain/documents/literal-edit.ts';
 import { pathGlob } from '../../domain/documents/path-glob.ts';
 import { Pager } from '../../domain/shared/paging.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
-import { arity, integer, value } from '../../application/plugins/command-input.ts';
+import { arity, integer, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
-import { encodeText, parseJson, readInputBytes } from '../cli/input.ts';
+import { encodeText } from '../cli/input.ts';
 
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');

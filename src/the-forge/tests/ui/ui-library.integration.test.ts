@@ -5,15 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import { EventBus } from '../../src/application/plugins/events.ts';
-import { UiLibrary, type UiRenderer } from '../../src/application/ui/library.ts';
+import { UiLibrary, type UiRenderer } from '../../src/plugins/ui/application/components/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments, encodeText } from '../../src/infrastructure/documents/codec.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import { standardUiCatalog } from '../../src/infrastructure/ui/catalog.ts';
+import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
+import { standardUiCatalog } from '../../src/plugins/ui/infrastructure/components/catalog.ts';
 
 let root: string, files: NodeFiles;
-const codec = new MarkdownUiDefinitions();
+const codec = new MarkdownUiDefinitions(new ObsidianDocuments());
 const source = (id: string, fields: Record<string, unknown> = {}, body = '# Description\n\nKeep **Markdown** and {{prose}} intact.\n') => encodeText(`---\n${stringify({ schemaVersion: 1, id, root: { tag: 'div', children: [{ slot: 'children' }] }, ...fields })}---\n${body}`);
 const library = (dryRun = false, renderer?: UiRenderer) => new UiLibrary(new Workspace(files, new ObsidianDocuments(), new EventBus(new NodeEventScope()), dryRun), codec, standardUiCatalog, renderer);
 const put = async (path: string, id: string, fields: Record<string, unknown> = {}) => files.writeBatch([{ path, bytes: source(id, fields) }], false);
@@ -112,6 +112,16 @@ describe('workspace UI library lifecycle', () => {
     await library(false, renderer).generate('library', { ...options, revisions: { 'project/ui/Child.ts': before.revision } });
     expect(new TextDecoder().decode((await files.read('project/ui/Child.ts')).bytes)).toBe(content);
     await expect(library(false, renderer).generate('library', { ...options, revisions: { 'project/ui/Child.ts': before.revision } })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+  it('checks generated output for drift without writing and refuses regeneration revisions', async () => {
+    await put('library/child.md', 'child');
+    const renderer: UiRenderer = { generate: () => [{ path: 'project/ui/Child.ts', bytes: encodeText('export {};\n') }] };
+    const options = { framework: 'vanilla' as const, outputDirectory: 'project/ui' };
+    await expect(library(false, renderer).check('library', options)).rejects.toMatchObject({ code: 'UI_DRIFT' });
+    expect(await files.list()).not.toContain('project/ui/Child.ts');
+    await library(false, renderer).generate('library', options);
+    expect(await library(false, renderer).check('library', options)).toMatchObject({ framework: 'vanilla' });
+    await expect(library(false, renderer).check('library', { ...options, revisions: {} })).rejects.toMatchObject({ code: 'INVALID_GENERATION_PLAN' });
   });
 });
 

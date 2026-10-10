@@ -1,5 +1,5 @@
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
-import { globalOptions } from '../../src/presentation/cli/arguments.ts';
+import { globalOptions } from '../../src/application/plugins/command-input.ts';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

@@ -8,17 +8,12 @@ import { announceLayoutReady, invokeCommand, quitInvocation } from './applicatio
 import { WorkspacePluginState } from './application/plugins/plugin-state.ts';
 import { eventOutput, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
-import { ClaudeLifecycle } from './application/claude/lifecycle.ts';
 import { Workspace } from './application/workspace/workspace.ts';
 import { ScopedFiles, scopedCommitObserver } from './application/workspace/scoped-files.ts';
 import type { CommitObserver } from './application/workspace/ports.ts';
 import { Registry, type CommandContext } from './application/plugins/registry.ts';
-import { ProjectService } from './application/projects/projects.ts';
-import { SetupService } from './application/workspace/setup.ts';
-import { UiLibrary } from './application/ui/library.ts';
-import { DataSourceLibrary } from './application/data-sources/library.ts';
-import { InteractionLibrary } from './application/interactions/library.ts';
-import { TemplateInstaller } from './application/templates/templates.ts';
+import { ProjectService, projectScaffolderService, type ProjectScaffolder, type ProjectScaffolderLookup } from './application/projects/projects.ts';
+import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
 import { NodeFiles } from './infrastructure/workspace/files.ts';
@@ -27,48 +22,40 @@ import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
 import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
-import { commandOptions, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
-import { value } from './application/plugins/command-input.ts';
+import { commandOptions, ensureKnownAction, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
+import { globalOptions, value } from './application/plugins/command-input.ts';
 import { basesPlugin } from './plugins/bases/plugin.ts';
 import { skillsPlugin } from './plugins/skills/plugin.ts';
 import { searchPlugin } from './plugins/search/plugin.ts';
 import { linksPlugin } from './plugins/links/plugin.ts';
 import { agentsPlugin } from './plugins/agents/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
+import { templatesPlugin } from './plugins/templates/plugin.ts';
+import { scaffoldsPlugin } from './plugins/scaffolds/plugin.ts';
+import { uiPlugin } from './plugins/ui/plugin.ts';
+import { dataSourcesPlugin } from './plugins/data-sources/plugin.ts';
+import { claudePlugin } from './plugins/claude/plugin.ts';
 import { connectorPlugin } from './plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from './plugins/connector-azure-devops/plugin.ts';
 import { nodeLockFiles } from './infrastructure/workspace/lock-files.ts';
 import { FetchHttpClient } from './infrastructure/connectors/http-client.ts';
-import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
-import { MarkdownTemplates } from './infrastructure/templates/markdown.ts';
-import { workflowTemplates } from './infrastructure/templates/workflows.ts';
-import { projectScaffold, componentScaffold } from './infrastructure/projects/scaffolds.ts';
 import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
-import { generators } from './infrastructure/generation/generators.ts';
-import { MarkdownUiDefinitions } from './infrastructure/ui/definitions.ts';
-import { standardUiCatalog } from './infrastructure/ui/catalog.ts';
-import { componentArtifact, renderUiComponents } from './infrastructure/ui/renderers.ts';
-import { renderUiStories } from './infrastructure/ui/stories.ts';
-import { MarkdownDataSourceDefinitions } from './infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from './infrastructure/data-sources/generator.ts';
-import { MarkdownInteractionDefinitions } from './infrastructure/interactions/definitions.ts';
-import { parseClaudeAgent, renderClaudeAgent } from './infrastructure/claude/agents.ts';
-import { claudeTarget } from './infrastructure/claude/target.ts';
-import { NodeClaudeRuntime } from './infrastructure/claude/runtime.ts';
-import { claudeCommand } from './presentation/claude/commands.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { globalOptions, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
+import { parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin];
+const corePlugins = [
+  templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
+  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -107,30 +94,27 @@ async function run(): Promise<void> {
       events.on<HostEventMap['command.started']>('command.started', ({ command, operationId }) => { lockOwner = { command, operationId }; });
       let environment: Workspace;
       const skipUserPlugins = bootstrap.flags['no-plugins'] === true;
+      // Project files come from the scaffolds core plugin; project scope management stays in the kernel.
+      const scaffolder: ProjectScaffolderLookup = action => registry.requireService<ProjectScaffolder>(projectScaffolderService, `project ${action}`);
       const services: WorkflowServices = {
-        loaded, files, templates: new MarkdownTemplates(),
-        get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events); },
-        get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
-        get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
+        loaded, files,
+        get projects() { return new ProjectService(files, environment, config.paths.projects, scaffolder, events); },
         get workflows() { return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer); },
-        get uiLibrary() { return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
-          componentPaths: (definitions, options) => definitions.map(definition => `${options.outputDirectory}/${componentArtifact(definition, options.framework).fileName}`),
-          generate: (definitions, options) => [
-            ...(options.storiesOnly ? [] : renderUiComponents(definitions, options.framework, options.outputDirectory, options.interactions)),
-            ...(options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory!) : []),
-          ],
-        }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config.paths.interactions); },
-        installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
-        setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
+        setup: async () => {
+          // The templates core plugin provides the starter templates; without it, setup installs none and says so.
+          const templates = registry.service<TemplateInstallerService>(templateInstallerService);
+          if (templates === undefined) events.warn('The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.');
+          return new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], templates?.setupTemplates() ?? null).run();
+        },
         configSections: () => registry.settings.sections(),
         installedPlugins: () => installedPlugins('bin/plugins', config.plugins.enabled, skipUserPlugins, files, message => events.warn(message)),
       };
-      for (const generator of [...generators, ...libraryGenerators(services)]) registry.add(registry.generators, generator);
       for (const command of commands(registry, services)) registry.add(registry.commands, command);
-      registry.add(registry.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
       registerCorePlugins(registry, events, corePlugins, {
-        skills: registrySkills(registry), fileDates: nodeFileDates, locks: nodeLockFiles, http: new FetchHttpClient(), environment: name => process.env[name],
+        skills: registrySkills(registry), fileDates: nodeFileDates,
+        openFiles: (root, warn) => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
+        locks: nodeLockFiles, http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
@@ -140,7 +124,14 @@ async function run(): Promise<void> {
       // An action's own options (make <generator>) parse only once the action is known: the first argument after
       // the command id, unless an option precedes it.
       const actionArgs = hasActionOptions(command) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command.options) }, true).args.slice(1) : [];
-      const parsed = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) });
+      const parsed = (() => {
+        try { return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command, actionArgs)) }); }
+        catch (error) {
+          // An unknown action outranks its options: make <unknown> --template fails with UNKNOWN_GENERATOR.
+          ensureKnownAction(command, actionArgs);
+          throw error;
+        }
+      })();
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.
       localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
@@ -157,7 +148,7 @@ async function run(): Promise<void> {
       let metadataCommits: CommitObserver | undefined;
       environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root, { committed: async changes => { await metadataCommits?.committed(changes); } });
       const policy = invocationPolicy(command, parsed.args.slice(1), parsed.flags);
-      const projects = new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events);
+      const projects = new ProjectService(files, environment, config.paths.projects, scaffolder, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
       const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
       const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), { workspaceRoot: project === null });
@@ -167,9 +158,8 @@ async function run(): Promise<void> {
       metadataCommits = project ? scopedCommitObserver(metadataEvents, project.directory) : metadataEvents;
       const workspace = project ? environment.within(scopedFiles, resolve(files.root, project.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project ? resolve(files.root, project.directory) : files.root, project };
-      const claude = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace.dryRun }, events);
       const app = createApp({ workspace, metadata: vaultMetadata, events, project });
-      const context: CommandContext = { workspace, environment, events, claude, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
+      const context: CommandContext = { workspace, environment, events, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
         ensure(!process.stdin.isTTY, 'INPUT_REQUIRED', '--stdin needs piped input.');
         const chunks: Buffer[] = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));

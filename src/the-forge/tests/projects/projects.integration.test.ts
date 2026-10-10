@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { generators } from '../../src/infrastructure/generation/generators.ts';
+import { scaffoldGenerators as generators } from '../../src/plugins/scaffolds/infrastructure/generators.ts';
 import { ProjectService } from '../../src/application/projects/projects.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
-import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
+import { componentScaffold, projectScaffold } from '../../src/plugins/scaffolds/infrastructure/projects.ts';
 import { generatePlan } from '../support/generators.ts';
 
 let root: string;
@@ -24,7 +24,7 @@ beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'for
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 function service(directory = 'projects', dryRun = false, events = new EventBus(new NodeEventScope())) {
   events.defineAll(['vault.create', 'vault.modify'].map(id => ({ id, validate: (value): value is object => typeof value === 'object' })));
-  return new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, dryRun), directory, { project: projectScaffold, component: componentScaffold }, events);
+  return new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, dryRun), directory, () => ({ project: projectScaffold, component: componentScaffold }), events);
 }
 
 describe('Forge project management', () => {
@@ -137,8 +137,8 @@ describe('Forge project management', () => {
     await service('src').create('accounts');
     const events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
-    const projects = new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, false), 'src', { project: projectScaffold, component: componentScaffold }, events);
-    const preview = new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, true), 'src', { project: projectScaffold, component: componentScaffold }, events);
+    const projects = new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, false), 'src', () => ({ project: projectScaffold, component: componentScaffold }), events);
+    const preview = new ProjectService(files, new Workspace(files, new ObsidianDocuments(), events, true), 'src', () => ({ project: projectScaffold, component: componentScaffold }), events);
     await projects.open('billing');
     await projects.open('billing');
     await preview.open('accounts');

@@ -11,10 +11,17 @@ export interface ProjectMetadata {
 export interface ProjectInfo extends ProjectMetadata {
     directory: string;
 }
+/**
+ * The files of a new project and of a project component. The `scaffolds` core plugin provides it as the service
+ * `scaffolds.projects`; `project create` and `project component` fail with PLUGIN_UNAVAILABLE without it.
+ */
 export interface ProjectScaffolder {
     project(name: string, projectsDirectory: string): readonly WriteRequest[];
     component(projectName: string, componentName: string, projectsDirectory: string, kind: ComponentKind): readonly WriteRequest[];
 }
+export declare const projectScaffolderService = "scaffolds.projects";
+/** Resolves the scaffolder when a `project create` or `project component` action needs it. */
+export type ProjectScaffolderLookup = (action: 'create' | 'component') => ProjectScaffolder;
 export declare function projectName(name: string): string;
 /** Owns project discovery and mutation policy; scaffolding and persistence are injected. */
 export declare class ProjectService {
@@ -23,7 +30,7 @@ export declare class ProjectService {
     readonly projectsDirectory: string;
     private readonly scaffolder;
     private readonly events;
-    constructor(files: FileRepository, workspace: Workspace, projectsDirectory: string, scaffolder: ProjectScaffolder, events: EventBus);
+    constructor(files: FileRepository, workspace: Workspace, projectsDirectory: string, scaffolder: ProjectScaffolderLookup, events: EventBus);
     list(): Promise<ProjectInfo[]>;
     inspect(name: string): Promise<ProjectInfo>;
     current(): Promise<ProjectInfo | null>;

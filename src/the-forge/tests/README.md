@@ -10,14 +10,14 @@ Tests live under the concern they verify. Every executable test file declares it
 | [connector](connector/) | The `connector` core plugin: connection profiles and their validation, the connectors hub, token handling and redaction, and the kernel HTTP transport (retries, Retry-After, timeouts) |
 | [connector-azure-devops](connector-azure-devops/) | The `connector-azure-devops` core plugin: process mappings, JSON Patch documents, work item reading, Markdown to HTML, and the connector against the in-process Azure DevOps fake (`support/azure-devops.ts`) |
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
-| [claude](claude/) | Native agents, hooks, plugin assets, guarded removal and installed CLI invocation |
-| [data-sources](data-sources/) | Definition validation, generated adapters, CRUD behavior, and portable workflows |
+| [claude](claude/) | The `claude` core plugin: native agents, hooks, plugin assets, guarded removal, installed CLI invocation, its `claude.*` events and the `claude.lifecycle` service for trusted plugins, and disabling it |
+| [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |
 | [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
-| [generation](generation/) | Scaffold contracts, review plans, revision manifests, and guarded writes |
-| [interactions](interactions/) | Declarative event/action schemas, component attachment, generated behavior, and portable workflows |
+| [generation](generation/) | The shared generation service: review plans, revision manifests, and guarded writes |
+| [scaffolds](scaffolds/) | The `scaffolds` core plugin: code, form and plugin-folder generators, their compiled output, and disabling it (project create and component then fail with `PLUGIN_UNAVAILABLE`) |
 | [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
 | [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
@@ -27,8 +27,8 @@ Tests live under the concern they verify. Every executable test file declares it
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
-| [templates](templates/) | Template rendering, required inputs, planning-pack installation, and project workflows |
-| [ui](ui/) | Component definitions, composition, renderers, Storybook, real framework compilation, and CLI workflows |
+| [templates](templates/) | The `templates` core plugin: template rendering, required inputs, planning-pack installation, its settings section, and disabling it (setup then skips templates) |
+| [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, and CLI workflows |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |

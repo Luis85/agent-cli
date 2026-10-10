@@ -23,6 +23,8 @@ export declare function serviceProviders(nodes: readonly ServiceNode[]): Map<str
  * PLUGIN_SERVICE_CYCLE. Both name the plugins and services involved.
  */
 export declare function activationOrder<T extends ServiceNode>(nodes: readonly T[]): T[];
+/** The provider's read-only view of service `id`; the caller checked that `provider` provides it. */
+export declare function serviceView<T>(provider: ServiceNode, id: string): T;
 /**
  * The lookup a plugin's context receives: only declared services, so dependencies stay visible in manifests. Each
  * service is handed out as a read-only view, so one consumer cannot change what another consumer or the provider sees.

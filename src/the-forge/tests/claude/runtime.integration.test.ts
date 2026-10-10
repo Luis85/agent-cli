@@ -3,7 +3,7 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { NodeClaudeRuntime } from '../../src/infrastructure/claude/runtime.ts';
+import { NodeClaudeRuntime } from '../../src/plugins/claude/infrastructure/runtime.ts';
 
 const directories: string[] = [];
 // A terminated child can briefly keep its working directory open on Windows (EBUSY); rm retries those errors.
@@ -119,7 +119,7 @@ describe('installed Claude CLI adapter', () => {
   });
 
   it.skipIf(process.platform === 'win32').each(['SIGINT', 'SIGTERM'] as const)('stops native work when the host receives %s', async signal => {
-    const adapter = new URL('../../src/infrastructure/claude/runtime.ts', import.meta.url).href;
+    const adapter = new URL('../../src/plugins/claude/infrastructure/runtime.ts', import.meta.url).href;
     const { script, cwd } = await fixture(`
       import { NodeClaudeRuntime } from ${JSON.stringify(adapter)};
       try {

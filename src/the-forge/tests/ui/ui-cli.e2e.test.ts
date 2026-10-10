@@ -133,8 +133,7 @@ describe('portable Markdown component library and deterministic UI generation', 
   it('uses configured library, import, export, UI, story, and framework defaults', async () => {
     await mkdir(join(fixture.project, 'bin'), { recursive: true });
     await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({
-      paths: { components: 'configured-library', componentImports: 'incoming', componentExports: 'configured-export', ui: 'configured-ui', stories: 'configured-stories' },
-      ui: { framework: 'vue' },
+      plugins: { settings: { ui: { components: 'configured-library/', componentImports: 'incoming', componentExports: 'configured-export', output: 'configured-ui', stories: 'configured-stories', framework: 'vue' } } },
     }));
     expect(cli(['components', 'import']).status).toBe(0);
     expect(cli(['components', 'export']).status).toBe(0);

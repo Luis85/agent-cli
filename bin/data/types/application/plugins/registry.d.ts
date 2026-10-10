@@ -2,7 +2,6 @@ import type { Workspace } from '../workspace/workspace.ts';
 import type { ProjectInfo } from '../projects/projects.ts';
 import type { EventBus, EventChannel, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
-import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
 import type { App } from '../vault/app.ts';
 import type { GenerationService } from '../generation/plans.ts';
@@ -22,7 +21,6 @@ export interface CommandContext {
     workspace: Workspace;
     environment: Workspace;
     events: EventChannel;
-    claude: ClaudeLifecycleClient;
     metadata: MetadataIndex;
     app: App;
     workspaceRoot: string;
@@ -68,7 +66,8 @@ export interface Generator extends CommandMode {
 }
 /**
  * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
- * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE; only a reviewed generator may list
+ * the host's own review option definitions, which places them among its options without changing them.
  */
 export declare const hostGeneratorOptions: readonly ["out", "plan", "plan-out", "check", "revisions-from"];
 export interface Skill {
@@ -161,6 +160,16 @@ export declare class Registry {
      * ids), are kept unchanged with a warning.
      */
     configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>>;
+    /**
+     * A plugin service for a kernel command (`setup` uses `templates.installer`): the provider's read-only view, or
+     * undefined when no registered plugin provides it or its provider is unavailable. Call it after `configure`.
+     */
+    service<T>(id: string): T | undefined;
+    /**
+     * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
+     * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+     */
+    requireService<T>(id: string, command: string): T;
     /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
     private cascadeUnavailable;
     /**

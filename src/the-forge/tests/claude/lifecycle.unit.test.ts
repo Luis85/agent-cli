@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/application/claude/lifecycle.ts';
+import { ClaudeLifecycle } from '../../src/plugins/claude/application/lifecycle.ts';
+import type { ClaudeLifecycleRequest } from '../../src/application/plugins/claude-lifecycle.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 
@@ -7,7 +8,7 @@ function setup(dryRun = false, result = { exitCode: 0, stdout: '{"outcome":"ok"}
   const events = new EventBus(new NodeEventScope());
   events.define({ id: 'claude.executed', validate: (value): value is object => value !== null && typeof value === 'object' });
   const run = vi.fn(async () => result), runtime = vi.fn(() => ({ run }));
-  return { service: new ClaudeLifecycle(runtime, { cwd: '/vault/selected', dryRun }, events), events, runtime, run };
+  return { service: new ClaudeLifecycle(runtime, { cwd: '/vault/selected', dryRun }, events, () => events.nextOperationId()), events, runtime, run };
 }
 
 describe('shared Claude lifecycle service', () => {

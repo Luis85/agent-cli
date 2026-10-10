@@ -146,9 +146,9 @@ const errorCatalog = {
   INVALID_PLUGIN_CONFIG: entry("input", "The plugin configuration is invalid.", "List unique lowercase kebab-case ids of installed user plugins in plugins.enabled in bin/config.json; run plugins to list them."),
   INCOMPATIBLE_PLUGIN: entry("input", "The plugin requires a newer Forge version.", "Update The Forge or disable the plugin."),
   DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
-  PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix user plugin command, generator, skill and event ids, and the service ids of every plugin, with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle, and do not declare the options make owns (out, plan, plan-out, check, revisions-from) on a generator."),
-  PLUGIN_SERVICE_MISSING: entry("input", "A plugin requires a service that no enabled plugin provides, or uses one it did not declare.", "Enable the plugin that provides the service named in error.details.service (plugins lists providers), or declare it in the plugin's requires."),
-  PLUGIN_UNAVAILABLE: entry("input", "The command or generator belongs to a plugin that is unavailable in this invocation.", "error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, or enable the disabled provider it names (remove it from plugins.disabled), then rerun. Run plugins to see each plugin's state and reason."),
+  PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix user plugin command, generator, skill and event ids, and the service ids of every plugin, with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle, and do not declare the options make owns (out, plan, plan-out, check, revisions-from) on a generator."),
+  PLUGIN_SERVICE_MISSING: entry("input", "A plugin needs a required or optional service that no enabled, available plugin provides, or uses one it did not declare.", "Enable the plugin that provides the service named in error.details.service and make it available (plugins lists providers and states), or declare the service in the plugin's requires or optional."),
+  PLUGIN_UNAVAILABLE: entry("input", "The command or generator belongs to, or needs a service of, a plugin that is disabled or unavailable.", "error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, or enable the disabled provider it names (remove it from plugins.disabled), then rerun. Run plugins to see each plugin's state and reason."),
   PLUGIN_SERVICE_CYCLE: entry("input", "Plugin service requirements form a cycle.", "Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
@@ -159,7 +159,7 @@ const errorCatalog = {
   DUPLICATE_EVENT: entry("input", "The event id is already registered.", "Use a unique event id."),
   UNKNOWN_EVENT: entry("input", "The event is not registered.", "Run events to list registered event ids."),
   EVENT_RECURSION: entry("input", "Event handlers recursed too deeply.", "Stop handlers from emitting the events that trigger them."),
-  EVENT_OWNERSHIP: entry("input", "A plugin tried to emit an event it does not own.", "Emit only events in your plugin's own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) are emitted by the host."),
+  EVENT_OWNERSHIP: entry("input", "A plugin tried to emit an event it does not own.", "Emit only events in your plugin's own namespace; host events (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*) are emitted by the host and another plugin's events by that plugin."),
   // Claude Code definitions
   INVALID_CLAUDE_AGENT: entry("input", "The Claude agent definition is invalid.", claudeDefinitionHint$1),
   INVALID_CLAUDE_HOOKS: entry("input", "The Claude hook configuration is invalid.", claudeDefinitionHint$1),
@@ -396,58 +396,52 @@ class EventBus {
     this.listeners.clear();
   }
 }
-const hostEventNamespaces = ["command", "operation", "claude", "vault", "metadataCache", "workspace", "plugin"];
-const text$c = (value2) => typeof value2 === "string" && value2.length > 0;
+const hostEventNamespaces = ["command", "operation", "vault", "metadataCache", "workspace", "plugin"];
+const text$d = (value2) => typeof value2 === "string" && value2.length > 0;
 const count$1 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
-const status = (value2) => Number.isSafeInteger(value2);
+const status$1 = (value2) => Number.isSafeInteger(value2);
 const empty$1 = (value2) => Object.keys(value2).length === 0;
-const operation$1 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$2 = (value2) => isRecord(value2) && text$c(value2.code) && status(value2.exitCode);
-const command = (value2) => operation$1(value2) && text$c(value2.command) && text$c(value2.root) && text$c(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$c(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$c);
-const claude = (value2) => operation$1(value2) && text$c(value2.executable) && text$c(value2.cwd);
-const plugin = (value2) => text$c(value2.pluginId);
+const operation$2 = (value2) => count$1(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
+const error$3 = (value2) => isRecord(value2) && text$d(value2.code) && status$1(value2.exitCode);
+const command = (value2) => operation$2(value2) && text$d(value2.command) && text$d(value2.root) && text$d(value2.workspaceRoot);
+const workspace = (value2) => operation$2(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$d(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$d);
+const plugin = (value2) => text$d(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change = (value2) => isRecord(value2) && text$c(value2.path) && text$c(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
-const moved = (value2) => isRecord(value2) && text$c(value2.from) && text$c(value2.to) && ["file", "folder"].includes(String(value2.kind));
-const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
-const project = (value2) => value2 === null || text$c(value2);
-const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$c(value2.path) && Object.keys(value2).length === 3);
-const rename = (value2) => text$c(value2.path) && text$c(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$c(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
-function definition$1(id2, description2, validate2) {
+const change = (value2) => isRecord(value2) && text$d(value2.path) && text$d(value2.revision) && count$1(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$d(value2.from) && text$d(value2.to) && ["file", "folder"].includes(String(value2.kind));
+const project = (value2) => value2 === null || text$d(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$d(value2.path) && Object.keys(value2).length === 3);
+const rename = (value2) => text$d(value2.path) && text$d(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$d(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
+function definition$2(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
 }
 const hostEventDefinitions = [
-  definition$1("command.started", "A routed command is about to activate plugins and run.", command),
-  definition$1("command.succeeded", "A routed command returned successfully.", command),
-  definition$1("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$2(value2.error)),
-  definition$1("operation.started", "A guarded workspace operation started, including previews.", workspace),
-  definition$1("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$1(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
-  definition$1("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$2(value2.error)),
-  definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
-  definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
-  definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => claude(value2) && error$2(value2.error) && optionalStatus(value2)),
-  definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$c(value2.executable) && text$c(value2.cwd) && status(value2.exitCode)),
-  definition$1("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
-  definition$1("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
-  definition$1("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
-  definition$1("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
-  definition$1("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$c(value2.path) && isRecord(value2.cache)),
-  definition$1("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$c(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
-  definition$1("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$c(value2.path) && Object.keys(value2).length === 1),
-  definition$1("metadataCache.resolved", "Link resolution finished for a committed batch.", empty$1),
-  definition$1("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$c(value2.path) && Object.keys(value2).length === 1),
-  definition$1("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$c(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
-  definition$1("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
-  definition$1("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
-  definition$1("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
-  definition$1("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
-  definition$1("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
-  definition$1("plugin.activated", "A plugin activation hook completed successfully.", plugin),
-  definition$1("plugin.activation-failed", "A plugin activation failed; captured cleanup remains scheduled.", (value2) => plugin(value2) && error$2(value2.error)),
-  definition$1("plugin.unloading", "A started plugin is about to release its invocation resources.", plugin),
-  definition$1("plugin.unloaded", "A plugin cleanup completed successfully.", plugin),
-  definition$1("plugin.unload-failed", "A plugin cleanup failed; remaining cleanup still proceeds.", (value2) => plugin(value2) && error$2(value2.error))
+  definition$2("command.started", "A routed command is about to activate plugins and run.", command),
+  definition$2("command.succeeded", "A routed command returned successfully.", command),
+  definition$2("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$3(value2.error)),
+  definition$2("operation.started", "A guarded workspace operation started, including previews.", workspace),
+  definition$2("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count$1(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
+  definition$2("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$3(value2.error)),
+  definition$2("vault.create", "A file or folder was created by a committed write.", vault$1("created", ["file", "folder"])),
+  definition$2("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
+  definition$2("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
+  definition$2("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename),
+  definition$2("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$d(value2.path) && isRecord(value2.cache)),
+  definition$2("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$d(value2.path) && (value2.prevCache === null || isRecord(value2.prevCache))),
+  definition$2("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$d(value2.path) && Object.keys(value2).length === 1),
+  definition$2("metadataCache.resolved", "Link resolution finished for a committed batch.", empty$1),
+  definition$2("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$d(value2.path) && Object.keys(value2).length === 1),
+  definition$2("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$d(value2.path) && changeOperations.includes(String(value2.operation)) && count$1(value2.bytes) && Object.keys(value2).length === 3),
+  definition$2("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
+  definition$2("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
+  definition$2("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
+  definition$2("plugin.registered", "A plugin passed atomic contribution registration.", plugin),
+  definition$2("plugin.activating", "A registered plugin is about to run its activation hook.", plugin),
+  definition$2("plugin.activated", "A plugin activation hook completed successfully.", plugin),
+  definition$2("plugin.activation-failed", "A plugin activation failed; captured cleanup remains scheduled.", (value2) => plugin(value2) && error$3(value2.error)),
+  definition$2("plugin.unloading", "A started plugin is about to release its invocation resources.", plugin),
+  definition$2("plugin.unloaded", "A plugin cleanup completed successfully.", plugin),
+  definition$2("plugin.unload-failed", "A plugin cleanup failed; remaining cleanup still proceeds.", (value2) => plugin(value2) && error$3(value2.error))
 ];
 function registerHostEvents(events2) {
   events2.defineAll(hostEventDefinitions);
@@ -622,90 +616,6 @@ class NodeEventScope {
     } finally {
       delivery.active = false;
     }
-  }
-}
-function nativeResult(stdout, output2) {
-  if (output2 === "text") return void 0;
-  const text2 = stdout.trim();
-  return JSON.parse(output2 === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
-}
-class ClaudeLifecycle {
-  constructor(runtime, scope2, events2) {
-    this.runtime = runtime;
-    this.scope = scope2;
-    this.events = events2;
-  }
-  runtime;
-  scope;
-  events;
-  async execute(request) {
-    let detached = request;
-    let snapshotFailure;
-    try {
-      if (isRecord(request)) {
-        detached = { ...request };
-        if (Array.isArray(detached.args)) detached.args = [...detached.args];
-        if (Array.isArray(detached.sensitiveArgs)) detached.sensitiveArgs = [...detached.sensitiveArgs];
-      }
-    } catch (error2) {
-      snapshotFailure = { error: error2 };
-    }
-    const requestedExecutable = !snapshotFailure && isRecord(detached) ? detached.executable ?? "claude" : "claude";
-    const executable = typeof requestedExecutable === "string" && requestedExecutable.trim().length > 0 && !requestedExecutable.includes("\0") ? requestedExecutable : "<invalid>";
-    const operation2 = { operationId: this.events.nextOperationId(), executable, cwd: this.scope.cwd, dryRun: this.scope.dryRun };
-    let exitCode;
-    await publishHostEvent(this.events, "claude.started", operation2);
-    try {
-      if (snapshotFailure) throw snapshotFailure.error;
-      const result = await this.invoke(detached, (status2) => {
-        exitCode = status2;
-      });
-      await publishHostEvent(this.events, "claude.succeeded", { ...operation2, ...exitCode === void 0 ? {} : { exitCode } });
-      return result;
-    } catch (error2) {
-      await publishHostEvent(this.events, "claude.failed", { ...operation2, ...exitCode === void 0 ? {} : { exitCode }, error: summarizeError(error2) });
-      throw error2;
-    }
-  }
-  async invoke(request, observeExit) {
-    ensure(isRecord(request), "INVALID_CLAUDE_ARGUMENT", "Claude execution requires an invocation object.");
-    const executable = request.executable ?? "claude";
-    ensure(typeof executable === "string" && executable.trim().length > 0 && !executable.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
-    ensure(Array.isArray(request.args) && request.args.every((argument) => typeof argument === "string" && !argument.includes("\0")), "INVALID_CLAUDE_ARGUMENT", "Claude arguments must be strings without null bytes.");
-    const args = [...request.args], timeoutMs = request.timeoutMs, input = request.stdin;
-    ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_CLAUDE_TIMEOUT", "Claude timeout must be milliseconds from 1 to 3600000.");
-    ensure(input === void 0 || typeof input === "string", "INVALID_CLAUDE_INPUT", "Claude standard input must be UTF-8 text.");
-    const inputBytes = input === void 0 ? void 0 : new TextEncoder().encode(input).length;
-    ensure(inputBytes === void 0 || inputBytes <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude standard input must not exceed 1 MiB.");
-    const output2 = request.output ?? "text";
-    ensure(["text", "json", "json-last-line"].includes(output2), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
-    const sensitive = request.sensitiveArgs ?? [];
-    ensure(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
-    const redact2 = new Set(sensitive);
-    for (const [index2, argument] of args.entries()) if (argument === "--config" && index2 + 1 < args.length) redact2.add(index2 + 1);
-    else if (argument.startsWith("--config=")) redact2.add(index2);
-    const plan = {
-      executable,
-      args: args.map((argument, index2) => redact2.has(index2) ? "<redacted>" : argument),
-      cwd: this.scope.cwd,
-      ...timeoutMs === void 0 ? {} : { timeoutMs },
-      ...inputBytes === void 0 ? {} : { inputBytes }
-    };
-    if (this.scope.dryRun) return { dryRun: true, executed: false, plan };
-    const result = await this.runtime(executable).run(args, { cwd: this.scope.cwd, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input === void 0 ? {} : { stdin: input } });
-    ensure(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
-    observeExit(result.exitCode);
-    await publishHostEvent(this.events, "claude.executed", { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
-    let data, malformed = false;
-    try {
-      data = nativeResult(result.stdout, output2);
-    } catch {
-      malformed = true;
-    }
-    const details = { ...plan, ...result, ...data === void 0 ? {} : { result: data } };
-    if (result.exitCode !== 0) throw forgeError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, details);
-    if (malformed) throw forgeError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", details);
-    return { dryRun: false, executed: true, ...details };
   }
 }
 function vaultPath(input) {
@@ -1245,6 +1155,7 @@ function validateJsonValue(schema2, value2, path) {
   const completed2 = visit2(schema2, value2 === void 0 && schema2.default !== void 0 ? copy$1(schema2.default) : value2, path);
   return { value: completed2, issues };
 }
+const unknownActionCodes = ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
 const option$1 = {
   string: (description2, extra = {}) => ({ type: "string", description: description2, ...extra }),
   boolean: (description2, extra = {}) => ({ type: "boolean", description: description2, ...extra })
@@ -1269,7 +1180,15 @@ function commandOptions(command2, args) {
   return { ...command2.options, ...selectedAction(command2, args)?.options };
 }
 function hasActionOptions(command2) {
-  return Object.values(command2.actions ?? {}).some((action2) => Object.keys(action2.options ?? {}).length > 0);
+  return command2.unknownAction !== void 0 || Object.values(command2.actions ?? {}).some((action2) => Object.keys(action2.options ?? {}).length > 0);
+}
+function ensureKnownAction(command2, args) {
+  const action2 = args[0];
+  if (command2.unknownAction === void 0 || action2 === void 0 || action2.startsWith("-")) return;
+  if (command2.actions === void 0 || !Object.hasOwn(command2.actions, action2)) unknownAction(command2.unknownAction, action2);
+}
+function unknownAction(code2, action2) {
+  throw forgeError(code2, action2);
 }
 function optionTypes(options2) {
   return Object.fromEntries(Object.entries(options2 ?? {}).map(([key, schema2]) => [key, schema2.type]));
@@ -1349,11 +1268,11 @@ function commandAnnotations(command2) {
 }
 const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
 const flag = /^[a-z][a-z0-9-]*$/;
-const text$b = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$c = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateOptions(options2, shared = {}) {
   for (const [key, schema2] of Object.entries(options2)) {
     ensure(flag.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$b(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(isRecord(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$c(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
@@ -1366,25 +1285,26 @@ function validateMode(mode, where, options2) {
 }
 function validateCommandMetadata(command2) {
   const where = `Command ${String(command2.id)}`;
-  ensure(text$b(command2.description) && text$b(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
+  ensure(text$c(command2.description) && text$c(command2.usage), "INVALID_PLUGIN", `${where} requires a description and usage.`);
   ensure(command2.options === void 0 || isRecord(command2.options), "INVALID_PLUGIN", `${where} options must be an object.`);
   const options2 = command2.options ?? {};
   validateOptions(options2);
   validateMode(command2, where, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$b(arg.name) && text$b(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord(arg) && text$c(arg.name) && text$c(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1)), "INVALID_PLUGIN", `${where} args must list named, described arguments; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord(command2.actions), "INVALID_PLUGIN", `${where} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
-    ensure(isRecord(action2) && text$b(action2.description) && (action2.usage === void 0 || text$b(action2.usage)), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
+    ensure(isRecord(action2) && text$c(action2.description) && (action2.usage === void 0 || text$c(action2.usage)), "INVALID_PLUGIN", `${where} action ${id2} requires a description.`);
     ensure(action2.options === void 0 || isRecord(action2.options), "INVALID_PLUGIN", `${where} action ${id2} options must be an object.`);
     validateOptions(action2.options ?? {}, options2);
     validateMode(action2, `${where} action ${id2}`, { ...options2, ...action2.options });
   }
   ensure(command2.defaultAction === void 0 || typeof command2.defaultAction === "string" && isRecord(command2.actions) && Object.hasOwn(command2.actions, command2.defaultAction), "INVALID_PLUGIN", `${where} defaultAction must name a declared action.`);
+  ensure(command2.unknownAction === void 0 || unknownActionCodes.includes(command2.unknownAction) && isRecord(command2.actions), "INVALID_PLUGIN", `${where} unknownAction must be ${unknownActionCodes.join(" or ")} for a command with actions.`);
   ensure(command2.output === void 0 || schemaIssues(command2.output).length === 0, "INVALID_PLUGIN", `${where} output must be a supported JSON Schema: ${schemaIssues(command2.output).join("; ")}`);
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
-const text$a = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$b = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const errorCode$2 = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const errorPrefix = (pluginId) => `${pluginId.replaceAll("-", "_").toUpperCase()}_`;
 class PluginCatalog {
@@ -1400,7 +1320,7 @@ class PluginCatalog {
       ensure(isRecord(entry2) && typeof entry2.code === "string" && errorCode$2.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
       ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
       ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$a(entry2.summary) && text$a(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$b(entry2.summary) && text$b(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
       ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
       codes.add(entry2.code);
     }
@@ -1412,7 +1332,7 @@ class PluginCatalog {
         for (const [id2, entry2] of Object.entries(entries2)) {
           const known2 = kind === "messages" || (kind === "errors" ? codes.has(id2) : owned[kind].includes(id2));
           ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind}.${id2} does not name a contribution of plugin ${pluginId}.`);
-          ensure(kind === "errors" ? isRecord(entry2) && text$a(entry2.summary) && text$a(entry2.hint) : text$a(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
+          ensure(kind === "errors" ? isRecord(entry2) && text$b(entry2.summary) && text$b(entry2.hint) : text$b(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind}.${id2} must be ${kind === "errors" ? "a summary and hint" : "nonempty text"}.`);
         }
       }
     }
@@ -1512,8 +1432,8 @@ function validateContributions(plugin2, pluginId, origin) {
   for (const skill of plugin2.skills ?? []) ensure(typeof skill.content === "string", "INVALID_PLUGIN", "Invalid skill.");
   ensure(plugin2.provides === void 0 || isRecord(plugin2.provides), "INVALID_PLUGIN", "provides must map service ids to implementations.");
   for (const key of ["requires", "optional"]) {
-    const services = plugin2[key];
-    ensure(services === void 0 || Array.isArray(services) && services.every((service) => typeof service === "string" && id$2.test(service)), "INVALID_PLUGIN", `${key} must list service ids.`);
+    const services2 = plugin2[key];
+    ensure(services2 === void 0 || Array.isArray(services2) && services2.every((service) => typeof service === "string" && id$2.test(service)), "INVALID_PLUGIN", `${key} must list service ids.`);
   }
   for (const service of Object.keys(plugin2.provides ?? {})) {
     ensure(id$2.test(service), "DUPLICATE_OR_INVALID_ID", service);
@@ -1593,6 +1513,9 @@ function readOnly(implementation, id2) {
   views$1.set(target, view);
   return view;
 }
+function serviceView(provider, id2) {
+  return readOnly(provider.provides[id2], id2);
+}
 function pluginServices(node2, providers) {
   const declared = (id2) => {
     const known2 = (node2.requires ?? []).includes(id2) || (node2.optional ?? []).includes(id2) || Object.hasOwn(node2.provides ?? {}, id2);
@@ -1602,8 +1525,8 @@ function pluginServices(node2, providers) {
     get(id2) {
       declared(id2);
       const provider = providers.get(id2);
-      ensure(provider, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} uses service ${id2}, which no enabled plugin provides.`, { plugin: node2.manifest.id, service: id2 });
-      return readOnly(provider.provides[id2], id2);
+      ensure(provider, "PLUGIN_SERVICE_MISSING", `Plugin ${node2.manifest.id} uses service ${id2}, which no enabled, available plugin provides.`, { plugin: node2.manifest.id, service: id2 });
+      return serviceView(provider, id2);
     },
     has(id2) {
       declared(id2);
@@ -1666,6 +1589,90 @@ function canonicalJson$1(value2) {
   if (isRecord(value2)) return `{${Object.keys(value2).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson$1(value2[key])}`).join(",")}}`;
   return JSON.stringify(value2);
 }
+const relativePathSetting = (value2) => String(value2).replace(/\/+$/, "");
+function relativePathIssues(pluginId, settings2, keys2) {
+  return keys2.flatMap((key) => {
+    try {
+      vaultPath(relativePathSetting(settings2[key]));
+      return [];
+    } catch {
+      return [`plugins.settings.${pluginId}.${key}: must be a contained workspace-relative path`];
+    }
+  });
+}
+const globalOptions = {
+  root: "string",
+  lang: "string",
+  events: "string",
+  json: "boolean",
+  "no-json": "boolean",
+  "dry-run": "boolean",
+  "no-dry-run": "boolean",
+  "no-plugins": "boolean",
+  help: "boolean",
+  version: "boolean"
+};
+function value$3(flags, key, required2 = false) {
+  const result = flags[key];
+  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
+  return typeof result === "string" ? result : void 0;
+}
+function integer$1(flags, key, minimum = 0) {
+  const text2 = value$3(flags, key);
+  if (text2 === void 0) return void 0;
+  ensure(/^\d+$/.test(text2) && Number.isSafeInteger(Number(text2)) && Number(text2) >= minimum, "INVALID_ARGUMENT", `--${key} must be an integer of at least ${minimum}.`);
+  return Number(text2);
+}
+function arity(args, min, max = min) {
+  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
+}
+async function readInputBytes(flags, context, message2) {
+  const from = value$3(flags, "from"), content2 = value$3(flags, "content");
+  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message2);
+  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : new TextEncoder().encode(content2);
+}
+function parseJson(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
+  }
+}
+const reviewOptions = {
+  "revisions-from": option$1.string("JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out)."),
+  plan: option$1.boolean("Report planned outputs and their status without writing."),
+  "plan-out": option$1.string("Write the plan's revision manifest to this path."),
+  check: option$1.boolean("Fail with a drift code when outputs are missing or differ.")
+};
+async function generationControls(flags, files) {
+  const revisionsPath = value$3(flags, "revisions-from"), manifestPath2 = value$3(flags, "plan-out");
+  const planning = flags.plan === true || manifestPath2 !== void 0;
+  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
+  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
+  let revisions;
+  if (revisionsPath !== void 0) {
+    const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes);
+    let parsed2;
+    try {
+      parsed2 = JSON.parse(text2);
+    } catch {
+      throw forgeError("INVALID_JSON", "Expected valid JSON input.");
+    }
+    ensure(isRecord(parsed2) && Object.values(parsed2).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
+    revisions = parsed2;
+  }
+  const mode = flags.check ? "check" : planning ? "plan" : "generate";
+  return { mode, manifestPath: manifestPath2, revisions };
+}
+const libraryGenerationOptions = {
+  project: option$1.string("Generate into this project instead of the selected one."),
+  library: option$1.string("Definition library directory; defaults to the configured path."),
+  ...reviewOptions
+};
+function generationOutputPath(path, project2) {
+  const relative = vaultPath(path);
+  return project2 ? `${project2.directory}/${relative}` : relative;
+}
 const hostGeneratorOptions = ["out", "plan", "plan-out", "check", "revisions-from"];
 const appVersion = [0, 1, 0];
 function validatePluginManifest(value2, origin = "user") {
@@ -1711,12 +1718,13 @@ class Registry {
     const pluginId = plugin2.manifest.id;
     ensure(!this.origins.has(pluginId) && !this.disabled.some((manifest) => manifest.id === pluginId), "DUPLICATE_PLUGIN", pluginId);
     validateContributions(plugin2, pluginId, origin);
-    const commands2 = new Map(this.commands), generators2 = new Map(this.generators), skills2 = new Map(this.skills);
+    const commands2 = new Map(this.commands), generators = new Map(this.generators), skills2 = new Map(this.skills);
     for (const command2 of plugin2.commands ?? []) this.add(commands2, command2);
     for (const generator of plugin2.generators ?? []) {
-      const owned = Object.keys(generator.options ?? {}).filter((key) => hostGeneratorOptions.includes(key));
+      const hostReview = generator.review === true ? reviewOptions : {};
+      const owned = Object.entries(generator.options ?? {}).filter(([key, schema2]) => hostGeneratorOptions.includes(key) && hostReview[key] !== schema2).map(([key]) => key);
       ensure(owned.length === 0, "PLUGIN_NAMESPACE", `Generator ${generator.id} cannot declare --${owned.join(", --")}; make owns --${hostGeneratorOptions.join(", --")} for every generator.`);
-      this.add(generators2, generator);
+      this.add(generators, generator);
     }
     for (const skill of plugin2.skills ?? []) this.add(skills2, skill);
     serviceProviders([...this.plugins, plugin2]);
@@ -1770,6 +1778,26 @@ class Registry {
     const unknown2 = foreign.filter((id2) => !present2.has(id2)).sort();
     if (unknown2.length > 0) warn(`plugins.settings names no installed plugin: ${unknown2.join(", ")}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.`);
     return report.effective;
+  }
+  /**
+   * A plugin service for a kernel command (`setup` uses `templates.installer`): the provider's read-only view, or
+   * undefined when no registered plugin provides it or its provider is unavailable. Call it after `configure`.
+   */
+  service(id2) {
+    const provider = this.availableProviders().get(id2);
+    return provider === void 0 ? void 0 : serviceView(provider, id2);
+  }
+  /**
+   * Like `service`, but a missing service fails with PLUGIN_UNAVAILABLE for `command` (`project create`), with
+   * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
+   */
+  requireService(id2, command2) {
+    const service = this.service(id2);
+    if (service !== void 0) return service;
+    const pluginId = id2.split(".")[0];
+    const unavailable = this.unavailable.get(pluginId);
+    const reason = unavailable?.reason ?? (this.disabled.some((manifest) => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id2}.`);
+    throw forgeError("PLUGIN_UNAVAILABLE", `Command ${command2} is unavailable because it needs service ${id2} of plugin ${pluginId}: ${reason}`, { command: command2, plugin: pluginId, service: id2, reason, issues: unavailable?.issues ?? [] });
   }
   /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
   cascadeUnavailable() {
@@ -1915,6 +1943,7 @@ class Registry {
     };
   }
 }
+const projectScaffolderService = "scaffolds.projects";
 function projectName(name2) {
   ensure(typeof name2 === "string" && name2.length <= 214 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name2), "INVALID_PROJECT_NAME", "Use a lowercase kebab-case project name, for example billing-service.");
   return name2;
@@ -1987,7 +2016,7 @@ class ProjectService {
   async create(name2) {
     const directory = `${this.projectsDirectory}/${projectName(name2)}`;
     ensure(!(await this.files.list()).some((path) => path === directory || path.startsWith(directory + "/")), "PROJECT_EXISTS", `Project directory already contains files: ${directory}`);
-    const plan = this.scaffolder.project(name2, this.projectsDirectory);
+    const plan = this.scaffolder("create").project(name2, this.projectsDirectory);
     const result = await this.workspace.write(plan);
     return { project: { schemaVersion: 1, name: name2, type: "library", directory }, ...result, ...this.preview(plan), nextSteps: [
       { scope: "workspace", command: `node bin/forge.js project open ${name2}` },
@@ -1999,7 +2028,7 @@ class ProjectService {
   async component(name2, componentName, kind = "domain") {
     ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
     const project2 = await this.inspect(name2);
-    const plan = this.scaffolder.component(name2, componentName, this.projectsDirectory, kind);
+    const plan = this.scaffolder("component").component(name2, componentName, this.projectsDirectory, kind);
     const result = await this.workspace.write(plan);
     return { project: project2, component: { name: componentName, kind }, ...result, ...this.preview(plan) };
   }
@@ -2050,6 +2079,7 @@ class ProjectService {
     return this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {};
   }
 }
+const templateInstallerService = "templates.installer";
 const encode$4 = (value2) => new TextEncoder().encode(value2);
 const instructions = `# The Forge workflow
 
@@ -2071,29 +2101,8 @@ Use clear names and focused functions; verify acceptance criteria and failure be
 Use the installed agent skills for the development and file-editing workflows.
 Enable only reviewed plugins: plugins execute with Node's permissions.
 `;
-const entityTemplate = `---
-type: entity
-title: '{{title}}'
-created: '{{date:YYYY-MM-DD}}'
----
-# {{title}}
-
-Created: {{date:YYYY-MM-DD}}
-
-## Purpose
-
-Describe the entity's responsibility and identity.
-
-## Invariants
-
-- Define the rules that must always hold.
-
-## Acceptance criteria
-
-- Describe observable behavior and verification.
-`;
 class SetupService {
-  constructor(workspace2, config2, artifacts, skills2, templates2 = []) {
+  constructor(workspace2, config2, artifacts, skills2, templates2) {
     this.workspace = workspace2;
     this.config = config2;
     this.artifacts = artifacts;
@@ -2111,8 +2120,7 @@ class SetupService {
       ...this.artifacts.map((artifact) => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: "bin/config.json", bytes: encode$4(JSON.stringify(this.config, null, 2) + "\n") },
       ...this.skills.map((skill) => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode$4(skill.content) })),
-      { path: "bin/templates/entity.md", bytes: encode$4(entityTemplate) },
-      ...this.templates.map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$4(template.content) })),
+      ...(this.templates ?? []).map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$4(template.content) })),
       { path: "bin/plugins/.gitkeep", bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
       { path: "AGENTS.md", bytes: encode$4(instructions) }
@@ -2135,655 +2143,12 @@ class SetupService {
     }
     const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
     return { ...result, skipped, nextSteps: [
-      { scope: "workspace", command: "node bin/forge.js templates list", purpose: "Discover the installed editable planning templates." },
-      { scope: "workspace", command: "node bin/forge.js templates inspect workflow/prd.md", purpose: "Inspect planning inputs before generating a requirements document." },
+      ...this.templates === null ? [] : [
+        { scope: "workspace", command: "node bin/forge.js templates list", purpose: "Discover the installed editable planning templates." },
+        { scope: "workspace", command: "node bin/forge.js templates inspect workflow/prd.md", purpose: "Inspect planning inputs before generating a requirements document." }
+      ],
       { scope: "workspace", command: "node bin/forge.js project list", purpose: "Find a project, then explicitly open it before generating project files." }
     ] };
-  }
-}
-const uiFrameworks = ["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"];
-const interactionEvents = ["click", "dblclick", "input", "change", "submit", "keydown", "keyup", "focus", "blur"];
-const interactionTriggerEvents = /* @__PURE__ */ new Set([...interactionEvents, "focusin", "focusout"]);
-function validateInteractionLibrary(definitions2) {
-  const ids = /* @__PURE__ */ new Set();
-  for (const definition2 of definitions2) {
-    ensure(!ids.has(definition2.id), "DUPLICATE_INTERACTION", `Duplicate interaction ${definition2.id}.`);
-    ids.add(definition2.id);
-  }
-}
-function isSafeNavigationUrl(value2) {
-  if (!value2 || value2 !== value2.trim() || [...value2].some((character) => character.charCodeAt(0) < 32 || character === "\\") || value2.startsWith("//")) return false;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(value2) && !/^https?:\/\//i.test(value2)) return false;
-  try {
-    const url2 = new URL(value2, "https://forge.invalid/");
-    return ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password;
-  } catch {
-    return false;
-  }
-}
-const uiVoidTags = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
-const uiBooleanAttributes = new Set("allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected".split(" "));
-function uiBindingParts(value2) {
-  const parts = [];
-  let last = 0;
-  for (const match of value2.matchAll(/\{\{\s*((?:state\.)?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
-    if (match.index > last) parts.push({ literal: value2.slice(last, match.index) });
-    parts.push({ prop: match[1] });
-    last = match.index + match[0].length;
-  }
-  if (last < value2.length || !parts.length) parts.push({ literal: value2.slice(last) });
-  return parts;
-}
-function uiBindings(value2) {
-  return typeof value2 === "string" ? uiBindingParts(value2).flatMap((part) => "prop" in part ? [part.prop] : []) : [];
-}
-function uiWholeBinding(value2) {
-  if (typeof value2 !== "string") return void 0;
-  const parts = uiBindingParts(value2);
-  return parts.length === 1 && "prop" in parts[0] ? parts[0].prop : void 0;
-}
-function uiHasMalformedBinding(value2) {
-  return typeof value2 === "string" && uiBindingParts(value2).some((part) => "literal" in part && /\{\{|\}\}/.test(part.literal));
-}
-function uiBindingSource(definition2, name2) {
-  const fields2 = name2.startsWith("state.") ? definition2.state ?? {} : definition2.props;
-  const key = name2.startsWith("state.") ? name2.slice(6) : name2;
-  return Object.hasOwn(fields2, key) ? fields2[key] : void 0;
-}
-function validateUiBindings(definition2, value2) {
-  for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
-  ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
-}
-function interactionValues(interaction) {
-  return interaction.actions.flatMap((action2) => action2.type === "navigate" || action2.type === "upload-form" ? [action2.url] : action2.type === "save-form" ? [action2.key] : action2.type === "download-form" ? [action2.filename] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
-}
-function interactionUsesState(interaction) {
-  return interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state") || interactionValues(interaction).some((value2) => uiBindings(value2).some((name2) => name2.startsWith("state.")));
-}
-function valueType(definition2, value2) {
-  validateUiBindings(definition2, value2);
-  const binding = uiWholeBinding(value2);
-  if (!binding) return typeof value2;
-  const source2 = uiBindingSource(definition2, binding);
-  ensure(source2.default !== void 0 || "required" in source2 && source2.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
-  return source2.type;
-}
-function validateAttachment(definition2, node2, interaction) {
-  for (const action2 of interaction.actions) {
-    if (action2.type === "set-state" || action2.type === "toggle-state") {
-      const state2 = definition2.state?.[action2.state];
-      ensure(state2, "INVALID_UI", `${definition2.id} interaction ${interaction.id} requires state ${action2.state}.`);
-      if (action2.type === "toggle-state") ensure(state2.type === "boolean", "INVALID_UI", `Interaction ${interaction.id} can toggle only boolean state ${action2.state}.`);
-      else if ("fromEvent" in action2) {
-        ensure(["input", "change"].includes(interaction.event), "INVALID_UI", `Interaction ${interaction.id} reads form values only from input/change events.`);
-        ensure(action2.fromEvent === "checked" ? node2.tag === "input" : ["input", "select", "textarea"].includes(node2.tag), "INVALID_UI", `Interaction ${interaction.id} cannot read ${action2.fromEvent} from ${node2.tag}.`);
-        ensure(state2.type === (action2.fromEvent === "checked" ? "boolean" : "string"), "INVALID_UI", `Interaction ${interaction.id} ${action2.fromEvent} does not match state ${action2.state}.`);
-      } else ensure(valueType(definition2, action2.value) === state2.type, "INVALID_UI", `Interaction ${interaction.id} value does not match state ${action2.state}.`);
-    } else if (action2.type === "navigate" || action2.type === "upload-form") {
-      ensure(valueType(definition2, action2.url) === "string", "INVALID_UI", `Interaction ${interaction.id} navigation must resolve to a string.`);
-      if (!uiBindings(action2.url).length) ensure(isSafeNavigationUrl(action2.url), "INVALID_UI", `Interaction ${interaction.id} has an unsafe navigation URL.`);
-    } else if (action2.type === "save-form" || action2.type === "download-form") {
-      const value2 = action2.type === "save-form" ? action2.key : action2.filename;
-      ensure(valueType(definition2, value2) === "string", "INVALID_UI", `Interaction ${interaction.id} requires a string ${action2.type === "save-form" ? "storage key" : "filename"}.`);
-    } else {
-      ensure(!interactionTriggerEvents.has(action2.event), "INVALID_UI", `Interaction ${interaction.id} must emit a custom event, not native trigger ${action2.event}.`);
-      for (const value2 of Object.values(action2.detail ?? {})) valueType(definition2, value2);
-    }
-    if (["save-form", "upload-form", "download-form"].includes(action2.type)) {
-      ensure(node2.tag === "form" && interaction.event === "submit" || ["button", "input"].includes(node2.tag) && interaction.event === "click", "INVALID_UI", `Interaction ${interaction.id} requires a form submit or an associated button/input click.`);
-    }
-  }
-}
-function validateUiInteractions(definitions2, interactions) {
-  validateInteractionLibrary(interactions);
-  const byId = new Map(interactions.map((interaction) => [interaction.id, interaction]));
-  for (const definition2 of definitions2) {
-    const walk = (node2) => {
-      if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
-        const interaction = byId.get(id2);
-        ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
-        validateAttachment(definition2, node2, interaction);
-      }
-      if ("children" in node2) for (const child of node2.children ?? []) walk(child);
-    };
-    walk(definition2.root);
-  }
-}
-function componentInteractionIds(definition2) {
-  const ids = /* @__PURE__ */ new Set();
-  const walk = (node2) => {
-    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
-    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
-  };
-  walk(definition2.root);
-  return [...ids].sort();
-}
-function checkValue(value2, type2, label2) {
-  ensure(typeof value2 === type2, "INVALID_UI", `${label2} must be ${type2}.`);
-}
-function validateUiLibrary(definitions2, interactions = []) {
-  const byId = /* @__PURE__ */ new Map();
-  for (const definition2 of definitions2) {
-    ensure(!byId.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
-    byId.set(definition2.id, definition2);
-  }
-  const edges = /* @__PURE__ */ new Map();
-  for (const definition2 of definitions2) {
-    const references = /* @__PURE__ */ new Set();
-    edges.set(definition2.id, references);
-    let slots = 0;
-    const checkBinding = (value2) => validateUiBindings(definition2, value2);
-    const walk = (node2) => {
-      if ("slot" in node2) {
-        slots++;
-        ensure(slots <= 1, "INVALID_UI", `${definition2.id} may project its default child slot only once.`);
-        return;
-      }
-      if ("tag" in node2) {
-        if (node2.text !== void 0) checkBinding(node2.text);
-        for (const value2 of Object.values(node2.attrs ?? {})) checkBinding(value2);
-      } else {
-        const target = byId.get(node2.component);
-        ensure(target, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
-        references.add(node2.component);
-        for (const [name2, value2] of Object.entries(node2.props ?? {})) {
-          const targetProp = target.props[name2];
-          ensure(targetProp, "INVALID_UI", `${definition2.id} supplies unknown prop ${node2.component}.${name2}.`);
-          checkBinding(value2);
-          const binding = uiWholeBinding(value2);
-          if (binding) {
-            const source2 = uiBindingSource(definition2, binding);
-            ensure(source2.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
-            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source2 && source2.required || source2.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
-          } else if (!uiBindings(value2).length) checkValue(value2, targetProp.type, `${node2.component}.${name2}`);
-          else ensure(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
-        }
-        for (const [name2, prop2] of Object.entries(target.props)) ensure(!prop2.required || prop2.default !== void 0 || Object.hasOwn(node2.props ?? {}, name2), "INVALID_UI", `${definition2.id} must supply required prop ${node2.component}.${name2}.`);
-      }
-      for (const child of node2.children ?? []) walk(child);
-    };
-    walk(definition2.root);
-    for (const args of [definition2.storybook?.args, ...(definition2.storybook?.stories ?? []).map((story2) => story2.args)]) {
-      for (const [name2, value2] of Object.entries(args ?? {})) {
-        ensure(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} story has unknown prop ${name2}.`);
-        checkValue(value2, definition2.props[name2].type, `${definition2.id} story prop ${name2}`);
-      }
-    }
-  }
-  const visited = /* @__PURE__ */ new Set(), active = /* @__PURE__ */ new Set();
-  const visit2 = (id2) => {
-    ensure(!active.has(id2), "CYCLIC_UI_COMPONENT", `Cyclic component reference involving ${id2}.`);
-    if (visited.has(id2)) return;
-    active.add(id2);
-    for (const child of edges.get(id2) ?? []) visit2(child);
-    active.delete(id2);
-    visited.add(id2);
-  };
-  for (const id2 of byId.keys()) visit2(id2);
-  validateUiInteractions(definitions2, interactions);
-}
-function componentDependencies(root) {
-  const dependencies2 = /* @__PURE__ */ new Set();
-  const visit2 = (node2) => {
-    if ("component" in node2) dependencies2.add(node2.component);
-    if ("children" in node2) for (const child of node2.children ?? []) visit2(child);
-  };
-  visit2(root);
-  return [...dependencies2].sort();
-}
-function selectUiComponents(definitions2, id2) {
-  const byId = new Map(definitions2.map((definition2) => [definition2.id, definition2]));
-  const selected2 = /* @__PURE__ */ new Set();
-  const select = (component) => {
-    if (selected2.has(component)) return;
-    const definition2 = byId.get(component);
-    ensure(definition2, "UNKNOWN_UI_COMPONENT", `Missing component ${component}.`);
-    selected2.add(component);
-    for (const dependency of componentDependencies(definition2.root)) select(dependency);
-  };
-  select(id2);
-  return definitions2.filter((definition2) => selected2.has(definition2.id));
-}
-class GenerationService {
-  constructor(workspace2) {
-    this.workspace = workspace2;
-  }
-  workspace;
-  async commit(writes, revisions) {
-    const paths2 = this.validate(writes);
-    for (const [path, revision] of Object.entries(revisions ?? {})) {
-      vaultPath(path);
-      ensure(paths2.has(path), "INVALID_GENERATION_REVISIONS", `Revision path is outside this generation plan: ${path}.`);
-      ensure(typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision), "INVALID_GENERATION_REVISIONS", `Revision must be a SHA-256 hash: ${path}.`);
-    }
-    const plan = writes.map((write) => ({ ...write, ...revisions && Object.hasOwn(revisions, write.path) ? { expectedRevision: revisions[write.path] } : {} }));
-    try {
-      return await this.write(plan);
-    } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "CONFLICT") throw forgeError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.details);
-      throw error2;
-    }
-  }
-  /** Snapshot revisions independently from the later explicit write authorization. */
-  async plan(writes, manifestPath2) {
-    const paths2 = this.validate(writes);
-    const revisions = /* @__PURE__ */ Object.create(null);
-    const outputs = await Promise.all(writes.map(async (write) => {
-      const content2 = new TextDecoder().decode(write.bytes);
-      try {
-        const current = await this.workspace.files.read(write.path);
-        revisions[write.path] = current.revision;
-        const unchanged = current.bytes.length === write.bytes.length && current.bytes.every((byte, index2) => byte === write.bytes[index2]);
-        return { path: write.path, status: unchanged ? "unchanged" : "changed", revision: current.revision, content: content2, ...!unchanged ? { currentContent: new TextDecoder().decode(current.bytes) } : {} };
-      } catch (error2) {
-        if (error2 instanceof AppError && error2.code === "NOT_FOUND") return { path: write.path, status: "missing", content: content2 };
-        throw error2;
-      }
-    }));
-    const orderedRevisions = Object.fromEntries(Object.entries(revisions).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
-    let manifest;
-    if (manifestPath2 !== void 0) {
-      vaultPath(manifestPath2);
-      ensure(![...paths2].some((path) => this.overlaps(path, manifestPath2)), "INVALID_GENERATION_PLAN", "The revision manifest must be separate from generated outputs and their parent directories.");
-      manifest = { path: manifestPath2, ...await this.write([{ path: manifestPath2, bytes: new TextEncoder().encode(JSON.stringify(orderedRevisions, null, 2) + "\n") }]) };
-    }
-    return { matches: outputs.every((output2) => output2.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
-  }
-  async check(writes, errorCode2) {
-    const plan = await this.plan(writes);
-    if (!plan.matches) throw forgeError(errorCode2, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path, status: status2 }) => ({ path, status: status2 })) });
-    return plan;
-  }
-  validate(writes) {
-    const paths2 = /* @__PURE__ */ new Set();
-    for (const write of writes) {
-      vaultPath(write.path);
-      ensure(![...paths2].some((path) => this.overlaps(path, write.path)), "INVALID_GENERATION_PLAN", `Generated outputs overlap at ${write.path}.`);
-      paths2.add(write.path);
-    }
-    return paths2;
-  }
-  overlaps(left, right) {
-    return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
-  }
-  async write(plan) {
-    const result = await this.workspace.write(plan);
-    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
-  }
-}
-class UiLibrary {
-  constructor(workspace2, codec, catalog, renderer, interactionSource, interactionDirectory = "interactions") {
-    this.workspace = workspace2;
-    this.codec = codec;
-    this.catalog = catalog;
-    this.renderer = renderer;
-    this.interactionSource = interactionSource;
-    this.interactionDirectory = interactionDirectory;
-  }
-  workspace;
-  codec;
-  catalog;
-  renderer;
-  interactionSource;
-  interactionDirectory;
-  async list(directory, interactionDirectory) {
-    const definitions2 = await this.discover(directory);
-    await this.validateDefinitions(definitions2, interactionDirectory);
-    return definitions2;
-  }
-  async inspect(directory, id2, interactionDirectory) {
-    const sources = await this.sources(directory);
-    await this.validateDefinitions(sources.map((source22) => source22.definition), interactionDirectory);
-    const source2 = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source2, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
-    return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
-  }
-  async validate(directory, interactionDirectory) {
-    const definitions2 = await this.list(directory, interactionDirectory);
-    return { directory, valid: true, status: definitions2.length ? "ready" : "empty", count: definitions2.length, components: definitions2.map((definition2) => definition2.id), ...!definitions2.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {} };
-  }
-  async create(directory, id2, tag = "div", interactionDirectory) {
-    vaultPath(directory);
-    const voidElement = uiVoidTags.has(tag);
-    const definition2 = { schemaVersion: 1, id: id2, sourcePath: `${directory}/${id2}.md`, description: `# ${id2}
-
-Describe this component.
-`, props: {}, root: { tag, ...!voidElement ? { children: [{ slot: "children" }] } : {} } };
-    const bytes = this.codec.serialize(definition2);
-    await this.validateDefinitions([...await this.discover(directory), this.codec.parse(bytes, definition2.sourcePath)], interactionDirectory);
-    return { component: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
-  }
-  async init(directory, interactionDirectory) {
-    vaultPath(directory);
-    const existing = await this.discover(directory), ids = new Set(existing.map((definition2) => definition2.id));
-    const additions = this.catalog.filter((definition2) => !ids.has(definition2.id));
-    await this.validateDefinitions([...existing, ...additions], interactionDirectory);
-    const plan = additions.map((definition2) => ({ path: `${directory}/${definition2.id}.md`, bytes: this.codec.serialize(definition2) }));
-    return { components: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
-  }
-  async import(sourceDirectory, directory, interactionDirectory) {
-    vaultPath(sourceDirectory);
-    vaultPath(directory);
-    ensureSeparateDirectories(sourceDirectory, directory);
-    const sources = await this.sources(sourceDirectory), imported = sources.map((source2) => source2.definition), existing = await this.discover(directory);
-    ensure(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
-    await this.validateDefinitions([...existing, ...imported], interactionDirectory);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
-    return { components: imported.map((definition2) => definition2.id), ...await this.commit(plan) };
-  }
-  async export(directory, outputDirectory, interactionDirectory) {
-    vaultPath(directory);
-    vaultPath(outputDirectory);
-    ensureSeparateDirectories(directory, outputDirectory);
-    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
-    const interactions = await this.interactions(interactionDirectory);
-    validateUiLibrary(definitions2, interactions);
-    validateUiLibrary([...await this.discover(outputDirectory), ...definitions2], interactions);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
-    return { components: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
-  }
-  async generate(directory, options2) {
-    return { framework: options2.framework, ...await new GenerationService(this.workspace).commit(await this.render(directory, options2), options2.revisions) };
-  }
-  async plan(directory, options2, manifestPath2) {
-    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Planning does not accept regeneration revisions.");
-    return { framework: options2.framework, ...await new GenerationService(this.workspace).plan(await this.render(directory, options2), manifestPath2) };
-  }
-  async check(directory, options2) {
-    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
-    return { framework: options2.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options2), "UI_DRIFT") };
-  }
-  async render(directory, options2) {
-    ensure(this.renderer, "UI_RENDERER_UNAVAILABLE", "No UI renderer is configured.");
-    ensure(uiFrameworks.includes(options2.framework), "INVALID_UI_FRAMEWORK", `Unknown framework ${options2.framework}.`);
-    vaultPath(options2.outputDirectory);
-    if (options2.storiesDirectory) vaultPath(options2.storiesDirectory);
-    ensure(!(options2.storybook || options2.storiesOnly) || options2.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
-    const interactions = await this.interactions(options2.interactionDirectory);
-    let definitions2 = await this.discover(directory);
-    validateUiLibrary(definitions2, interactions);
-    ensure(definitions2.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
-    if (options2.component) ensure(definitions2.some((definition2) => definition2.id === options2.component), "UNKNOWN_UI_COMPONENT", `No component ${options2.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
-    if (options2.component) definitions2 = selectUiComponents(definitions2, options2.component);
-    for (const definition2 of definitions2) if ((options2.storybook || options2.storiesOnly) && definition2.storybook?.extension) {
-      try {
-        await this.workspace.files.read(definition2.storybook.extension);
-      } catch (error2) {
-        if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw forgeError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`);
-        throw error2;
-      }
-    }
-    const ids = new Set(definitions2.flatMap(componentInteractionIds));
-    const renderOptions = { ...options2, interactions: interactions.filter((interaction) => ids.has(interaction.id)) };
-    if (options2.storiesOnly) {
-      ensure(this.renderer.componentPaths, "UI_RENDERER_UNAVAILABLE", "Standalone stories require a renderer with component artifact paths.");
-      for (const path of this.renderer.componentPaths(definitions2, renderOptions)) await this.workspace.files.read(path);
-    }
-    return this.renderer.generate(definitions2, renderOptions);
-  }
-  async interactions(directory = this.interactionDirectory) {
-    vaultPath(directory);
-    return this.interactionSource ? this.interactionSource.list(directory) : [];
-  }
-  async validateDefinitions(definitions2, interactionDirectory) {
-    validateUiLibrary(definitions2, await this.interactions(interactionDirectory));
-  }
-  async discover(directory) {
-    return (await this.sources(directory)).map((source2) => source2.definition);
-  }
-  async sources(directory) {
-    vaultPath(directory);
-    const paths2 = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
-    return Promise.all(paths2.map(async (path) => {
-      const { bytes, revision } = await this.workspace.files.read(path);
-      return { bytes, revision, definition: this.codec.parse(bytes, path) };
-    }));
-  }
-  async commit(plan) {
-    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
-    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
-  }
-}
-function validateLibrary(definitions2) {
-  const ids = /* @__PURE__ */ new Set();
-  for (const definition2 of definitions2) {
-    ensure(!ids.has(definition2.id), "DUPLICATE_DATA_SOURCE", `Duplicate data source ${definition2.id}.`);
-    ids.add(definition2.id);
-  }
-}
-function starter(directory, id2, kind) {
-  return {
-    schemaVersion: 1,
-    id: id2,
-    kind,
-    sourcePath: `${directory}/${id2}.md`,
-    description: `# ${id2}
-
-Describe this data source, its ownership and error behavior.
-`,
-    model: { name: "Item", idField: "id", fields: { id: { type: "string" }, title: { type: "string", example: "Example item" } } },
-    ...kind === "rest" ? { rest: { baseUrl: "https://api.example.com", operations: { list: { method: "GET", path: "/items" }, get: { method: "GET", path: "/items/{id}" } } } } : { json: { path: "data/items.json" } },
-    testData: { count: 3 }
-  };
-}
-class DataSourceLibrary {
-  constructor(workspace2, codec, renderer) {
-    this.workspace = workspace2;
-    this.codec = codec;
-    this.renderer = renderer;
-  }
-  workspace;
-  codec;
-  renderer;
-  async list(directory) {
-    const definitions2 = (await this.sources(directory)).map((source2) => source2.definition);
-    validateLibrary(definitions2);
-    return definitions2;
-  }
-  async inspect(directory, id2) {
-    const sources = await this.sources(directory);
-    validateLibrary(sources.map((source22) => source22.definition));
-    const source2 = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source2, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
-    return { ...source2.definition, revision: source2.revision };
-  }
-  async validate(directory) {
-    return { valid: true, sources: (await this.list(directory)).map((definition2) => definition2.id) };
-  }
-  async create(directory, id2, kind = "rest") {
-    vaultPath(directory);
-    const definition2 = starter(directory, id2, kind), bytes = this.codec.serialize(definition2);
-    validateLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
-    return { source: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
-  }
-  async init(directory) {
-    vaultPath(directory);
-    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
-    const additions = [starter(directory, "example-rest", "rest"), starter(directory, "example-json", "json")].filter((definition2) => !ids.has(definition2.id));
-    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
-    return { sources: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
-  }
-  async import(sourceDirectory, directory) {
-    ensureSeparateDirectories(sourceDirectory, directory);
-    const sources = await this.sources(sourceDirectory);
-    ensure(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
-    validateLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
-    return { sources: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
-  }
-  async export(directory, outputDirectory) {
-    ensureSeparateDirectories(directory, outputDirectory);
-    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
-    validateLibrary([...await this.list(outputDirectory), ...definitions2]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
-    return { sources: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
-  }
-  async generate(directory, options2) {
-    const { definitions: definitions2, writes } = await this.prepare(directory, options2);
-    return { sources: definitions2.map((definition2) => definition2.id), ...await new GenerationService(this.workspace).commit(writes, options2.revisions) };
-  }
-  async plan(directory, options2, manifestPath2) {
-    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Planning does not accept regeneration revisions.");
-    return new GenerationService(this.workspace).plan((await this.prepare(directory, options2)).writes, manifestPath2);
-  }
-  async check(directory, options2) {
-    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
-    return new GenerationService(this.workspace).check((await this.prepare(directory, options2)).writes, "DATA_SOURCE_DRIFT");
-  }
-  async prepare(directory, options2) {
-    ensure(this.renderer, "DATA_SOURCE_RENDERER_UNAVAILABLE", "No data-source renderer is configured.");
-    vaultPath(options2.outputDirectory);
-    vaultPath(options2.testDataDirectory);
-    let definitions2 = await this.list(directory);
-    ensure(definitions2.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${directory}.`);
-    if (options2.source) {
-      definitions2 = definitions2.filter((definition2) => definition2.id === options2.source);
-      ensure(definitions2.length, "UNKNOWN_DATA_SOURCE", `No data source ${options2.source} in ${directory}.`);
-    }
-    return { definitions: definitions2, writes: this.renderer.generate(definitions2, options2) };
-  }
-  async sources(directory) {
-    vaultPath(directory);
-    const paths2 = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
-    return Promise.all(paths2.map(async (path) => {
-      const { bytes, revision } = await this.workspace.files.read(path);
-      return { bytes, revision, definition: this.codec.parse(bytes, path) };
-    }));
-  }
-  async commit(plan) {
-    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
-    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
-  }
-}
-const defaultInteractionIds = ["toggle-expanded", "input-value", "save", "upload", "download"];
-function starterInteraction(directory, id2, event) {
-  const base = { schemaVersion: 1, id: id2, sourcePath: `${directory}/${id2}.md` };
-  if (id2 === "save") return {
-    ...base,
-    event: event ?? "submit",
-    preventDefault: true,
-    actions: [{ type: "save-form", key: "forge-form" }],
-    description: "# Save form locally\n\nAttach to a form submit. Stores named fields as JSON in this browser origin's localStorage under forge-form. Change key to namespace drafts. File fields store metadata, not file contents. Listen for forge:save or forge:interaction-error.\n"
-  };
-  if (id2 === "upload") return {
-    ...base,
-    event: event ?? "submit",
-    preventDefault: true,
-    actions: [{ type: "upload-form", url: "{{uploadUrl}}" }],
-    description: "# Upload form\n\nAttach to a form submit and declare a required string uploadUrl component prop pointing to your endpoint. POSTs FormData including file bytes; no endpoint is invented. Listen for forge:upload or forge:interaction-error.\n"
-  };
-  if (id2 === "download") return {
-    ...base,
-    event: event ?? "click",
-    preventDefault: true,
-    actions: [{ type: "download-form", filename: "form-data.json" }],
-    description: "# Download form JSON\n\nAttach to a button associated with a form. Downloads named fields as form-data.json; repeated names become arrays and file fields include metadata only. Listen for forge:download or forge:interaction-error.\n"
-  };
-  const selected2 = event ?? (id2 === "input-value" ? "input" : "click");
-  const input = selected2 === "input" || selected2 === "change";
-  return {
-    ...base,
-    event: selected2,
-    description: `# ${id2}
-
-${input ? "Copies the input value into string state named value." : "Toggles boolean state named expanded."} Declare that state on each consuming component.
-`,
-    actions: input ? [{ type: "set-state", state: "value", fromEvent: "value" }] : [{ type: "toggle-state", state: "expanded" }]
-  };
-}
-class InteractionLibrary {
-  constructor(workspace2, codec) {
-    this.workspace = workspace2;
-    this.codec = codec;
-  }
-  workspace;
-  codec;
-  async list(directory) {
-    const definitions2 = (await this.sources(directory)).map((source2) => source2.definition);
-    validateInteractionLibrary(definitions2);
-    return definitions2;
-  }
-  async inspect(directory, id2) {
-    const sources = await this.sources(directory);
-    validateInteractionLibrary(sources.map((source22) => source22.definition));
-    const source2 = sources.find((candidate) => candidate.definition.id === id2);
-    ensure(source2, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
-    return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
-  }
-  async validate(directory) {
-    const definitions2 = await this.list(directory);
-    return {
-      directory,
-      valid: true,
-      status: definitions2.length ? "ready" : "empty",
-      count: definitions2.length,
-      interactions: definitions2.map((definition2) => definition2.id),
-      ...!definitions2.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {}
-    };
-  }
-  async create(directory, id2, event) {
-    vaultPath(directory);
-    const definition2 = starterInteraction(directory, id2, event), bytes = this.codec.serialize(definition2);
-    validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
-    return { interaction: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
-  }
-  async init(directory) {
-    vaultPath(directory);
-    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
-    const additions = defaultInteractionIds.map((id2) => starterInteraction(directory, id2)).filter((definition2) => !ids.has(definition2.id));
-    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
-    return { interactions: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
-  }
-  async import(sourceDirectory, directory) {
-    ensureSeparateDirectories(sourceDirectory, directory);
-    const sources = await this.sources(sourceDirectory);
-    ensure(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
-    validateInteractionLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
-    return { interactions: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
-  }
-  async export(directory, outputDirectory) {
-    ensureSeparateDirectories(directory, outputDirectory);
-    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
-    validateInteractionLibrary([...await this.list(outputDirectory), ...definitions2]);
-    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
-    return { interactions: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
-  }
-  async sources(directory) {
-    vaultPath(directory);
-    const paths2 = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
-    return Promise.all(paths2.map(async (path) => {
-      const { bytes, revision } = await this.workspace.files.read(path);
-      return { bytes, revision, definition: this.codec.parse(bytes, path) };
-    }));
-  }
-  async commit(plan) {
-    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
-    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
-  }
-}
-class TemplateInstaller {
-  constructor(workspace2, artifacts) {
-    this.workspace = workspace2;
-    this.artifacts = artifacts;
-  }
-  workspace;
-  artifacts;
-  async install() {
-    const candidates2 = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
-    ensure(new Set(candidates2.map((candidate) => candidate.path)).size === candidates2.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
-    const writes = [], skipped = [];
-    for (const candidate of candidates2) {
-      try {
-        await this.workspace.files.read(candidate.path);
-        skipped.push(candidate.path);
-      } catch (error2) {
-        if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
-        writes.push(candidate);
-      }
-    }
-    const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
-    return { directory: "bin/templates", ...result, skipped, ...this.workspace.dryRun ? { preview: writes.map((write) => ({ path: write.path, content: new TextDecoder().decode(write.bytes) })) } : {} };
   }
 }
 const workflowSourceDirectory = "src/infrastructure/workflows";
@@ -2851,10 +2216,10 @@ const equalBytes = (left, right) => left.length === right.length && left.every((
 const decode$6 = (bytes) => new TextDecoder().decode(bytes);
 const byTarget = (left, right) => left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
 class WorkflowSync {
-  constructor(workspace2, projects, renderer) {
+  constructor(workspace2, projects2, renderer2) {
     this.workspace = workspace2;
-    this.projects = projects;
-    this.renderer = renderer;
+    this.projects = projects2;
+    this.renderer = renderer2;
   }
   workspace;
   projects;
@@ -10373,12 +9738,12 @@ const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSY
 const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
 const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
-const text$9 = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const text$a = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
 const errorCode = (error2) => error2.code ?? "";
 function ownerDetails(owner) {
   try {
     const { command: command2, operationId } = owner();
-    return { ...text$9(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
+    return { ...text$a(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
   } catch {
     return {};
   }
@@ -10388,7 +9753,7 @@ function hostIdentity() {
   identity ??= (async () => {
     const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
     const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
-    return { ...text$9(pidNamespace) ? { pidNamespace } : {}, ...text$9(bootId) ? { bootId } : {} };
+    return { ...text$a(pidNamespace) ? { pidNamespace } : {}, ...text$a(bootId) ? { bootId } : {} };
   })();
   return identity;
 }
@@ -10474,17 +9839,17 @@ function parseMetadata(content2) {
   } catch {
     return null;
   }
-  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$9(value2.hostname) || !text$9(value2.startedAt)) return null;
+  if (!isRecord(value2) || !positiveInteger(value2.pid) || !text$a(value2.hostname) || !text$a(value2.startedAt)) return null;
   const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
   return {
     pid,
     hostname: host,
     startedAt,
-    ...text$9(command2) ? { command: command2 } : {},
+    ...text$a(command2) ? { command: command2 } : {},
     ...positiveInteger(operationId) ? { operationId } : {},
-    ...text$9(forgeVersion) ? { forgeVersion } : {},
-    ...text$9(pidNamespace) ? { pidNamespace } : {},
-    ...text$9(bootId) ? { bootId } : {}
+    ...text$a(forgeVersion) ? { forgeVersion } : {},
+    ...text$a(pidNamespace) ? { pidNamespace } : {},
+    ...text$a(bootId) ? { bootId } : {}
   };
 }
 async function readLock(path) {
@@ -16637,7 +16002,7 @@ function factoryWhitespace(effects, ok) {
     return ok(code2);
   }
 }
-const definition = {
+const definition$1 = {
   name: "definition",
   tokenize: tokenizeDefinition
 };
@@ -18148,7 +17513,7 @@ const resolver = {
   resolveAll: createResolver()
 };
 const string$3 = initializeFactory("string");
-const text$8 = initializeFactory("text");
+const text$9 = initializeFactory("text");
 function initializeFactory(field2) {
   return {
     resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
@@ -18301,7 +17666,7 @@ const document = {
   [62]: blockQuote
 };
 const contentInitial = {
-  [91]: definition
+  [91]: definition$1
 };
 const flowInitial = {
   [-2]: codeIndented,
@@ -18322,7 +17687,7 @@ const string$2 = {
   [38]: characterReference,
   [92]: characterEscape
 };
-const text$7 = {
+const text$8 = {
   [-5]: lineEnding,
   [-4]: lineEnding,
   [-3]: lineEnding,
@@ -18355,7 +17720,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flowInitial,
   insideSpan,
   string: string$2,
-  text: text$7
+  text: text$8
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
   let point2 = {
@@ -18688,7 +18053,7 @@ function parse$1(options2) {
     flow: create2(flow$1),
     lazy: {},
     string: create2(string$3),
-    text: create2(text$8)
+    text: create2(text$9)
   };
   return parser2;
   function create2(initial) {
@@ -19929,7 +19294,7 @@ function frontmatterFromMarkdown(options2) {
     const matter2 = matters[index2];
     enter[matter2.type] = opener(matter2);
     exit2[matter2.type] = close;
-    exit2[matter2.type + "Value"] = value$3;
+    exit2[matter2.type + "Value"] = value$2;
   }
   return { enter, exit: exit2 };
 }
@@ -19946,7 +19311,7 @@ function close(token) {
   this.exit(token);
   node2.value = data.replace(/^(\r?\n|\r)|(\r?\n|\r)$/g, "");
 }
-function value$3(token) {
+function value$2(token) {
   this.config.enter.data.call(this, token);
   this.config.exit.data.call(this, token);
 }
@@ -20185,6 +19550,9 @@ function validateBase(value2) {
   }
 }
 class ObsidianDocuments {
+  markdownParts(text2) {
+    return parseMarkdownParts(text2);
+  }
   inspect(path, bytes) {
     const kind = fileKind(path);
     if (kind === "text") {
@@ -20276,7 +19644,6 @@ class ObsidianDocuments {
     return replaceInYamlStrings(yaml, yamlDocument(yaml), replacements);
   }
 }
-const encodeText$1 = encode$3;
 async function readManifest(path, files) {
   const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(path)).bytes);
   let value2;
@@ -20356,20 +19723,6 @@ function registerCorePlugins(registry2, events2, plugins, host, disabled) {
 }
 function registrySkills(registry2) {
   return { list: () => [...registry2.skills.values()], get: (id2) => registry2.skills.get(id2) };
-}
-function value$2(flags, key, required2 = false) {
-  const result = flags[key];
-  ensure(!required2 || typeof result === "string", "MISSING_ARGUMENT", `--${key} is required.`);
-  return typeof result === "string" ? result : void 0;
-}
-function integer$1(flags, key, minimum = 0) {
-  const text2 = value$2(flags, key);
-  if (text2 === void 0) return void 0;
-  ensure(/^\d+$/.test(text2) && Number.isSafeInteger(Number(text2)) && Number(text2) >= minimum, "INVALID_ARGUMENT", `--${key} must be an integer of at least ${minimum}.`);
-  return Number(text2);
-}
-function arity(args, min, max = min) {
-  ensure(args.length >= min && args.length <= max, "INVALID_ARGUMENT", `Expected ${min === max ? min : `${min}–${max}`} positional arguments.`);
 }
 class Bases {
   constructor(engine) {
@@ -27003,8 +26356,8 @@ function basesCommand(service) {
         const document2 = context.workspace.codec.inspect(path, file.bytes);
         return { path, revision: file.revision, definition: document2.data, views: document2.data.views ?? [], repository: { path, viewSelection: "name; first view when omitted" } };
       }
-      const limit = value$2(flags, "limit");
-      const result = await service(context).query(path, { view: value$2(flags, "view"), context: value$2(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
+      const limit = value$3(flags, "limit");
+      const result = await service(context).query(path, { view: value$3(flags, "view"), context: value$3(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
       return { ...result, repository: { path: result.path, view: result.view }, scope: context.root };
     }
   };
@@ -27044,9 +26397,9 @@ const basesPlugin = {
     };
   }
 };
-const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
+const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
 const vault = '---\nname: forge-vault\ndescription: Search, link-check, create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`) so `help`, `schema` and the invocation policy describe it; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`) so `help`, `schema` and the invocation policy describe it; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -27087,7 +26440,7 @@ function skillsCommand(skills2) {
       }
       ensure(action2 === "install", "INVALID_ARGUMENT", "Use skills list, show, or install.");
       arity(args, 1);
-      const directory = value$2(flags, "out") ?? ".agents/skills";
+      const directory = value$3(flags, "out") ?? ".agents/skills";
       return workspace2.write(skills2.list().map((skill) => ({ path: `${directory}/${skill.id}/SKILL.md`, bytes: new TextEncoder().encode(skill.content) })));
     }
   };
@@ -27531,8 +26884,8 @@ function vmSearchBudget(milliseconds) {
   };
 }
 const defaultSearchLimit = 100;
-const text$6 = { type: "string" };
-const lines = { type: "array", items: text$6 };
+const text$7 = { type: "string" };
+const lines = { type: "array", items: text$7 };
 const output = {
   type: "object",
   required: ["hits", "total"],
@@ -27541,18 +26894,18 @@ const output = {
       type: "object",
       required: ["path", "line", "column", "match", "snippet", "revision"],
       properties: {
-        path: text$6,
+        path: text$7,
         line: { type: "integer", minimum: 1 },
         column: { type: "integer", minimum: 1 },
-        match: text$6,
-        snippet: text$6,
+        match: text$7,
+        snippet: text$7,
         before: lines,
         after: lines,
-        revision: text$6
+        revision: text$7
       }
     } },
     total: { type: "integer", minimum: 0 },
-    nextCursor: text$6
+    nextCursor: text$7
   }
 };
 function searchCommand(service) {
@@ -27581,14 +26934,14 @@ function searchCommand(service) {
     errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
     async run(args, flags, context) {
       arity(args, 1);
-      const scope2 = value$2(flags, "in") ?? "all", kind = value$2(flags, "kind"), property = value$2(flags, "property");
+      const scope2 = value$3(flags, "in") ?? "all", kind = value$3(flags, "kind"), property = value$3(flags, "property");
       ensure(searchScopes.includes(scope2), "INVALID_ARGUMENT", `--in must be one of: ${searchScopes.join(", ")}.`);
       ensure(kind === void 0 || searchKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${searchKinds.join(", ")}; search never reads attachments.`);
       const filter = property === void 0 ? void 0 : propertyFilter(property);
       ensure(property === void 0 || filter, "INVALID_ARGUMENT", "--property must be key or key=value with a nonempty key.");
       const contextLines = integer$1(flags, "context") ?? 0;
       ensure(contextLines <= maxContextLines, "INVALID_ARGUMENT", `--context must be at most ${maxContextLines}.`);
-      const tag = value$2(flags, "tag");
+      const tag = value$3(flags, "tag");
       ensure(tag === void 0 || tag.replace(/^#/, "").length > 0, "INVALID_ARGUMENT", "--tag must name a tag.");
       const query = {
         pattern: args[0],
@@ -27598,11 +26951,11 @@ function searchCommand(service) {
         skipCode: flags["skip-code"] === true,
         context: contextLines,
         ...kind === void 0 ? {} : { kind },
-        ...value$2(flags, "path") === void 0 ? {} : { path: value$2(flags, "path") },
+        ...value$3(flags, "path") === void 0 ? {} : { path: value$3(flags, "path") },
         ...tag === void 0 ? {} : { tag },
         ...filter === void 0 ? {} : { property: filter }
       };
-      const cursor = value$2(flags, "cursor");
+      const cursor = value$3(flags, "cursor");
       return service(context)(query, { limit: integer$1(flags, "limit", 1) ?? defaultSearchLimit, ...cursor === void 0 ? {} : { cursor } });
     }
   };
@@ -27710,7 +27063,7 @@ function deadendNotes(cache, include) {
   const files = cache.files().filter((path) => isNote(path) && include(path) && cache.getFileCache(path) !== null && !cache.references(path).some((reference) => outbound(path, reference)));
   return { files, issues: cache.issues() };
 }
-const actions$3 = ["out", "back", "unresolved", "orphans", "deadends"];
+const actions$4 = ["out", "back", "unresolved", "orphans", "deadends"];
 const noteActions = ["out", "back"];
 function linksCommand(service) {
   return {
@@ -27728,14 +27081,14 @@ function linksCommand(service) {
       deadends: { description: "Markdown and Canvas notes without a link to another file." }
     },
     args: [
-      { name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$3 },
+      { name: "action", description: "out, back, unresolved, orphans or deadends.", required: true, enum: actions$4 },
       { name: "note", description: "The vault path of the file for out and back." }
     ],
     options: { path: option$1.string("For unresolved, orphans and deadends: only files whose root-relative path matches this glob.") },
     errors: ["NOT_FOUND"],
     async run(args, flags, context) {
       const action2 = args[0];
-      ensure(actions$3.includes(action2), "INVALID_ARGUMENT", `Use links ${actions$3.join(", links ")}.`);
+      ensure(actions$4.includes(action2), "INVALID_ARGUMENT", `Use links ${actions$4.join(", links ")}.`);
       const links = service(context);
       if (noteActions.includes(action2)) {
         ensure(flags.path === void 0, "INVALID_ARGUMENT", `--path is not supported by links ${action2}; pass the note path as an argument.`);
@@ -27744,7 +27097,7 @@ function linksCommand(service) {
         return action2 === "out" ? linksOut(cache2, args[1]) : linksBack(cache2, args[1]);
       }
       arity(args, 1);
-      const glob = value$2(flags, "path");
+      const glob = value$3(flags, "path");
       const include = glob === void 0 ? () => true : pathGlob(glob);
       const cache = await links.cache();
       if (action2 === "unresolved") return unresolvedLinks(cache, include);
@@ -27808,7 +27161,7 @@ const linksPlugin = {
   })
 };
 const isObject$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
-const text$5 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$6 = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const stringList = (value2) => Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
 const record$2 = (value2) => isObject$1(value2) ? value2 : {};
 function pointer(...segments2) {
@@ -27959,8 +27312,8 @@ function oauth(remote, at) {
   const settings2 = record$2(remote.oauth);
   const where = `${at}/remote/oauth`;
   if (!isObject$1(remote.oauth)) return [];
-  if (!text$5(remote.url)) return [diagnostic("error", "invalid-toolset", where, "oauth requires remote url to be set.")];
-  if (!text$5(settings2.clientId) && text$5(settings2.clientSecret)) return [diagnostic("error", "invalid-toolset", where, "oauth clientSecret requires clientId to be set.")];
+  if (!text$6(remote.url)) return [diagnostic("error", "invalid-toolset", where, "oauth requires remote url to be set.")];
+  if (!text$6(settings2.clientId) && text$6(settings2.clientSecret)) return [diagnostic("error", "invalid-toolset", where, "oauth clientSecret requires clientId to be set.")];
   if (typeof settings2.callbackRedirectURL === "string" && settings2.callbackRedirectURL !== "") {
     let url2;
     try {
@@ -27977,16 +27330,16 @@ function typeRequirements(toolset, at) {
   const type2 = toolset.type, remote = record$2(toolset.remote);
   const fail = (message2, field2 = "") => [diagnostic("error", "invalid-toolset", `${at}${field2}`, message2)];
   if (type2 === "mcp") {
-    const sources = [text$5(toolset.command), text$5(remote.url), text$5(toolset.ref)].filter(Boolean).length;
+    const sources = [text$6(toolset.command), text$6(remote.url), text$6(toolset.ref)].filter(Boolean).length;
     if (sources !== 1) return fail(sources === 0 ? "either command, remote or ref must be set." : "either command, remote or ref must be set, but only one of those.");
-    if (enabled(toolset.allow_private_ips) && !text$5(remote.url) && !text$5(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
-    if (present(toolset.working_dir) && text$5(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
+    if (enabled(toolset.allow_private_ips) && !text$6(remote.url) && !text$6(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
+    if (present(toolset.working_dir) && text$6(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
     return oauth(remote, at);
   }
   const required2 = { a2a: "url", lsp: "command", openapi: "url", open_url: "url" };
-  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$5(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
+  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$6(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
   if (type2 === "model_picker" && !present(toolset.models)) return fail("model_picker toolset requires at least one model in the 'models' list.");
-  if (type2 === "rag" && !text$5(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
+  if (type2 === "rag" && !text$6(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
   return [];
 }
 function toolsetDiagnostics(toolset, at) {
@@ -28010,10 +27363,10 @@ function harnessDiagnostics(agent, at) {
   const harness = agent.harness, where = `${at}/harness`;
   const fail = (message2, field2 = "") => diagnostic("error", "invalid-harness", `${where}${field2}`, message2);
   const problems = [];
-  if (text$5(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
+  if (text$6(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
   if (record$2(agent.structured_output).mode === "tool") problems.push(diagnostic("error", "invalid-harness", `${at}/structured_output/mode`, "structured_output.mode 'tool' cannot be used with a harness; use mode 'native'."));
-  if (text$5(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
-  if (text$5(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
+  if (text$6(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
+  if (text$6(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
   if (harness.thinking === true && harness.type !== "opencode") problems.push(fail("harness.thinking can only be used with harness.type 'opencode'.", "/thinking"));
   return problems;
 }
@@ -28086,7 +27439,7 @@ function providerDiagnostics(config2) {
     const apiType = provider.api_type ?? "";
     if (!["", "openai_chatcompletions", "openai_responses"].includes(String(apiType))) return fail(`invalid api_type '${String(apiType)}' (must be one of: openai_chatcompletions, openai_responses)`, "/api_type");
     const openAiCompatible = apiType !== "" || provider.provider === void 0 || provider.provider === "" || provider.provider === "openai";
-    if (!text$5(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
+    if (!text$6(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
     return [];
   });
 }
@@ -28111,8 +27464,8 @@ function skillsDiagnostics(skills2, at, label2) {
     const skill = record$2(entry2), name2 = typeof skill.name === "string" ? skill.name : "";
     if (name2.trim() === "") return fail("has an inline skill with no name.");
     if (/\s/.test(name2)) return fail(`inline skill '${name2}' must not have whitespace in its name: it doubles as the /${name2} command.`);
-    if (!text$5(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
-    if (!text$5(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
+    if (!text$6(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
+    if (!text$6(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
     if (skill.context !== void 0 && skill.context !== "fork") return fail(`inline skill '${name2}' has invalid context '${String(skill.context)}' (only 'fork' is supported).`);
     if (skill.context !== "fork" && stringList(skill.toolsets).length > 0) return fail(`inline skill '${name2}' declares toolsets but is not a fork skill (set context: fork).`);
     if (skill.context !== "fork" && stringList(skill.allowed_tools).length > 0) return fail(`inline skill '${name2}' declares allowed_tools but is not a fork skill (set context: fork).`);
@@ -28584,7 +27937,7 @@ const taskTools = ["TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutpu
 const unsupportedFields$1 = ["permissionMode", "background", "isolation", "color", "initialPrompt", "omitClaudeMd", "experimental", "effort"];
 const known = ["name", "description", "model", "tools", "disallowedTools", "mcpServers", "maxTurns", "skills", "memory", "hooks", "x-forge-source", ...unsupportedFields$1];
 const reverseTools = { Read: "read_file", Write: "write_file", Edit: "edit_file", Glob: "list_directory", Grep: "search_files_content", Bash: "shell", WebFetch: "fetch", AskUserQuestion: "user_prompt" };
-const reverseEvents = Object.fromEntries(Object.entries(hookEvents).filter(([event]) => !["before_compaction", "after_compaction"].includes(event)).map(([event, claude2]) => [claude2, event]));
+const reverseEvents = Object.fromEntries(Object.entries(hookEvents).filter(([event]) => !["before_compaction", "after_compaction"].includes(event)).map(([event, claude]) => [claude, event]));
 const toolList = (value2) => (typeof value2 === "string" ? value2.split(",") : stringList(value2)).map((tool) => tool.trim()).filter((tool) => tool !== "");
 function model(value2, defaultModel, diagnostics2) {
   if (typeof value2 === "string" && /^claude-[a-z0-9.-]+$/.test(value2)) return `anthropic/${value2}`;
@@ -28661,7 +28014,7 @@ function hooks$2(value2, diagnostics2) {
     }
     const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target);
     for (const group of Array.isArray(groups) ? groups.map(record$2) : []) {
-      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$5(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
+      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$6(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
       if (handlers.length === 0) continue;
       const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
       result[target] = [...result[target] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
@@ -28678,7 +28031,7 @@ function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   const name2 = importedName(metadata2.name);
   if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", `Agent ${String(metadata2.name)} is imported as ${name2}.`, "E"));
   const source2 = record$2(metadata2["x-forge-source"]);
-  if (text$5(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
+  if (text$6(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
   const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
   const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
   if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", `Agent(…) entries become sub_agents: ${subAgents.join(", ")}.`, "A"));
@@ -28704,10 +28057,10 @@ function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   return { name: name2, agent, diagnostics: diagnostics2 };
 }
 const agentTemplates = ["basic", "team", "mcp"];
-const text$4 = (value2) => `${value2.trimEnd()}
+const text$5 = (value2) => `${value2.trimEnd()}
 `;
 function templateAgents(template, name2, model2, main) {
-  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$4(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
+  const agent = (description2, instruction, toolsets2, extra = {}) => ({ model: model2, description: main.description ?? description2, instruction: text$5(main.instruction ?? main.description ?? instruction), ...extra, toolsets: toolsets2 });
   if (template === "basic") {
     return [[name2, agent(`The ${name2} agent.`, "Read the relevant files, think the task through, track your steps and report what you found.", [{ type: "filesystem", readonly: true }, { type: "think" }, { type: "todo" }])]];
   }
@@ -28717,8 +28070,8 @@ function templateAgents(template, name2, model2, main) {
   const researcher = `${name2}-researcher`, writer = `${name2}-writer`;
   return [
     [name2, agent(`Coordinates the ${name2} team.`, `Plan the work, delegate research to ${researcher} and writing to ${writer}, then review and summarize their results.`, [{ type: "todo" }], { sub_agents: [researcher, writer] })],
-    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$4("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
-    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$4("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
+    [researcher, { model: model2, description: `Researches questions for ${name2}.`, instruction: text$5("Research the question with web fetches, think it through and report findings with sources."), toolsets: [{ type: "fetch" }, { type: "think" }] }],
+    [writer, { model: model2, description: `Writes and edits files for ${name2}.`, instruction: text$5("Write and edit the requested files; keep changes small and report every file you changed."), toolsets: [{ type: "filesystem" }] }]
   ];
 }
 const simpleToolsets = [
@@ -28826,6 +28179,73 @@ class AgentAuthoring {
     return { path, agent: name2, agents: names2, created: !current, diagnostics: [...extra, ...checked.diagnostics.map((entry2) => ({ ...entry2, path }))], ...result };
   }
 }
+class GenerationService {
+  constructor(workspace2) {
+    this.workspace = workspace2;
+  }
+  workspace;
+  async commit(writes, revisions) {
+    const paths2 = this.validate(writes);
+    for (const [path, revision] of Object.entries(revisions ?? {})) {
+      vaultPath(path);
+      ensure(paths2.has(path), "INVALID_GENERATION_REVISIONS", `Revision path is outside this generation plan: ${path}.`);
+      ensure(typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision), "INVALID_GENERATION_REVISIONS", `Revision must be a SHA-256 hash: ${path}.`);
+    }
+    const plan = writes.map((write) => ({ ...write, ...revisions && Object.hasOwn(revisions, write.path) ? { expectedRevision: revisions[write.path] } : {} }));
+    try {
+      return await this.write(plan);
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "CONFLICT") throw forgeError("CONFLICT", "Generated output already exists or changed after review. Rerun the same generation command with --plan-out <new-file.json>, review its outputs, then regenerate with --revisions-from <new-file.json>.", error2.details);
+      throw error2;
+    }
+  }
+  /** Snapshot revisions independently from the later explicit write authorization. */
+  async plan(writes, manifestPath2) {
+    const paths2 = this.validate(writes);
+    const revisions = /* @__PURE__ */ Object.create(null);
+    const outputs = await Promise.all(writes.map(async (write) => {
+      const content2 = new TextDecoder().decode(write.bytes);
+      try {
+        const current = await this.workspace.files.read(write.path);
+        revisions[write.path] = current.revision;
+        const unchanged = current.bytes.length === write.bytes.length && current.bytes.every((byte, index2) => byte === write.bytes[index2]);
+        return { path: write.path, status: unchanged ? "unchanged" : "changed", revision: current.revision, content: content2, ...!unchanged ? { currentContent: new TextDecoder().decode(current.bytes) } : {} };
+      } catch (error2) {
+        if (error2 instanceof AppError && error2.code === "NOT_FOUND") return { path: write.path, status: "missing", content: content2 };
+        throw error2;
+      }
+    }));
+    const orderedRevisions = Object.fromEntries(Object.entries(revisions).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+    let manifest;
+    if (manifestPath2 !== void 0) {
+      vaultPath(manifestPath2);
+      ensure(![...paths2].some((path) => this.overlaps(path, manifestPath2)), "INVALID_GENERATION_PLAN", "The revision manifest must be separate from generated outputs and their parent directories.");
+      manifest = { path: manifestPath2, ...await this.write([{ path: manifestPath2, bytes: new TextEncoder().encode(JSON.stringify(orderedRevisions, null, 2) + "\n") }]) };
+    }
+    return { matches: outputs.every((output2) => output2.status === "unchanged"), revisions: orderedRevisions, outputs, ...manifest ? { manifest } : {} };
+  }
+  async check(writes, errorCode2) {
+    const plan = await this.plan(writes);
+    if (!plan.matches) throw forgeError(errorCode2, "Generated outputs are missing or differ from their definitions. Run the same command with --plan to review changes.", { outputs: plan.outputs.map(({ path, status: status2 }) => ({ path, status: status2 })) });
+    return plan;
+  }
+  validate(writes) {
+    const paths2 = /* @__PURE__ */ new Set();
+    for (const write of writes) {
+      vaultPath(write.path);
+      ensure(![...paths2].some((path) => this.overlaps(path, write.path)), "INVALID_GENERATION_PLAN", `Generated outputs overlap at ${write.path}.`);
+      paths2.add(write.path);
+    }
+    return paths2;
+  }
+  overlaps(left, right) {
+    return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  }
+  async write(plan) {
+    const result = await this.workspace.write(plan);
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
 const efforts = ["low", "medium", "high", "xhigh", "max"];
 const mappedModelKeys = ["provider", "model", "description", "thinking_budget"];
 function candidates$1(config2, reference, seen = /* @__PURE__ */ new Set()) {
@@ -28872,7 +28292,7 @@ function harnessModel(agent, at, style) {
   if (harness.type !== "claude-code") {
     return { model: "inherit", diagnostics: [diagnostic("warning", "harness-unsupported", `${at}/harness`, `The ${String(harness.type)} harness has no Claude agent equivalent; the agent inherits the session model.`, "U")] };
   }
-  const chosen = text$5(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
+  const chosen = text$6(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
   return {
     model: chosen.model,
     ...typeof harness.effort === "string" ? { effort: harness.effort } : {},
@@ -28885,7 +28305,7 @@ function claudeModel(config2, name2, agent, style) {
   const reference = typeof agent.model === "string" ? agent.model.trim() : "";
   if (reference === "") return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, "The agent names no model; the Claude agent inherits the session model.", "A")] };
   const options2 = candidates$1(config2, reference);
-  const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$5(candidate.id));
+  const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$6(candidate.id));
   if (!anthropic) {
     return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, `Model ${reference} has no Anthropic candidate; the Claude agent inherits the session model.`, "A")] };
   }
@@ -28975,10 +28395,10 @@ const unsupported = {
 };
 const serverName = (name2) => name2.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
 function derivedName(toolset) {
-  if (text$5(toolset.name)) return toolset.name;
+  if (text$6(toolset.name)) return toolset.name;
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) return toolset.ref.slice("docker:".length);
   const remote = record$2(toolset.remote);
-  if (text$5(remote.url)) {
+  if (text$6(remote.url)) {
     try {
       return new URL(remote.url).hostname.replace(/^(?:www|mcp|api)\./, "").split(".")[0];
     } catch {
@@ -29003,7 +28423,7 @@ function remoteServer(remote, at, diagnostics2) {
   const type2 = remote.transport_type === "sse" ? "sse" : "http";
   const headers = variableMap(remote.headers, `${at}/remote/headers`, diagnostics2);
   const oauth2 = record$2(remote.oauth), mapped = {};
-  if (text$5(oauth2.clientId)) mapped.clientId = oauth2.clientId;
+  if (text$6(oauth2.clientId)) mapped.clientId = oauth2.clientId;
   if (typeof oauth2.callbackPort === "number") mapped.callbackPort = oauth2.callbackPort;
   for (const field2 of ["clientSecret", "scopes", "callbackRedirectURL"]) if (oauth2[field2] !== void 0) {
     diagnostics2.push(diagnostic("warning", "mcp-oauth-unsupported", `${at}/remote/oauth/${field2}`, `OAuth ${field2} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.`, "U"));
@@ -29020,13 +28440,13 @@ function mcpServer(toolset, at, taken) {
   const env = variableMap(toolset.env, `${at}/env`, diagnostics2);
   const args = stringList(toolset.args).map((arg, index2) => variables(arg, `${at}/args/${index2}`, diagnostics2));
   const remote = record$2(toolset.remote);
-  if (text$5(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
+  if (text$6(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) {
     const gateway = ["mcp", "gateway", "run", "--servers", toolset.ref.slice("docker:".length)];
     diagnostics2.push(diagnostic("warning", "mcp-docker-gateway", `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: ${commandLine("docker", gateway)}.`, "A"));
     return { server: { name: name2, declared, at: `${at}/ref`, config: { type: "stdio", command: "docker", args: gateway, ...env ? { env } : {} }, commandLine: commandLine("docker", gateway) }, diagnostics: diagnostics2 };
   }
-  if (!text$5(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
+  if (!text$6(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
   const command2 = variables(toolset.command, `${at}/command`, diagnostics2);
   return { server: { name: name2, declared, at, config: { type: "stdio", command: command2, ...args.length > 0 ? { args } : {}, ...env ? { env } : {} }, commandLine: commandLine(command2, args) }, diagnostics: diagnostics2 };
 }
@@ -29232,11 +28652,11 @@ function skills(name2, agent) {
   return { skills: names2, diagnostics: diagnostics2 };
 }
 function claudeAgent(config2, name2, instructions2, names2, style) {
-  const agent = record$2(record$2(config2.agents)[name2]), at = pointer("agents", name2), claude2 = names2.get(name2);
+  const agent = record$2(record$2(config2.agents)[name2]), at = pointer("agents", name2), claude = names2.get(name2);
   const diagnostics2 = [];
-  if (claude2 !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, `Agent ${name2} is generated as ${claude2}.`, "E"));
+  if (claude !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, `Agent ${name2} is generated as ${claude}.`, "E"));
   let description2 = typeof agent.description === "string" ? agent.description : "";
-  if (!text$5(description2)) {
+  if (!text$6(description2)) {
     description2 = `The ${name2} agent.`;
     diagnostics2.push(diagnostic("warning", "description-synthesized", `${at}/description`, `The agent has no description; "${description2}" is emitted so Claude Code can delegate to it.`, "A"));
   }
@@ -29251,7 +28671,7 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   if (typeof maxTurns === "number" && maxTurns > 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", `${at}/max_iterations`, `max_iterations is emitted as maxTurns: ${maxTurns}; Claude counts agentic turns, not model calls.`, "A"));
   for (const field2 of unsupportedFields) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", `${at}/${field2}`, `${field2} has no Claude agent equivalent and is not emitted.`, "U"));
   const metadata2 = {
-    name: claude2,
+    name: claude,
     description: description2,
     model: model2.model,
     ...model2.effort ? { effort: model2.effort } : {},
@@ -29262,7 +28682,7 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   const prompt = instruction === "" || instruction.endsWith("\n") ? instruction : `${instruction}
 `;
   return {
-    draft: { agent: name2, name: claude2, metadata: metadata2, prompt, grants: granted, disallowed: tools.disallowedTools, servers: tools.servers, permissions: tools.permissions, ...hooks2.hooks ? { hooks: hooks2.hooks } : {}, hookCommands: hooks2.commands },
+    draft: { agent: name2, name: claude, metadata: metadata2, prompt, grants: granted, disallowed: tools.disallowedTools, servers: tools.servers, permissions: tools.permissions, ...hooks2.hooks ? { hooks: hooks2.hooks } : {}, hookCommands: hooks2.commands },
     diagnostics: diagnostics2
   };
 }
@@ -29484,10 +28904,10 @@ function uniqueSkills(skills2, diagnostics2) {
 function generateClaude(sources, options2) {
   const names2 = /* @__PURE__ */ new Map(), owners = /* @__PURE__ */ new Map(), diagnostics2 = [];
   for (const source2 of sources) for (const [name2] of agentEntries(source2.config)) {
-    const claude2 = claudeName(name2), owner = owners.get(claude2);
-    if (owner !== void 0) diagnostics2.push({ ...diagnostic("error", "agent-name-collision", pointer("agents", name2), `Agent ${name2} would generate .claude/agents/${claude2}.md, which ${owner} already generates.`), path: source2.path });
-    owners.set(claude2, `${source2.path}#${name2}`);
-    names2.set(name2, claude2);
+    const claude = claudeName(name2), owner = owners.get(claude);
+    if (owner !== void 0) diagnostics2.push({ ...diagnostic("error", "agent-name-collision", pointer("agents", name2), `Agent ${name2} would generate .claude/agents/${claude}.md, which ${owner} already generates.`), path: source2.path });
+    owners.set(claude, `${source2.path}#${name2}`);
+    names2.set(name2, claude);
   }
   const output2 = { agents: [], skills: [], mcpServers: {}, diagnostics: diagnostics2 };
   if (diagnostics2.length > 0) return output2;
@@ -31475,13 +30895,13 @@ function requireDataType() {
   }
   return dataType;
 }
-var defaults$2 = {};
+var defaults$4 = {};
 var hasRequiredDefaults;
 function requireDefaults() {
-  if (hasRequiredDefaults) return defaults$2;
+  if (hasRequiredDefaults) return defaults$4;
   hasRequiredDefaults = 1;
-  Object.defineProperty(defaults$2, "__esModule", { value: true });
-  defaults$2.assignDefaults = void 0;
+  Object.defineProperty(defaults$4, "__esModule", { value: true });
+  defaults$4.assignDefaults = void 0;
   const codegen_1 = /* @__PURE__ */ requireCodegen();
   const util_1 = /* @__PURE__ */ requireUtil();
   function assignDefaults(it, ty) {
@@ -31494,7 +30914,7 @@ function requireDefaults() {
       items2.forEach((sch, i) => assignDefault(it, i, sch.default));
     }
   }
-  defaults$2.assignDefaults = assignDefaults;
+  defaults$4.assignDefaults = assignDefaults;
   function assignDefault(it, prop2, defaultValue) {
     const { gen, compositeRule, data, opts } = it;
     if (defaultValue === void 0)
@@ -31510,7 +30930,7 @@ function requireDefaults() {
     }
     gen.if(condition, (0, codegen_1._)`${childData} = ${(0, codegen_1.stringify)(defaultValue)}`);
   }
-  return defaults$2;
+  return defaults$4;
 }
 var keyword = {};
 var code = {};
@@ -36629,33 +36049,7 @@ ${body}`;
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
 const content$1 = "---\nname: forge-agents\ndescription: Maintain docker-agent agent definitions in agents/*.yaml and generate, check and import Claude Code agents from them.\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope's `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file's `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent's `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent's semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `\"16\"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description \"Reviews changes\" --instruction \"...\" --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files' indentation and key order. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge's Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n";
 const agentsSkill = { id: "forge-agents", content: content$1 };
-const reviewOptions = {
-  "revisions-from": option$1.string("JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out)."),
-  plan: option$1.boolean("Report planned outputs and their status without writing."),
-  "plan-out": option$1.string("Write the plan's revision manifest to this path."),
-  check: option$1.boolean("Fail with a drift code when outputs are missing or differ.")
-};
-async function generationControls(flags, files) {
-  const revisionsPath = value$2(flags, "revisions-from"), manifestPath2 = value$2(flags, "plan-out");
-  const planning = flags.plan === true || manifestPath2 !== void 0;
-  ensure(!(planning && flags.check), "INVALID_ARGUMENT", "Choose --plan/--plan-out or --check.");
-  ensure(!(revisionsPath !== void 0 && (planning || flags.check)), "INVALID_ARGUMENT", "Planning and checks do not accept --revisions-from. Review a plan before authorizing regeneration.");
-  let revisions;
-  if (revisionsPath !== void 0) {
-    const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(revisionsPath)).bytes);
-    let parsed2;
-    try {
-      parsed2 = JSON.parse(text2);
-    } catch {
-      throw forgeError("INVALID_JSON", "Expected valid JSON input.");
-    }
-    ensure(isRecord(parsed2) && Object.values(parsed2).every((revision) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision)), "INVALID_INPUT", "--revisions-from must contain a JSON object mapping generated workspace paths to SHA-256 revisions.");
-    revisions = parsed2;
-  }
-  const mode = flags.check ? "check" : planning ? "plan" : "generate";
-  return { mode, manifestPath: manifestPath2, revisions };
-}
-const actions$2 = ["list", "inspect", "validate", "create", "import", "generate"];
+const actions$3 = ["list", "inspect", "validate", "create", "import", "generate"];
 const options$1 = {
   file: option$1.string("create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file."),
   model: option$1.string("create: the model reference, such as anthropic/claude-sonnet-5 or a named model; defaults to plugins.settings.agents.defaultModel."),
@@ -36685,16 +36079,16 @@ const accepted$1 = {
   generate: ["target", "file", "agent", "mcp", "hooks", "settings", "allow-broad-permissions", "rename-conflicts", "commands", "model-style", ...Object.keys(reviewOptions)]
 };
 function choice(flags, key, allowed, fallback) {
-  const selected2 = value$2(flags, key) ?? fallback;
+  const selected2 = value$3(flags, key) ?? fallback;
   ensure(allowed.includes(selected2), "INVALID_ARGUMENT", `--${key} must be one of: ${allowed.join(", ")}.`);
   return selected2;
 }
 function toolsets(flags) {
-  const list2 = value$2(flags, "toolset")?.split(",").map((type2) => type2.trim()).filter((type2) => type2 !== "");
+  const list2 = value$3(flags, "toolset")?.split(",").map((type2) => type2.trim()).filter((type2) => type2 !== "");
   for (const type2 of list2 ?? []) ensure(simpleToolsets.includes(type2), "INVALID_ARGUMENT", `--toolset accepts ${simpleToolsets.join(", ")}; add ${type2} toolsets by editing the file, since they need further settings.`);
   return list2;
 }
-function agentsCommand(services) {
+function agentsCommand(services2) {
   return {
     id: "agents",
     description: "Manage docker-agent definitions (list, inspect, validate, create, import) and generate Claude Code agents from them.",
@@ -36712,16 +36106,16 @@ function agentsCommand(services) {
       generate: { description: "Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.", mutating: true }
     },
     args: [
-      { name: "action", description: "list (default), inspect, validate, create, import or generate.", enum: actions$2 },
+      { name: "action", description: "list (default), inspect, validate, create, import or generate.", enum: actions$3 },
       { name: "target", description: "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path." }
     ],
     options: options$1,
     errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "AGENT_MERGE_CONFLICT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_PATH", "INVALID_YAML", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
-      ensure(actions$2.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions$2.join(", agents ")}.`);
+      ensure(actions$3.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions$3.join(", agents ")}.`);
       for (const key of Object.keys(options$1)) ensure(flags[key] === void 0 || accepted$1[action2].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by agents ${action2}.`);
-      const agents = services(context);
+      const agents = services2(context);
       if (action2 === "list") {
         arity(args, 0, 1);
         return agents.list();
@@ -36736,7 +36130,7 @@ function agentsCommand(services) {
       }
       if (action2 === "create") {
         arity(args, 2);
-        const [file2, model2, description2, instruction, ifMatch2, types2] = [value$2(flags, "file"), value$2(flags, "model"), value$2(flags, "description"), value$2(flags, "instruction"), value$2(flags, "if-match"), toolsets(flags)];
+        const [file2, model2, description2, instruction, ifMatch2, types2] = [value$3(flags, "file"), value$3(flags, "model"), value$3(flags, "description"), value$3(flags, "instruction"), value$3(flags, "if-match"), toolsets(flags)];
         const template = flags["from-template"] === void 0 ? void 0 : choice(flags, "from-template", agentTemplates, "basic");
         ensure(template === void 0 || types2 === void 0, "INVALID_ARGUMENT", "--from-template sets the toolsets; omit --toolset or edit the YAML afterwards.");
         return agents.create({
@@ -36752,16 +36146,16 @@ function agentsCommand(services) {
       }
       if (action2 === "import") {
         arity(args, 2);
-        ensure(value$2(flags, "from", true) === "claude", "INVALID_ARGUMENT", "--from must be claude.");
-        const file2 = value$2(flags, "file"), ifMatch2 = value$2(flags, "if-match");
+        ensure(value$3(flags, "from", true) === "claude", "INVALID_ARGUMENT", "--from must be claude.");
+        const file2 = value$3(flags, "file"), ifMatch2 = value$3(flags, "if-match");
         return agents.importClaude(args[1], { ...file2 ? { file: file2 } : {}, ...ifMatch2 ? { ifMatch: ifMatch2 } : {} });
       }
       arity(args, 1);
-      ensure(value$2(flags, "target", true) === "claude", "INVALID_ARGUMENT", "--target must be claude.");
+      ensure(value$3(flags, "target", true) === "claude", "INVALID_ARGUMENT", "--target must be claude.");
       ensure(flags["allow-broad-permissions"] === void 0 || flags.settings === true, "INVALID_ARGUMENT", "--allow-broad-permissions applies to the rules --settings writes; pass --settings too.");
-      ensure(flags["rename-conflicts"] === void 0 || value$2(flags, "mcp") === "project", "INVALID_ARGUMENT", "--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.");
+      ensure(flags["rename-conflicts"] === void 0 || value$3(flags, "mcp") === "project", "INVALID_ARGUMENT", "--rename-conflicts applies to the servers --mcp project merges into .mcp.json; pass --mcp project too.");
       const controls = await generationControls(flags, context.workspace.files);
-      const file = value$2(flags, "file"), agent = value$2(flags, "agent");
+      const file = value$3(flags, "file"), agent = value$3(flags, "agent");
       return agents.generate({
         ...file ? { file } : {},
         ...agent ? { agent } : {},
@@ -36779,7 +36173,7 @@ function agentsCommand(services) {
     }
   };
 }
-const defaults$1 = { directory: "agents", defaultModel: "anthropic/claude-sonnet-5" };
+const defaults$3 = { directory: "agents", defaultModel: "anthropic/claude-sonnet-5" };
 const ports = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
 const strings$2 = (value2) => Array.isArray(value2) && value2.every((item) => typeof item === "string");
 const agentsPlugin = {
@@ -36795,7 +36189,7 @@ const agentsPlugin = {
   create: () => ({
     commands: [agentsCommand((context) => {
       const settings2 = context.settings ?? {};
-      const directory = String(settings2.directory ?? defaults$1.directory), defaultModel = String(settings2.defaultModel ?? defaults$1.defaultModel);
+      const directory = String(settings2.directory ?? defaults$3.directory), defaultModel = String(settings2.defaultModel ?? defaults$3.defaultModel);
       const definitions2 = new AgentDefinitions(context.workspace.files, ports, directory);
       const authoring = new AgentAuthoring(context.workspace, definitions2, ports, defaultModel);
       const generation = new AgentGeneration(context.workspace, definitions2, ports, context.events);
@@ -36818,8 +36212,8 @@ const agentsPlugin = {
       type: "object",
       additionalProperties: false,
       properties: {
-        directory: { type: "string", minLength: 1, default: defaults$1.directory, description: "Scope-relative folder of docker-agent definition files (*.yaml)." },
-        defaultModel: { type: "string", minLength: 1, default: defaults$1.defaultModel, description: "Model reference for agents create and agents import when none is given." }
+        directory: { type: "string", minLength: 1, default: defaults$3.directory, description: "Scope-relative folder of docker-agent definition files (*.yaml)." },
+        defaultModel: { type: "string", minLength: 1, default: defaults$3.defaultModel, description: "Model reference for agents create and agents import when none is given." }
       }
     },
     errors: [
@@ -36867,7 +36261,7 @@ const lockPath = (connection) => `.forge/sync/${connection}.lock`;
 const REMOTE_BASE = "remote:";
 const UNSETTLED_REV = "0";
 const emptyState = (connection) => ({ version: 1, connection, items: {} });
-const text$3 = (value2) => typeof value2 === "string" && value2.length > 0;
+const text$4 = (value2) => typeof value2 === "string" && value2.length > 0;
 function parseState(source2, connection) {
   let json2;
   try {
@@ -36879,7 +36273,7 @@ function parseState(source2, connection) {
   if (!isRecord(json2) || json2.version !== 1 || !isRecord(json2.items)) throw invalid();
   const items2 = {};
   for (const [path, entry2] of Object.entries(json2.items)) {
-    if (!isRecord(entry2) || !text$3(entry2.id) || !text$3(entry2.url) || !text$3(entry2.rev) || !isRecord(entry2.fields)) throw invalid();
+    if (!isRecord(entry2) || !text$4(entry2.id) || !text$4(entry2.url) || !text$4(entry2.rev) || !isRecord(entry2.fields)) throw invalid();
     items2[path] = { id: entry2.id, url: entry2.url, rev: entry2.rev, fields: Object.fromEntries(Object.entries(entry2.fields).filter((field2) => typeof field2[1] === "string")) };
   }
   return { version: 1, connection, items: items2 };
@@ -39130,15 +38524,15 @@ function requirementsBoard(model2, settings2) {
   }
   return columns;
 }
-const error$1 = (code2, message2, extra = {}) => ({ code: code2, severity: "error", message: message2, ...extra });
+const error$2 = (code2, message2, extra = {}) => ({ code: code2, severity: "error", message: message2, ...extra });
 const warning = (code2, message2, extra = {}) => ({ code: code2, severity: "warning", message: message2, ...extra });
 function linkProblems(item, input) {
   const problems = [];
   const { settings: settings2 } = input;
-  if (item.cycleCut) problems.push(error$1("parent-cycle", `${item.title} closes a parent loop; the loop is cut here and the note shows as a root.`, { path: item.path, key: settings2.parentKey }));
-  else if (item.orphan) problems.push(error$1("unresolved-parent", `The parent of ${item.title} does not resolve to a loaded note.`, { path: item.path, key: settings2.parentKey }));
+  if (item.cycleCut) problems.push(error$2("parent-cycle", `${item.title} closes a parent loop; the loop is cut here and the note shows as a root.`, { path: item.path, key: settings2.parentKey }));
+  else if (item.orphan) problems.push(error$2("unresolved-parent", `The parent of ${item.title} does not resolve to a loaded note.`, { path: item.path, key: settings2.parentKey }));
   for (const broken of item.brokenPrerequisites) {
-    problems.push(error$1(
+    problems.push(error$2(
       broken.reason === "cycle" ? "dependency-cycle" : "unresolved-dependency",
       broken.reason === "cycle" ? `${item.title} depends on ${broken.raw}, which closes a dependency loop.` : `${item.title} depends on ${broken.raw}, which does not resolve to a loaded item.`,
       { path: item.path, key: settings2.dependsOnKey, value: broken.raw }
@@ -39146,7 +38540,7 @@ function linkProblems(item, input) {
   }
   const iteration2 = item.iterationEntry;
   if (iteration2 && (iteration2.path === null || !isIterationType(input.typeOf(iteration2.path)))) {
-    problems.push(error$1("broken-iteration", `The iteration of ${item.title} (${iteration2.raw}) is not an Iteration note.`, { path: item.path, key: settings2.iterationKey, value: iteration2.raw }));
+    problems.push(error$2("broken-iteration", `The iteration of ${item.title} (${iteration2.raw}) is not an Iteration note.`, { path: item.path, key: settings2.iterationKey, value: iteration2.raw }));
   }
   const assignee = item.assigneeEntry;
   if (assignee && (assignee.path === null || !isResourceType(input.typeOf(assignee.path)))) {
@@ -39163,11 +38557,11 @@ function fieldProblems(item, settings2) {
     ["iterationGoal", item.iterationGoalValue !== null, settings2.iterationGoalKey]
   ];
   for (const [field2, present2, key] of held) {
-    if (present2 && !mayHoldField(item.typeName, field2, settings2.iterationBars)) problems.push(error$1("field-not-held", `${item.typeName ?? "This type"} ${item.title} may not hold ${key}.`, { path: item.path, key }));
+    if (present2 && !mayHoldField(item.typeName, field2, settings2.iterationBars)) problems.push(error$2("field-not-held", `${item.typeName ?? "This type"} ${item.title} may not hold ${key}.`, { path: item.path, key }));
   }
   const ends = placementEnds(item.typeName, true);
   for (const [end2, reading2, key] of [["start", item.plannedStart, settings2.startKey], ["target", item.plannedTarget, settings2.targetKey]]) {
-    if (reading2.value !== null && !ends.includes(end2)) problems.push(error$1("field-not-held", `${item.typeName ?? "This type"} ${item.title} may not hold ${key}.`, { path: item.path, key }));
+    if (reading2.value !== null && !ends.includes(end2)) problems.push(error$2("field-not-held", `${item.typeName ?? "This type"} ${item.title} may not hold ${key}.`, { path: item.path, key }));
     if (reading2.invalid) problems.push(warning("unreadable-date", `${item.title} has an unreadable ${key}; the plugin shelves it.`, { path: item.path, key }));
   }
   if (item.horizon.invalid) problems.push(warning("unreadable-horizon", `${item.title} has an unreadable ${settings2.horizonKey}; the plugin shelves it.`, { path: item.path, key: settings2.horizonKey }));
@@ -39177,12 +38571,12 @@ function fieldProblems(item, settings2) {
 function checkBacklog(input) {
   const { model: model2, settings: settings2 } = input;
   const problems = [
-    ...configProblems(settings2).map((message2) => error$1("config", message2)),
-    ...input.releaseProblems.map((message2) => error$1("release-config", message2))
+    ...configProblems(settings2).map((message2) => error$2("config", message2)),
+    ...input.releaseProblems.map((message2) => error$2("release-config", message2))
   ];
   const results = model2.items.filter((item) => !item.outsideFilter);
   for (const item of results) problems.push(...linkProblems(item, input), ...fieldProblems(item, settings2));
-  for (const path of input.unresolvedMemberships) problems.push(error$1("unresolved-membership", `The release membership of ${path} does not resolve to exactly one Release note of this base.`, { path }));
+  for (const path of input.unresolvedMemberships) problems.push(error$2("unresolved-membership", `The release membership of ${path} does not resolve to exactly one Release note of this base.`, { path }));
   const byOrder = /* @__PURE__ */ new Map();
   for (const item of results) if (item.order !== null) byOrder.set(item.order, [...byOrder.get(item.order) ?? [], item.path]);
   for (const [order2, paths2] of byOrder) if (paths2.length > 1) problems.push(warning("rank-tie", `${paths2.length} items share rank ${order2}; ties follow result order.`, { value: String(order2), paths: paths2 }));
@@ -39888,10 +39282,10 @@ const totals = (views2, left) => ({
   left: left.length,
   failed: views2.reduce((sum, view) => sum + view.failed.length, 0)
 });
-async function runSync(context, services, request) {
+async function runSync(context, services2, request) {
   const views2 = await boundViews(context, request);
   const live = request.mode === "sync" && !context.workspace.dryRun;
-  const open2 = (view) => openBacklog(context, services.bases, services.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
+  const open2 = (view) => openBacklog(context, services2.bases, services2.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
   let targets = views2;
   let resolution;
   if (request.resolve) {
@@ -39909,13 +39303,13 @@ async function runSync(context, services, request) {
     resolution = { path: holding[0].path, take: request.resolve.take, fields: request.resolve.fields };
   }
   const connections = [...new Set(targets.map((view) => view.connection))];
-  const bound2 = new Map(connections.map((id2) => [id2, services.hub.connection(id2)]));
+  const bound2 = new Map(connections.map((id2) => [id2, services2.hub.connection(id2)]));
   const releases = [];
   const reports = [];
   let left = [];
-  services.activity.syncing = true;
+  services2.activity.syncing = true;
   try {
-    if (live) for (const id2 of [...connections].sort()) releases.push(await services.lock(lockPath(id2), "backlog sync"));
+    if (live) for (const id2 of [...connections].sort()) releases.push(await services2.lock(lockPath(id2), "backlog sync"));
     const stores = /* @__PURE__ */ new Map();
     for (const id2 of connections) stores.set(id2, await SyncStore.open(context.workspace, id2));
     const all2 = request.base === void 0 && request.view === void 0 ? views2 : [...views2, ...await boundViews(context, {})];
@@ -39924,14 +39318,14 @@ async function runSync(context, services, request) {
     for (const view of targets) {
       const session = await open2(view);
       const connection = bound2.get(view.connection);
-      const { report } = await syncView(session, connection, stores.get(view.connection), services.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, ...resolution ? { resolution } : {} });
+      const { report } = await syncView(session, connection, stores.get(view.connection), services2.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, ...resolution ? { resolution } : {} });
       for (const entry2 of report.pulled) if (entry2.renamedTo) held?.get(view.connection).add(entry2.renamedTo);
       reports.push(report);
-      if (live) await publish(session, services.hub, connection, report, leftOf(view.connection).length);
+      if (live) await publish(session, services2.hub, connection, report, leftOf(view.connection).length);
     }
     left = connections.flatMap(leftOf);
   } finally {
-    services.activity.syncing = false;
+    services2.activity.syncing = false;
     for (const release2 of releases.reverse()) if (!await release2()) context.events.warn("A backlog sync lock no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs.");
   }
   return {
@@ -39963,22 +39357,22 @@ const syncOptions = {
 function syncAccepted(sub) {
   return sub === "resolve" ? ["take", "field"] : ["direction"];
 }
-function syncAction(rest, flags, context, services, selection2) {
+function syncAction(rest, flags, context, services2, selection2) {
   const [sub, ...args] = rest;
-  const direction = value$2(flags, "direction") ?? "both";
+  const direction = value$3(flags, "direction") ?? "both";
   ensure(["push", "pull", "both"].includes(direction), "INVALID_ARGUMENT", "--direction must be push, pull or both.");
-  if (sub === void 0) return runSync(context, services, { ...selection2, direction, mode: "sync" });
+  if (sub === void 0) return runSync(context, services2, { ...selection2, direction, mode: "sync" });
   if (sub === "status") {
     arity(args, 0);
-    return runSync(context, services, { ...selection2, direction, mode: "status" });
+    return runSync(context, services2, { ...selection2, direction, mode: "status" });
   }
   ensure(sub === "resolve", "INVALID_ARGUMENT", "Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.");
   arity(args, 1);
-  const take = value$2(flags, "take", true);
+  const take = value$3(flags, "take", true);
   ensure(take === "local" || take === "remote", "INVALID_ARGUMENT", "--take must be local or remote.");
-  const fields2 = value$2(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
+  const fields2 = value$3(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
   ensure(fields2 === null || fields2.length > 0, "INVALID_ARGUMENT", "--field needs at least one field name.");
-  return runSync(context, services, { ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
+  return runSync(context, services2, { ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
 }
 const selection = ["base", "view", "today"];
 const accepted = {
@@ -39998,7 +39392,7 @@ const accepted = {
   release: ["release-version", "target-date", "status", "description", "if-match"],
   sync: ["direction", "take", "field"]
 };
-const actions$1 = Object.keys(accepted);
+const actions$2 = Object.keys(accepted);
 const options = {
   base: option$1.string("The .base file of the backlog; discovered when it is the only one with a product-backlog view."),
   view: option$1.string("The product-backlog view of the base."),
@@ -40035,7 +39429,7 @@ const options = {
 };
 const read = { mutating: false };
 function date$1(flags, key) {
-  const text2 = value$2(flags, key);
+  const text2 = value$3(flags, key);
   if (text2 === void 0) return void 0;
   const parsed2 = readDate(text2).value;
   ensure(parsed2 !== null && /^\d{4}-\d{2}-\d{2}$/.test(text2.trim()), "INVALID_ARGUMENT", `--${key} must be a date in YYYY-MM-DD form.`);
@@ -40043,8 +39437,8 @@ function date$1(flags, key) {
 }
 function selected(flags, context) {
   const settings2 = context.settings ?? {};
-  const base = value$2(flags, "base") ?? (typeof settings2.base === "string" ? settings2.base : void 0);
-  const view = value$2(flags, "view") ?? (value$2(flags, "base") === void 0 && typeof settings2.view === "string" ? settings2.view : void 0);
+  const base = value$3(flags, "base") ?? (typeof settings2.base === "string" ? settings2.base : void 0);
+  const view = value$3(flags, "view") ?? (value$3(flags, "base") === void 0 && typeof settings2.view === "string" ? settings2.view : void 0);
   const today2 = date$1(flags, "today");
   return { ...base === void 0 ? {} : { base }, ...view === void 0 ? {} : { view }, ...today2 === void 0 ? {} : { today: today2 } };
 }
@@ -40074,26 +39468,26 @@ function backlogCommand(ports2) {
       sync: { description: "Two-way sync of every view bound to a connection (view option connection: <id>) with explicit conflicts; status reads both sides without writing; resolve settles a conflict." }
     },
     args: [
-      { name: "action", description: actions$1.join(", "), required: true, enum: actions$1 },
+      { name: "action", description: actions$2.join(", "), required: true, enum: actions$2 },
       { name: "arguments", description: "The action's arguments: an item, a type and title, or a sub-action and its arguments.", variadic: true }
     ],
     options,
     errors: ["BACKLOG_NOT_FOUND", "BACKLOG_AMBIGUOUS", "BACKLOG_CONFIG_PROBLEM", "BACKLOG_WRITE_REFUSED", "BACKLOG_NO_GAP", "CONFLICT", "SYNC_CONFLICT", "CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
     async run(args, flags, context) {
       const [action2, ...rest] = args;
-      ensure(action2 !== void 0 && actions$1.includes(action2), "INVALID_ARGUMENT", `Use backlog ${actions$1.join(", backlog ")}.`);
+      ensure(action2 !== void 0 && actions$2.includes(action2), "INVALID_ARGUMENT", `Use backlog ${actions$2.join(", backlog ")}.`);
       only(flags, `backlog ${action2}`, action2 === "sync" ? syncAccepted(rest[0]) : accepted[action2]);
       if (action2 === "init") {
         arity(rest, 0);
-        return initBacklog(context, value$2(flags, "folder"));
+        return initBacklog(context, value$3(flags, "folder"));
       }
       const { bases, ports: host, sync } = ports2(context);
       if (action2 === "sync") {
         const today2 = date$1(flags, "today");
-        return syncAction(rest, flags, context, sync(), { ...value$2(flags, "base") === void 0 ? {} : { base: value$2(flags, "base") }, ...value$2(flags, "view") === void 0 ? {} : { view: value$2(flags, "view") }, ...today2 ? { today: today2 } : {} });
+        return syncAction(rest, flags, context, sync(), { ...value$3(flags, "base") === void 0 ? {} : { base: value$3(flags, "base") }, ...value$3(flags, "view") === void 0 ? {} : { view: value$3(flags, "view") }, ...today2 ? { today: today2 } : {} });
       }
       const session = await openBacklog(context, bases, host, selected(flags, context));
-      const ifMatch2 = value$2(flags, "if-match");
+      const ifMatch2 = value$3(flags, "if-match");
       switch (action2) {
         case "list":
           arity(rest, 0);
@@ -40112,14 +39506,14 @@ function backlogCommand(ports2) {
           return check$1(session);
         case "add": {
           arity(rest, 2);
-          const tags2 = value$2(flags, "tags");
-          return addItem(session, { type: rest[0], title: rest[1], parent: value$2(flags, "parent"), folder: value$2(flags, "folder"), state: value$2(flags, "state"), iteration: value$2(flags, "iteration"), release: value$2(flags, "release"), assignee: value$2(flags, "assignee"), ...tags2 === void 0 ? {} : { tags: [tags2] } });
+          const tags2 = value$3(flags, "tags");
+          return addItem(session, { type: rest[0], title: rest[1], parent: value$3(flags, "parent"), folder: value$3(flags, "folder"), state: value$3(flags, "state"), iteration: value$3(flags, "iteration"), release: value$3(flags, "release"), assignee: value$3(flags, "assignee"), ...tags2 === void 0 ? {} : { tags: [tags2] } });
         }
         case "move": {
           arity(rest, 1);
           const placements = ["before", "after", "first", "last"].filter((key) => flags[key] !== void 0);
           ensure(placements.length <= 1 && !(flags.top === true && flags.parent !== void 0), "INVALID_ARGUMENT", "Pass at most one of --before, --after, --first, --last, and either --parent or --top.");
-          return moveItem(session, { item: rest[0], parent: value$2(flags, "parent"), top: flags.top === true, before: value$2(flags, "before"), after: value$2(flags, "after"), first: flags.first === true, last: flags.last === true, ifMatch: ifMatch2 });
+          return moveItem(session, { item: rest[0], parent: value$3(flags, "parent"), top: flags.top === true, before: value$3(flags, "before"), after: value$3(flags, "after"), first: flags.first === true, last: flags.last === true, ifMatch: ifMatch2 });
         }
         case "ranks":
           arity(rest, 1);
@@ -40129,12 +39523,12 @@ function backlogCommand(ports2) {
           arity(rest, 1);
           const fields2 = ["state", "horizon", "priority", "risk", "start", "due", "assignee", "type"];
           ensure(fields2.some((key) => flags[key] !== void 0), "MISSING_ARGUMENT", `backlog set needs at least one of --${fields2.join(", --")}.`);
-          return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields2.flatMap((key) => value$2(flags, key) === void 0 ? [] : [[key, value$2(flags, key)]])) });
+          return setFields(session, { item: rest[0], ifMatch: ifMatch2, ...Object.fromEntries(fields2.flatMap((key) => value$3(flags, key) === void 0 ? [] : [[key, value$3(flags, key)]])) });
         }
         case "depend":
         case "undepend": {
           arity(rest, 1);
-          const on = value$2(flags, "on", true);
+          const on = value$3(flags, "on", true);
           return action2 === "depend" ? depend(session, rest[0], on, ifMatch2) : undepend(session, rest[0], on, ifMatch2);
         }
         case "iteration":
@@ -40154,7 +39548,7 @@ function iteration(session, rest, flags, ifMatch2) {
     arity(args, 0);
     only(flags, "backlog iteration add", ["name", "goal", "start", "due", "length"]);
     const length = integer$1(flags, "length", 1);
-    return addIteration(session, { name: value$2(flags, "name"), goal: value$2(flags, "goal"), start: value$2(flags, "start"), due: value$2(flags, "due"), ...length === void 0 ? {} : { length } });
+    return addIteration(session, { name: value$3(flags, "name"), goal: value$3(flags, "goal"), start: value$3(flags, "start"), due: value$3(flags, "due"), ...length === void 0 ? {} : { length } });
   }
   ensure(sub === "assign", "INVALID_ARGUMENT", "Use backlog iteration add or backlog iteration assign <item> <iteration>.");
   arity(args, 2);
@@ -40169,7 +39563,7 @@ function release(session, bases, rest, flags, ifMatch2) {
   switch (sub) {
     case "add":
       arity(args, 1);
-      return addRelease(session, args[0], { version: value$2(flags, "release-version"), targetDate: value$2(flags, "target-date"), status: value$2(flags, "status"), description: value$2(flags, "description") });
+      return addRelease(session, args[0], { version: value$3(flags, "release-version"), targetDate: value$3(flags, "target-date"), status: value$3(flags, "status"), description: value$3(flags, "description") });
     case "join":
       arity(args, 2);
       return joinRelease(session, args[0], args[1], ifMatch2);
@@ -40199,7 +39593,7 @@ const today = () => {
   const now = /* @__PURE__ */ new Date();
   return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
 };
-const de$1 = {
+const de$2 = {
   commands: { backlog: "Ein Product Backlog kompatibel mit der Obsidian-Ansicht Product Backlog (backlog-view) planen: Hierarchie, Ränge, Status, Iterationen, Releases und Abhängigkeiten." },
   actions: {
     "backlog init": "Das Product-Backlog.base-Gerüst des Plugins in einen Ordner schreiben (Standard docs).",
@@ -40250,9 +39644,9 @@ const backlogPlugin = {
       requires: ["bases.query"],
       optional: ["connector.hub"],
       commands: [backlogCommand((context) => {
-        const { services } = context;
+        const { services: services2 } = context;
         const ports2 = { stringifyYaml, editFrontmatter, today, hash: hashText };
-        return { bases: services.get("bases.query"), ports: ports2, sync: () => ({ bases: services.get("bases.query"), ports: ports2, hub: services.get("connector.hub"), activity, lock: host.locks(context.root) }) };
+        return { bases: services2.get("bases.query"), ports: ports2, sync: () => ({ bases: services2.get("bases.query"), ports: ports2, hub: services2.get("connector.hub"), activity, lock: host.locks(context.root) }) };
       })],
       // Sync state files stay keyed by note path when notes or folders are renamed through Forge.
       onload(context) {
@@ -40280,1095 +39674,1648 @@ const backlogPlugin = {
         { code: "BACKLOG_NO_GAP", category: "conflict", summary: "No rank is free between the neighbours.", hint: "Run backlog ranks respace (or backlog ranks seed when ranks are missing), then repeat the move." },
         { code: "SYNC_CONFLICT", category: "conflict", summary: "The remote work item changed while it was being synced.", hint: "Check the state with backlog sync status, then repeat the sync or the resolution.", retryable: true }
       ],
-      strings: { de: de$1 }
+      strings: { de: de$2 }
     };
   }
 };
-const SHARED_KEYS = ["platform", "tokenEnv", "linkProperty", "effortProperty", "areaProperty", "mappings"];
-const CONNECTION_ID = /^[a-z][a-z0-9-]*$/;
-const nameMap = (description2) => ({ type: "object", description: description2, additionalProperties: { type: "string" } });
-const connectorSettings = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    connections: {
-      type: "object",
-      default: {},
-      description: "Connection profiles by id (lowercase kebab-case).",
-      additionalProperties: {
-        type: "object",
-        required: ["platform"],
-        additionalProperties: true,
-        properties: {
-          platform: { type: "string", pattern: "^[a-z][a-z0-9-]*$", description: "The connector platform, for example azure-devops." },
-          tokenEnv: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration." },
-          linkProperty: { type: "string", minLength: 1, description: "The frontmatter key that links a note to its remote item; the platform default when omitted." },
-          effortProperty: { type: "string", minLength: 1, default: "effort", description: "The frontmatter key of the effort or story points." },
-          areaProperty: { type: "string", minLength: 1, default: "area", description: "The frontmatter key of the area path; a note without it uses the connection's default area." },
-          mappings: {
-            type: "object",
-            additionalProperties: false,
-            default: {},
-            properties: {
-              types: nameMap("Local backlog type → remote work item type, over the process defaults."),
-              states: nameMap("Local state (optionally Type:State) → remote state, over the process defaults."),
-              fields: nameMap("Neutral field → remote field reference over the process defaults; an empty string stops syncing the field."),
-              properties: nameMap("Extra frontmatter key → remote field reference, synced as a plain value.")
-            }
-          }
+var dayjs_min$1 = { exports: {} };
+var dayjs_min = dayjs_min$1.exports;
+var hasRequiredDayjs_min;
+function requireDayjs_min() {
+  if (hasRequiredDayjs_min) return dayjs_min$1.exports;
+  hasRequiredDayjs_min = 1;
+  (function(module, exports) {
+    !(function(t, e) {
+      module.exports = e();
+    })(dayjs_min, (function() {
+      var t = 1e3, e = 6e4, n = 36e5, r = "millisecond", i = "second", s = "minute", u = "hour", a = "day", o = "week", c = "month", f = "quarter", h = "year", d = "date", l = "Invalid Date", $2 = /^(\d{4})[-/]?(\d{1,2})?[-/]?(\d{0,2})[Tt\s]*(\d{1,2})?:?(\d{1,2})?:?(\d{1,2})?[.:]?(\d+)?$/, y = /\[([^\]]+)]|YYYY|YY|M{1,4}|D{1,2}|d{1,4}|H{1,2}|h{1,2}|a|A|m{1,2}|s{1,2}|Z{1,2}|SSS/g, M = { name: "en", weekdays: "Sunday_Monday_Tuesday_Wednesday_Thursday_Friday_Saturday".split("_"), months: "January_February_March_April_May_June_July_August_September_October_November_December".split("_"), ordinal: function(t2) {
+        var e2 = ["th", "st", "nd", "rd"], n2 = t2 % 100;
+        return "[" + t2 + (e2[(n2 - 20) % 10] || e2[n2] || e2[0]) + "]";
+      } }, m = function(t2, e2, n2) {
+        var r2 = String(t2);
+        return !r2 || r2.length >= e2 ? t2 : "" + Array(e2 + 1 - r2.length).join(n2) + t2;
+      }, v = { s: m, z: function(t2) {
+        var e2 = -t2.utcOffset(), n2 = Math.abs(e2), r2 = Math.floor(n2 / 60), i2 = n2 % 60;
+        return (e2 <= 0 ? "+" : "-") + m(r2, 2, "0") + ":" + m(i2, 2, "0");
+      }, m: function t2(e2, n2) {
+        if (e2.date() < n2.date()) return -t2(n2, e2);
+        var r2 = 12 * (n2.year() - e2.year()) + (n2.month() - e2.month()), i2 = e2.clone().add(r2, c), s2 = n2 - i2 < 0, u2 = e2.clone().add(r2 + (s2 ? -1 : 1), c);
+        return +(-(r2 + (n2 - i2) / (s2 ? i2 - u2 : u2 - i2)) || 0);
+      }, a: function(t2) {
+        return t2 < 0 ? Math.ceil(t2) || 0 : Math.floor(t2);
+      }, p: function(t2) {
+        return { M: c, y: h, w: o, d: a, D: d, h: u, m: s, s: i, ms: r, Q: f }[t2] || String(t2 || "").toLowerCase().replace(/s$/, "");
+      }, u: function(t2) {
+        return void 0 === t2;
+      } }, g = "en", D = {};
+      D[g] = M;
+      var p = "$isDayjsObject", S = function(t2) {
+        return t2 instanceof _ || !(!t2 || !t2[p]);
+      }, w = function t2(e2, n2, r2) {
+        var i2;
+        if (!e2) return g;
+        if ("string" == typeof e2) {
+          var s2 = e2.toLowerCase();
+          D[s2] && (i2 = s2), n2 && (D[s2] = n2, i2 = s2);
+          var u2 = e2.split("-");
+          if (!i2 && u2.length > 1) return t2(u2[0]);
+        } else {
+          var a2 = e2.name;
+          D[a2] = e2, i2 = a2;
         }
-      }
-    }
-  }
-};
-const strings$1 = (value2) => isRecord(value2) ? Object.fromEntries(Object.entries(value2).filter((entry2) => typeof entry2[1] === "string")) : {};
-function profiles(settings2) {
-  const connections = isRecord(settings2?.connections) ? settings2.connections : {};
-  return Object.entries(connections).filter((entry2) => isRecord(entry2[1])).map(([id2, raw]) => {
-    const mappings = isRecord(raw.mappings) ? raw.mappings : {};
-    return {
-      id: id2,
-      platform: String(raw.platform),
-      ...typeof raw.tokenEnv === "string" ? { tokenEnv: raw.tokenEnv } : {},
-      ...typeof raw.linkProperty === "string" ? { linkProperty: raw.linkProperty } : {},
-      effortProperty: typeof raw.effortProperty === "string" ? raw.effortProperty : "effort",
-      areaProperty: typeof raw.areaProperty === "string" ? raw.areaProperty : "area",
-      mappings: { types: strings$1(mappings.types), states: strings$1(mappings.states), fields: strings$1(mappings.fields), properties: strings$1(mappings.properties) },
-      specific: Object.fromEntries(Object.entries(raw).filter(([key]) => !SHARED_KEYS.includes(key)))
-    };
-  });
-}
-function connectorError(code2, message2, details) {
-  return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
-}
-class Hub {
-  constructor(environment) {
-    this.environment = environment;
-  }
-  environment;
-  connectors = /* @__PURE__ */ new Map();
-  settings = null;
-  events = null;
-  bind(settings2, events2) {
-    this.settings = settings2;
-    this.events = events2;
-  }
-  register(connector) {
-    if (this.connectors.has(connector.id)) throw connectorError("CONNECTION_INVALID", `Two connectors register the platform ${connector.id}.`, { platform: connector.id });
-    this.connectors.set(connector.id, connector);
-  }
-  platforms() {
-    return [...this.connectors.keys()].sort();
-  }
-  ids() {
-    return profiles(this.settings).map((profile) => profile.id);
-  }
-  /** Every profile with its validation result, for listing; never throws for one bad profile. */
-  statuses() {
-    return profiles(this.settings).map((profile) => {
-      const connector = this.connectors.get(profile.platform) ?? null;
-      if (connector === null) return { profile, connector, issues: [`platform ${profile.platform} is not available; enable its connector plugin`], bound: null };
-      const { connection, issues } = this.build(profile, connector);
-      return { profile, connector, issues, bound: issues.length === 0 ? { connection, connector } : null };
-    });
-  }
-  connection(id2) {
-    const profile = profiles(this.settings).find((entry2) => entry2.id === id2);
-    if (profile === void 0) throw connectorError("CONNECTOR_NOT_FOUND", `No connection ${id2} is configured in plugins.settings.connector.connections.`, { connection: id2, connections: this.ids() });
-    const connector = this.connectors.get(profile.platform);
-    if (connector === void 0) throw connectorError("CONNECTOR_NOT_FOUND", `Connection ${id2} uses the platform ${profile.platform}, which no enabled connector provides.`, { connection: id2, platform: profile.platform, platforms: this.platforms() });
-    const { connection, issues } = this.build(profile, connector);
-    if (issues.length > 0) throw connectorError("CONNECTION_INVALID", `Connection ${id2} is invalid: ${issues.join("; ")}`, { connection: id2, issues });
-    return { connection, connector };
-  }
-  async report(name2, payload2) {
-    await this.events?.emit(`connector.${name2}`, payload2);
-  }
-  build(profile, connector) {
-    const description2 = connector.describe();
-    const path = `plugins.settings.connector.connections.${profile.id}`;
-    const checked = validateJsonValue(description2.connectionSchema, profile.specific, path);
-    const issues = [...CONNECTION_ID.test(profile.id) ? [] : [`${path}: connection ids are lowercase kebab-case`], ...checked.issues];
-    const tokenEnv = profile.tokenEnv ?? description2.defaults.tokenEnv;
-    const environment = this.environment;
-    const settings2 = { ...isRecord(checked.value) ? checked.value : {}, platform: profile.platform, tokenEnv, mappings: profile.mappings };
-    const connection = {
-      id: profile.id,
-      platform: profile.platform,
-      tokenEnv,
-      linkProperty: profile.linkProperty ?? description2.defaults.linkProperty,
-      effortProperty: profile.effortProperty,
-      areaProperty: profile.areaProperty,
-      settings: settings2,
-      token() {
-        const value2 = environment(tokenEnv)?.trim();
-        if (!value2) throw connectorError("CONNECTOR_AUTH_FAILED", `Set the environment variable ${tokenEnv} to an access token for connection ${profile.id}.`, { connection: profile.id, tokenEnv });
-        return value2;
-      }
-    };
-    return { connection, issues };
-  }
-}
-function tokenSet(connection, environment) {
-  return (environment(connection.tokenEnv)?.trim() ?? "") !== "";
-}
-const actions = ["list", "inspect", "test"];
-function connectionJson({ connection, connector }, environment) {
-  return {
-    id: connection.id,
-    platform: connection.platform,
-    tokenEnv: connection.tokenEnv,
-    tokenSet: tokenSet(connection, environment),
-    linkProperty: connection.linkProperty,
-    effortProperty: connection.effortProperty,
-    areaProperty: connection.areaProperty,
-    ...connector.describe().summary(connection),
-    warnings: connector.describe().warnings(connection)
-  };
-}
-function connectorsCommand(hub, environment) {
-  return {
-    id: "connectors",
-    description: "List, inspect and test the backlog connector connections configured in plugins.settings.connector.connections.",
-    usage: "connectors list | inspect <id> | test <id>",
-    scope: "workspace",
-    discovery: false,
-    mutating: false,
-    defaultAction: "list",
-    actions: {
-      list: { description: "Every connection with its platform, validity, warnings and whether its token variable is set." },
-      inspect: { description: "One connection with its resolved type, state and field mappings." },
-      test: { description: "An authenticated, read-only probe of one connection." }
-    },
-    args: [
-      { name: "action", description: actions.join(", "), enum: actions },
-      { name: "id", description: "The connection id (inspect, test)." }
-    ],
-    errors: ["CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
-    async run(args) {
-      const [action2 = "list", ...rest] = args;
-      ensure(actions.includes(action2), "INVALID_ARGUMENT", `Use connectors ${actions.join(", connectors ")}.`);
-      if (action2 === "list") {
-        arity(rest, 0);
-        return {
-          platforms: hub.platforms(),
-          connections: hub.statuses().map((status2) => ({
-            ...status2.bound ? connectionJson(status2.bound, environment) : { id: status2.profile.id, platform: status2.profile.platform },
-            available: status2.connector !== null,
-            valid: status2.issues.length === 0,
-            issues: status2.issues
-          }))
+        return !r2 && i2 && (g = i2), i2 || !r2 && g;
+      }, O = function(t2, e2) {
+        if (S(t2)) return t2.clone();
+        var n2 = "object" == typeof e2 ? e2 : {};
+        return n2.date = t2, n2.args = arguments, new _(n2);
+      }, b = v;
+      b.l = w, b.i = S, b.w = function(t2, e2) {
+        return O(t2, { locale: e2.$L, utc: e2.$u, x: e2.$x, $offset: e2.$offset });
+      };
+      var _ = (function() {
+        function M2(t2) {
+          this.$L = w(t2.locale, null, true), this.parse(t2), this.$x = this.$x || t2.x || {}, this[p] = true;
+        }
+        var m2 = M2.prototype;
+        return m2.parse = function(t2) {
+          this.$d = (function(t3) {
+            var e2 = t3.date, n2 = t3.utc;
+            if (null === e2) return /* @__PURE__ */ new Date(NaN);
+            if (b.u(e2)) return /* @__PURE__ */ new Date();
+            if (e2 instanceof Date) return new Date(e2);
+            if ("string" == typeof e2 && !/Z$/i.test(e2)) {
+              var r2 = e2.match($2);
+              if (r2) {
+                var i2 = r2[2] - 1 || 0, s2 = (r2[7] || "0").substring(0, 3);
+                return n2 ? new Date(Date.UTC(r2[1], i2, r2[3] || 1, r2[4] || 0, r2[5] || 0, r2[6] || 0, s2)) : new Date(r2[1], i2, r2[3] || 1, r2[4] || 0, r2[5] || 0, r2[6] || 0, s2);
+              }
+            }
+            return new Date(e2);
+          })(t2), this.init();
+        }, m2.init = function() {
+          var t2 = this.$d;
+          this.$y = t2.getFullYear(), this.$M = t2.getMonth(), this.$D = t2.getDate(), this.$W = t2.getDay(), this.$H = t2.getHours(), this.$m = t2.getMinutes(), this.$s = t2.getSeconds(), this.$ms = t2.getMilliseconds();
+        }, m2.$utils = function() {
+          return b;
+        }, m2.isValid = function() {
+          return !(this.$d.toString() === l);
+        }, m2.isSame = function(t2, e2) {
+          var n2 = O(t2);
+          return this.startOf(e2) <= n2 && n2 <= this.endOf(e2);
+        }, m2.isAfter = function(t2, e2) {
+          return O(t2) < this.startOf(e2);
+        }, m2.isBefore = function(t2, e2) {
+          return this.endOf(e2) < O(t2);
+        }, m2.$g = function(t2, e2, n2) {
+          return b.u(t2) ? this[e2] : this.set(n2, t2);
+        }, m2.unix = function() {
+          return Math.floor(this.valueOf() / 1e3);
+        }, m2.valueOf = function() {
+          return this.$d.getTime();
+        }, m2.startOf = function(t2, e2) {
+          var n2 = this, r2 = !!b.u(e2) || e2, f2 = b.p(t2), l2 = function(t3, e3) {
+            var i2 = b.w(n2.$u ? Date.UTC(n2.$y, e3, t3) : new Date(n2.$y, e3, t3), n2);
+            return r2 ? i2 : i2.endOf(a);
+          }, $3 = function(t3, e3) {
+            return b.w(n2.toDate()[t3].apply(n2.toDate("s"), (r2 ? [0, 0, 0, 0] : [23, 59, 59, 999]).slice(e3)), n2);
+          }, y2 = this.$W, M3 = this.$M, m3 = this.$D, v2 = "set" + (this.$u ? "UTC" : "");
+          switch (f2) {
+            case h:
+              return r2 ? l2(1, 0) : l2(31, 11);
+            case c:
+              return r2 ? l2(1, M3) : l2(0, M3 + 1);
+            case o:
+              var g2 = this.$locale().weekStart || 0, D2 = (y2 < g2 ? y2 + 7 : y2) - g2;
+              return l2(r2 ? m3 - D2 : m3 + (6 - D2), M3);
+            case a:
+            case d:
+              return $3(v2 + "Hours", 0);
+            case u:
+              return $3(v2 + "Minutes", 1);
+            case s:
+              return $3(v2 + "Seconds", 2);
+            case i:
+              return $3(v2 + "Milliseconds", 3);
+            default:
+              return this.clone();
+          }
+        }, m2.endOf = function(t2) {
+          return this.startOf(t2, false);
+        }, m2.$set = function(t2, e2) {
+          var n2, o2 = b.p(t2), f2 = "set" + (this.$u ? "UTC" : ""), l2 = (n2 = {}, n2[a] = f2 + "Date", n2[d] = f2 + "Date", n2[c] = f2 + "Month", n2[h] = f2 + "FullYear", n2[u] = f2 + "Hours", n2[s] = f2 + "Minutes", n2[i] = f2 + "Seconds", n2[r] = f2 + "Milliseconds", n2)[o2], $3 = o2 === a ? this.$D + (e2 - this.$W) : e2;
+          if (o2 === c || o2 === h) {
+            var y2 = this.clone().set(d, 1);
+            y2.$d[l2]($3), y2.init(), this.$d = y2.set(d, Math.min(this.$D, y2.daysInMonth())).$d;
+          } else l2 && this.$d[l2]($3);
+          return this.init(), this;
+        }, m2.set = function(t2, e2) {
+          return this.clone().$set(t2, e2);
+        }, m2.get = function(t2) {
+          return this[b.p(t2)]();
+        }, m2.add = function(r2, f2) {
+          var d2, l2 = this;
+          r2 = Number(r2);
+          var $3 = b.p(f2), y2 = function(t2) {
+            var e2 = O(l2);
+            return b.w(e2.date(e2.date() + Math.round(t2 * r2)), l2);
+          };
+          if ($3 === c) return this.set(c, this.$M + r2);
+          if ($3 === h) return this.set(h, this.$y + r2);
+          if ($3 === a) return y2(1);
+          if ($3 === o) return y2(7);
+          var M3 = (d2 = {}, d2[s] = e, d2[u] = n, d2[i] = t, d2)[$3] || 1, m3 = this.$d.getTime() + r2 * M3;
+          return b.w(m3, this);
+        }, m2.subtract = function(t2, e2) {
+          return this.add(-1 * t2, e2);
+        }, m2.format = function(t2) {
+          var e2 = this, n2 = this.$locale();
+          if (!this.isValid()) return n2.invalidDate || l;
+          var r2 = t2 || "YYYY-MM-DDTHH:mm:ssZ", i2 = b.z(this), s2 = this.$H, u2 = this.$m, a2 = this.$M, o2 = n2.weekdays, c2 = n2.months, f2 = n2.meridiem, h2 = function(t3, n3, i3, s3) {
+            return t3 && (t3[n3] || t3(e2, r2)) || i3[n3].slice(0, s3);
+          }, d2 = function(t3) {
+            return b.s(s2 % 12 || 12, t3, "0");
+          }, $3 = f2 || function(t3, e3, n3) {
+            var r3 = t3 < 12 ? "AM" : "PM";
+            return n3 ? r3.toLowerCase() : r3;
+          };
+          return r2.replace(y, (function(t3, r3) {
+            return r3 || (function(t4) {
+              switch (t4) {
+                case "YY":
+                  return String(e2.$y).slice(-2);
+                case "YYYY":
+                  return b.s(e2.$y, 4, "0");
+                case "M":
+                  return a2 + 1;
+                case "MM":
+                  return b.s(a2 + 1, 2, "0");
+                case "MMM":
+                  return h2(n2.monthsShort, a2, c2, 3);
+                case "MMMM":
+                  return h2(c2, a2);
+                case "D":
+                  return e2.$D;
+                case "DD":
+                  return b.s(e2.$D, 2, "0");
+                case "d":
+                  return String(e2.$W);
+                case "dd":
+                  return h2(n2.weekdaysMin, e2.$W, o2, 2);
+                case "ddd":
+                  return h2(n2.weekdaysShort, e2.$W, o2, 3);
+                case "dddd":
+                  return o2[e2.$W];
+                case "H":
+                  return String(s2);
+                case "HH":
+                  return b.s(s2, 2, "0");
+                case "h":
+                  return d2(1);
+                case "hh":
+                  return d2(2);
+                case "a":
+                  return $3(s2, u2, true);
+                case "A":
+                  return $3(s2, u2, false);
+                case "m":
+                  return String(u2);
+                case "mm":
+                  return b.s(u2, 2, "0");
+                case "s":
+                  return String(e2.$s);
+                case "ss":
+                  return b.s(e2.$s, 2, "0");
+                case "SSS":
+                  return b.s(e2.$ms, 3, "0");
+                case "Z":
+                  return i2;
+              }
+              return null;
+            })(t3) || i2.replace(":", "");
+          }));
+        }, m2.utcOffset = function() {
+          return 15 * -Math.round(this.$d.getTimezoneOffset() / 15);
+        }, m2.diff = function(r2, d2, l2) {
+          var $3, y2 = this, M3 = b.p(d2), m3 = O(r2), v2 = (m3.utcOffset() - this.utcOffset()) * e, g2 = this - m3, D2 = function() {
+            return b.m(y2, m3);
+          };
+          switch (M3) {
+            case h:
+              $3 = D2() / 12;
+              break;
+            case c:
+              $3 = D2();
+              break;
+            case f:
+              $3 = D2() / 3;
+              break;
+            case o:
+              $3 = (g2 - v2) / 6048e5;
+              break;
+            case a:
+              $3 = (g2 - v2) / 864e5;
+              break;
+            case u:
+              $3 = g2 / n;
+              break;
+            case s:
+              $3 = g2 / e;
+              break;
+            case i:
+              $3 = g2 / t;
+              break;
+            default:
+              $3 = g2;
+          }
+          return l2 ? $3 : b.a($3);
+        }, m2.daysInMonth = function() {
+          return this.endOf(c).$D;
+        }, m2.$locale = function() {
+          return D[this.$L];
+        }, m2.locale = function(t2, e2) {
+          if (!t2) return this.$L;
+          var n2 = this.clone(), r2 = w(t2, e2, true);
+          return r2 && (n2.$L = r2), n2;
+        }, m2.clone = function() {
+          return b.w(this.$d, this);
+        }, m2.toDate = function() {
+          return new Date(this.valueOf());
+        }, m2.toJSON = function() {
+          return this.isValid() ? this.toISOString() : null;
+        }, m2.toISOString = function() {
+          return this.$d.toISOString();
+        }, m2.toString = function() {
+          return this.$d.toUTCString();
+        }, M2;
+      })(), Y = _.prototype;
+      return O.prototype = Y, [["$ms", r], ["$s", i], ["$m", s], ["$H", u], ["$W", a], ["$M", c], ["$y", h], ["$D", d]].forEach((function(t2) {
+        Y[t2[1]] = function(e2) {
+          return this.$g(e2, t2[0], t2[1]);
         };
-      }
-      arity(rest, 1);
-      const bound2 = hub.connection(rest[0]);
-      if (action2 === "inspect") {
-        const description2 = bound2.connector.describe();
-        return { connection: connectionJson(bound2, environment), platform: { id: description2.platform, name: description2.name, description: description2.description }, mapping: bound2.connector.mapping(bound2.connection) };
-      }
-      const probe = await bound2.connector.test(bound2.connection);
-      return { connection: bound2.connection.id, platform: bound2.connection.platform, ok: probe.ok, target: probe.target };
-    }
-  };
+      })), O.extend = function(t2, e2) {
+        return t2.$i || (t2(e2, _, O), t2.$i = true), O;
+      }, O.locale = w, O.isDayjs = S, O.unix = function(t2) {
+        return O(1e3 * t2);
+      }, O.en = D[g], O.Ls = D, O.p = {}, O;
+    }));
+  })(dayjs_min$1);
+  return dayjs_min$1.exports;
 }
-const payload = (value2) => isRecord(value2) && ["connection", "platform", "path", "remoteId", "url"].every((key) => typeof value2[key] === "string") && Array.isArray(value2.fields);
-const events = [
-  { id: "connector.pushed", description: "A note was pushed to its remote item: {connection, platform, path, remoteId, url, operation: create|update, fields}.", validate: payload },
-  { id: "connector.pulled", description: "Remote changes were written into a note: {connection, platform, path, remoteId, url, fields}.", validate: payload },
-  { id: "connector.conflict", description: "Fields changed on both sides since the last sync and were left untouched: {connection, platform, path, remoteId, url, fields}.", validate: payload }
-];
-const de = {
-  commands: { connectors: "Die in plugins.settings.connector.connections konfigurierten Backlog-Verbindungen auflisten, prüfen und testen." },
-  actions: {
-    "connectors list": "Jede Verbindung mit Plattform, Gültigkeit, Warnungen und der Angabe, ob ihre Token-Variable gesetzt ist.",
-    "connectors inspect": "Eine Verbindung mit ihren aufgelösten Typ-, Status- und Feldzuordnungen.",
-    "connectors test": "Eine authentifizierte, nur lesende Prüfung einer Verbindung."
-  },
-  events: {
-    "connector.pushed": "Eine Notiz wurde in ihr entferntes Work Item übertragen.",
-    "connector.pulled": "Entfernte Änderungen wurden in eine Notiz geschrieben.",
-    "connector.conflict": "Felder wurden seit dem letzten Abgleich auf beiden Seiten geändert und blieben unverändert."
-  },
-  errors: {
-    CONNECTOR_NOT_FOUND: { summary: "Die Verbindung oder ihre Plattform ist nicht verfügbar.", hint: "Prüfen Sie die Verbindungs-ID mit connectors list und aktivieren Sie das Connector-Plugin der Plattform." },
-    CONNECTION_INVALID: { summary: "Das Verbindungsprofil ist ungültig.", hint: "Korrigieren Sie die in error.details.issues genannten Felder in plugins.settings.connector.connections." },
-    CONNECTOR_AUTH_FAILED: { summary: "Die Anmeldung beim entfernten Dienst ist fehlgeschlagen.", hint: "Setzen Sie die in error.details.tokenEnv genannte Umgebungsvariable auf ein gültiges Zugriffstoken mit Lese- und Schreibrechten für Work Items." },
-    CONNECTOR_REQUEST_FAILED: { summary: "Eine Anfrage an den entfernten Dienst ist fehlgeschlagen.", hint: "Prüfen Sie error.details.status und die Meldung, die Organisations-URL und das Projekt, und wiederholen Sie den Befehl." }
+var dayjs_minExports = requireDayjs_min();
+const dayjs = /* @__PURE__ */ getDefaultExportFromCjs(dayjs_minExports);
+var utc$2 = { exports: {} };
+var utc$1 = utc$2.exports;
+var hasRequiredUtc;
+function requireUtc() {
+  if (hasRequiredUtc) return utc$2.exports;
+  hasRequiredUtc = 1;
+  (function(module, exports) {
+    !(function(t, i) {
+      module.exports = i();
+    })(utc$1, (function() {
+      var t = "minute", i = /[+-]\d\d(?::?\d\d)?/g, e = /([+-]|\d\d)/g;
+      return function(s, f, n) {
+        var u = f.prototype;
+        n.utc = function(t2) {
+          var i2 = { date: t2, utc: true, args: arguments };
+          return new f(i2);
+        }, u.utc = function(i2) {
+          var e2 = n(this.toDate(), { locale: this.$L, utc: true });
+          return i2 ? e2.add(this.utcOffset(), t) : e2;
+        }, u.local = function() {
+          return n(this.toDate(), { locale: this.$L, utc: false });
+        };
+        var r = u.parse;
+        u.parse = function(t2) {
+          t2.utc && (this.$u = true), this.$utils().u(t2.$offset) || (this.$offset = t2.$offset), r.call(this, t2);
+        };
+        var o = u.init;
+        u.init = function() {
+          if (this.$u) {
+            var t2 = this.$d;
+            this.$y = t2.getUTCFullYear(), this.$M = t2.getUTCMonth(), this.$D = t2.getUTCDate(), this.$W = t2.getUTCDay(), this.$H = t2.getUTCHours(), this.$m = t2.getUTCMinutes(), this.$s = t2.getUTCSeconds(), this.$ms = t2.getUTCMilliseconds();
+          } else o.call(this);
+        };
+        var a = u.utcOffset;
+        u.utcOffset = function(s2, f2) {
+          var n2 = this.$utils().u;
+          if (n2(s2)) return this.$u ? 0 : n2(this.$offset) ? a.call(this) : this.$offset;
+          if ("string" == typeof s2 && (s2 = (function(t2) {
+            void 0 === t2 && (t2 = "");
+            var s3 = t2.match(i);
+            if (!s3) return null;
+            var f3 = ("" + s3[0]).match(e) || ["-", 0, 0], n3 = f3[0], u3 = 60 * +f3[1] + +f3[2];
+            return 0 === u3 ? 0 : "+" === n3 ? u3 : -u3;
+          })(s2), null === s2)) return this;
+          var u2 = Math.abs(s2) <= 16 ? 60 * s2 : s2;
+          if (0 === u2) return this.utc(f2);
+          var r2 = this.clone();
+          if (f2) return r2.$offset = u2, r2.$u = false, r2;
+          var o2 = this.$u ? this.toDate().getTimezoneOffset() : -1 * this.utcOffset();
+          return (r2 = this.local().add(u2 + o2, t)).$offset = u2, r2.$x.$localOffset = o2, r2;
+        };
+        var h = u.format;
+        u.format = function(t2) {
+          var i2 = t2 || (this.$u ? "YYYY-MM-DDTHH:mm:ss[Z]" : "");
+          return h.call(this, i2);
+        }, u.valueOf = function() {
+          var t2 = this.$utils().u(this.$offset) ? 0 : this.$offset + (this.$x.$localOffset || this.$d.getTimezoneOffset());
+          return this.$d.valueOf() - 6e4 * t2;
+        }, u.isUTC = function() {
+          return !!this.$u;
+        }, u.toISOString = function() {
+          return this.toDate().toISOString();
+        }, u.toString = function() {
+          return this.toDate().toUTCString();
+        };
+        var l = u.toDate;
+        u.toDate = function(t2) {
+          return "s" === t2 && this.$offset ? n(this.format("YYYY-MM-DD HH:mm:ss:SSS")).toDate() : l.call(this);
+        };
+        var c = u.diff;
+        u.diff = function(t2, i2, e2) {
+          if (t2 && this.$u === t2.$u) return c.call(this, t2, i2, e2);
+          var s2 = this.local(), f2 = n(t2).local();
+          return c.call(s2, f2, i2, e2);
+        };
+      };
+    }));
+  })(utc$2);
+  return utc$2.exports;
+}
+var utcExports = requireUtc();
+const utc = /* @__PURE__ */ getDefaultExportFromCjs(utcExports);
+var advancedFormat$2 = { exports: {} };
+var advancedFormat$1 = advancedFormat$2.exports;
+var hasRequiredAdvancedFormat;
+function requireAdvancedFormat() {
+  if (hasRequiredAdvancedFormat) return advancedFormat$2.exports;
+  hasRequiredAdvancedFormat = 1;
+  (function(module, exports) {
+    !(function(e, t) {
+      module.exports = t();
+    })(advancedFormat$1, (function() {
+      return function(e, t) {
+        var r = t.prototype, n = r.format;
+        r.format = function(e2) {
+          var t2 = this, r2 = this.$locale();
+          if (!this.isValid()) return n.bind(this)(e2);
+          var s = this.$utils(), a = (e2 || "YYYY-MM-DDTHH:mm:ssZ").replace(/\[([^\]]+)]|Q|wo|ww|w|WW|W|zzz|z|gggg|GGGG|Do|X|x|k{1,2}|S/g, (function(e3) {
+            switch (e3) {
+              case "Q":
+                return Math.ceil((t2.$M + 1) / 3);
+              case "Do":
+                return r2.ordinal(t2.$D);
+              case "gggg":
+                return t2.weekYear();
+              case "GGGG":
+                return t2.isoWeekYear();
+              case "wo":
+                return r2.ordinal(t2.week(), "W");
+              case "w":
+              case "ww":
+                return s.s(t2.week(), "w" === e3 ? 1 : 2, "0");
+              case "W":
+              case "WW":
+                return s.s(t2.isoWeek(), "W" === e3 ? 1 : 2, "0");
+              case "k":
+              case "kk":
+                return s.s(String(0 === t2.$H ? 24 : t2.$H), "k" === e3 ? 1 : 2, "0");
+              case "X":
+                return Math.floor(t2.$d.getTime() / 1e3);
+              case "x":
+                return t2.$d.getTime();
+              case "z":
+                return "[" + t2.offsetName() + "]";
+              case "zzz":
+                return "[" + t2.offsetName("long") + "]";
+              default:
+                return e3;
+            }
+          }));
+          return n.bind(this)(a);
+        };
+      };
+    }));
+  })(advancedFormat$2);
+  return advancedFormat$2.exports;
+}
+var advancedFormatExports = requireAdvancedFormat();
+const advancedFormat = /* @__PURE__ */ getDefaultExportFromCjs(advancedFormatExports);
+var localizedFormat$2 = { exports: {} };
+var localizedFormat$1 = localizedFormat$2.exports;
+var hasRequiredLocalizedFormat;
+function requireLocalizedFormat() {
+  if (hasRequiredLocalizedFormat) return localizedFormat$2.exports;
+  hasRequiredLocalizedFormat = 1;
+  (function(module, exports) {
+    !(function(e, t) {
+      module.exports = t();
+    })(localizedFormat$1, (function() {
+      var e = { LTS: "h:mm:ss A", LT: "h:mm A", L: "MM/DD/YYYY", LL: "MMMM D, YYYY", LLL: "MMMM D, YYYY h:mm A", LLLL: "dddd, MMMM D, YYYY h:mm A" };
+      return function(t, o, n) {
+        var r = o.prototype, i = r.format;
+        n.en.formats = e, r.format = function(t2) {
+          void 0 === t2 && (t2 = "YYYY-MM-DDTHH:mm:ssZ");
+          var o2 = this.$locale().formats, n2 = (function(t3, o3) {
+            return t3.replace(/(\[[^\]]+])|(LTS?|l{1,4}|L{1,4})/g, (function(t4, n3, r2) {
+              var i2 = r2 && r2.toUpperCase();
+              return n3 || o3[r2] || e[r2] || o3[i2].replace(/(\[[^\]]+])|(MMMM|MM|DD|dddd)/g, (function(e2, t5, o4) {
+                return t5 || o4.slice(1);
+              }));
+            }));
+          })(t2, void 0 === o2 ? {} : o2);
+          return i.call(this, n2);
+        };
+      };
+    }));
+  })(localizedFormat$2);
+  return localizedFormat$2.exports;
+}
+var localizedFormatExports = requireLocalizedFormat();
+const localizedFormat = /* @__PURE__ */ getDefaultExportFromCjs(localizedFormatExports);
+dayjs.extend(utc);
+dayjs.extend(advancedFormat);
+dayjs.extend(localizedFormat);
+function textOf(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw forgeError("INVALID_ENCODING", "Templates must be valid UTF-8.");
   }
-};
-const connectorPlugin = {
-  manifest: {
-    id: "connector",
-    name: "Connectors",
-    version: "0.1.0",
-    minAppVersion: "0.1.0",
-    core: true,
-    author: "The Forge",
-    description: "Connection profiles and the shared hub for backlog connectors to external work trackers."
-  },
-  create: (host) => {
-    const hub = new Hub(host.environment);
-    return {
-      provides: { "connector.hub": hub },
-      onload(context) {
-        hub.bind(context.settings, context.events);
-      },
-      commands: [connectorsCommand(hub, host.environment)],
-      events,
-      settings: connectorSettings,
-      errors: [
-        { code: "CONNECTOR_NOT_FOUND", category: "not-found", summary: "The connection or its platform is not available.", hint: "Check the connection id with connectors list and enable the platform's connector plugin." },
-        { code: "CONNECTION_INVALID", category: "input", summary: "The connection profile is invalid.", hint: "Fix the fields named in error.details.issues in plugins.settings.connector.connections." },
-        { code: "CONNECTOR_AUTH_FAILED", category: "external", summary: "Authentication with the remote service failed.", hint: "Set the environment variable named in error.details.tokenEnv to a valid access token with work item read and write scope." },
-        { code: "CONNECTOR_REQUEST_FAILED", category: "external", summary: "A request to the remote service failed.", hint: "Check error.details.status and the message, the organization URL and the project, then rerun the command.", retryable: true }
-      ],
-      strings: { de }
-    };
-  }
-};
-function redact(text2, secrets) {
-  let result = text2;
-  for (const secret of secrets.filter((value2) => value2.length >= 4)) {
-    const forms = [secret, encodeURIComponent(secret)];
-    try {
-      forms.push(btoa(`:${secret}`));
-    } catch {
-    }
-    for (const form of forms) result = result.split(form).join("[redacted]");
+}
+function placeholders(text2) {
+  const result = [];
+  const braces = /{{|}}/g;
+  for (let match = braces.exec(text2); match; match = braces.exec(text2)) {
+    ensure(match[0] === "{{", "INVALID_TEMPLATE", "Unexpected closing template braces.");
+    const close2 = text2.indexOf("}}", braces.lastIndex);
+    ensure(close2 >= 0, "INVALID_TEMPLATE", "Unclosed template placeholder.");
+    const expression2 = text2.slice(braces.lastIndex, close2).trim();
+    const parsed2 = /^([A-Za-z_][\w.-]*)(?::([^{}\r\n]+))?$/.exec(expression2);
+    ensure(parsed2, "INVALID_TEMPLATE", `Invalid template placeholder: {{${expression2}}}.`);
+    const key = parsed2[1], format2 = parsed2[2];
+    ensure(format2 === void 0 || key === "date" || key === "time", "INVALID_TEMPLATE", "Only date and time placeholders accept a format.");
+    result.push({ expression: expression2, key, ...format2 === void 0 ? {} : { format: format2 }, start: match.index, end: close2 + 2 });
+    braces.lastIndex = close2 + 2;
   }
   return result;
 }
-const PROCESSES = ["agile", "scrum", "basic", "custom"];
-const PARENT_LINK = "System.LinkTypes.Hierarchy-Reverse";
-const PREDECESSOR_LINK = "System.LinkTypes.Dependency-Reverse";
-const types = {
-  agile: { Epic: "Epic", Feature: "Feature", PBI: "User Story", Task: "Task", Bug: "Bug", Issue: "Issue" },
-  scrum: { Epic: "Epic", Feature: "Feature", PBI: "Product Backlog Item", Task: "Task", Bug: "Bug", Issue: "Impediment" },
-  basic: { Epic: "Epic", Feature: "Epic", PBI: "Issue", Issue: "Issue", Bug: "Issue", Task: "Task" },
-  custom: {}
-};
-const states = {
-  agile: { New: "New", Active: "Active", Resolved: "Resolved", Closed: "Closed", Removed: "Removed", Open: "New", "To Do": "New", "In Progress": "Active", Done: "Closed" },
-  scrum: {
-    New: "New",
-    Approved: "Approved",
-    Committed: "Committed",
-    Done: "Done",
-    Removed: "Removed",
-    Open: "New",
-    "To Do": "New",
-    Active: "Committed",
-    "In Progress": "Committed",
-    Closed: "Done",
-    "Task:To Do": "To Do",
-    "Task:In Progress": "In Progress",
-    "Task:Done": "Done",
-    "Task:Removed": "Removed",
-    "Task:New": "To Do",
-    "Task:Open": "To Do",
-    "Task:Active": "In Progress",
-    "Task:Closed": "Done"
-  },
-  basic: { "To Do": "To Do", Doing: "Doing", Done: "Done", New: "To Do", Open: "To Do", Active: "Doing", "In Progress": "Doing", Closed: "Done" },
-  custom: {}
-};
-const effort = {
-  agile: "Microsoft.VSTS.Scheduling.StoryPoints",
-  scrum: "Microsoft.VSTS.Scheduling.Effort",
-  basic: "Microsoft.VSTS.Scheduling.Effort",
-  custom: "Microsoft.VSTS.Scheduling.Effort"
-};
-function fields(process2) {
-  return {
-    title: "System.Title",
-    type: "System.WorkItemType",
-    state: "System.State",
-    parent: PARENT_LINK,
-    iteration: "System.IterationPath",
-    area: "System.AreaPath",
-    priority: "Microsoft.VSTS.Common.Priority",
-    effort: effort[process2],
-    tags: "System.Tags",
-    description: "System.Description"
-  };
-}
-function processMapping(process2, overrides = {}) {
-  const resolved = fields(process2);
-  for (const [field2, reference] of Object.entries(overrides.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
-  return {
-    types: { ...types[process2], ...overrides.types },
-    states: { ...states[process2], ...overrides.states },
-    fields: resolved,
-    properties: { ...overrides.properties }
-  };
-}
-function unknownFields(overrides) {
-  const known2 = Object.keys(fields("agile"));
-  return Object.keys(overrides.fields ?? {}).filter((field2) => !known2.includes(field2));
-}
-function markdownToHtml(markdown) {
-  const lines2 = markdown.replace(/\r\n?/g, "\n").split("\n");
-  const html2 = [];
-  let paragraph = [];
-  const open2 = { list: null };
-  const flushParagraph = () => {
-    if (paragraph.length > 0) html2.push(`<p>${paragraph.map(inline).join("<br>")}</p>`);
-    paragraph = [];
-  };
-  const flushList = () => {
-    const list2 = open2.list;
-    if (list2) html2.push(`<${list2.tag}>${list2.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list2.tag}>`);
-    open2.list = null;
-  };
-  const flush = () => {
-    flushParagraph();
-    flushList();
-  };
-  for (let index2 = 0; index2 < lines2.length; index2++) {
-    const line = lines2[index2];
-    const fence2 = /^\s*(```|~~~)/.exec(line);
-    if (fence2) {
-      flush();
-      const code2 = [];
-      for (index2++; index2 < lines2.length && !lines2[index2].trimStart().startsWith(fence2[1]); index2++) code2.push(lines2[index2]);
-      html2.push(`<pre><code>${escape$1(code2.join("\n"))}</code></pre>`);
-      continue;
-    }
-    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
-    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line), quote = /^\s*>\s?(.*)$/.exec(line);
-    if (line.trim() === "") flush();
-    else if (heading) {
-      flush();
-      html2.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`);
-    } else if (bullet || numbered) {
-      flushParagraph();
-      const tag = bullet ? "ul" : "ol";
-      if (open2.list?.tag !== tag) {
-        flushList();
-        open2.list = { tag, items: [] };
-      }
-      open2.list.items.push((bullet ?? numbered)[1]);
-    } else if (quote) {
-      flush();
-      html2.push(`<blockquote>${inline(quote[1])}</blockquote>`);
-    } else {
-      flushList();
-      paragraph.push(line.trim());
-    }
+function replaceTokens(text2, tokens, value2) {
+  let cursor = 0, output2 = "";
+  for (const [index2, token] of tokens.entries()) {
+    output2 += text2.slice(cursor, token.start) + value2(token, index2);
+    cursor = token.end;
   }
-  flush();
-  return html2.join("");
+  return output2 + text2.slice(cursor);
 }
-function escape$1(text2) {
-  return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+function jsonValue$1(value2, ancestors = /* @__PURE__ */ new Set(), depth2 = 0) {
+  ensure(depth2 < 100, "INVALID_TEMPLATE_VALUES", "Template values are nested too deeply.");
+  if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return;
+  if (typeof value2 === "number") {
+    ensure(Number.isFinite(value2), "INVALID_TEMPLATE_VALUES", "Template numbers must be finite.");
+    return;
+  }
+  ensure(typeof value2 === "object" && (Array.isArray(value2) || Object.getPrototypeOf(value2) === Object.prototype || Object.getPrototypeOf(value2) === null), "INVALID_TEMPLATE_VALUES", "Template values must be JSON-compatible.");
+  ensure(!ancestors.has(value2), "INVALID_TEMPLATE_VALUES", "Template values cannot contain cycles.");
+  ancestors.add(value2);
+  for (const child of Object.values(value2)) jsonValue$1(child, ancestors, depth2 + 1);
+  ancestors.delete(value2);
 }
-const safeHref = (href) => /^(https?:|mailto:)/i.test(href);
-function inline(text2) {
-  const codes = [];
-  let result = escape$1(text2).replace(/`([^`]+)`/g, (_, code2) => {
-    codes.push(`<code>${code2}</code>`);
-    return `<c${codes.length - 1}>`;
+function asText(value2) {
+  return typeof value2 === "string" ? value2 : JSON.stringify(value2);
+}
+function renderYaml(source2, resolve2) {
+  const tokens = placeholders(source2);
+  const resolved = tokens.map(resolve2);
+  const serializedValues = JSON.stringify(resolved);
+  let prefix = "AGENTCLITEMPLATETOKEN";
+  while (source2.includes(prefix) || serializedValues.includes(prefix)) prefix += "X";
+  const sentinels = tokens.map((_, index2) => `${prefix}${index2}END`);
+  const document2 = distExports.parseDocument(replaceTokens(source2, tokens, (_, index2) => sentinels[index2]), { uniqueKeys: true });
+  ensure(document2.errors.length === 0, "INVALID_TEMPLATE", document2.errors.map((error2) => error2.message).join("; "));
+  ensure(document2.contents === null || distExports.isMap(document2.contents), "INVALID_TEMPLATE", "Template frontmatter must be a YAML mapping.");
+  const consumed = /* @__PURE__ */ new Set();
+  const sentinelPattern = new RegExp(`${prefix}(\\d+)END`, "g");
+  distExports.visit(document2, (key, node2, path) => {
+    ensure(path.length < 100, "INVALID_TEMPLATE", "Template YAML is nested too deeply.");
+    if (key === "key") {
+      ensure(distExports.isScalar(node2) && typeof node2.value === "string", "INVALID_TEMPLATE", "Template YAML keys must be strings.");
+      ensure(!node2.value.includes(prefix), "INVALID_TEMPLATE", "Template placeholders cannot be used in YAML keys.");
+    }
+    if (!distExports.isScalar(node2) || typeof node2.value !== "string" || key === "key") return;
+    const scalar2 = node2.value;
+    const exact = sentinels.indexOf(scalar2);
+    if (exact >= 0) {
+      consumed.add(exact);
+      const replacement2 = document2.createNode(resolved[exact]);
+      replacement2.comment = node2.comment;
+      replacement2.commentBefore = node2.commentBefore;
+      replacement2.spaceBefore = node2.spaceBefore;
+      replacement2.anchor = node2.anchor;
+      return replacement2;
+    }
+    node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
+      const position2 = Number(index2);
+      consumed.add(position2);
+      return asText(resolved[position2]);
+    });
   });
-  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label2, href) => safeHref(href) ? `<a href="${href}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
-  return result.replace(/<c(\d+)>/g, (_, index2) => codes[Number(index2)]);
+  ensure(consumed.size === tokens.length, "INVALID_TEMPLATE", "Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.");
+  let data;
+  try {
+    data = document2.toJS({ maxAliasCount: 100 });
+  } catch {
+    throw forgeError("INVALID_TEMPLATE", "Template YAML aliases are invalid or excessive.");
+  }
+  try {
+    jsonValue$1(data);
+  } catch {
+    throw forgeError("INVALID_TEMPLATE", "Template YAML must contain JSON-compatible values without cycles.");
+  }
+  return document2.toString();
 }
-const field$1 = (reference, value2) => value2 === null ? { op: "remove", path: `/fields/${reference}` } : { op: "add", path: `/fields/${reference}`, value: value2 };
-const AREA_PATH = "System.AreaPath";
-const workItemApiUrl = (organization, id2) => `${organization}/_apis/wit/workItems/${id2}`;
-const lastSegment = (url2) => typeof url2 === "string" ? /\/(\d+)$/.exec(url2)?.[1] ?? null : null;
-function fieldOperations(change2, context) {
-  const { fields: fields2 } = context.mapping;
-  const operations2 = [];
-  const scalar2 = [["type", fields2.type], ["title", fields2.title], ["state", fields2.state], ["iteration", fields2.iteration], ["area", fields2.area], ["priority", fields2.priority], ["effort", fields2.effort]];
-  for (const [key, reference] of scalar2) if (reference !== null && change2[key] !== void 0) operations2.push(field$1(reference, change2[key]));
-  if (fields2.tags !== null && change2.tags !== void 0) operations2.push(field$1(fields2.tags, change2.tags.join("; ")));
-  if (fields2.description !== null && change2.description !== void 0) {
-    const markdown = context.descriptionFormat === "markdown";
-    if (change2.description === null) operations2.push(field$1(fields2.description, null));
-    else {
-      operations2.push(field$1(fields2.description, markdown ? change2.description : markdownToHtml(change2.description)));
-      if (markdown) operations2.push({ op: "add", path: `/multilineFieldsFormat/${fields2.description}`, value: "Markdown" });
+function instant(date2) {
+  if (date2 === void 0) return dayjs.utc();
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.exec(date2);
+  ensure(match, "INVALID_TEMPLATE_DATE", "Use an ISO date (YYYY-MM-DD) or timestamp with an explicit timezone.");
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const calendar = /* @__PURE__ */ new Date(0);
+  calendar.setUTCFullYear(year, month, 0);
+  const daysInMonth2 = calendar.getUTCDate();
+  const parsed2 = dayjs.utc(date2);
+  ensure(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth2 && Number(match[4] ?? 0) < 24 && Number(match[5] ?? 0) < 60 && Number(match[6] ?? 0) < 60 && parsed2.isValid(), "INVALID_TEMPLATE_DATE", "Template date is not a valid calendar date.");
+  return parsed2;
+}
+class MarkdownTemplates {
+  constructor(parts) {
+    this.parts = parts;
+  }
+  parts;
+  inspect(bytes) {
+    const parts = this.parts(textOf(bytes));
+    const tokens = [...placeholders(parts.yaml), ...placeholders(parts.body)];
+    if (parts.exists) renderYaml(parts.yaml, (token) => `{{${token.expression}}}`);
+    const builtin = (token) => ["title", "date", "time"].includes(token.key);
+    return {
+      variables: [...new Set(tokens.map((token) => token.expression))].sort(),
+      requiredVariables: [...new Set(tokens.filter((token) => !builtin(token)).map((token) => token.key))].sort(),
+      builtins: [...new Set(tokens.filter(builtin).map((token) => token.expression))].sort()
+    };
+  }
+  render(bytes, options2) {
+    ensure(typeof options2.title === "string" && options2.title.trim().length > 0, "INVALID_TEMPLATE_VALUES", "A nonempty template title is required.");
+    const values2 = options2.values ?? {};
+    ensure(isRecord(values2), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
+    jsonValue$1(values2);
+    for (const key of ["title", "date", "time"]) ensure(!Object.hasOwn(values2, key), "INVALID_TEMPLATE_VALUES", `${key} is reserved; use the corresponding template option.`);
+    const date2 = instant(options2.date);
+    for (const format2 of [options2.dateFormat, options2.timeFormat]) ensure(format2 === void 0 || typeof format2 === "string" && format2.length > 0, "INVALID_TEMPLATE_DATE", "Date and time formats must be nonempty strings.");
+    const resolve2 = (token) => {
+      if (token.key === "title") return options2.title;
+      if (token.key === "date" || token.key === "time") {
+        const format2 = token.format ?? (token.key === "date" ? options2.dateFormat ?? "YYYY-MM-DD" : options2.timeFormat ?? "HH:mm");
+        try {
+          return date2.format(format2);
+        } catch {
+          throw forgeError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`);
+        }
+      }
+      ensure(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
+      return values2[token.key];
+    };
+    const parts = this.parts(textOf(bytes));
+    const body = replaceTokens(parts.body, placeholders(parts.body), (token) => asText(resolve2(token)));
+    const frontmatter2 = parts.exists ? `---${parts.newline}${renderYaml(parts.yaml, resolve2).replace(/\r?\n/g, parts.newline)}---${parts.newline}` : "";
+    return new TextEncoder().encode(parts.prefix + frontmatter2 + body);
+  }
+}
+const prd = "---\nschemaVersion: 1\ntype: prd\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft; this document records intent, not completed delivery.\n\n## Problem and evidence\n\nDescribe the user's current difficulty, who experiences it, and the evidence that it matters.\nLink interviews, issues, measurements, or existing behavior. Mark assumptions as unverified.\n\n## Users and desired outcome\n\nIdentify primary users, context, and an observable improvement. Define the baseline,\ntarget, measurement method, and evaluation period; use TBD where evidence is missing.\n\n## Scope and exclusions\n\nList included capabilities and explicit exclusions. Identify dependencies and boundaries\nwith existing systems; do not turn unspecified integrations into commitments.\n\n## Requirements\n\n| ID | User need and expected behavior | Acceptance example | Priority | Owner |\n| --- | --- | --- | --- | --- |\n| REQ-001 | TBD | Given / When / Then: TBD | TBD | {{owner}} |\n\nKeep IDs stable as requirements change. Link each requirement to a use case and later\nto implementation and test evidence. Include failure, accessibility, privacy, and data needs.\n\n## Success measures and constraints\n\nDescribe performance, compatibility, accessibility, operating cost, and delivery constraints\nthat affect this scope. State a measurable threshold or record an open question.\n\n## Uncertainties and decisions\n\n| ID | Question or assumption | Evidence needed | Owner | Status |\n| --- | --- | --- | --- | --- |\n| Q-001 | TBD | TBD | {{owner}} | open |\n\n## Review and evidence\n\nRecord reviewer, date, reviewed version, decisions, and links to evidence when available.\nReadiness: not assessed. Do not mark requirements accepted without a recorded review.\n\n## Next artifact\n\nCreate linked use cases for REQ IDs; resolve scope uncertainties before committing a build spec.\n";
+const useCase = "---\nschemaVersion: 1\ntype: use-case\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Use case ID: UC-001. Status: draft.\n\n## Requirement links and goal\n\nLink the source PRD and REQ IDs. State the actor's goal and what observable outcome\ncounts as success. Keep the UC ID stable and replace example IDs when needed.\n\n## Actors, trigger and preconditions\n\nDescribe primary/supporting actors, permissions, starting data, triggering action,\nand assumptions about dependencies. Separate requirements from unverified conditions.\n\n## Main flow\n\n| Step | Actor action | System response | Requirement |\n| --- | --- | --- | --- |\n| 1 | TBD | TBD | REQ-001 |\n\nDescribe each response visibly enough that another person can verify the flow.\n\n## Alternate and failure flows\n\nCover empty data, invalid input, missing permission, unavailable services, retries,\nduplicate actions, and cancellation where relevant. Specify the recovery path.\n\n## Postconditions and invariants\n\nState what changes on success, what remains true on failure, and who owns persisted data.\nIdentify business invariants, external side effects, and any compensation needed.\n\n## Acceptance examples\n\n| ID | Given | When | Then | Requirement |\n| --- | --- | --- | --- | --- |\n| UC-001-A | TBD | TBD | TBD | REQ-001 |\n\n## Uncertainties and decisions\n\nRecord unresolved business rules, edge cases, owner, and decision evidence. Status: open\nuntil the uncertainty is resolved explicitly.\n\n## Review and evidence\n\nLink walkthrough notes and review decisions. Execution evidence: not collected.\nCarry these example IDs into the build spec and test plan.\n";
+const buildSpec = "---\nschemaVersion: 1\ntype: build-spec\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Implementation readiness: not assessed.\n\n## Source requirements and use cases\n\nLink the PRD, REQ IDs, use cases, and acceptance examples. Define the bounded feature\nand retain a trace from each proposed change to a user outcome.\n\n## Domain and architecture\n\nDescribe entities, value objects, invariants, use cases, and dependency direction.\nSeparate domain rules from application orchestration, infrastructure adapters, and presentation.\nRecord existing conventions and boundaries before proposing new abstractions.\n\n## Contracts and data flow\n\nSpecify inputs, outputs, errors, validation, authorization, and state transitions.\nIdentify datasource ownership, query/mutation contracts, and injected ports. Keep secrets\nout of specifications and generated artifacts; reference configuration keys only.\n\n## UI and integration scope\n\nLink UI Markdown definitions, selected framework, component children/props, Storybook\nrequirements, and native extension needs. Describe real external integration contracts\nand distinguish a scaffold from a working connection.\n\n## Configurable paths and generated artifacts\n\n| Artifact | Source path | Destination path | Scope | Requirement |\n| --- | --- | --- | --- | --- |\n| TBD | TBD | TBD | workspace or project | REQ-001 |\n\nState generation/import/export paths, overwrite guards, deterministic inputs, and which\noutputs are application-owned after generation. Preview changes before writing.\n\n## Acceptance and verification\n\nMap requirements to concrete checks, fixtures, and expected failure behavior. Define\ncompatibility and performance thresholds where required, and explain how they will be measured.\n\n## Uncertainties and decisions\n\nList unresolved contracts, dependencies, tradeoffs, and decision owners. Mark assumptions\nunverified and record evidence when a decision changes the specification.\n\n## Review and evidence\n\nRecord architecture review and links to actual experiments. No build or integration result\nis implied by this draft. Next: design decisions and ordered implementation tasks.\n";
+const design = "---\nschemaVersion: 1\ntype: design\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Design decision ID: DSN-001. Status: draft.\n\n## Context and traceability\n\nLink REQ IDs, UC acceptance examples, and the build spec. Describe the user context,\ntechnical constraints, and the specific decision this design resolves.\n\n## User journey and information structure\n\nDescribe entry points, sequence, navigation, terminology, and exit/recovery paths.\nIdentify what users need to understand or decide at each stage.\n\n## Component composition and states\n\nMap page/layout/header/navigation and feature components to library IDs, props, children,\nand data contracts. Cover loading, empty, populated, invalid, error, and success states.\nIdentify native code needed for interactions beyond generated semantic boilerplate.\n\n## Accessibility and responsive behavior\n\nSpecify semantic structure, accessible names, keyboard/focus behavior, error announcements,\ncontrast requirements, motion preferences, and small/large viewport behavior.\nState planned verification methods; a specification alone is not an accessibility result.\n\n## Alternatives and decision\n\n| Option | User impact | Technical cost | Evidence or uncertainty |\n| --- | --- | --- | --- |\n| TBD | TBD | TBD | unverified |\n\nRecord the selected option, rationale, and tradeoffs after review. Decision: pending.\n\n## Storybook and examples\n\nList representative named stories, args, controls, documentation, and interaction tests.\nLink native Storybook extensions where lifecycle hooks are needed. Do not claim stories\nor tests exist before generating, building, and checking them.\n\n## Uncertainties and decisions\n\nRecord open usability questions, unknown device constraints, dependencies, and owners.\n\n## Review and evidence\n\nLink sketches, prototypes, screenshots, usability observations, and decisions with dates.\nValidation status: not assessed. Carry DSN-001 into implementation and tests.\n";
+const implementationPlan = "---\nschemaVersion: 1\ntype: implementation-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft; all work below is planned until evidence is recorded.\n\n## Inputs and acceptance boundary\n\nLink the PRD, use cases, build spec, and DSN decisions. Identify the smallest complete\ndelivery slice, its acceptance examples, and excluded work.\n\n## Ordered implementation tasks\n\n| ID | Change and observable outcome | Depends on | REQ / UC / DSN | Owner | Status |\n| --- | --- | --- | --- | --- | --- |\n| IMP-001 | TBD | none or task ID | TBD | {{owner}} | planned |\n\nKeep task IDs stable. Sequence contracts/invariants, adapters, UI composition, and end-to-end\nwiring so each step can be reviewed. Delegate independent ownership explicitly when useful.\n\n## Files, generation and ownership\n\nList authored files and generated artifacts, scope (workspace/project), configured paths,\nand generators to invoke. Capture dry-run previews and current revisions before replacing\noutputs. State which generated code will receive project-specific behavior.\n\n## Dependencies and integration\n\nIdentify packages, external services, datasource configuration, migrations, and environment\nrequirements. Record exact install/build commands and working directories before running\nthem. Planning does not authorize deployment or imply dependencies are installed.\n\n## Verification per task\n\nMap each task to the smallest useful checks, then the complete project gate. Include\nfailure/recovery cases and a test-plan link. Report actual command outcomes and artifacts.\n\n## Review and completion criteria\n\nDefine code review, documentation updates, generated bundle updates, and release handoff.\nA task is complete only when its agreed behavior is implemented and relevant checks pass.\n\n## Uncertainties and decisions\n\nRecord blockers, owners, decision deadlines, and evidence needed to unblock work.\n\n## Progress and evidence\n\n| Task | Commit or change | Verification evidence | Review | Status |\n| --- | --- | --- | --- | --- |\n| IMP-001 | not implemented | not run | pending | planned |\n";
+const testPlan = "---\nschemaVersion: 1\ntype: test-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Overall result: not run.\n\n## Coverage and traceability\n\nLink source requirements, UC examples, DSN decisions, and implementation tasks.\nDefine risks and observables; avoid tests that merely restate implementation details.\n\n| ID | REQ / UC / IMP | Scenario and expected outcome | Layer | Owner |\n| --- | --- | --- | --- | --- |\n| TEST-001 | TBD | TBD | unit / integration / end-to-end | {{owner}} |\n\n## Test pyramid\n\nUse unit tests for domain invariants and deterministic transforms, integration tests for\ncollaborating boundaries, and a focused end-to-end set for complete user workflows.\nInclude malformed inputs, stale revisions, path boundaries, and partial-write prevention\nwhere generated/imported/exported artifacts are involved.\n\n## Fixtures and environments\n\nDescribe representative data, empty/error states, external service substitutes, supported\nframework/compiler versions, and reproducible setup. Keep credentials out of fixtures.\nState which real integrations need separately authorized environments.\n\n## UI, accessibility and compatibility\n\nSpecify Storybook builds, native interaction checks, keyboard/focus checks, responsive\ncoverage, and supported browsers/frameworks. Record remaining manual checks explicitly.\nStructural validation alone does not establish runtime behavior or accessibility.\n\n## Commands and expected results\n\n| Check | Working directory | Command | Expected result | Evidence path |\n| --- | --- | --- | --- | --- |\n| TBD | TBD | TBD | TBD | TBD |\n\n## Execution evidence\n\n| Test or gate | Version / environment | Actual result | Evidence | Follow-up |\n| --- | --- | --- | --- | --- |\n| TEST-001 | TBD | not run | none yet | pending |\n\n## Uncertainties and decisions\n\nRecord coverage gaps, flaky behavior, unknown requirements, owners, and disposition.\n\n## Exit criteria and review\n\nDefine required passing checks and acceptable explicitly reviewed limitations. Record\nreview decisions and residual risks before handing evidence to the release plan.\n";
+const releasePlan = "---\nschemaVersion: 1\ntype: release-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Release readiness: not assessed. Deployment: not performed.\n\n## Scope and release identity\n\nLink approved requirements, completed implementation tasks, reviewed change/PR, and target\nversion or commit. State included changes and explicit exclusions.\n\n## Readiness evidence\n\n| Gate | Required evidence | Actual evidence | Owner | Status |\n| --- | --- | --- | --- | --- |\n| Requirements acceptance | linked REQ / UC decisions | not collected | {{owner}} | pending |\n| Test and compatibility gates | linked TEST outcomes | not run | {{owner}} | pending |\n| Review and documentation | recorded review and current docs | pending | {{owner}} | pending |\n\nDo not infer readiness from generated files, a test plan, or a successful dry run.\n\n## Release procedure\n\n| ID | Action | Working directory / environment | Command or owner | Verification |\n| --- | --- | --- | --- | --- |\n| REL-001 | TBD | TBD | TBD | TBD |\n\nState artifact paths, build inputs, configuration keys, migration ordering, target\nenvironment, and authorization needed before publishing or deployment. Keep secrets out.\n\n## Rollback and recovery\n\nDefine rollback trigger, last known good artifact, restoration steps, data compatibility,\nresponsible person, and a verification method. Mark untested recovery procedures as untested.\n\n## Observability and post-release checks\n\nList meaningful health/user checks, expected signals, monitoring period, and incident owner.\nRecord actual observations after release; do not pre-fill successful outcomes.\n\n## Communication and handoff\n\nDraft release notes, user-visible changes, operating guidance, and ownership handoff.\nIdentify intended recipients; this document does not send messages or publish announcements.\n\n## Uncertainties and decisions\n\nRecord unresolved operational risks, decisions, owners, and evidence needed for readiness.\n\n## Execution evidence and review\n\nRecord authorization, artifact/commit, timestamps, observed results, and rollback decisions\nonly after they occur. Final status: pending.\n";
+const entityTemplate = `---
+type: entity
+title: '{{title}}'
+created: '{{date:YYYY-MM-DD}}'
+---
+# {{title}}
+
+Created: {{date:YYYY-MM-DD}}
+
+## Purpose
+
+Describe the entity's responsibility and identity.
+
+## Invariants
+
+- Define the rules that must always hold.
+
+## Acceptance criteria
+
+- Describe observable behavior and verification.
+`;
+const workflowTemplates = [
+  { path: "workflow/prd.md", content: prd },
+  { path: "workflow/use-case.md", content: useCase },
+  { path: "workflow/build-spec.md", content: buildSpec },
+  { path: "workflow/design.md", content: design },
+  { path: "workflow/implementation-plan.md", content: implementationPlan },
+  { path: "workflow/test-plan.md", content: testPlan },
+  { path: "workflow/release-plan.md", content: releasePlan }
+];
+const setupTemplates = [{ path: "entity.md", content: entityTemplate }, ...workflowTemplates];
+class TemplateInstaller {
+  constructor(workspace2, artifacts) {
+    this.workspace = workspace2;
+    this.artifacts = artifacts;
+  }
+  workspace;
+  artifacts;
+  async install() {
+    const candidates2 = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
+    ensure(new Set(candidates2.map((candidate) => candidate.path)).size === candidates2.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
+    const writes = [], skipped = [];
+    for (const candidate of candidates2) {
+      try {
+        await this.workspace.files.read(candidate.path);
+        skipped.push(candidate.path);
+      } catch (error2) {
+        if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
+        writes.push(candidate);
+      }
     }
+    const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { directory: "bin/templates", ...result, skipped, ...this.workspace.dryRun ? { preview: writes.map((write) => ({ path: write.path, content: new TextDecoder().decode(write.bytes) })) } : {} };
   }
-  for (const [reference, value2] of Object.entries(change2.fields ?? {})) operations2.push(field$1(reference, value2));
-  return operations2;
 }
-function createOperations(draft, context) {
-  const { type: _type, ...rest } = draft;
-  const set2 = Object.fromEntries(Object.entries(rest).filter(([, value2]) => value2 !== null && value2 !== void 0 && !(Array.isArray(value2) && value2.length === 0)));
-  const operations2 = fieldOperations({ ...set2, ...rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value2]) => value2 !== null)) } : {} }, context);
-  if (draft.area && context.mapping.fields.area === null) operations2.push(field$1(AREA_PATH, draft.area));
-  if (draft.parentId && context.mapping.fields.parent !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
-  return operations2;
-}
-function updateOperations(patch, expectedRev, context, relations = []) {
-  const operations2 = [{ op: "test", path: "/rev", value: Number(expectedRev) }, ...fieldOperations(patch, context)];
-  if (patch.parentId !== void 0 && context.mapping.fields.parent !== null) {
-    const index2 = relations.findIndex((relation) => isRecord(relation) && relation.rel === PARENT_LINK);
-    if (index2 >= 0) operations2.push({ op: "remove", path: `/relations/${index2}` });
-    if (patch.parentId !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, patch.parentId) } });
-  }
-  return operations2;
-}
-const text$2 = (value2) => typeof value2 === "string" && value2.trim() !== "" ? value2 : null;
-const number$2 = (value2) => typeof value2 === "number" && Number.isFinite(value2) ? value2 : typeof value2 === "string" && value2.trim() !== "" && Number.isFinite(Number(value2)) ? Number(value2) : null;
-function remoteItem(json2, context, url2) {
-  const item = isRecord(json2) ? json2 : {};
-  const values2 = isRecord(item.fields) ? item.fields : {};
-  const relations = Array.isArray(item.relations) ? item.relations.filter(isRecord) : [];
-  const { fields: fields2 } = context.mapping;
-  const id2 = String(item.id);
-  const read2 = (reference) => reference === null ? void 0 : values2[reference];
-  const formats = isRecord(item.multilineFieldsFormat) ? item.multilineFieldsFormat : {};
-  const description2 = fields2.description === null ? void 0 : text$2(read2(fields2.description));
-  const markdown = fields2.description !== null && String(formats[fields2.description] ?? "").toLowerCase() === "markdown";
-  const area = text$2(values2[fields2.area ?? AREA_PATH]);
+function templatesCommand(templates2, workflowPack) {
   return {
-    id: id2,
-    rev: String(item.rev),
-    url: url2(id2),
-    type: String(values2["System.WorkItemType"] ?? ""),
-    title: String(read2(fields2.title) ?? ""),
-    state: text$2(read2(fields2.state)),
-    parentId: lastSegment(relations.find((relation) => relation.rel === PARENT_LINK)?.url),
-    iteration: text$2(read2(fields2.iteration)),
-    area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
-    priority: number$2(read2(fields2.priority)),
-    effort: number$2(read2(fields2.effort)),
-    tags: (text$2(read2(fields2.tags)) ?? "").split(";").map((tag) => tag.trim()).filter(Boolean),
-    ...description2 === void 0 ? {} : { description: description2, descriptionMarkdown: markdown },
-    links: { predecessors: relations.filter((relation) => relation.rel === PREDECESSOR_LINK).map((relation) => lastSegment(relation.url)).filter((value2) => value2 !== null) },
-    fields: Object.fromEntries(Object.values(context.mapping.properties).map((reference) => [reference, values2[reference] ?? null]))
+    id: "templates",
+    description: "Discover Markdown templates, required placeholders, and install the planning workflow pack.",
+    usage: "templates [list | inspect <template.md> | install [workflow]]",
+    scope: "workspace",
+    discovery: false,
+    mutating: true,
+    defaultAction: "list",
+    errors: ["INVALID_TEMPLATE", "INVALID_TEMPLATE_PACK", "NOT_FOUND", "CONFLICT"],
+    actions: {
+      list: { description: "List the editable Markdown templates in bin/templates.", mutating: false },
+      inspect: { description: "Report a template's required and optional values.", mutating: false },
+      install: { description: "Install the planning workflow template pack into bin/templates." }
+    },
+    args: [{ name: "action", description: "list (default), inspect or install.", enum: ["list", "inspect", "install"] }, { name: "target", description: "The template for inspect, or the pack (workflow) for install." }],
+    async run(args, _flags, context) {
+      const { environment } = context;
+      const action2 = args[0] ?? "list";
+      if (action2 === "install") {
+        arity(args, 1, 2);
+        ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
+        return new TemplateInstaller(environment, workflowPack).install();
+      }
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const prefix = "bin/templates/";
+        return { directory: "bin/templates", templates: (await environment.files.list()).filter((path2) => path2.startsWith(prefix) && path2.toLowerCase().endsWith(".md")).map((path2) => path2.slice(prefix.length)) };
+      }
+      ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
+      arity(args, 2);
+      ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+      const path = `bin/templates/${vaultPath(args[1])}`;
+      return { path, ...templates2(context).inspect((await environment.files.read(path)).bytes) };
+    }
   };
 }
-const API_VERSION = "7.1";
-const BATCH_SIZE = 200;
-const organizationPattern = "^(https://[^\\s/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?)(/[^\\s/?#@]+)*/?$";
-const connectionSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["organization", "project"],
-  properties: {
-    organization: { type: "string", pattern: organizationPattern, description: "The organization URL, for example https://dev.azure.com/contoso (https without user info; http only for localhost). The token is sent to this host." },
-    project: { type: "string", minLength: 1, description: "The project name." },
-    areaPath: { type: "string", minLength: 1, description: "The default area path: notes without an area property sync to it." },
-    iterationRoot: { type: "string", minLength: 1, description: "The iteration path under which iteration notes map by name, for example Trailhead or Trailhead\\Sprints." },
-    process: { type: "string", enum: [...PROCESSES], default: "agile", description: "The process whose type, state and field defaults apply." },
-    descriptionFormat: { type: "string", enum: ["markdown", "html"], default: "markdown", description: "markdown syncs the note body both ways; html pushes converted HTML only (Azure DevOps Server)." }
-  }
-};
-const failure$1 = (code2, message2, details) => Object.assign(new Error(message2), { code: code2, details });
-const setting = (connection, key) => typeof connection.settings[key] === "string" ? connection.settings[key] : void 0;
-const organizationOf = (connection) => setting(connection, "organization").replace(/\/+$/, "");
-const defaultArea = (connection) => setting(connection, "areaPath") ?? setting(connection, "project");
-function withDefaults(connection, change2) {
-  return { ...change2, ...change2.iteration === null ? { iteration: setting(connection, "project") } : {}, ...change2.area === null ? { area: defaultArea(connection) } : {} };
+function documentGenerator(templates2) {
+  return {
+    id: "document",
+    description: "Render an Obsidian Markdown/frontmatter template with typed values.",
+    usage: "make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]",
+    directory: "notes",
+    options: {
+      template: option$1.string("Markdown template under bin/templates.", { required: true }),
+      values: option$1.string("Template values as a JSON object."),
+      "values-from": option$1.string("Read template values from a JSON file."),
+      date: option$1.string("ISO date used for template dates; defaults to today.")
+    },
+    async run({ name: title2, flags, context }) {
+      ensure(title2.trim() === title2 && title2.length > 0 && !/[/\\:]/.test(title2), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
+      const template = value$3(flags, "template", true);
+      ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
+      const source2 = await context.environment.files.read(`bin/templates/${vaultPath(template)}`);
+      const inline2 = value$3(flags, "values"), from = value$3(flags, "values-from");
+      ensure(inline2 === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
+      const data = from === void 0 ? parseJson(inline2 ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
+      ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
+      const settings2 = context.settings ?? {};
+      const bytes = templates2(context).render(source2.bytes, { title: title2, values: data, date: value$3(flags, "date"), dateFormat: settings2.dateFormat, timeFormat: settings2.timeFormat });
+      const path = `${value$3(flags, "out") ?? "notes"}/${title2}.md`;
+      const result = await context.workspace.write([{ path, bytes }]);
+      return { generator: "document", template: source2.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
+    }
+  };
 }
-const knownHost = (host) => host === "dev.azure.com" || host.endsWith(".visualstudio.com");
-class AzureDevOpsConnector {
-  constructor(http) {
-    this.http = http;
-  }
-  http;
-  id = "azure-devops";
-  describe() {
-    return {
-      platform: this.id,
-      name: "Azure DevOps Boards",
-      description: "Work items of one Azure DevOps project through the Work Items REST API 7.1.",
-      defaults: { tokenEnv: "AZURE_DEVOPS_EXT_PAT", linkProperty: "azure-devops" },
-      connectionSchema,
-      summary: (connection) => ({
-        organization: organizationOf(connection),
-        project: setting(connection, "project"),
-        process: setting(connection, "process"),
-        descriptionFormat: setting(connection, "descriptionFormat"),
-        ...setting(connection, "areaPath") ? { areaPath: setting(connection, "areaPath") } : {},
-        ...setting(connection, "iterationRoot") ? { iterationRoot: setting(connection, "iterationRoot") } : {}
-      }),
-      warnings: (connection) => {
-        let host;
-        try {
-          host = new URL(organizationOf(connection)).hostname.toLowerCase();
-        } catch {
-          return [];
-        }
-        return knownHost(host) ? [] : [`organization host ${host} is neither dev.azure.com nor *.visualstudio.com; the token in ${connection.tokenEnv} is sent there (expected only for Azure DevOps Server).`];
-      }
-    };
-  }
-  mapping(connection) {
-    const overrides = isRecord(connection.settings.mappings) ? connection.settings.mappings : {};
-    const unknown2 = unknownFields(overrides);
-    if (unknown2.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown2.join(", ")}.`), { code: "CONNECTION_INVALID", details: { connection: connection.id, issues: unknown2.map((name2) => `mappings.fields.${name2}: not a neutral field`) } });
-    return processMapping(setting(connection, "process") ?? "agile", overrides);
-  }
-  link(connection, id2) {
-    return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_workitems/edit/${id2}`;
-  }
-  idFromLink(connection, url2) {
-    const match = /^(.*)\/_workitems\/edit\/(\d+)\/?$/i.exec(url2.trim());
-    if (!match) return null;
-    const expected = `${organizationOf(connection)}/${setting(connection, "project")}`.toLowerCase();
-    let prefix;
-    try {
-      prefix = decodeURIComponent(match[1]).toLowerCase();
-    } catch {
-      return null;
-    }
-    return prefix === expected ? match[2] : null;
-  }
-  async test(connection) {
-    const project2 = setting(connection, "project");
-    const json2 = await this.call(connection, "GET", `${organizationOf(connection)}/_apis/projects/${encodeURIComponent(project2)}?includeCapabilities=true&api-version=${API_VERSION}`);
-    const capabilities = isRecord(json2.capabilities) && isRecord(json2.capabilities.processTemplate) ? json2.capabilities.processTemplate : {};
-    const processName = typeof capabilities.templateName === "string" ? capabilities.templateName : null;
-    return {
-      ok: true,
-      target: {
-        organization: organizationOf(connection),
-        project: json2.name ?? project2,
-        projectId: json2.id ?? null,
-        state: json2.state ?? null,
-        process: processName,
-        ...processName !== null && setting(connection, "process") !== "custom" ? { processMatches: processName.toLowerCase() === setting(connection, "process") } : {}
-      }
-    };
-  }
-  async query(connection, ids) {
-    const items2 = [];
-    const context = this.context(connection);
-    for (let start2 = 0; start2 < ids.length; start2 += BATCH_SIZE) {
-      const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitemsbatch?api-version=${API_VERSION}`), { ids: ids.slice(start2, start2 + BATCH_SIZE).map(Number), $expand: "relations", errorPolicy: "omit" }, { retry: true });
-      for (const entry2 of Array.isArray(json2.value) ? json2.value : []) if (isRecord(entry2)) items2.push(remoteItem(entry2, context, (id2) => this.link(connection, id2)));
-    }
-    return items2;
-  }
-  /**
-   * Work item types start in their initial state, which processes may enforce on create: the item is created without
-   * a state and then moved to the drafted state with a revision-guarded update. A failed move still returns the
-   * created item. Creates are never retried automatically, so a throttled create cannot create a duplicate.
-   */
-  async create(connection, item) {
-    const context = this.context(connection);
-    const { state: state2, ...draft } = item;
-    const operations2 = createOperations({ ...withDefaults(connection, draft), area: draft.area ?? defaultArea(connection) }, context);
-    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item.type)}?api-version=${API_VERSION}`), operations2, { contentType: "application/json-patch+json" });
-    const created = remoteItem(json2, context, (id2) => this.link(connection, id2));
-    if (state2 === void 0 || state2 === null || state2 === created.state || context.mapping.fields.state === null) return created;
-    try {
-      return await this.update(connection, created.id, { state: state2 }, created.rev);
-    } catch {
-      return created;
-    }
-  }
-  async update(connection, id2, patch, expectedRev) {
-    const context = this.context(connection);
-    const url2 = this.projectUrl(connection, `workitems/${encodeURIComponent(id2)}`);
-    const relations = patch.parentId === void 0 ? [] : (await this.call(connection, "GET", `${url2}?$expand=relations&api-version=${API_VERSION}`)).relations;
-    const operations2 = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
-    const json2 = await this.call(connection, "PATCH", `${url2}?$expand=relations&api-version=${API_VERSION}`, operations2, { contentType: "application/json-patch+json", retry: true });
-    return remoteItem(json2, context, (item) => this.link(connection, item));
-  }
-  context(connection) {
-    return { mapping: this.mapping(connection), descriptionFormat: setting(connection, "descriptionFormat") ?? "markdown", organization: organizationOf(connection), defaultArea: defaultArea(connection) };
-  }
-  projectUrl(connection, path) {
-    return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_apis/wit/${path}`;
-  }
-  /** One authenticated JSON request; failures are coded, carry the status and never the token. */
-  async call(connection, method, url2, body, options2 = {}) {
-    const contentType = options2.contentType ?? "application/json";
-    const token = connection.token();
-    const clean = (text2) => redact(text2, [token]);
-    let response;
-    try {
-      response = await this.http.request({
-        method,
-        url: url2,
-        headers: { Authorization: `Basic ${btoa(`:${token}`)}`, Accept: "application/json", ...body === void 0 ? {} : { "Content-Type": contentType } },
-        ...body === void 0 ? {} : { body: JSON.stringify(body) },
-        ...options2.retry === void 0 ? {} : { retry: options2.retry }
-      });
-    } catch (error2) {
-      throw failure$1("CONNECTOR_REQUEST_FAILED", clean(error2 instanceof Error ? error2.message : String(error2)), { connection: connection.id, status: null });
-    }
-    const details = { connection: connection.id, status: response.status, method, url: clean(url2) };
-    if (response.status === 401 || response.status === 403 || response.status === 203 || response.status >= 300 && response.status < 400) {
-      throw failure$1("CONNECTOR_AUTH_FAILED", `Azure DevOps refused the token in ${connection.tokenEnv} for connection ${connection.id} (HTTP ${response.status}).`, { ...details, tokenEnv: connection.tokenEnv });
-    }
-    let json2 = null;
-    try {
-      json2 = response.body.trim() === "" ? {} : JSON.parse(response.body);
-    } catch {
-      json2 = null;
-    }
-    if (response.status >= 200 && response.status < 300 && isRecord(json2)) return json2;
-    const message2 = isRecord(json2) && typeof json2.message === "string" ? clean(json2.message).slice(0, 300) : `HTTP ${response.status}`;
-    const stale = response.status === 412 || /TF26071|\btest\b.*\brev\b|\/rev/i.test(message2);
-    throw failure$1("CONNECTOR_REQUEST_FAILED", `Azure DevOps ${method} failed for connection ${connection.id}: ${message2}`, { ...details, ...stale ? { reason: "stale-revision" } : {} });
-  }
-}
-const azureDevOpsPlugin = {
+const installer = { setupTemplates: () => setupTemplates };
+const templatesPlugin = {
   manifest: {
-    id: "connector-azure-devops",
-    name: "Azure DevOps Boards connector",
+    id: "templates",
+    name: "Templates",
     version: "0.1.0",
     minAppVersion: "0.1.0",
     core: true,
     author: "The Forge",
-    description: "Sync backlog items with Azure DevOps Boards work items through the Work Items REST API."
+    description: "Render Obsidian Markdown templates into documents and install the planning workflow pack."
   },
-  create: (host) => {
-    const connector = new AzureDevOpsConnector(host.http);
+  create: () => {
+    const templates2 = (context) => new MarkdownTemplates((text2) => context.workspace.codec.markdownParts(text2));
     return {
-      provides: { "connector-azure-devops.connector": connector },
-      requires: ["connector.hub"],
-      onload(context) {
-        context.services.get("connector.hub").register(connector);
+      commands: [templatesCommand(templates2, workflowTemplates)],
+      generators: [documentGenerator(templates2)],
+      provides: { [templateInstallerService]: installer },
+      settings: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          dateFormat: { type: "string", minLength: 1, default: "YYYY-MM-DD", description: "dayjs format of {{date}} placeholders without their own format." },
+          timeFormat: { type: "string", minLength: 1, default: "HH:mm", description: "dayjs format of {{time}} placeholders without their own format." }
+        }
+      },
+      strings: {
+        de: {
+          commands: { templates: "Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren." },
+          actions: {
+            "templates list": "Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.",
+            "templates inspect": "Die erforderlichen und optionalen Werte einer Vorlage melden.",
+            "templates install": "Das Vorlagenpaket für den Planungsablauf in bin/templates installieren."
+          },
+          generators: { document: "Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern." }
+        }
       }
     };
   }
 };
-function nodeLockFiles(root) {
-  return async (path, command2) => {
-    const target = await (await NodeFiles.at(root)).resolvePath(path);
-    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
-    const token = await acquireLock(target, () => ({ command: command2 }), `Lock ${path}`);
-    return async () => await releaseLock(target, token) === "released";
+function formDefinitionSource(name2, runtimeImport) {
+  const title2 = name2.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  return `import { z } from 'zod';
+import type { FormDefinition } from ${JSON.stringify(runtimeImport)};
+
+const schema = z.object({
+  name: z.string().trim().min(1, 'Enter a name.').max(100, 'Use 100 characters or fewer.'),
+  email: z.string().trim().pipe(z.email('Enter a valid email address.')),
+  description: z.string().trim().max(2000, 'Use 2,000 characters or fewer.').default(''),
+}).strict();
+
+export type ${name2}Values = z.infer<typeof schema>;
+
+export const ${name2}Form: FormDefinition<${name2}Values> = {
+  id: '${name2.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}',
+  title: '${title2}',
+  description: 'Describe the project and its primary contact.',
+  submitLabel: 'Validate details',
+  initialValues: { name: '', email: '', description: '' },
+  schema,
+  fields: [
+    { name: 'name', label: 'Project name', type: 'text', required: true, help: 'A clear name, up to 100 characters.' },
+    { name: 'email', label: 'Contact email', type: 'email', required: true, placeholder: 'engineer@example.com' },
+    { name: 'description', label: 'Description', type: 'textarea', help: 'Optional. Explain the project in 2,000 characters or fewer.' },
+  ],
+};
+`;
+}
+function formDefinitionTestSource(name2, definitionImport, runtimeImport) {
+  return `import { expect, it } from 'vitest';
+import { ${name2}Form } from ${JSON.stringify(definitionImport)};
+import { validateForm } from ${JSON.stringify(runtimeImport)};
+
+it('validates and normalizes form data', () => {
+  expect(validateForm(${name2}Form, { name: '  Example  ', email: '  engineer@example.com  ', description: '  A focused project.  ' })).toEqual({
+    success: true, data: { name: 'Example', email: 'engineer@example.com', description: 'A focused project.' },
+  });
+});
+
+it('reports invalid required fields without submitting data', () => {
+  const result = validateForm(${name2}Form, { name: '', email: 'invalid', description: '' });
+  expect(result.success).toBe(false);
+  if (!result.success) expect(result.errors.map(error => error.field)).toEqual(['name', 'email']);
+});
+`;
+}
+const encodeText$1 = (text2) => new TextEncoder().encode(text2);
+function names(name2, directory) {
+  ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase TypeScript name, for example WorkItem.");
+  vaultPath(directory);
+  return { name: name2, directory, file: name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase() };
+}
+const scaffoldGenerators = [
+  { id: "form", description: "Typed form definition with Zod validation and HTML preview in a Forge project.", directory: "src/presentation/forms", async generate({ name: input, directory: dir, context }) {
+    ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
+    await context.workspace.files.read("src/presentation/forms/form-model.ts");
+    const { name: name2, directory, file } = names(input, dir);
+    const relative = minpath.posix.relative(directory, "src/presentation/forms/form-model.js");
+    const runtimeImport = relative.startsWith(".") ? relative : `./${relative}`;
+    const definition2 = `${directory}/${file}.form.ts`;
+    const testImport = minpath.posix.relative("tests", definition2).replace(/\.ts$/, ".js");
+    return [
+      { path: definition2, bytes: encodeText$1(formDefinitionSource(name2, runtimeImport)) },
+      { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText$1(formDefinitionTestSource(name2, testImport.startsWith(".") ? testImport : `./${testImport}`, "../src/presentation/forms/form-model.js")) }
+    ];
+  } },
+  { id: "entity", description: "Domain entity with identity and invariant enforcement.", generate({ name: input, directory: dir }) {
+    const { name: name2, directory, file } = names(input, dir);
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
+  private constructor(readonly id: string) {}
+
+  static create(id: string): ${name2} {
+    if (!id.trim()) throw new globalThis.Error('${name2} requires an identity');
+    return new ${name2}(id);
+  }
+}
+`) }];
+  } },
+  { id: "value-object", description: "Immutable value object with equality and validation.", generate({ name: input, directory: dir }) {
+    const { name: name2, directory, file } = names(input, dir);
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
+  private constructor(readonly value: string) { globalThis.Object.freeze(this); }
+
+  static from(value: string): ${name2} {
+    if (!value.trim()) throw new globalThis.Error('${name2} cannot be empty');
+    return new ${name2}(value);
+  }
+
+  equals(other: ${name2}): boolean { return this.value === other.value; }
+}
+`) }];
+  } },
+  { id: "use-case", description: "Application use case with an injected repository port.", generate({ name: input, directory: dir }) {
+    const { name: name2, directory, file } = names(input, dir);
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2}Input { readonly id: string }
+export interface ${name2}Repository { exists(id: string): globalThis.Promise<boolean> }
+
+export class ${name2} {
+  constructor(private readonly repository: ${name2}Repository) {}
+
+  async execute(input: ${name2}Input): globalThis.Promise<{ exists: boolean }> {
+    if (!input.id.trim()) throw new globalThis.Error('Identity is required');
+    return { exists: await this.repository.exists(input.id) };
+  }
+}
+`) }];
+  } },
+  { id: "event", description: "Typed event payload and runtime descriptor.", generate({ name: input, directory: dir }) {
+    const { name: name2, directory, file } = names(input, dir);
+    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2} { readonly id: string }
+export const ${name2}Event = {
+  id: 'app.${file}',
+  validate(value: unknown): value is ${name2} {
+    return value !== null && typeof value === 'object' && 'id' in value && typeof value.id === 'string';
+  },
+};
+`) }];
+  } },
+  { id: "plugin", description: "Installable plugin folder with a manifest, namespaced command and lifecycle hooks.", scope: "workspace", directory: "bin/plugins", fixedDirectory: true, generate({ name: input, directory: dir }) {
+    const { name: name2, directory, file } = names(input, dir);
+    const manifest = {
+      id: file,
+      name: name2,
+      version: "0.1.0",
+      minAppVersion: "0.1.0",
+      description: `${name2} development tools.`,
+      author: "Your team"
+    };
+    return [
+      { path: `${directory}/${file}/manifest.json`, bytes: encodeText$1(JSON.stringify(manifest, null, 2) + "\n") },
+      { path: `${directory}/${file}/main.mjs`, bytes: encodeText$1(`let ready = false;
+
+export default {
+  commands: [{
+    id: '${file}.hello', description: 'Describe this plugin', usage: '${file}.hello',
+    run() { return { plugin: '${file}', ready }; },
+  }],
+
+  onload() { ready = true; },
+  onunload() { ready = false; },
+};
+`) }
+    ];
+  } }
+];
+const typecheckScript = "import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\nimport { sourceFiles } from './shared.mjs';\n\nlet directory;\ntry {\n  // TypeScript globs omit hidden directories and prefer .ts over same-named .js.\n  // Explicit files keep every accepted test and test helper in the compiler program.\n  const files = sourceFiles().filter(file => file.startsWith('tests/')).map(file => resolve(file));\n  // Keep the generated config beneath the project so normal @types resolution is unchanged.\n  mkdirSync('.quality-reports', { recursive: true });\n  directory = mkdtempSync(resolve('.quality-reports', 'typecheck-'));\n  const config = join(directory, 'tsconfig.json');\n  writeFileSync(config, JSON.stringify({ extends: resolve('tsconfig.json'), files }));\n  const result = spawnSync(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '--noEmit', '--project', config, ...process.argv.slice(2)], { stdio: 'inherit' });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error('TypeScript did not finish normally');\n  process.exitCode = result.status;\n} catch (error) {\n  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\\n`);\n  process.exitCode = 1;\n} finally {\n  if (directory) rmSync(directory, { recursive: true, force: true });\n}\n";
+const formModel = "import type { z } from 'zod';\n\nexport interface FormField<T extends Record<string, string>> {\n  name: Extract<keyof T, string>;\n  label: string;\n  type: 'text' | 'email' | 'textarea';\n  required?: boolean;\n  help?: string;\n  placeholder?: string;\n}\n\nexport interface FormDefinition<T extends Record<string, string>> {\n  id: string;\n  title: string;\n  description?: string;\n  submitLabel: string;\n  fields: FormField<T>[];\n  initialValues: T;\n  schema: z.ZodType<T>;\n}\n\nexport type FormValidation<T> =\n  | { success: true; data: T }\n  | { success: false; errors: { field: string; message: string }[] };\n\n/** The schema is authoritative; HTML hints do not replace validation. */\nexport function validateForm<T extends Record<string, string>>(\n  definition: FormDefinition<T>,\n  input: unknown,\n): FormValidation<T> {\n  const result = definition.schema.safeParse(input);\n  if (result.success) return { success: true, data: result.data };\n  return {\n    success: false,\n    errors: result.error.issues.map(issue => ({\n      field: issue.path.map(String).join('.'),\n      message: issue.message,\n    })),\n  };\n}\n";
+const formView = "import { validateForm, type FormDefinition } from './form-model.js';\n\nlet nextFormId = 0;\n\ninterface FieldControl {\n  input: HTMLInputElement | HTMLTextAreaElement;\n  label: string;\n  error: HTMLElement;\n  helpId?: string;\n}\n\n/** Mount an accessible native form without interpreting any definition text as HTML. */\nexport function renderForm<T extends Record<string, string>>(\n  definition: FormDefinition<T>,\n  container: HTMLElement,\n  onSubmit: (data: T) => void,\n): { form: HTMLFormElement; destroy(): void } {\n  const fieldNames = new Set<string>();\n  for (const field of definition.fields) {\n    if (fieldNames.has(field.name)) throw new Error(`Duplicate form field name: ${field.name}`);\n    fieldNames.add(field.name);\n  }\n  const document = container.ownerDocument;\n  let prefix: string;\n  do { prefix = `forge-form-${++nextFormId}`; } while (document.getElementById(prefix));\n  const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => {\n    const node = document.createElement(tag);\n    if (text !== undefined) node.textContent = text;\n    return node;\n  };\n  const form = element('form');\n  form.id = prefix;\n  form.className = 'forge-form';\n  form.dataset.formId = definition.id;\n  // Use one schema-driven error path even when browser constraint validation differs.\n  form.noValidate = true;\n  const title = element('h2', definition.title);\n  title.id = `${prefix}-title`;\n  form.setAttribute('aria-labelledby', title.id);\n  form.append(title);\n  if (definition.description) {\n    const description = element('p', definition.description);\n    description.id = `${prefix}-description`;\n    form.setAttribute('aria-describedby', description.id);\n    form.append(description);\n  }\n  const summary = element('div');\n  summary.className = 'forge-form-summary';\n  summary.setAttribute('role', 'alert');\n  summary.tabIndex = -1;\n  summary.hidden = true;\n  form.append(summary);\n  const controls = new Map<string, FieldControl>();\n  const defaults = { ...definition.initialValues };\n  for (const [index, field] of definition.fields.entries()) {\n    const group = element('div');\n    group.className = 'forge-form-field';\n    const input = field.type === 'textarea' ? element('textarea') : element('input');\n    if (input.tagName === 'INPUT') (input as HTMLInputElement).type = field.type;\n    input.name = field.name;\n    input.id = `${prefix}-field-${index}`;\n    input.required = field.required ?? false;\n    input.value = defaults[field.name] ?? '';\n    input.defaultValue = input.value;\n    if (field.placeholder) input.placeholder = field.placeholder;\n    const label = element('label', `${field.label}${field.required ? ' (required)' : ''}`);\n    label.htmlFor = input.id;\n    group.append(label, input);\n    let helpId: string | undefined;\n    if (field.help) {\n      const help = element('p', field.help);\n      help.className = 'forge-form-help';\n      help.id = `${input.id}-help`;\n      helpId = help.id;\n      input.setAttribute('aria-describedby', helpId);\n      group.append(help);\n    }\n    const error = element('p');\n    error.id = `${input.id}-error`;\n    error.className = 'forge-form-error';\n    error.hidden = true;\n    group.append(error);\n    controls.set(field.name, { input, label: field.label, error, helpId });\n    form.append(group);\n  }\n  const actions = element('div');\n  actions.className = 'forge-form-actions';\n  const submit = element('button', definition.submitLabel);\n  submit.type = 'submit';\n  const reset = element('button', 'Reset');\n  reset.type = 'reset';\n  actions.append(submit, reset);\n  form.append(actions);\n\n  const clearErrors = () => {\n    summary.replaceChildren();\n    summary.hidden = true;\n    for (const { input, error, helpId } of controls.values()) {\n      input.removeAttribute('aria-invalid');\n      error.textContent = '';\n      error.hidden = true;\n      if (helpId) input.setAttribute('aria-describedby', helpId);\n      else input.removeAttribute('aria-describedby');\n    }\n  };\n  const handleSubmit = (event: Event) => {\n    event.preventDefault();\n    clearErrors();\n    const values = Object.fromEntries(Array.from(controls, ([name, { input }]) => [name, input.value]));\n    const result = validateForm(definition, values);\n    if (result.success) {\n      onSubmit(result.data);\n      return;\n    }\n    summary.append(element('p', 'Please correct the following errors:'));\n    const list = element('ul');\n    for (const issue of result.errors) {\n      const control = controls.get(issue.field);\n      const item = element('li');\n      if (control) {\n        const link = element('a', `${control.label}: ${issue.message}`);\n        link.href = `#${control.input.id}`;\n        item.append(link);\n        control.input.setAttribute('aria-invalid', 'true');\n        control.error.textContent = [control.error.textContent, issue.message].filter(Boolean).join(' ');\n        control.error.hidden = false;\n        control.input.setAttribute('aria-describedby', [control.helpId, control.error.id].filter(Boolean).join(' '));\n      } else item.textContent = issue.message;\n      list.append(item);\n    }\n    summary.append(list);\n    summary.hidden = false;\n    const invalid = Array.from(controls.values()).find(({ input }) => input.getAttribute('aria-invalid') === 'true');\n    (invalid?.input ?? summary).focus();\n  };\n  const handleReset = (event: Event) => {\n    event.preventDefault();\n    for (const [name, { input }] of controls) input.value = defaults[name] ?? '';\n    clearErrors();\n  };\n  form.addEventListener('submit', handleSubmit);\n  form.addEventListener('reset', handleReset);\n  container.append(form);\n  return {\n    form,\n    destroy() {\n      form.removeEventListener('submit', handleSubmit);\n      form.removeEventListener('reset', handleReset);\n      form.remove();\n    },\n  };\n}\n";
+const demoHtml = '<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1" />\n    <title>Project forms · The Forge</title>\n  </head>\n  <body>\n    <main>\n      <header class="page-heading">\n        <h1>Project forms</h1>\n        <p>Try your form, check its validation, and inspect the values it produces.</p>\n      </header>\n      <div class="preview-layout">\n        <section aria-label="Form preview">\n          <div class="form-picker">\n            <label for="form-choice">Choose a form</label>\n            <select id="form-choice"></select>\n          </div>\n          <div id="form-preview"></div>\n        </section>\n        <section class="result-panel" aria-labelledby="result-heading">\n          <h2 id="result-heading">Validated values</h2>\n          <p>Values stay in this preview. Nothing is sent or saved.</p>\n          <p id="result-status" role="status">Complete the form to see its validated values.</p>\n          <pre id="form-result" aria-label="Validated form values" tabindex="0" hidden></pre>\n        </section>\n      </div>\n    </main>\n    <script type="module" src="/src/presentation/demo.ts"><\/script>\n  </body>\n</html>\n';
+const demoStyle = ':root {\n  color-scheme: light;\n  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;\n  color: #24332c;\n  background: #f4f6f3;\n  font-synthesis: none;\n  line-height: 1.55;\n  --accent: #216341;\n  --muted: #516259;\n  --line: #b9c6bd;\n  --control-line: #718579;\n  --error: #a02729;\n}\n* { box-sizing: border-box; }\nbody { margin: 0; }\nmain { width: min(1040px, 100%); margin: 0 auto; padding: 48px 32px 64px; overflow-wrap: anywhere; }\nh1, h2 { line-height: 1.2; text-wrap: balance; }\nh1 { margin: 0 0 12px; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.03em; }\nh2 { margin: 0 0 12px; font-size: 1.5rem; letter-spacing: -0.015em; }\np { max-width: 65ch; margin: 0 0 20px; color: var(--muted); }\n.page-heading { margin-bottom: 36px; }\n.preview-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 48px; align-items: start; }\n.form-picker { margin-bottom: 32px; }\nlabel { display: block; font-weight: 600; margin-bottom: 7px; }\ninput, textarea, select, button { font: inherit; }\ninput, textarea, select {\n  display: block; width: 100%; min-width: 0; padding: 11px 12px;\n  border: 1px solid var(--control-line); border-radius: 6px; background: white; color: inherit;\n  caret-color: var(--accent);\n}\ntextarea { min-height: 116px; resize: vertical; }\ninput::placeholder, textarea::placeholder { color: #627268; opacity: 1; }\ninput:hover, textarea:hover, select:hover { border-color: var(--accent); }\n:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }\n[aria-invalid="true"] { border-color: var(--error); }\nbutton {\n  min-height: 46px; padding: 10px 20px; border: 1px solid var(--accent); border-radius: 6px;\n  background: var(--accent); color: white; font-weight: 600; cursor: pointer;\n}\nbutton:hover { background: #164d30; }\nbutton:disabled { opacity: 0.6; cursor: wait; }\nform { display: grid; gap: 20px; }\nform > * { min-width: 0; }\nform h2, form p { margin-bottom: 0; }\nform button { justify-self: start; }\nform [role="alert"] { color: var(--error); }\n.result-panel { border-top: 1px solid var(--line); padding-top: 24px; }\n#result-status { font-size: 0.95rem; }\npre {\n  overflow: auto; max-height: 480px; margin: 0; padding: 18px;\n  background: #e5ece6; border-radius: 6px; font-size: 0.875rem; line-height: 1.6;\n  white-space: pre-wrap; overflow-wrap: anywhere;\n}\n::selection { background: #c5dec9; color: #163c27; }\n@media (max-width: 680px) {\n  main { padding: 28px 20px 40px; }\n  .preview-layout { grid-template-columns: minmax(0, 1fr); gap: 36px; }\n  .page-heading { margin-bottom: 28px; }\n}\n.forge-form-actions { display: flex; flex-wrap: wrap; gap: 12px; }\n.forge-form-actions button[type="reset"] { background: transparent; color: var(--accent); }\n.forge-form-actions button[type="reset"]:hover { background: #e5ece6; }\n.forge-form-help, .forge-form-error { margin-top: 7px; font-size: 0.9rem; }\n.forge-form-error, .forge-form-summary, .forge-form-summary a { color: var(--error); }\n.forge-form-summary { padding: 14px; border: 1px solid currentColor; border-radius: 6px; }\n.forge-form-summary a { text-underline-offset: 3px; }\n.forge-form-summary ul { margin-bottom: 0; padding-left: 22px; }\n';
+const demoScript = "import type { FormDefinition } from './forms/form-model.js';\nimport { renderForm } from './forms/form-view.js';\nimport './demo.css';\n\n// Eager discovery makes new `make form` definitions visible on the next reload.\nconst modules = import.meta.glob<Record<string, unknown>>('./forms/**/*.form.ts', { eager: true });\nconst forms = Object.values(modules).flatMap(module => Object.entries(module)\n  .filter(([name]) => name.endsWith('Form'))\n  .map(([, value]) => value as FormDefinition<Record<string, string>>));\nconst container = document.querySelector<HTMLElement>('#form-preview')!;\nconst choice = document.querySelector<HTMLSelectElement>('#form-choice')!;\nconst output = document.querySelector<HTMLElement>('#form-result')!;\nconst status = document.querySelector<HTMLElement>('#result-status')!;\nlet mounted: ReturnType<typeof renderForm> | undefined;\n\nfor (const [index, definition] of forms.entries()) {\n  const option = document.createElement('option');\n  option.value = String(index);\n  option.textContent = definition.title;\n  choice.append(option);\n}\nfunction clearResult() {\n  output.hidden = true;\n  output.textContent = '';\n  status.textContent = 'Complete the form to see its validated values.';\n}\nfunction showForm() {\n  mounted?.destroy();\n  container.replaceChildren();\n  clearResult();\n  const definition = forms[Number(choice.value)];\n  if (!definition) {\n    container.textContent = 'No form definitions found. Add a form with The Forge to preview it here.';\n    const empty = document.createElement('option');\n    empty.textContent = 'No forms available';\n    choice.replaceChildren(empty);\n    choice.disabled = true;\n    status.textContent = 'Add a form to inspect its validated values.';\n    return;\n  }\n  mounted = renderForm(definition, container, values => {\n    output.textContent = JSON.stringify(values, null, 2);\n    output.hidden = false;\n    status.textContent = 'Validation passed. These values are ready to use in your application.';\n  });\n  mounted.form.addEventListener('input', clearResult);\n  mounted.form.addEventListener('reset', clearResult);\n  mounted.form.addEventListener('submit', clearResult, { capture: true });\n}\nchoice.addEventListener('change', showForm);\nshowForm();\n";
+const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {\n      // Kernel source is grouped by layer, then concern; a bundled core plugin owns its layers under src/plugins/<id>/.\n      const kernel = /^src\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path);\n      const corePlugin = /^src\\/plugins\\/[a-z][a-z0-9-]*\\/(?:plugin\\.ts|(?:domain|application|infrastructure|presentation)\\/.+)$/.test(path);\n      if (!kernel && !corePlugin) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/... for the kernel and src/plugins/<id>/plugin.ts or src/plugins/<id>/<layer>/... for core plugins; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
+const testConfig = "import { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Classification patterns define the full scope; Vitest defaults hide cypress/dist directories.\n    projects: [\n      { test: { name: 'unit', environment: 'node', exclude: [], include: ['tests/**/*.unit.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'integration', environment: 'node', exclude: [], include: ['tests/**/*.integration.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'e2e', environment: 'node', exclude: [], include: ['tests/**/*.e2e.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n    ],\n  },\n});\n";
+const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
+const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  // The inventory uses POSIX separators on every platform; compare Windows reports the same way.\n  const discovered = new Set(discovery.report.files.map(file => String(file).replaceAll('\\\\', '/')));\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
+const qualityShared = "import { readdirSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n/** @param {string} value */\nfunction containedPath(value) {\n  // oxlint-disable-next-line no-control-regex -- Source roots must reject control characters and Windows/URL separators.\n  return value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\\:\\x00-\\x1f]/.test(part));\n}\n\n/** @param {unknown} error */\nfunction missing(error) { return error instanceof Error && 'code' in error && error.code === 'ENOENT'; }\n\n/** @param {string} root */\nfunction sourceDirectories(root) {\n  const path = resolve(root, 'configs/quality/source.json');\n  /** @type {unknown} */\n  let config;\n  try { config = JSON.parse(readFileSync(path, 'utf8')); }\n  catch (error) {\n    if (missing(error)) return { sourceRoot: 'src', additionalRoots: [] };\n    throw new Error(`Cannot read source inventory configuration configs/quality/source.json: ${error instanceof Error ? error.message : String(error)}`);\n  }\n  if (!config || typeof config !== 'object' || Array.isArray(config) || !('sourceRoot' in config) || typeof config.sourceRoot !== 'string' || Object.keys(config).some(key => !['sourceRoot', 'additionalRoots'].includes(key))) {\n    throw new Error('configs/quality/source.json requires a sourceRoot string and optional additionalRoots list.');\n  }\n  if (config.sourceRoot.split('/')[0] !== 'src' || !containedPath(config.sourceRoot)) {\n    throw new Error('sourceRoot must be src or a contained POSIX subdirectory such as src/the-forge.');\n  }\n  const additional = 'additionalRoots' in config ? config.additionalRoots : [];\n  if (!Array.isArray(additional) || additional.some(value => typeof value !== 'string' || !containedPath(value))) {\n    throw new Error('additionalRoots must contain relative POSIX directory paths.');\n  }\n  /** @type {string[]} */\n  const additionalRoots = additional;\n  const roots = [config.sourceRoot, ...additionalRoots];\n  if (roots.some((root, index) => roots.some((other, otherIndex) => index !== otherIndex && (root === other || root.startsWith(other + '/'))))) {\n    throw new Error('Source inventory roots must be unique and must not contain one another.');\n  }\n  return { sourceRoot: config.sourceRoot, additionalRoots };\n}\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  /** @type {string[]} */\n  const files = [];\n  const { sourceRoot, additionalRoots } = sourceDirectories(root);\n  /** @param {string} directory */\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  for (const selected of [sourceRoot, ...additionalRoots]) {\n    let directory = root;\n    for (const part of selected.split('/')) {\n      directory = join(directory, part);\n      let entry;\n      try { entry = lstatSync(directory); }\n      catch (error) {\n        if (missing(error)) throw new Error(`Required source directory ${selected} is missing`);\n        throw error;\n      }\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${selected}`);\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${selected}`);\n    }\n    visit(selected);\n  }\n  for (const entry of entries) {\n    if (['tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith(sourceRoot + '/'))) throw new Error(`Source inventory is empty: ${sourceRoot}`);\n  return [...new Set(files)].sort();\n}\n\n/** @param {string} name @param {string[]} args */\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\n/** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
+const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
+const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
+const json$4 = (value2) => JSON.stringify(value2, null, 2) + "\n";
+const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+function componentScaffold(project2, name2, projectsDirectory, kind = "domain") {
+  const directory = `${vaultPath(projectsDirectory)}/${projectName(project2)}`;
+  ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase component name, for example WorkItem.");
+  ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
+  const file = kebab(name2);
+  const source2 = kind === "domain" ? `export class ${name2} {
+  private constructor(readonly id: string) {}
+
+  static create(id: string): ${name2} {
+    if (!id.trim()) throw new globalThis.Error('Identity is required');
+    return new ${name2}(id);
+  }
+}
+` : `export interface ${name2}Repository {
+  exists(id: string): globalThis.Promise<boolean>;
+}
+
+export class ${name2} {
+  constructor(private readonly repository: ${name2}Repository) {}
+
+  async execute(id: string): globalThis.Promise<{ exists: boolean }> {
+    if (!id.trim()) throw new globalThis.Error('Identity is required');
+    return { exists: await this.repository.exists(id) };
+  }
+}
+`;
+  const test = kind === "domain" ? `import { describe, expect, it } from 'vitest';
+import { ${name2} } from '../src/domain/${file}.ts';
+
+describe('${name2}', () => {
+  it.each(['', '   '])('rejects an empty identity: %j', id => {
+    expect(() => ${name2}.create(id)).toThrow('Identity is required');
+  });
+  it('retains a valid identity', () => {
+    expect(${name2}.create('item-1').id).toBe('item-1');
+  });
+});
+` : `import { describe, expect, it, vi } from 'vitest';
+import { ${name2} } from '../src/application/${file}.ts';
+
+describe('${name2}', () => {
+  it('rejects invalid input before accessing persistence', async () => {
+    const exists = vi.fn(async () => true);
+    await expect(new ${name2}({ exists }).execute('   ')).rejects.toThrow('Identity is required');
+    expect(exists).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('returns the repository result: %s', async present => {
+    const exists = vi.fn(async (id: string) => id === 'item-1' && present);
+    await expect(new ${name2}({ exists }).execute('item-1')).resolves.toEqual({ exists: present });
+    expect(exists).toHaveBeenCalledExactlyOnceWith('item-1');
+  });
+});
+`;
+  return [textFile(`${directory}/src/${kind}/${file}.ts`, source2), textFile(`${directory}/tests/${file}.${kind}.unit.test.ts`, test)];
+}
+function projectScaffold(name2, projectsDirectory) {
+  const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
+  const files = {
+    ".forge/project.json": json$4({ schemaVersion: 1, name: name2, type: "library" }),
+    "package.json": json$4({
+      name: name2,
+      version: "0.1.0",
+      private: true,
+      type: "module",
+      engines: { node: ">=22.12.0" },
+      types: "./dist/index.d.ts",
+      exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
+      scripts: {
+        "check:structure": "node scripts/quality/structure.mjs",
+        lint: "node scripts/quality/lint.mjs",
+        analyze: "node scripts/quality/analyze.mjs",
+        typecheck: "node scripts/quality/typecheck.mjs",
+        dev: "vite",
+        preview: "vite preview --outDir demo-dist",
+        build: "vite build && tsc -p tsconfig.build.json && vite build --mode demo",
+        test: "vitest run",
+        "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
+        check: "npm run check:fast && npm run build && npm test"
+      },
+      dependencies: { zod: "4.6.5" },
+      devDependencies: { "@types/node": "22.20.5", fallow: "3.31.0", oxlint: "1.86.0", typescript: "5.9.3", vite: "7.3.7", vitest: "3.2.7" }
+    }),
+    "scripts/quality/typecheck.mjs": typecheckScript,
+    "scripts/quality/structure.mjs": structureScript,
+    "scripts/quality/lint.mjs": lintScript,
+    "vitest.config.ts": testConfig,
+    "scripts/quality/analyze.mjs": analyzeScript,
+    "scripts/quality/shared.mjs": qualityShared,
+    "configs/lint/oxlintrc.json": lintConfig,
+    "configs/quality/fallow.json": json$4({
+      $schema: "../../node_modules/fallow/schema.json",
+      minimumVersion: "3.31.0",
+      entry: ["src/index.ts", "src/presentation/demo.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "vitest.config.ts"],
+      ignorePatterns: ["demo-dist/**"],
+      failOnParseError: true,
+      rules: { "unused-dev-dependencies": "error", "unused-optional-dependencies": "error", "boundary-violation": "error" },
+      boundaries: {
+        zones: [
+          { name: "domain", patterns: ["src/domain/**"] },
+          { name: "application", patterns: ["src/application/**"] },
+          { name: "infrastructure", patterns: ["src/infrastructure/**"] },
+          { name: "presentation", patterns: ["src/presentation/**", "index.html"] },
+          { name: "public-api", patterns: ["src/index.ts"] }
+        ],
+        rules: [
+          { from: "domain", allow: ["domain"] },
+          { from: "application", allow: ["domain", "application"] },
+          { from: "infrastructure", allow: ["domain", "application", "infrastructure"] },
+          { from: "presentation", allow: ["domain", "application", "infrastructure", "presentation"] }
+        ],
+        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
+      }
+    }),
+    "tsconfig.json": json$4({
+      compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, allowJs: true, checkJs: true, jsx: "preserve", noEmit: true, types: ["node"], skipLibCheck: true },
+      include: ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+    }),
+    "tsconfig.build.json": json$4({
+      extends: "./tsconfig.json",
+      compilerOptions: { noEmit: false, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist" },
+      include: ["src"]
+    }),
+    "vite.config.ts": `import { defineConfig } from 'vite';
+
+export default defineConfig(({ mode }) => ({
+  base: './',
+  build: mode === 'demo' ? { outDir: 'demo-dist' } : {
+    target: 'es2022',
+    lib: { entry: 'src/index.ts', formats: ['es'], fileName: () => 'index.js' },
+    rollupOptions: { external: ['zod'] },
+  },
+}));
+`,
+    "index.html": demoHtml,
+    "src/vite-env.d.ts": '/// <reference types="vite/client" />\n',
+    "src/presentation/demo.ts": demoScript,
+    "src/presentation/demo.css": demoStyle,
+    "src/presentation/forms/form-model.ts": formModel,
+    "src/presentation/forms/form-view.ts": formView,
+    "src/presentation/forms/project-details.form.ts": formDefinitionSource("ProjectDetails", "./form-model.js"),
+    "tests/project-details.form.unit.test.ts": formDefinitionTestSource("ProjectDetails", "../src/presentation/forms/project-details.form.js", "../src/presentation/forms/form-model.js"),
+    ".gitignore": "node_modules/\ndist/\ndemo-dist/\ncoverage/\n.fallow/\n.quality-reports/\n",
+    "src/index.ts": "export { ProjectIdentity } from './domain/project-identity.js';\nexport { ProjectDetailsForm, type ProjectDetailsValues } from './presentation/forms/project-details.form.js';\nexport { validateForm, type FormDefinition, type FormField, type FormValidation } from './presentation/forms/form-model.js';\nexport { renderForm } from './presentation/forms/form-view.js';\n",
+    "src/application/.gitkeep": "",
+    "src/infrastructure/.gitkeep": "",
+    "README.md": `# ${name2}
+
+TypeScript library scaffolded by The Forge. Requires Node 22.12 or newer.
+
+Run \`npm install\` once from this project directory, commit the resulting lockfile, then use \`npm ci\` for reproducible installs. The scaffold does not install or execute dependencies.
+
+## Forge project context
+
+Run Forge commands from the containing environment directory, where \`bin/forge.js\` lives. Select this project with \`node bin/forge.js project open ${name2}\`, then verify \`node bin/forge.js project current\` before writes. The selection persists in the environment's \`bin/data/context.json\` across invocations; \`project close\` clears it. File commands and \`make\` outputs target the selected project, so \`node bin/forge.js create notes/plan.md --content "# Plan"\` creates a note inside this project. Add components with \`node bin/forge.js project component WorkItem --kind domain --dry-run\`, review the plan, then repeat without \`--dry-run\`. Project management stays scoped to the environment, and Markdown template sources are shared in its \`bin/templates\` folder.
+
+## Form showcase
+
+Run \`npm run dev\` from this project directory and open the local Vite URL. The Project Details form demonstrates labeled native HTML inputs, Zod validation and local result preview; it does not send or save data. Edit \`src/presentation/forms/project-details.form.ts\` to change the model. From the containing environment, run \`node bin/forge.js make form Contact\` after selecting this project. Reload the preview to choose the new form. Definitions under \`src/presentation/forms/**/*.form.ts\` are discovered automatically; definitions elsewhere need an explicit import.
+
+The library exports \`ProjectDetailsForm\`, \`validateForm\` and \`renderForm\`. Validation works without a browser; call the renderer with a real DOM container and a submission callback. \`npm run build\` writes the library and declarations to \`dist\`, and the interactive showcase to \`demo-dist\`. Use \`npm run preview\` to serve the built showcase.
+
+## Development feedback loop
+
+1. Define acceptance criteria and inspect the affected code and tests.
+2. Make a focused change; use \`npm test -- --project unit\` to check its behavior.
+3. Run \`npm run check:fast\` for test-pyramid structure, Oxlint correctness/code-line limits, fallow-rs unused-code/import-boundary analysis, and strict TypeScript checks. Each command exits nonzero on failure.
+4. Repair the first reported failure and rerun its command. Structure, lint and analysis emit structured JSON and save diagnostics to \`.quality-reports/structure.json\`, \`.quality-reports/oxlint.json\` and \`.quality-reports/fallow.json\`. Do not hide findings by broadening analysis entries, adding suppressions, or disabling checks.
+5. Run \`npm run check\` before handoff; it adds the Vite library and demo builds, declaration generation, and all Vitest tests. Report the commands and results.
+
+Keep source files at most 400 code-bearing lines and tests/test support at most 450; blank lines and comment-only lines do not count. Split by responsibility when approaching the limit. Name tests \`*.unit.test.ts\` for isolated behavior, \`*.integration.test.ts\` for collaborating components, or \`*.e2e.test.ts\` for a complete public workflow. Prefer many focused unit tests, fewer integration tests, and a small set of end-to-end tests. Select a layer with \`npm test -- --project unit\` (or \`integration\` / \`e2e\`); run the full suite before handoff.
+
+Keep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and composition in \`src/presentation\`. Core layers use only relative imports and cannot depend on outer layers; keep platform libraries behind injected ports. These boundaries are enforced by the lint and analysis configurations under \`configs/\`. Export the intended public API from \`src/index.ts\`. New components start internal and are exercised by their generated tests; explicitly export them when they become part of the library contract.
+
+The sample \`ProjectIdentity\` demonstrates domain identity validation; \`ProjectDetailsForm\` demonstrates a separate presentation model. Replace examples with the project's business vocabulary and acceptance criteria. Static checks enforce specific rules; focused behavior tests remain necessary.
+`,
+    "AGENTS.md": `# Working on ${name2}
+
+Read README.md and package.json first. Define acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application depends on domain and injected ports. Put adapters in infrastructure and composition in presentation. Respect the enforced import boundaries in configs/.
+
+Run Forge from the containing environment directory: node bin/forge.js project open ${name2}, then node bin/forge.js project current before writes. The selection persists in bin/data/context.json; project close clears it. File operations and make outputs target the selected project; project management stays environment scoped and template sources are shared in bin/templates. Add components with node bin/forge.js project component WorkItem --kind domain; preview writes with --dry-run. Choose names from the domain, replace example behavior, and add focused tests for invariants and failures. Export only intentional public API from src/index.ts.
+
+Keep source files <=400 code-bearing lines and tests/test support <=450, excluding blank and comment-only lines; split responsibilities instead of compressing code. Label tests *.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts. Favor unit tests, add integration tests for boundaries, and reserve e2e tests for public workflows. Run a layer with npm test -- --project unit (replace unit with integration or e2e for those layers).
+
+Form definitions live in src/presentation/forms/*.form.ts and share the typed form-model/form-view runtime; npm run dev shows the HTML preview. Use make form from the containing environment to add a definition and unit tests. Zod owns validation; do not duplicate validation in HTML event handlers or submit data without an explicit application callback.
+
+Run npm commands from this project directory. Install with npm ci after a lockfile exists (npm install once for a fresh scaffold, then commit the lockfile). Run focused tests while editing and npm run check:fast after changes. Repair diagnostics at their source; do not weaken checks, widen entry globs, or add suppressions to obtain a pass. Run npm run check before handoff and report commands, results, and limitations. Introduce dependencies only for a concrete need.
+`,
+    "tests/public-api.integration.test.ts": "import { expect, it } from 'vitest';\nimport { ProjectIdentity } from '../src/index.ts';\n\nit('exposes identity validation through the public API', () => {\n  expect(() => ProjectIdentity.create('   ')).toThrow('Identity is required');\n  expect(ProjectIdentity.create('project-1').id).toBe('project-1');\n});\n"
   };
+  return [
+    ...Object.entries(files).map(([path, contents]) => textFile(`${directory}/${path}`, contents)),
+    ...componentScaffold(name2, "ProjectIdentity", projectsDirectory)
+  ];
 }
-const retryable = /* @__PURE__ */ new Set([429, 503]);
-function retryAfter(value2, now = Date.now()) {
-  if (value2 === null || value2.trim() === "") return null;
-  const seconds = Number(value2.trim());
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
-  const date2 = Date.parse(value2);
-  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
-}
-class FetchHttpClient {
-  fetch;
-  sleep;
-  retries;
-  timeoutMs;
-  maxDelayMs;
-  constructor(options2 = {}) {
-    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
-    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
-      setTimeout(resolve2, milliseconds);
-    }));
-    this.retries = options2.retries ?? 3;
-    this.timeoutMs = options2.timeoutMs ?? 3e4;
-    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
-  }
-  async request(request) {
-    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
-    for (let attempt = 0; ; attempt++) {
-      const response = await this.attempt(request);
-      if (!retryable.has(response.status) || attempt >= retries) return response;
-      const asked = retryAfter(response.headers["retry-after"] ?? null);
-      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
+const projects = { project: projectScaffold, component: componentScaffold };
+const scaffoldsPlugin = {
+  manifest: {
+    id: "scaffolds",
+    name: "Scaffolds",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Generate tested TypeScript projects, components, domain and application code, typed forms and plugin folders."
+  },
+  create: () => ({
+    generators: scaffoldGenerators,
+    provides: { [projectScaffolderService]: projects },
+    strings: {
+      de: {
+        generators: {
+          form: "Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.",
+          entity: "Domain-Entität mit Identität und Prüfung von Invarianten.",
+          "value-object": "Unveränderliches Wertobjekt mit Gleichheitsprüfung und Validierung.",
+          "use-case": "Anwendungsfall mit injiziertem Repository-Port.",
+          event: "Typisierte Ereignisdaten mit Laufzeitbeschreibung.",
+          plugin: "Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks."
+        }
+      }
     }
-  }
-  async attempt(request) {
-    const timeout = request.timeoutMs ?? this.timeoutMs;
-    let response;
-    try {
-      response = await this.fetch(request.url, {
-        method: request.method,
-        ...request.headers ? { headers: { ...request.headers } } : {},
-        ...request.body === void 0 ? {} : { body: request.body },
-        signal: AbortSignal.timeout(timeout),
-        redirect: "manual"
-      });
-    } catch (error2) {
-      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout} ms` : "could not connect";
-      throw new Error(`${request.method} ${request.url} ${reason}.`);
-    }
-    const headers = {};
-    response.headers.forEach((value2, name2) => {
-      headers[name2.toLowerCase()] = value2;
-    });
-    return { status: response.status, headers, body: await response.text() };
+  })
+};
+const uiFrameworks = ["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"];
+const interactionEvents = ["click", "dblclick", "input", "change", "submit", "keydown", "keyup", "focus", "blur"];
+const interactionTriggerEvents = /* @__PURE__ */ new Set([...interactionEvents, "focusin", "focusout"]);
+function validateInteractionLibrary(definitions2) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const definition2 of definitions2) {
+    ensure(!ids.has(definition2.id), "DUPLICATE_INTERACTION", `Duplicate interaction ${definition2.id}.`);
+    ids.add(definition2.id);
   }
 }
-function encodeText(text2) {
-  return new TextEncoder().encode(text2);
-}
-async function readInputBytes(flags, context, message2) {
-  const from = value$2(flags, "from"), content2 = value$2(flags, "content");
-  ensure([from !== void 0, content2 !== void 0, flags.stdin === true].filter(Boolean).length === 1, "INVALID_INPUT", message2);
-  return from !== void 0 ? (await context.workspace.files.read(from)).bytes : flags.stdin ? await context.input() : encodeText(content2);
-}
-function parseJson(text2) {
+function isSafeNavigationUrl(value2) {
+  if (!value2 || value2 !== value2.trim() || [...value2].some((character) => character.charCodeAt(0) < 32 || character === "\\") || value2.startsWith("//")) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value2) && !/^https?:\/\//i.test(value2)) return false;
   try {
-    return JSON.parse(text2);
+    const url2 = new URL(value2, "https://forge.invalid/");
+    return ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password;
   } catch {
-    throw forgeError("INVALID_JSON", "Expected valid JSON input.");
+    return false;
   }
 }
-const discovery$1 = { scope: "workspace", discovery: true };
-async function makeDocument(title2, flags, context, services) {
-  ensure(title2.trim() === title2 && title2.length > 0 && !/[/\\:]/.test(title2), "INVALID_NAME", "Document title must be a nonempty filename without path separators.");
-  const template = value$2(flags, "template", true);
-  ensure(template.toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
-  const source2 = await services.files.read(`bin/templates/${vaultPath(template)}`);
-  const inline2 = value$2(flags, "values"), from = value$2(flags, "values-from");
-  ensure(inline2 === void 0 || from === void 0, "INVALID_INPUT", "Use either --values or --values-from.");
-  const data = from === void 0 ? parseJson(inline2 ?? "{}") : parseJson(new TextDecoder("utf-8", { fatal: true }).decode((await context.workspace.files.read(from)).bytes));
-  ensure(isRecord(data), "INVALID_INPUT", "Template values must be a JSON object.");
-  const bytes = services.templates.render(source2.bytes, { title: title2, values: data, date: value$2(flags, "date"), ...services.loaded.config.templates });
-  const path = `${value$2(flags, "out") ?? "notes"}/${title2}.md`;
-  const result = await context.workspace.write([{ path, bytes }]);
-  return { generator: "document", template: source2.path, ...result, ...context.workspace.dryRun ? { preview: [{ path, content: new TextDecoder().decode(bytes) }] } : {} };
-}
-function workflowCommands(services) {
-  const config2 = services.loaded.config;
-  return [
-    {
-      id: "config",
-      description: "Inspect the validated effective configuration and its source path.",
-      usage: "config",
-      ...discovery$1,
-      mutating: false,
-      errors: ["INVALID_CONFIG"],
-      run(args) {
-        arity(args, 0);
-        return { ...services.loaded, sections: services.configSections() };
-      }
-    },
-    {
-      id: "setup",
-      description: "Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.",
-      usage: "[--root project] setup [--dry-run]",
-      ...discovery$1,
-      mutating: true,
-      errors: ["INVALID_SETUP"],
-      run(args) {
-        arity(args, 0);
-        return services.setup();
-      }
-    },
-    {
-      id: "templates",
-      description: "Discover Markdown templates, required placeholders, and install the planning workflow pack.",
-      usage: "templates [list | inspect <template.md> | install [workflow]]",
-      scope: "workspace",
-      discovery: false,
-      mutating: true,
-      defaultAction: "list",
-      errors: ["INVALID_TEMPLATE", "INVALID_TEMPLATE_PACK", "NOT_FOUND", "CONFLICT"],
-      actions: {
-        list: { description: "List the editable Markdown templates in bin/templates.", mutating: false },
-        inspect: { description: "Report a template's required and optional values.", mutating: false },
-        install: { description: "Install the planning workflow template pack into bin/templates." }
-      },
-      args: [{ name: "action", description: "list (default), inspect or install.", enum: ["list", "inspect", "install"] }, { name: "target", description: "The template for inspect, or the pack (workflow) for install." }],
-      async run(args) {
-        const action2 = args[0] ?? "list";
-        if (action2 === "install") {
-          arity(args, 1, 2);
-          ensure(args[1] === void 0 || args[1] === "workflow", "INVALID_ARGUMENT", "The available template pack is workflow. Run templates install workflow.");
-          return services.installTemplates();
-        }
-        if (action2 === "list") {
-          arity(args, 0, 1);
-          const prefix = "bin/templates/";
-          return { directory: "bin/templates", templates: (await services.files.list()).filter((path2) => path2.startsWith(prefix) && path2.toLowerCase().endsWith(".md")).map((path2) => path2.slice(prefix.length)) };
-        }
-        ensure(action2 === "inspect", "INVALID_ARGUMENT", "Use templates list, templates inspect <template.md>, or templates install workflow.");
-        arity(args, 2);
-        ensure(args[1].toLowerCase().endsWith(".md"), "INVALID_TEMPLATE", "Use a Markdown template.");
-        const path = `bin/templates/${vaultPath(args[1])}`;
-        return { path, ...services.templates.inspect((await services.files.read(path)).bytes) };
-      }
-    },
-    {
-      id: "project",
-      description: "Manage TypeScript library projects and add tested domain/application components.",
-      usage: "project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]",
-      scope: "workspace",
-      discovery: false,
-      mutating: true,
-      defaultAction: "list",
-      errors: ["INVALID_PROJECT", "INVALID_PROJECT_NAME", "INVALID_PROJECT_CONTEXT", "PROJECT_EXISTS", "PROJECT_NOT_FOUND", "PROJECT_REQUIRED", "STALE_PROJECT_CONTEXT", "INVALID_NAME"],
-      actions: {
-        list: { description: "List managed projects.", mutating: false },
-        create: { description: "Create a self-contained TypeScript project." },
-        open: { description: "Select a project for file commands and generators." },
-        current: { description: "Report the selected project.", mutating: false },
-        close: { description: "Clear the project selection." },
-        inspect: { description: "Describe a project, or the selected one.", mutating: false },
-        component: { description: "Add a tested domain or application component to a project." }
-      },
-      args: [{ name: "action", description: "list (default), create, open, current, close, inspect or component.", enum: ["list", "create", "open", "current", "close", "inspect", "component"] }, { name: "target", description: "A project id, or the component name." }, { name: "name", description: "The component name when a project id precedes it." }],
-      options: { kind: option$1.string("Component kind for project component.", { enum: ["domain", "application"], default: "domain" }) },
-      async run(args, flags) {
-        const action2 = args[0] ?? "list";
-        if (action2 !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
-        if (action2 === "list") {
-          arity(args, 0, 1);
-          return { directory: config2.paths.projects, projects: await services.projects.list() };
-        }
-        if (action2 === "current") {
-          arity(args, 1);
-          return { project: await services.projects.current() };
-        }
-        if (action2 === "open") {
-          arity(args, 2);
-          return services.projects.open(args[1]);
-        }
-        if (action2 === "close") {
-          arity(args, 1);
-          return services.projects.close();
-        }
-        if (action2 === "inspect") {
-          arity(args, 1, 2);
-          return args[1] ? services.projects.inspect(args[1]) : services.projects.requireCurrent();
-        }
-        if (action2 === "create") {
-          arity(args, 2);
-          return services.projects.create(args[1]);
-        }
-        ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
-        arity(args, 2, 3);
-        const kind = value$2(flags, "kind") ?? "domain";
-        ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
-        const name2 = args.length === 3 ? args[1] : (await services.projects.requireCurrent()).name;
-        return services.projects.component(name2, args.length === 3 ? args[2] : args[1], kind);
-      }
-    }
-  ];
-}
-const libraryGenerationOptions = {
-  project: option$1.string("Generate into this project instead of the selected one."),
-  library: option$1.string("Definition library directory; defaults to the configured path."),
-  ...reviewOptions
-};
-function generationOutputPath(path, project2) {
-  const relative = vaultPath(path);
-  return project2 ? `${project2.directory}/${relative}` : relative;
-}
-function libraryMetadata(noun) {
-  const actions2 = {
-    list: { description: `List the ${noun} definitions in the library.`, mutating: false },
-    init: { description: `Create the library with starter ${noun} definitions.` },
-    inspect: { description: `Return one parsed ${noun} definition.`, mutating: false },
-    validate: { description: `Validate every ${noun} definition.`, mutating: false },
-    create: { description: `Create a new ${noun} definition.` },
-    import: { description: `Copy ${noun} definitions from the import directory into the library.` },
-    export: { description: `Copy the library's ${noun} definitions to the export directory.` }
-  };
-  const args = [
-    { name: "action", description: "list (default), init, inspect, validate, create, import or export.", enum: Object.keys(actions2) },
-    { name: "id", description: "The definition id for inspect and create." }
-  ];
-  return { scope: "workspace", discovery: false, mutating: true, defaultAction: "list", actions: actions2, args };
-}
-const libraryOptions = {
-  library: option$1.string("Library directory, relative to the workspace; defaults to the configured path."),
-  from: option$1.string("Import source directory for import."),
-  out: option$1.string("Export destination directory for export.")
-};
-const uiGenerationOptions = {
-  framework: option$1.string("UI target; defaults to ui.framework.", { enum: uiFrameworks }),
-  stories: option$1.boolean("Also generate Storybook stories (make ui)."),
-  "stories-out": option$1.string("Stories output directory; defaults to paths.stories."),
-  "interactions-library": option$1.string("Interaction library directory; defaults to paths.interactions.")
-};
-async function makeUi(kind, id2, flags, context, services) {
-  const config2 = services.loaded.config;
-  const framework = value$2(flags, "framework") ?? config2.ui.framework;
-  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `--framework must be one of: ${uiFrameworks.join(", ")}.`);
-  const storybook2 = kind === "stories" || flags.stories === true;
-  ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
-  ensure(kind !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
-  const scoped = (path) => generationOutputPath(path, context.project);
-  const directory = value$2(flags, "library") ?? config2.paths.components;
-  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
-  const options2 = {
-    component: id2,
-    framework,
-    interactionDirectory: value$2(flags, "interactions-library") ?? config2.paths.interactions,
-    outputDirectory: scoped(value$2(flags, "out") ?? config2.paths.ui),
-    ...storybook2 ? { storiesDirectory: scoped(value$2(flags, "stories-out") ?? config2.paths.stories) } : {},
-    storybook: storybook2,
-    storiesOnly: kind === "stories",
-    ...revisions ? { revisions } : {}
-  };
-  if (mode !== "generate") {
-    const result = mode === "check" ? await services.uiLibrary.check(directory, options2) : await services.uiLibrary.plan(directory, options2, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
-    return { generator: kind, library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+const uiVoidTags = new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
+const uiBooleanAttributes = new Set("allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected".split(" "));
+function uiBindingParts(value2) {
+  const parts = [];
+  let last = 0;
+  for (const match of value2.matchAll(/\{\{\s*((?:state\.)?[A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)) {
+    if (match.index > last) parts.push({ literal: value2.slice(last, match.index) });
+    parts.push({ prop: match[1] });
+    last = match.index + match[0].length;
   }
-  return { generator: kind, library: directory, ...await services.uiLibrary.generate(directory, options2) };
+  if (last < value2.length || !parts.length) parts.push({ literal: value2.slice(last) });
+  return parts;
 }
-function uiCommands(services) {
-  const config2 = services.loaded.config;
-  return [{
-    id: "components",
-    description: "Manage and validate a shared Markdown UI component library.",
-    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
-    ...libraryMetadata("component"),
-    options: { ...libraryOptions, tag: option$1.string("Root element tag for create.", { default: "div" }), "interactions-library": option$1.string("Interaction library directory used to validate component interactions.") },
-    errors: ["INVALID_UI", "INVALID_UI_LIBRARY", "DUPLICATE_UI_COMPONENT", "UNKNOWN_UI_COMPONENT", "CYCLIC_UI_COMPONENT", "UNKNOWN_INTERACTION", "CONFLICT"],
-    async run(args, flags) {
-      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? config2.paths.components;
-      const interactionDirectory = value$2(flags, "interactions-library") ?? config2.paths.interactions;
-      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
-      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
-      ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
-      const library = services.uiLibrary;
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        const definitions2 = await library.list(directory, interactionDirectory);
-        return { directory, count: definitions2.length, status: definitions2.length ? "ready" : "empty", ...!definitions2.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions2.map((definition2) => ({
-          id: definition2.id,
-          name: definition2.name,
-          sourcePath: definition2.sourcePath,
-          descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? "",
-          propNames: Object.keys(definition2.props).sort(),
-          dependencies: componentDependencies(definition2.root)
-        })) };
-      }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory, interactionDirectory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1], interactionDirectory);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return library.validate(directory, interactionDirectory);
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        return library.create(directory, args[1], value$2(flags, "tag") ?? "div", interactionDirectory);
-      }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value$2(flags, "from") ?? config2.paths.componentImports, directory, interactionDirectory);
-      }
-      ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
-      return library.export(directory, value$2(flags, "out") ?? config2.paths.componentExports, interactionDirectory);
+function uiBindings(value2) {
+  return typeof value2 === "string" ? uiBindingParts(value2).flatMap((part) => "prop" in part ? [part.prop] : []) : [];
+}
+function uiWholeBinding(value2) {
+  if (typeof value2 !== "string") return void 0;
+  const parts = uiBindingParts(value2);
+  return parts.length === 1 && "prop" in parts[0] ? parts[0].prop : void 0;
+}
+function uiHasMalformedBinding(value2) {
+  return typeof value2 === "string" && uiBindingParts(value2).some((part) => "literal" in part && /\{\{|\}\}/.test(part.literal));
+}
+function uiBindingSource(definition2, name2) {
+  const fields2 = name2.startsWith("state.") ? definition2.state ?? {} : definition2.props;
+  const key = name2.startsWith("state.") ? name2.slice(6) : name2;
+  return Object.hasOwn(fields2, key) ? fields2[key] : void 0;
+}
+function validateUiBindings(definition2, value2) {
+  for (const name2 of uiBindings(value2)) ensure(uiBindingSource(definition2, name2), "INVALID_UI", `${definition2.id} binds unknown field ${name2}.`);
+  ensure(!uiHasMalformedBinding(value2), "INVALID_UI", `${definition2.id} contains a malformed binding.`);
+}
+function interactionValues(interaction) {
+  return interaction.actions.flatMap((action2) => action2.type === "navigate" || action2.type === "upload-form" ? [action2.url] : action2.type === "save-form" ? [action2.key] : action2.type === "download-form" ? [action2.filename] : action2.type === "emit" ? Object.values(action2.detail ?? {}) : action2.type === "set-state" && "value" in action2 ? [action2.value] : []);
+}
+function interactionUsesState(interaction) {
+  return interaction.actions.some((action2) => action2.type === "set-state" || action2.type === "toggle-state") || interactionValues(interaction).some((value2) => uiBindings(value2).some((name2) => name2.startsWith("state.")));
+}
+function valueType(definition2, value2) {
+  validateUiBindings(definition2, value2);
+  const binding = uiWholeBinding(value2);
+  if (!binding) return typeof value2;
+  const source2 = uiBindingSource(definition2, binding);
+  ensure(source2.default !== void 0 || "required" in source2 && source2.required, "INVALID_UI", `${definition2.id} interaction cannot read optional field ${binding} without a default.`);
+  return source2.type;
+}
+function validateAttachment(definition2, node2, interaction) {
+  for (const action2 of interaction.actions) {
+    if (action2.type === "set-state" || action2.type === "toggle-state") {
+      const state2 = definition2.state?.[action2.state];
+      ensure(state2, "INVALID_UI", `${definition2.id} interaction ${interaction.id} requires state ${action2.state}.`);
+      if (action2.type === "toggle-state") ensure(state2.type === "boolean", "INVALID_UI", `Interaction ${interaction.id} can toggle only boolean state ${action2.state}.`);
+      else if ("fromEvent" in action2) {
+        ensure(["input", "change"].includes(interaction.event), "INVALID_UI", `Interaction ${interaction.id} reads form values only from input/change events.`);
+        ensure(action2.fromEvent === "checked" ? node2.tag === "input" : ["input", "select", "textarea"].includes(node2.tag), "INVALID_UI", `Interaction ${interaction.id} cannot read ${action2.fromEvent} from ${node2.tag}.`);
+        ensure(state2.type === (action2.fromEvent === "checked" ? "boolean" : "string"), "INVALID_UI", `Interaction ${interaction.id} ${action2.fromEvent} does not match state ${action2.state}.`);
+      } else ensure(valueType(definition2, action2.value) === state2.type, "INVALID_UI", `Interaction ${interaction.id} value does not match state ${action2.state}.`);
+    } else if (action2.type === "navigate" || action2.type === "upload-form") {
+      ensure(valueType(definition2, action2.url) === "string", "INVALID_UI", `Interaction ${interaction.id} navigation must resolve to a string.`);
+      if (!uiBindings(action2.url).length) ensure(isSafeNavigationUrl(action2.url), "INVALID_UI", `Interaction ${interaction.id} has an unsafe navigation URL.`);
+    } else if (action2.type === "save-form" || action2.type === "download-form") {
+      const value2 = action2.type === "save-form" ? action2.key : action2.filename;
+      ensure(valueType(definition2, value2) === "string", "INVALID_UI", `Interaction ${interaction.id} requires a string ${action2.type === "save-form" ? "storage key" : "filename"}.`);
+    } else {
+      ensure(!interactionTriggerEvents.has(action2.event), "INVALID_UI", `Interaction ${interaction.id} must emit a custom event, not native trigger ${action2.event}.`);
+      for (const value2 of Object.values(action2.detail ?? {})) valueType(definition2, value2);
     }
-  }];
-}
-const dataSourceGenerationOptions = { "test-data-out": option$1.string("Test-data output directory; defaults to paths.dataFixtures.") };
-async function makeDataSource(id2, flags, context, services) {
-  const config2 = services.loaded.config;
-  const scoped = (path) => generationOutputPath(path, context.project);
-  const directory = value$2(flags, "library") ?? config2.paths.dataSources;
-  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
-  const options2 = {
-    source: id2,
-    outputDirectory: scoped(value$2(flags, "out") ?? config2.paths.dataGenerated),
-    testDataDirectory: scoped(value$2(flags, "test-data-out") ?? config2.paths.dataFixtures),
-    ...revisions ? { revisions } : {}
-  };
-  if (mode !== "generate") {
-    const result = mode === "check" ? await services.dataSources.check(directory, options2) : await services.dataSources.plan(directory, options2, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
-    return { generator: "data-source", library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+    if (["save-form", "upload-form", "download-form"].includes(action2.type)) {
+      ensure(node2.tag === "form" && interaction.event === "submit" || ["button", "input"].includes(node2.tag) && interaction.event === "click", "INVALID_UI", `Interaction ${interaction.id} requires a form submit or an associated button/input click.`);
+    }
   }
-  return { generator: "data-source", library: directory, ...await services.dataSources.generate(directory, options2) };
 }
-function dataSourceCommands(services) {
-  const config2 = services.loaded.config;
-  return [{
-    id: "data-sources",
-    description: "Manage Markdown REST/local-JSON definitions for typed adapters and deterministic test data.",
-    usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
-    ...libraryMetadata("data-source"),
-    options: { ...libraryOptions, kind: option$1.string("Data-source kind for create.", { enum: ["rest", "json"], default: "rest" }) },
-    errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "CONFLICT"],
-    async run(args, flags) {
-      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? config2.paths.dataSources;
-      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
-      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
-      ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
-      const library = services.dataSources;
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        const definitions2 = await library.list(directory);
-        return {
-          directory,
-          count: definitions2.length,
-          status: definitions2.length ? "ready" : "empty",
-          ...!definitions2.length ? { nextStep: `Run data-sources init --library ${directory}, or add a Markdown data-source definition.` } : {},
-          sources: definitions2.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
-        };
+function validateUiInteractions(definitions2, interactions) {
+  validateInteractionLibrary(interactions);
+  const byId = new Map(interactions.map((interaction) => [interaction.id, interaction]));
+  for (const definition2 of definitions2) {
+    const walk = (node2) => {
+      if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
+        const interaction = byId.get(id2);
+        ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
+        validateAttachment(definition2, node2, interaction);
       }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory) };
-      }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1]);
-      }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return library.validate(directory);
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        const kind = value$2(flags, "kind") ?? "rest";
-        ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
-        return library.create(directory, args[1], kind);
-      }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value$2(flags, "from") ?? config2.paths.dataImports, directory);
-      }
-      ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
-      return library.export(directory, value$2(flags, "out") ?? config2.paths.dataExports);
-    }
-  }];
+      if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+    };
+    walk(definition2.root);
+  }
 }
-function libraryGenerators(services) {
-  const library = { projectOption: "project", options: { ...libraryGenerationOptions } };
-  return [
-    {
-      id: "document",
-      description: "Render an Obsidian Markdown/frontmatter template with typed values.",
-      usage: "make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]",
-      directory: "notes",
-      options: {
-        template: option$1.string("Markdown template under bin/templates.", { required: true }),
-        values: option$1.string("Template values as a JSON object."),
-        "values-from": option$1.string("Read template values from a JSON file."),
-        date: option$1.string("ISO date used for template dates; defaults to today.")
-      },
-      run: ({ name: name2, flags, context }) => makeDocument(name2, flags, context, services)
-    },
-    {
-      id: "ui",
-      description: "Generate deterministic UI code from Markdown component definitions.",
-      usage: "make ui <component-id> [--framework target] [--stories] [--project id] [--out directory]",
-      ...library,
-      options: { ...library.options, ...uiGenerationOptions },
-      run: ({ name: name2, flags, context }) => makeUi("ui", name2, flags, context, services)
-    },
-    {
-      id: "stories",
-      description: "Generate native Storybook CSF stories for existing UI components.",
-      usage: "make stories <component-id> [--framework target] [--project id] [--stories-out directory]",
-      ...library,
-      options: { ...library.options, ...uiGenerationOptions },
-      run: ({ name: name2, flags, context }) => makeUi("stories", name2, flags, context, services)
-    },
-    {
-      id: "data-source",
-      description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.",
-      usage: "make data-source <id> [--project id] [--out directory] [--test-data-out directory]",
-      ...library,
-      options: { ...library.options, ...dataSourceGenerationOptions },
-      run: ({ name: name2, flags, context }) => makeDataSource(name2, flags, context, services)
+function componentInteractionIds(definition2) {
+  const ids = /* @__PURE__ */ new Set();
+  const walk = (node2) => {
+    if ("tag" in node2) for (const id2 of node2.interactions ?? []) ids.add(id2);
+    if ("children" in node2) for (const child of node2.children ?? []) walk(child);
+  };
+  walk(definition2.root);
+  return [...ids].sort();
+}
+function checkValue(value2, type2, label2) {
+  ensure(typeof value2 === type2, "INVALID_UI", `${label2} must be ${type2}.`);
+}
+function validateUiLibrary(definitions2, interactions = []) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const definition2 of definitions2) {
+    ensure(!byId.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
+    byId.set(definition2.id, definition2);
+  }
+  const edges = /* @__PURE__ */ new Map();
+  for (const definition2 of definitions2) {
+    const references = /* @__PURE__ */ new Set();
+    edges.set(definition2.id, references);
+    let slots = 0;
+    const checkBinding = (value2) => validateUiBindings(definition2, value2);
+    const walk = (node2) => {
+      if ("slot" in node2) {
+        slots++;
+        ensure(slots <= 1, "INVALID_UI", `${definition2.id} may project its default child slot only once.`);
+        return;
+      }
+      if ("tag" in node2) {
+        if (node2.text !== void 0) checkBinding(node2.text);
+        for (const value2 of Object.values(node2.attrs ?? {})) checkBinding(value2);
+      } else {
+        const target = byId.get(node2.component);
+        ensure(target, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
+        references.add(node2.component);
+        for (const [name2, value2] of Object.entries(node2.props ?? {})) {
+          const targetProp = target.props[name2];
+          ensure(targetProp, "INVALID_UI", `${definition2.id} supplies unknown prop ${node2.component}.${name2}.`);
+          checkBinding(value2);
+          const binding = uiWholeBinding(value2);
+          if (binding) {
+            const source2 = uiBindingSource(definition2, binding);
+            ensure(source2.type === targetProp.type, "INVALID_UI", `Prop binding type differs for ${node2.component}.${name2}.`);
+            ensure(!targetProp.required || targetProp.default !== void 0 || "required" in source2 && source2.required || source2.default !== void 0, "INVALID_UI", `Optional prop ${definition2.id}.${binding} cannot satisfy required ${node2.component}.${name2}.`);
+          } else if (!uiBindings(value2).length) checkValue(value2, targetProp.type, `${node2.component}.${name2}`);
+          else ensure(targetProp.type === "string", "INVALID_UI", `Interpolated ${node2.component}.${name2} must be a string.`);
+        }
+        for (const [name2, prop2] of Object.entries(target.props)) ensure(!prop2.required || prop2.default !== void 0 || Object.hasOwn(node2.props ?? {}, name2), "INVALID_UI", `${definition2.id} must supply required prop ${node2.component}.${name2}.`);
+      }
+      for (const child of node2.children ?? []) walk(child);
+    };
+    walk(definition2.root);
+    for (const args of [definition2.storybook?.args, ...(definition2.storybook?.stories ?? []).map((story2) => story2.args)]) {
+      for (const [name2, value2] of Object.entries(args ?? {})) {
+        ensure(Object.hasOwn(definition2.props, name2), "INVALID_UI", `${definition2.id} story has unknown prop ${name2}.`);
+        checkValue(value2, definition2.props[name2].type, `${definition2.id} story prop ${name2}`);
+      }
     }
-  ];
+  }
+  const visited = /* @__PURE__ */ new Set(), active = /* @__PURE__ */ new Set();
+  const visit2 = (id2) => {
+    ensure(!active.has(id2), "CYCLIC_UI_COMPONENT", `Cyclic component reference involving ${id2}.`);
+    if (visited.has(id2)) return;
+    active.add(id2);
+    for (const child of edges.get(id2) ?? []) visit2(child);
+    active.delete(id2);
+    visited.add(id2);
+  };
+  for (const id2 of byId.keys()) visit2(id2);
+  validateUiInteractions(definitions2, interactions);
+}
+function componentDependencies(root) {
+  const dependencies2 = /* @__PURE__ */ new Set();
+  const visit2 = (node2) => {
+    if ("component" in node2) dependencies2.add(node2.component);
+    if ("children" in node2) for (const child of node2.children ?? []) visit2(child);
+  };
+  visit2(root);
+  return [...dependencies2].sort();
+}
+function selectUiComponents(definitions2, id2) {
+  const byId = new Map(definitions2.map((definition2) => [definition2.id, definition2]));
+  const selected2 = /* @__PURE__ */ new Set();
+  const select = (component) => {
+    if (selected2.has(component)) return;
+    const definition2 = byId.get(component);
+    ensure(definition2, "UNKNOWN_UI_COMPONENT", `Missing component ${component}.`);
+    selected2.add(component);
+    for (const dependency of componentDependencies(definition2.root)) select(dependency);
+  };
+  select(id2);
+  return definitions2.filter((definition2) => selected2.has(definition2.id));
+}
+class UiLibrary {
+  constructor(workspace2, codec, catalog, renderer2, interactionSource, interactionDirectory = "interactions") {
+    this.workspace = workspace2;
+    this.codec = codec;
+    this.catalog = catalog;
+    this.renderer = renderer2;
+    this.interactionSource = interactionSource;
+    this.interactionDirectory = interactionDirectory;
+  }
+  workspace;
+  codec;
+  catalog;
+  renderer;
+  interactionSource;
+  interactionDirectory;
+  async list(directory, interactionDirectory) {
+    const definitions2 = await this.discover(directory);
+    await this.validateDefinitions(definitions2, interactionDirectory);
+    return definitions2;
+  }
+  async inspect(directory, id2, interactionDirectory) {
+    const sources = await this.sources(directory);
+    await this.validateDefinitions(sources.map((source22) => source22.definition), interactionDirectory);
+    const source2 = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source2, "UNKNOWN_UI_COMPONENT", `No component ${id2} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
+  }
+  async validate(directory, interactionDirectory) {
+    const definitions2 = await this.list(directory, interactionDirectory);
+    return { directory, valid: true, status: definitions2.length ? "ready" : "empty", count: definitions2.length, components: definitions2.map((definition2) => definition2.id), ...!definitions2.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {} };
+  }
+  async create(directory, id2, tag = "div", interactionDirectory) {
+    vaultPath(directory);
+    const voidElement = uiVoidTags.has(tag);
+    const definition2 = { schemaVersion: 1, id: id2, sourcePath: `${directory}/${id2}.md`, description: `# ${id2}
+
+Describe this component.
+`, props: {}, root: { tag, ...!voidElement ? { children: [{ slot: "children" }] } : {} } };
+    const bytes = this.codec.serialize(definition2);
+    await this.validateDefinitions([...await this.discover(directory), this.codec.parse(bytes, definition2.sourcePath)], interactionDirectory);
+    return { component: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory, interactionDirectory) {
+    vaultPath(directory);
+    const existing = await this.discover(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = this.catalog.filter((definition2) => !ids.has(definition2.id));
+    await this.validateDefinitions([...existing, ...additions], interactionDirectory);
+    const plan = additions.map((definition2) => ({ path: `${directory}/${definition2.id}.md`, bytes: this.codec.serialize(definition2) }));
+    return { components: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory, interactionDirectory) {
+    vaultPath(sourceDirectory);
+    vaultPath(directory);
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory), imported = sources.map((source2) => source2.definition), existing = await this.discover(directory);
+    ensure(imported.length, "EMPTY_UI_LIBRARY", `No component definitions in ${sourceDirectory}.`);
+    await this.validateDefinitions([...existing, ...imported], interactionDirectory);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { components: imported.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory, interactionDirectory) {
+    vaultPath(directory);
+    vaultPath(outputDirectory);
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
+    const interactions = await this.interactions(interactionDirectory);
+    validateUiLibrary(definitions2, interactions);
+    validateUiLibrary([...await this.discover(outputDirectory), ...definitions2], interactions);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { components: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async generate(directory, options2) {
+    return { framework: options2.framework, ...await new GenerationService(this.workspace).commit(await this.render(directory, options2), options2.revisions) };
+  }
+  async plan(directory, options2, manifestPath2) {
+    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Planning does not accept regeneration revisions.");
+    return { framework: options2.framework, ...await new GenerationService(this.workspace).plan(await this.render(directory, options2), manifestPath2) };
+  }
+  async check(directory, options2) {
+    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
+    return { framework: options2.framework, ...await new GenerationService(this.workspace).check(await this.render(directory, options2), "UI_DRIFT") };
+  }
+  async render(directory, options2) {
+    ensure(this.renderer, "UI_RENDERER_UNAVAILABLE", "No UI renderer is configured.");
+    ensure(uiFrameworks.includes(options2.framework), "INVALID_UI_FRAMEWORK", `Unknown framework ${options2.framework}.`);
+    vaultPath(options2.outputDirectory);
+    if (options2.storiesDirectory) vaultPath(options2.storiesDirectory);
+    ensure(!(options2.storybook || options2.storiesOnly) || options2.storiesDirectory, "INVALID_UI", "Storybook generation requires a stories directory.");
+    const interactions = await this.interactions(options2.interactionDirectory);
+    let definitions2 = await this.discover(directory);
+    validateUiLibrary(definitions2, interactions);
+    ensure(definitions2.length, "EMPTY_UI_LIBRARY", `No component definitions in ${directory}. Run components init --library ${directory}, or add a Markdown component definition.`);
+    if (options2.component) ensure(definitions2.some((definition2) => definition2.id === options2.component), "UNKNOWN_UI_COMPONENT", `No component ${options2.component} in ${directory}. Run components list --library ${directory} to discover component IDs.`);
+    if (options2.component) definitions2 = selectUiComponents(definitions2, options2.component);
+    for (const definition2 of definitions2) if ((options2.storybook || options2.storiesOnly) && definition2.storybook?.extension) {
+      try {
+        await this.workspace.files.read(definition2.storybook.extension);
+      } catch (error2) {
+        if (error2 instanceof AppError && error2.code === "NOT_FOUND") throw forgeError("INVALID_UI", `Missing Storybook extension ${definition2.storybook.extension}.`);
+        throw error2;
+      }
+    }
+    const ids = new Set(definitions2.flatMap(componentInteractionIds));
+    const renderOptions = { ...options2, interactions: interactions.filter((interaction) => ids.has(interaction.id)) };
+    if (options2.storiesOnly) {
+      ensure(this.renderer.componentPaths, "UI_RENDERER_UNAVAILABLE", "Standalone stories require a renderer with component artifact paths.");
+      for (const path of this.renderer.componentPaths(definitions2, renderOptions)) await this.workspace.files.read(path);
+    }
+    return this.renderer.generate(definitions2, renderOptions);
+  }
+  async interactions(directory = this.interactionDirectory) {
+    vaultPath(directory);
+    return this.interactionSource ? this.interactionSource.list(directory) : [];
+  }
+  async validateDefinitions(definitions2, interactionDirectory) {
+    validateUiLibrary(definitions2, await this.interactions(interactionDirectory));
+  }
+  async discover(directory) {
+    return (await this.sources(directory)).map((source2) => source2.definition);
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths2 = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths2.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+const defaultInteractionIds = ["toggle-expanded", "input-value", "save", "upload", "download"];
+function starterInteraction(directory, id2, event) {
+  const base = { schemaVersion: 1, id: id2, sourcePath: `${directory}/${id2}.md` };
+  if (id2 === "save") return {
+    ...base,
+    event: event ?? "submit",
+    preventDefault: true,
+    actions: [{ type: "save-form", key: "forge-form" }],
+    description: "# Save form locally\n\nAttach to a form submit. Stores named fields as JSON in this browser origin's localStorage under forge-form. Change key to namespace drafts. File fields store metadata, not file contents. Listen for forge:save or forge:interaction-error.\n"
+  };
+  if (id2 === "upload") return {
+    ...base,
+    event: event ?? "submit",
+    preventDefault: true,
+    actions: [{ type: "upload-form", url: "{{uploadUrl}}" }],
+    description: "# Upload form\n\nAttach to a form submit and declare a required string uploadUrl component prop pointing to your endpoint. POSTs FormData including file bytes; no endpoint is invented. Listen for forge:upload or forge:interaction-error.\n"
+  };
+  if (id2 === "download") return {
+    ...base,
+    event: event ?? "click",
+    preventDefault: true,
+    actions: [{ type: "download-form", filename: "form-data.json" }],
+    description: "# Download form JSON\n\nAttach to a button associated with a form. Downloads named fields as form-data.json; repeated names become arrays and file fields include metadata only. Listen for forge:download or forge:interaction-error.\n"
+  };
+  const selected2 = event ?? (id2 === "input-value" ? "input" : "click");
+  const input = selected2 === "input" || selected2 === "change";
+  return {
+    ...base,
+    event: selected2,
+    description: `# ${id2}
+
+${input ? "Copies the input value into string state named value." : "Toggles boolean state named expanded."} Declare that state on each consuming component.
+`,
+    actions: input ? [{ type: "set-state", state: "value", fromEvent: "value" }] : [{ type: "toggle-state", state: "expanded" }]
+  };
+}
+class InteractionLibrary {
+  constructor(workspace2, codec) {
+    this.workspace = workspace2;
+    this.codec = codec;
+  }
+  workspace;
+  codec;
+  async list(directory) {
+    const definitions2 = (await this.sources(directory)).map((source2) => source2.definition);
+    validateInteractionLibrary(definitions2);
+    return definitions2;
+  }
+  async inspect(directory, id2) {
+    const sources = await this.sources(directory);
+    validateInteractionLibrary(sources.map((source22) => source22.definition));
+    const source2 = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source2, "UNKNOWN_INTERACTION", `No interaction ${id2} in ${directory}. Run interactions list --library ${directory}.`);
+    return { ...source2.definition, revision: source2.revision, bytes: source2.bytes.length };
+  }
+  async validate(directory) {
+    const definitions2 = await this.list(directory);
+    return {
+      directory,
+      valid: true,
+      status: definitions2.length ? "ready" : "empty",
+      count: definitions2.length,
+      interactions: definitions2.map((definition2) => definition2.id),
+      ...!definitions2.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {}
+    };
+  }
+  async create(directory, id2, event) {
+    vaultPath(directory);
+    const definition2 = starterInteraction(directory, id2, event), bytes = this.codec.serialize(definition2);
+    validateInteractionLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
+    return { interaction: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory) {
+    vaultPath(directory);
+    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = defaultInteractionIds.map((id2) => starterInteraction(directory, id2)).filter((definition2) => !ids.has(definition2.id));
+    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
+    return { interactions: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory) {
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory);
+    ensure(sources.length, "EMPTY_INTERACTION_LIBRARY", `No interaction definitions in ${sourceDirectory}.`);
+    validateInteractionLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { interactions: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory) {
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
+    validateInteractionLibrary([...await this.list(outputDirectory), ...definitions2]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { interactions: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths2 = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths2.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+const defaults$2 = {
+  framework: "html",
+  components: "components",
+  componentImports: "imports/components",
+  componentExports: "exports/components",
+  interactions: "interactions",
+  interactionImports: "imports/interactions",
+  interactionExports: "exports/interactions",
+  output: "src/ui",
+  stories: "stories"
+};
+const descriptions$1 = {
+  components: "Workspace-relative component library folder.",
+  componentImports: "Workspace-relative folder that components import copies definitions from.",
+  componentExports: "Workspace-relative folder that components export copies definitions to.",
+  interactions: "Workspace-relative interaction library folder.",
+  interactionImports: "Workspace-relative folder that interactions import copies definitions from.",
+  interactionExports: "Workspace-relative folder that interactions export copies definitions to.",
+  output: "Generated UI folder, relative to the output project (or the workspace without one).",
+  stories: "Generated Storybook story folder, relative to the output project (or the workspace without one)."
+};
+const paths$2 = Object.keys(descriptions$1);
+const uiSettingsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    framework: { type: "string", enum: [...uiFrameworks], default: defaults$2.framework, description: "Default UI target of make ui and make stories." },
+    ...Object.fromEntries(paths$2.map((key) => [key, { type: "string", minLength: 1, default: defaults$2[key], description: descriptions$1[key] }]))
+  }
+};
+const uiSettingsIssues = (settings2) => relativePathIssues("ui", settings2, paths$2);
+function uiSettings(section2) {
+  const value2 = { ...defaults$2, ...section2 };
+  return { ...defaults$2, framework: value2.framework, ...Object.fromEntries(paths$2.map((key) => [key, relativePathSetting(value2[key])])) };
 }
 function getEnumValues(entries2) {
   const numericValues = Object.values(entries2).filter((v) => typeof v === "number");
@@ -42202,9 +42149,9 @@ const _safeParse = (_Err) => (schema2, value2, _ctx) => {
   if (result instanceof Promise) {
     throw new $ZodAsyncError();
   }
-  return result.issues.length ? failure(_Err, result.issues, ctx) : { success: true, data: result.value };
+  return result.issues.length ? failure$1(_Err, result.issues, ctx) : { success: true, data: result.value };
 };
-function failure(Err, issues, ctx) {
+function failure$1(Err, issues, ctx) {
   let error2;
   return {
     success: false,
@@ -42228,7 +42175,7 @@ const _safeParseAsync = (_Err) => async (schema2, value2, _ctx) => {
   let result = schema2._zod.run({ value: value2, issues: [] }, ctx);
   if (result instanceof Promise)
     result = await result;
-  return result.issues.length ? failure(_Err, result.issues, ctx) : { success: true, data: result.value };
+  return result.issues.length ? failure$1(_Err, result.issues, ctx) : { success: true, data: result.value };
 };
 const COMPILE_INVALID = /* @__PURE__ */ Symbol.for("zod.compile.invalid");
 const COMPILE_FALLBACK = /* @__PURE__ */ Symbol.for("zod.compile.fallback");
@@ -42360,7 +42307,7 @@ function datetime(args) {
 }
 const anyString = /^[\s\S]{0,}$/;
 const integer = /^-?\d+$/;
-const number$1 = /^-?\d+(?:\.\d+)?$/;
+const number$2 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
 const _null$2 = /^null$/i;
 const lowercase = /^[^A-Z]*$/;
@@ -43217,7 +43164,7 @@ const $ZodJWT = /* @__PURE__ */ $constructor("$ZodJWT", (inst, def) => {
 });
 const $ZodNumber = /* @__PURE__ */ $constructor("$ZodNumber", (inst, def) => {
   $ZodType.init(inst, def);
-  inst._zod.pattern = number$1;
+  inst._zod.pattern = number$2;
   inst._zod.parse = (payload2, _ctx) => {
     if (def.coerce)
       try {
@@ -43919,7 +43866,7 @@ const $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
         if (keyResult instanceof Promise) {
           throw new Error("Async schemas not supported in object keys currently");
         }
-        const checkNumericKey = typeof key === "string" && number$1.test(key) && keyResult.issues.length;
+        const checkNumericKey = typeof key === "string" && number$2.test(key) && keyResult.issues.length;
         if (checkNumericKey) {
           const retryResult = def.keyType._zod.run({ value: Number(key), issues: [] }, ctx);
           if (retryResult instanceof Promise) {
@@ -44570,7 +44517,7 @@ function isBackEdge(ctx, value2) {
   const backEdges = ctx[STATE]?.backEdges;
   return backEdges !== void 0 && isRef(value2) && backEdges.has(value2);
 }
-const error = () => {
+const error$1 = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
     file: { unit: "bytes", verb: "to have" },
@@ -44690,7 +44637,7 @@ const error = () => {
 };
 function en() {
   return {
-    localeError: error()
+    localeError: error$1()
   };
 }
 var _a;
@@ -46156,7 +46103,7 @@ function stringifyKeyNames(bySchema, json2, visited) {
     return rest;
   rest.type = "string";
   if (!values2)
-    rest.pattern = (types2.includes("number") ? number$1 : integer).source;
+    rest.pattern = (types2.includes("number") ? number$2 : integer).source;
   return rest;
 }
 const pendingRecords = /* @__PURE__ */ new WeakMap();
@@ -46870,7 +46817,7 @@ const ZodNumber = /* @__PURE__ */ $constructor(
     }
   })
 );
-function number(params) {
+function number$1(params) {
   return /* @__PURE__ */ _number(ZodNumber, params);
 }
 const ZodNumberFormat = /* @__PURE__ */ $constructor("ZodNumberFormat", (inst, def) => {
@@ -47296,1075 +47243,10 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
   return /* @__PURE__ */ _superRefine(fn, params);
 }
-const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
-  try {
-    vaultPath(value2);
-    return true;
-  } catch {
-    return false;
-  }
-}, "Must be a contained workspace-relative path.");
-const pluginIds = array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
-const configSchema = strictObject({
-  schemaVersion: literal$1(1).default(1),
-  paths: strictObject({
-    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
-    components: relativePath$1.default("components"),
-    ui: relativePath$1.default("src/ui"),
-    stories: relativePath$1.default("stories"),
-    componentImports: relativePath$1.default("imports/components"),
-    componentExports: relativePath$1.default("exports/components"),
-    interactions: relativePath$1.default("interactions"),
-    interactionImports: relativePath$1.default("imports/interactions"),
-    interactionExports: relativePath$1.default("exports/interactions"),
-    dataSources: relativePath$1.default("data-sources"),
-    dataGenerated: relativePath$1.default("src/data-sources"),
-    dataFixtures: relativePath$1.default("test-data"),
-    dataImports: relativePath$1.default("imports/data-sources"),
-    dataExports: relativePath$1.default("exports/data-sources")
-  }).prefault({}),
-  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
-  templates: strictObject({ dateFormat: string$1().min(1).default("YYYY-MM-DD"), timeFormat: string$1().min(1).default("HH:mm") }).prefault({}),
-  // Plugin sections are validated against the schemas that registered plugins declare once they load.
-  plugins: strictObject({
-    enabled: pluginIds,
-    disabled: pluginIds,
-    settings: record$1(string$1().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
-  }).prefault({}),
-  ui: strictObject({ framework: _enum(["html", "htmx", "vanilla", "vue", "svelte", "react", "angular"]).default("html") }).prefault({})
-});
-async function loadConfig(options2) {
-  const root = options2.root !== void 0 ? minpath.resolve(options2.cwd, options2.root) : minpath.resolve(minpath.dirname(options2.defaultPath), "..");
-  const path = minpath.resolve(root, "bin/config.json");
-  let content2;
-  let exists2 = true;
-  try {
-    content2 = JSON.parse(await promises$1.readFile(path, "utf8"));
-  } catch (error2) {
-    if (error2.code === "ENOENT") {
-      content2 = {};
-      exists2 = false;
-    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`);
-  }
-  const parsed2 = configSchema.safeParse(content2);
-  if (!parsed2.success) throw forgeError("INVALID_CONFIG", parsed2.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
-  const config2 = parsed2.data;
-  return { path: exists2 ? path : null, root, config: config2 };
-}
-var dayjs_min$1 = { exports: {} };
-var dayjs_min = dayjs_min$1.exports;
-var hasRequiredDayjs_min;
-function requireDayjs_min() {
-  if (hasRequiredDayjs_min) return dayjs_min$1.exports;
-  hasRequiredDayjs_min = 1;
-  (function(module, exports) {
-    !(function(t, e) {
-      module.exports = e();
-    })(dayjs_min, (function() {
-      var t = 1e3, e = 6e4, n = 36e5, r = "millisecond", i = "second", s = "minute", u = "hour", a = "day", o = "week", c = "month", f = "quarter", h = "year", d = "date", l = "Invalid Date", $2 = /^(\d{4})[-/]?(\d{1,2})?[-/]?(\d{0,2})[Tt\s]*(\d{1,2})?:?(\d{1,2})?:?(\d{1,2})?[.:]?(\d+)?$/, y = /\[([^\]]+)]|YYYY|YY|M{1,4}|D{1,2}|d{1,4}|H{1,2}|h{1,2}|a|A|m{1,2}|s{1,2}|Z{1,2}|SSS/g, M = { name: "en", weekdays: "Sunday_Monday_Tuesday_Wednesday_Thursday_Friday_Saturday".split("_"), months: "January_February_March_April_May_June_July_August_September_October_November_December".split("_"), ordinal: function(t2) {
-        var e2 = ["th", "st", "nd", "rd"], n2 = t2 % 100;
-        return "[" + t2 + (e2[(n2 - 20) % 10] || e2[n2] || e2[0]) + "]";
-      } }, m = function(t2, e2, n2) {
-        var r2 = String(t2);
-        return !r2 || r2.length >= e2 ? t2 : "" + Array(e2 + 1 - r2.length).join(n2) + t2;
-      }, v = { s: m, z: function(t2) {
-        var e2 = -t2.utcOffset(), n2 = Math.abs(e2), r2 = Math.floor(n2 / 60), i2 = n2 % 60;
-        return (e2 <= 0 ? "+" : "-") + m(r2, 2, "0") + ":" + m(i2, 2, "0");
-      }, m: function t2(e2, n2) {
-        if (e2.date() < n2.date()) return -t2(n2, e2);
-        var r2 = 12 * (n2.year() - e2.year()) + (n2.month() - e2.month()), i2 = e2.clone().add(r2, c), s2 = n2 - i2 < 0, u2 = e2.clone().add(r2 + (s2 ? -1 : 1), c);
-        return +(-(r2 + (n2 - i2) / (s2 ? i2 - u2 : u2 - i2)) || 0);
-      }, a: function(t2) {
-        return t2 < 0 ? Math.ceil(t2) || 0 : Math.floor(t2);
-      }, p: function(t2) {
-        return { M: c, y: h, w: o, d: a, D: d, h: u, m: s, s: i, ms: r, Q: f }[t2] || String(t2 || "").toLowerCase().replace(/s$/, "");
-      }, u: function(t2) {
-        return void 0 === t2;
-      } }, g = "en", D = {};
-      D[g] = M;
-      var p = "$isDayjsObject", S = function(t2) {
-        return t2 instanceof _ || !(!t2 || !t2[p]);
-      }, w = function t2(e2, n2, r2) {
-        var i2;
-        if (!e2) return g;
-        if ("string" == typeof e2) {
-          var s2 = e2.toLowerCase();
-          D[s2] && (i2 = s2), n2 && (D[s2] = n2, i2 = s2);
-          var u2 = e2.split("-");
-          if (!i2 && u2.length > 1) return t2(u2[0]);
-        } else {
-          var a2 = e2.name;
-          D[a2] = e2, i2 = a2;
-        }
-        return !r2 && i2 && (g = i2), i2 || !r2 && g;
-      }, O = function(t2, e2) {
-        if (S(t2)) return t2.clone();
-        var n2 = "object" == typeof e2 ? e2 : {};
-        return n2.date = t2, n2.args = arguments, new _(n2);
-      }, b = v;
-      b.l = w, b.i = S, b.w = function(t2, e2) {
-        return O(t2, { locale: e2.$L, utc: e2.$u, x: e2.$x, $offset: e2.$offset });
-      };
-      var _ = (function() {
-        function M2(t2) {
-          this.$L = w(t2.locale, null, true), this.parse(t2), this.$x = this.$x || t2.x || {}, this[p] = true;
-        }
-        var m2 = M2.prototype;
-        return m2.parse = function(t2) {
-          this.$d = (function(t3) {
-            var e2 = t3.date, n2 = t3.utc;
-            if (null === e2) return /* @__PURE__ */ new Date(NaN);
-            if (b.u(e2)) return /* @__PURE__ */ new Date();
-            if (e2 instanceof Date) return new Date(e2);
-            if ("string" == typeof e2 && !/Z$/i.test(e2)) {
-              var r2 = e2.match($2);
-              if (r2) {
-                var i2 = r2[2] - 1 || 0, s2 = (r2[7] || "0").substring(0, 3);
-                return n2 ? new Date(Date.UTC(r2[1], i2, r2[3] || 1, r2[4] || 0, r2[5] || 0, r2[6] || 0, s2)) : new Date(r2[1], i2, r2[3] || 1, r2[4] || 0, r2[5] || 0, r2[6] || 0, s2);
-              }
-            }
-            return new Date(e2);
-          })(t2), this.init();
-        }, m2.init = function() {
-          var t2 = this.$d;
-          this.$y = t2.getFullYear(), this.$M = t2.getMonth(), this.$D = t2.getDate(), this.$W = t2.getDay(), this.$H = t2.getHours(), this.$m = t2.getMinutes(), this.$s = t2.getSeconds(), this.$ms = t2.getMilliseconds();
-        }, m2.$utils = function() {
-          return b;
-        }, m2.isValid = function() {
-          return !(this.$d.toString() === l);
-        }, m2.isSame = function(t2, e2) {
-          var n2 = O(t2);
-          return this.startOf(e2) <= n2 && n2 <= this.endOf(e2);
-        }, m2.isAfter = function(t2, e2) {
-          return O(t2) < this.startOf(e2);
-        }, m2.isBefore = function(t2, e2) {
-          return this.endOf(e2) < O(t2);
-        }, m2.$g = function(t2, e2, n2) {
-          return b.u(t2) ? this[e2] : this.set(n2, t2);
-        }, m2.unix = function() {
-          return Math.floor(this.valueOf() / 1e3);
-        }, m2.valueOf = function() {
-          return this.$d.getTime();
-        }, m2.startOf = function(t2, e2) {
-          var n2 = this, r2 = !!b.u(e2) || e2, f2 = b.p(t2), l2 = function(t3, e3) {
-            var i2 = b.w(n2.$u ? Date.UTC(n2.$y, e3, t3) : new Date(n2.$y, e3, t3), n2);
-            return r2 ? i2 : i2.endOf(a);
-          }, $3 = function(t3, e3) {
-            return b.w(n2.toDate()[t3].apply(n2.toDate("s"), (r2 ? [0, 0, 0, 0] : [23, 59, 59, 999]).slice(e3)), n2);
-          }, y2 = this.$W, M3 = this.$M, m3 = this.$D, v2 = "set" + (this.$u ? "UTC" : "");
-          switch (f2) {
-            case h:
-              return r2 ? l2(1, 0) : l2(31, 11);
-            case c:
-              return r2 ? l2(1, M3) : l2(0, M3 + 1);
-            case o:
-              var g2 = this.$locale().weekStart || 0, D2 = (y2 < g2 ? y2 + 7 : y2) - g2;
-              return l2(r2 ? m3 - D2 : m3 + (6 - D2), M3);
-            case a:
-            case d:
-              return $3(v2 + "Hours", 0);
-            case u:
-              return $3(v2 + "Minutes", 1);
-            case s:
-              return $3(v2 + "Seconds", 2);
-            case i:
-              return $3(v2 + "Milliseconds", 3);
-            default:
-              return this.clone();
-          }
-        }, m2.endOf = function(t2) {
-          return this.startOf(t2, false);
-        }, m2.$set = function(t2, e2) {
-          var n2, o2 = b.p(t2), f2 = "set" + (this.$u ? "UTC" : ""), l2 = (n2 = {}, n2[a] = f2 + "Date", n2[d] = f2 + "Date", n2[c] = f2 + "Month", n2[h] = f2 + "FullYear", n2[u] = f2 + "Hours", n2[s] = f2 + "Minutes", n2[i] = f2 + "Seconds", n2[r] = f2 + "Milliseconds", n2)[o2], $3 = o2 === a ? this.$D + (e2 - this.$W) : e2;
-          if (o2 === c || o2 === h) {
-            var y2 = this.clone().set(d, 1);
-            y2.$d[l2]($3), y2.init(), this.$d = y2.set(d, Math.min(this.$D, y2.daysInMonth())).$d;
-          } else l2 && this.$d[l2]($3);
-          return this.init(), this;
-        }, m2.set = function(t2, e2) {
-          return this.clone().$set(t2, e2);
-        }, m2.get = function(t2) {
-          return this[b.p(t2)]();
-        }, m2.add = function(r2, f2) {
-          var d2, l2 = this;
-          r2 = Number(r2);
-          var $3 = b.p(f2), y2 = function(t2) {
-            var e2 = O(l2);
-            return b.w(e2.date(e2.date() + Math.round(t2 * r2)), l2);
-          };
-          if ($3 === c) return this.set(c, this.$M + r2);
-          if ($3 === h) return this.set(h, this.$y + r2);
-          if ($3 === a) return y2(1);
-          if ($3 === o) return y2(7);
-          var M3 = (d2 = {}, d2[s] = e, d2[u] = n, d2[i] = t, d2)[$3] || 1, m3 = this.$d.getTime() + r2 * M3;
-          return b.w(m3, this);
-        }, m2.subtract = function(t2, e2) {
-          return this.add(-1 * t2, e2);
-        }, m2.format = function(t2) {
-          var e2 = this, n2 = this.$locale();
-          if (!this.isValid()) return n2.invalidDate || l;
-          var r2 = t2 || "YYYY-MM-DDTHH:mm:ssZ", i2 = b.z(this), s2 = this.$H, u2 = this.$m, a2 = this.$M, o2 = n2.weekdays, c2 = n2.months, f2 = n2.meridiem, h2 = function(t3, n3, i3, s3) {
-            return t3 && (t3[n3] || t3(e2, r2)) || i3[n3].slice(0, s3);
-          }, d2 = function(t3) {
-            return b.s(s2 % 12 || 12, t3, "0");
-          }, $3 = f2 || function(t3, e3, n3) {
-            var r3 = t3 < 12 ? "AM" : "PM";
-            return n3 ? r3.toLowerCase() : r3;
-          };
-          return r2.replace(y, (function(t3, r3) {
-            return r3 || (function(t4) {
-              switch (t4) {
-                case "YY":
-                  return String(e2.$y).slice(-2);
-                case "YYYY":
-                  return b.s(e2.$y, 4, "0");
-                case "M":
-                  return a2 + 1;
-                case "MM":
-                  return b.s(a2 + 1, 2, "0");
-                case "MMM":
-                  return h2(n2.monthsShort, a2, c2, 3);
-                case "MMMM":
-                  return h2(c2, a2);
-                case "D":
-                  return e2.$D;
-                case "DD":
-                  return b.s(e2.$D, 2, "0");
-                case "d":
-                  return String(e2.$W);
-                case "dd":
-                  return h2(n2.weekdaysMin, e2.$W, o2, 2);
-                case "ddd":
-                  return h2(n2.weekdaysShort, e2.$W, o2, 3);
-                case "dddd":
-                  return o2[e2.$W];
-                case "H":
-                  return String(s2);
-                case "HH":
-                  return b.s(s2, 2, "0");
-                case "h":
-                  return d2(1);
-                case "hh":
-                  return d2(2);
-                case "a":
-                  return $3(s2, u2, true);
-                case "A":
-                  return $3(s2, u2, false);
-                case "m":
-                  return String(u2);
-                case "mm":
-                  return b.s(u2, 2, "0");
-                case "s":
-                  return String(e2.$s);
-                case "ss":
-                  return b.s(e2.$s, 2, "0");
-                case "SSS":
-                  return b.s(e2.$ms, 3, "0");
-                case "Z":
-                  return i2;
-              }
-              return null;
-            })(t3) || i2.replace(":", "");
-          }));
-        }, m2.utcOffset = function() {
-          return 15 * -Math.round(this.$d.getTimezoneOffset() / 15);
-        }, m2.diff = function(r2, d2, l2) {
-          var $3, y2 = this, M3 = b.p(d2), m3 = O(r2), v2 = (m3.utcOffset() - this.utcOffset()) * e, g2 = this - m3, D2 = function() {
-            return b.m(y2, m3);
-          };
-          switch (M3) {
-            case h:
-              $3 = D2() / 12;
-              break;
-            case c:
-              $3 = D2();
-              break;
-            case f:
-              $3 = D2() / 3;
-              break;
-            case o:
-              $3 = (g2 - v2) / 6048e5;
-              break;
-            case a:
-              $3 = (g2 - v2) / 864e5;
-              break;
-            case u:
-              $3 = g2 / n;
-              break;
-            case s:
-              $3 = g2 / e;
-              break;
-            case i:
-              $3 = g2 / t;
-              break;
-            default:
-              $3 = g2;
-          }
-          return l2 ? $3 : b.a($3);
-        }, m2.daysInMonth = function() {
-          return this.endOf(c).$D;
-        }, m2.$locale = function() {
-          return D[this.$L];
-        }, m2.locale = function(t2, e2) {
-          if (!t2) return this.$L;
-          var n2 = this.clone(), r2 = w(t2, e2, true);
-          return r2 && (n2.$L = r2), n2;
-        }, m2.clone = function() {
-          return b.w(this.$d, this);
-        }, m2.toDate = function() {
-          return new Date(this.valueOf());
-        }, m2.toJSON = function() {
-          return this.isValid() ? this.toISOString() : null;
-        }, m2.toISOString = function() {
-          return this.$d.toISOString();
-        }, m2.toString = function() {
-          return this.$d.toUTCString();
-        }, M2;
-      })(), Y = _.prototype;
-      return O.prototype = Y, [["$ms", r], ["$s", i], ["$m", s], ["$H", u], ["$W", a], ["$M", c], ["$y", h], ["$D", d]].forEach((function(t2) {
-        Y[t2[1]] = function(e2) {
-          return this.$g(e2, t2[0], t2[1]);
-        };
-      })), O.extend = function(t2, e2) {
-        return t2.$i || (t2(e2, _, O), t2.$i = true), O;
-      }, O.locale = w, O.isDayjs = S, O.unix = function(t2) {
-        return O(1e3 * t2);
-      }, O.en = D[g], O.Ls = D, O.p = {}, O;
-    }));
-  })(dayjs_min$1);
-  return dayjs_min$1.exports;
-}
-var dayjs_minExports = requireDayjs_min();
-const dayjs = /* @__PURE__ */ getDefaultExportFromCjs(dayjs_minExports);
-var utc$2 = { exports: {} };
-var utc$1 = utc$2.exports;
-var hasRequiredUtc;
-function requireUtc() {
-  if (hasRequiredUtc) return utc$2.exports;
-  hasRequiredUtc = 1;
-  (function(module, exports) {
-    !(function(t, i) {
-      module.exports = i();
-    })(utc$1, (function() {
-      var t = "minute", i = /[+-]\d\d(?::?\d\d)?/g, e = /([+-]|\d\d)/g;
-      return function(s, f, n) {
-        var u = f.prototype;
-        n.utc = function(t2) {
-          var i2 = { date: t2, utc: true, args: arguments };
-          return new f(i2);
-        }, u.utc = function(i2) {
-          var e2 = n(this.toDate(), { locale: this.$L, utc: true });
-          return i2 ? e2.add(this.utcOffset(), t) : e2;
-        }, u.local = function() {
-          return n(this.toDate(), { locale: this.$L, utc: false });
-        };
-        var r = u.parse;
-        u.parse = function(t2) {
-          t2.utc && (this.$u = true), this.$utils().u(t2.$offset) || (this.$offset = t2.$offset), r.call(this, t2);
-        };
-        var o = u.init;
-        u.init = function() {
-          if (this.$u) {
-            var t2 = this.$d;
-            this.$y = t2.getUTCFullYear(), this.$M = t2.getUTCMonth(), this.$D = t2.getUTCDate(), this.$W = t2.getUTCDay(), this.$H = t2.getUTCHours(), this.$m = t2.getUTCMinutes(), this.$s = t2.getUTCSeconds(), this.$ms = t2.getUTCMilliseconds();
-          } else o.call(this);
-        };
-        var a = u.utcOffset;
-        u.utcOffset = function(s2, f2) {
-          var n2 = this.$utils().u;
-          if (n2(s2)) return this.$u ? 0 : n2(this.$offset) ? a.call(this) : this.$offset;
-          if ("string" == typeof s2 && (s2 = (function(t2) {
-            void 0 === t2 && (t2 = "");
-            var s3 = t2.match(i);
-            if (!s3) return null;
-            var f3 = ("" + s3[0]).match(e) || ["-", 0, 0], n3 = f3[0], u3 = 60 * +f3[1] + +f3[2];
-            return 0 === u3 ? 0 : "+" === n3 ? u3 : -u3;
-          })(s2), null === s2)) return this;
-          var u2 = Math.abs(s2) <= 16 ? 60 * s2 : s2;
-          if (0 === u2) return this.utc(f2);
-          var r2 = this.clone();
-          if (f2) return r2.$offset = u2, r2.$u = false, r2;
-          var o2 = this.$u ? this.toDate().getTimezoneOffset() : -1 * this.utcOffset();
-          return (r2 = this.local().add(u2 + o2, t)).$offset = u2, r2.$x.$localOffset = o2, r2;
-        };
-        var h = u.format;
-        u.format = function(t2) {
-          var i2 = t2 || (this.$u ? "YYYY-MM-DDTHH:mm:ss[Z]" : "");
-          return h.call(this, i2);
-        }, u.valueOf = function() {
-          var t2 = this.$utils().u(this.$offset) ? 0 : this.$offset + (this.$x.$localOffset || this.$d.getTimezoneOffset());
-          return this.$d.valueOf() - 6e4 * t2;
-        }, u.isUTC = function() {
-          return !!this.$u;
-        }, u.toISOString = function() {
-          return this.toDate().toISOString();
-        }, u.toString = function() {
-          return this.toDate().toUTCString();
-        };
-        var l = u.toDate;
-        u.toDate = function(t2) {
-          return "s" === t2 && this.$offset ? n(this.format("YYYY-MM-DD HH:mm:ss:SSS")).toDate() : l.call(this);
-        };
-        var c = u.diff;
-        u.diff = function(t2, i2, e2) {
-          if (t2 && this.$u === t2.$u) return c.call(this, t2, i2, e2);
-          var s2 = this.local(), f2 = n(t2).local();
-          return c.call(s2, f2, i2, e2);
-        };
-      };
-    }));
-  })(utc$2);
-  return utc$2.exports;
-}
-var utcExports = requireUtc();
-const utc = /* @__PURE__ */ getDefaultExportFromCjs(utcExports);
-var advancedFormat$2 = { exports: {} };
-var advancedFormat$1 = advancedFormat$2.exports;
-var hasRequiredAdvancedFormat;
-function requireAdvancedFormat() {
-  if (hasRequiredAdvancedFormat) return advancedFormat$2.exports;
-  hasRequiredAdvancedFormat = 1;
-  (function(module, exports) {
-    !(function(e, t) {
-      module.exports = t();
-    })(advancedFormat$1, (function() {
-      return function(e, t) {
-        var r = t.prototype, n = r.format;
-        r.format = function(e2) {
-          var t2 = this, r2 = this.$locale();
-          if (!this.isValid()) return n.bind(this)(e2);
-          var s = this.$utils(), a = (e2 || "YYYY-MM-DDTHH:mm:ssZ").replace(/\[([^\]]+)]|Q|wo|ww|w|WW|W|zzz|z|gggg|GGGG|Do|X|x|k{1,2}|S/g, (function(e3) {
-            switch (e3) {
-              case "Q":
-                return Math.ceil((t2.$M + 1) / 3);
-              case "Do":
-                return r2.ordinal(t2.$D);
-              case "gggg":
-                return t2.weekYear();
-              case "GGGG":
-                return t2.isoWeekYear();
-              case "wo":
-                return r2.ordinal(t2.week(), "W");
-              case "w":
-              case "ww":
-                return s.s(t2.week(), "w" === e3 ? 1 : 2, "0");
-              case "W":
-              case "WW":
-                return s.s(t2.isoWeek(), "W" === e3 ? 1 : 2, "0");
-              case "k":
-              case "kk":
-                return s.s(String(0 === t2.$H ? 24 : t2.$H), "k" === e3 ? 1 : 2, "0");
-              case "X":
-                return Math.floor(t2.$d.getTime() / 1e3);
-              case "x":
-                return t2.$d.getTime();
-              case "z":
-                return "[" + t2.offsetName() + "]";
-              case "zzz":
-                return "[" + t2.offsetName("long") + "]";
-              default:
-                return e3;
-            }
-          }));
-          return n.bind(this)(a);
-        };
-      };
-    }));
-  })(advancedFormat$2);
-  return advancedFormat$2.exports;
-}
-var advancedFormatExports = requireAdvancedFormat();
-const advancedFormat = /* @__PURE__ */ getDefaultExportFromCjs(advancedFormatExports);
-var localizedFormat$2 = { exports: {} };
-var localizedFormat$1 = localizedFormat$2.exports;
-var hasRequiredLocalizedFormat;
-function requireLocalizedFormat() {
-  if (hasRequiredLocalizedFormat) return localizedFormat$2.exports;
-  hasRequiredLocalizedFormat = 1;
-  (function(module, exports) {
-    !(function(e, t) {
-      module.exports = t();
-    })(localizedFormat$1, (function() {
-      var e = { LTS: "h:mm:ss A", LT: "h:mm A", L: "MM/DD/YYYY", LL: "MMMM D, YYYY", LLL: "MMMM D, YYYY h:mm A", LLLL: "dddd, MMMM D, YYYY h:mm A" };
-      return function(t, o, n) {
-        var r = o.prototype, i = r.format;
-        n.en.formats = e, r.format = function(t2) {
-          void 0 === t2 && (t2 = "YYYY-MM-DDTHH:mm:ssZ");
-          var o2 = this.$locale().formats, n2 = (function(t3, o3) {
-            return t3.replace(/(\[[^\]]+])|(LTS?|l{1,4}|L{1,4})/g, (function(t4, n3, r2) {
-              var i2 = r2 && r2.toUpperCase();
-              return n3 || o3[r2] || e[r2] || o3[i2].replace(/(\[[^\]]+])|(MMMM|MM|DD|dddd)/g, (function(e2, t5, o4) {
-                return t5 || o4.slice(1);
-              }));
-            }));
-          })(t2, void 0 === o2 ? {} : o2);
-          return i.call(this, n2);
-        };
-      };
-    }));
-  })(localizedFormat$2);
-  return localizedFormat$2.exports;
-}
-var localizedFormatExports = requireLocalizedFormat();
-const localizedFormat = /* @__PURE__ */ getDefaultExportFromCjs(localizedFormatExports);
-dayjs.extend(utc);
-dayjs.extend(advancedFormat);
-dayjs.extend(localizedFormat);
-function textOf(bytes) {
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  } catch {
-    throw forgeError("INVALID_ENCODING", "Templates must be valid UTF-8.");
-  }
-}
-function placeholders(text2) {
-  const result = [];
-  const braces = /{{|}}/g;
-  for (let match = braces.exec(text2); match; match = braces.exec(text2)) {
-    ensure(match[0] === "{{", "INVALID_TEMPLATE", "Unexpected closing template braces.");
-    const close2 = text2.indexOf("}}", braces.lastIndex);
-    ensure(close2 >= 0, "INVALID_TEMPLATE", "Unclosed template placeholder.");
-    const expression2 = text2.slice(braces.lastIndex, close2).trim();
-    const parsed2 = /^([A-Za-z_][\w.-]*)(?::([^{}\r\n]+))?$/.exec(expression2);
-    ensure(parsed2, "INVALID_TEMPLATE", `Invalid template placeholder: {{${expression2}}}.`);
-    const key = parsed2[1], format2 = parsed2[2];
-    ensure(format2 === void 0 || key === "date" || key === "time", "INVALID_TEMPLATE", "Only date and time placeholders accept a format.");
-    result.push({ expression: expression2, key, ...format2 === void 0 ? {} : { format: format2 }, start: match.index, end: close2 + 2 });
-    braces.lastIndex = close2 + 2;
-  }
-  return result;
-}
-function replaceTokens(text2, tokens, value2) {
-  let cursor = 0, output2 = "";
-  for (const [index2, token] of tokens.entries()) {
-    output2 += text2.slice(cursor, token.start) + value2(token, index2);
-    cursor = token.end;
-  }
-  return output2 + text2.slice(cursor);
-}
-function jsonValue$1(value2, ancestors = /* @__PURE__ */ new Set(), depth2 = 0) {
-  ensure(depth2 < 100, "INVALID_TEMPLATE_VALUES", "Template values are nested too deeply.");
-  if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return;
-  if (typeof value2 === "number") {
-    ensure(Number.isFinite(value2), "INVALID_TEMPLATE_VALUES", "Template numbers must be finite.");
-    return;
-  }
-  ensure(typeof value2 === "object" && (Array.isArray(value2) || Object.getPrototypeOf(value2) === Object.prototype || Object.getPrototypeOf(value2) === null), "INVALID_TEMPLATE_VALUES", "Template values must be JSON-compatible.");
-  ensure(!ancestors.has(value2), "INVALID_TEMPLATE_VALUES", "Template values cannot contain cycles.");
-  ancestors.add(value2);
-  for (const child of Object.values(value2)) jsonValue$1(child, ancestors, depth2 + 1);
-  ancestors.delete(value2);
-}
-function asText(value2) {
-  return typeof value2 === "string" ? value2 : JSON.stringify(value2);
-}
-function renderYaml(source2, resolve2) {
-  const tokens = placeholders(source2);
-  const resolved = tokens.map(resolve2);
-  const serializedValues = JSON.stringify(resolved);
-  let prefix = "AGENTCLITEMPLATETOKEN";
-  while (source2.includes(prefix) || serializedValues.includes(prefix)) prefix += "X";
-  const sentinels = tokens.map((_, index2) => `${prefix}${index2}END`);
-  const document2 = distExports.parseDocument(replaceTokens(source2, tokens, (_, index2) => sentinels[index2]), { uniqueKeys: true });
-  ensure(document2.errors.length === 0, "INVALID_TEMPLATE", document2.errors.map((error2) => error2.message).join("; "));
-  ensure(document2.contents === null || distExports.isMap(document2.contents), "INVALID_TEMPLATE", "Template frontmatter must be a YAML mapping.");
-  const consumed = /* @__PURE__ */ new Set();
-  const sentinelPattern = new RegExp(`${prefix}(\\d+)END`, "g");
-  distExports.visit(document2, (key, node2, path) => {
-    ensure(path.length < 100, "INVALID_TEMPLATE", "Template YAML is nested too deeply.");
-    if (key === "key") {
-      ensure(distExports.isScalar(node2) && typeof node2.value === "string", "INVALID_TEMPLATE", "Template YAML keys must be strings.");
-      ensure(!node2.value.includes(prefix), "INVALID_TEMPLATE", "Template placeholders cannot be used in YAML keys.");
-    }
-    if (!distExports.isScalar(node2) || typeof node2.value !== "string" || key === "key") return;
-    const scalar2 = node2.value;
-    const exact = sentinels.indexOf(scalar2);
-    if (exact >= 0) {
-      consumed.add(exact);
-      const replacement2 = document2.createNode(resolved[exact]);
-      replacement2.comment = node2.comment;
-      replacement2.commentBefore = node2.commentBefore;
-      replacement2.spaceBefore = node2.spaceBefore;
-      replacement2.anchor = node2.anchor;
-      return replacement2;
-    }
-    node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
-      const position2 = Number(index2);
-      consumed.add(position2);
-      return asText(resolved[position2]);
-    });
-  });
-  ensure(consumed.size === tokens.length, "INVALID_TEMPLATE", "Placeholders in frontmatter are supported only in scalar values, not comments, tags or anchors.");
-  let data;
-  try {
-    data = document2.toJS({ maxAliasCount: 100 });
-  } catch {
-    throw forgeError("INVALID_TEMPLATE", "Template YAML aliases are invalid or excessive.");
-  }
-  try {
-    jsonValue$1(data);
-  } catch {
-    throw forgeError("INVALID_TEMPLATE", "Template YAML must contain JSON-compatible values without cycles.");
-  }
-  return document2.toString();
-}
-function instant(date2) {
-  if (date2 === void 0) return dayjs.utc();
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.exec(date2);
-  ensure(match, "INVALID_TEMPLATE_DATE", "Use an ISO date (YYYY-MM-DD) or timestamp with an explicit timezone.");
-  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
-  const calendar = /* @__PURE__ */ new Date(0);
-  calendar.setUTCFullYear(year, month, 0);
-  const daysInMonth2 = calendar.getUTCDate();
-  const parsed2 = dayjs.utc(date2);
-  ensure(month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth2 && Number(match[4] ?? 0) < 24 && Number(match[5] ?? 0) < 60 && Number(match[6] ?? 0) < 60 && parsed2.isValid(), "INVALID_TEMPLATE_DATE", "Template date is not a valid calendar date.");
-  return parsed2;
-}
-class MarkdownTemplates {
-  inspect(bytes) {
-    const parts = parseMarkdownParts(textOf(bytes));
-    const tokens = [...placeholders(parts.yaml), ...placeholders(parts.body)];
-    if (parts.exists) renderYaml(parts.yaml, (token) => `{{${token.expression}}}`);
-    const builtin = (token) => ["title", "date", "time"].includes(token.key);
-    return {
-      variables: [...new Set(tokens.map((token) => token.expression))].sort(),
-      requiredVariables: [...new Set(tokens.filter((token) => !builtin(token)).map((token) => token.key))].sort(),
-      builtins: [...new Set(tokens.filter(builtin).map((token) => token.expression))].sort()
-    };
-  }
-  render(bytes, options2) {
-    ensure(typeof options2.title === "string" && options2.title.trim().length > 0, "INVALID_TEMPLATE_VALUES", "A nonempty template title is required.");
-    const values2 = options2.values ?? {};
-    ensure(isRecord(values2), "INVALID_TEMPLATE_VALUES", "Template values must be a JSON object.");
-    jsonValue$1(values2);
-    for (const key of ["title", "date", "time"]) ensure(!Object.hasOwn(values2, key), "INVALID_TEMPLATE_VALUES", `${key} is reserved; use the corresponding template option.`);
-    const date2 = instant(options2.date);
-    for (const format2 of [options2.dateFormat, options2.timeFormat]) ensure(format2 === void 0 || typeof format2 === "string" && format2.length > 0, "INVALID_TEMPLATE_DATE", "Date and time formats must be nonempty strings.");
-    const resolve2 = (token) => {
-      if (token.key === "title") return options2.title;
-      if (token.key === "date" || token.key === "time") {
-        const format2 = token.format ?? (token.key === "date" ? options2.dateFormat ?? "YYYY-MM-DD" : options2.timeFormat ?? "HH:mm");
-        try {
-          return date2.format(format2);
-        } catch {
-          throw forgeError("INVALID_TEMPLATE_DATE", `Unsupported date format: ${format2}.`);
-        }
-      }
-      ensure(Object.hasOwn(values2, token.key), "UNKNOWN_TEMPLATE_VARIABLE", `Missing template value: ${token.key}.`);
-      return values2[token.key];
-    };
-    const parts = parseMarkdownParts(textOf(bytes));
-    const body = replaceTokens(parts.body, placeholders(parts.body), (token) => asText(resolve2(token)));
-    const frontmatter2 = parts.exists ? `---${parts.newline}${renderYaml(parts.yaml, resolve2).replace(/\r?\n/g, parts.newline)}---${parts.newline}` : "";
-    return new TextEncoder().encode(parts.prefix + frontmatter2 + body);
-  }
-}
-const prd = "---\nschemaVersion: 1\ntype: prd\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft; this document records intent, not completed delivery.\n\n## Problem and evidence\n\nDescribe the user's current difficulty, who experiences it, and the evidence that it matters.\nLink interviews, issues, measurements, or existing behavior. Mark assumptions as unverified.\n\n## Users and desired outcome\n\nIdentify primary users, context, and an observable improvement. Define the baseline,\ntarget, measurement method, and evaluation period; use TBD where evidence is missing.\n\n## Scope and exclusions\n\nList included capabilities and explicit exclusions. Identify dependencies and boundaries\nwith existing systems; do not turn unspecified integrations into commitments.\n\n## Requirements\n\n| ID | User need and expected behavior | Acceptance example | Priority | Owner |\n| --- | --- | --- | --- | --- |\n| REQ-001 | TBD | Given / When / Then: TBD | TBD | {{owner}} |\n\nKeep IDs stable as requirements change. Link each requirement to a use case and later\nto implementation and test evidence. Include failure, accessibility, privacy, and data needs.\n\n## Success measures and constraints\n\nDescribe performance, compatibility, accessibility, operating cost, and delivery constraints\nthat affect this scope. State a measurable threshold or record an open question.\n\n## Uncertainties and decisions\n\n| ID | Question or assumption | Evidence needed | Owner | Status |\n| --- | --- | --- | --- | --- |\n| Q-001 | TBD | TBD | {{owner}} | open |\n\n## Review and evidence\n\nRecord reviewer, date, reviewed version, decisions, and links to evidence when available.\nReadiness: not assessed. Do not mark requirements accepted without a recorded review.\n\n## Next artifact\n\nCreate linked use cases for REQ IDs; resolve scope uncertainties before committing a build spec.\n";
-const useCase = "---\nschemaVersion: 1\ntype: use-case\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Use case ID: UC-001. Status: draft.\n\n## Requirement links and goal\n\nLink the source PRD and REQ IDs. State the actor's goal and what observable outcome\ncounts as success. Keep the UC ID stable and replace example IDs when needed.\n\n## Actors, trigger and preconditions\n\nDescribe primary/supporting actors, permissions, starting data, triggering action,\nand assumptions about dependencies. Separate requirements from unverified conditions.\n\n## Main flow\n\n| Step | Actor action | System response | Requirement |\n| --- | --- | --- | --- |\n| 1 | TBD | TBD | REQ-001 |\n\nDescribe each response visibly enough that another person can verify the flow.\n\n## Alternate and failure flows\n\nCover empty data, invalid input, missing permission, unavailable services, retries,\nduplicate actions, and cancellation where relevant. Specify the recovery path.\n\n## Postconditions and invariants\n\nState what changes on success, what remains true on failure, and who owns persisted data.\nIdentify business invariants, external side effects, and any compensation needed.\n\n## Acceptance examples\n\n| ID | Given | When | Then | Requirement |\n| --- | --- | --- | --- | --- |\n| UC-001-A | TBD | TBD | TBD | REQ-001 |\n\n## Uncertainties and decisions\n\nRecord unresolved business rules, edge cases, owner, and decision evidence. Status: open\nuntil the uncertainty is resolved explicitly.\n\n## Review and evidence\n\nLink walkthrough notes and review decisions. Execution evidence: not collected.\nCarry these example IDs into the build spec and test plan.\n";
-const buildSpec = "---\nschemaVersion: 1\ntype: build-spec\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Implementation readiness: not assessed.\n\n## Source requirements and use cases\n\nLink the PRD, REQ IDs, use cases, and acceptance examples. Define the bounded feature\nand retain a trace from each proposed change to a user outcome.\n\n## Domain and architecture\n\nDescribe entities, value objects, invariants, use cases, and dependency direction.\nSeparate domain rules from application orchestration, infrastructure adapters, and presentation.\nRecord existing conventions and boundaries before proposing new abstractions.\n\n## Contracts and data flow\n\nSpecify inputs, outputs, errors, validation, authorization, and state transitions.\nIdentify datasource ownership, query/mutation contracts, and injected ports. Keep secrets\nout of specifications and generated artifacts; reference configuration keys only.\n\n## UI and integration scope\n\nLink UI Markdown definitions, selected framework, component children/props, Storybook\nrequirements, and native extension needs. Describe real external integration contracts\nand distinguish a scaffold from a working connection.\n\n## Configurable paths and generated artifacts\n\n| Artifact | Source path | Destination path | Scope | Requirement |\n| --- | --- | --- | --- | --- |\n| TBD | TBD | TBD | workspace or project | REQ-001 |\n\nState generation/import/export paths, overwrite guards, deterministic inputs, and which\noutputs are application-owned after generation. Preview changes before writing.\n\n## Acceptance and verification\n\nMap requirements to concrete checks, fixtures, and expected failure behavior. Define\ncompatibility and performance thresholds where required, and explain how they will be measured.\n\n## Uncertainties and decisions\n\nList unresolved contracts, dependencies, tradeoffs, and decision owners. Mark assumptions\nunverified and record evidence when a decision changes the specification.\n\n## Review and evidence\n\nRecord architecture review and links to actual experiments. No build or integration result\nis implied by this draft. Next: design decisions and ordered implementation tasks.\n";
-const design = "---\nschemaVersion: 1\ntype: design\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Design decision ID: DSN-001. Status: draft.\n\n## Context and traceability\n\nLink REQ IDs, UC acceptance examples, and the build spec. Describe the user context,\ntechnical constraints, and the specific decision this design resolves.\n\n## User journey and information structure\n\nDescribe entry points, sequence, navigation, terminology, and exit/recovery paths.\nIdentify what users need to understand or decide at each stage.\n\n## Component composition and states\n\nMap page/layout/header/navigation and feature components to library IDs, props, children,\nand data contracts. Cover loading, empty, populated, invalid, error, and success states.\nIdentify native code needed for interactions beyond generated semantic boilerplate.\n\n## Accessibility and responsive behavior\n\nSpecify semantic structure, accessible names, keyboard/focus behavior, error announcements,\ncontrast requirements, motion preferences, and small/large viewport behavior.\nState planned verification methods; a specification alone is not an accessibility result.\n\n## Alternatives and decision\n\n| Option | User impact | Technical cost | Evidence or uncertainty |\n| --- | --- | --- | --- |\n| TBD | TBD | TBD | unverified |\n\nRecord the selected option, rationale, and tradeoffs after review. Decision: pending.\n\n## Storybook and examples\n\nList representative named stories, args, controls, documentation, and interaction tests.\nLink native Storybook extensions where lifecycle hooks are needed. Do not claim stories\nor tests exist before generating, building, and checking them.\n\n## Uncertainties and decisions\n\nRecord open usability questions, unknown device constraints, dependencies, and owners.\n\n## Review and evidence\n\nLink sketches, prototypes, screenshots, usability observations, and decisions with dates.\nValidation status: not assessed. Carry DSN-001 into implementation and tests.\n";
-const implementationPlan = "---\nschemaVersion: 1\ntype: implementation-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft; all work below is planned until evidence is recorded.\n\n## Inputs and acceptance boundary\n\nLink the PRD, use cases, build spec, and DSN decisions. Identify the smallest complete\ndelivery slice, its acceptance examples, and excluded work.\n\n## Ordered implementation tasks\n\n| ID | Change and observable outcome | Depends on | REQ / UC / DSN | Owner | Status |\n| --- | --- | --- | --- | --- | --- |\n| IMP-001 | TBD | none or task ID | TBD | {{owner}} | planned |\n\nKeep task IDs stable. Sequence contracts/invariants, adapters, UI composition, and end-to-end\nwiring so each step can be reviewed. Delegate independent ownership explicitly when useful.\n\n## Files, generation and ownership\n\nList authored files and generated artifacts, scope (workspace/project), configured paths,\nand generators to invoke. Capture dry-run previews and current revisions before replacing\noutputs. State which generated code will receive project-specific behavior.\n\n## Dependencies and integration\n\nIdentify packages, external services, datasource configuration, migrations, and environment\nrequirements. Record exact install/build commands and working directories before running\nthem. Planning does not authorize deployment or imply dependencies are installed.\n\n## Verification per task\n\nMap each task to the smallest useful checks, then the complete project gate. Include\nfailure/recovery cases and a test-plan link. Report actual command outcomes and artifacts.\n\n## Review and completion criteria\n\nDefine code review, documentation updates, generated bundle updates, and release handoff.\nA task is complete only when its agreed behavior is implemented and relevant checks pass.\n\n## Uncertainties and decisions\n\nRecord blockers, owners, decision deadlines, and evidence needed to unblock work.\n\n## Progress and evidence\n\n| Task | Commit or change | Verification evidence | Review | Status |\n| --- | --- | --- | --- | --- |\n| IMP-001 | not implemented | not run | pending | planned |\n";
-const testPlan = "---\nschemaVersion: 1\ntype: test-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Overall result: not run.\n\n## Coverage and traceability\n\nLink source requirements, UC examples, DSN decisions, and implementation tasks.\nDefine risks and observables; avoid tests that merely restate implementation details.\n\n| ID | REQ / UC / IMP | Scenario and expected outcome | Layer | Owner |\n| --- | --- | --- | --- | --- |\n| TEST-001 | TBD | TBD | unit / integration / end-to-end | {{owner}} |\n\n## Test pyramid\n\nUse unit tests for domain invariants and deterministic transforms, integration tests for\ncollaborating boundaries, and a focused end-to-end set for complete user workflows.\nInclude malformed inputs, stale revisions, path boundaries, and partial-write prevention\nwhere generated/imported/exported artifacts are involved.\n\n## Fixtures and environments\n\nDescribe representative data, empty/error states, external service substitutes, supported\nframework/compiler versions, and reproducible setup. Keep credentials out of fixtures.\nState which real integrations need separately authorized environments.\n\n## UI, accessibility and compatibility\n\nSpecify Storybook builds, native interaction checks, keyboard/focus checks, responsive\ncoverage, and supported browsers/frameworks. Record remaining manual checks explicitly.\nStructural validation alone does not establish runtime behavior or accessibility.\n\n## Commands and expected results\n\n| Check | Working directory | Command | Expected result | Evidence path |\n| --- | --- | --- | --- | --- |\n| TBD | TBD | TBD | TBD | TBD |\n\n## Execution evidence\n\n| Test or gate | Version / environment | Actual result | Evidence | Follow-up |\n| --- | --- | --- | --- | --- |\n| TEST-001 | TBD | not run | none yet | pending |\n\n## Uncertainties and decisions\n\nRecord coverage gaps, flaky behavior, unknown requirements, owners, and disposition.\n\n## Exit criteria and review\n\nDefine required passing checks and acceptable explicitly reviewed limitations. Record\nreview decisions and residual risks before handing evidence to the release plan.\n";
-const releasePlan = "---\nschemaVersion: 1\ntype: release-plan\ntitle: '{{title}}'\nowner: '{{owner}}'\nstatus: draft\ncreated: '{{date:YYYY-MM-DD}}'\n---\n# {{title}}\n\nOwner: {{owner}}. Status: draft. Release readiness: not assessed. Deployment: not performed.\n\n## Scope and release identity\n\nLink approved requirements, completed implementation tasks, reviewed change/PR, and target\nversion or commit. State included changes and explicit exclusions.\n\n## Readiness evidence\n\n| Gate | Required evidence | Actual evidence | Owner | Status |\n| --- | --- | --- | --- | --- |\n| Requirements acceptance | linked REQ / UC decisions | not collected | {{owner}} | pending |\n| Test and compatibility gates | linked TEST outcomes | not run | {{owner}} | pending |\n| Review and documentation | recorded review and current docs | pending | {{owner}} | pending |\n\nDo not infer readiness from generated files, a test plan, or a successful dry run.\n\n## Release procedure\n\n| ID | Action | Working directory / environment | Command or owner | Verification |\n| --- | --- | --- | --- | --- |\n| REL-001 | TBD | TBD | TBD | TBD |\n\nState artifact paths, build inputs, configuration keys, migration ordering, target\nenvironment, and authorization needed before publishing or deployment. Keep secrets out.\n\n## Rollback and recovery\n\nDefine rollback trigger, last known good artifact, restoration steps, data compatibility,\nresponsible person, and a verification method. Mark untested recovery procedures as untested.\n\n## Observability and post-release checks\n\nList meaningful health/user checks, expected signals, monitoring period, and incident owner.\nRecord actual observations after release; do not pre-fill successful outcomes.\n\n## Communication and handoff\n\nDraft release notes, user-visible changes, operating guidance, and ownership handoff.\nIdentify intended recipients; this document does not send messages or publish announcements.\n\n## Uncertainties and decisions\n\nRecord unresolved operational risks, decisions, owners, and evidence needed for readiness.\n\n## Execution evidence and review\n\nRecord authorization, artifact/commit, timestamps, observed results, and rollback decisions\nonly after they occur. Final status: pending.\n";
-const workflowTemplates = [
-  { path: "workflow/prd.md", content: prd },
-  { path: "workflow/use-case.md", content: useCase },
-  { path: "workflow/build-spec.md", content: buildSpec },
-  { path: "workflow/design.md", content: design },
-  { path: "workflow/implementation-plan.md", content: implementationPlan },
-  { path: "workflow/test-plan.md", content: testPlan },
-  { path: "workflow/release-plan.md", content: releasePlan }
-];
-const typecheckScript = "import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\nimport { sourceFiles } from './shared.mjs';\n\nlet directory;\ntry {\n  // TypeScript globs omit hidden directories and prefer .ts over same-named .js.\n  // Explicit files keep every accepted test and test helper in the compiler program.\n  const files = sourceFiles().filter(file => file.startsWith('tests/')).map(file => resolve(file));\n  // Keep the generated config beneath the project so normal @types resolution is unchanged.\n  mkdirSync('.quality-reports', { recursive: true });\n  directory = mkdtempSync(resolve('.quality-reports', 'typecheck-'));\n  const config = join(directory, 'tsconfig.json');\n  writeFileSync(config, JSON.stringify({ extends: resolve('tsconfig.json'), files }));\n  const result = spawnSync(process.execPath, [resolve('node_modules/typescript/bin/tsc'), '--noEmit', '--project', config, ...process.argv.slice(2)], { stdio: 'inherit' });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error('TypeScript did not finish normally');\n  process.exitCode = result.status;\n} catch (error) {\n  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\\n`);\n  process.exitCode = 1;\n} finally {\n  if (directory) rmSync(directory, { recursive: true, force: true });\n}\n";
-const formModel = "import type { z } from 'zod';\n\nexport interface FormField<T extends Record<string, string>> {\n  name: Extract<keyof T, string>;\n  label: string;\n  type: 'text' | 'email' | 'textarea';\n  required?: boolean;\n  help?: string;\n  placeholder?: string;\n}\n\nexport interface FormDefinition<T extends Record<string, string>> {\n  id: string;\n  title: string;\n  description?: string;\n  submitLabel: string;\n  fields: FormField<T>[];\n  initialValues: T;\n  schema: z.ZodType<T>;\n}\n\nexport type FormValidation<T> =\n  | { success: true; data: T }\n  | { success: false; errors: { field: string; message: string }[] };\n\n/** The schema is authoritative; HTML hints do not replace validation. */\nexport function validateForm<T extends Record<string, string>>(\n  definition: FormDefinition<T>,\n  input: unknown,\n): FormValidation<T> {\n  const result = definition.schema.safeParse(input);\n  if (result.success) return { success: true, data: result.data };\n  return {\n    success: false,\n    errors: result.error.issues.map(issue => ({\n      field: issue.path.map(String).join('.'),\n      message: issue.message,\n    })),\n  };\n}\n";
-const formView = "import { validateForm, type FormDefinition } from './form-model.js';\n\nlet nextFormId = 0;\n\ninterface FieldControl {\n  input: HTMLInputElement | HTMLTextAreaElement;\n  label: string;\n  error: HTMLElement;\n  helpId?: string;\n}\n\n/** Mount an accessible native form without interpreting any definition text as HTML. */\nexport function renderForm<T extends Record<string, string>>(\n  definition: FormDefinition<T>,\n  container: HTMLElement,\n  onSubmit: (data: T) => void,\n): { form: HTMLFormElement; destroy(): void } {\n  const fieldNames = new Set<string>();\n  for (const field of definition.fields) {\n    if (fieldNames.has(field.name)) throw new Error(`Duplicate form field name: ${field.name}`);\n    fieldNames.add(field.name);\n  }\n  const document = container.ownerDocument;\n  let prefix: string;\n  do { prefix = `forge-form-${++nextFormId}`; } while (document.getElementById(prefix));\n  const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => {\n    const node = document.createElement(tag);\n    if (text !== undefined) node.textContent = text;\n    return node;\n  };\n  const form = element('form');\n  form.id = prefix;\n  form.className = 'forge-form';\n  form.dataset.formId = definition.id;\n  // Use one schema-driven error path even when browser constraint validation differs.\n  form.noValidate = true;\n  const title = element('h2', definition.title);\n  title.id = `${prefix}-title`;\n  form.setAttribute('aria-labelledby', title.id);\n  form.append(title);\n  if (definition.description) {\n    const description = element('p', definition.description);\n    description.id = `${prefix}-description`;\n    form.setAttribute('aria-describedby', description.id);\n    form.append(description);\n  }\n  const summary = element('div');\n  summary.className = 'forge-form-summary';\n  summary.setAttribute('role', 'alert');\n  summary.tabIndex = -1;\n  summary.hidden = true;\n  form.append(summary);\n  const controls = new Map<string, FieldControl>();\n  const defaults = { ...definition.initialValues };\n  for (const [index, field] of definition.fields.entries()) {\n    const group = element('div');\n    group.className = 'forge-form-field';\n    const input = field.type === 'textarea' ? element('textarea') : element('input');\n    if (input.tagName === 'INPUT') (input as HTMLInputElement).type = field.type;\n    input.name = field.name;\n    input.id = `${prefix}-field-${index}`;\n    input.required = field.required ?? false;\n    input.value = defaults[field.name] ?? '';\n    input.defaultValue = input.value;\n    if (field.placeholder) input.placeholder = field.placeholder;\n    const label = element('label', `${field.label}${field.required ? ' (required)' : ''}`);\n    label.htmlFor = input.id;\n    group.append(label, input);\n    let helpId: string | undefined;\n    if (field.help) {\n      const help = element('p', field.help);\n      help.className = 'forge-form-help';\n      help.id = `${input.id}-help`;\n      helpId = help.id;\n      input.setAttribute('aria-describedby', helpId);\n      group.append(help);\n    }\n    const error = element('p');\n    error.id = `${input.id}-error`;\n    error.className = 'forge-form-error';\n    error.hidden = true;\n    group.append(error);\n    controls.set(field.name, { input, label: field.label, error, helpId });\n    form.append(group);\n  }\n  const actions = element('div');\n  actions.className = 'forge-form-actions';\n  const submit = element('button', definition.submitLabel);\n  submit.type = 'submit';\n  const reset = element('button', 'Reset');\n  reset.type = 'reset';\n  actions.append(submit, reset);\n  form.append(actions);\n\n  const clearErrors = () => {\n    summary.replaceChildren();\n    summary.hidden = true;\n    for (const { input, error, helpId } of controls.values()) {\n      input.removeAttribute('aria-invalid');\n      error.textContent = '';\n      error.hidden = true;\n      if (helpId) input.setAttribute('aria-describedby', helpId);\n      else input.removeAttribute('aria-describedby');\n    }\n  };\n  const handleSubmit = (event: Event) => {\n    event.preventDefault();\n    clearErrors();\n    const values = Object.fromEntries(Array.from(controls, ([name, { input }]) => [name, input.value]));\n    const result = validateForm(definition, values);\n    if (result.success) {\n      onSubmit(result.data);\n      return;\n    }\n    summary.append(element('p', 'Please correct the following errors:'));\n    const list = element('ul');\n    for (const issue of result.errors) {\n      const control = controls.get(issue.field);\n      const item = element('li');\n      if (control) {\n        const link = element('a', `${control.label}: ${issue.message}`);\n        link.href = `#${control.input.id}`;\n        item.append(link);\n        control.input.setAttribute('aria-invalid', 'true');\n        control.error.textContent = [control.error.textContent, issue.message].filter(Boolean).join(' ');\n        control.error.hidden = false;\n        control.input.setAttribute('aria-describedby', [control.helpId, control.error.id].filter(Boolean).join(' '));\n      } else item.textContent = issue.message;\n      list.append(item);\n    }\n    summary.append(list);\n    summary.hidden = false;\n    const invalid = Array.from(controls.values()).find(({ input }) => input.getAttribute('aria-invalid') === 'true');\n    (invalid?.input ?? summary).focus();\n  };\n  const handleReset = (event: Event) => {\n    event.preventDefault();\n    for (const [name, { input }] of controls) input.value = defaults[name] ?? '';\n    clearErrors();\n  };\n  form.addEventListener('submit', handleSubmit);\n  form.addEventListener('reset', handleReset);\n  container.append(form);\n  return {\n    form,\n    destroy() {\n      form.removeEventListener('submit', handleSubmit);\n      form.removeEventListener('reset', handleReset);\n      form.remove();\n    },\n  };\n}\n";
-const demoHtml = '<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1" />\n    <title>Project forms · The Forge</title>\n  </head>\n  <body>\n    <main>\n      <header class="page-heading">\n        <h1>Project forms</h1>\n        <p>Try your form, check its validation, and inspect the values it produces.</p>\n      </header>\n      <div class="preview-layout">\n        <section aria-label="Form preview">\n          <div class="form-picker">\n            <label for="form-choice">Choose a form</label>\n            <select id="form-choice"></select>\n          </div>\n          <div id="form-preview"></div>\n        </section>\n        <section class="result-panel" aria-labelledby="result-heading">\n          <h2 id="result-heading">Validated values</h2>\n          <p>Values stay in this preview. Nothing is sent or saved.</p>\n          <p id="result-status" role="status">Complete the form to see its validated values.</p>\n          <pre id="form-result" aria-label="Validated form values" tabindex="0" hidden></pre>\n        </section>\n      </div>\n    </main>\n    <script type="module" src="/src/presentation/demo.ts"><\/script>\n  </body>\n</html>\n';
-const demoStyle = ':root {\n  color-scheme: light;\n  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;\n  color: #24332c;\n  background: #f4f6f3;\n  font-synthesis: none;\n  line-height: 1.55;\n  --accent: #216341;\n  --muted: #516259;\n  --line: #b9c6bd;\n  --control-line: #718579;\n  --error: #a02729;\n}\n* { box-sizing: border-box; }\nbody { margin: 0; }\nmain { width: min(1040px, 100%); margin: 0 auto; padding: 48px 32px 64px; overflow-wrap: anywhere; }\nh1, h2 { line-height: 1.2; text-wrap: balance; }\nh1 { margin: 0 0 12px; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.03em; }\nh2 { margin: 0 0 12px; font-size: 1.5rem; letter-spacing: -0.015em; }\np { max-width: 65ch; margin: 0 0 20px; color: var(--muted); }\n.page-heading { margin-bottom: 36px; }\n.preview-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 48px; align-items: start; }\n.form-picker { margin-bottom: 32px; }\nlabel { display: block; font-weight: 600; margin-bottom: 7px; }\ninput, textarea, select, button { font: inherit; }\ninput, textarea, select {\n  display: block; width: 100%; min-width: 0; padding: 11px 12px;\n  border: 1px solid var(--control-line); border-radius: 6px; background: white; color: inherit;\n  caret-color: var(--accent);\n}\ntextarea { min-height: 116px; resize: vertical; }\ninput::placeholder, textarea::placeholder { color: #627268; opacity: 1; }\ninput:hover, textarea:hover, select:hover { border-color: var(--accent); }\n:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }\n[aria-invalid="true"] { border-color: var(--error); }\nbutton {\n  min-height: 46px; padding: 10px 20px; border: 1px solid var(--accent); border-radius: 6px;\n  background: var(--accent); color: white; font-weight: 600; cursor: pointer;\n}\nbutton:hover { background: #164d30; }\nbutton:disabled { opacity: 0.6; cursor: wait; }\nform { display: grid; gap: 20px; }\nform > * { min-width: 0; }\nform h2, form p { margin-bottom: 0; }\nform button { justify-self: start; }\nform [role="alert"] { color: var(--error); }\n.result-panel { border-top: 1px solid var(--line); padding-top: 24px; }\n#result-status { font-size: 0.95rem; }\npre {\n  overflow: auto; max-height: 480px; margin: 0; padding: 18px;\n  background: #e5ece6; border-radius: 6px; font-size: 0.875rem; line-height: 1.6;\n  white-space: pre-wrap; overflow-wrap: anywhere;\n}\n::selection { background: #c5dec9; color: #163c27; }\n@media (max-width: 680px) {\n  main { padding: 28px 20px 40px; }\n  .preview-layout { grid-template-columns: minmax(0, 1fr); gap: 36px; }\n  .page-heading { margin-bottom: 28px; }\n}\n.forge-form-actions { display: flex; flex-wrap: wrap; gap: 12px; }\n.forge-form-actions button[type="reset"] { background: transparent; color: var(--accent); }\n.forge-form-actions button[type="reset"]:hover { background: #e5ece6; }\n.forge-form-help, .forge-form-error { margin-top: 7px; font-size: 0.9rem; }\n.forge-form-error, .forge-form-summary, .forge-form-summary a { color: var(--error); }\n.forge-form-summary { padding: 14px; border: 1px solid currentColor; border-radius: 6px; }\n.forge-form-summary a { text-underline-offset: 3px; }\n.forge-form-summary ul { margin-bottom: 0; padding-left: 22px; }\n';
-const demoScript = "import type { FormDefinition } from './forms/form-model.js';\nimport { renderForm } from './forms/form-view.js';\nimport './demo.css';\n\n// Eager discovery makes new `make form` definitions visible on the next reload.\nconst modules = import.meta.glob<Record<string, unknown>>('./forms/**/*.form.ts', { eager: true });\nconst forms = Object.values(modules).flatMap(module => Object.entries(module)\n  .filter(([name]) => name.endsWith('Form'))\n  .map(([, value]) => value as FormDefinition<Record<string, string>>));\nconst container = document.querySelector<HTMLElement>('#form-preview')!;\nconst choice = document.querySelector<HTMLSelectElement>('#form-choice')!;\nconst output = document.querySelector<HTMLElement>('#form-result')!;\nconst status = document.querySelector<HTMLElement>('#result-status')!;\nlet mounted: ReturnType<typeof renderForm> | undefined;\n\nfor (const [index, definition] of forms.entries()) {\n  const option = document.createElement('option');\n  option.value = String(index);\n  option.textContent = definition.title;\n  choice.append(option);\n}\nfunction clearResult() {\n  output.hidden = true;\n  output.textContent = '';\n  status.textContent = 'Complete the form to see its validated values.';\n}\nfunction showForm() {\n  mounted?.destroy();\n  container.replaceChildren();\n  clearResult();\n  const definition = forms[Number(choice.value)];\n  if (!definition) {\n    container.textContent = 'No form definitions found. Add a form with The Forge to preview it here.';\n    const empty = document.createElement('option');\n    empty.textContent = 'No forms available';\n    choice.replaceChildren(empty);\n    choice.disabled = true;\n    status.textContent = 'Add a form to inspect its validated values.';\n    return;\n  }\n  mounted = renderForm(definition, container, values => {\n    output.textContent = JSON.stringify(values, null, 2);\n    output.hidden = false;\n    status.textContent = 'Validation passed. These values are ready to use in your application.';\n  });\n  mounted.form.addEventListener('input', clearResult);\n  mounted.form.addEventListener('reset', clearResult);\n  mounted.form.addEventListener('submit', clearResult, { capture: true });\n}\nchoice.addEventListener('change', showForm);\nshowForm();\n";
-function formDefinitionSource(name2, runtimeImport) {
-  const title2 = name2.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
-  return `import { z } from 'zod';
-import type { FormDefinition } from ${JSON.stringify(runtimeImport)};
-
-const schema = z.object({
-  name: z.string().trim().min(1, 'Enter a name.').max(100, 'Use 100 characters or fewer.'),
-  email: z.string().trim().pipe(z.email('Enter a valid email address.')),
-  description: z.string().trim().max(2000, 'Use 2,000 characters or fewer.').default(''),
-}).strict();
-
-export type ${name2}Values = z.infer<typeof schema>;
-
-export const ${name2}Form: FormDefinition<${name2}Values> = {
-  id: '${name2.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}',
-  title: '${title2}',
-  description: 'Describe the project and its primary contact.',
-  submitLabel: 'Validate details',
-  initialValues: { name: '', email: '', description: '' },
-  schema,
-  fields: [
-    { name: 'name', label: 'Project name', type: 'text', required: true, help: 'A clear name, up to 100 characters.' },
-    { name: 'email', label: 'Contact email', type: 'email', required: true, placeholder: 'engineer@example.com' },
-    { name: 'description', label: 'Description', type: 'textarea', help: 'Optional. Explain the project in 2,000 characters or fewer.' },
-  ],
-};
-`;
-}
-function formDefinitionTestSource(name2, definitionImport, runtimeImport) {
-  return `import { expect, it } from 'vitest';
-import { ${name2}Form } from ${JSON.stringify(definitionImport)};
-import { validateForm } from ${JSON.stringify(runtimeImport)};
-
-it('validates and normalizes form data', () => {
-  expect(validateForm(${name2}Form, { name: '  Example  ', email: '  engineer@example.com  ', description: '  A focused project.  ' })).toEqual({
-    success: true, data: { name: 'Example', email: 'engineer@example.com', description: 'A focused project.' },
-  });
-});
-
-it('reports invalid required fields without submitting data', () => {
-  const result = validateForm(${name2}Form, { name: '', email: 'invalid', description: '' });
-  expect(result.success).toBe(false);
-  if (!result.success) expect(result.errors.map(error => error.field)).toEqual(['name', 'email']);
-});
-`;
-}
-const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {\n      // Kernel source is grouped by layer, then concern; a bundled core plugin owns its layers under src/plugins/<id>/.\n      const kernel = /^src\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path);\n      const corePlugin = /^src\\/plugins\\/[a-z][a-z0-9-]*\\/(?:plugin\\.ts|(?:domain|application|infrastructure|presentation)\\/.+)$/.test(path);\n      if (!kernel && !corePlugin) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/... for the kernel and src/plugins/<id>/plugin.ts or src/plugins/<id>/<layer>/... for core plugins; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
-const testConfig = "import { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Classification patterns define the full scope; Vitest defaults hide cypress/dist directories.\n    projects: [\n      { test: { name: 'unit', environment: 'node', exclude: [], include: ['tests/**/*.unit.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'integration', environment: 'node', exclude: [], include: ['tests/**/*.integration.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n      { test: { name: 'e2e', environment: 'node', exclude: [], include: ['tests/**/*.e2e.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}'] } },\n    ],\n  },\n});\n";
-const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
-const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  // The inventory uses POSIX separators on every platform; compare Windows reports the same way.\n  const discovered = new Set(discovery.report.files.map(file => String(file).replaceAll('\\\\', '/')));\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
-const qualityShared = "import { readdirSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n/** @param {string} value */\nfunction containedPath(value) {\n  // oxlint-disable-next-line no-control-regex -- Source roots must reject control characters and Windows/URL separators.\n  return value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\\:\\x00-\\x1f]/.test(part));\n}\n\n/** @param {unknown} error */\nfunction missing(error) { return error instanceof Error && 'code' in error && error.code === 'ENOENT'; }\n\n/** @param {string} root */\nfunction sourceDirectories(root) {\n  const path = resolve(root, 'configs/quality/source.json');\n  /** @type {unknown} */\n  let config;\n  try { config = JSON.parse(readFileSync(path, 'utf8')); }\n  catch (error) {\n    if (missing(error)) return { sourceRoot: 'src', additionalRoots: [] };\n    throw new Error(`Cannot read source inventory configuration configs/quality/source.json: ${error instanceof Error ? error.message : String(error)}`);\n  }\n  if (!config || typeof config !== 'object' || Array.isArray(config) || !('sourceRoot' in config) || typeof config.sourceRoot !== 'string' || Object.keys(config).some(key => !['sourceRoot', 'additionalRoots'].includes(key))) {\n    throw new Error('configs/quality/source.json requires a sourceRoot string and optional additionalRoots list.');\n  }\n  if (config.sourceRoot.split('/')[0] !== 'src' || !containedPath(config.sourceRoot)) {\n    throw new Error('sourceRoot must be src or a contained POSIX subdirectory such as src/the-forge.');\n  }\n  const additional = 'additionalRoots' in config ? config.additionalRoots : [];\n  if (!Array.isArray(additional) || additional.some(value => typeof value !== 'string' || !containedPath(value))) {\n    throw new Error('additionalRoots must contain relative POSIX directory paths.');\n  }\n  /** @type {string[]} */\n  const additionalRoots = additional;\n  const roots = [config.sourceRoot, ...additionalRoots];\n  if (roots.some((root, index) => roots.some((other, otherIndex) => index !== otherIndex && (root === other || root.startsWith(other + '/'))))) {\n    throw new Error('Source inventory roots must be unique and must not contain one another.');\n  }\n  return { sourceRoot: config.sourceRoot, additionalRoots };\n}\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  /** @type {string[]} */\n  const files = [];\n  const { sourceRoot, additionalRoots } = sourceDirectories(root);\n  /** @param {string} directory */\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  for (const selected of [sourceRoot, ...additionalRoots]) {\n    let directory = root;\n    for (const part of selected.split('/')) {\n      directory = join(directory, part);\n      let entry;\n      try { entry = lstatSync(directory); }\n      catch (error) {\n        if (missing(error)) throw new Error(`Required source directory ${selected} is missing`);\n        throw error;\n      }\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${selected}`);\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${selected}`);\n    }\n    visit(selected);\n  }\n  for (const entry of entries) {\n    if (['tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith(sourceRoot + '/'))) throw new Error(`Source inventory is empty: ${sourceRoot}`);\n  return [...new Set(files)].sort();\n}\n\n/** @param {string} name @param {string[]} args */\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\n/** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
-const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
-const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
-const json$4 = (value2) => JSON.stringify(value2, null, 2) + "\n";
-const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-function componentScaffold(project2, name2, projectsDirectory, kind = "domain") {
-  const directory = `${vaultPath(projectsDirectory)}/${projectName(project2)}`;
-  ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase component name, for example WorkItem.");
-  ensure(kind === "domain" || kind === "application", "INVALID_COMPONENT_KIND", "Component kind must be domain or application.");
-  const file = kebab(name2);
-  const source2 = kind === "domain" ? `export class ${name2} {
-  private constructor(readonly id: string) {}
-
-  static create(id: string): ${name2} {
-    if (!id.trim()) throw new globalThis.Error('Identity is required');
-    return new ${name2}(id);
-  }
-}
-` : `export interface ${name2}Repository {
-  exists(id: string): globalThis.Promise<boolean>;
-}
-
-export class ${name2} {
-  constructor(private readonly repository: ${name2}Repository) {}
-
-  async execute(id: string): globalThis.Promise<{ exists: boolean }> {
-    if (!id.trim()) throw new globalThis.Error('Identity is required');
-    return { exists: await this.repository.exists(id) };
-  }
-}
-`;
-  const test = kind === "domain" ? `import { describe, expect, it } from 'vitest';
-import { ${name2} } from '../src/domain/${file}.ts';
-
-describe('${name2}', () => {
-  it.each(['', '   '])('rejects an empty identity: %j', id => {
-    expect(() => ${name2}.create(id)).toThrow('Identity is required');
-  });
-  it('retains a valid identity', () => {
-    expect(${name2}.create('item-1').id).toBe('item-1');
-  });
-});
-` : `import { describe, expect, it, vi } from 'vitest';
-import { ${name2} } from '../src/application/${file}.ts';
-
-describe('${name2}', () => {
-  it('rejects invalid input before accessing persistence', async () => {
-    const exists = vi.fn(async () => true);
-    await expect(new ${name2}({ exists }).execute('   ')).rejects.toThrow('Identity is required');
-    expect(exists).not.toHaveBeenCalled();
-  });
-  it.each([true, false])('returns the repository result: %s', async present => {
-    const exists = vi.fn(async (id: string) => id === 'item-1' && present);
-    await expect(new ${name2}({ exists }).execute('item-1')).resolves.toEqual({ exists: present });
-    expect(exists).toHaveBeenCalledExactlyOnceWith('item-1');
-  });
-});
-`;
-  return [textFile(`${directory}/src/${kind}/${file}.ts`, source2), textFile(`${directory}/tests/${file}.${kind}.unit.test.ts`, test)];
-}
-function projectScaffold(name2, projectsDirectory) {
-  const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
-  const files = {
-    ".forge/project.json": json$4({ schemaVersion: 1, name: name2, type: "library" }),
-    "package.json": json$4({
-      name: name2,
-      version: "0.1.0",
-      private: true,
-      type: "module",
-      engines: { node: ">=22.12.0" },
-      types: "./dist/index.d.ts",
-      exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
-      scripts: {
-        "check:structure": "node scripts/quality/structure.mjs",
-        lint: "node scripts/quality/lint.mjs",
-        analyze: "node scripts/quality/analyze.mjs",
-        typecheck: "node scripts/quality/typecheck.mjs",
-        dev: "vite",
-        preview: "vite preview --outDir demo-dist",
-        build: "vite build && tsc -p tsconfig.build.json && vite build --mode demo",
-        test: "vitest run",
-        "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
-        check: "npm run check:fast && npm run build && npm test"
-      },
-      dependencies: { zod: "4.6.5" },
-      devDependencies: { "@types/node": "22.20.5", fallow: "3.31.0", oxlint: "1.86.0", typescript: "5.9.3", vite: "7.3.7", vitest: "3.2.7" }
-    }),
-    "scripts/quality/typecheck.mjs": typecheckScript,
-    "scripts/quality/structure.mjs": structureScript,
-    "scripts/quality/lint.mjs": lintScript,
-    "vitest.config.ts": testConfig,
-    "scripts/quality/analyze.mjs": analyzeScript,
-    "scripts/quality/shared.mjs": qualityShared,
-    "configs/lint/oxlintrc.json": lintConfig,
-    "configs/quality/fallow.json": json$4({
-      $schema: "../../node_modules/fallow/schema.json",
-      minimumVersion: "3.31.0",
-      entry: ["src/index.ts", "src/presentation/demo.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "vitest.config.ts"],
-      ignorePatterns: ["demo-dist/**"],
-      failOnParseError: true,
-      rules: { "unused-dev-dependencies": "error", "unused-optional-dependencies": "error", "boundary-violation": "error" },
-      boundaries: {
-        zones: [
-          { name: "domain", patterns: ["src/domain/**"] },
-          { name: "application", patterns: ["src/application/**"] },
-          { name: "infrastructure", patterns: ["src/infrastructure/**"] },
-          { name: "presentation", patterns: ["src/presentation/**", "index.html"] },
-          { name: "public-api", patterns: ["src/index.ts"] }
-        ],
-        rules: [
-          { from: "domain", allow: ["domain"] },
-          { from: "application", allow: ["domain", "application"] },
-          { from: "infrastructure", allow: ["domain", "application", "infrastructure"] },
-          { from: "presentation", allow: ["domain", "application", "infrastructure", "presentation"] }
-        ],
-        coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
-      }
-    }),
-    "tsconfig.json": json$4({
-      compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, allowJs: true, checkJs: true, jsx: "preserve", noEmit: true, types: ["node"], skipLibCheck: true },
-      include: ["src", "tests", "vite.config.ts", "vitest.config.ts"]
-    }),
-    "tsconfig.build.json": json$4({
-      extends: "./tsconfig.json",
-      compilerOptions: { noEmit: false, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist" },
-      include: ["src"]
-    }),
-    "vite.config.ts": `import { defineConfig } from 'vite';
-
-export default defineConfig(({ mode }) => ({
-  base: './',
-  build: mode === 'demo' ? { outDir: 'demo-dist' } : {
-    target: 'es2022',
-    lib: { entry: 'src/index.ts', formats: ['es'], fileName: () => 'index.js' },
-    rollupOptions: { external: ['zod'] },
-  },
-}));
-`,
-    "index.html": demoHtml,
-    "src/vite-env.d.ts": '/// <reference types="vite/client" />\n',
-    "src/presentation/demo.ts": demoScript,
-    "src/presentation/demo.css": demoStyle,
-    "src/presentation/forms/form-model.ts": formModel,
-    "src/presentation/forms/form-view.ts": formView,
-    "src/presentation/forms/project-details.form.ts": formDefinitionSource("ProjectDetails", "./form-model.js"),
-    "tests/project-details.form.unit.test.ts": formDefinitionTestSource("ProjectDetails", "../src/presentation/forms/project-details.form.js", "../src/presentation/forms/form-model.js"),
-    ".gitignore": "node_modules/\ndist/\ndemo-dist/\ncoverage/\n.fallow/\n.quality-reports/\n",
-    "src/index.ts": "export { ProjectIdentity } from './domain/project-identity.js';\nexport { ProjectDetailsForm, type ProjectDetailsValues } from './presentation/forms/project-details.form.js';\nexport { validateForm, type FormDefinition, type FormField, type FormValidation } from './presentation/forms/form-model.js';\nexport { renderForm } from './presentation/forms/form-view.js';\n",
-    "src/application/.gitkeep": "",
-    "src/infrastructure/.gitkeep": "",
-    "README.md": `# ${name2}
-
-TypeScript library scaffolded by The Forge. Requires Node 22.12 or newer.
-
-Run \`npm install\` once from this project directory, commit the resulting lockfile, then use \`npm ci\` for reproducible installs. The scaffold does not install or execute dependencies.
-
-## Forge project context
-
-Run Forge commands from the containing environment directory, where \`bin/forge.js\` lives. Select this project with \`node bin/forge.js project open ${name2}\`, then verify \`node bin/forge.js project current\` before writes. The selection persists in the environment's \`bin/data/context.json\` across invocations; \`project close\` clears it. File commands and \`make\` outputs target the selected project, so \`node bin/forge.js create notes/plan.md --content "# Plan"\` creates a note inside this project. Add components with \`node bin/forge.js project component WorkItem --kind domain --dry-run\`, review the plan, then repeat without \`--dry-run\`. Project management stays scoped to the environment, and Markdown template sources are shared in its \`bin/templates\` folder.
-
-## Form showcase
-
-Run \`npm run dev\` from this project directory and open the local Vite URL. The Project Details form demonstrates labeled native HTML inputs, Zod validation and local result preview; it does not send or save data. Edit \`src/presentation/forms/project-details.form.ts\` to change the model. From the containing environment, run \`node bin/forge.js make form Contact\` after selecting this project. Reload the preview to choose the new form. Definitions under \`src/presentation/forms/**/*.form.ts\` are discovered automatically; definitions elsewhere need an explicit import.
-
-The library exports \`ProjectDetailsForm\`, \`validateForm\` and \`renderForm\`. Validation works without a browser; call the renderer with a real DOM container and a submission callback. \`npm run build\` writes the library and declarations to \`dist\`, and the interactive showcase to \`demo-dist\`. Use \`npm run preview\` to serve the built showcase.
-
-## Development feedback loop
-
-1. Define acceptance criteria and inspect the affected code and tests.
-2. Make a focused change; use \`npm test -- --project unit\` to check its behavior.
-3. Run \`npm run check:fast\` for test-pyramid structure, Oxlint correctness/code-line limits, fallow-rs unused-code/import-boundary analysis, and strict TypeScript checks. Each command exits nonzero on failure.
-4. Repair the first reported failure and rerun its command. Structure, lint and analysis emit structured JSON and save diagnostics to \`.quality-reports/structure.json\`, \`.quality-reports/oxlint.json\` and \`.quality-reports/fallow.json\`. Do not hide findings by broadening analysis entries, adding suppressions, or disabling checks.
-5. Run \`npm run check\` before handoff; it adds the Vite library and demo builds, declaration generation, and all Vitest tests. Report the commands and results.
-
-Keep source files at most 400 code-bearing lines and tests/test support at most 450; blank lines and comment-only lines do not count. Split by responsibility when approaching the limit. Name tests \`*.unit.test.ts\` for isolated behavior, \`*.integration.test.ts\` for collaborating components, or \`*.e2e.test.ts\` for a complete public workflow. Prefer many focused unit tests, fewer integration tests, and a small set of end-to-end tests. Select a layer with \`npm test -- --project unit\` (or \`integration\` / \`e2e\`); run the full suite before handoff.
-
-Keep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and composition in \`src/presentation\`. Core layers use only relative imports and cannot depend on outer layers; keep platform libraries behind injected ports. These boundaries are enforced by the lint and analysis configurations under \`configs/\`. Export the intended public API from \`src/index.ts\`. New components start internal and are exercised by their generated tests; explicitly export them when they become part of the library contract.
-
-The sample \`ProjectIdentity\` demonstrates domain identity validation; \`ProjectDetailsForm\` demonstrates a separate presentation model. Replace examples with the project's business vocabulary and acceptance criteria. Static checks enforce specific rules; focused behavior tests remain necessary.
-`,
-    "AGENTS.md": `# Working on ${name2}
-
-Read README.md and package.json first. Define acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application depends on domain and injected ports. Put adapters in infrastructure and composition in presentation. Respect the enforced import boundaries in configs/.
-
-Run Forge from the containing environment directory: node bin/forge.js project open ${name2}, then node bin/forge.js project current before writes. The selection persists in bin/data/context.json; project close clears it. File operations and make outputs target the selected project; project management stays environment scoped and template sources are shared in bin/templates. Add components with node bin/forge.js project component WorkItem --kind domain; preview writes with --dry-run. Choose names from the domain, replace example behavior, and add focused tests for invariants and failures. Export only intentional public API from src/index.ts.
-
-Keep source files <=400 code-bearing lines and tests/test support <=450, excluding blank and comment-only lines; split responsibilities instead of compressing code. Label tests *.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts. Favor unit tests, add integration tests for boundaries, and reserve e2e tests for public workflows. Run a layer with npm test -- --project unit (replace unit with integration or e2e for those layers).
-
-Form definitions live in src/presentation/forms/*.form.ts and share the typed form-model/form-view runtime; npm run dev shows the HTML preview. Use make form from the containing environment to add a definition and unit tests. Zod owns validation; do not duplicate validation in HTML event handlers or submit data without an explicit application callback.
-
-Run npm commands from this project directory. Install with npm ci after a lockfile exists (npm install once for a fresh scaffold, then commit the lockfile). Run focused tests while editing and npm run check:fast after changes. Repair diagnostics at their source; do not weaken checks, widen entry globs, or add suppressions to obtain a pass. Run npm run check before handoff and report commands, results, and limitations. Introduce dependencies only for a concrete need.
-`,
-    "tests/public-api.integration.test.ts": "import { expect, it } from 'vitest';\nimport { ProjectIdentity } from '../src/index.ts';\n\nit('exposes identity validation through the public API', () => {\n  expect(() => ProjectIdentity.create('   ')).toThrow('Identity is required');\n  expect(ProjectIdentity.create('project-1').id).toBe('project-1');\n});\n"
-  };
-  return [
-    ...Object.entries(files).map(([path, contents]) => textFile(`${directory}/${path}`, contents)),
-    ...componentScaffold(name2, "ProjectIdentity", projectsDirectory)
-  ];
-}
-const schemaVersion = 1;
-const requiredAssets = ["forge.js", "package.json", "config/default.json", "data/distribution.json"];
-const ownedAssetPattern = "^(?:forge\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
-const distributionPolicy = {
-  schemaVersion,
-  requiredAssets,
-  ownedAssetPattern
-};
-const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
-async function readSetupArtifacts(bundleDir) {
-  const root = await promises$1.lstat(bundleDir);
-  ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
-  const readAsset = async (path) => {
-    vaultPath(path);
-    ensure(ownedAsset.test(path), "INVALID_SETUP", `Not a distribution asset: ${path}`);
-    const segments2 = path.split("/");
-    let current = bundleDir;
-    for (const [index2, segment2] of segments2.entries()) {
-      current = minpath.join(current, segment2);
-      const entry2 = await promises$1.lstat(current);
-      ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path}`);
-    }
-    return promises$1.readFile(current);
-  };
-  const manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
-  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
-  const files = manifest.files;
-  ensure(files.every((path) => typeof path === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
-  ensure(distributionPolicy.requiredAssets.every((path) => files.includes(path)), "INVALID_SETUP", "The distribution manifest is incomplete.");
-  const artifacts = [];
-  for (const path of files) artifacts.push({ path, bytes: await readAsset(path) });
-  return artifacts;
-}
-function names(name2, directory) {
-  ensure(/^[A-Z][A-Za-z0-9]*$/.test(name2), "INVALID_NAME", "Use a PascalCase TypeScript name, for example WorkItem.");
-  vaultPath(directory);
-  return { name: name2, directory, file: name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase() };
-}
-const generators = [
-  { id: "form", description: "Typed form definition with Zod validation and HTML preview in a Forge project.", directory: "src/presentation/forms", async generate({ name: input, directory: dir, context }) {
-    ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
-    await context.workspace.files.read("src/presentation/forms/form-model.ts");
-    const { name: name2, directory, file } = names(input, dir);
-    const relative = minpath.posix.relative(directory, "src/presentation/forms/form-model.js");
-    const runtimeImport = relative.startsWith(".") ? relative : `./${relative}`;
-    const definition2 = `${directory}/${file}.form.ts`;
-    const testImport = minpath.posix.relative("tests", definition2).replace(/\.ts$/, ".js");
-    return [
-      { path: definition2, bytes: encodeText$1(formDefinitionSource(name2, runtimeImport)) },
-      { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText$1(formDefinitionTestSource(name2, testImport.startsWith(".") ? testImport : `./${testImport}`, "../src/presentation/forms/form-model.js")) }
-    ];
-  } },
-  { id: "entity", description: "Domain entity with identity and invariant enforcement.", generate({ name: input, directory: dir }) {
-    const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
-  private constructor(readonly id: string) {}
-
-  static create(id: string): ${name2} {
-    if (!id.trim()) throw new globalThis.Error('${name2} requires an identity');
-    return new ${name2}(id);
-  }
-}
-`) }];
-  } },
-  { id: "value-object", description: "Immutable value object with equality and validation.", generate({ name: input, directory: dir }) {
-    const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export class ${name2} {
-  private constructor(readonly value: string) { globalThis.Object.freeze(this); }
-
-  static from(value: string): ${name2} {
-    if (!value.trim()) throw new globalThis.Error('${name2} cannot be empty');
-    return new ${name2}(value);
-  }
-
-  equals(other: ${name2}): boolean { return this.value === other.value; }
-}
-`) }];
-  } },
-  { id: "use-case", description: "Application use case with an injected repository port.", generate({ name: input, directory: dir }) {
-    const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2}Input { readonly id: string }
-export interface ${name2}Repository { exists(id: string): globalThis.Promise<boolean> }
-
-export class ${name2} {
-  constructor(private readonly repository: ${name2}Repository) {}
-
-  async execute(input: ${name2}Input): globalThis.Promise<{ exists: boolean }> {
-    if (!input.id.trim()) throw new globalThis.Error('Identity is required');
-    return { exists: await this.repository.exists(input.id) };
-  }
-}
-`) }];
-  } },
-  { id: "event", description: "Typed event payload and runtime descriptor.", generate({ name: input, directory: dir }) {
-    const { name: name2, directory, file } = names(input, dir);
-    return [{ path: `${directory}/${file}.ts`, bytes: encodeText$1(`export interface ${name2} { readonly id: string }
-export const ${name2}Event = {
-  id: 'app.${file}',
-  validate(value: unknown): value is ${name2} {
-    return value !== null && typeof value === 'object' && 'id' in value && typeof value.id === 'string';
-  },
-};
-`) }];
-  } },
-  { id: "plugin", description: "Installable plugin folder with a manifest, namespaced command and lifecycle hooks.", scope: "workspace", directory: "bin/plugins", fixedDirectory: true, generate({ name: input, directory: dir }) {
-    const { name: name2, directory, file } = names(input, dir);
-    const manifest = {
-      id: file,
-      name: name2,
-      version: "0.1.0",
-      minAppVersion: "0.1.0",
-      description: `${name2} development tools.`,
-      author: "Your team"
-    };
-    return [
-      { path: `${directory}/${file}/manifest.json`, bytes: encodeText$1(JSON.stringify(manifest, null, 2) + "\n") },
-      { path: `${directory}/${file}/main.mjs`, bytes: encodeText$1(`let ready = false;
-
-export default {
-  commands: [{
-    id: '${file}.hello', description: 'Describe this plugin', usage: '${file}.hello',
-    run() { return { plugin: '${file}', ready }; },
-  }],
-
-  onload() { ready = true; },
-  onunload() { ready = false; },
-};
-`) }
-    ];
-  } }
-];
 const reserved$1 = new Set("arguments await break case catch children class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
 const identifier$2 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
 const id = string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
-const value$1 = union([string$1(), number().finite(), boolean(), _null()]);
+const value$1 = union([string$1(), number$1().finite(), boolean(), _null()]);
 const json$3 = lazy(() => union([value$1, array(json$3), record$1(string$1(), json$3)]));
 const values = record$1(identifier$2, value$1);
 const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$1.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
@@ -48398,7 +47280,10 @@ const storybook = strictObject({
 });
 const schema$2 = strictObject({ schemaVersion: literal$1(1), id, name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/).optional(), props: record$1(identifier$2, prop).default({}), state: record$1(identifier$2, state).optional(), root: node, storybook: storybook.optional() });
 class MarkdownUiDefinitions {
-  documents = new ObsidianDocuments();
+  constructor(documents) {
+    this.documents = documents;
+  }
+  documents;
   parse(bytes, path) {
     vaultPath(path);
     try {
@@ -48483,7 +47368,7 @@ const ordered = (object2) => Object.entries(object2).sort(([a], [b]) => a < b ? 
 const json$2 = (value2) => JSON.stringify(value2).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const html = (value2) => String(value2 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const className = (definition2) => definition2.name ?? definition2.id.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("");
-const defaults = (definition2) => Object.fromEntries(ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => [key, prop2.default]));
+const defaults$1 = (definition2) => Object.fromEntries(ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => [key, prop2.default]));
 function componentArtifact(definition2, framework) {
   const extension2 = { html: "js", htmx: "js", vanilla: "js", react: "tsx", vue: "vue", svelte: "svelte", angular: "ts" }[framework];
   return { fileName: `${definition2.id}.${extension2}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
@@ -48663,7 +47548,7 @@ const updateProps = Symbol.for('forge.ui.updateProps');
 
 /** Create a live component; mounting and removal remain owned by the caller. */
 export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$2(defaults(definition2))}, ...input };
+  const props = { ...${json$2(defaults$1(definition2))}, ...input };
 ${defaultAssignments(definition2)}
   const _uiState = ${json$2(stateDefaults(definition2))};
   const updates = [];
@@ -48710,7 +47595,7 @@ ${renderInteractionHandlers(definition2, interactions, { typescript: false, pref
   const result = ${nodeCode(definition2.root)};
   Object.defineProperty(result, updateProps, { configurable: true, value: input => {
     for (const key of Object.keys(props)) delete props[key];
-    Object.assign(props, ${json$2(defaults(definition2))}, input);
+    Object.assign(props, ${json$2(defaults$1(definition2))}, input);
 ${defaultAssignments(definition2)}
     refresh();
   } });
@@ -48733,7 +47618,7 @@ function staticMarkup(node2, props, definitions2, children = "", state2 = {}) {
       const evaluated = evaluate(value2, props, state2);
       return evaluated === void 0 ? [] : [[key, evaluated]];
     }));
-    return staticMarkup(definition2.root, { ...defaults(definition2), ...passed }, definitions2, childMarkup, stateDefaults(definition2));
+    return staticMarkup(definition2.root, { ...defaults$1(definition2), ...passed }, definitions2, childMarkup, stateDefaults(definition2));
   }
   const attrs = ordered(node2.attrs ?? {}).map(([key, original]) => {
     const value2 = evaluate(original, props, state2);
@@ -48772,7 +47657,7 @@ function element(tag, attributes, text, children) {
 
 /** Create DOM using text nodes and attributes; caller owns mounting and event listeners. */
 export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$2(defaults(definition2))}, ...input };
+  const props = { ...${json$2(defaults$1(definition2))}, ...input };
 ${defaultAssignments(definition2)}
   return ${nodeCode(definition2.root)};
 }
@@ -48900,7 +47785,7 @@ ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElem
 }
 ` : ""}
 export default function ${className(definition2)}(${usesProps ? "input" : "_input"}: ${className(definition2)}Props) {
-${usesProps ? `  const props = { ...${json$2(defaults(definition2))}, ...input };
+${usesProps ? `  const props = { ...${json$2(defaults$1(definition2))}, ...input };
 ${defaultAssignments(definition2)}` : ""}${mutatesState ? `
   const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json$2(stateDefaults(definition2))}));
   const ${prefix}StateRef = _uiUseRef(${state2});
@@ -49049,7 +47934,7 @@ function renderUiComponents(input, framework, outputDirectory, interactions = []
     const source2 = renderers[framework](definition2, definitions2, interactions);
     writes.push({ path: `${outputDirectory}/${artifact.fileName}`, bytes: new TextEncoder().encode(source2) });
     if (["html", "htmx", "vanilla"].includes(framework)) {
-      writes.push({ path: `${outputDirectory}/${definition2.id}.html`, bytes: new TextEncoder().encode(staticMarkup(definition2.root, defaults(definition2), definitions2, "", stateDefaults(definition2)) + "\n") });
+      writes.push({ path: `${outputDirectory}/${definition2.id}.html`, bytes: new TextEncoder().encode(staticMarkup(definition2.root, defaults$1(definition2), definitions2, "", stateDefaults(definition2)) + "\n") });
       writes.push({ path: `${outputDirectory}/${definition2.id}.d.ts`, bytes: new TextEncoder().encode(domDeclaration(definition2)) });
     }
   }
@@ -49102,13 +47987,13 @@ function renderUiStories(definitions2, framework, componentDirectory, storiesDir
     }]));
     const parameters = settings2?.parameters ?? {};
     const docs = parameters.docs !== null && typeof parameters.docs === "object" && !Array.isArray(parameters.docs) ? parameters.docs : {};
-    const descriptions = "description" in docs && docs.description !== null && typeof docs.description === "object" && !Array.isArray(docs.description) ? docs.description : {};
+    const descriptions2 = "description" in docs && docs.description !== null && typeof docs.description === "object" && !Array.isArray(docs.description) ? docs.description : {};
     const meta = {
       title: settings2?.title ?? `Components/${definition2.name ?? definition2.id}`,
       tags: settings2?.tags ?? ["autodocs"],
       args: { ...defaults2, ...settings2?.args },
       argTypes: { ...controls, ...settings2?.argTypes },
-      parameters: { ...parameters, docs: { ...docs, description: { component: definition2.description, ...descriptions } } }
+      parameters: { ...parameters, docs: { ...docs, description: { component: definition2.description, ...descriptions2 } } }
     };
     const extension2 = settings2?.extension;
     if (extension2) vaultPath(extension2);
@@ -49141,16 +48026,463 @@ function renderUiStories(definitions2, framework, componentDirectory, storiesDir
         "} satisfies _Story;"
       );
     }
-    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: encodeText$1(lines2.join("\n") + "\n") };
+    return { path: `${storiesDirectory}/${definition2.id}.stories.ts`, bytes: new TextEncoder().encode(lines2.join("\n") + "\n") };
   });
 }
+const identifier$1 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved state name.");
+const scalar = union([string$1(), number$1().finite(), boolean(), _null()]).refine((value2) => !uiHasMalformedBinding(value2), "Invalid scalar binding syntax.");
+const safeKey = string$1().min(1).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved detail key.");
+const url = string$1().min(1).refine((value2) => {
+  if (uiHasMalformedBinding(value2)) return false;
+  if (uiWholeBinding(value2)) return true;
+  const example = uiBindingParts(value2).map((part) => "literal" in part ? part.literal : "value").join("");
+  return isSafeNavigationUrl(example);
+}, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
+const action = union([
+  strictObject({ type: literal$1("set-state"), state: identifier$1, value: scalar }),
+  strictObject({ type: literal$1("set-state"), state: identifier$1, fromEvent: _enum(["value", "checked"]) }),
+  strictObject({ type: literal$1("toggle-state"), state: identifier$1 }),
+  strictObject({ type: literal$1("navigate"), url }),
+  strictObject({ type: literal$1("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
+  strictObject({ type: literal$1("upload-form"), url }),
+  strictObject({ type: literal$1("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
+  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
+]);
+const schema$1 = strictObject({
+  schemaVersion: literal$1(1),
+  id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  event: _enum(interactionEvents),
+  keys: array(string$1().min(1)).min(1).optional(),
+  preventDefault: boolean().optional(),
+  stopPropagation: boolean().optional(),
+  actions: array(action).min(1)
+}).superRefine((definition2, context) => {
+  if (definition2.keys && !["keydown", "keyup"].includes(definition2.event)) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters require keydown or keyup." });
+  if (definition2.keys && new Set(definition2.keys).size !== definition2.keys.length) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters must be unique." });
+  for (const [index2, entry2] of definition2.actions.entries()) {
+    if (entry2.type === "set-state" && "fromEvent" in entry2 && !["input", "change"].includes(definition2.event)) {
+      context.addIssue({ code: "custom", path: ["actions", index2, "fromEvent"], message: "Event value and checked sources require input or change." });
+    }
+    if (["save-form", "upload-form", "download-form"].includes(entry2.type) && !["submit", "click"].includes(definition2.event)) {
+      context.addIssue({ code: "custom", path: ["actions", index2], message: "Form actions require submit or click." });
+    }
+  }
+});
+class MarkdownInteractionDefinitions {
+  constructor(documents) {
+    this.documents = documents;
+  }
+  documents;
+  parse(bytes, path) {
+    vaultPath(path);
+    try {
+      const document2 = this.documents.inspect("interaction.md", bytes);
+      const result = schema$1.safeParse(document2.properties);
+      ensure(result.success, "INVALID_INTERACTION", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
+      return { ...result.data, description: document2.body, sourcePath: path };
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "INVALID_INTERACTION") throw error2;
+      throw forgeError("INVALID_INTERACTION", `${path}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`);
+    }
+  }
+  serialize(definition2) {
+    const { sourcePath, description: description2, ...frontmatter2 } = definition2;
+    const bytes = new TextEncoder().encode(`---
+${distExports.stringify(frontmatter2)}---
+${description2}`);
+    this.parse(bytes, sourcePath || `${definition2.id}.md`);
+    return bytes;
+  }
+}
+function libraryMetadata(noun) {
+  const actions2 = {
+    list: { description: `List the ${noun} definitions in the library.`, mutating: false },
+    init: { description: `Create the library with starter ${noun} definitions.` },
+    inspect: { description: `Return one parsed ${noun} definition.`, mutating: false },
+    validate: { description: `Validate every ${noun} definition.`, mutating: false },
+    create: { description: `Create a new ${noun} definition.` },
+    import: { description: `Copy ${noun} definitions from the import directory into the library.` },
+    export: { description: `Copy the library's ${noun} definitions to the export directory.` }
+  };
+  const args = [
+    { name: "action", description: "list (default), init, inspect, validate, create, import or export.", enum: Object.keys(actions2) },
+    { name: "id", description: "The definition id for inspect and create." }
+  ];
+  return { scope: "workspace", discovery: false, mutating: true, defaultAction: "list", actions: actions2, args };
+}
+const libraryOptions = {
+  library: option$1.string("Library directory, relative to the workspace; defaults to the configured path."),
+  from: option$1.string("Import source directory for import."),
+  out: option$1.string("Export destination directory for export.")
+};
+function localizedLibraryResult(command2, context, result) {
+  if (context.language === "en" || !isRecord(result) || result.status !== "empty" || typeof result.directory !== "string" || typeof result.nextStep !== "string") return result;
+  const message2 = context.t("emptyLibrary");
+  if (message2 === "emptyLibrary") return result;
+  return { ...result, nextStep: message2.replace("{command}", command2).replace("{directory}", result.directory) };
+}
+function componentsCommand(services2) {
+  return {
+    id: "components",
+    description: "Manage and validate a shared Markdown UI component library.",
+    usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
+    ...libraryMetadata("component"),
+    options: { ...libraryOptions, tag: option$1.string("Root element tag for create.", { default: "div" }), "interactions-library": option$1.string("Interaction library directory used to validate component interactions.") },
+    errors: ["INVALID_UI", "INVALID_UI_LIBRARY", "DUPLICATE_UI_COMPONENT", "UNKNOWN_UI_COMPONENT", "CYCLIC_UI_COMPONENT", "UNKNOWN_INTERACTION", "CONFLICT"],
+    async run(args, flags, context) {
+      const { settings: settings2, components: library } = services2(context);
+      const action2 = args[0] ?? "list", directory = value$3(flags, "library") ?? settings2.components;
+      const interactionDirectory = value$3(flags, "interactions-library") ?? settings2.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires components import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires components export.");
+      ensure(flags.tag === void 0 || action2 === "create", "INVALID_ARGUMENT", "--tag requires components create.");
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions2 = await library.list(directory, interactionDirectory);
+        return localizedLibraryResult("components", context, { directory, count: definitions2.length, status: definitions2.length ? "ready" : "empty", ...!definitions2.length ? { nextStep: `Run components init --library ${directory}, or add a Markdown component definition.` } : {}, components: definitions2.map((definition2) => ({
+          id: definition2.id,
+          name: definition2.name,
+          sourcePath: definition2.sourcePath,
+          descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? "",
+          propNames: Object.keys(definition2.props).sort(),
+          dependencies: componentDependencies(definition2.root)
+        })) });
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory, interactionDirectory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1], interactionDirectory);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return localizedLibraryResult("components", context, await library.validate(directory, interactionDirectory));
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        return library.create(directory, args[1], value$3(flags, "tag") ?? "div", interactionDirectory);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value$3(flags, "from") ?? settings2.componentImports, directory, interactionDirectory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use components list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value$3(flags, "out") ?? settings2.componentExports, interactionDirectory);
+    }
+  };
+}
+function interactionsCommand(services2) {
+  return {
+    id: "interactions",
+    description: "Manage reusable Markdown interaction definitions for executable UI behavior.",
+    usage: "interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]",
+    ...libraryMetadata("interaction"),
+    options: { ...libraryOptions, event: option$1.string("Browser event for create.", { enum: interactionEvents }) },
+    errors: ["INVALID_INTERACTION", "DUPLICATE_INTERACTION", "UNKNOWN_INTERACTION", "CONFLICT"],
+    async run(args, flags, context) {
+      const { settings: settings2, interactions: library } = services2(context);
+      const action2 = args[0] ?? "list", directory = value$3(flags, "library") ?? settings2.interactions;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires interactions import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires interactions export.");
+      ensure(flags.event === void 0 || action2 === "create", "INVALID_ARGUMENT", "--event requires interactions create.");
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions2 = await library.list(directory);
+        return localizedLibraryResult("interactions", context, {
+          directory,
+          count: definitions2.length,
+          defaults: defaultInteractionIds,
+          status: definitions2.length ? "ready" : "empty",
+          ...!definitions2.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {},
+          interactions: definitions2.map((definition2) => ({
+            id: definition2.id,
+            event: definition2.event,
+            sourcePath: definition2.sourcePath,
+            actions: definition2.actions.map((action22) => action22.type),
+            descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? ""
+          }))
+        });
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1]);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return localizedLibraryResult("interactions", context, await library.validate(directory));
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        const event = value$3(flags, "event");
+        ensure(event === void 0 || interactionEvents.includes(event), "INVALID_ARGUMENT", `--event must be one of: ${interactionEvents.join(", ")}.`);
+        return library.create(directory, args[1], event);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value$3(flags, "from") ?? settings2.interactionImports, directory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value$3(flags, "out") ?? settings2.interactionExports);
+    }
+  };
+}
+const uiGenerationOptions = {
+  ...libraryGenerationOptions,
+  framework: option$1.string("UI target; defaults to plugins.settings.ui.framework.", { enum: uiFrameworks }),
+  stories: option$1.boolean("Also generate Storybook stories (make ui)."),
+  "stories-out": option$1.string("Stories output directory; defaults to plugins.settings.ui.stories."),
+  "interactions-library": option$1.string("Interaction library directory; defaults to plugins.settings.ui.interactions.")
+};
+async function makeUi(kind, id2, flags, context, services2) {
+  const ui = services2(context), settings2 = ui.settings;
+  const framework = value$3(flags, "framework") ?? settings2.framework;
+  ensure(uiFrameworks.includes(framework), "INVALID_UI_FRAMEWORK", `--framework must be one of: ${uiFrameworks.join(", ")}.`);
+  const storybook2 = kind === "stories" || flags.stories === true;
+  ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
+  ensure(kind !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
+  const scoped = (path) => generationOutputPath(path, context.project);
+  const directory = value$3(flags, "library") ?? settings2.components;
+  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
+  const options2 = {
+    component: id2,
+    framework,
+    interactionDirectory: value$3(flags, "interactions-library") ?? settings2.interactions,
+    outputDirectory: scoped(value$3(flags, "out") ?? settings2.output),
+    ...storybook2 ? { storiesDirectory: scoped(value$3(flags, "stories-out") ?? settings2.stories) } : {},
+    storybook: storybook2,
+    storiesOnly: kind === "stories",
+    ...revisions ? { revisions } : {}
+  };
+  if (mode !== "generate") {
+    const result = mode === "check" ? await ui.components.check(directory, options2) : await ui.components.plan(directory, options2, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
+    return { generator: kind, library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
+  }
+  return { generator: kind, library: directory, ...await ui.components.generate(directory, options2) };
+}
+function uiGenerators(services2) {
+  const library = { projectOption: "project", review: true, options: uiGenerationOptions };
+  return [
+    {
+      id: "ui",
+      description: "Generate deterministic UI code from Markdown component definitions.",
+      usage: "make ui <component-id> [--framework target] [--stories] [--project id] [--out directory]",
+      ...library,
+      run: ({ name: name2, flags, context }) => makeUi("ui", name2, flags, context, services2)
+    },
+    {
+      id: "stories",
+      description: "Generate native Storybook CSF stories for existing UI components.",
+      usage: "make stories <component-id> [--framework target] [--project id] [--stories-out directory]",
+      ...library,
+      run: ({ name: name2, flags, context }) => makeUi("stories", name2, flags, context, services2)
+    }
+  ];
+}
+function libraryActions(command2, noun) {
+  return {
+    [`${command2} list`]: `Die ${noun}definitionen der Bibliothek auflisten.`,
+    [`${command2} init`]: `Die Bibliothek mit ${noun}definitionen als Ausgangspunkt anlegen.`,
+    [`${command2} inspect`]: `Eine geparste ${noun}definition zurückgeben.`,
+    [`${command2} validate`]: `Jede ${noun}definition prüfen.`,
+    [`${command2} create`]: `Eine neue ${noun}definition anlegen.`,
+    [`${command2} import`]: `${noun}definitionen aus dem Importverzeichnis in die Bibliothek kopieren.`,
+    [`${command2} export`]: `Die ${noun}definitionen der Bibliothek in das Exportverzeichnis kopieren.`
+  };
+}
+const de$1 = {
+  commands: {
+    components: "Markdown-Komponenten verwalten, prüfen, importieren und exportieren.",
+    interactions: "Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten."
+  },
+  actions: { ...libraryActions("components", "Komponenten"), ...libraryActions("interactions", "Interaktions") },
+  generators: {
+    ui: "Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.",
+    stories: "Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren."
+  },
+  messages: { emptyLibrary: "Führen Sie {command} init --library {directory} aus oder fügen Sie eine Markdown-Definition hinzu." }
+};
+const renderer = {
+  componentPaths: (definitions2, options2) => definitions2.map((definition2) => `${options2.outputDirectory}/${componentArtifact(definition2, options2.framework).fileName}`),
+  generate: (definitions2, options2) => [
+    ...options2.storiesOnly ? [] : renderUiComponents(definitions2, options2.framework, options2.outputDirectory, options2.interactions),
+    ...options2.storybook ? renderUiStories(definitions2, options2.framework, options2.outputDirectory, options2.storiesDirectory) : []
+  ]
+};
+const services$1 = (context) => {
+  const settings2 = uiSettings(context.settings), workspace2 = context.environment;
+  const interactions = new InteractionLibrary(workspace2, new MarkdownInteractionDefinitions(workspace2.codec));
+  const components = new UiLibrary(workspace2, new MarkdownUiDefinitions(workspace2.codec), standardUiCatalog, renderer, interactions, settings2.interactions);
+  return { settings: settings2, components, interactions };
+};
+const uiPlugin = {
+  manifest: {
+    id: "ui",
+    name: "UI",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Markdown component and interaction libraries with deterministic UI and Storybook generation for seven targets."
+  },
+  create: () => ({
+    commands: [componentsCommand(services$1), interactionsCommand(services$1)],
+    generators: uiGenerators(services$1),
+    settings: uiSettingsSchema,
+    validateSettings: uiSettingsIssues,
+    strings: { de: de$1 }
+  })
+};
+function validateLibrary(definitions2) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const definition2 of definitions2) {
+    ensure(!ids.has(definition2.id), "DUPLICATE_DATA_SOURCE", `Duplicate data source ${definition2.id}.`);
+    ids.add(definition2.id);
+  }
+}
+function starter(directory, id2, kind) {
+  return {
+    schemaVersion: 1,
+    id: id2,
+    kind,
+    sourcePath: `${directory}/${id2}.md`,
+    description: `# ${id2}
+
+Describe this data source, its ownership and error behavior.
+`,
+    model: { name: "Item", idField: "id", fields: { id: { type: "string" }, title: { type: "string", example: "Example item" } } },
+    ...kind === "rest" ? { rest: { baseUrl: "https://api.example.com", operations: { list: { method: "GET", path: "/items" }, get: { method: "GET", path: "/items/{id}" } } } } : { json: { path: "data/items.json" } },
+    testData: { count: 3 }
+  };
+}
+class DataSourceLibrary {
+  constructor(workspace2, codec, renderer2) {
+    this.workspace = workspace2;
+    this.codec = codec;
+    this.renderer = renderer2;
+  }
+  workspace;
+  codec;
+  renderer;
+  async list(directory) {
+    const definitions2 = (await this.sources(directory)).map((source2) => source2.definition);
+    validateLibrary(definitions2);
+    return definitions2;
+  }
+  async inspect(directory, id2) {
+    const sources = await this.sources(directory);
+    validateLibrary(sources.map((source22) => source22.definition));
+    const source2 = sources.find((candidate) => candidate.definition.id === id2);
+    ensure(source2, "UNKNOWN_DATA_SOURCE", `No data source ${id2} in ${directory}.`);
+    return { ...source2.definition, revision: source2.revision };
+  }
+  async validate(directory) {
+    return { valid: true, sources: (await this.list(directory)).map((definition2) => definition2.id) };
+  }
+  async create(directory, id2, kind = "rest") {
+    vaultPath(directory);
+    const definition2 = starter(directory, id2, kind), bytes = this.codec.serialize(definition2);
+    validateLibrary([...await this.list(directory), this.codec.parse(bytes, definition2.sourcePath)]);
+    return { source: id2, ...await this.commit([{ path: definition2.sourcePath, bytes }]) };
+  }
+  async init(directory) {
+    vaultPath(directory);
+    const existing = await this.list(directory), ids = new Set(existing.map((definition2) => definition2.id));
+    const additions = [starter(directory, "example-rest", "rest"), starter(directory, "example-json", "json")].filter((definition2) => !ids.has(definition2.id));
+    const plan = additions.map((definition2) => ({ path: definition2.sourcePath, bytes: this.codec.serialize(definition2) }));
+    return { sources: additions.map((definition2) => definition2.id), skipped: [...ids].sort(), ...await this.commit(plan) };
+  }
+  async import(sourceDirectory, directory) {
+    ensureSeparateDirectories(sourceDirectory, directory);
+    const sources = await this.sources(sourceDirectory);
+    ensure(sources.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${sourceDirectory}.`);
+    validateLibrary([...await this.list(directory), ...sources.map((source2) => source2.definition)]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${directory}/${definition2.sourcePath.slice(sourceDirectory.length + 1)}`, bytes }));
+    return { sources: sources.map((source2) => source2.definition.id), ...await this.commit(plan) };
+  }
+  async export(directory, outputDirectory) {
+    ensureSeparateDirectories(directory, outputDirectory);
+    const sources = await this.sources(directory), definitions2 = sources.map((source2) => source2.definition);
+    validateLibrary([...await this.list(outputDirectory), ...definitions2]);
+    const plan = sources.map(({ definition: definition2, bytes }) => ({ path: `${outputDirectory}/${definition2.sourcePath.slice(directory.length + 1)}`, bytes }));
+    return { sources: definitions2.map((definition2) => definition2.id), ...await this.commit(plan) };
+  }
+  async generate(directory, options2) {
+    const { definitions: definitions2, writes } = await this.prepare(directory, options2);
+    return { sources: definitions2.map((definition2) => definition2.id), ...await new GenerationService(this.workspace).commit(writes, options2.revisions) };
+  }
+  async plan(directory, options2, manifestPath2) {
+    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Planning does not accept regeneration revisions.");
+    return new GenerationService(this.workspace).plan((await this.prepare(directory, options2)).writes, manifestPath2);
+  }
+  async check(directory, options2) {
+    ensure(options2.revisions === void 0, "INVALID_GENERATION_PLAN", "Checks do not accept regeneration revisions.");
+    return new GenerationService(this.workspace).check((await this.prepare(directory, options2)).writes, "DATA_SOURCE_DRIFT");
+  }
+  async prepare(directory, options2) {
+    ensure(this.renderer, "DATA_SOURCE_RENDERER_UNAVAILABLE", "No data-source renderer is configured.");
+    vaultPath(options2.outputDirectory);
+    vaultPath(options2.testDataDirectory);
+    let definitions2 = await this.list(directory);
+    ensure(definitions2.length, "EMPTY_DATA_SOURCE_LIBRARY", `No data-source definitions in ${directory}.`);
+    if (options2.source) {
+      definitions2 = definitions2.filter((definition2) => definition2.id === options2.source);
+      ensure(definitions2.length, "UNKNOWN_DATA_SOURCE", `No data source ${options2.source} in ${directory}.`);
+    }
+    return { definitions: definitions2, writes: this.renderer.generate(definitions2, options2) };
+  }
+  async sources(directory) {
+    vaultPath(directory);
+    const paths2 = (await this.workspace.files.list()).filter((path) => path.startsWith(`${directory}/`) && /\.md$/i.test(path)).sort();
+    return Promise.all(paths2.map(async (path) => {
+      const { bytes, revision } = await this.workspace.files.read(path);
+      return { bytes, revision, definition: this.codec.parse(bytes, path) };
+    }));
+  }
+  async commit(plan) {
+    const result = plan.length ? await this.workspace.write(plan) : { dryRun: this.workspace.dryRun, changes: [] };
+    return { ...result, ...this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {} };
+  }
+}
+const defaults = {
+  library: "data-sources",
+  imports: "imports/data-sources",
+  exports: "exports/data-sources",
+  output: "src/data-sources",
+  fixtures: "test-data"
+};
+const descriptions = {
+  library: "Workspace-relative data-source definition library folder.",
+  imports: "Workspace-relative folder that data-sources import copies definitions from.",
+  exports: "Workspace-relative folder that data-sources export copies definitions to.",
+  output: "Generated adapter folder, relative to the output project (or the workspace without one).",
+  fixtures: "Generated test-data folder, relative to the output project (or the workspace without one)."
+};
+const paths$1 = Object.keys(descriptions);
+const dataSourceSettingsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: Object.fromEntries(paths$1.map((key) => [key, { type: "string", minLength: 1, default: defaults[key], description: descriptions[key] }]))
+};
+const dataSourceSettingsIssues = (settings2) => relativePathIssues("data-sources", settings2, paths$1);
+function dataSourceSettings(section2) {
+  const value2 = { ...defaults, ...section2 };
+  return Object.fromEntries(paths$1.map((key) => [key, relativePathSetting(value2[key])]));
+}
 const reserved = new Set("arguments await break case catch class const constructor continue debugger default delete do else enum eval export extends false finally for function if implements import in instanceof interface let new null package private protected prototype public return static super switch this throw true try typeof var void while with yield undefined __proto__".split(" "));
-const identifier$1 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
-const value = union([string$1(), number().finite(), boolean(), _null()]);
+const identifier = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved.has(value2), "Reserved field name");
+const value = union([string$1(), number$1().finite(), boolean(), _null()]);
 function matches(field2, item) {
   return item === null ? field2.nullable === true : typeof item === field2.type;
 }
-const field = strictObject({
+const field$1 = strictObject({
   type: _enum(["string", "number", "boolean"]),
   optional: boolean().optional(),
   nullable: boolean().optional(),
@@ -49161,20 +48493,20 @@ const field = strictObject({
   if (property.enum && new Set(property.enum).size !== property.enum.length) context.addIssue({ code: "custom", message: "Enum values must be unique." });
   if (property.example !== void 0 && (!matches(property, property.example) || property.enum && !property.enum.includes(property.example))) context.addIssue({ code: "custom", message: "Example must match the field type, nullability and enum." });
 });
-const operation = strictObject({
+const operation$1 = strictObject({
   method: _enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   path: string$1().min(1).max(2048),
   responsePath: string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/).optional()
 });
-const operations = strictObject({ list: operation.optional(), get: operation.optional(), create: operation.optional(), update: operation.optional(), delete: operation.optional() });
-const schema$1 = strictObject({
+const operations = strictObject({ list: operation$1.optional(), get: operation$1.optional(), create: operation$1.optional(), update: operation$1.optional(), delete: operation$1.optional() });
+const schema = strictObject({
   schemaVersion: literal$1(1),
   id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   kind: _enum(["rest", "json"]),
-  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier$1.default("id"), fields: record$1(identifier$1, field) }),
+  model: strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), idField: identifier.default("id"), fields: record$1(identifier, field$1) }),
   rest: strictObject({ baseUrl: string$1().url(), operations }).optional(),
   json: strictObject({ path: string$1().min(1) }).optional(),
-  testData: strictObject({ count: number().int().min(1).max(100).optional(), records: array(record$1(identifier$1, value)).min(1).max(100).optional() }).optional()
+  testData: strictObject({ count: number$1().int().min(1).max(100).optional(), records: array(record$1(identifier, value)).min(1).max(100).optional() }).optional()
 }).superRefine((definition2, context) => {
   const issue2 = (message2) => context.addIssue({ code: "custom", message: message2 });
   const fields2 = definition2.model.fields, primary = fields2[definition2.model.idField];
@@ -49225,12 +48557,15 @@ const schema$1 = strictObject({
   if (!definition2.testData?.records && primary?.enum && primary.enum.length < count2) issue2("ID enum must have enough values for the requested test-data count.");
 });
 class MarkdownDataSourceDefinitions {
-  documents = new ObsidianDocuments();
+  constructor(documents) {
+    this.documents = documents;
+  }
+  documents;
   parse(bytes, path) {
     vaultPath(path);
     try {
       const document2 = this.documents.inspect("definition.md", bytes);
-      const result = schema$1.safeParse(document2.properties);
+      const result = schema.safeParse(document2.properties);
       ensure(result.success, "INVALID_DATA_SOURCE", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
       if (result.data.json) {
         vaultPath(result.data.json.path);
@@ -49417,79 +48752,256 @@ class TypeScriptDataSourceRenderer {
     vaultPath(options2.outputDirectory);
     vaultPath(options2.testDataDirectory);
     return [...definitions2].sort((left, right) => compare(left.id, right.id)).flatMap((definition2) => [
-      { path: `${options2.outputDirectory}/${definition2.id}.ts`, bytes: encodeText$1(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
-      { path: `${options2.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: encodeText$1(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
+      { path: `${options2.outputDirectory}/${definition2.id}.ts`, bytes: new TextEncoder().encode(modelSource(definition2) + (definition2.kind === "rest" ? restSource(definition2) : jsonSource(definition2))) },
+      { path: `${options2.testDataDirectory}/${definition2.id}.fixtures.json`, bytes: new TextEncoder().encode(canonicalJson(fixtureRecords(definition2), 2) + "\n") }
     ]);
   }
 }
-const identifier = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved state name.");
-const scalar = union([string$1(), number().finite(), boolean(), _null()]).refine((value2) => !uiHasMalformedBinding(value2), "Invalid scalar binding syntax.");
-const safeKey = string$1().min(1).refine((value2) => !["__proto__", "constructor", "prototype"].includes(value2), "Reserved detail key.");
-const url = string$1().min(1).refine((value2) => {
-  if (uiHasMalformedBinding(value2)) return false;
-  if (uiWholeBinding(value2)) return true;
-  const example = uiBindingParts(value2).map((part) => "literal" in part ? part.literal : "value").join("");
-  return isSafeNavigationUrl(example);
-}, "Use an HTTP(S) or relative URL with valid scalar bindings, without credentials or executable schemes.");
-const action = union([
-  strictObject({ type: literal$1("set-state"), state: identifier, value: scalar }),
-  strictObject({ type: literal$1("set-state"), state: identifier, fromEvent: _enum(["value", "checked"]) }),
-  strictObject({ type: literal$1("toggle-state"), state: identifier }),
-  strictObject({ type: literal$1("navigate"), url }),
-  strictObject({ type: literal$1("save-form"), key: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2), "Use a nonempty storage key with valid bindings.") }),
-  strictObject({ type: literal$1("upload-form"), url }),
-  strictObject({ type: literal$1("download-form"), filename: string$1().min(1).refine((value2) => value2.trim().length > 0 && !uiHasMalformedBinding(value2) && !/[/\\]/.test(value2) && [...value2].every((character) => character.charCodeAt(0) >= 32), "Use a filename without path separators or control characters and with valid bindings.") }),
-  strictObject({ type: literal$1("emit"), event: string$1().regex(/^[A-Za-z][A-Za-z0-9_.:-]*$/).refine((value2) => !interactionTriggerEvents.has(value2), "Emit a custom event name; native interaction events would recursively trigger handlers."), detail: record$1(safeKey, scalar).optional() })
-]);
-const schema = strictObject({
-  schemaVersion: literal$1(1),
-  id: string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
-  event: _enum(interactionEvents),
-  keys: array(string$1().min(1)).min(1).optional(),
-  preventDefault: boolean().optional(),
-  stopPropagation: boolean().optional(),
-  actions: array(action).min(1)
-}).superRefine((definition2, context) => {
-  if (definition2.keys && !["keydown", "keyup"].includes(definition2.event)) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters require keydown or keyup." });
-  if (definition2.keys && new Set(definition2.keys).size !== definition2.keys.length) context.addIssue({ code: "custom", path: ["keys"], message: "Key filters must be unique." });
-  for (const [index2, entry2] of definition2.actions.entries()) {
-    if (entry2.type === "set-state" && "fromEvent" in entry2 && !["input", "change"].includes(definition2.event)) {
-      context.addIssue({ code: "custom", path: ["actions", index2, "fromEvent"], message: "Event value and checked sources require input or change." });
-    }
-    if (["save-form", "upload-form", "download-form"].includes(entry2.type) && !["submit", "click"].includes(definition2.event)) {
-      context.addIssue({ code: "custom", path: ["actions", index2], message: "Form actions require submit or click." });
-    }
+async function makeDataSource(id2, flags, context, services2) {
+  const data = services2(context), settings2 = data.settings;
+  const scoped = (path) => generationOutputPath(path, context.project);
+  const directory = value$3(flags, "library") ?? settings2.library;
+  const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
+  const options2 = {
+    source: id2,
+    outputDirectory: scoped(value$3(flags, "out") ?? settings2.output),
+    testDataDirectory: scoped(value$3(flags, "test-data-out") ?? settings2.fixtures),
+    ...revisions ? { revisions } : {}
+  };
+  if (mode !== "generate") {
+    const result = mode === "check" ? await data.library.check(directory, options2) : await data.library.plan(directory, options2, manifestPath2 === void 0 ? void 0 : scoped(manifestPath2));
+    return { generator: "data-source", library: directory, ...mode === "check" ? { check: true } : { plan: true }, ...result };
   }
-});
-class MarkdownInteractionDefinitions {
-  documents = new ObsidianDocuments();
-  parse(bytes, path) {
-    vaultPath(path);
+  return { generator: "data-source", library: directory, ...await data.library.generate(directory, options2) };
+}
+function dataSourceGenerator(services2) {
+  return {
+    id: "data-source",
+    description: "Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.",
+    usage: "make data-source <id> [--project id] [--out directory] [--test-data-out directory]",
+    projectOption: "project",
+    review: true,
+    options: { ...libraryGenerationOptions, "test-data-out": option$1.string("Test-data output directory; defaults to plugins.settings.data-sources.fixtures.") },
+    run: ({ name: name2, flags, context }) => makeDataSource(name2, flags, context, services2)
+  };
+}
+function dataSourcesCommand(services2) {
+  return {
+    id: "data-sources",
+    description: "Manage Markdown REST/local-JSON definitions for typed adapters and deterministic test data.",
+    usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
+    ...libraryMetadata("data-source"),
+    options: { ...libraryOptions, kind: option$1.string("Data-source kind for create.", { enum: ["rest", "json"], default: "rest" }) },
+    errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "CONFLICT"],
+    async run(args, flags, context) {
+      const { settings: settings2, library } = services2(context);
+      const action2 = args[0] ?? "list", directory = value$3(flags, "library") ?? settings2.library;
+      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires data-sources import.");
+      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires data-sources export.");
+      ensure(flags.kind === void 0 || action2 === "create", "INVALID_ARGUMENT", "--kind requires data-sources create.");
+      if (action2 === "list") {
+        arity(args, 0, 1);
+        const definitions2 = await library.list(directory);
+        return localizedLibraryResult("data-sources", context, {
+          directory,
+          count: definitions2.length,
+          status: definitions2.length ? "ready" : "empty",
+          ...!definitions2.length ? { nextStep: `Run data-sources init --library ${directory}, or add a Markdown data-source definition.` } : {},
+          sources: definitions2.map((definition2) => ({ id: definition2.id, kind: definition2.kind, model: definition2.model.name, sourcePath: definition2.sourcePath, fields: Object.keys(definition2.model.fields).sort() }))
+        });
+      }
+      if (action2 === "init") {
+        arity(args, 1);
+        return { directory, ...await library.init(directory) };
+      }
+      if (action2 === "inspect") {
+        arity(args, 2);
+        return library.inspect(directory, args[1]);
+      }
+      if (action2 === "validate") {
+        arity(args, 1);
+        return localizedLibraryResult("data-sources", context, await library.validate(directory));
+      }
+      if (action2 === "create") {
+        arity(args, 2);
+        const kind = value$3(flags, "kind") ?? "rest";
+        ensure(kind === "rest" || kind === "json", "INVALID_ARGUMENT", "--kind must be rest or json.");
+        return library.create(directory, args[1], kind);
+      }
+      if (action2 === "import") {
+        arity(args, 1);
+        return library.import(value$3(flags, "from") ?? settings2.imports, directory);
+      }
+      ensure(action2 === "export", "INVALID_ARGUMENT", "Use data-sources list, init, inspect, validate, create, import, or export.");
+      arity(args, 1);
+      return library.export(directory, value$3(flags, "out") ?? settings2.exports);
+    }
+  };
+}
+const services = (context) => {
+  const workspace2 = context.environment;
+  return {
+    settings: dataSourceSettings(context.settings),
+    library: new DataSourceLibrary(workspace2, new MarkdownDataSourceDefinitions(workspace2.codec), new TypeScriptDataSourceRenderer())
+  };
+};
+const actions$1 = {
+  "data-sources list": "Die Datenquellendefinitionen der Bibliothek auflisten.",
+  "data-sources init": "Die Bibliothek mit Datenquellendefinitionen als Ausgangspunkt anlegen.",
+  "data-sources inspect": "Eine geparste Datenquellendefinition zurückgeben.",
+  "data-sources validate": "Jede Datenquellendefinition prüfen.",
+  "data-sources create": "Eine neue Datenquellendefinition anlegen.",
+  "data-sources import": "Datenquellendefinitionen aus dem Importverzeichnis in die Bibliothek kopieren.",
+  "data-sources export": "Die Datenquellendefinitionen der Bibliothek in das Exportverzeichnis kopieren."
+};
+const dataSourcesPlugin = {
+  manifest: {
+    id: "data-sources",
+    name: "Data sources",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Markdown REST and local-JSON data-source definitions with typed adapters and deterministic test data."
+  },
+  create: () => ({
+    commands: [dataSourcesCommand(services)],
+    generators: [dataSourceGenerator(services)],
+    settings: dataSourceSettingsSchema,
+    validateSettings: dataSourceSettingsIssues,
+    strings: {
+      de: {
+        commands: { "data-sources": "Markdown-Datenquellen verwalten, prüfen, importieren und exportieren." },
+        actions: actions$1,
+        generators: { "data-source": "Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren." },
+        messages: { emptyLibrary: "Führen Sie {command} init --library {directory} aus oder fügen Sie eine Markdown-Definition hinzu." }
+      }
+    }
+  })
+};
+const text$3 = (value2) => typeof value2 === "string" && value2.length > 0;
+const status = (value2) => Number.isSafeInteger(value2);
+const operation = (value2) => Number.isSafeInteger(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean" && text$3(value2.executable) && text$3(value2.cwd);
+const error = (value2) => isRecord(value2) && text$3(value2.code) && status(value2.exitCode);
+const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
+function definition(id2, description2, validate2) {
+  return { id: id2, description: description2, validate: (value2) => isRecord(value2) && validate2(value2) };
+}
+const claudeEvents = [
+  definition("claude.started", "A Claude invocation began validation or preview.", operation),
+  definition("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => operation(value2) && optionalStatus(value2)),
+  definition("claude.failed", "Claude validation, execution or output processing failed.", (value2) => operation(value2) && error(value2.error) && optionalStatus(value2)),
+  definition("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$3(value2.executable) && text$3(value2.cwd) && status(value2.exitCode))
+];
+async function notifyClaude(events2, id2, payload2) {
+  try {
+    if (!events2.ids().includes(id2)) return;
+    await events2.emit(id2, payload2);
+  } catch (failure2) {
     try {
-      const document2 = this.documents.inspect("interaction.md", bytes);
-      const result = schema.safeParse(document2.properties);
-      ensure(result.success, "INVALID_INTERACTION", `${path}: ${result.success ? "" : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ")}`);
-      return { ...result.data, description: document2.body, sourcePath: path };
-    } catch (error2) {
-      if (error2 instanceof AppError && error2.code === "INVALID_INTERACTION") throw error2;
-      throw forgeError("INVALID_INTERACTION", `${path}: ${error2 instanceof Error ? error2.message : "Invalid interaction definition."}`);
+      events2.warn(`Claude notification ${id2}: ${errorMessage(failure2)}`);
+    } catch {
     }
-  }
-  serialize(definition2) {
-    const { sourcePath, description: description2, ...frontmatter2 } = definition2;
-    const bytes = new TextEncoder().encode(`---
-${distExports.stringify(frontmatter2)}---
-${description2}`);
-    this.parse(bytes, sourcePath || `${definition2.id}.md`);
-    return bytes;
   }
 }
-function parseClaudeAgent(text2) {
+function nativeResult(stdout, output2) {
+  if (output2 === "text") return void 0;
+  const text2 = stdout.trim();
+  return JSON.parse(output2 === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
+}
+class ClaudeLifecycle {
+  constructor(runtime, scope2, events2, operationId) {
+    this.runtime = runtime;
+    this.scope = scope2;
+    this.events = events2;
+    this.operationId = operationId;
+  }
+  runtime;
+  scope;
+  events;
+  operationId;
+  notify(id2, payload2) {
+    return notifyClaude(this.events, id2, payload2);
+  }
+  async execute(request) {
+    let detached = request;
+    let snapshotFailure;
+    try {
+      if (isRecord(request)) {
+        detached = { ...request };
+        if (Array.isArray(detached.args)) detached.args = [...detached.args];
+        if (Array.isArray(detached.sensitiveArgs)) detached.sensitiveArgs = [...detached.sensitiveArgs];
+      }
+    } catch (error2) {
+      snapshotFailure = { error: error2 };
+    }
+    const requestedExecutable = !snapshotFailure && isRecord(detached) ? detached.executable ?? "claude" : "claude";
+    const executable = typeof requestedExecutable === "string" && requestedExecutable.trim().length > 0 && !requestedExecutable.includes("\0") ? requestedExecutable : "<invalid>";
+    const operation2 = { operationId: this.operationId(), executable, cwd: this.scope.cwd, dryRun: this.scope.dryRun };
+    let exitCode;
+    await this.notify("claude.started", operation2);
+    try {
+      if (snapshotFailure) throw snapshotFailure.error;
+      const result = await this.invoke(detached, (status2) => {
+        exitCode = status2;
+      });
+      await this.notify("claude.succeeded", { ...operation2, ...exitCode === void 0 ? {} : { exitCode } });
+      return result;
+    } catch (error2) {
+      await this.notify("claude.failed", { ...operation2, ...exitCode === void 0 ? {} : { exitCode }, error: summarizeError(error2) });
+      throw error2;
+    }
+  }
+  async invoke(request, observeExit) {
+    ensure(isRecord(request), "INVALID_CLAUDE_ARGUMENT", "Claude execution requires an invocation object.");
+    const executable = request.executable ?? "claude";
+    ensure(typeof executable === "string" && executable.trim().length > 0 && !executable.includes("\0"), "INVALID_CLAUDE_EXECUTABLE", "Provide the Claude executable name or path.");
+    ensure(Array.isArray(request.args) && request.args.every((argument) => typeof argument === "string" && !argument.includes("\0")), "INVALID_CLAUDE_ARGUMENT", "Claude arguments must be strings without null bytes.");
+    const args = [...request.args], timeoutMs = request.timeoutMs, input = request.stdin;
+    ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_CLAUDE_TIMEOUT", "Claude timeout must be milliseconds from 1 to 3600000.");
+    ensure(input === void 0 || typeof input === "string", "INVALID_CLAUDE_INPUT", "Claude standard input must be UTF-8 text.");
+    const inputBytes = input === void 0 ? void 0 : new TextEncoder().encode(input).length;
+    ensure(inputBytes === void 0 || inputBytes <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude standard input must not exceed 1 MiB.");
+    const output2 = request.output ?? "text";
+    ensure(["text", "json", "json-last-line"].includes(output2), "INVALID_CLAUDE_OUTPUT", "Claude output must be text, json, or json-last-line.");
+    const sensitive = request.sensitiveArgs ?? [];
+    ensure(Array.isArray(sensitive) && sensitive.every((index2) => Number.isSafeInteger(index2) && index2 >= 0 && index2 < args.length), "INVALID_CLAUDE_ARGUMENT", "Sensitive argument indices must address native arguments.");
+    const redact2 = new Set(sensitive);
+    for (const [index2, argument] of args.entries()) if (argument === "--config" && index2 + 1 < args.length) redact2.add(index2 + 1);
+    else if (argument.startsWith("--config=")) redact2.add(index2);
+    const plan = {
+      executable,
+      args: args.map((argument, index2) => redact2.has(index2) ? "<redacted>" : argument),
+      cwd: this.scope.cwd,
+      ...timeoutMs === void 0 ? {} : { timeoutMs },
+      ...inputBytes === void 0 ? {} : { inputBytes }
+    };
+    if (this.scope.dryRun) return { dryRun: true, executed: false, plan };
+    const result = await this.runtime(executable).run(args, { cwd: this.scope.cwd, ...timeoutMs === void 0 ? {} : { timeoutMs }, ...input === void 0 ? {} : { stdin: input } });
+    ensure(Number.isInteger(result.exitCode), "CLAUDE_RUNTIME_FAILED", "Claude Code returned no exit status.");
+    observeExit(result.exitCode);
+    await this.notify("claude.executed", { executable, cwd: this.scope.cwd, exitCode: result.exitCode });
+    let data, malformed = false;
+    try {
+      data = nativeResult(result.stdout, output2);
+    } catch {
+      malformed = true;
+    }
+    const details = { ...plan, ...result, ...data === void 0 ? {} : { result: data } };
+    if (result.exitCode !== 0) throw forgeError("CLAUDE_RUNTIME_FAILED", `Claude Code exited with status ${result.exitCode}. Inspect the native result before retrying; the command may have changed external state.`, details);
+    if (malformed) throw forgeError("CLAUDE_INVALID_OUTPUT", "Claude exited successfully but did not return the requested JSON. Inspect stdout and external state before retrying.", details);
+    return { dryRun: false, executed: true, ...details };
+  }
+}
+function claudeAgentCodec(documents) {
+  return { parse: (text2) => parseClaudeAgent(documents, text2), render: renderClaudeAgent };
+}
+function parseClaudeAgent(documents, text2) {
   try {
     ensure(typeof text2 === "string", "INVALID_CLAUDE_AGENT", "Agent definition must be Markdown text.");
-    const parts = parseMarkdownParts(text2);
+    const parts = documents.markdownParts(text2);
     ensure(parts.exists, "INVALID_CLAUDE_AGENT", "Agent definitions require YAML frontmatter on the first line.");
-    const document2 = new ObsidianDocuments().inspect("agent.md", new TextEncoder().encode(text2));
+    const document2 = documents.inspect("agent.md", new TextEncoder().encode(text2));
     validateClaudeAgent(document2.properties, document2.body);
     return { metadata: document2.properties, prompt: document2.body };
   } catch (error2) {
@@ -49504,7 +49016,7 @@ function renderClaudeAgent(document2) {
 ${distExports.stringify(document2.metadata)}---
 ${document2.prompt}`;
 }
-async function claudeTarget(context, flags) {
+const claudeTarget = (openFiles) => async (context, flags) => {
   const scope2 = flags.scope ?? "project";
   ensure(["project", "local", "user", "plugin"].includes(String(scope2)), "INVALID_ARGUMENT", "Native Claude scope must be project, local, user, or plugin.");
   ensure(flags["claude-dir"] === void 0 || scope2 === "user", "INVALID_ARGUMENT", "--claude-dir is only valid with --scope user.");
@@ -49525,7 +49037,7 @@ async function claudeTarget(context, flags) {
         root = parent2;
       }
     }
-    const files = await NodeFiles.at(root, (message2) => context.events.warn(message2));
+    const files = await openFiles(root, (message2) => context.events.warn(message2));
     const prefix = minpath.relative(root, directory).split("\\").join("/");
     const scoped = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
     return {
@@ -49548,7 +49060,7 @@ async function claudeTarget(context, flags) {
     agentsDirectory: ".claude/agents",
     settingsPath: scope2 === "local" ? ".claude/settings.local.json" : ".claude/settings.json"
   };
-}
+};
 const closedInputCodes = /* @__PURE__ */ new Set(["EPIPE", "EOF"]);
 class NodeClaudeRuntime {
   executable;
@@ -49689,7 +49201,7 @@ class NodeClaudeRuntime {
     });
   }
 }
-function text$1(bytes) {
+function text$2(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
@@ -49716,7 +49228,7 @@ class ClaudeAgents {
       try {
         const snapshot = await this.workspace.files.read(path);
         entry2.revision = snapshot.revision;
-        const { metadata: metadata2 } = this.codec.parse(text$1(snapshot.bytes));
+        const { metadata: metadata2 } = this.codec.parse(text$2(snapshot.bytes));
         entry2.name = metadata2.name;
         entry2.description = metadata2.description;
         entry2.valid = true;
@@ -49731,7 +49243,7 @@ class ClaudeAgents {
   }
   async inspect(id2) {
     const path = this.path(id2), snapshot = await this.workspace.files.read(path);
-    return { id: id2, path, revision: snapshot.revision, bytes: snapshot.bytes.length, ...this.codec.parse(text$1(snapshot.bytes)) };
+    return { id: id2, path, revision: snapshot.revision, bytes: snapshot.bytes.length, ...this.codec.parse(text$2(snapshot.bytes)) };
   }
   async create(id2, source2) {
     return this.write(id2, source2);
@@ -49863,3424 +49375,6 @@ class ClaudeSettings {
     return { path: this.path, ...result, ...result.dryRun ? { preview: [{ path: this.path, content: content2 }] } : {} };
   }
 }
-class CommanderError extends Error {
-  /**
-   * Constructs the CommanderError class
-   * @param {number} exitCode suggested exit code which could be used with process.exit
-   * @param {string} code an id string representing the error
-   * @param {string} message human-readable description of the error
-   */
-  constructor(exitCode, code2, message2) {
-    super(message2);
-    Error.captureStackTrace(this, this.constructor);
-    this.name = this.constructor.name;
-    this.code = code2;
-    this.exitCode = exitCode;
-    this.nestedError = void 0;
-  }
-}
-class InvalidArgumentError extends CommanderError {
-  /**
-   * Constructs the InvalidArgumentError class
-   * @param {string} [message] explanation of why argument is invalid
-   */
-  constructor(message2) {
-    super(1, "commander.invalidArgument", message2);
-    Error.captureStackTrace(this, this.constructor);
-    this.name = this.constructor.name;
-  }
-}
-class Argument {
-  /**
-   * Initialize a new command argument with the given name and description.
-   * The default is that the argument is required, and you can explicitly
-   * indicate this with <> around the name. Put [] around the name for an optional argument.
-   *
-   * @param {string} name
-   * @param {string} [description]
-   */
-  constructor(name2, description2) {
-    this.description = description2 || "";
-    this.variadic = false;
-    this.parseArg = void 0;
-    this.defaultValue = void 0;
-    this.defaultValueDescription = void 0;
-    this.argChoices = void 0;
-    switch (name2[0]) {
-      case "<":
-        this.required = true;
-        this._name = name2.slice(1, -1);
-        break;
-      case "[":
-        this.required = false;
-        this._name = name2.slice(1, -1);
-        break;
-      default:
-        this.required = true;
-        this._name = name2;
-        break;
-    }
-    if (this._name.endsWith("...")) {
-      this.variadic = true;
-      this._name = this._name.slice(0, -3);
-    }
-  }
-  /**
-   * Return argument name.
-   *
-   * @return {string}
-   */
-  name() {
-    return this._name;
-  }
-  /**
-   * @package
-   */
-  _collectValue(value2, previous2) {
-    if (previous2 === this.defaultValue || !Array.isArray(previous2)) {
-      return [value2];
-    }
-    previous2.push(value2);
-    return previous2;
-  }
-  /**
-   * Set the default value, and optionally supply the description to be displayed in the help.
-   *
-   * @param {*} value
-   * @param {string} [description]
-   * @return {Argument}
-   */
-  default(value2, description2) {
-    this.defaultValue = value2;
-    this.defaultValueDescription = description2;
-    return this;
-  }
-  /**
-   * Set the custom handler for processing CLI command arguments into argument values.
-   *
-   * @param {Function} [fn]
-   * @return {Argument}
-   */
-  argParser(fn) {
-    this.parseArg = fn;
-    return this;
-  }
-  /**
-   * Only allow argument value to be one of choices.
-   *
-   * @param {string[]} values
-   * @return {Argument}
-   */
-  choices(values2) {
-    this.argChoices = values2.slice();
-    this.parseArg = (arg, previous2) => {
-      if (!this.argChoices.includes(arg)) {
-        throw new InvalidArgumentError(
-          `Allowed choices are ${this.argChoices.join(", ")}.`
-        );
-      }
-      if (this.variadic) {
-        return this._collectValue(arg, previous2);
-      }
-      return arg;
-    };
-    return this;
-  }
-  /**
-   * Make argument required.
-   *
-   * @returns {Argument}
-   */
-  argRequired() {
-    this.required = true;
-    return this;
-  }
-  /**
-   * Make argument optional.
-   *
-   * @returns {Argument}
-   */
-  argOptional() {
-    this.required = false;
-    return this;
-  }
-}
-function humanReadableArgName(arg) {
-  const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
-  return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
-}
-class Help {
-  constructor() {
-    this.helpWidth = void 0;
-    this.minWidthToWrap = 40;
-    this.sortSubcommands = false;
-    this.sortOptions = false;
-    this.showGlobalOptions = false;
-  }
-  /**
-   * prepareContext is called by Commander after applying overrides from `Command.configureHelp()`
-   * and just before calling `formatHelp()`.
-   *
-   * Commander just uses the helpWidth and the rest is provided for optional use by more complex subclasses.
-   *
-   * @param {{ error?: boolean, helpWidth?: number, outputHasColors?: boolean }} contextOptions
-   */
-  prepareContext(contextOptions) {
-    this.helpWidth = this.helpWidth ?? contextOptions.helpWidth ?? 80;
-  }
-  /**
-   * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
-   *
-   * @param {Command} cmd
-   * @returns {Command[]}
-   */
-  visibleCommands(cmd) {
-    const visibleCommands = cmd.commands.filter((cmd2) => !cmd2._hidden);
-    const helpCommand = cmd._getHelpCommand();
-    if (helpCommand && !helpCommand._hidden) {
-      visibleCommands.push(helpCommand);
-    }
-    if (this.sortSubcommands) {
-      visibleCommands.sort((a, b) => {
-        return a.name().localeCompare(b.name());
-      });
-    }
-    return visibleCommands;
-  }
-  /**
-   * Compare options for sort.
-   *
-   * @param {Option} a
-   * @param {Option} b
-   * @returns {number}
-   */
-  compareOptions(a, b) {
-    const getSortKey = (option2) => {
-      return option2.short ? option2.short.replace(/^-/, "") : option2.long.replace(/^--/, "");
-    };
-    return getSortKey(a).localeCompare(getSortKey(b));
-  }
-  /**
-   * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
-   *
-   * @param {Command} cmd
-   * @returns {Option[]}
-   */
-  visibleOptions(cmd) {
-    const visibleOptions = cmd.options.filter((option2) => !option2.hidden);
-    const helpOption = cmd._getHelpOption();
-    if (helpOption && !helpOption.hidden) {
-      const removeShort = helpOption.short && cmd._findOption(helpOption.short);
-      const removeLong = helpOption.long && cmd._findOption(helpOption.long);
-      if (!removeShort && !removeLong) {
-        visibleOptions.push(helpOption);
-      } else if (helpOption.long && !removeLong) {
-        visibleOptions.push(
-          cmd.createOption(helpOption.long, helpOption.description)
-        );
-      } else if (helpOption.short && !removeShort) {
-        visibleOptions.push(
-          cmd.createOption(helpOption.short, helpOption.description)
-        );
-      }
-    }
-    if (this.sortOptions) {
-      visibleOptions.sort(this.compareOptions);
-    }
-    return visibleOptions;
-  }
-  /**
-   * Get an array of the visible global options. (Not including help.)
-   *
-   * @param {Command} cmd
-   * @returns {Option[]}
-   */
-  visibleGlobalOptions(cmd) {
-    if (!this.showGlobalOptions) return [];
-    const globalOptions2 = [];
-    for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
-      const visibleOptions = ancestorCmd.options.filter(
-        (option2) => !option2.hidden
-      );
-      globalOptions2.push(...visibleOptions);
-    }
-    if (this.sortOptions) {
-      globalOptions2.sort(this.compareOptions);
-    }
-    return globalOptions2;
-  }
-  /**
-   * Get an array of the arguments if any have a description.
-   *
-   * @param {Command} cmd
-   * @returns {Argument[]}
-   */
-  visibleArguments(cmd) {
-    if (cmd._argsDescription) {
-      cmd.registeredArguments.forEach((argument) => {
-        argument.description = argument.description || cmd._argsDescription[argument.name()] || "";
-      });
-    }
-    if (cmd.registeredArguments.find((argument) => argument.description)) {
-      return cmd.registeredArguments;
-    }
-    return [];
-  }
-  /**
-   * Get the command term to show in the list of subcommands.
-   *
-   * @param {Command} cmd
-   * @returns {string}
-   */
-  subcommandTerm(cmd) {
-    const args = cmd.registeredArguments.map((arg) => humanReadableArgName(arg)).join(" ");
-    return cmd._name + (cmd._aliases[0] ? "|" + cmd._aliases[0] : "") + (cmd.options.length ? " [options]" : "") + // simplistic check for non-help option
-    (args ? " " + args : "");
-  }
-  /**
-   * Get the option term to show in the list of options.
-   *
-   * @param {Option} option
-   * @returns {string}
-   */
-  optionTerm(option2) {
-    return option2.flags;
-  }
-  /**
-   * Get the argument term to show in the list of arguments.
-   *
-   * @param {Argument} argument
-   * @returns {string}
-   */
-  argumentTerm(argument) {
-    return argument.name();
-  }
-  /**
-   * Get the longest command term length.
-   *
-   * @param {Command} cmd
-   * @param {Help} helper
-   * @returns {number}
-   */
-  longestSubcommandTermLength(cmd, helper) {
-    return helper.visibleCommands(cmd).reduce((max, command2) => {
-      return Math.max(
-        max,
-        this.displayWidth(
-          helper.styleSubcommandTerm(helper.subcommandTerm(command2))
-        )
-      );
-    }, 0);
-  }
-  /**
-   * Get the longest option term length.
-   *
-   * @param {Command} cmd
-   * @param {Help} helper
-   * @returns {number}
-   */
-  longestOptionTermLength(cmd, helper) {
-    return helper.visibleOptions(cmd).reduce((max, option2) => {
-      return Math.max(
-        max,
-        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option2)))
-      );
-    }, 0);
-  }
-  /**
-   * Get the longest global option term length.
-   *
-   * @param {Command} cmd
-   * @param {Help} helper
-   * @returns {number}
-   */
-  longestGlobalOptionTermLength(cmd, helper) {
-    return helper.visibleGlobalOptions(cmd).reduce((max, option2) => {
-      return Math.max(
-        max,
-        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option2)))
-      );
-    }, 0);
-  }
-  /**
-   * Get the longest argument term length.
-   *
-   * @param {Command} cmd
-   * @param {Help} helper
-   * @returns {number}
-   */
-  longestArgumentTermLength(cmd, helper) {
-    return helper.visibleArguments(cmd).reduce((max, argument) => {
-      return Math.max(
-        max,
-        this.displayWidth(
-          helper.styleArgumentTerm(helper.argumentTerm(argument))
-        )
-      );
-    }, 0);
-  }
-  /**
-   * Get the command usage to be displayed at the top of the built-in help.
-   *
-   * @param {Command} cmd
-   * @returns {string}
-   */
-  commandUsage(cmd) {
-    let cmdName = cmd._name;
-    if (cmd._aliases[0]) {
-      cmdName = cmdName + "|" + cmd._aliases[0];
-    }
-    let ancestorCmdNames = "";
-    for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
-      ancestorCmdNames = ancestorCmd.name() + " " + ancestorCmdNames;
-    }
-    return ancestorCmdNames + cmdName + " " + cmd.usage();
-  }
-  /**
-   * Get the description for the command.
-   *
-   * @param {Command} cmd
-   * @returns {string}
-   */
-  commandDescription(cmd) {
-    return cmd.description();
-  }
-  /**
-   * Get the subcommand summary to show in the list of subcommands.
-   * (Fallback to description for backwards compatibility.)
-   *
-   * @param {Command} cmd
-   * @returns {string}
-   */
-  subcommandDescription(cmd) {
-    return cmd.summary() || cmd.description();
-  }
-  /**
-   * Get the option description to show in the list of options.
-   *
-   * @param {Option} option
-   * @return {string}
-   */
-  optionDescription(option2) {
-    const extraInfo = [];
-    if (option2.argChoices) {
-      extraInfo.push(
-        // use stringify to match the display of the default value
-        `choices: ${option2.argChoices.map((choice2) => JSON.stringify(choice2)).join(", ")}`
-      );
-    }
-    if (option2.defaultValue !== void 0) {
-      const showDefault = option2.required || option2.optional || option2.isBoolean() && typeof option2.defaultValue === "boolean";
-      if (showDefault) {
-        extraInfo.push(
-          `default: ${option2.defaultValueDescription || JSON.stringify(option2.defaultValue)}`
-        );
-      }
-    }
-    if (option2.presetArg !== void 0 && option2.optional) {
-      extraInfo.push(`preset: ${JSON.stringify(option2.presetArg)}`);
-    }
-    if (option2.envVar !== void 0) {
-      extraInfo.push(`env: ${option2.envVar}`);
-    }
-    if (extraInfo.length > 0) {
-      const extraDescription = `(${extraInfo.join(", ")})`;
-      if (option2.description) {
-        return `${option2.description} ${extraDescription}`;
-      }
-      return extraDescription;
-    }
-    return option2.description;
-  }
-  /**
-   * Get the argument description to show in the list of arguments.
-   *
-   * @param {Argument} argument
-   * @return {string}
-   */
-  argumentDescription(argument) {
-    const extraInfo = [];
-    if (argument.argChoices) {
-      extraInfo.push(
-        // use stringify to match the display of the default value
-        `choices: ${argument.argChoices.map((choice2) => JSON.stringify(choice2)).join(", ")}`
-      );
-    }
-    if (argument.defaultValue !== void 0) {
-      extraInfo.push(
-        `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`
-      );
-    }
-    if (extraInfo.length > 0) {
-      const extraDescription = `(${extraInfo.join(", ")})`;
-      if (argument.description) {
-        return `${argument.description} ${extraDescription}`;
-      }
-      return extraDescription;
-    }
-    return argument.description;
-  }
-  /**
-   * Format a list of items, given a heading and an array of formatted items.
-   *
-   * @param {string} heading
-   * @param {string[]} items
-   * @param {Help} helper
-   * @returns string[]
-   */
-  formatItemList(heading, items2, helper) {
-    if (items2.length === 0) return [];
-    return [helper.styleTitle(heading), ...items2, ""];
-  }
-  /**
-   * Group items by their help group heading.
-   *
-   * @param {Command[] | Option[]} unsortedItems
-   * @param {Command[] | Option[]} visibleItems
-   * @param {Function} getGroup
-   * @returns {Map<string, Command[] | Option[]>}
-   */
-  groupItems(unsortedItems, visibleItems, getGroup) {
-    const result = /* @__PURE__ */ new Map();
-    unsortedItems.forEach((item) => {
-      const group = getGroup(item);
-      if (!result.has(group)) result.set(group, []);
-    });
-    visibleItems.forEach((item) => {
-      const group = getGroup(item);
-      if (!result.has(group)) {
-        result.set(group, []);
-      }
-      result.get(group).push(item);
-    });
-    return result;
-  }
-  /**
-   * Generate the built-in help text.
-   *
-   * @param {Command} cmd
-   * @param {Help} helper
-   * @returns {string}
-   */
-  formatHelp(cmd, helper) {
-    const termWidth = helper.padWidth(cmd, helper);
-    const helpWidth = helper.helpWidth ?? 80;
-    function callFormatItem(term, description2) {
-      return helper.formatItem(term, termWidth, description2, helper);
-    }
-    let output2 = [
-      `${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`,
-      ""
-    ];
-    const commandDescription = helper.commandDescription(cmd);
-    if (commandDescription.length > 0) {
-      output2 = output2.concat([
-        helper.boxWrap(
-          helper.styleCommandDescription(commandDescription),
-          helpWidth
-        ),
-        ""
-      ]);
-    }
-    const argumentList = helper.visibleArguments(cmd).map((argument) => {
-      return callFormatItem(
-        helper.styleArgumentTerm(helper.argumentTerm(argument)),
-        helper.styleArgumentDescription(helper.argumentDescription(argument))
-      );
-    });
-    output2 = output2.concat(
-      this.formatItemList("Arguments:", argumentList, helper)
-    );
-    const optionGroups = this.groupItems(
-      cmd.options,
-      helper.visibleOptions(cmd),
-      (option2) => option2.helpGroupHeading ?? "Options:"
-    );
-    optionGroups.forEach((options2, group) => {
-      const optionList = options2.map((option2) => {
-        return callFormatItem(
-          helper.styleOptionTerm(helper.optionTerm(option2)),
-          helper.styleOptionDescription(helper.optionDescription(option2))
-        );
-      });
-      output2 = output2.concat(this.formatItemList(group, optionList, helper));
-    });
-    if (helper.showGlobalOptions) {
-      const globalOptionList = helper.visibleGlobalOptions(cmd).map((option2) => {
-        return callFormatItem(
-          helper.styleOptionTerm(helper.optionTerm(option2)),
-          helper.styleOptionDescription(helper.optionDescription(option2))
-        );
-      });
-      output2 = output2.concat(
-        this.formatItemList("Global Options:", globalOptionList, helper)
-      );
-    }
-    const commandGroups = this.groupItems(
-      cmd.commands,
-      helper.visibleCommands(cmd),
-      (sub) => sub.helpGroup() || "Commands:"
-    );
-    commandGroups.forEach((commands2, group) => {
-      const commandList = commands2.map((sub) => {
-        return callFormatItem(
-          helper.styleSubcommandTerm(helper.subcommandTerm(sub)),
-          helper.styleSubcommandDescription(helper.subcommandDescription(sub))
-        );
-      });
-      output2 = output2.concat(this.formatItemList(group, commandList, helper));
-    });
-    return output2.join("\n");
-  }
-  /**
-   * Return display width of string, ignoring ANSI escape sequences. Used in padding and wrapping calculations.
-   *
-   * @param {string} str
-   * @returns {number}
-   */
-  displayWidth(str) {
-    return node_util.stripVTControlCharacters(str).length;
-  }
-  /**
-   * Style the title for displaying in the help. Called with 'Usage:', 'Options:', etc.
-   *
-   * @param {string} str
-   * @returns {string}
-   */
-  styleTitle(str) {
-    return str;
-  }
-  styleUsage(str) {
-    return str.split(" ").map((word) => {
-      if (word === "[options]") return this.styleOptionText(word);
-      if (word === "[command]") return this.styleSubcommandText(word);
-      if (word[0] === "[" || word[0] === "<")
-        return this.styleArgumentText(word);
-      return this.styleCommandText(word);
-    }).join(" ");
-  }
-  styleCommandDescription(str) {
-    return this.styleDescriptionText(str);
-  }
-  styleOptionDescription(str) {
-    return this.styleDescriptionText(str);
-  }
-  styleSubcommandDescription(str) {
-    return this.styleDescriptionText(str);
-  }
-  styleArgumentDescription(str) {
-    return this.styleDescriptionText(str);
-  }
-  styleDescriptionText(str) {
-    return str;
-  }
-  styleOptionTerm(str) {
-    return this.styleOptionText(str);
-  }
-  styleSubcommandTerm(str) {
-    return str.split(" ").map((word) => {
-      if (word === "[options]") return this.styleOptionText(word);
-      if (word[0] === "[" || word[0] === "<")
-        return this.styleArgumentText(word);
-      return this.styleSubcommandText(word);
-    }).join(" ");
-  }
-  styleArgumentTerm(str) {
-    return this.styleArgumentText(str);
-  }
-  styleOptionText(str) {
-    return str;
-  }
-  styleArgumentText(str) {
-    return str;
-  }
-  styleSubcommandText(str) {
-    return str;
-  }
-  styleCommandText(str) {
-    return str;
-  }
-  /**
-   * Calculate the pad width from the maximum term length.
-   *
-   * @param {Command} cmd
-   * @param {Help} helper
-   * @returns {number}
-   */
-  padWidth(cmd, helper) {
-    return Math.max(
-      helper.longestOptionTermLength(cmd, helper),
-      helper.longestGlobalOptionTermLength(cmd, helper),
-      helper.longestSubcommandTermLength(cmd, helper),
-      helper.longestArgumentTermLength(cmd, helper)
-    );
-  }
-  /**
-   * Detect manually wrapped and indented strings by checking for line break followed by whitespace.
-   *
-   * @param {string} str
-   * @returns {boolean}
-   */
-  preformatted(str) {
-    return /\n[^\S\r\n]/.test(str);
-  }
-  /**
-   * Format the "item", which consists of a term and description. Pad the term and wrap the description, indenting the following lines.
-   *
-   * So "TTT", 5, "DDD DDDD DD DDD" might be formatted for this.helpWidth=17 like so:
-   *   TTT  DDD DDDD
-   *        DD DDD
-   *
-   * @param {string} term
-   * @param {number} termWidth
-   * @param {string} description
-   * @param {Help} helper
-   * @returns {string}
-   */
-  formatItem(term, termWidth, description2, helper) {
-    const itemIndent = 2;
-    const itemIndentStr = " ".repeat(itemIndent);
-    if (!description2) return itemIndentStr + term;
-    const paddedTerm = term.padEnd(
-      termWidth + term.length - helper.displayWidth(term)
-    );
-    const spacerWidth = 2;
-    const helpWidth = this.helpWidth ?? 80;
-    const remainingWidth = helpWidth - termWidth - spacerWidth - itemIndent;
-    let formattedDescription;
-    if (remainingWidth < this.minWidthToWrap || helper.preformatted(description2)) {
-      formattedDescription = description2;
-    } else {
-      const wrappedDescription = helper.boxWrap(description2, remainingWidth);
-      formattedDescription = wrappedDescription.replace(
-        /\n/g,
-        "\n" + " ".repeat(termWidth + spacerWidth)
-      );
-    }
-    return itemIndentStr + paddedTerm + " ".repeat(spacerWidth) + formattedDescription.replace(/\n/g, `
-${itemIndentStr}`);
-  }
-  /**
-   * Wrap a string at whitespace, preserving existing line breaks.
-   * Wrapping is skipped if the width is less than `minWidthToWrap`.
-   *
-   * @param {string} str
-   * @param {number} width
-   * @returns {string}
-   */
-  boxWrap(str, width) {
-    if (width < this.minWidthToWrap) return str;
-    const rawLines = str.split(/\r\n|\n/);
-    const chunkPattern = /[\s]*[^\s]+/g;
-    const wrappedLines = [];
-    rawLines.forEach((line) => {
-      const chunks = line.match(chunkPattern);
-      if (chunks === null) {
-        wrappedLines.push("");
-        return;
-      }
-      let sumChunks = [chunks.shift()];
-      let sumWidth = this.displayWidth(sumChunks[0]);
-      chunks.forEach((chunk) => {
-        const visibleWidth = this.displayWidth(chunk);
-        if (sumWidth + visibleWidth <= width) {
-          sumChunks.push(chunk);
-          sumWidth += visibleWidth;
-          return;
-        }
-        wrappedLines.push(sumChunks.join(""));
-        const nextChunk = chunk.trimStart();
-        sumChunks = [nextChunk];
-        sumWidth = this.displayWidth(nextChunk);
-      });
-      wrappedLines.push(sumChunks.join(""));
-    });
-    return wrappedLines.join("\n");
-  }
-}
-class Option {
-  /**
-   * Initialize a new `Option` with the given `flags` and `description`.
-   *
-   * @param {string} flags
-   * @param {string} [description]
-   */
-  constructor(flags, description2) {
-    this.flags = flags;
-    this.description = description2 || "";
-    this.required = flags.includes("<");
-    this.optional = flags.includes("[");
-    this.variadic = /\w\.\.\.[>\]]$/.test(flags);
-    this.mandatory = false;
-    const optionFlags = splitOptionFlags(flags);
-    this.short = optionFlags.shortFlag;
-    this.long = optionFlags.longFlag;
-    this.negate = false;
-    if (this.long) {
-      this.negate = this.long.startsWith("--no-");
-    }
-    this.defaultValue = void 0;
-    this.defaultValueDescription = void 0;
-    this.presetArg = void 0;
-    this.envVar = void 0;
-    this.parseArg = void 0;
-    this.hidden = false;
-    this.argChoices = void 0;
-    this.conflictsWith = [];
-    this.implied = void 0;
-    this.helpGroupHeading = void 0;
-  }
-  /**
-   * Set the default value, and optionally supply the description to be displayed in the help.
-   *
-   * @param {*} value
-   * @param {string} [description]
-   * @return {Option}
-   */
-  default(value2, description2) {
-    this.defaultValue = value2;
-    this.defaultValueDescription = description2;
-    return this;
-  }
-  /**
-   * Preset to use when option used without option-argument, especially optional but also boolean and negated.
-   * The custom processing (parseArg) is called.
-   *
-   * @example
-   * new Option('--color').default('GREYSCALE').preset('RGB');
-   * new Option('--donate [amount]').preset('20').argParser(parseFloat);
-   *
-   * @param {*} arg
-   * @return {Option}
-   */
-  preset(arg) {
-    this.presetArg = arg;
-    return this;
-  }
-  /**
-   * Add option name(s) that conflict with this option.
-   * An error will be displayed if conflicting options are found during parsing.
-   *
-   * @example
-   * new Option('--rgb').conflicts('cmyk');
-   * new Option('--js').conflicts(['ts', 'jsx']);
-   *
-   * @param {(string | string[])} names
-   * @return {Option}
-   */
-  conflicts(names2) {
-    this.conflictsWith = this.conflictsWith.concat(names2);
-    return this;
-  }
-  /**
-   * Specify implied option values for when this option is set and the implied options are not.
-   *
-   * The custom processing (parseArg) is not called on the implied values.
-   *
-   * @example
-   * program
-   *   .addOption(new Option('--log', 'write logging information to file'))
-   *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
-   *
-   * @param {object} impliedOptionValues
-   * @return {Option}
-   */
-  implies(impliedOptionValues) {
-    let newImplied = impliedOptionValues;
-    if (typeof impliedOptionValues === "string") {
-      newImplied = { [impliedOptionValues]: true };
-    }
-    this.implied = Object.assign(this.implied || {}, newImplied);
-    return this;
-  }
-  /**
-   * Set environment variable to check for option value.
-   *
-   * An environment variable is only used if when processed the current option value is
-   * undefined, or the source of the current value is 'default' or 'config' or 'env'.
-   *
-   * @param {string} name
-   * @return {Option}
-   */
-  env(name2) {
-    this.envVar = name2;
-    return this;
-  }
-  /**
-   * Set the custom handler for processing CLI option arguments into option values.
-   *
-   * @param {Function} [fn]
-   * @return {Option}
-   */
-  argParser(fn) {
-    this.parseArg = fn;
-    return this;
-  }
-  /**
-   * Whether the option is mandatory and must have a value after parsing.
-   *
-   * @param {boolean} [mandatory=true]
-   * @return {Option}
-   */
-  makeOptionMandatory(mandatory = true) {
-    this.mandatory = !!mandatory;
-    return this;
-  }
-  /**
-   * Hide option in help.
-   *
-   * @param {boolean} [hide=true]
-   * @return {Option}
-   */
-  hideHelp(hide2 = true) {
-    this.hidden = !!hide2;
-    return this;
-  }
-  /**
-   * @package
-   */
-  _collectValue(value2, previous2) {
-    if (previous2 === this.defaultValue || !Array.isArray(previous2)) {
-      return [value2];
-    }
-    previous2.push(value2);
-    return previous2;
-  }
-  /**
-   * Only allow option value to be one of choices.
-   *
-   * @param {string[]} values
-   * @return {Option}
-   */
-  choices(values2) {
-    this.argChoices = values2.slice();
-    this.parseArg = (arg, previous2) => {
-      if (!this.argChoices.includes(arg)) {
-        throw new InvalidArgumentError(
-          `Allowed choices are ${this.argChoices.join(", ")}.`
-        );
-      }
-      if (this.variadic) {
-        return this._collectValue(arg, previous2);
-      }
-      return arg;
-    };
-    return this;
-  }
-  /**
-   * Return option name.
-   *
-   * @return {string}
-   */
-  name() {
-    if (this.long) {
-      return this.long.replace(/^--/, "");
-    }
-    return this.short.replace(/^-/, "");
-  }
-  /**
-   * Return option name, in a camelcase format that can be used
-   * as an object attribute key.
-   *
-   * @return {string}
-   */
-  attributeName() {
-    if (this.negate) {
-      return camelcase(this.name().replace(/^no-/, ""));
-    }
-    return camelcase(this.name());
-  }
-  /**
-   * Set the help group heading.
-   *
-   * @param {string} heading
-   * @return {Option}
-   */
-  helpGroup(heading) {
-    this.helpGroupHeading = heading;
-    return this;
-  }
-  /**
-   * Check if `arg` matches the short or long flag.
-   *
-   * @param {string} arg
-   * @return {boolean}
-   * @package
-   */
-  is(arg) {
-    return this.short === arg || this.long === arg;
-  }
-  /**
-   * Return whether a boolean option.
-   *
-   * Options are one of boolean, negated, required argument, or optional argument.
-   *
-   * @return {boolean}
-   * @package
-   */
-  isBoolean() {
-    return !this.required && !this.optional && !this.negate;
-  }
-}
-class DualOptions {
-  /**
-   * @param {Option[]} options
-   */
-  constructor(options2) {
-    this.positiveOptions = /* @__PURE__ */ new Map();
-    this.negativeOptions = /* @__PURE__ */ new Map();
-    this.dualOptions = /* @__PURE__ */ new Set();
-    options2.forEach((option2) => {
-      if (option2.negate) {
-        this.negativeOptions.set(option2.attributeName(), option2);
-      } else {
-        this.positiveOptions.set(option2.attributeName(), option2);
-      }
-    });
-    this.negativeOptions.forEach((value2, key) => {
-      if (this.positiveOptions.has(key)) {
-        this.dualOptions.add(key);
-      }
-    });
-  }
-  /**
-   * Did the value come from the option, and not from possible matching dual option?
-   *
-   * @param {*} value
-   * @param {Option} option
-   * @returns {boolean}
-   */
-  valueFromOption(value2, option2) {
-    const optionKey = option2.attributeName();
-    if (!this.dualOptions.has(optionKey)) return true;
-    const preset = this.negativeOptions.get(optionKey).presetArg;
-    const negativeValue = preset !== void 0 ? preset : false;
-    return option2.negate === (negativeValue === value2);
-  }
-}
-function camelcase(str) {
-  return str.split("-").reduce((str2, word) => {
-    return str2 + word[0].toUpperCase() + word.slice(1);
-  });
-}
-function splitOptionFlags(flags) {
-  let shortFlag;
-  let longFlag;
-  const shortFlagExp = /^-[^-]$/;
-  const longFlagExp = /^--[^-]/;
-  const flagParts = flags.split(/[ |,]+/).concat("guard");
-  if (shortFlagExp.test(flagParts[0])) shortFlag = flagParts.shift();
-  if (longFlagExp.test(flagParts[0])) longFlag = flagParts.shift();
-  if (!shortFlag && shortFlagExp.test(flagParts[0]))
-    shortFlag = flagParts.shift();
-  if (!shortFlag && longFlagExp.test(flagParts[0])) {
-    shortFlag = longFlag;
-    longFlag = flagParts.shift();
-  }
-  if (flagParts[0].startsWith("-")) {
-    const unsupportedFlag = flagParts[0];
-    const baseError = `option creation failed due to '${unsupportedFlag}' in option flags '${flags}'`;
-    if (/^-[^-][^-]/.test(unsupportedFlag))
-      throw new Error(
-        `${baseError}
-- a short flag is a single dash and a single character
-  - either use a single dash and a single character (for a short flag)
-  - or use a double dash for a long option (and can have two, like '--ws, --workspace')`
-      );
-    if (shortFlagExp.test(unsupportedFlag))
-      throw new Error(`${baseError}
-- too many short flags`);
-    if (longFlagExp.test(unsupportedFlag))
-      throw new Error(`${baseError}
-- too many long flags`);
-    throw new Error(`${baseError}
-- unrecognised flag format`);
-  }
-  if (shortFlag === void 0 && longFlag === void 0)
-    throw new Error(
-      `option creation failed due to no flags found in '${flags}'.`
-    );
-  return { shortFlag, longFlag };
-}
-const maxDistance = 3;
-function editDistance(a, b) {
-  if (Math.abs(a.length - b.length) > maxDistance)
-    return Math.max(a.length, b.length);
-  const d = [];
-  for (let i = 0; i <= a.length; i++) {
-    d[i] = [i];
-  }
-  for (let j = 0; j <= b.length; j++) {
-    d[0][j] = j;
-  }
-  for (let j = 1; j <= b.length; j++) {
-    for (let i = 1; i <= a.length; i++) {
-      let cost;
-      if (a[i - 1] === b[j - 1]) {
-        cost = 0;
-      } else {
-        cost = 1;
-      }
-      d[i][j] = Math.min(
-        d[i - 1][j] + 1,
-        // deletion
-        d[i][j - 1] + 1,
-        // insertion
-        d[i - 1][j - 1] + cost
-        // substitution
-      );
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-      }
-    }
-  }
-  return d[a.length][b.length];
-}
-function suggestSimilar(word, candidates2) {
-  if (!candidates2 || candidates2.length === 0) return "";
-  candidates2 = Array.from(new Set(candidates2));
-  const searchingOptions = word.startsWith("--");
-  if (searchingOptions) {
-    word = word.slice(2);
-    candidates2 = candidates2.map((candidate) => candidate.slice(2));
-  }
-  let similar = [];
-  let bestDistance = maxDistance;
-  const minSimilarity = 0.4;
-  candidates2.forEach((candidate) => {
-    if (candidate.length <= 1) return;
-    const distance = editDistance(word, candidate);
-    const length = Math.max(word.length, candidate.length);
-    const similarity = (length - distance) / length;
-    if (similarity > minSimilarity) {
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        similar = [candidate];
-      } else if (distance === bestDistance) {
-        similar.push(candidate);
-      }
-    }
-  });
-  similar.sort((a, b) => a.localeCompare(b));
-  if (searchingOptions) {
-    similar = similar.map((candidate) => `--${candidate}`);
-  }
-  if (similar.length > 1) {
-    return `
-(Did you mean one of ${similar.join(", ")}?)`;
-  }
-  if (similar.length === 1) {
-    return `
-(Did you mean ${similar[0]}?)`;
-  }
-  return "";
-}
-class Command extends node_events.EventEmitter {
-  /**
-   * Initialize a new `Command`.
-   *
-   * @param {string} [name]
-   */
-  constructor(name2) {
-    super();
-    this.commands = [];
-    this.options = [];
-    this.parent = null;
-    this._allowUnknownOption = false;
-    this._allowExcessArguments = false;
-    this.registeredArguments = [];
-    this._args = this.registeredArguments;
-    this.args = [];
-    this.rawArgs = [];
-    this.processedArgs = [];
-    this._scriptPath = null;
-    this._name = name2 || "";
-    this._optionValues = {};
-    this._optionValueSources = {};
-    this._storeOptionsAsProperties = false;
-    this._actionHandler = null;
-    this._executableHandler = false;
-    this._executableFile = null;
-    this._executableDir = null;
-    this._defaultCommandName = null;
-    this._exitCallback = null;
-    this._aliases = [];
-    this._combineFlagAndOptionalValue = true;
-    this._description = "";
-    this._summary = "";
-    this._argsDescription = void 0;
-    this._enablePositionalOptions = false;
-    this._passThroughOptions = false;
-    this._lifeCycleHooks = {};
-    this._showHelpAfterError = false;
-    this._showSuggestionAfterError = true;
-    this._savedState = null;
-    this._outputConfiguration = {
-      writeOut: (str) => process$1.stdout.write(str),
-      writeErr: (str) => process$1.stderr.write(str),
-      outputError: (str, write) => write(str),
-      getOutHelpWidth: () => process$1.stdout.isTTY ? process$1.stdout.columns : void 0,
-      getErrHelpWidth: () => process$1.stderr.isTTY ? process$1.stderr.columns : void 0,
-      getOutHasColors: () => useColor() ?? (process$1.stdout.isTTY && process$1.stdout.hasColors?.()),
-      getErrHasColors: () => useColor() ?? (process$1.stderr.isTTY && process$1.stderr.hasColors?.()),
-      stripColor: (str) => node_util.stripVTControlCharacters(str)
-    };
-    this._hidden = false;
-    this._helpOption = void 0;
-    this._addImplicitHelpCommand = void 0;
-    this._helpCommand = void 0;
-    this._helpConfiguration = {};
-    this._helpGroupHeading = void 0;
-    this._defaultCommandGroup = void 0;
-    this._defaultOptionGroup = void 0;
-  }
-  /**
-   * Copy settings that are useful to have in common across root command and subcommands.
-   *
-   * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
-   *
-   * @param {Command} sourceCommand
-   * @return {Command} `this` command for chaining
-   */
-  copyInheritedSettings(sourceCommand) {
-    this._outputConfiguration = sourceCommand._outputConfiguration;
-    this._helpOption = sourceCommand._helpOption;
-    this._helpCommand = sourceCommand._helpCommand;
-    this._helpConfiguration = sourceCommand._helpConfiguration;
-    this._exitCallback = sourceCommand._exitCallback;
-    this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
-    this._combineFlagAndOptionalValue = sourceCommand._combineFlagAndOptionalValue;
-    this._allowExcessArguments = sourceCommand._allowExcessArguments;
-    this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
-    this._showHelpAfterError = sourceCommand._showHelpAfterError;
-    this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
-    return this;
-  }
-  /**
-   * @returns {Command[]}
-   * @private
-   */
-  _getCommandAndAncestors() {
-    const result = [];
-    for (let command2 = this; command2; command2 = command2.parent) {
-      result.push(command2);
-    }
-    return result;
-  }
-  /**
-   * Define a command.
-   *
-   * There are two styles of command: pay attention to where to put the description.
-   *
-   * @example
-   * // Command implemented using action handler (description is supplied separately to `.command`)
-   * program
-   *   .command('clone <source> [destination]')
-   *   .description('clone a repository into a newly created directory')
-   *   .action((source, destination) => {
-   *     console.log('clone command called');
-   *   });
-   *
-   * // Command implemented using separate executable file (description is second parameter to `.command`)
-   * program
-   *   .command('start <service>', 'start named service')
-   *   .command('stop [service]', 'stop named service, or all if no name supplied');
-   *
-   * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
-   * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
-   * @param {object} [execOpts] - configuration options (for executable)
-   * @return {Command} returns new command for action handler, or `this` for executable command
-   */
-  command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
-    let desc = actionOptsOrExecDesc;
-    let opts = execOpts;
-    if (typeof desc === "object" && desc !== null) {
-      opts = desc;
-      desc = null;
-    }
-    opts = opts || {};
-    const [, name2, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
-    const cmd = this.createCommand(name2);
-    if (desc) {
-      cmd.description(desc);
-      cmd._executableHandler = true;
-    }
-    if (opts.isDefault) this._defaultCommandName = cmd._name;
-    cmd._hidden = !!(opts.noHelp || opts.hidden);
-    cmd._executableFile = opts.executableFile || null;
-    if (args) cmd.arguments(args);
-    this._registerCommand(cmd);
-    cmd.parent = this;
-    cmd.copyInheritedSettings(this);
-    if (desc) return this;
-    return cmd;
-  }
-  /**
-   * Factory routine to create a new unattached command.
-   *
-   * See .command() for creating an attached subcommand, which uses this routine to
-   * create the command. You can override createCommand to customise subcommands.
-   *
-   * @param {string} [name]
-   * @return {Command} new command
-   */
-  createCommand(name2) {
-    return new Command(name2);
-  }
-  /**
-   * You can customise the help with a subclass of Help by overriding createHelp,
-   * or by overriding Help properties using configureHelp().
-   *
-   * @return {Help}
-   */
-  createHelp() {
-    return Object.assign(new Help(), this.configureHelp());
-  }
-  /**
-   * You can customise the help by overriding Help properties using configureHelp(),
-   * or with a subclass of Help by overriding createHelp().
-   *
-   * @param {object} [configuration] - configuration options
-   * @return {(Command | object)} `this` command for chaining, or stored configuration
-   */
-  configureHelp(configuration) {
-    if (configuration === void 0) return this._helpConfiguration;
-    this._helpConfiguration = configuration;
-    return this;
-  }
-  /**
-   * The default output goes to stdout and stderr. You can customise this for special
-   * applications. You can also customise the display of errors by overriding outputError.
-   *
-   * The configuration properties are all functions:
-   *
-   *     // change how output being written, defaults to stdout and stderr
-   *     writeOut(str)
-   *     writeErr(str)
-   *     // change how output being written for errors, defaults to writeErr
-   *     outputError(str, write) // used for displaying errors and not used for displaying help
-   *     // specify width for wrapping help
-   *     getOutHelpWidth()
-   *     getErrHelpWidth()
-   *     // color support, currently only used with Help
-   *     getOutHasColors()
-   *     getErrHasColors()
-   *     stripColor() // used to remove ANSI escape codes if output does not have colors
-   *
-   * @param {object} [configuration] - configuration options
-   * @return {(Command | object)} `this` command for chaining, or stored configuration
-   */
-  configureOutput(configuration) {
-    if (configuration === void 0) return this._outputConfiguration;
-    this._outputConfiguration = {
-      ...this._outputConfiguration,
-      ...configuration
-    };
-    return this;
-  }
-  /**
-   * Display the help or a custom message after an error occurs.
-   *
-   * @param {(boolean|string)} [displayHelp]
-   * @return {Command} `this` command for chaining
-   */
-  showHelpAfterError(displayHelp = true) {
-    if (typeof displayHelp !== "string") displayHelp = !!displayHelp;
-    this._showHelpAfterError = displayHelp;
-    return this;
-  }
-  /**
-   * Display suggestion of similar commands for unknown commands, or options for unknown options.
-   *
-   * @param {boolean} [displaySuggestion]
-   * @return {Command} `this` command for chaining
-   */
-  showSuggestionAfterError(displaySuggestion = true) {
-    this._showSuggestionAfterError = !!displaySuggestion;
-    return this;
-  }
-  /**
-   * Add a prepared subcommand.
-   *
-   * See .command() for creating an attached subcommand which inherits settings from its parent.
-   *
-   * @param {Command} cmd - new subcommand
-   * @param {object} [opts] - configuration options
-   * @return {Command} `this` command for chaining
-   */
-  addCommand(cmd, opts) {
-    if (!cmd._name) {
-      throw new Error(`Command passed to .addCommand() must have a name
-- specify the name in Command constructor or using .name()`);
-    }
-    opts = opts || {};
-    if (opts.isDefault) this._defaultCommandName = cmd._name;
-    if (opts.noHelp || opts.hidden) cmd._hidden = true;
-    this._registerCommand(cmd);
-    cmd.parent = this;
-    cmd._checkForBrokenPassThrough();
-    return this;
-  }
-  /**
-   * Factory routine to create a new unattached argument.
-   *
-   * See .argument() for creating an attached argument, which uses this routine to
-   * create the argument. You can override createArgument to return a custom argument.
-   *
-   * @param {string} name
-   * @param {string} [description]
-   * @return {Argument} new argument
-   */
-  createArgument(name2, description2) {
-    return new Argument(name2, description2);
-  }
-  /**
-   * Define argument syntax for command.
-   *
-   * The default is that the argument is required, and you can explicitly
-   * indicate this with <> around the name. Put [] around the name for an optional argument.
-   *
-   * @example
-   * program.argument('<input-file>');
-   * program.argument('[output-file]');
-   *
-   * @param {string} name
-   * @param {string} [description]
-   * @param {(Function|*)} [parseArg] - custom argument processing function or default value
-   * @param {*} [defaultValue]
-   * @return {Command} `this` command for chaining
-   */
-  argument(name2, description2, parseArg, defaultValue) {
-    const argument = this.createArgument(name2, description2);
-    if (typeof parseArg === "function") {
-      argument.default(defaultValue).argParser(parseArg);
-    } else {
-      argument.default(parseArg);
-    }
-    this.addArgument(argument);
-    return this;
-  }
-  /**
-   * Define argument syntax for command, adding multiple at once (without descriptions).
-   *
-   * See also .argument().
-   *
-   * @example
-   * program.arguments('<cmd> [env]');
-   *
-   * @param {string} names
-   * @return {Command} `this` command for chaining
-   */
-  arguments(names2) {
-    names2.trim().split(/ +/).forEach((detail) => {
-      this.argument(detail);
-    });
-    return this;
-  }
-  /**
-   * Define argument syntax for command, adding a prepared argument.
-   *
-   * @param {Argument} argument
-   * @return {Command} `this` command for chaining
-   */
-  addArgument(argument) {
-    const previousArgument = this.registeredArguments.slice(-1)[0];
-    if (previousArgument?.variadic) {
-      throw new Error(
-        `only the last argument can be variadic '${previousArgument.name()}'`
-      );
-    }
-    if (argument.required && argument.defaultValue !== void 0 && argument.parseArg === void 0) {
-      throw new Error(
-        `a default value for a required argument is never used: '${argument.name()}'`
-      );
-    }
-    this.registeredArguments.push(argument);
-    return this;
-  }
-  /**
-   * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
-   *
-   * @example
-   *    program.helpCommand('help [cmd]');
-   *    program.helpCommand('help [cmd]', 'show help');
-   *    program.helpCommand(false); // suppress default help command
-   *    program.helpCommand(true); // add help command even if no subcommands
-   *
-   * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
-   * @param {string} [description] - custom description
-   * @return {Command} `this` command for chaining
-   */
-  helpCommand(enableOrNameAndArgs, description2) {
-    if (typeof enableOrNameAndArgs === "boolean") {
-      this._addImplicitHelpCommand = enableOrNameAndArgs;
-      if (enableOrNameAndArgs && this._defaultCommandGroup) {
-        this._initCommandGroup(this._getHelpCommand());
-      }
-      return this;
-    }
-    const nameAndArgs = enableOrNameAndArgs ?? "help [command]";
-    const [, helpName, helpArgs] = nameAndArgs.match(/([^ ]+) *(.*)/);
-    const helpDescription = description2 ?? "display help for command";
-    const helpCommand = this.createCommand(helpName);
-    helpCommand.helpOption(false);
-    if (helpArgs) helpCommand.arguments(helpArgs);
-    if (helpDescription) helpCommand.description(helpDescription);
-    this._addImplicitHelpCommand = true;
-    this._helpCommand = helpCommand;
-    if (enableOrNameAndArgs || description2) this._initCommandGroup(helpCommand);
-    return this;
-  }
-  /**
-   * Add prepared custom help command.
-   *
-   * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
-   * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
-   * @return {Command} `this` command for chaining
-   */
-  addHelpCommand(helpCommand, deprecatedDescription) {
-    if (typeof helpCommand !== "object") {
-      this.helpCommand(helpCommand, deprecatedDescription);
-      return this;
-    }
-    this._addImplicitHelpCommand = true;
-    this._helpCommand = helpCommand;
-    this._initCommandGroup(helpCommand);
-    return this;
-  }
-  /**
-   * Lazy create help command.
-   *
-   * @return {(Command|null)}
-   * @package
-   */
-  _getHelpCommand() {
-    const hasImplicitHelpCommand = this._addImplicitHelpCommand ?? (this.commands.length && !this._actionHandler && !this._findCommand("help"));
-    if (hasImplicitHelpCommand) {
-      if (this._helpCommand === void 0) {
-        this.helpCommand(void 0, void 0);
-      }
-      return this._helpCommand;
-    }
-    return null;
-  }
-  /**
-   * Add hook for life cycle event.
-   *
-   * @param {string} event
-   * @param {Function} listener
-   * @return {Command} `this` command for chaining
-   */
-  hook(event, listener) {
-    const allowedValues = ["preSubcommand", "preAction", "postAction"];
-    if (!allowedValues.includes(event)) {
-      throw new Error(`Unexpected value for event passed to hook : '${event}'.
-Expecting one of '${allowedValues.join("', '")}'`);
-    }
-    if (this._lifeCycleHooks[event]) {
-      this._lifeCycleHooks[event].push(listener);
-    } else {
-      this._lifeCycleHooks[event] = [listener];
-    }
-    return this;
-  }
-  /**
-   * Register callback to use as replacement for calling process.exit.
-   *
-   * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
-   * @return {Command} `this` command for chaining
-   */
-  exitOverride(fn) {
-    if (fn) {
-      this._exitCallback = fn;
-    } else {
-      this._exitCallback = (err) => {
-        if (err.code !== "commander.executeSubCommandAsync") {
-          throw err;
-        }
-      };
-    }
-    return this;
-  }
-  /**
-   * Call process.exit, and _exitCallback if defined.
-   *
-   * @param {number} exitCode exit code for using with process.exit
-   * @param {string} code an id string representing the error
-   * @param {string} message human-readable description of the error
-   * @return never
-   * @private
-   */
-  _exit(exitCode, code2, message2) {
-    if (this._exitCallback) {
-      this._exitCallback(new CommanderError(exitCode, code2, message2));
-    }
-    process$1.exit(exitCode);
-  }
-  /**
-   * Register callback `fn` for the command.
-   *
-   * @example
-   * program
-   *   .command('serve')
-   *   .description('start service')
-   *   .action(function() {
-   *      // do work here
-   *   });
-   *
-   * @param {Function} fn
-   * @return {Command} `this` command for chaining
-   */
-  action(fn) {
-    const listener = (args) => {
-      const expectedArgsCount = this.registeredArguments.length;
-      const actionArgs2 = args.slice(0, expectedArgsCount);
-      if (this._storeOptionsAsProperties) {
-        actionArgs2[expectedArgsCount] = this;
-      } else {
-        actionArgs2[expectedArgsCount] = this.opts();
-      }
-      actionArgs2.push(this);
-      return fn.apply(this, actionArgs2);
-    };
-    this._actionHandler = listener;
-    return this;
-  }
-  /**
-   * Factory routine to create a new unattached option.
-   *
-   * See .option() for creating an attached option, which uses this routine to
-   * create the option. You can override createOption to return a custom option.
-   *
-   * @param {string} flags
-   * @param {string} [description]
-   * @return {Option} new option
-   */
-  createOption(flags, description2) {
-    return new Option(flags, description2);
-  }
-  /**
-   * Wrap parseArgs to catch 'commander.invalidArgument'.
-   *
-   * @param {(Option | Argument)} target
-   * @param {string} value
-   * @param {*} previous
-   * @param {string} invalidArgumentMessage
-   * @private
-   */
-  _callParseArg(target, value2, previous2, invalidArgumentMessage) {
-    try {
-      return target.parseArg(value2, previous2);
-    } catch (err) {
-      if (err.code === "commander.invalidArgument") {
-        const message2 = `${invalidArgumentMessage} ${err.message}`;
-        this.error(message2, { exitCode: err.exitCode, code: err.code });
-      }
-      throw err;
-    }
-  }
-  /**
-   * Check for option flag conflicts.
-   * Register option if no conflicts found, or throw on conflict.
-   *
-   * @param {Option} option
-   * @private
-   */
-  _registerOption(option2) {
-    const matchingOption = option2.short && this._findOption(option2.short) || option2.long && this._findOption(option2.long);
-    if (matchingOption) {
-      const matchingFlag = option2.long && this._findOption(option2.long) ? option2.long : option2.short;
-      throw new Error(`Cannot add option '${option2.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
--  already used by option '${matchingOption.flags}'`);
-    }
-    this._initOptionGroup(option2);
-    this.options.push(option2);
-  }
-  /**
-   * Check for command name and alias conflicts with existing commands.
-   * Register command if no conflicts found, or throw on conflict.
-   *
-   * @param {Command} command
-   * @private
-   */
-  _registerCommand(command2) {
-    const knownBy = (cmd) => {
-      return [cmd.name()].concat(cmd.aliases());
-    };
-    const alreadyUsed = knownBy(command2).find(
-      (name2) => this._findCommand(name2)
-    );
-    if (alreadyUsed) {
-      const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
-      const newCmd = knownBy(command2).join("|");
-      throw new Error(
-        `cannot add command '${newCmd}' as already have command '${existingCmd}'`
-      );
-    }
-    this._initCommandGroup(command2);
-    this.commands.push(command2);
-  }
-  /**
-   * Add an option.
-   *
-   * @param {Option} option
-   * @return {Command} `this` command for chaining
-   */
-  addOption(option2) {
-    this._registerOption(option2);
-    const oname = option2.name();
-    const name2 = option2.attributeName();
-    if (option2.defaultValue !== void 0) {
-      this.setOptionValueWithSource(name2, option2.defaultValue, "default");
-    }
-    const handleOptionValue = (val, invalidValueMessage, valueSource) => {
-      if (val == null && option2.presetArg !== void 0) {
-        val = option2.presetArg;
-      }
-      const oldValue = this.getOptionValue(name2);
-      if (val !== null && option2.parseArg) {
-        val = this._callParseArg(option2, val, oldValue, invalidValueMessage);
-      } else if (val !== null && option2.variadic) {
-        val = option2._collectValue(val, oldValue);
-      }
-      if (val == null) {
-        if (option2.negate) {
-          val = false;
-        } else if (option2.isBoolean() || option2.optional) {
-          val = true;
-        } else {
-          val = "";
-        }
-      }
-      this.setOptionValueWithSource(name2, val, valueSource);
-    };
-    this.on("option:" + oname, (val) => {
-      const invalidValueMessage = `error: option '${option2.flags}' argument '${val}' is invalid.`;
-      handleOptionValue(val, invalidValueMessage, "cli");
-    });
-    if (option2.envVar) {
-      this.on("optionEnv:" + oname, (val) => {
-        const invalidValueMessage = `error: option '${option2.flags}' value '${val}' from env '${option2.envVar}' is invalid.`;
-        handleOptionValue(val, invalidValueMessage, "env");
-      });
-    }
-    return this;
-  }
-  /**
-   * Internal implementation shared by .option() and .requiredOption()
-   *
-   * @return {Command} `this` command for chaining
-   * @private
-   */
-  _optionEx(config2, flags, description2, fn, defaultValue) {
-    if (typeof flags === "object" && flags instanceof Option) {
-      throw new Error(
-        "To add an Option object use addOption() instead of option() or requiredOption()"
-      );
-    }
-    const option2 = this.createOption(flags, description2);
-    option2.makeOptionMandatory(!!config2.mandatory);
-    if (typeof fn === "function") {
-      option2.default(defaultValue).argParser(fn);
-    } else if (fn instanceof RegExp) {
-      const regex = fn;
-      fn = (val, def) => {
-        const m = regex.exec(val);
-        return m ? m[0] : def;
-      };
-      option2.default(defaultValue).argParser(fn);
-    } else {
-      option2.default(fn);
-    }
-    return this.addOption(option2);
-  }
-  /**
-   * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
-   *
-   * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
-   * option-argument is indicated by `<>` and an optional option-argument by `[]`.
-   *
-   * See the README for more details, and see also addOption() and requiredOption().
-   *
-   * @example
-   * program
-   *     .option('-p, --pepper', 'add pepper')
-   *     .option('--pt, --pizza-type <TYPE>', 'type of pizza') // required option-argument
-   *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
-   *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
-   *
-   * @param {string} flags
-   * @param {string} [description]
-   * @param {(Function|*)} [parseArg] - custom option processing function or default value
-   * @param {*} [defaultValue]
-   * @return {Command} `this` command for chaining
-   */
-  option(flags, description2, parseArg, defaultValue) {
-    return this._optionEx({}, flags, description2, parseArg, defaultValue);
-  }
-  /**
-   * Add a required option which must have a value after parsing. This usually means
-   * the option must be specified on the command line. (Otherwise the same as .option().)
-   *
-   * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
-   *
-   * @param {string} flags
-   * @param {string} [description]
-   * @param {(Function|*)} [parseArg] - custom option processing function or default value
-   * @param {*} [defaultValue]
-   * @return {Command} `this` command for chaining
-   */
-  requiredOption(flags, description2, parseArg, defaultValue) {
-    return this._optionEx(
-      { mandatory: true },
-      flags,
-      description2,
-      parseArg,
-      defaultValue
-    );
-  }
-  /**
-   * Alter parsing of short flags with optional values.
-   *
-   * @example
-   * // for `.option('-f,--flag [value]'):
-   * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
-   * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
-   *
-   * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
-   * @return {Command} `this` command for chaining
-   */
-  combineFlagAndOptionalValue(combine = true) {
-    this._combineFlagAndOptionalValue = !!combine;
-    return this;
-  }
-  /**
-   * Allow unknown options on the command line.
-   *
-   * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
-   * @return {Command} `this` command for chaining
-   */
-  allowUnknownOption(allowUnknown = true) {
-    this._allowUnknownOption = !!allowUnknown;
-    return this;
-  }
-  /**
-   * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
-   *
-   * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
-   * @return {Command} `this` command for chaining
-   */
-  allowExcessArguments(allowExcess = true) {
-    this._allowExcessArguments = !!allowExcess;
-    return this;
-  }
-  /**
-   * Enable positional options. Positional means global options are specified before subcommands which lets
-   * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
-   * The default behaviour is non-positional and global options may appear anywhere on the command line.
-   *
-   * @param {boolean} [positional]
-   * @return {Command} `this` command for chaining
-   */
-  enablePositionalOptions(positional = true) {
-    this._enablePositionalOptions = !!positional;
-    return this;
-  }
-  /**
-   * Pass through options that come after command-arguments rather than treat them as command-options,
-   * so actual command-options come before command-arguments. Turning this on for a subcommand requires
-   * positional options to have been enabled on the program (parent commands).
-   * The default behaviour is non-positional and options may appear before or after command-arguments.
-   *
-   * @param {boolean} [passThrough] for unknown options.
-   * @return {Command} `this` command for chaining
-   */
-  passThroughOptions(passThrough = true) {
-    this._passThroughOptions = !!passThrough;
-    this._checkForBrokenPassThrough();
-    return this;
-  }
-  /**
-   * @private
-   */
-  _checkForBrokenPassThrough() {
-    if (this.parent && this._passThroughOptions && !this.parent._enablePositionalOptions) {
-      throw new Error(
-        `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`
-      );
-    }
-  }
-  /**
-   * Whether to store option values as properties on command object,
-   * or store separately (specify false). In both cases the option values can be accessed using .opts().
-   *
-   * @param {boolean} [storeAsProperties=true]
-   * @return {Command} `this` command for chaining
-   */
-  storeOptionsAsProperties(storeAsProperties = true) {
-    if (this.options.length) {
-      throw new Error("call .storeOptionsAsProperties() before adding options");
-    }
-    if (Object.keys(this._optionValues).length) {
-      throw new Error(
-        "call .storeOptionsAsProperties() before setting option values"
-      );
-    }
-    this._storeOptionsAsProperties = !!storeAsProperties;
-    return this;
-  }
-  /**
-   * Retrieve option value.
-   *
-   * @param {string} key
-   * @return {object} value
-   */
-  getOptionValue(key) {
-    if (this._storeOptionsAsProperties) {
-      return this[key];
-    }
-    return this._optionValues[key];
-  }
-  /**
-   * Store option value.
-   *
-   * @param {string} key
-   * @param {object} value
-   * @return {Command} `this` command for chaining
-   */
-  setOptionValue(key, value2) {
-    return this.setOptionValueWithSource(key, value2, void 0);
-  }
-  /**
-   * Store option value and where the value came from.
-   *
-   * @param {string} key
-   * @param {object} value
-   * @param {string} source - expected values are default/config/env/cli/implied
-   * @return {Command} `this` command for chaining
-   */
-  setOptionValueWithSource(key, value2, source2) {
-    if (this._storeOptionsAsProperties) {
-      this[key] = value2;
-    } else {
-      this._optionValues[key] = value2;
-    }
-    this._optionValueSources[key] = source2;
-    return this;
-  }
-  /**
-   * Get source of option value.
-   * Expected values are default | config | env | cli | implied
-   *
-   * @param {string} key
-   * @return {string}
-   */
-  getOptionValueSource(key) {
-    return this._optionValueSources[key];
-  }
-  /**
-   * Get source of option value. See also .optsWithGlobals().
-   * Expected values are default | config | env | cli | implied
-   *
-   * @param {string} key
-   * @return {string}
-   */
-  getOptionValueSourceWithGlobals(key) {
-    let source2;
-    this._getCommandAndAncestors().forEach((cmd) => {
-      if (cmd.getOptionValueSource(key) !== void 0) {
-        source2 = cmd.getOptionValueSource(key);
-      }
-    });
-    return source2;
-  }
-  /**
-   * Get user arguments from implied or explicit arguments.
-   * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
-   *
-   * @private
-   */
-  _prepareUserArgs(argv, parseOptions2) {
-    if (argv !== void 0 && !Array.isArray(argv)) {
-      throw new Error("first parameter to parse must be array or undefined");
-    }
-    parseOptions2 = parseOptions2 || {};
-    if (argv === void 0 && parseOptions2.from === void 0) {
-      if (process$1.versions?.electron) {
-        parseOptions2.from = "electron";
-      }
-      const execArgv = process$1.execArgv ?? [];
-      if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
-        parseOptions2.from = "eval";
-      }
-    }
-    if (argv === void 0) {
-      argv = process$1.argv;
-    }
-    this.rawArgs = argv.slice();
-    let userArgs;
-    switch (parseOptions2.from) {
-      case void 0:
-      case "node":
-        this._scriptPath = argv[1];
-        userArgs = argv.slice(2);
-        break;
-      case "electron":
-        if (process$1.defaultApp) {
-          this._scriptPath = argv[1];
-          userArgs = argv.slice(2);
-        } else {
-          userArgs = argv.slice(1);
-        }
-        break;
-      case "user":
-        userArgs = argv.slice(0);
-        break;
-      case "eval":
-        userArgs = argv.slice(1);
-        break;
-      default:
-        throw new Error(
-          `unexpected parse option { from: '${parseOptions2.from}' }`
-        );
-    }
-    if (!this._name && this._scriptPath)
-      this.nameFromFilename(this._scriptPath);
-    this._name = this._name || "program";
-    return userArgs;
-  }
-  /**
-   * Parse `argv`, setting options and invoking commands when defined.
-   *
-   * Use parseAsync instead of parse if any of your action handlers are async.
-   *
-   * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
-   *
-   * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
-   * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
-   * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
-   * - `'user'`: just user arguments
-   *
-   * @example
-   * program.parse(); // parse process.argv and auto-detect electron and special node flags
-   * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
-   * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
-   *
-   * @param {string[]} [argv] - optional, defaults to process.argv
-   * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
-   * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
-   * @return {Command} `this` command for chaining
-   */
-  parse(argv, parseOptions2) {
-    this._prepareForParse();
-    const userArgs = this._prepareUserArgs(argv, parseOptions2);
-    this._parseCommand([], userArgs);
-    return this;
-  }
-  /**
-   * Parse `argv`, setting options and invoking commands when defined.
-   *
-   * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
-   *
-   * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
-   * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
-   * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
-   * - `'user'`: just user arguments
-   *
-   * @example
-   * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
-   * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
-   * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
-   *
-   * @param {string[]} [argv]
-   * @param {object} [parseOptions]
-   * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
-   * @return {Promise}
-   */
-  async parseAsync(argv, parseOptions2) {
-    this._prepareForParse();
-    const userArgs = this._prepareUserArgs(argv, parseOptions2);
-    await this._parseCommand([], userArgs);
-    return this;
-  }
-  _prepareForParse() {
-    if (this._savedState === null) {
-      this.options.filter(
-        (option2) => option2.negate && option2.defaultValue === void 0 && this.getOptionValue(option2.attributeName()) === void 0
-      ).forEach((option2) => {
-        const positiveLongFlag = option2.long.replace(/^--no-/, "--");
-        if (!this._findOption(positiveLongFlag)) {
-          this.setOptionValueWithSource(
-            option2.attributeName(),
-            true,
-            "default"
-          );
-        }
-      });
-      this.saveStateBeforeParse();
-    } else {
-      this.restoreStateBeforeParse();
-    }
-  }
-  /**
-   * Called the first time parse is called to save state and allow a restore before subsequent calls to parse.
-   * Not usually called directly, but available for subclasses to save their custom state.
-   *
-   * This is called in a lazy way. Only commands used in parsing chain will have state saved.
-   */
-  saveStateBeforeParse() {
-    this._savedState = {
-      // name is stable if supplied by author, but may be unspecified for root command and deduced during parsing
-      _name: this._name,
-      // option values before parse have default values (including false for negated options)
-      // shallow clones
-      _optionValues: { ...this._optionValues },
-      _optionValueSources: { ...this._optionValueSources }
-    };
-  }
-  /**
-   * Restore state before parse for calls after the first.
-   * Not usually called directly, but available for subclasses to save their custom state.
-   *
-   * This is called in a lazy way. Only commands used in parsing chain will have state restored.
-   */
-  restoreStateBeforeParse() {
-    if (this._storeOptionsAsProperties)
-      throw new Error(`Can not call parse again when storeOptionsAsProperties is true.
-- either make a new Command for each call to parse, or stop storing options as properties`);
-    this._name = this._savedState._name;
-    this._scriptPath = null;
-    this.rawArgs = [];
-    this._optionValues = { ...this._savedState._optionValues };
-    this._optionValueSources = { ...this._savedState._optionValueSources };
-    this.args = [];
-    this.processedArgs = [];
-  }
-  /**
-   * Throw if expected executable is missing. Add lots of help for author.
-   *
-   * @param {string} executableFile
-   * @param {string} executableDir
-   * @param {string} subcommandName
-   */
-  _checkForMissingExecutable(executableFile, executableDir, subcommandName) {
-    if (fs.existsSync(executableFile)) return;
-    const executableDirMessage = executableDir ? `searched for local subcommand relative to directory '${executableDir}'` : "no directory for search for local subcommand, use .executableDir() to supply a custom directory";
-    const executableMissing = `'${executableFile}' does not exist
- - if '${subcommandName}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
- - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
- - ${executableDirMessage}`;
-    throw new Error(executableMissing);
-  }
-  /**
-   * Execute a sub-command executable.
-   *
-   * @private
-   */
-  _executeSubCommand(subcommand, args) {
-    args = args.slice();
-    const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
-    function findFile(baseDir, baseName2) {
-      const localBin = minpath.resolve(baseDir, baseName2);
-      if (fs.existsSync(localBin)) return localBin;
-      if (sourceExt.includes(minpath.extname(baseName2))) return void 0;
-      const foundExt = sourceExt.find(
-        (ext) => fs.existsSync(`${localBin}${ext}`)
-      );
-      if (foundExt) return `${localBin}${foundExt}`;
-      return void 0;
-    }
-    this._checkForMissingMandatoryOptions();
-    this._checkForConflictingOptions();
-    let executableFile = subcommand._executableFile || `${this._name}-${subcommand._name}`;
-    let executableDir = this._executableDir || "";
-    if (this._scriptPath) {
-      let resolvedScriptPath;
-      try {
-        resolvedScriptPath = fs.realpathSync(this._scriptPath);
-      } catch {
-        resolvedScriptPath = this._scriptPath;
-      }
-      executableDir = minpath.resolve(
-        minpath.dirname(resolvedScriptPath),
-        executableDir
-      );
-    }
-    if (executableDir) {
-      let localFile2 = findFile(executableDir, executableFile);
-      if (!localFile2 && !subcommand._executableFile && this._scriptPath) {
-        const legacyName = minpath.basename(
-          this._scriptPath,
-          minpath.extname(this._scriptPath)
-        );
-        if (legacyName !== this._name) {
-          localFile2 = findFile(
-            executableDir,
-            `${legacyName}-${subcommand._name}`
-          );
-        }
-      }
-      executableFile = localFile2 || executableFile;
-    }
-    const launchWithNode = sourceExt.includes(minpath.extname(executableFile));
-    let proc;
-    if (process$1.platform !== "win32") {
-      if (launchWithNode) {
-        args.unshift(executableFile);
-        args = incrementNodeInspectorPort(process$1.execArgv).concat(args);
-        proc = childProcess.spawn(process$1.argv[0], args, { stdio: "inherit" });
-      } else {
-        proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
-      }
-    } else {
-      this._checkForMissingExecutable(
-        executableFile,
-        executableDir,
-        subcommand._name
-      );
-      args.unshift(executableFile);
-      args = incrementNodeInspectorPort(process$1.execArgv).concat(args);
-      proc = childProcess.spawn(process$1.execPath, args, { stdio: "inherit" });
-    }
-    if (!proc.killed) {
-      const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
-      signals.forEach((signal) => {
-        process$1.on(signal, () => {
-          if (proc.killed === false && proc.exitCode === null) {
-            proc.kill(signal);
-          }
-        });
-      });
-    }
-    const exitCallback = this._exitCallback;
-    proc.on("close", (code2) => {
-      code2 = code2 ?? 1;
-      if (!exitCallback) {
-        process$1.exit(code2);
-      } else {
-        exitCallback(
-          new CommanderError(
-            code2,
-            "commander.executeSubCommandAsync",
-            "(close)"
-          )
-        );
-      }
-    });
-    proc.on("error", (err) => {
-      if (err.code === "ENOENT") {
-        this._checkForMissingExecutable(
-          executableFile,
-          executableDir,
-          subcommand._name
-        );
-      } else if (err.code === "EACCES") {
-        throw new Error(`'${executableFile}' not executable`);
-      }
-      if (!exitCallback) {
-        process$1.exit(1);
-      } else {
-        const wrappedError = new CommanderError(
-          1,
-          "commander.executeSubCommandAsync",
-          "(error)"
-        );
-        wrappedError.nestedError = err;
-        exitCallback(wrappedError);
-      }
-    });
-    this.runningCommand = proc;
-  }
-  /**
-   * @private
-   */
-  _dispatchSubcommand(commandName, operands, unknown2) {
-    const subCommand = this._findCommand(commandName);
-    if (!subCommand) this.help({ error: true });
-    subCommand._prepareForParse();
-    let promiseChain;
-    promiseChain = this._chainOrCallSubCommandHook(
-      promiseChain,
-      subCommand,
-      "preSubcommand"
-    );
-    promiseChain = this._chainOrCall(promiseChain, () => {
-      if (subCommand._executableHandler) {
-        this._executeSubCommand(subCommand, operands.concat(unknown2));
-      } else {
-        return subCommand._parseCommand(operands, unknown2);
-      }
-    });
-    return promiseChain;
-  }
-  /**
-   * Invoke help directly if possible, or dispatch if necessary.
-   * e.g. help foo
-   *
-   * @private
-   */
-  _dispatchHelpCommand(subcommandName) {
-    if (!subcommandName) {
-      this.help();
-    }
-    const subCommand = this._findCommand(subcommandName);
-    if (subCommand && !subCommand._executableHandler) {
-      subCommand.help();
-    }
-    return this._dispatchSubcommand(
-      subcommandName,
-      [],
-      [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? "--help"]
-    );
-  }
-  /**
-   * Check this.args against expected this.registeredArguments.
-   *
-   * @private
-   */
-  _checkNumberOfArguments() {
-    this.registeredArguments.forEach((arg, i) => {
-      if (arg.required && this.args[i] == null) {
-        this.missingArgument(arg.name());
-      }
-    });
-    if (this.registeredArguments.length > 0 && this.registeredArguments[this.registeredArguments.length - 1].variadic) {
-      return;
-    }
-    if (this.args.length > this.registeredArguments.length) {
-      this._excessArguments(this.args);
-    }
-  }
-  /**
-   * Process this.args using this.registeredArguments and save as this.processedArgs!
-   *
-   * @private
-   */
-  _processArguments() {
-    const myParseArg = (argument, value2, previous2) => {
-      let parsedValue = value2;
-      if (value2 !== null && argument.parseArg) {
-        const invalidValueMessage = `error: command-argument value '${value2}' is invalid for argument '${argument.name()}'.`;
-        parsedValue = this._callParseArg(
-          argument,
-          value2,
-          previous2,
-          invalidValueMessage
-        );
-      }
-      return parsedValue;
-    };
-    this._checkNumberOfArguments();
-    const processedArgs = [];
-    this.registeredArguments.forEach((declaredArg, index2) => {
-      let value2 = declaredArg.defaultValue;
-      if (declaredArg.variadic) {
-        if (index2 < this.args.length) {
-          value2 = this.args.slice(index2);
-          if (declaredArg.parseArg) {
-            value2 = value2.reduce((processed, v) => {
-              return myParseArg(declaredArg, v, processed);
-            }, declaredArg.defaultValue);
-          }
-        } else if (value2 === void 0) {
-          value2 = [];
-        }
-      } else if (index2 < this.args.length) {
-        value2 = this.args[index2];
-        if (declaredArg.parseArg) {
-          value2 = myParseArg(declaredArg, value2, declaredArg.defaultValue);
-        }
-      }
-      processedArgs[index2] = value2;
-    });
-    this.processedArgs = processedArgs;
-  }
-  /**
-   * Once we have a promise we chain, but call synchronously until then.
-   *
-   * @param {(Promise|undefined)} promise
-   * @param {Function} fn
-   * @return {(Promise|undefined)}
-   * @private
-   */
-  _chainOrCall(promise, fn) {
-    if (promise?.then && typeof promise.then === "function") {
-      return promise.then(() => fn());
-    }
-    return fn();
-  }
-  /**
-   *
-   * @param {(Promise|undefined)} promise
-   * @param {string} event
-   * @return {(Promise|undefined)}
-   * @private
-   */
-  _chainOrCallHooks(promise, event) {
-    let result = promise;
-    const hooks2 = [];
-    this._getCommandAndAncestors().reverse().filter((cmd) => cmd._lifeCycleHooks[event] !== void 0).forEach((hookedCommand) => {
-      hookedCommand._lifeCycleHooks[event].forEach((callback) => {
-        hooks2.push({ hookedCommand, callback });
-      });
-    });
-    if (event === "postAction") {
-      hooks2.reverse();
-    }
-    hooks2.forEach((hookDetail) => {
-      result = this._chainOrCall(result, () => {
-        return hookDetail.callback(hookDetail.hookedCommand, this);
-      });
-    });
-    return result;
-  }
-  /**
-   *
-   * @param {(Promise|undefined)} promise
-   * @param {Command} subCommand
-   * @param {string} event
-   * @return {(Promise|undefined)}
-   * @private
-   */
-  _chainOrCallSubCommandHook(promise, subCommand, event) {
-    let result = promise;
-    if (this._lifeCycleHooks[event] !== void 0) {
-      this._lifeCycleHooks[event].forEach((hook) => {
-        result = this._chainOrCall(result, () => {
-          return hook(this, subCommand);
-        });
-      });
-    }
-    return result;
-  }
-  /**
-   * Process arguments in context of this command.
-   * Returns action result, in case it is a promise.
-   *
-   * @private
-   */
-  _parseCommand(operands, unknown2) {
-    const parsed2 = this.parseOptions(unknown2);
-    this._parseOptionsEnv();
-    this._parseOptionsImplied();
-    operands = operands.concat(parsed2.operands);
-    unknown2 = parsed2.unknown;
-    this.args = operands.concat(unknown2);
-    if (operands && this._findCommand(operands[0])) {
-      return this._dispatchSubcommand(operands[0], operands.slice(1), unknown2);
-    }
-    if (this._getHelpCommand() && operands[0] === this._getHelpCommand().name()) {
-      return this._dispatchHelpCommand(operands[1]);
-    }
-    if (this._defaultCommandName) {
-      this._outputHelpIfRequested(unknown2);
-      return this._dispatchSubcommand(
-        this._defaultCommandName,
-        operands,
-        unknown2
-      );
-    }
-    if (this.commands.length && this.args.length === 0 && !this._actionHandler && !this._defaultCommandName) {
-      this.help({ error: true });
-    }
-    this._outputHelpIfRequested(parsed2.unknown);
-    this._checkForMissingMandatoryOptions();
-    this._checkForConflictingOptions();
-    const checkForUnknownOptions = () => {
-      if (parsed2.unknown.length > 0) {
-        this.unknownOption(parsed2.unknown[0]);
-      }
-    };
-    const commandEvent = `command:${this.name()}`;
-    if (this._actionHandler) {
-      checkForUnknownOptions();
-      this._processArguments();
-      let promiseChain;
-      promiseChain = this._chainOrCallHooks(promiseChain, "preAction");
-      promiseChain = this._chainOrCall(
-        promiseChain,
-        () => this._actionHandler(this.processedArgs)
-      );
-      if (this.parent) {
-        promiseChain = this._chainOrCall(promiseChain, () => {
-          this.parent.emit(commandEvent, operands, unknown2);
-        });
-      }
-      promiseChain = this._chainOrCallHooks(promiseChain, "postAction");
-      return promiseChain;
-    }
-    if (this.parent?.listenerCount(commandEvent)) {
-      checkForUnknownOptions();
-      this._processArguments();
-      this.parent.emit(commandEvent, operands, unknown2);
-    } else if (operands.length) {
-      if (this._findCommand("*")) {
-        return this._dispatchSubcommand("*", operands, unknown2);
-      }
-      if (this.listenerCount("command:*")) {
-        this.emit("command:*", operands, unknown2);
-      } else if (this.commands.length) {
-        this.unknownCommand();
-      } else {
-        checkForUnknownOptions();
-        this._processArguments();
-      }
-    } else if (this.commands.length) {
-      checkForUnknownOptions();
-      this.help({ error: true });
-    } else {
-      checkForUnknownOptions();
-      this._processArguments();
-    }
-  }
-  /**
-   * Find matching command.
-   *
-   * @private
-   * @return {Command | undefined}
-   */
-  _findCommand(name2) {
-    if (!name2) return void 0;
-    return this.commands.find(
-      (cmd) => cmd._name === name2 || cmd._aliases.includes(name2)
-    );
-  }
-  /**
-   * Return an option matching `arg` if any.
-   *
-   * @param {string} arg
-   * @return {Option}
-   * @package
-   */
-  _findOption(arg) {
-    return this.options.find((option2) => option2.is(arg));
-  }
-  /**
-   * Display an error message if a mandatory option does not have a value.
-   * Called after checking for help flags in leaf subcommand.
-   *
-   * @private
-   */
-  _checkForMissingMandatoryOptions() {
-    this._getCommandAndAncestors().forEach((cmd) => {
-      cmd.options.forEach((anOption) => {
-        if (anOption.mandatory && cmd.getOptionValue(anOption.attributeName()) === void 0) {
-          cmd.missingMandatoryOptionValue(anOption);
-        }
-      });
-    });
-  }
-  /**
-   * Display an error message if conflicting options are used together in this.
-   *
-   * @private
-   */
-  _checkForConflictingLocalOptions() {
-    const definedNonDefaultOptions = this.options.filter((option2) => {
-      const optionKey = option2.attributeName();
-      if (this.getOptionValue(optionKey) === void 0) {
-        return false;
-      }
-      return this.getOptionValueSource(optionKey) !== "default";
-    });
-    const optionsWithConflicting = definedNonDefaultOptions.filter(
-      (option2) => option2.conflictsWith.length > 0
-    );
-    optionsWithConflicting.forEach((option2) => {
-      const conflictingAndDefined = definedNonDefaultOptions.find(
-        (defined) => option2.conflictsWith.includes(defined.attributeName())
-      );
-      if (conflictingAndDefined) {
-        this._conflictingOption(option2, conflictingAndDefined);
-      }
-    });
-  }
-  /**
-   * Display an error message if conflicting options are used together.
-   * Called after checking for help flags in leaf subcommand.
-   *
-   * @private
-   */
-  _checkForConflictingOptions() {
-    this._getCommandAndAncestors().forEach((cmd) => {
-      cmd._checkForConflictingLocalOptions();
-    });
-  }
-  /**
-   * Parse options from `argv` removing known options,
-   * and return argv split into operands and unknown arguments.
-   *
-   * Side effects: modifies command by storing options. Does not reset state if called again.
-   *
-   * Examples:
-   *
-   *     argv => operands, unknown
-   *     --known kkk op => [op], []
-   *     op --known kkk => [op], []
-   *     sub --unknown uuu op => [sub], [--unknown uuu op]
-   *     sub -- --unknown uuu op => [sub --unknown uuu op], []
-   *
-   * @param {string[]} args
-   * @return {{operands: string[], unknown: string[]}}
-   */
-  parseOptions(args) {
-    const operands = [];
-    const unknown2 = [];
-    let dest = operands;
-    function maybeOption(arg) {
-      return arg.length > 1 && arg[0] === "-";
-    }
-    const negativeNumberArg = (arg) => {
-      if (!/^-(\d+|\d*\.\d+)(e[+-]?\d+)?$/.test(arg)) return false;
-      return !this._getCommandAndAncestors().some(
-        (cmd) => cmd.options.map((opt) => opt.short).some((short) => /^-\d$/.test(short))
-      );
-    };
-    let activeVariadicOption = null;
-    let activeGroup = null;
-    let i = 0;
-    while (i < args.length || activeGroup) {
-      const arg = activeGroup ?? args[i++];
-      activeGroup = null;
-      if (arg === "--") {
-        if (dest === unknown2) dest.push(arg);
-        dest.push(...args.slice(i));
-        break;
-      }
-      if (activeVariadicOption && (!maybeOption(arg) || negativeNumberArg(arg))) {
-        this.emit(`option:${activeVariadicOption.name()}`, arg);
-        continue;
-      }
-      activeVariadicOption = null;
-      if (maybeOption(arg)) {
-        const option2 = this._findOption(arg);
-        if (option2) {
-          if (option2.required) {
-            const value2 = args[i++];
-            if (value2 === void 0) this.optionMissingArgument(option2);
-            this.emit(`option:${option2.name()}`, value2);
-          } else if (option2.optional) {
-            let value2 = null;
-            if (i < args.length && (!maybeOption(args[i]) || negativeNumberArg(args[i]))) {
-              value2 = args[i++];
-            }
-            this.emit(`option:${option2.name()}`, value2);
-          } else {
-            this.emit(`option:${option2.name()}`);
-          }
-          activeVariadicOption = option2.variadic ? option2 : null;
-          continue;
-        }
-      }
-      if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
-        const option2 = this._findOption(`-${arg[1]}`);
-        if (option2) {
-          if (option2.required || option2.optional && this._combineFlagAndOptionalValue) {
-            this.emit(`option:${option2.name()}`, arg.slice(2));
-          } else {
-            this.emit(`option:${option2.name()}`);
-            activeGroup = `-${arg.slice(2)}`;
-          }
-          continue;
-        }
-      }
-      if (/^--[^=]+=/.test(arg)) {
-        const index2 = arg.indexOf("=");
-        const option2 = this._findOption(arg.slice(0, index2));
-        if (option2 && (option2.required || option2.optional)) {
-          this.emit(`option:${option2.name()}`, arg.slice(index2 + 1));
-          continue;
-        }
-      }
-      if (dest === operands && maybeOption(arg) && !(this.commands.length === 0 && negativeNumberArg(arg))) {
-        dest = unknown2;
-      }
-      if ((this._enablePositionalOptions || this._passThroughOptions) && operands.length === 0 && unknown2.length === 0) {
-        if (this._findCommand(arg)) {
-          operands.push(arg);
-          unknown2.push(...args.slice(i));
-          break;
-        } else if (this._getHelpCommand() && arg === this._getHelpCommand().name()) {
-          operands.push(arg, ...args.slice(i));
-          break;
-        } else if (this._defaultCommandName) {
-          unknown2.push(arg, ...args.slice(i));
-          break;
-        }
-      }
-      if (this._passThroughOptions) {
-        dest.push(arg, ...args.slice(i));
-        break;
-      }
-      dest.push(arg);
-    }
-    return { operands, unknown: unknown2 };
-  }
-  /**
-   * Return an object containing local option values as key-value pairs.
-   *
-   * @return {object}
-   */
-  opts() {
-    if (this._storeOptionsAsProperties) {
-      const result = {};
-      const len = this.options.length;
-      for (let i = 0; i < len; i++) {
-        const key = this.options[i].attributeName();
-        result[key] = key === this._versionOptionName ? this._version : this[key];
-      }
-      return result;
-    }
-    return this._optionValues;
-  }
-  /**
-   * Return an object containing merged local and global option values as key-value pairs.
-   *
-   * @return {object}
-   */
-  optsWithGlobals() {
-    return this._getCommandAndAncestors().reduce(
-      (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
-      {}
-    );
-  }
-  /**
-   * Display error message and exit (or call exitOverride).
-   *
-   * @param {string} message
-   * @param {object} [errorOptions]
-   * @param {string} [errorOptions.code] - an id string representing the error
-   * @param {number} [errorOptions.exitCode] - used with process.exit
-   */
-  error(message2, errorOptions) {
-    this._outputConfiguration.outputError(
-      `${message2}
-`,
-      this._outputConfiguration.writeErr
-    );
-    if (typeof this._showHelpAfterError === "string") {
-      this._outputConfiguration.writeErr(`${this._showHelpAfterError}
-`);
-    } else if (this._showHelpAfterError) {
-      this._outputConfiguration.writeErr("\n");
-      this.outputHelp({ error: true });
-    }
-    const config2 = errorOptions || {};
-    const exitCode = config2.exitCode || 1;
-    const code2 = config2.code || "commander.error";
-    this._exit(exitCode, code2, message2);
-  }
-  /**
-   * Apply any option related environment variables, if option does
-   * not have a value from cli or client code.
-   *
-   * @private
-   */
-  _parseOptionsEnv() {
-    this.options.forEach((option2) => {
-      if (option2.envVar && option2.envVar in process$1.env) {
-        const optionKey = option2.attributeName();
-        if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
-          this.getOptionValueSource(optionKey)
-        )) {
-          if (option2.required || option2.optional) {
-            this.emit(`optionEnv:${option2.name()}`, process$1.env[option2.envVar]);
-          } else {
-            this.emit(`optionEnv:${option2.name()}`);
-          }
-        }
-      }
-    });
-  }
-  /**
-   * Apply any implied option values, if option is undefined or default value.
-   *
-   * @private
-   */
-  _parseOptionsImplied() {
-    const dualHelper = new DualOptions(this.options);
-    const hasCustomOptionValue = (optionKey) => {
-      return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
-    };
-    this.options.filter(
-      (option2) => option2.implied !== void 0 && hasCustomOptionValue(option2.attributeName()) && dualHelper.valueFromOption(
-        this.getOptionValue(option2.attributeName()),
-        option2
-      )
-    ).forEach((option2) => {
-      Object.keys(option2.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
-        this.setOptionValueWithSource(
-          impliedKey,
-          option2.implied[impliedKey],
-          "implied"
-        );
-      });
-    });
-  }
-  /**
-   * Argument `name` is missing.
-   *
-   * @param {string} name
-   * @private
-   */
-  missingArgument(name2) {
-    const message2 = `error: missing required argument '${name2}'`;
-    this.error(message2, { code: "commander.missingArgument" });
-  }
-  /**
-   * `Option` is missing an argument.
-   *
-   * @param {Option} option
-   * @private
-   */
-  optionMissingArgument(option2) {
-    const message2 = `error: option '${option2.flags}' argument missing`;
-    this.error(message2, { code: "commander.optionMissingArgument" });
-  }
-  /**
-   * `Option` does not have a value, and is a mandatory option.
-   *
-   * @param {Option} option
-   * @private
-   */
-  missingMandatoryOptionValue(option2) {
-    const message2 = `error: required option '${option2.flags}' not specified`;
-    this.error(message2, { code: "commander.missingMandatoryOptionValue" });
-  }
-  /**
-   * `Option` conflicts with another option.
-   *
-   * @param {Option} option
-   * @param {Option} conflictingOption
-   * @private
-   */
-  _conflictingOption(option2, conflictingOption) {
-    const findBestOptionFromValue = (option3) => {
-      const optionKey = option3.attributeName();
-      const optionValue = this.getOptionValue(optionKey);
-      const negativeOption = this.options.find(
-        (target) => target.negate && optionKey === target.attributeName()
-      );
-      const positiveOption = this.options.find(
-        (target) => !target.negate && optionKey === target.attributeName()
-      );
-      if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
-        return negativeOption;
-      }
-      return positiveOption || option3;
-    };
-    const getErrorMessage = (option3) => {
-      const bestOption = findBestOptionFromValue(option3);
-      const optionKey = bestOption.attributeName();
-      const source2 = this.getOptionValueSource(optionKey);
-      if (source2 === "env") {
-        return `environment variable '${bestOption.envVar}'`;
-      }
-      return `option '${bestOption.flags}'`;
-    };
-    const message2 = `error: ${getErrorMessage(option2)} cannot be used with ${getErrorMessage(conflictingOption)}`;
-    this.error(message2, { code: "commander.conflictingOption" });
-  }
-  /**
-   * Unknown option `flag`.
-   *
-   * @param {string} flag
-   * @private
-   */
-  unknownOption(flag2) {
-    if (this._allowUnknownOption) return;
-    let suggestion = "";
-    if (flag2.startsWith("--") && this._showSuggestionAfterError) {
-      let candidateFlags = [];
-      let command2 = this;
-      do {
-        const moreFlags = command2.createHelp().visibleOptions(command2).filter((option2) => option2.long).map((option2) => option2.long);
-        candidateFlags = candidateFlags.concat(moreFlags);
-        command2 = command2.parent;
-      } while (command2 && !command2._enablePositionalOptions);
-      suggestion = suggestSimilar(flag2, candidateFlags);
-    }
-    const message2 = `error: unknown option '${flag2}'${suggestion}`;
-    this.error(message2, { code: "commander.unknownOption" });
-  }
-  /**
-   * Excess arguments, more than expected.
-   *
-   * @param {string[]} receivedArgs
-   * @private
-   */
-  _excessArguments(receivedArgs) {
-    if (this._allowExcessArguments) return;
-    const expected = this.registeredArguments.length;
-    const s = expected === 1 ? "" : "s";
-    const received = receivedArgs.length;
-    const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
-    const details = receivedArgs.join(", ");
-    const message2 = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${received}: ${details}.`;
-    this.error(message2, { code: "commander.excessArguments" });
-  }
-  /**
-   * Unknown command.
-   *
-   * @private
-   */
-  unknownCommand() {
-    const unknownName = this.args[0];
-    let suggestion = "";
-    if (this._showSuggestionAfterError) {
-      const candidateNames = [];
-      this.createHelp().visibleCommands(this).forEach((command2) => {
-        candidateNames.push(command2.name());
-        if (command2.alias()) candidateNames.push(command2.alias());
-      });
-      suggestion = suggestSimilar(unknownName, candidateNames);
-    }
-    const message2 = `error: unknown command '${unknownName}'${suggestion}`;
-    this.error(message2, { code: "commander.unknownCommand" });
-  }
-  /**
-   * Get or set the program version.
-   *
-   * This method auto-registers the "-V, --version" option which will print the version number.
-   *
-   * You can optionally supply the flags and description to override the defaults.
-   *
-   * @param {string} [str]
-   * @param {string} [flags]
-   * @param {string} [description]
-   * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
-   */
-  version(str, flags, description2) {
-    if (str === void 0) return this._version;
-    this._version = str;
-    flags = flags || "-V, --version";
-    description2 = description2 || "output the version number";
-    const versionOption = this.createOption(flags, description2);
-    this._versionOptionName = versionOption.attributeName();
-    this._registerOption(versionOption);
-    this.on("option:" + versionOption.name(), () => {
-      this._outputConfiguration.writeOut(`${str}
-`);
-      this._exit(0, "commander.version", str);
-    });
-    return this;
-  }
-  /**
-   * Set the description.
-   *
-   * @param {string} [str]
-   * @param {object} [argsDescription]
-   * @return {(string|Command)}
-   */
-  description(str, argsDescription) {
-    if (str === void 0 && argsDescription === void 0)
-      return this._description;
-    this._description = str;
-    if (argsDescription) {
-      this._argsDescription = argsDescription;
-    }
-    return this;
-  }
-  /**
-   * Set the summary. Used when listed as subcommand of parent.
-   *
-   * @param {string} [str]
-   * @return {(string|Command)}
-   */
-  summary(str) {
-    if (str === void 0) return this._summary;
-    this._summary = str;
-    return this;
-  }
-  /**
-   * Set an alias for the command.
-   *
-   * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
-   *
-   * @param {string} [alias]
-   * @return {(string|Command)}
-   */
-  alias(alias) {
-    if (alias === void 0) return this._aliases[0];
-    let command2 = this;
-    if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
-      command2 = this.commands[this.commands.length - 1];
-    }
-    if (alias === command2._name)
-      throw new Error("Command alias can't be the same as its name");
-    const matchingCommand = this.parent?._findCommand(alias);
-    if (matchingCommand) {
-      const existingCmd = [matchingCommand.name()].concat(matchingCommand.aliases()).join("|");
-      throw new Error(
-        `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
-      );
-    }
-    command2._aliases.push(alias);
-    return this;
-  }
-  /**
-   * Set aliases for the command.
-   *
-   * Only the first alias is shown in the auto-generated help.
-   *
-   * @param {string[]} [aliases]
-   * @return {(string[]|Command)}
-   */
-  aliases(aliases) {
-    if (aliases === void 0) return this._aliases;
-    aliases.forEach((alias) => this.alias(alias));
-    return this;
-  }
-  /**
-   * Set / get the command usage `str`.
-   *
-   * @param {string} [str]
-   * @return {(string|Command)}
-   */
-  usage(str) {
-    if (str === void 0) {
-      if (this._usage) return this._usage;
-      const args = this.registeredArguments.map((arg) => {
-        return humanReadableArgName(arg);
-      });
-      return [].concat(
-        this.options.length || this._helpOption !== null ? "[options]" : [],
-        this.commands.length ? "[command]" : [],
-        this.registeredArguments.length ? args : []
-      ).join(" ");
-    }
-    this._usage = str;
-    return this;
-  }
-  /**
-   * Get or set the name of the command.
-   *
-   * @param {string} [str]
-   * @return {(string|Command)}
-   */
-  name(str) {
-    if (str === void 0) return this._name;
-    this._name = str;
-    return this;
-  }
-  /**
-   * Set/get the help group heading for this subcommand in parent command's help.
-   *
-   * @param {string} [heading]
-   * @return {Command | string}
-   */
-  helpGroup(heading) {
-    if (heading === void 0) return this._helpGroupHeading ?? "";
-    this._helpGroupHeading = heading;
-    return this;
-  }
-  /**
-   * Set/get the default help group heading for subcommands added to this command.
-   * (This does not override a group set directly on the subcommand using .helpGroup().)
-   *
-   * @example
-   * program.commandsGroup('Development Commands:);
-   * program.command('watch')...
-   * program.command('lint')...
-   * ...
-   *
-   * @param {string} [heading]
-   * @returns {Command | string}
-   */
-  commandsGroup(heading) {
-    if (heading === void 0) return this._defaultCommandGroup ?? "";
-    this._defaultCommandGroup = heading;
-    return this;
-  }
-  /**
-   * Set/get the default help group heading for options added to this command.
-   * (This does not override a group set directly on the option using .helpGroup().)
-   *
-   * @example
-   * program
-   *   .optionsGroup('Development Options:')
-   *   .option('-d, --debug', 'output extra debugging')
-   *   .option('-p, --profile', 'output profiling information')
-   *
-   * @param {string} [heading]
-   * @returns {Command | string}
-   */
-  optionsGroup(heading) {
-    if (heading === void 0) return this._defaultOptionGroup ?? "";
-    this._defaultOptionGroup = heading;
-    return this;
-  }
-  /**
-   * @param {Option} option
-   * @private
-   */
-  _initOptionGroup(option2) {
-    if (this._defaultOptionGroup && !option2.helpGroupHeading)
-      option2.helpGroup(this._defaultOptionGroup);
-  }
-  /**
-   * @param {Command} cmd
-   * @private
-   */
-  _initCommandGroup(cmd) {
-    if (this._defaultCommandGroup && !cmd.helpGroup())
-      cmd.helpGroup(this._defaultCommandGroup);
-  }
-  /**
-   * Set the name of the command from script filename, such as process.argv[1],
-   * or import.meta.filename.
-   *
-   * (Used internally and public although not documented in README.)
-   *
-   * @example
-   * program.nameFromFilename(import.meta.filename);
-   *
-   * @param {string} filename
-   * @return {Command}
-   */
-  nameFromFilename(filename) {
-    this._name = minpath.basename(filename, minpath.extname(filename));
-    return this;
-  }
-  /**
-   * Get or set the directory for searching for executable subcommands of this command.
-   *
-   * @example
-   * program.executableDir(import.meta.dirname);
-   * // or
-   * program.executableDir('subcommands');
-   *
-   * @param {string} [path]
-   * @return {(string|null|Command)}
-   */
-  executableDir(path) {
-    if (path === void 0) return this._executableDir;
-    this._executableDir = path;
-    return this;
-  }
-  /**
-   * Return program help documentation.
-   *
-   * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
-   * @return {string}
-   */
-  helpInformation(contextOptions) {
-    const helper = this.createHelp();
-    const context = this._getOutputContext(contextOptions);
-    helper.prepareContext({
-      error: context.error,
-      helpWidth: context.helpWidth,
-      outputHasColors: context.hasColors
-    });
-    const text2 = helper.formatHelp(this, helper);
-    if (context.hasColors) return text2;
-    return this._outputConfiguration.stripColor(text2);
-  }
-  /**
-   * @typedef HelpContext
-   * @type {object}
-   * @property {boolean} error
-   * @property {number} helpWidth
-   * @property {boolean} hasColors
-   * @property {function} write - includes stripColor if needed
-   *
-   * @returns {HelpContext}
-   * @private
-   */
-  _getOutputContext(contextOptions) {
-    contextOptions = contextOptions || {};
-    const error2 = !!contextOptions.error;
-    let baseWrite;
-    let hasColors;
-    let helpWidth;
-    if (error2) {
-      baseWrite = (str) => this._outputConfiguration.writeErr(str);
-      hasColors = this._outputConfiguration.getErrHasColors();
-      helpWidth = this._outputConfiguration.getErrHelpWidth();
-    } else {
-      baseWrite = (str) => this._outputConfiguration.writeOut(str);
-      hasColors = this._outputConfiguration.getOutHasColors();
-      helpWidth = this._outputConfiguration.getOutHelpWidth();
-    }
-    const write = (str) => {
-      if (!hasColors) str = this._outputConfiguration.stripColor(str);
-      return baseWrite(str);
-    };
-    return { error: error2, write, hasColors, helpWidth };
-  }
-  /**
-   * Output help information for this command.
-   *
-   * Outputs built-in help, and custom text added using `.addHelpText()`.
-   *
-   * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
-   */
-  outputHelp(contextOptions) {
-    let deprecatedCallback;
-    if (typeof contextOptions === "function") {
-      deprecatedCallback = contextOptions;
-      contextOptions = void 0;
-    }
-    const outputContext = this._getOutputContext(contextOptions);
-    const eventContext = {
-      error: outputContext.error,
-      write: outputContext.write,
-      command: this
-    };
-    this._getCommandAndAncestors().reverse().forEach((command2) => command2.emit("beforeAllHelp", eventContext));
-    this.emit("beforeHelp", eventContext);
-    let helpInformation = this.helpInformation({ error: outputContext.error });
-    if (deprecatedCallback) {
-      helpInformation = deprecatedCallback(helpInformation);
-      if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
-        throw new Error("outputHelp callback must return a string or a Buffer");
-      }
-    }
-    outputContext.write(helpInformation);
-    if (this._getHelpOption()?.long) {
-      this.emit(this._getHelpOption().long);
-    }
-    this.emit("afterHelp", eventContext);
-    this._getCommandAndAncestors().forEach(
-      (command2) => command2.emit("afterAllHelp", eventContext)
-    );
-  }
-  /**
-   * You can pass in flags and a description to customise the built-in help option.
-   * Pass in false to disable the built-in help option.
-   *
-   * @example
-   * program.helpOption('-?, --help' 'show help'); // customise
-   * program.helpOption(false); // disable
-   *
-   * @param {(string | boolean)} flags
-   * @param {string} [description]
-   * @return {Command} `this` command for chaining
-   */
-  helpOption(flags, description2) {
-    if (typeof flags === "boolean") {
-      if (flags) {
-        if (this._helpOption === null) this._helpOption = void 0;
-        if (this._defaultOptionGroup) {
-          this._initOptionGroup(this._getHelpOption());
-        }
-      } else {
-        this._helpOption = null;
-      }
-      return this;
-    }
-    this._helpOption = this.createOption(
-      flags ?? "-h, --help",
-      description2 ?? "display help for command"
-    );
-    if (flags || description2) this._initOptionGroup(this._helpOption);
-    return this;
-  }
-  /**
-   * Lazy create help option.
-   * Returns null if has been disabled with .helpOption(false).
-   *
-   * @returns {(Option | null)} the help option
-   * @package
-   */
-  _getHelpOption() {
-    if (this._helpOption === void 0) {
-      this.helpOption(void 0, void 0);
-    }
-    return this._helpOption;
-  }
-  /**
-   * Supply your own option to use for the built-in help option.
-   * This is an alternative to using helpOption() to customise the flags and description etc.
-   *
-   * @param {Option} option
-   * @return {Command} `this` command for chaining
-   */
-  addHelpOption(option2) {
-    this._helpOption = option2;
-    this._initOptionGroup(option2);
-    return this;
-  }
-  /**
-   * Output help information and exit.
-   *
-   * Outputs built-in help, and custom text added using `.addHelpText()`.
-   *
-   * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
-   */
-  help(contextOptions) {
-    this.outputHelp(contextOptions);
-    let exitCode = Number(process$1.exitCode ?? 0);
-    if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
-      exitCode = 1;
-    }
-    this._exit(exitCode, "commander.help", "(outputHelp)");
-  }
-  /**
-   * // Do a little typing to coordinate emit and listener for the help text events.
-   * @typedef HelpTextEventContext
-   * @type {object}
-   * @property {boolean} error
-   * @property {Command} command
-   * @property {function} write
-   */
-  /**
-   * Add additional text to be displayed with the built-in help.
-   *
-   * Position is 'before' or 'after' to affect just this command,
-   * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
-   *
-   * @param {string} position - before or after built-in help
-   * @param {(string | Function)} text - string to add, or a function returning a string
-   * @return {Command} `this` command for chaining
-   */
-  addHelpText(position2, text2) {
-    const allowedValues = ["beforeAll", "before", "after", "afterAll"];
-    if (!allowedValues.includes(position2)) {
-      throw new Error(`Unexpected value for position to addHelpText.
-Expecting one of '${allowedValues.join("', '")}'`);
-    }
-    const helpEvent = `${position2}Help`;
-    this.on(helpEvent, (context) => {
-      let helpStr;
-      if (typeof text2 === "function") {
-        helpStr = text2({ error: context.error, command: context.command });
-      } else {
-        helpStr = text2;
-      }
-      if (helpStr) {
-        context.write(`${helpStr}
-`);
-      }
-    });
-    return this;
-  }
-  /**
-   * Output help information if help flags specified
-   *
-   * @param {Array} args - array of options to search for help flags
-   * @private
-   */
-  _outputHelpIfRequested(args) {
-    const helpOption = this._getHelpOption();
-    const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
-    if (helpRequested) {
-      this.outputHelp();
-      this._exit(0, "commander.helpDisplayed", "(outputHelp)");
-    }
-  }
-}
-function incrementNodeInspectorPort(args) {
-  return args.map((arg) => {
-    if (!arg.startsWith("--inspect")) {
-      return arg;
-    }
-    let debugOption;
-    let debugHost = "127.0.0.1";
-    let debugPort = "9229";
-    let match;
-    if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
-      debugOption = match[1];
-    } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
-      debugOption = match[1];
-      if (/^\d+$/.test(match[3])) {
-        debugPort = match[3];
-      } else {
-        debugHost = match[3];
-      }
-    } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
-      debugOption = match[1];
-      debugHost = match[3];
-      debugPort = match[4];
-    }
-    if (debugOption && debugPort !== "0") {
-      return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
-    }
-    return arg;
-  });
-}
-function useColor() {
-  if (process$1.env.NO_COLOR || process$1.env.FORCE_COLOR === "0" || process$1.env.FORCE_COLOR === "false")
-    return false;
-  if (process$1.env.FORCE_COLOR || process$1.env.CLICOLOR_FORCE !== void 0)
-    return true;
-  return void 0;
-}
-new Command();
-const globalOptions = {
-  root: "string",
-  lang: "string",
-  events: "string",
-  json: "boolean",
-  "no-json": "boolean",
-  "dry-run": "boolean",
-  "no-dry-run": "boolean",
-  "no-plugins": "boolean",
-  help: "boolean",
-  version: "boolean"
-};
-const globalOptionMetadata = {
-  root: option$1.string("Workspace root to load bin/config.json from; must precede the command."),
-  lang: option$1.string("Response language for descriptions, hints and summaries.", { enum: ["en", "de"], default: "en" }),
-  events: option$1.string("Events included in the response; delivery to listeners is unaffected.", { enum: ["none", "changes", "all"], default: "changes" }),
-  json: option$1.boolean("Compact JSON output."),
-  "no-json": option$1.boolean("Indented JSON output."),
-  "dry-run": option$1.boolean("Validate and preview writes without changing files."),
-  "no-dry-run": option$1.boolean("Write even when settings.dryRun is true."),
-  "no-plugins": option$1.boolean("Skip loading user plugins; core plugins stay. Must precede the command."),
-  help: option$1.boolean("Describe the command instead of running it."),
-  version: option$1.boolean("Report the Forge version; used without a command.")
-};
-function parseBootstrap(tokens) {
-  let end2 = 0;
-  while (end2 < tokens.length) {
-    const token = tokens[end2];
-    if (token === "--" || !token.startsWith("-")) break;
-    const key = token.startsWith("--") ? token.slice(2).split("=")[0] : token === "-h" ? "help" : token === "-V" ? "version" : token;
-    const type2 = Object.hasOwn(globalOptions, key) ? globalOptions[key] : void 0;
-    if (!type2) {
-      parseArguments(tokens.slice(0, end2 + 1), globalOptions);
-    }
-    end2 += type2 === "string" && !token.includes("=") ? 2 : 1;
-  }
-  const parsed2 = parseArguments(tokens.slice(0, end2), globalOptions);
-  return { flags: parsed2.flags, args: tokens.slice(end2 + (tokens[end2] === "--" ? 1 : 0)) };
-}
-function parseArguments(tokens, options2, allowUnknown = false) {
-  const command2 = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
-  }, writeErr: () => {
-  } });
-  const seen = /* @__PURE__ */ new Set();
-  const descriptors = [];
-  for (const [key, type2] of Object.entries(options2)) {
-    const short = key === "help" ? "-h, " : key === "version" ? "-V, " : "";
-    const option2 = new Option(`${short}--${key}${type2 === "string" ? " <value>" : ""}`);
-    if (type2 === "string") option2.negate = false;
-    descriptors.push({ key, option: option2 });
-    command2.addOption(option2);
-    command2.on(`option:${option2.name()}`, () => {
-      const attribute2 = option2.attributeName();
-      ensure(!seen.has(attribute2), "DUPLICATE_OPTION", `Repeated or contradictory option --${key}.`);
-      seen.add(attribute2);
-    });
-  }
-  try {
-    command2.parse(tokens, { from: "user" });
-  } catch (error2) {
-    if (!(error2 instanceof CommanderError)) throw error2;
-    const code2 = error2.code === "commander.unknownOption" ? "UNKNOWN_OPTION" : error2.code === "commander.optionMissingArgument" ? "MISSING_ARGUMENT" : "INVALID_ARGUMENT";
-    throw forgeError(code2, error2.message.replace(/^error: /, ""));
-  }
-  const flags = /* @__PURE__ */ Object.create(null);
-  for (const { key, option: option2 } of descriptors) {
-    if (!seen.has(option2.attributeName())) continue;
-    const parsed2 = command2.getOptionValue(option2.attributeName());
-    if (option2.negate) {
-      if (parsed2 === false) flags[key] = true;
-    } else if (typeof parsed2 === "string" || parsed2 === true) flags[key] = parsed2;
-  }
-  return { args: command2.args, flags };
-}
 function claudeOptions(flags, allowed) {
   const unexpected = Object.keys(flags).filter((key) => !Object.hasOwn(globalOptions, key) && !allowed.includes(key));
   ensure(unexpected.length === 0, "INVALID_ARGUMENT", `Options do not apply to this Claude action: ${unexpected.map((key) => `--${key}`).join(", ")}.`);
@@ -53293,33 +49387,33 @@ async function claudeBytes(flags, context) {
 }
 const claudeInputOptions = ["from", "content", "stdin"];
 const claudeScopeOptions = ["scope", "directory", "claude-dir"];
-async function agentSource(flags, context, services) {
-  const metadata2 = value$2(flags, "metadata");
+async function agentSource(flags, context, services2) {
+  const metadata2 = value$3(flags, "metadata");
   if (metadata2 === void 0) {
     ensure(flags.prompt === void 0, "INVALID_INPUT", "--prompt requires --metadata.");
     return claudeInput(flags, context);
   }
   ensure(claudeInputOptions.every((key) => flags[key] === void 0), "INVALID_INPUT", "--metadata/--prompt cannot be combined with file or text input.");
-  return services.agentCodec.render({ metadata: parseJson(metadata2), prompt: value$2(flags, "prompt", true) });
+  return services2.agentCodec.render({ metadata: parseJson(metadata2), prompt: value$3(flags, "prompt", true) });
 }
-async function exportAgent(agent, flags, context, services) {
-  const content2 = services.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt });
+async function exportAgent(agent, flags, context, services2) {
+  const content2 = services2.agentCodec.render({ metadata: agent.metadata, prompt: agent.prompt });
   const result = { ...agent, content: content2, session: { [String(agent.metadata.name)]: { ...agent.metadata, prompt: agent.prompt } } };
-  const out2 = value$2(flags, "out");
+  const out2 = value$3(flags, "out");
   ensure(out2 !== void 0 || flags["if-match"] === void 0, "INVALID_ARGUMENT", "--if-match requires --out for agent export.");
   if (out2 === void 0) return result;
   ensure(out2.endsWith(".md"), "INVALID_ARGUMENT", "Agent exports use a .md destination.");
-  const written = await context.workspace.write([{ path: out2, bytes: new TextEncoder().encode(content2), expectedRevision: value$2(flags, "if-match") }]);
+  const written = await context.workspace.write([{ path: out2, bytes: new TextEncoder().encode(content2), expectedRevision: value$3(flags, "if-match") }]);
   return { ...result, outputRoot: context.root, ...written, ...context.workspace.dryRun ? { preview: [{ path: out2, content: content2 }] } : {} };
 }
-async function agentCommands(args, flags, context, services) {
+async function agentCommands(args, flags, context, services2) {
   const action2 = args[0] ?? "list";
   const mutating = ["update", "remove", "enable", "disable"].includes(action2);
   const inputs = ["create", "update"].includes(action2) ? [...claudeInputOptions, "metadata", "prompt"] : [];
   claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "export" ? ["out", "if-match"] : []]);
-  const target = await services.target(context, flags);
+  const target = await services2.target(context, flags);
   ensure(target.scope !== "local", "INVALID_ARGUMENT", "Claude agents have project, user, or plugin scope; local applies only to settings.");
-  const agents = new ClaudeAgents(target.workspace, services.agentCodec, target.agentsDirectory);
+  const agents = new ClaudeAgents(target.workspace, services2.agentCodec, target.agentsDirectory);
   const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
   let result;
   if (action2 === "list") {
@@ -53333,21 +49427,21 @@ async function agentCommands(args, flags, context, services) {
         result = await agents.inspect(id2);
         break;
       case "export":
-        result = await exportAgent(await agents.inspect(id2), flags, context, services);
+        result = await exportAgent(await agents.inspect(id2), flags, context, services2);
         break;
       case "create":
-        result = await agents.create(id2, await agentSource(flags, context, services));
+        result = await agents.create(id2, await agentSource(flags, context, services2));
         break;
       case "update":
-        result = await agents.update(id2, await agentSource(flags, context, services), value$2(flags, "if-match", true));
+        result = await agents.update(id2, await agentSource(flags, context, services2), value$3(flags, "if-match", true));
         break;
       case "remove":
-        result = await agents.remove(id2, value$2(flags, "if-match", true));
+        result = await agents.remove(id2, value$3(flags, "if-match", true));
         break;
       default: {
         ensure(action2 === "enable" || action2 === "disable", "INVALID_ARGUMENT", "Use agents list, inspect, create, update, remove, enable, disable, or export.");
         const agent = await agents.inspect(id2);
-        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value$2(flags, "if-match"));
+        result = await settings2.agentEnabled(String(agent.metadata.name), action2 === "enable", value$3(flags, "if-match"));
       }
     }
   }
@@ -53357,14 +49451,14 @@ async function agentCommands(args, flags, context, services) {
     ...target.scope === "plugin" ? { limitations: "Claude Code ignores hooks, mcpServers, permissionMode and initialPrompt in plugin agents." } : {}
   };
 }
-async function hookCommands(args, flags, context, services) {
+async function hookCommands(args, flags, context, services2) {
   const action2 = args[0] ?? "inspect";
   const mutating = ["set", "add", "remove", "configure", "enable", "disable"].includes(action2);
   const inputs = ["set", "add", "configure"].includes(action2) ? claudeInputOptions : [];
   claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "remove" ? ["index"] : []]);
-  const target = await services.target(context, flags);
+  const target = await services2.target(context, flags);
   const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
-  const revision = value$2(flags, "if-match");
+  const revision = value$3(flags, "if-match");
   let result;
   switch (action2) {
     case "inspect":
@@ -53385,8 +49479,8 @@ async function hookCommands(args, flags, context, services) {
       break;
     case "remove": {
       arity(args, 2);
-      const index2 = value$2(flags, "index");
-      result = await settings2.remove(args[1], value$2(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
+      const index2 = value$3(flags, "index");
+      result = await settings2.remove(args[1], value$3(flags, "if-match", true), index2 === void 0 ? void 0 : Number(index2));
       break;
     }
     default:
@@ -53448,28 +49542,28 @@ function jsonValue(value2, ancestors = /* @__PURE__ */ new Set(), depth2 = 0) {
   for (const child of Object.values(value2)) jsonValue(child, ancestors, depth2 + 1);
   ancestors.delete(value2);
 }
-function text(value2, path, nonempty2 = false) {
+function text$1(value2, path, nonempty2 = false) {
   check(typeof value2 === "string" && (!nonempty2 || value2.trim().length > 0), path, `must be ${nonempty2 ? "a nonempty" : "a"} string.`);
 }
-function strings(value2, path) {
+function strings$1(value2, path) {
   check(Array.isArray(value2) && value2.every((item) => typeof item === "string"), path, "must be an array of strings.");
 }
 function optionalStrings(value2, fields2, path) {
-  for (const field2 of fields2) if (value2[field2] !== void 0) text(value2[field2], `${path}.${field2}`);
+  for (const field2 of fields2) if (value2[field2] !== void 0) text$1(value2[field2], `${path}.${field2}`);
 }
 function optionalBooleans(value2, fields2, path) {
   for (const field2 of fields2) if (value2[field2] !== void 0) check(typeof value2[field2] === "boolean", `${path}.${field2}`, "must be a boolean.");
 }
 function stringMap(value2, path) {
   object(value2, path);
-  for (const [key, item] of Object.entries(value2)) text(item, `${path}.${key}`);
+  for (const [key, item] of Object.entries(value2)) text$1(item, `${path}.${key}`);
 }
 function pluginName(value2, path) {
-  text(value2, path, true);
+  text$1(value2, path, true);
   check(!/[\s@:/\\\x00-\x1f\x7f\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(value2), path, "must contain no whitespace, @, colon, path separators, control or bidirectional formatting characters; use kebab-case.");
 }
 function componentPath(value2, path, extensions, allowRoot = false, prefixRequired = true) {
-  text(value2, path, true);
+  text$1(value2, path, true);
   if (allowRoot && value2 === ".") return;
   check(!/[\\:\x00-\x1f\x7f]/.test(value2) && !value2.startsWith("/") && !value2.split("/").includes(".."), path, "must remain inside the plugin root.");
   check(!prefixRequired || value2.startsWith("./"), path, "must start with ./ and be relative to the plugin root.");
@@ -53505,7 +49599,7 @@ function commands$2(value2, path) {
     check(entry2.source !== void 0 !== (entry2.content !== void 0), location2, "must define exactly one of source or content.");
     if (entry2.source !== void 0) componentPath(entry2.source, `${location2}.source`, [".md"]);
     optionalStrings(entry2, ["content", "description", "argumentHint", "model"], location2);
-    if (entry2.allowedTools !== void 0) strings(entry2.allowedTools, `${location2}.allowedTools`);
+    if (entry2.allowedTools !== void 0) strings$1(entry2.allowedTools, `${location2}.allowedTools`);
   }
 }
 function mcpServers(value2, path) {
@@ -53515,9 +49609,9 @@ function mcpServers(value2, path) {
     object(server, location2);
     optionalStrings(server, ["type", "command", "url", "headersHelper", "cwd"], location2);
     if (server.type !== void 0) check(["stdio", "http", "sse"].includes(server.type), `${location2}.type`, "must be stdio, http, or sse.");
-    if (server.type === void 0 || server.type === "stdio") text(server.command, `${location2}.command`, true);
-    else if (server.type === "http" || server.type === "sse") text(server.url, `${location2}.url`, true);
-    if (server.args !== void 0) strings(server.args, `${location2}.args`);
+    if (server.type === void 0 || server.type === "stdio") text$1(server.command, `${location2}.command`, true);
+    else if (server.type === "http" || server.type === "sse") text$1(server.url, `${location2}.url`, true);
+    if (server.args !== void 0) strings$1(server.args, `${location2}.args`);
     for (const key of ["env", "headers"]) if (server[key] !== void 0) stringMap(server[key], `${location2}.${key}`);
     noShellOptions(server.headersHelper, `${location2}.headersHelper`);
     if (server.oauth !== void 0) {
@@ -53542,11 +49636,11 @@ function lspServers(value2, path) {
   for (const [name2, server] of Object.entries(value2)) {
     const location2 = `${path}.${name2}`;
     object(server, location2);
-    text(server.command, `${location2}.command`, true);
+    text$1(server.command, `${location2}.command`, true);
     check(server.command.startsWith("/") || !/\s/.test(server.command), `${location2}.command`, "must name a binary; put arguments in args.");
     stringMap(server.extensionToLanguage, `${location2}.extensionToLanguage`);
     check(Object.keys(server.extensionToLanguage).length > 0 && Object.entries(server.extensionToLanguage).every(([extension2, language2]) => extension2.startsWith(".") && language2.length > 0), `${location2}.extensionToLanguage`, "must map at least one dot-prefixed extension to a language.");
-    if (server.args !== void 0) strings(server.args, `${location2}.args`);
+    if (server.args !== void 0) strings$1(server.args, `${location2}.args`);
     if (server.env !== void 0) stringMap(server.env, `${location2}.env`);
     if (server.transport !== void 0) check(typeof server.transport === "string" && ["stdio", "socket"].includes(server.transport), `${location2}.transport`, "must be stdio or socket.");
     optionalStrings(server, ["workspaceFolder"], location2);
@@ -53563,8 +49657,8 @@ function userConfig(value2, path) {
     check(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name2), location2, "option keys must be identifiers and cannot start with a digit.");
     object(option2, location2);
     check(typeof option2.type === "string" && ["string", "number", "boolean", "directory", "file"].includes(option2.type), `${location2}.type`, "must be string, number, boolean, directory, or file.");
-    text(option2.title, `${location2}.title`);
-    text(option2.description, `${location2}.description`);
+    text$1(option2.title, `${location2}.title`);
+    text$1(option2.description, `${location2}.description`);
     optionalBooleans(option2, ["required", "multiple", "sensitive"], location2);
     for (const key of ["min", "max"]) if (option2[key] !== void 0) check(typeof option2[key] === "number" && Number.isFinite(option2[key]), `${location2}.${key}`, "must be a finite number.");
     if (option2.min !== void 0 && option2.max !== void 0) check(Number(option2.min) <= Number(option2.max), location2, "min cannot exceed max.");
@@ -53573,7 +49667,7 @@ function userConfig(value2, path) {
       check(typeof initial === "string" || typeof initial === "boolean" || typeof initial === "number" && Number.isFinite(initial) || Array.isArray(initial) && initial.every((item) => typeof item === "string"), `${location2}.default`, "must be a string, finite number, boolean, or string array.");
     }
     if (option2.options !== void 0) {
-      strings(option2.options, `${location2}.options`);
+      strings$1(option2.options, `${location2}.options`);
       check(option2.type === "string" && option2.multiple !== true && option2.sensitive !== true, location2, "options require a single, non-sensitive string.");
       check(option2.options.length > 0 && option2.options.every((item) => item.length >= 1 && item.length <= 64), `${location2}.options`, "must contain labels of 1 to 64 characters.");
       check(option2.default === void 0 ? option2.required === true : typeof option2.default === "string" && option2.options.includes(option2.default), location2, "options require a listed default or required: true.");
@@ -53590,11 +49684,11 @@ function monitors(value2, path) {
   for (const [index2, entry2] of value2.entries()) {
     const location2 = `${path}[${index2}]`;
     object(entry2, location2);
-    text(entry2.name, `${location2}.name`, true);
+    text$1(entry2.name, `${location2}.name`, true);
     check(!names2.has(entry2.name), `${location2}.name`, "must be unique within the plugin.");
     names2.add(entry2.name);
-    text(entry2.command, `${location2}.command`, true);
-    text(entry2.description, `${location2}.description`);
+    text$1(entry2.command, `${location2}.command`, true);
+    text$1(entry2.description, `${location2}.description`);
     noShellOptions(entry2.command, `${location2}.command`);
     if (entry2.when !== void 0) check(typeof entry2.when === "string" && (entry2.when === "always" || /^on-skill-invoke:.+$/.test(entry2.when)), `${location2}.when`, "must be always or on-skill-invoke:<skill>.");
   }
@@ -53605,7 +49699,7 @@ function settings(value2, path) {
   if (value2.subagentStatusLine !== void 0) {
     object(value2.subagentStatusLine, `${path}.subagentStatusLine`);
     check(value2.subagentStatusLine.type === "command", `${path}.subagentStatusLine.type`, "must be command.");
-    text(value2.subagentStatusLine.command, `${path}.subagentStatusLine.command`, true);
+    text$1(value2.subagentStatusLine.command, `${path}.subagentStatusLine.command`, true);
   }
 }
 function hooks(value2, path) {
@@ -53622,12 +49716,12 @@ function validateClaudePlugin(value2) {
   pluginName(value2.name, "plugin.name");
   optionalStrings(value2, ["$schema", "displayName", "version", "description", "homepage", "repository", "license", "icon", "documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"], "plugin");
   if (value2.homepage !== void 0) check(URL.canParse(value2.homepage), "plugin.homepage", "must be a valid URL.");
-  if (value2.keywords !== void 0) strings(value2.keywords, "plugin.keywords");
+  if (value2.keywords !== void 0) strings$1(value2.keywords, "plugin.keywords");
   optionalBooleans(value2, ["defaultEnabled"], "plugin");
   if (value2.metadata !== void 0) object(value2.metadata, "plugin.metadata");
   if (value2.author !== void 0) {
     object(value2.author, "plugin.author");
-    text(value2.author.name, "plugin.author.name");
+    text$1(value2.author.name, "plugin.author.name");
     optionalStrings(value2.author, ["email", "url"], "plugin.author");
   }
   if (value2.dependencies !== void 0) {
@@ -53662,7 +49756,7 @@ function validateClaudePlugin(value2) {
     value2.channels.forEach((channel, index2) => {
       const location2 = `plugin.channels[${index2}]`;
       object(channel, location2);
-      text(channel.server, `${location2}.server`, true);
+      text$1(channel.server, `${location2}.server`, true);
       optionalStrings(channel, ["displayName"], location2);
       if (channel.userConfig !== void 0) userConfig(channel.userConfig, `${location2}.userConfig`);
     });
@@ -53860,18 +49954,18 @@ class ClaudePluginService {
   }
 }
 const nativePluginActions = ["create", "inspect", "manifest", "check", "asset", "write-asset", "remove-asset"];
-async function nativePlugin(args, flags, context, services) {
+async function nativePlugin(args, flags, context, services2) {
   const [action2, directory, path] = args;
   claudeOptions(flags, [...["create", "manifest", "write-asset"].includes(action2) ? claudeInputOptions : [], ...["manifest", "write-asset", "remove-asset"].includes(action2) ? ["if-match"] : []]);
   arity(args, ["asset", "write-asset", "remove-asset"].includes(action2) ? 3 : 2);
-  const plugins = new ClaudePluginService(context.workspace, services.agentCodec);
+  const plugins = new ClaudePluginService(context.workspace, services2.agentCodec);
   if (action2 === "create") return plugins.create(directory, parseJson(await claudeInput(flags, context)));
-  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value$2(flags, "if-match", true));
+  if (action2 === "manifest") return plugins.update(directory, parseJson(await claudeInput(flags, context)), value$3(flags, "if-match", true));
   if (action2 === "inspect") return plugins.inspect(directory);
   if (action2 === "check") return plugins.validate(directory);
   if (action2 === "asset") return plugins.asset(directory, path);
-  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value$2(flags, "if-match", true));
-  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value$2(flags, "if-match"));
+  if (action2 === "remove-asset") return plugins.removeAsset(directory, path, value$3(flags, "if-match", true));
+  return plugins.writeAsset(directory, path, await claudeBytes(flags, context), value$3(flags, "if-match"));
 }
 const acceptance = { yes: "boolean", "accept-command": "hash" };
 const commands$1 = {
@@ -54055,7 +50149,7 @@ function buildClaudeRuntimeArgs(section2, args, flags) {
   native.push(...options2);
   return native;
 }
-function claudeCommand(services) {
+function claudeCommand(adapters) {
   return {
     id: "claude",
     description: "Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.",
@@ -54110,15 +50204,16 @@ function claudeCommand(services) {
           lifecycle: { executable: "claude", commands: ["plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval", "marketplaces add|list|remove|update", "runtime version|doctor|install|update"], mutationDefaultScope: "project where the native command supports a scope", dryRun: "Returns command arguments without starting Claude Code." }
         };
       }
-      if (section2 === "agents") return agentCommands(args.slice(1), flags, context, services);
-      if (section2 === "hooks") return hookCommands(args.slice(1), flags, context, services);
-      if (section2 === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services);
+      const services2 = { agentCodec: adapters.agentCodec(context.workspace.codec), target: adapters.target };
+      if (section2 === "agents") return agentCommands(args.slice(1), flags, context, services2);
+      if (section2 === "hooks") return hookCommands(args.slice(1), flags, context, services2);
+      if (section2 === "plugins" && nativePluginActions.includes(action2 ?? "")) return nativePlugin(args.slice(1), flags, context, services2);
       ensure(section2 === "plugins" || section2 === "marketplaces" || section2 === "runtime", "INVALID_ARGUMENT", "Use claude agents, hooks, plugins, marketplaces, runtime, or capabilities.");
       const command2 = buildClaudeRuntimeArgs(section2, args.slice(1), flags);
-      const timeout = value$2(flags, "timeout");
+      const timeout = value$3(flags, "timeout");
       const timeoutMs = timeout === void 0 ? void 0 : Number(timeout);
       ensure(timeoutMs === void 0 || Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 36e5, "INVALID_ARGUMENT", "--timeout must be milliseconds from 1 to 3600000.");
-      const executable = value$2(flags, "claude-bin");
+      const executable = value$3(flags, "claude-bin");
       let input;
       if (claudeRuntimeNeedsInput(section2, args.slice(1), flags)) {
         const values2 = parseJson(await claudeInput(flags, context));
@@ -54126,9 +50221,841 @@ function claudeCommand(services) {
         input = JSON.stringify(values2) + "\n";
         ensure(new TextEncoder().encode(input).length <= 1024 * 1024, "INVALID_CLAUDE_INPUT", "Claude configuration input must not exceed 1 MiB.");
       }
-      return context.claude.execute({ args: command2, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section2, args.slice(1), flags) });
+      return adapters.lifecycle.execute({ args: command2, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section2, args.slice(1), flags) });
     }
   };
+}
+const claudeLifecycleService = "claude.lifecycle";
+const claudePlugin = {
+  manifest: {
+    id: "claude",
+    name: "Claude Code",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Manage native Claude Code agents, hooks and plugins, and run the installed Claude Code CLI lifecycle."
+  },
+  create: (host) => {
+    let lifecycle;
+    const client = {
+      execute: (request) => {
+        ensure(lifecycle, "PLUGIN_LIFECYCLE", "The claude.lifecycle service runs Claude only while the claude plugin is active in a command invocation.");
+        return lifecycle.execute(request);
+      }
+    };
+    return {
+      commands: [claudeCommand({ agentCodec: claudeAgentCodec, target: claudeTarget(host.openFiles), lifecycle: client })],
+      events: [...claudeEvents],
+      provides: { [claudeLifecycleService]: client },
+      onload(context) {
+        lifecycle = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId());
+      },
+      onunload() {
+        lifecycle = void 0;
+      },
+      strings: {
+        de: {
+          commands: { claude: "Native Claude-Code-Agenten, Hooks und Plugins mit Revisionsschutz und installiertem CLI verwalten." },
+          actions: {
+            "claude capabilities": "Unterstützte Formate, Bereiche und Vorgänge beschreiben.",
+            "claude agents": "Native Agenten auflisten, prüfen, erstellen, aktualisieren, entfernen, aktivieren, deaktivieren oder exportieren.",
+            "claude hooks": "Die native Hook-Konfiguration prüfen, kontrollieren und bearbeiten.",
+            "claude plugins": "Claude-Plugin-Bestandteile erstellen oder den Plugin-Lebenszyklus des installierten CLI ausführen.",
+            "claude marketplaces": "Plugin-Marktplätze über das installierte CLI hinzufügen, auflisten, entfernen oder aktualisieren.",
+            "claude runtime": "Das installierte Claude-Code-CLI melden, diagnostizieren, installieren oder aktualisieren."
+          },
+          events: {
+            "claude.started": "Ein Claude-Aufruf hat mit Prüfung oder Vorschau begonnen.",
+            "claude.succeeded": "Ein Claude-Aufruf oder eine geprüfte Vorschau wurde abgeschlossen.",
+            "claude.failed": "Prüfung, Ausführung oder Ausgabeverarbeitung von Claude ist fehlgeschlagen.",
+            "claude.executed": "Der Claude-Prozess hat einen Exit-Status geliefert, auch einen von null verschiedenen."
+          }
+        }
+      }
+    };
+  }
+};
+const SHARED_KEYS = ["platform", "tokenEnv", "linkProperty", "effortProperty", "areaProperty", "mappings"];
+const CONNECTION_ID = /^[a-z][a-z0-9-]*$/;
+const nameMap = (description2) => ({ type: "object", description: description2, additionalProperties: { type: "string" } });
+const connectorSettings = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    connections: {
+      type: "object",
+      default: {},
+      description: "Connection profiles by id (lowercase kebab-case).",
+      additionalProperties: {
+        type: "object",
+        required: ["platform"],
+        additionalProperties: true,
+        properties: {
+          platform: { type: "string", pattern: "^[a-z][a-z0-9-]*$", description: "The connector platform, for example azure-devops." },
+          tokenEnv: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration." },
+          linkProperty: { type: "string", minLength: 1, description: "The frontmatter key that links a note to its remote item; the platform default when omitted." },
+          effortProperty: { type: "string", minLength: 1, default: "effort", description: "The frontmatter key of the effort or story points." },
+          areaProperty: { type: "string", minLength: 1, default: "area", description: "The frontmatter key of the area path; a note without it uses the connection's default area." },
+          mappings: {
+            type: "object",
+            additionalProperties: false,
+            default: {},
+            properties: {
+              types: nameMap("Local backlog type → remote work item type, over the process defaults."),
+              states: nameMap("Local state (optionally Type:State) → remote state, over the process defaults."),
+              fields: nameMap("Neutral field → remote field reference over the process defaults; an empty string stops syncing the field."),
+              properties: nameMap("Extra frontmatter key → remote field reference, synced as a plain value.")
+            }
+          }
+        }
+      }
+    }
+  }
+};
+const strings = (value2) => isRecord(value2) ? Object.fromEntries(Object.entries(value2).filter((entry2) => typeof entry2[1] === "string")) : {};
+function profiles(settings2) {
+  const connections = isRecord(settings2?.connections) ? settings2.connections : {};
+  return Object.entries(connections).filter((entry2) => isRecord(entry2[1])).map(([id2, raw]) => {
+    const mappings = isRecord(raw.mappings) ? raw.mappings : {};
+    return {
+      id: id2,
+      platform: String(raw.platform),
+      ...typeof raw.tokenEnv === "string" ? { tokenEnv: raw.tokenEnv } : {},
+      ...typeof raw.linkProperty === "string" ? { linkProperty: raw.linkProperty } : {},
+      effortProperty: typeof raw.effortProperty === "string" ? raw.effortProperty : "effort",
+      areaProperty: typeof raw.areaProperty === "string" ? raw.areaProperty : "area",
+      mappings: { types: strings(mappings.types), states: strings(mappings.states), fields: strings(mappings.fields), properties: strings(mappings.properties) },
+      specific: Object.fromEntries(Object.entries(raw).filter(([key]) => !SHARED_KEYS.includes(key)))
+    };
+  });
+}
+function connectorError(code2, message2, details) {
+  return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
+}
+class Hub {
+  constructor(environment) {
+    this.environment = environment;
+  }
+  environment;
+  connectors = /* @__PURE__ */ new Map();
+  settings = null;
+  events = null;
+  bind(settings2, events2) {
+    this.settings = settings2;
+    this.events = events2;
+  }
+  register(connector) {
+    if (this.connectors.has(connector.id)) throw connectorError("CONNECTION_INVALID", `Two connectors register the platform ${connector.id}.`, { platform: connector.id });
+    this.connectors.set(connector.id, connector);
+  }
+  platforms() {
+    return [...this.connectors.keys()].sort();
+  }
+  ids() {
+    return profiles(this.settings).map((profile) => profile.id);
+  }
+  /** Every profile with its validation result, for listing; never throws for one bad profile. */
+  statuses() {
+    return profiles(this.settings).map((profile) => {
+      const connector = this.connectors.get(profile.platform) ?? null;
+      if (connector === null) return { profile, connector, issues: [`platform ${profile.platform} is not available; enable its connector plugin`], bound: null };
+      const { connection, issues } = this.build(profile, connector);
+      return { profile, connector, issues, bound: issues.length === 0 ? { connection, connector } : null };
+    });
+  }
+  connection(id2) {
+    const profile = profiles(this.settings).find((entry2) => entry2.id === id2);
+    if (profile === void 0) throw connectorError("CONNECTOR_NOT_FOUND", `No connection ${id2} is configured in plugins.settings.connector.connections.`, { connection: id2, connections: this.ids() });
+    const connector = this.connectors.get(profile.platform);
+    if (connector === void 0) throw connectorError("CONNECTOR_NOT_FOUND", `Connection ${id2} uses the platform ${profile.platform}, which no enabled connector provides.`, { connection: id2, platform: profile.platform, platforms: this.platforms() });
+    const { connection, issues } = this.build(profile, connector);
+    if (issues.length > 0) throw connectorError("CONNECTION_INVALID", `Connection ${id2} is invalid: ${issues.join("; ")}`, { connection: id2, issues });
+    return { connection, connector };
+  }
+  async report(name2, payload2) {
+    await this.events?.emit(`connector.${name2}`, payload2);
+  }
+  build(profile, connector) {
+    const description2 = connector.describe();
+    const path = `plugins.settings.connector.connections.${profile.id}`;
+    const checked = validateJsonValue(description2.connectionSchema, profile.specific, path);
+    const issues = [...CONNECTION_ID.test(profile.id) ? [] : [`${path}: connection ids are lowercase kebab-case`], ...checked.issues];
+    const tokenEnv = profile.tokenEnv ?? description2.defaults.tokenEnv;
+    const environment = this.environment;
+    const settings2 = { ...isRecord(checked.value) ? checked.value : {}, platform: profile.platform, tokenEnv, mappings: profile.mappings };
+    const connection = {
+      id: profile.id,
+      platform: profile.platform,
+      tokenEnv,
+      linkProperty: profile.linkProperty ?? description2.defaults.linkProperty,
+      effortProperty: profile.effortProperty,
+      areaProperty: profile.areaProperty,
+      settings: settings2,
+      token() {
+        const value2 = environment(tokenEnv)?.trim();
+        if (!value2) throw connectorError("CONNECTOR_AUTH_FAILED", `Set the environment variable ${tokenEnv} to an access token for connection ${profile.id}.`, { connection: profile.id, tokenEnv });
+        return value2;
+      }
+    };
+    return { connection, issues };
+  }
+}
+function tokenSet(connection, environment) {
+  return (environment(connection.tokenEnv)?.trim() ?? "") !== "";
+}
+const actions = ["list", "inspect", "test"];
+function connectionJson({ connection, connector }, environment) {
+  return {
+    id: connection.id,
+    platform: connection.platform,
+    tokenEnv: connection.tokenEnv,
+    tokenSet: tokenSet(connection, environment),
+    linkProperty: connection.linkProperty,
+    effortProperty: connection.effortProperty,
+    areaProperty: connection.areaProperty,
+    ...connector.describe().summary(connection),
+    warnings: connector.describe().warnings(connection)
+  };
+}
+function connectorsCommand(hub, environment) {
+  return {
+    id: "connectors",
+    description: "List, inspect and test the backlog connector connections configured in plugins.settings.connector.connections.",
+    usage: "connectors list | inspect <id> | test <id>",
+    scope: "workspace",
+    discovery: false,
+    mutating: false,
+    defaultAction: "list",
+    actions: {
+      list: { description: "Every connection with its platform, validity, warnings and whether its token variable is set." },
+      inspect: { description: "One connection with its resolved type, state and field mappings." },
+      test: { description: "An authenticated, read-only probe of one connection." }
+    },
+    args: [
+      { name: "action", description: actions.join(", "), enum: actions },
+      { name: "id", description: "The connection id (inspect, test)." }
+    ],
+    errors: ["CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
+    async run(args) {
+      const [action2 = "list", ...rest] = args;
+      ensure(actions.includes(action2), "INVALID_ARGUMENT", `Use connectors ${actions.join(", connectors ")}.`);
+      if (action2 === "list") {
+        arity(rest, 0);
+        return {
+          platforms: hub.platforms(),
+          connections: hub.statuses().map((status2) => ({
+            ...status2.bound ? connectionJson(status2.bound, environment) : { id: status2.profile.id, platform: status2.profile.platform },
+            available: status2.connector !== null,
+            valid: status2.issues.length === 0,
+            issues: status2.issues
+          }))
+        };
+      }
+      arity(rest, 1);
+      const bound2 = hub.connection(rest[0]);
+      if (action2 === "inspect") {
+        const description2 = bound2.connector.describe();
+        return { connection: connectionJson(bound2, environment), platform: { id: description2.platform, name: description2.name, description: description2.description }, mapping: bound2.connector.mapping(bound2.connection) };
+      }
+      const probe = await bound2.connector.test(bound2.connection);
+      return { connection: bound2.connection.id, platform: bound2.connection.platform, ok: probe.ok, target: probe.target };
+    }
+  };
+}
+const payload = (value2) => isRecord(value2) && ["connection", "platform", "path", "remoteId", "url"].every((key) => typeof value2[key] === "string") && Array.isArray(value2.fields);
+const events = [
+  { id: "connector.pushed", description: "A note was pushed to its remote item: {connection, platform, path, remoteId, url, operation: create|update, fields}.", validate: payload },
+  { id: "connector.pulled", description: "Remote changes were written into a note: {connection, platform, path, remoteId, url, fields}.", validate: payload },
+  { id: "connector.conflict", description: "Fields changed on both sides since the last sync and were left untouched: {connection, platform, path, remoteId, url, fields}.", validate: payload }
+];
+const de = {
+  commands: { connectors: "Die in plugins.settings.connector.connections konfigurierten Backlog-Verbindungen auflisten, prüfen und testen." },
+  actions: {
+    "connectors list": "Jede Verbindung mit Plattform, Gültigkeit, Warnungen und der Angabe, ob ihre Token-Variable gesetzt ist.",
+    "connectors inspect": "Eine Verbindung mit ihren aufgelösten Typ-, Status- und Feldzuordnungen.",
+    "connectors test": "Eine authentifizierte, nur lesende Prüfung einer Verbindung."
+  },
+  events: {
+    "connector.pushed": "Eine Notiz wurde in ihr entferntes Work Item übertragen.",
+    "connector.pulled": "Entfernte Änderungen wurden in eine Notiz geschrieben.",
+    "connector.conflict": "Felder wurden seit dem letzten Abgleich auf beiden Seiten geändert und blieben unverändert."
+  },
+  errors: {
+    CONNECTOR_NOT_FOUND: { summary: "Die Verbindung oder ihre Plattform ist nicht verfügbar.", hint: "Prüfen Sie die Verbindungs-ID mit connectors list und aktivieren Sie das Connector-Plugin der Plattform." },
+    CONNECTION_INVALID: { summary: "Das Verbindungsprofil ist ungültig.", hint: "Korrigieren Sie die in error.details.issues genannten Felder in plugins.settings.connector.connections." },
+    CONNECTOR_AUTH_FAILED: { summary: "Die Anmeldung beim entfernten Dienst ist fehlgeschlagen.", hint: "Setzen Sie die in error.details.tokenEnv genannte Umgebungsvariable auf ein gültiges Zugriffstoken mit Lese- und Schreibrechten für Work Items." },
+    CONNECTOR_REQUEST_FAILED: { summary: "Eine Anfrage an den entfernten Dienst ist fehlgeschlagen.", hint: "Prüfen Sie error.details.status und die Meldung, die Organisations-URL und das Projekt, und wiederholen Sie den Befehl." }
+  }
+};
+const connectorPlugin = {
+  manifest: {
+    id: "connector",
+    name: "Connectors",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Connection profiles and the shared hub for backlog connectors to external work trackers."
+  },
+  create: (host) => {
+    const hub = new Hub(host.environment);
+    return {
+      provides: { "connector.hub": hub },
+      onload(context) {
+        hub.bind(context.settings, context.events);
+      },
+      commands: [connectorsCommand(hub, host.environment)],
+      events,
+      settings: connectorSettings,
+      errors: [
+        { code: "CONNECTOR_NOT_FOUND", category: "not-found", summary: "The connection or its platform is not available.", hint: "Check the connection id with connectors list and enable the platform's connector plugin." },
+        { code: "CONNECTION_INVALID", category: "input", summary: "The connection profile is invalid.", hint: "Fix the fields named in error.details.issues in plugins.settings.connector.connections." },
+        { code: "CONNECTOR_AUTH_FAILED", category: "external", summary: "Authentication with the remote service failed.", hint: "Set the environment variable named in error.details.tokenEnv to a valid access token with work item read and write scope." },
+        { code: "CONNECTOR_REQUEST_FAILED", category: "external", summary: "A request to the remote service failed.", hint: "Check error.details.status and the message, the organization URL and the project, then rerun the command.", retryable: true }
+      ],
+      strings: { de }
+    };
+  }
+};
+function redact(text2, secrets) {
+  let result = text2;
+  for (const secret of secrets.filter((value2) => value2.length >= 4)) {
+    const forms = [secret, encodeURIComponent(secret)];
+    try {
+      forms.push(btoa(`:${secret}`));
+    } catch {
+    }
+    for (const form of forms) result = result.split(form).join("[redacted]");
+  }
+  return result;
+}
+const PROCESSES = ["agile", "scrum", "basic", "custom"];
+const PARENT_LINK = "System.LinkTypes.Hierarchy-Reverse";
+const PREDECESSOR_LINK = "System.LinkTypes.Dependency-Reverse";
+const types = {
+  agile: { Epic: "Epic", Feature: "Feature", PBI: "User Story", Task: "Task", Bug: "Bug", Issue: "Issue" },
+  scrum: { Epic: "Epic", Feature: "Feature", PBI: "Product Backlog Item", Task: "Task", Bug: "Bug", Issue: "Impediment" },
+  basic: { Epic: "Epic", Feature: "Epic", PBI: "Issue", Issue: "Issue", Bug: "Issue", Task: "Task" },
+  custom: {}
+};
+const states = {
+  agile: { New: "New", Active: "Active", Resolved: "Resolved", Closed: "Closed", Removed: "Removed", Open: "New", "To Do": "New", "In Progress": "Active", Done: "Closed" },
+  scrum: {
+    New: "New",
+    Approved: "Approved",
+    Committed: "Committed",
+    Done: "Done",
+    Removed: "Removed",
+    Open: "New",
+    "To Do": "New",
+    Active: "Committed",
+    "In Progress": "Committed",
+    Closed: "Done",
+    "Task:To Do": "To Do",
+    "Task:In Progress": "In Progress",
+    "Task:Done": "Done",
+    "Task:Removed": "Removed",
+    "Task:New": "To Do",
+    "Task:Open": "To Do",
+    "Task:Active": "In Progress",
+    "Task:Closed": "Done"
+  },
+  basic: { "To Do": "To Do", Doing: "Doing", Done: "Done", New: "To Do", Open: "To Do", Active: "Doing", "In Progress": "Doing", Closed: "Done" },
+  custom: {}
+};
+const effort = {
+  agile: "Microsoft.VSTS.Scheduling.StoryPoints",
+  scrum: "Microsoft.VSTS.Scheduling.Effort",
+  basic: "Microsoft.VSTS.Scheduling.Effort",
+  custom: "Microsoft.VSTS.Scheduling.Effort"
+};
+function fields(process2) {
+  return {
+    title: "System.Title",
+    type: "System.WorkItemType",
+    state: "System.State",
+    parent: PARENT_LINK,
+    iteration: "System.IterationPath",
+    area: "System.AreaPath",
+    priority: "Microsoft.VSTS.Common.Priority",
+    effort: effort[process2],
+    tags: "System.Tags",
+    description: "System.Description"
+  };
+}
+function processMapping(process2, overrides = {}) {
+  const resolved = fields(process2);
+  for (const [field2, reference] of Object.entries(overrides.fields ?? {})) if (Object.hasOwn(resolved, field2)) resolved[field2] = reference.trim() === "" ? null : reference.trim();
+  return {
+    types: { ...types[process2], ...overrides.types },
+    states: { ...states[process2], ...overrides.states },
+    fields: resolved,
+    properties: { ...overrides.properties }
+  };
+}
+function unknownFields(overrides) {
+  const known2 = Object.keys(fields("agile"));
+  return Object.keys(overrides.fields ?? {}).filter((field2) => !known2.includes(field2));
+}
+function markdownToHtml(markdown) {
+  const lines2 = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const html2 = [];
+  let paragraph = [];
+  const open2 = { list: null };
+  const flushParagraph = () => {
+    if (paragraph.length > 0) html2.push(`<p>${paragraph.map(inline).join("<br>")}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    const list2 = open2.list;
+    if (list2) html2.push(`<${list2.tag}>${list2.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list2.tag}>`);
+    open2.list = null;
+  };
+  const flush = () => {
+    flushParagraph();
+    flushList();
+  };
+  for (let index2 = 0; index2 < lines2.length; index2++) {
+    const line = lines2[index2];
+    const fence2 = /^\s*(```|~~~)/.exec(line);
+    if (fence2) {
+      flush();
+      const code2 = [];
+      for (index2++; index2 < lines2.length && !lines2[index2].trimStart().startsWith(fence2[1]); index2++) code2.push(lines2[index2]);
+      html2.push(`<pre><code>${escape$1(code2.join("\n"))}</code></pre>`);
+      continue;
+    }
+    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line), quote = /^\s*>\s?(.*)$/.exec(line);
+    if (line.trim() === "") flush();
+    else if (heading) {
+      flush();
+      html2.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`);
+    } else if (bullet || numbered) {
+      flushParagraph();
+      const tag = bullet ? "ul" : "ol";
+      if (open2.list?.tag !== tag) {
+        flushList();
+        open2.list = { tag, items: [] };
+      }
+      open2.list.items.push((bullet ?? numbered)[1]);
+    } else if (quote) {
+      flush();
+      html2.push(`<blockquote>${inline(quote[1])}</blockquote>`);
+    } else {
+      flushList();
+      paragraph.push(line.trim());
+    }
+  }
+  flush();
+  return html2.join("");
+}
+function escape$1(text2) {
+  return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+const safeHref = (href) => /^(https?:|mailto:)/i.test(href);
+function inline(text2) {
+  const codes = [];
+  let result = escape$1(text2).replace(/`([^`]+)`/g, (_, code2) => {
+    codes.push(`<code>${code2}</code>`);
+    return `<c${codes.length - 1}>`;
+  });
+  result = result.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label2, href) => safeHref(href) ? `<a href="${href}">${label2}</a>` : label2).replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a ?? b}</strong>`).replace(/\*([^*]+)\*|\b_([^_]+)_\b/g, (_, a, b) => `<em>${a ?? b}</em>`);
+  return result.replace(/<c(\d+)>/g, (_, index2) => codes[Number(index2)]);
+}
+const field = (reference, value2) => value2 === null ? { op: "remove", path: `/fields/${reference}` } : { op: "add", path: `/fields/${reference}`, value: value2 };
+const AREA_PATH = "System.AreaPath";
+const workItemApiUrl = (organization, id2) => `${organization}/_apis/wit/workItems/${id2}`;
+const lastSegment = (url2) => typeof url2 === "string" ? /\/(\d+)$/.exec(url2)?.[1] ?? null : null;
+function fieldOperations(change2, context) {
+  const { fields: fields2 } = context.mapping;
+  const operations2 = [];
+  const scalar2 = [["type", fields2.type], ["title", fields2.title], ["state", fields2.state], ["iteration", fields2.iteration], ["area", fields2.area], ["priority", fields2.priority], ["effort", fields2.effort]];
+  for (const [key, reference] of scalar2) if (reference !== null && change2[key] !== void 0) operations2.push(field(reference, change2[key]));
+  if (fields2.tags !== null && change2.tags !== void 0) operations2.push(field(fields2.tags, change2.tags.join("; ")));
+  if (fields2.description !== null && change2.description !== void 0) {
+    const markdown = context.descriptionFormat === "markdown";
+    if (change2.description === null) operations2.push(field(fields2.description, null));
+    else {
+      operations2.push(field(fields2.description, markdown ? change2.description : markdownToHtml(change2.description)));
+      if (markdown) operations2.push({ op: "add", path: `/multilineFieldsFormat/${fields2.description}`, value: "Markdown" });
+    }
+  }
+  for (const [reference, value2] of Object.entries(change2.fields ?? {})) operations2.push(field(reference, value2));
+  return operations2;
+}
+function createOperations(draft, context) {
+  const { type: _type, ...rest } = draft;
+  const set2 = Object.fromEntries(Object.entries(rest).filter(([, value2]) => value2 !== null && value2 !== void 0 && !(Array.isArray(value2) && value2.length === 0)));
+  const operations2 = fieldOperations({ ...set2, ...rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value2]) => value2 !== null)) } : {} }, context);
+  if (draft.area && context.mapping.fields.area === null) operations2.push(field(AREA_PATH, draft.area));
+  if (draft.parentId && context.mapping.fields.parent !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
+  return operations2;
+}
+function updateOperations(patch, expectedRev, context, relations = []) {
+  const operations2 = [{ op: "test", path: "/rev", value: Number(expectedRev) }, ...fieldOperations(patch, context)];
+  if (patch.parentId !== void 0 && context.mapping.fields.parent !== null) {
+    const index2 = relations.findIndex((relation) => isRecord(relation) && relation.rel === PARENT_LINK);
+    if (index2 >= 0) operations2.push({ op: "remove", path: `/relations/${index2}` });
+    if (patch.parentId !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, patch.parentId) } });
+  }
+  return operations2;
+}
+const text = (value2) => typeof value2 === "string" && value2.trim() !== "" ? value2 : null;
+const number = (value2) => typeof value2 === "number" && Number.isFinite(value2) ? value2 : typeof value2 === "string" && value2.trim() !== "" && Number.isFinite(Number(value2)) ? Number(value2) : null;
+function remoteItem(json2, context, url2) {
+  const item = isRecord(json2) ? json2 : {};
+  const values2 = isRecord(item.fields) ? item.fields : {};
+  const relations = Array.isArray(item.relations) ? item.relations.filter(isRecord) : [];
+  const { fields: fields2 } = context.mapping;
+  const id2 = String(item.id);
+  const read2 = (reference) => reference === null ? void 0 : values2[reference];
+  const formats = isRecord(item.multilineFieldsFormat) ? item.multilineFieldsFormat : {};
+  const description2 = fields2.description === null ? void 0 : text(read2(fields2.description));
+  const markdown = fields2.description !== null && String(formats[fields2.description] ?? "").toLowerCase() === "markdown";
+  const area = text(values2[fields2.area ?? AREA_PATH]);
+  return {
+    id: id2,
+    rev: String(item.rev),
+    url: url2(id2),
+    type: String(values2["System.WorkItemType"] ?? ""),
+    title: String(read2(fields2.title) ?? ""),
+    state: text(read2(fields2.state)),
+    parentId: lastSegment(relations.find((relation) => relation.rel === PARENT_LINK)?.url),
+    iteration: text(read2(fields2.iteration)),
+    area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
+    priority: number(read2(fields2.priority)),
+    effort: number(read2(fields2.effort)),
+    tags: (text(read2(fields2.tags)) ?? "").split(";").map((tag) => tag.trim()).filter(Boolean),
+    ...description2 === void 0 ? {} : { description: description2, descriptionMarkdown: markdown },
+    links: { predecessors: relations.filter((relation) => relation.rel === PREDECESSOR_LINK).map((relation) => lastSegment(relation.url)).filter((value2) => value2 !== null) },
+    fields: Object.fromEntries(Object.values(context.mapping.properties).map((reference) => [reference, values2[reference] ?? null]))
+  };
+}
+const API_VERSION = "7.1";
+const BATCH_SIZE = 200;
+const organizationPattern = "^(https://[^\\s/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?)(/[^\\s/?#@]+)*/?$";
+const connectionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["organization", "project"],
+  properties: {
+    organization: { type: "string", pattern: organizationPattern, description: "The organization URL, for example https://dev.azure.com/contoso (https without user info; http only for localhost). The token is sent to this host." },
+    project: { type: "string", minLength: 1, description: "The project name." },
+    areaPath: { type: "string", minLength: 1, description: "The default area path: notes without an area property sync to it." },
+    iterationRoot: { type: "string", minLength: 1, description: "The iteration path under which iteration notes map by name, for example Trailhead or Trailhead\\Sprints." },
+    process: { type: "string", enum: [...PROCESSES], default: "agile", description: "The process whose type, state and field defaults apply." },
+    descriptionFormat: { type: "string", enum: ["markdown", "html"], default: "markdown", description: "markdown syncs the note body both ways; html pushes converted HTML only (Azure DevOps Server)." }
+  }
+};
+const failure = (code2, message2, details) => Object.assign(new Error(message2), { code: code2, details });
+const setting = (connection, key) => typeof connection.settings[key] === "string" ? connection.settings[key] : void 0;
+const organizationOf = (connection) => setting(connection, "organization").replace(/\/+$/, "");
+const defaultArea = (connection) => setting(connection, "areaPath") ?? setting(connection, "project");
+function withDefaults(connection, change2) {
+  return { ...change2, ...change2.iteration === null ? { iteration: setting(connection, "project") } : {}, ...change2.area === null ? { area: defaultArea(connection) } : {} };
+}
+const knownHost = (host) => host === "dev.azure.com" || host.endsWith(".visualstudio.com");
+class AzureDevOpsConnector {
+  constructor(http) {
+    this.http = http;
+  }
+  http;
+  id = "azure-devops";
+  describe() {
+    return {
+      platform: this.id,
+      name: "Azure DevOps Boards",
+      description: "Work items of one Azure DevOps project through the Work Items REST API 7.1.",
+      defaults: { tokenEnv: "AZURE_DEVOPS_EXT_PAT", linkProperty: "azure-devops" },
+      connectionSchema,
+      summary: (connection) => ({
+        organization: organizationOf(connection),
+        project: setting(connection, "project"),
+        process: setting(connection, "process"),
+        descriptionFormat: setting(connection, "descriptionFormat"),
+        ...setting(connection, "areaPath") ? { areaPath: setting(connection, "areaPath") } : {},
+        ...setting(connection, "iterationRoot") ? { iterationRoot: setting(connection, "iterationRoot") } : {}
+      }),
+      warnings: (connection) => {
+        let host;
+        try {
+          host = new URL(organizationOf(connection)).hostname.toLowerCase();
+        } catch {
+          return [];
+        }
+        return knownHost(host) ? [] : [`organization host ${host} is neither dev.azure.com nor *.visualstudio.com; the token in ${connection.tokenEnv} is sent there (expected only for Azure DevOps Server).`];
+      }
+    };
+  }
+  mapping(connection) {
+    const overrides = isRecord(connection.settings.mappings) ? connection.settings.mappings : {};
+    const unknown2 = unknownFields(overrides);
+    if (unknown2.length > 0) throw Object.assign(new Error(`Connection ${connection.id} maps unknown fields: ${unknown2.join(", ")}.`), { code: "CONNECTION_INVALID", details: { connection: connection.id, issues: unknown2.map((name2) => `mappings.fields.${name2}: not a neutral field`) } });
+    return processMapping(setting(connection, "process") ?? "agile", overrides);
+  }
+  link(connection, id2) {
+    return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_workitems/edit/${id2}`;
+  }
+  idFromLink(connection, url2) {
+    const match = /^(.*)\/_workitems\/edit\/(\d+)\/?$/i.exec(url2.trim());
+    if (!match) return null;
+    const expected = `${organizationOf(connection)}/${setting(connection, "project")}`.toLowerCase();
+    let prefix;
+    try {
+      prefix = decodeURIComponent(match[1]).toLowerCase();
+    } catch {
+      return null;
+    }
+    return prefix === expected ? match[2] : null;
+  }
+  async test(connection) {
+    const project2 = setting(connection, "project");
+    const json2 = await this.call(connection, "GET", `${organizationOf(connection)}/_apis/projects/${encodeURIComponent(project2)}?includeCapabilities=true&api-version=${API_VERSION}`);
+    const capabilities = isRecord(json2.capabilities) && isRecord(json2.capabilities.processTemplate) ? json2.capabilities.processTemplate : {};
+    const processName = typeof capabilities.templateName === "string" ? capabilities.templateName : null;
+    return {
+      ok: true,
+      target: {
+        organization: organizationOf(connection),
+        project: json2.name ?? project2,
+        projectId: json2.id ?? null,
+        state: json2.state ?? null,
+        process: processName,
+        ...processName !== null && setting(connection, "process") !== "custom" ? { processMatches: processName.toLowerCase() === setting(connection, "process") } : {}
+      }
+    };
+  }
+  async query(connection, ids) {
+    const items2 = [];
+    const context = this.context(connection);
+    for (let start2 = 0; start2 < ids.length; start2 += BATCH_SIZE) {
+      const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitemsbatch?api-version=${API_VERSION}`), { ids: ids.slice(start2, start2 + BATCH_SIZE).map(Number), $expand: "relations", errorPolicy: "omit" }, { retry: true });
+      for (const entry2 of Array.isArray(json2.value) ? json2.value : []) if (isRecord(entry2)) items2.push(remoteItem(entry2, context, (id2) => this.link(connection, id2)));
+    }
+    return items2;
+  }
+  /**
+   * Work item types start in their initial state, which processes may enforce on create: the item is created without
+   * a state and then moved to the drafted state with a revision-guarded update. A failed move still returns the
+   * created item. Creates are never retried automatically, so a throttled create cannot create a duplicate.
+   */
+  async create(connection, item) {
+    const context = this.context(connection);
+    const { state: state2, ...draft } = item;
+    const operations2 = createOperations({ ...withDefaults(connection, draft), area: draft.area ?? defaultArea(connection) }, context);
+    const json2 = await this.call(connection, "POST", this.projectUrl(connection, `workitems/$${encodeURIComponent(item.type)}?api-version=${API_VERSION}`), operations2, { contentType: "application/json-patch+json" });
+    const created = remoteItem(json2, context, (id2) => this.link(connection, id2));
+    if (state2 === void 0 || state2 === null || state2 === created.state || context.mapping.fields.state === null) return created;
+    try {
+      return await this.update(connection, created.id, { state: state2 }, created.rev);
+    } catch {
+      return created;
+    }
+  }
+  async update(connection, id2, patch, expectedRev) {
+    const context = this.context(connection);
+    const url2 = this.projectUrl(connection, `workitems/${encodeURIComponent(id2)}`);
+    const relations = patch.parentId === void 0 ? [] : (await this.call(connection, "GET", `${url2}?$expand=relations&api-version=${API_VERSION}`)).relations;
+    const operations2 = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
+    const json2 = await this.call(connection, "PATCH", `${url2}?$expand=relations&api-version=${API_VERSION}`, operations2, { contentType: "application/json-patch+json", retry: true });
+    return remoteItem(json2, context, (item) => this.link(connection, item));
+  }
+  context(connection) {
+    return { mapping: this.mapping(connection), descriptionFormat: setting(connection, "descriptionFormat") ?? "markdown", organization: organizationOf(connection), defaultArea: defaultArea(connection) };
+  }
+  projectUrl(connection, path) {
+    return `${organizationOf(connection)}/${encodeURIComponent(setting(connection, "project"))}/_apis/wit/${path}`;
+  }
+  /** One authenticated JSON request; failures are coded, carry the status and never the token. */
+  async call(connection, method, url2, body, options2 = {}) {
+    const contentType = options2.contentType ?? "application/json";
+    const token = connection.token();
+    const clean = (text2) => redact(text2, [token]);
+    let response;
+    try {
+      response = await this.http.request({
+        method,
+        url: url2,
+        headers: { Authorization: `Basic ${btoa(`:${token}`)}`, Accept: "application/json", ...body === void 0 ? {} : { "Content-Type": contentType } },
+        ...body === void 0 ? {} : { body: JSON.stringify(body) },
+        ...options2.retry === void 0 ? {} : { retry: options2.retry }
+      });
+    } catch (error2) {
+      throw failure("CONNECTOR_REQUEST_FAILED", clean(error2 instanceof Error ? error2.message : String(error2)), { connection: connection.id, status: null });
+    }
+    const details = { connection: connection.id, status: response.status, method, url: clean(url2) };
+    if (response.status === 401 || response.status === 403 || response.status === 203 || response.status >= 300 && response.status < 400) {
+      throw failure("CONNECTOR_AUTH_FAILED", `Azure DevOps refused the token in ${connection.tokenEnv} for connection ${connection.id} (HTTP ${response.status}).`, { ...details, tokenEnv: connection.tokenEnv });
+    }
+    let json2 = null;
+    try {
+      json2 = response.body.trim() === "" ? {} : JSON.parse(response.body);
+    } catch {
+      json2 = null;
+    }
+    if (response.status >= 200 && response.status < 300 && isRecord(json2)) return json2;
+    const message2 = isRecord(json2) && typeof json2.message === "string" ? clean(json2.message).slice(0, 300) : `HTTP ${response.status}`;
+    const stale = response.status === 412 || /TF26071|\btest\b.*\brev\b|\/rev/i.test(message2);
+    throw failure("CONNECTOR_REQUEST_FAILED", `Azure DevOps ${method} failed for connection ${connection.id}: ${message2}`, { ...details, ...stale ? { reason: "stale-revision" } : {} });
+  }
+}
+const azureDevOpsPlugin = {
+  manifest: {
+    id: "connector-azure-devops",
+    name: "Azure DevOps Boards connector",
+    version: "0.1.0",
+    minAppVersion: "0.1.0",
+    core: true,
+    author: "The Forge",
+    description: "Sync backlog items with Azure DevOps Boards work items through the Work Items REST API."
+  },
+  create: (host) => {
+    const connector = new AzureDevOpsConnector(host.http);
+    return {
+      provides: { "connector-azure-devops.connector": connector },
+      requires: ["connector.hub"],
+      onload(context) {
+        context.services.get("connector.hub").register(connector);
+      }
+    };
+  }
+};
+function nodeLockFiles(root) {
+  return async (path, command2) => {
+    const target = await (await NodeFiles.at(root)).resolvePath(path);
+    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
+    const token = await acquireLock(target, () => ({ command: command2 }), `Lock ${path}`);
+    return async () => await releaseLock(target, token) === "released";
+  };
+}
+const retryable = /* @__PURE__ */ new Set([429, 503]);
+function retryAfter(value2, now = Date.now()) {
+  if (value2 === null || value2.trim() === "") return null;
+  const seconds = Number(value2.trim());
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
+  const date2 = Date.parse(value2);
+  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
+}
+class FetchHttpClient {
+  fetch;
+  sleep;
+  retries;
+  timeoutMs;
+  maxDelayMs;
+  constructor(options2 = {}) {
+    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
+    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
+      setTimeout(resolve2, milliseconds);
+    }));
+    this.retries = options2.retries ?? 3;
+    this.timeoutMs = options2.timeoutMs ?? 3e4;
+    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
+  }
+  async request(request) {
+    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.attempt(request);
+      if (!retryable.has(response.status) || attempt >= retries) return response;
+      const asked = retryAfter(response.headers["retry-after"] ?? null);
+      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
+    }
+  }
+  async attempt(request) {
+    const timeout = request.timeoutMs ?? this.timeoutMs;
+    let response;
+    try {
+      response = await this.fetch(request.url, {
+        method: request.method,
+        ...request.headers ? { headers: { ...request.headers } } : {},
+        ...request.body === void 0 ? {} : { body: request.body },
+        signal: AbortSignal.timeout(timeout),
+        redirect: "manual"
+      });
+    } catch (error2) {
+      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout} ms` : "could not connect";
+      throw new Error(`${request.method} ${request.url} ${reason}.`);
+    }
+    const headers = {};
+    response.headers.forEach((value2, name2) => {
+      headers[name2.toLowerCase()] = value2;
+    });
+    return { status: response.status, headers, body: await response.text() };
+  }
+}
+const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
+  try {
+    vaultPath(value2);
+    return true;
+  } catch {
+    return false;
+  }
+}, "Must be a contained workspace-relative path.");
+const pluginIds = array(string$1().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
+const configSchema = strictObject({
+  schemaVersion: literal$1(1).default(1),
+  paths: strictObject({
+    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects")
+  }).prefault({}),
+  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
+  // Plugin sections are validated against the schemas that registered plugins declare once they load.
+  plugins: strictObject({
+    enabled: pluginIds,
+    disabled: pluginIds,
+    settings: record$1(string$1().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
+  }).prefault({})
+});
+async function loadConfig(options2) {
+  const root = options2.root !== void 0 ? minpath.resolve(options2.cwd, options2.root) : minpath.resolve(minpath.dirname(options2.defaultPath), "..");
+  const path = minpath.resolve(root, "bin/config.json");
+  let content2;
+  let exists2 = true;
+  try {
+    content2 = JSON.parse(await promises$1.readFile(path, "utf8"));
+  } catch (error2) {
+    if (error2.code === "ENOENT") {
+      content2 = {};
+      exists2 = false;
+    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`);
+  }
+  const parsed2 = configSchema.safeParse(content2);
+  if (!parsed2.success) throw forgeError("INVALID_CONFIG", parsed2.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
+  const config2 = parsed2.data;
+  return { path: exists2 ? path : null, root, config: config2 };
+}
+const schemaVersion = 1;
+const requiredAssets = ["forge.js", "package.json", "config/default.json", "data/distribution.json"];
+const ownedAssetPattern = "^(?:forge\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
+const distributionPolicy = {
+  schemaVersion,
+  requiredAssets,
+  ownedAssetPattern
+};
+const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
+async function readSetupArtifacts(bundleDir) {
+  const root = await promises$1.lstat(bundleDir);
+  ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
+  const readAsset = async (path) => {
+    vaultPath(path);
+    ensure(ownedAsset.test(path), "INVALID_SETUP", `Not a distribution asset: ${path}`);
+    const segments2 = path.split("/");
+    let current = bundleDir;
+    for (const [index2, segment2] of segments2.entries()) {
+      current = minpath.join(current, segment2);
+      const entry2 = await promises$1.lstat(current);
+      ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path}`);
+    }
+    return promises$1.readFile(current);
+  };
+  const manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
+  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
+  const files = manifest.files;
+  ensure(files.every((path) => typeof path === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
+  ensure(distributionPolicy.requiredAssets.every((path) => files.includes(path)), "INVALID_SETUP", "The distribution manifest is incomplete.");
+  const artifacts = [];
+  for (const path of files) artifacts.push({ path, bytes: await readAsset(path) });
+  return artifacts;
 }
 const pendingFileReads = 16;
 const workspaceDistribution = "bin";
@@ -62893,6 +59820,3412 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
   };
   return { vault: vault2, metadataCache, fileManager, workspace: workspaceFacade };
 }
+class CommanderError extends Error {
+  /**
+   * Constructs the CommanderError class
+   * @param {number} exitCode suggested exit code which could be used with process.exit
+   * @param {string} code an id string representing the error
+   * @param {string} message human-readable description of the error
+   */
+  constructor(exitCode, code2, message2) {
+    super(message2);
+    Error.captureStackTrace(this, this.constructor);
+    this.name = this.constructor.name;
+    this.code = code2;
+    this.exitCode = exitCode;
+    this.nestedError = void 0;
+  }
+}
+class InvalidArgumentError extends CommanderError {
+  /**
+   * Constructs the InvalidArgumentError class
+   * @param {string} [message] explanation of why argument is invalid
+   */
+  constructor(message2) {
+    super(1, "commander.invalidArgument", message2);
+    Error.captureStackTrace(this, this.constructor);
+    this.name = this.constructor.name;
+  }
+}
+class Argument {
+  /**
+   * Initialize a new command argument with the given name and description.
+   * The default is that the argument is required, and you can explicitly
+   * indicate this with <> around the name. Put [] around the name for an optional argument.
+   *
+   * @param {string} name
+   * @param {string} [description]
+   */
+  constructor(name2, description2) {
+    this.description = description2 || "";
+    this.variadic = false;
+    this.parseArg = void 0;
+    this.defaultValue = void 0;
+    this.defaultValueDescription = void 0;
+    this.argChoices = void 0;
+    switch (name2[0]) {
+      case "<":
+        this.required = true;
+        this._name = name2.slice(1, -1);
+        break;
+      case "[":
+        this.required = false;
+        this._name = name2.slice(1, -1);
+        break;
+      default:
+        this.required = true;
+        this._name = name2;
+        break;
+    }
+    if (this._name.endsWith("...")) {
+      this.variadic = true;
+      this._name = this._name.slice(0, -3);
+    }
+  }
+  /**
+   * Return argument name.
+   *
+   * @return {string}
+   */
+  name() {
+    return this._name;
+  }
+  /**
+   * @package
+   */
+  _collectValue(value2, previous2) {
+    if (previous2 === this.defaultValue || !Array.isArray(previous2)) {
+      return [value2];
+    }
+    previous2.push(value2);
+    return previous2;
+  }
+  /**
+   * Set the default value, and optionally supply the description to be displayed in the help.
+   *
+   * @param {*} value
+   * @param {string} [description]
+   * @return {Argument}
+   */
+  default(value2, description2) {
+    this.defaultValue = value2;
+    this.defaultValueDescription = description2;
+    return this;
+  }
+  /**
+   * Set the custom handler for processing CLI command arguments into argument values.
+   *
+   * @param {Function} [fn]
+   * @return {Argument}
+   */
+  argParser(fn) {
+    this.parseArg = fn;
+    return this;
+  }
+  /**
+   * Only allow argument value to be one of choices.
+   *
+   * @param {string[]} values
+   * @return {Argument}
+   */
+  choices(values2) {
+    this.argChoices = values2.slice();
+    this.parseArg = (arg, previous2) => {
+      if (!this.argChoices.includes(arg)) {
+        throw new InvalidArgumentError(
+          `Allowed choices are ${this.argChoices.join(", ")}.`
+        );
+      }
+      if (this.variadic) {
+        return this._collectValue(arg, previous2);
+      }
+      return arg;
+    };
+    return this;
+  }
+  /**
+   * Make argument required.
+   *
+   * @returns {Argument}
+   */
+  argRequired() {
+    this.required = true;
+    return this;
+  }
+  /**
+   * Make argument optional.
+   *
+   * @returns {Argument}
+   */
+  argOptional() {
+    this.required = false;
+    return this;
+  }
+}
+function humanReadableArgName(arg) {
+  const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
+  return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
+}
+class Help {
+  constructor() {
+    this.helpWidth = void 0;
+    this.minWidthToWrap = 40;
+    this.sortSubcommands = false;
+    this.sortOptions = false;
+    this.showGlobalOptions = false;
+  }
+  /**
+   * prepareContext is called by Commander after applying overrides from `Command.configureHelp()`
+   * and just before calling `formatHelp()`.
+   *
+   * Commander just uses the helpWidth and the rest is provided for optional use by more complex subclasses.
+   *
+   * @param {{ error?: boolean, helpWidth?: number, outputHasColors?: boolean }} contextOptions
+   */
+  prepareContext(contextOptions) {
+    this.helpWidth = this.helpWidth ?? contextOptions.helpWidth ?? 80;
+  }
+  /**
+   * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
+   *
+   * @param {Command} cmd
+   * @returns {Command[]}
+   */
+  visibleCommands(cmd) {
+    const visibleCommands = cmd.commands.filter((cmd2) => !cmd2._hidden);
+    const helpCommand = cmd._getHelpCommand();
+    if (helpCommand && !helpCommand._hidden) {
+      visibleCommands.push(helpCommand);
+    }
+    if (this.sortSubcommands) {
+      visibleCommands.sort((a, b) => {
+        return a.name().localeCompare(b.name());
+      });
+    }
+    return visibleCommands;
+  }
+  /**
+   * Compare options for sort.
+   *
+   * @param {Option} a
+   * @param {Option} b
+   * @returns {number}
+   */
+  compareOptions(a, b) {
+    const getSortKey = (option2) => {
+      return option2.short ? option2.short.replace(/^-/, "") : option2.long.replace(/^--/, "");
+    };
+    return getSortKey(a).localeCompare(getSortKey(b));
+  }
+  /**
+   * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
+   *
+   * @param {Command} cmd
+   * @returns {Option[]}
+   */
+  visibleOptions(cmd) {
+    const visibleOptions = cmd.options.filter((option2) => !option2.hidden);
+    const helpOption = cmd._getHelpOption();
+    if (helpOption && !helpOption.hidden) {
+      const removeShort = helpOption.short && cmd._findOption(helpOption.short);
+      const removeLong = helpOption.long && cmd._findOption(helpOption.long);
+      if (!removeShort && !removeLong) {
+        visibleOptions.push(helpOption);
+      } else if (helpOption.long && !removeLong) {
+        visibleOptions.push(
+          cmd.createOption(helpOption.long, helpOption.description)
+        );
+      } else if (helpOption.short && !removeShort) {
+        visibleOptions.push(
+          cmd.createOption(helpOption.short, helpOption.description)
+        );
+      }
+    }
+    if (this.sortOptions) {
+      visibleOptions.sort(this.compareOptions);
+    }
+    return visibleOptions;
+  }
+  /**
+   * Get an array of the visible global options. (Not including help.)
+   *
+   * @param {Command} cmd
+   * @returns {Option[]}
+   */
+  visibleGlobalOptions(cmd) {
+    if (!this.showGlobalOptions) return [];
+    const globalOptions2 = [];
+    for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
+      const visibleOptions = ancestorCmd.options.filter(
+        (option2) => !option2.hidden
+      );
+      globalOptions2.push(...visibleOptions);
+    }
+    if (this.sortOptions) {
+      globalOptions2.sort(this.compareOptions);
+    }
+    return globalOptions2;
+  }
+  /**
+   * Get an array of the arguments if any have a description.
+   *
+   * @param {Command} cmd
+   * @returns {Argument[]}
+   */
+  visibleArguments(cmd) {
+    if (cmd._argsDescription) {
+      cmd.registeredArguments.forEach((argument) => {
+        argument.description = argument.description || cmd._argsDescription[argument.name()] || "";
+      });
+    }
+    if (cmd.registeredArguments.find((argument) => argument.description)) {
+      return cmd.registeredArguments;
+    }
+    return [];
+  }
+  /**
+   * Get the command term to show in the list of subcommands.
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+  subcommandTerm(cmd) {
+    const args = cmd.registeredArguments.map((arg) => humanReadableArgName(arg)).join(" ");
+    return cmd._name + (cmd._aliases[0] ? "|" + cmd._aliases[0] : "") + (cmd.options.length ? " [options]" : "") + // simplistic check for non-help option
+    (args ? " " + args : "");
+  }
+  /**
+   * Get the option term to show in the list of options.
+   *
+   * @param {Option} option
+   * @returns {string}
+   */
+  optionTerm(option2) {
+    return option2.flags;
+  }
+  /**
+   * Get the argument term to show in the list of arguments.
+   *
+   * @param {Argument} argument
+   * @returns {string}
+   */
+  argumentTerm(argument) {
+    return argument.name();
+  }
+  /**
+   * Get the longest command term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+  longestSubcommandTermLength(cmd, helper) {
+    return helper.visibleCommands(cmd).reduce((max, command2) => {
+      return Math.max(
+        max,
+        this.displayWidth(
+          helper.styleSubcommandTerm(helper.subcommandTerm(command2))
+        )
+      );
+    }, 0);
+  }
+  /**
+   * Get the longest option term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+  longestOptionTermLength(cmd, helper) {
+    return helper.visibleOptions(cmd).reduce((max, option2) => {
+      return Math.max(
+        max,
+        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option2)))
+      );
+    }, 0);
+  }
+  /**
+   * Get the longest global option term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+  longestGlobalOptionTermLength(cmd, helper) {
+    return helper.visibleGlobalOptions(cmd).reduce((max, option2) => {
+      return Math.max(
+        max,
+        this.displayWidth(helper.styleOptionTerm(helper.optionTerm(option2)))
+      );
+    }, 0);
+  }
+  /**
+   * Get the longest argument term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+  longestArgumentTermLength(cmd, helper) {
+    return helper.visibleArguments(cmd).reduce((max, argument) => {
+      return Math.max(
+        max,
+        this.displayWidth(
+          helper.styleArgumentTerm(helper.argumentTerm(argument))
+        )
+      );
+    }, 0);
+  }
+  /**
+   * Get the command usage to be displayed at the top of the built-in help.
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+  commandUsage(cmd) {
+    let cmdName = cmd._name;
+    if (cmd._aliases[0]) {
+      cmdName = cmdName + "|" + cmd._aliases[0];
+    }
+    let ancestorCmdNames = "";
+    for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
+      ancestorCmdNames = ancestorCmd.name() + " " + ancestorCmdNames;
+    }
+    return ancestorCmdNames + cmdName + " " + cmd.usage();
+  }
+  /**
+   * Get the description for the command.
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+  commandDescription(cmd) {
+    return cmd.description();
+  }
+  /**
+   * Get the subcommand summary to show in the list of subcommands.
+   * (Fallback to description for backwards compatibility.)
+   *
+   * @param {Command} cmd
+   * @returns {string}
+   */
+  subcommandDescription(cmd) {
+    return cmd.summary() || cmd.description();
+  }
+  /**
+   * Get the option description to show in the list of options.
+   *
+   * @param {Option} option
+   * @return {string}
+   */
+  optionDescription(option2) {
+    const extraInfo = [];
+    if (option2.argChoices) {
+      extraInfo.push(
+        // use stringify to match the display of the default value
+        `choices: ${option2.argChoices.map((choice2) => JSON.stringify(choice2)).join(", ")}`
+      );
+    }
+    if (option2.defaultValue !== void 0) {
+      const showDefault = option2.required || option2.optional || option2.isBoolean() && typeof option2.defaultValue === "boolean";
+      if (showDefault) {
+        extraInfo.push(
+          `default: ${option2.defaultValueDescription || JSON.stringify(option2.defaultValue)}`
+        );
+      }
+    }
+    if (option2.presetArg !== void 0 && option2.optional) {
+      extraInfo.push(`preset: ${JSON.stringify(option2.presetArg)}`);
+    }
+    if (option2.envVar !== void 0) {
+      extraInfo.push(`env: ${option2.envVar}`);
+    }
+    if (extraInfo.length > 0) {
+      const extraDescription = `(${extraInfo.join(", ")})`;
+      if (option2.description) {
+        return `${option2.description} ${extraDescription}`;
+      }
+      return extraDescription;
+    }
+    return option2.description;
+  }
+  /**
+   * Get the argument description to show in the list of arguments.
+   *
+   * @param {Argument} argument
+   * @return {string}
+   */
+  argumentDescription(argument) {
+    const extraInfo = [];
+    if (argument.argChoices) {
+      extraInfo.push(
+        // use stringify to match the display of the default value
+        `choices: ${argument.argChoices.map((choice2) => JSON.stringify(choice2)).join(", ")}`
+      );
+    }
+    if (argument.defaultValue !== void 0) {
+      extraInfo.push(
+        `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`
+      );
+    }
+    if (extraInfo.length > 0) {
+      const extraDescription = `(${extraInfo.join(", ")})`;
+      if (argument.description) {
+        return `${argument.description} ${extraDescription}`;
+      }
+      return extraDescription;
+    }
+    return argument.description;
+  }
+  /**
+   * Format a list of items, given a heading and an array of formatted items.
+   *
+   * @param {string} heading
+   * @param {string[]} items
+   * @param {Help} helper
+   * @returns string[]
+   */
+  formatItemList(heading, items2, helper) {
+    if (items2.length === 0) return [];
+    return [helper.styleTitle(heading), ...items2, ""];
+  }
+  /**
+   * Group items by their help group heading.
+   *
+   * @param {Command[] | Option[]} unsortedItems
+   * @param {Command[] | Option[]} visibleItems
+   * @param {Function} getGroup
+   * @returns {Map<string, Command[] | Option[]>}
+   */
+  groupItems(unsortedItems, visibleItems, getGroup) {
+    const result = /* @__PURE__ */ new Map();
+    unsortedItems.forEach((item) => {
+      const group = getGroup(item);
+      if (!result.has(group)) result.set(group, []);
+    });
+    visibleItems.forEach((item) => {
+      const group = getGroup(item);
+      if (!result.has(group)) {
+        result.set(group, []);
+      }
+      result.get(group).push(item);
+    });
+    return result;
+  }
+  /**
+   * Generate the built-in help text.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {string}
+   */
+  formatHelp(cmd, helper) {
+    const termWidth = helper.padWidth(cmd, helper);
+    const helpWidth = helper.helpWidth ?? 80;
+    function callFormatItem(term, description2) {
+      return helper.formatItem(term, termWidth, description2, helper);
+    }
+    let output2 = [
+      `${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`,
+      ""
+    ];
+    const commandDescription = helper.commandDescription(cmd);
+    if (commandDescription.length > 0) {
+      output2 = output2.concat([
+        helper.boxWrap(
+          helper.styleCommandDescription(commandDescription),
+          helpWidth
+        ),
+        ""
+      ]);
+    }
+    const argumentList = helper.visibleArguments(cmd).map((argument) => {
+      return callFormatItem(
+        helper.styleArgumentTerm(helper.argumentTerm(argument)),
+        helper.styleArgumentDescription(helper.argumentDescription(argument))
+      );
+    });
+    output2 = output2.concat(
+      this.formatItemList("Arguments:", argumentList, helper)
+    );
+    const optionGroups = this.groupItems(
+      cmd.options,
+      helper.visibleOptions(cmd),
+      (option2) => option2.helpGroupHeading ?? "Options:"
+    );
+    optionGroups.forEach((options2, group) => {
+      const optionList = options2.map((option2) => {
+        return callFormatItem(
+          helper.styleOptionTerm(helper.optionTerm(option2)),
+          helper.styleOptionDescription(helper.optionDescription(option2))
+        );
+      });
+      output2 = output2.concat(this.formatItemList(group, optionList, helper));
+    });
+    if (helper.showGlobalOptions) {
+      const globalOptionList = helper.visibleGlobalOptions(cmd).map((option2) => {
+        return callFormatItem(
+          helper.styleOptionTerm(helper.optionTerm(option2)),
+          helper.styleOptionDescription(helper.optionDescription(option2))
+        );
+      });
+      output2 = output2.concat(
+        this.formatItemList("Global Options:", globalOptionList, helper)
+      );
+    }
+    const commandGroups = this.groupItems(
+      cmd.commands,
+      helper.visibleCommands(cmd),
+      (sub) => sub.helpGroup() || "Commands:"
+    );
+    commandGroups.forEach((commands2, group) => {
+      const commandList = commands2.map((sub) => {
+        return callFormatItem(
+          helper.styleSubcommandTerm(helper.subcommandTerm(sub)),
+          helper.styleSubcommandDescription(helper.subcommandDescription(sub))
+        );
+      });
+      output2 = output2.concat(this.formatItemList(group, commandList, helper));
+    });
+    return output2.join("\n");
+  }
+  /**
+   * Return display width of string, ignoring ANSI escape sequences. Used in padding and wrapping calculations.
+   *
+   * @param {string} str
+   * @returns {number}
+   */
+  displayWidth(str) {
+    return node_util.stripVTControlCharacters(str).length;
+  }
+  /**
+   * Style the title for displaying in the help. Called with 'Usage:', 'Options:', etc.
+   *
+   * @param {string} str
+   * @returns {string}
+   */
+  styleTitle(str) {
+    return str;
+  }
+  styleUsage(str) {
+    return str.split(" ").map((word) => {
+      if (word === "[options]") return this.styleOptionText(word);
+      if (word === "[command]") return this.styleSubcommandText(word);
+      if (word[0] === "[" || word[0] === "<")
+        return this.styleArgumentText(word);
+      return this.styleCommandText(word);
+    }).join(" ");
+  }
+  styleCommandDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleOptionDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleSubcommandDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleArgumentDescription(str) {
+    return this.styleDescriptionText(str);
+  }
+  styleDescriptionText(str) {
+    return str;
+  }
+  styleOptionTerm(str) {
+    return this.styleOptionText(str);
+  }
+  styleSubcommandTerm(str) {
+    return str.split(" ").map((word) => {
+      if (word === "[options]") return this.styleOptionText(word);
+      if (word[0] === "[" || word[0] === "<")
+        return this.styleArgumentText(word);
+      return this.styleSubcommandText(word);
+    }).join(" ");
+  }
+  styleArgumentTerm(str) {
+    return this.styleArgumentText(str);
+  }
+  styleOptionText(str) {
+    return str;
+  }
+  styleArgumentText(str) {
+    return str;
+  }
+  styleSubcommandText(str) {
+    return str;
+  }
+  styleCommandText(str) {
+    return str;
+  }
+  /**
+   * Calculate the pad width from the maximum term length.
+   *
+   * @param {Command} cmd
+   * @param {Help} helper
+   * @returns {number}
+   */
+  padWidth(cmd, helper) {
+    return Math.max(
+      helper.longestOptionTermLength(cmd, helper),
+      helper.longestGlobalOptionTermLength(cmd, helper),
+      helper.longestSubcommandTermLength(cmd, helper),
+      helper.longestArgumentTermLength(cmd, helper)
+    );
+  }
+  /**
+   * Detect manually wrapped and indented strings by checking for line break followed by whitespace.
+   *
+   * @param {string} str
+   * @returns {boolean}
+   */
+  preformatted(str) {
+    return /\n[^\S\r\n]/.test(str);
+  }
+  /**
+   * Format the "item", which consists of a term and description. Pad the term and wrap the description, indenting the following lines.
+   *
+   * So "TTT", 5, "DDD DDDD DD DDD" might be formatted for this.helpWidth=17 like so:
+   *   TTT  DDD DDDD
+   *        DD DDD
+   *
+   * @param {string} term
+   * @param {number} termWidth
+   * @param {string} description
+   * @param {Help} helper
+   * @returns {string}
+   */
+  formatItem(term, termWidth, description2, helper) {
+    const itemIndent = 2;
+    const itemIndentStr = " ".repeat(itemIndent);
+    if (!description2) return itemIndentStr + term;
+    const paddedTerm = term.padEnd(
+      termWidth + term.length - helper.displayWidth(term)
+    );
+    const spacerWidth = 2;
+    const helpWidth = this.helpWidth ?? 80;
+    const remainingWidth = helpWidth - termWidth - spacerWidth - itemIndent;
+    let formattedDescription;
+    if (remainingWidth < this.minWidthToWrap || helper.preformatted(description2)) {
+      formattedDescription = description2;
+    } else {
+      const wrappedDescription = helper.boxWrap(description2, remainingWidth);
+      formattedDescription = wrappedDescription.replace(
+        /\n/g,
+        "\n" + " ".repeat(termWidth + spacerWidth)
+      );
+    }
+    return itemIndentStr + paddedTerm + " ".repeat(spacerWidth) + formattedDescription.replace(/\n/g, `
+${itemIndentStr}`);
+  }
+  /**
+   * Wrap a string at whitespace, preserving existing line breaks.
+   * Wrapping is skipped if the width is less than `minWidthToWrap`.
+   *
+   * @param {string} str
+   * @param {number} width
+   * @returns {string}
+   */
+  boxWrap(str, width) {
+    if (width < this.minWidthToWrap) return str;
+    const rawLines = str.split(/\r\n|\n/);
+    const chunkPattern = /[\s]*[^\s]+/g;
+    const wrappedLines = [];
+    rawLines.forEach((line) => {
+      const chunks = line.match(chunkPattern);
+      if (chunks === null) {
+        wrappedLines.push("");
+        return;
+      }
+      let sumChunks = [chunks.shift()];
+      let sumWidth = this.displayWidth(sumChunks[0]);
+      chunks.forEach((chunk) => {
+        const visibleWidth = this.displayWidth(chunk);
+        if (sumWidth + visibleWidth <= width) {
+          sumChunks.push(chunk);
+          sumWidth += visibleWidth;
+          return;
+        }
+        wrappedLines.push(sumChunks.join(""));
+        const nextChunk = chunk.trimStart();
+        sumChunks = [nextChunk];
+        sumWidth = this.displayWidth(nextChunk);
+      });
+      wrappedLines.push(sumChunks.join(""));
+    });
+    return wrappedLines.join("\n");
+  }
+}
+class Option {
+  /**
+   * Initialize a new `Option` with the given `flags` and `description`.
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   */
+  constructor(flags, description2) {
+    this.flags = flags;
+    this.description = description2 || "";
+    this.required = flags.includes("<");
+    this.optional = flags.includes("[");
+    this.variadic = /\w\.\.\.[>\]]$/.test(flags);
+    this.mandatory = false;
+    const optionFlags = splitOptionFlags(flags);
+    this.short = optionFlags.shortFlag;
+    this.long = optionFlags.longFlag;
+    this.negate = false;
+    if (this.long) {
+      this.negate = this.long.startsWith("--no-");
+    }
+    this.defaultValue = void 0;
+    this.defaultValueDescription = void 0;
+    this.presetArg = void 0;
+    this.envVar = void 0;
+    this.parseArg = void 0;
+    this.hidden = false;
+    this.argChoices = void 0;
+    this.conflictsWith = [];
+    this.implied = void 0;
+    this.helpGroupHeading = void 0;
+  }
+  /**
+   * Set the default value, and optionally supply the description to be displayed in the help.
+   *
+   * @param {*} value
+   * @param {string} [description]
+   * @return {Option}
+   */
+  default(value2, description2) {
+    this.defaultValue = value2;
+    this.defaultValueDescription = description2;
+    return this;
+  }
+  /**
+   * Preset to use when option used without option-argument, especially optional but also boolean and negated.
+   * The custom processing (parseArg) is called.
+   *
+   * @example
+   * new Option('--color').default('GREYSCALE').preset('RGB');
+   * new Option('--donate [amount]').preset('20').argParser(parseFloat);
+   *
+   * @param {*} arg
+   * @return {Option}
+   */
+  preset(arg) {
+    this.presetArg = arg;
+    return this;
+  }
+  /**
+   * Add option name(s) that conflict with this option.
+   * An error will be displayed if conflicting options are found during parsing.
+   *
+   * @example
+   * new Option('--rgb').conflicts('cmyk');
+   * new Option('--js').conflicts(['ts', 'jsx']);
+   *
+   * @param {(string | string[])} names
+   * @return {Option}
+   */
+  conflicts(names2) {
+    this.conflictsWith = this.conflictsWith.concat(names2);
+    return this;
+  }
+  /**
+   * Specify implied option values for when this option is set and the implied options are not.
+   *
+   * The custom processing (parseArg) is not called on the implied values.
+   *
+   * @example
+   * program
+   *   .addOption(new Option('--log', 'write logging information to file'))
+   *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
+   *
+   * @param {object} impliedOptionValues
+   * @return {Option}
+   */
+  implies(impliedOptionValues) {
+    let newImplied = impliedOptionValues;
+    if (typeof impliedOptionValues === "string") {
+      newImplied = { [impliedOptionValues]: true };
+    }
+    this.implied = Object.assign(this.implied || {}, newImplied);
+    return this;
+  }
+  /**
+   * Set environment variable to check for option value.
+   *
+   * An environment variable is only used if when processed the current option value is
+   * undefined, or the source of the current value is 'default' or 'config' or 'env'.
+   *
+   * @param {string} name
+   * @return {Option}
+   */
+  env(name2) {
+    this.envVar = name2;
+    return this;
+  }
+  /**
+   * Set the custom handler for processing CLI option arguments into option values.
+   *
+   * @param {Function} [fn]
+   * @return {Option}
+   */
+  argParser(fn) {
+    this.parseArg = fn;
+    return this;
+  }
+  /**
+   * Whether the option is mandatory and must have a value after parsing.
+   *
+   * @param {boolean} [mandatory=true]
+   * @return {Option}
+   */
+  makeOptionMandatory(mandatory = true) {
+    this.mandatory = !!mandatory;
+    return this;
+  }
+  /**
+   * Hide option in help.
+   *
+   * @param {boolean} [hide=true]
+   * @return {Option}
+   */
+  hideHelp(hide2 = true) {
+    this.hidden = !!hide2;
+    return this;
+  }
+  /**
+   * @package
+   */
+  _collectValue(value2, previous2) {
+    if (previous2 === this.defaultValue || !Array.isArray(previous2)) {
+      return [value2];
+    }
+    previous2.push(value2);
+    return previous2;
+  }
+  /**
+   * Only allow option value to be one of choices.
+   *
+   * @param {string[]} values
+   * @return {Option}
+   */
+  choices(values2) {
+    this.argChoices = values2.slice();
+    this.parseArg = (arg, previous2) => {
+      if (!this.argChoices.includes(arg)) {
+        throw new InvalidArgumentError(
+          `Allowed choices are ${this.argChoices.join(", ")}.`
+        );
+      }
+      if (this.variadic) {
+        return this._collectValue(arg, previous2);
+      }
+      return arg;
+    };
+    return this;
+  }
+  /**
+   * Return option name.
+   *
+   * @return {string}
+   */
+  name() {
+    if (this.long) {
+      return this.long.replace(/^--/, "");
+    }
+    return this.short.replace(/^-/, "");
+  }
+  /**
+   * Return option name, in a camelcase format that can be used
+   * as an object attribute key.
+   *
+   * @return {string}
+   */
+  attributeName() {
+    if (this.negate) {
+      return camelcase(this.name().replace(/^no-/, ""));
+    }
+    return camelcase(this.name());
+  }
+  /**
+   * Set the help group heading.
+   *
+   * @param {string} heading
+   * @return {Option}
+   */
+  helpGroup(heading) {
+    this.helpGroupHeading = heading;
+    return this;
+  }
+  /**
+   * Check if `arg` matches the short or long flag.
+   *
+   * @param {string} arg
+   * @return {boolean}
+   * @package
+   */
+  is(arg) {
+    return this.short === arg || this.long === arg;
+  }
+  /**
+   * Return whether a boolean option.
+   *
+   * Options are one of boolean, negated, required argument, or optional argument.
+   *
+   * @return {boolean}
+   * @package
+   */
+  isBoolean() {
+    return !this.required && !this.optional && !this.negate;
+  }
+}
+class DualOptions {
+  /**
+   * @param {Option[]} options
+   */
+  constructor(options2) {
+    this.positiveOptions = /* @__PURE__ */ new Map();
+    this.negativeOptions = /* @__PURE__ */ new Map();
+    this.dualOptions = /* @__PURE__ */ new Set();
+    options2.forEach((option2) => {
+      if (option2.negate) {
+        this.negativeOptions.set(option2.attributeName(), option2);
+      } else {
+        this.positiveOptions.set(option2.attributeName(), option2);
+      }
+    });
+    this.negativeOptions.forEach((value2, key) => {
+      if (this.positiveOptions.has(key)) {
+        this.dualOptions.add(key);
+      }
+    });
+  }
+  /**
+   * Did the value come from the option, and not from possible matching dual option?
+   *
+   * @param {*} value
+   * @param {Option} option
+   * @returns {boolean}
+   */
+  valueFromOption(value2, option2) {
+    const optionKey = option2.attributeName();
+    if (!this.dualOptions.has(optionKey)) return true;
+    const preset = this.negativeOptions.get(optionKey).presetArg;
+    const negativeValue = preset !== void 0 ? preset : false;
+    return option2.negate === (negativeValue === value2);
+  }
+}
+function camelcase(str) {
+  return str.split("-").reduce((str2, word) => {
+    return str2 + word[0].toUpperCase() + word.slice(1);
+  });
+}
+function splitOptionFlags(flags) {
+  let shortFlag;
+  let longFlag;
+  const shortFlagExp = /^-[^-]$/;
+  const longFlagExp = /^--[^-]/;
+  const flagParts = flags.split(/[ |,]+/).concat("guard");
+  if (shortFlagExp.test(flagParts[0])) shortFlag = flagParts.shift();
+  if (longFlagExp.test(flagParts[0])) longFlag = flagParts.shift();
+  if (!shortFlag && shortFlagExp.test(flagParts[0]))
+    shortFlag = flagParts.shift();
+  if (!shortFlag && longFlagExp.test(flagParts[0])) {
+    shortFlag = longFlag;
+    longFlag = flagParts.shift();
+  }
+  if (flagParts[0].startsWith("-")) {
+    const unsupportedFlag = flagParts[0];
+    const baseError = `option creation failed due to '${unsupportedFlag}' in option flags '${flags}'`;
+    if (/^-[^-][^-]/.test(unsupportedFlag))
+      throw new Error(
+        `${baseError}
+- a short flag is a single dash and a single character
+  - either use a single dash and a single character (for a short flag)
+  - or use a double dash for a long option (and can have two, like '--ws, --workspace')`
+      );
+    if (shortFlagExp.test(unsupportedFlag))
+      throw new Error(`${baseError}
+- too many short flags`);
+    if (longFlagExp.test(unsupportedFlag))
+      throw new Error(`${baseError}
+- too many long flags`);
+    throw new Error(`${baseError}
+- unrecognised flag format`);
+  }
+  if (shortFlag === void 0 && longFlag === void 0)
+    throw new Error(
+      `option creation failed due to no flags found in '${flags}'.`
+    );
+  return { shortFlag, longFlag };
+}
+const maxDistance = 3;
+function editDistance(a, b) {
+  if (Math.abs(a.length - b.length) > maxDistance)
+    return Math.max(a.length, b.length);
+  const d = [];
+  for (let i = 0; i <= a.length; i++) {
+    d[i] = [i];
+  }
+  for (let j = 0; j <= b.length; j++) {
+    d[0][j] = j;
+  }
+  for (let j = 1; j <= b.length; j++) {
+    for (let i = 1; i <= a.length; i++) {
+      let cost;
+      if (a[i - 1] === b[j - 1]) {
+        cost = 0;
+      } else {
+        cost = 1;
+      }
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,
+        // deletion
+        d[i][j - 1] + 1,
+        // insertion
+        d[i - 1][j - 1] + cost
+        // substitution
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[a.length][b.length];
+}
+function suggestSimilar(word, candidates2) {
+  if (!candidates2 || candidates2.length === 0) return "";
+  candidates2 = Array.from(new Set(candidates2));
+  const searchingOptions = word.startsWith("--");
+  if (searchingOptions) {
+    word = word.slice(2);
+    candidates2 = candidates2.map((candidate) => candidate.slice(2));
+  }
+  let similar = [];
+  let bestDistance = maxDistance;
+  const minSimilarity = 0.4;
+  candidates2.forEach((candidate) => {
+    if (candidate.length <= 1) return;
+    const distance = editDistance(word, candidate);
+    const length = Math.max(word.length, candidate.length);
+    const similarity = (length - distance) / length;
+    if (similarity > minSimilarity) {
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        similar = [candidate];
+      } else if (distance === bestDistance) {
+        similar.push(candidate);
+      }
+    }
+  });
+  similar.sort((a, b) => a.localeCompare(b));
+  if (searchingOptions) {
+    similar = similar.map((candidate) => `--${candidate}`);
+  }
+  if (similar.length > 1) {
+    return `
+(Did you mean one of ${similar.join(", ")}?)`;
+  }
+  if (similar.length === 1) {
+    return `
+(Did you mean ${similar[0]}?)`;
+  }
+  return "";
+}
+class Command extends node_events.EventEmitter {
+  /**
+   * Initialize a new `Command`.
+   *
+   * @param {string} [name]
+   */
+  constructor(name2) {
+    super();
+    this.commands = [];
+    this.options = [];
+    this.parent = null;
+    this._allowUnknownOption = false;
+    this._allowExcessArguments = false;
+    this.registeredArguments = [];
+    this._args = this.registeredArguments;
+    this.args = [];
+    this.rawArgs = [];
+    this.processedArgs = [];
+    this._scriptPath = null;
+    this._name = name2 || "";
+    this._optionValues = {};
+    this._optionValueSources = {};
+    this._storeOptionsAsProperties = false;
+    this._actionHandler = null;
+    this._executableHandler = false;
+    this._executableFile = null;
+    this._executableDir = null;
+    this._defaultCommandName = null;
+    this._exitCallback = null;
+    this._aliases = [];
+    this._combineFlagAndOptionalValue = true;
+    this._description = "";
+    this._summary = "";
+    this._argsDescription = void 0;
+    this._enablePositionalOptions = false;
+    this._passThroughOptions = false;
+    this._lifeCycleHooks = {};
+    this._showHelpAfterError = false;
+    this._showSuggestionAfterError = true;
+    this._savedState = null;
+    this._outputConfiguration = {
+      writeOut: (str) => process$1.stdout.write(str),
+      writeErr: (str) => process$1.stderr.write(str),
+      outputError: (str, write) => write(str),
+      getOutHelpWidth: () => process$1.stdout.isTTY ? process$1.stdout.columns : void 0,
+      getErrHelpWidth: () => process$1.stderr.isTTY ? process$1.stderr.columns : void 0,
+      getOutHasColors: () => useColor() ?? (process$1.stdout.isTTY && process$1.stdout.hasColors?.()),
+      getErrHasColors: () => useColor() ?? (process$1.stderr.isTTY && process$1.stderr.hasColors?.()),
+      stripColor: (str) => node_util.stripVTControlCharacters(str)
+    };
+    this._hidden = false;
+    this._helpOption = void 0;
+    this._addImplicitHelpCommand = void 0;
+    this._helpCommand = void 0;
+    this._helpConfiguration = {};
+    this._helpGroupHeading = void 0;
+    this._defaultCommandGroup = void 0;
+    this._defaultOptionGroup = void 0;
+  }
+  /**
+   * Copy settings that are useful to have in common across root command and subcommands.
+   *
+   * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
+   *
+   * @param {Command} sourceCommand
+   * @return {Command} `this` command for chaining
+   */
+  copyInheritedSettings(sourceCommand) {
+    this._outputConfiguration = sourceCommand._outputConfiguration;
+    this._helpOption = sourceCommand._helpOption;
+    this._helpCommand = sourceCommand._helpCommand;
+    this._helpConfiguration = sourceCommand._helpConfiguration;
+    this._exitCallback = sourceCommand._exitCallback;
+    this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
+    this._combineFlagAndOptionalValue = sourceCommand._combineFlagAndOptionalValue;
+    this._allowExcessArguments = sourceCommand._allowExcessArguments;
+    this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
+    this._showHelpAfterError = sourceCommand._showHelpAfterError;
+    this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
+    return this;
+  }
+  /**
+   * @returns {Command[]}
+   * @private
+   */
+  _getCommandAndAncestors() {
+    const result = [];
+    for (let command2 = this; command2; command2 = command2.parent) {
+      result.push(command2);
+    }
+    return result;
+  }
+  /**
+   * Define a command.
+   *
+   * There are two styles of command: pay attention to where to put the description.
+   *
+   * @example
+   * // Command implemented using action handler (description is supplied separately to `.command`)
+   * program
+   *   .command('clone <source> [destination]')
+   *   .description('clone a repository into a newly created directory')
+   *   .action((source, destination) => {
+   *     console.log('clone command called');
+   *   });
+   *
+   * // Command implemented using separate executable file (description is second parameter to `.command`)
+   * program
+   *   .command('start <service>', 'start named service')
+   *   .command('stop [service]', 'stop named service, or all if no name supplied');
+   *
+   * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
+   * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
+   * @param {object} [execOpts] - configuration options (for executable)
+   * @return {Command} returns new command for action handler, or `this` for executable command
+   */
+  command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
+    let desc = actionOptsOrExecDesc;
+    let opts = execOpts;
+    if (typeof desc === "object" && desc !== null) {
+      opts = desc;
+      desc = null;
+    }
+    opts = opts || {};
+    const [, name2, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
+    const cmd = this.createCommand(name2);
+    if (desc) {
+      cmd.description(desc);
+      cmd._executableHandler = true;
+    }
+    if (opts.isDefault) this._defaultCommandName = cmd._name;
+    cmd._hidden = !!(opts.noHelp || opts.hidden);
+    cmd._executableFile = opts.executableFile || null;
+    if (args) cmd.arguments(args);
+    this._registerCommand(cmd);
+    cmd.parent = this;
+    cmd.copyInheritedSettings(this);
+    if (desc) return this;
+    return cmd;
+  }
+  /**
+   * Factory routine to create a new unattached command.
+   *
+   * See .command() for creating an attached subcommand, which uses this routine to
+   * create the command. You can override createCommand to customise subcommands.
+   *
+   * @param {string} [name]
+   * @return {Command} new command
+   */
+  createCommand(name2) {
+    return new Command(name2);
+  }
+  /**
+   * You can customise the help with a subclass of Help by overriding createHelp,
+   * or by overriding Help properties using configureHelp().
+   *
+   * @return {Help}
+   */
+  createHelp() {
+    return Object.assign(new Help(), this.configureHelp());
+  }
+  /**
+   * You can customise the help by overriding Help properties using configureHelp(),
+   * or with a subclass of Help by overriding createHelp().
+   *
+   * @param {object} [configuration] - configuration options
+   * @return {(Command | object)} `this` command for chaining, or stored configuration
+   */
+  configureHelp(configuration) {
+    if (configuration === void 0) return this._helpConfiguration;
+    this._helpConfiguration = configuration;
+    return this;
+  }
+  /**
+   * The default output goes to stdout and stderr. You can customise this for special
+   * applications. You can also customise the display of errors by overriding outputError.
+   *
+   * The configuration properties are all functions:
+   *
+   *     // change how output being written, defaults to stdout and stderr
+   *     writeOut(str)
+   *     writeErr(str)
+   *     // change how output being written for errors, defaults to writeErr
+   *     outputError(str, write) // used for displaying errors and not used for displaying help
+   *     // specify width for wrapping help
+   *     getOutHelpWidth()
+   *     getErrHelpWidth()
+   *     // color support, currently only used with Help
+   *     getOutHasColors()
+   *     getErrHasColors()
+   *     stripColor() // used to remove ANSI escape codes if output does not have colors
+   *
+   * @param {object} [configuration] - configuration options
+   * @return {(Command | object)} `this` command for chaining, or stored configuration
+   */
+  configureOutput(configuration) {
+    if (configuration === void 0) return this._outputConfiguration;
+    this._outputConfiguration = {
+      ...this._outputConfiguration,
+      ...configuration
+    };
+    return this;
+  }
+  /**
+   * Display the help or a custom message after an error occurs.
+   *
+   * @param {(boolean|string)} [displayHelp]
+   * @return {Command} `this` command for chaining
+   */
+  showHelpAfterError(displayHelp = true) {
+    if (typeof displayHelp !== "string") displayHelp = !!displayHelp;
+    this._showHelpAfterError = displayHelp;
+    return this;
+  }
+  /**
+   * Display suggestion of similar commands for unknown commands, or options for unknown options.
+   *
+   * @param {boolean} [displaySuggestion]
+   * @return {Command} `this` command for chaining
+   */
+  showSuggestionAfterError(displaySuggestion = true) {
+    this._showSuggestionAfterError = !!displaySuggestion;
+    return this;
+  }
+  /**
+   * Add a prepared subcommand.
+   *
+   * See .command() for creating an attached subcommand which inherits settings from its parent.
+   *
+   * @param {Command} cmd - new subcommand
+   * @param {object} [opts] - configuration options
+   * @return {Command} `this` command for chaining
+   */
+  addCommand(cmd, opts) {
+    if (!cmd._name) {
+      throw new Error(`Command passed to .addCommand() must have a name
+- specify the name in Command constructor or using .name()`);
+    }
+    opts = opts || {};
+    if (opts.isDefault) this._defaultCommandName = cmd._name;
+    if (opts.noHelp || opts.hidden) cmd._hidden = true;
+    this._registerCommand(cmd);
+    cmd.parent = this;
+    cmd._checkForBrokenPassThrough();
+    return this;
+  }
+  /**
+   * Factory routine to create a new unattached argument.
+   *
+   * See .argument() for creating an attached argument, which uses this routine to
+   * create the argument. You can override createArgument to return a custom argument.
+   *
+   * @param {string} name
+   * @param {string} [description]
+   * @return {Argument} new argument
+   */
+  createArgument(name2, description2) {
+    return new Argument(name2, description2);
+  }
+  /**
+   * Define argument syntax for command.
+   *
+   * The default is that the argument is required, and you can explicitly
+   * indicate this with <> around the name. Put [] around the name for an optional argument.
+   *
+   * @example
+   * program.argument('<input-file>');
+   * program.argument('[output-file]');
+   *
+   * @param {string} name
+   * @param {string} [description]
+   * @param {(Function|*)} [parseArg] - custom argument processing function or default value
+   * @param {*} [defaultValue]
+   * @return {Command} `this` command for chaining
+   */
+  argument(name2, description2, parseArg, defaultValue) {
+    const argument = this.createArgument(name2, description2);
+    if (typeof parseArg === "function") {
+      argument.default(defaultValue).argParser(parseArg);
+    } else {
+      argument.default(parseArg);
+    }
+    this.addArgument(argument);
+    return this;
+  }
+  /**
+   * Define argument syntax for command, adding multiple at once (without descriptions).
+   *
+   * See also .argument().
+   *
+   * @example
+   * program.arguments('<cmd> [env]');
+   *
+   * @param {string} names
+   * @return {Command} `this` command for chaining
+   */
+  arguments(names2) {
+    names2.trim().split(/ +/).forEach((detail) => {
+      this.argument(detail);
+    });
+    return this;
+  }
+  /**
+   * Define argument syntax for command, adding a prepared argument.
+   *
+   * @param {Argument} argument
+   * @return {Command} `this` command for chaining
+   */
+  addArgument(argument) {
+    const previousArgument = this.registeredArguments.slice(-1)[0];
+    if (previousArgument?.variadic) {
+      throw new Error(
+        `only the last argument can be variadic '${previousArgument.name()}'`
+      );
+    }
+    if (argument.required && argument.defaultValue !== void 0 && argument.parseArg === void 0) {
+      throw new Error(
+        `a default value for a required argument is never used: '${argument.name()}'`
+      );
+    }
+    this.registeredArguments.push(argument);
+    return this;
+  }
+  /**
+   * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
+   *
+   * @example
+   *    program.helpCommand('help [cmd]');
+   *    program.helpCommand('help [cmd]', 'show help');
+   *    program.helpCommand(false); // suppress default help command
+   *    program.helpCommand(true); // add help command even if no subcommands
+   *
+   * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
+   * @param {string} [description] - custom description
+   * @return {Command} `this` command for chaining
+   */
+  helpCommand(enableOrNameAndArgs, description2) {
+    if (typeof enableOrNameAndArgs === "boolean") {
+      this._addImplicitHelpCommand = enableOrNameAndArgs;
+      if (enableOrNameAndArgs && this._defaultCommandGroup) {
+        this._initCommandGroup(this._getHelpCommand());
+      }
+      return this;
+    }
+    const nameAndArgs = enableOrNameAndArgs ?? "help [command]";
+    const [, helpName, helpArgs] = nameAndArgs.match(/([^ ]+) *(.*)/);
+    const helpDescription = description2 ?? "display help for command";
+    const helpCommand = this.createCommand(helpName);
+    helpCommand.helpOption(false);
+    if (helpArgs) helpCommand.arguments(helpArgs);
+    if (helpDescription) helpCommand.description(helpDescription);
+    this._addImplicitHelpCommand = true;
+    this._helpCommand = helpCommand;
+    if (enableOrNameAndArgs || description2) this._initCommandGroup(helpCommand);
+    return this;
+  }
+  /**
+   * Add prepared custom help command.
+   *
+   * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
+   * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
+   * @return {Command} `this` command for chaining
+   */
+  addHelpCommand(helpCommand, deprecatedDescription) {
+    if (typeof helpCommand !== "object") {
+      this.helpCommand(helpCommand, deprecatedDescription);
+      return this;
+    }
+    this._addImplicitHelpCommand = true;
+    this._helpCommand = helpCommand;
+    this._initCommandGroup(helpCommand);
+    return this;
+  }
+  /**
+   * Lazy create help command.
+   *
+   * @return {(Command|null)}
+   * @package
+   */
+  _getHelpCommand() {
+    const hasImplicitHelpCommand = this._addImplicitHelpCommand ?? (this.commands.length && !this._actionHandler && !this._findCommand("help"));
+    if (hasImplicitHelpCommand) {
+      if (this._helpCommand === void 0) {
+        this.helpCommand(void 0, void 0);
+      }
+      return this._helpCommand;
+    }
+    return null;
+  }
+  /**
+   * Add hook for life cycle event.
+   *
+   * @param {string} event
+   * @param {Function} listener
+   * @return {Command} `this` command for chaining
+   */
+  hook(event, listener) {
+    const allowedValues = ["preSubcommand", "preAction", "postAction"];
+    if (!allowedValues.includes(event)) {
+      throw new Error(`Unexpected value for event passed to hook : '${event}'.
+Expecting one of '${allowedValues.join("', '")}'`);
+    }
+    if (this._lifeCycleHooks[event]) {
+      this._lifeCycleHooks[event].push(listener);
+    } else {
+      this._lifeCycleHooks[event] = [listener];
+    }
+    return this;
+  }
+  /**
+   * Register callback to use as replacement for calling process.exit.
+   *
+   * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
+   * @return {Command} `this` command for chaining
+   */
+  exitOverride(fn) {
+    if (fn) {
+      this._exitCallback = fn;
+    } else {
+      this._exitCallback = (err) => {
+        if (err.code !== "commander.executeSubCommandAsync") {
+          throw err;
+        }
+      };
+    }
+    return this;
+  }
+  /**
+   * Call process.exit, and _exitCallback if defined.
+   *
+   * @param {number} exitCode exit code for using with process.exit
+   * @param {string} code an id string representing the error
+   * @param {string} message human-readable description of the error
+   * @return never
+   * @private
+   */
+  _exit(exitCode, code2, message2) {
+    if (this._exitCallback) {
+      this._exitCallback(new CommanderError(exitCode, code2, message2));
+    }
+    process$1.exit(exitCode);
+  }
+  /**
+   * Register callback `fn` for the command.
+   *
+   * @example
+   * program
+   *   .command('serve')
+   *   .description('start service')
+   *   .action(function() {
+   *      // do work here
+   *   });
+   *
+   * @param {Function} fn
+   * @return {Command} `this` command for chaining
+   */
+  action(fn) {
+    const listener = (args) => {
+      const expectedArgsCount = this.registeredArguments.length;
+      const actionArgs2 = args.slice(0, expectedArgsCount);
+      if (this._storeOptionsAsProperties) {
+        actionArgs2[expectedArgsCount] = this;
+      } else {
+        actionArgs2[expectedArgsCount] = this.opts();
+      }
+      actionArgs2.push(this);
+      return fn.apply(this, actionArgs2);
+    };
+    this._actionHandler = listener;
+    return this;
+  }
+  /**
+   * Factory routine to create a new unattached option.
+   *
+   * See .option() for creating an attached option, which uses this routine to
+   * create the option. You can override createOption to return a custom option.
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   * @return {Option} new option
+   */
+  createOption(flags, description2) {
+    return new Option(flags, description2);
+  }
+  /**
+   * Wrap parseArgs to catch 'commander.invalidArgument'.
+   *
+   * @param {(Option | Argument)} target
+   * @param {string} value
+   * @param {*} previous
+   * @param {string} invalidArgumentMessage
+   * @private
+   */
+  _callParseArg(target, value2, previous2, invalidArgumentMessage) {
+    try {
+      return target.parseArg(value2, previous2);
+    } catch (err) {
+      if (err.code === "commander.invalidArgument") {
+        const message2 = `${invalidArgumentMessage} ${err.message}`;
+        this.error(message2, { exitCode: err.exitCode, code: err.code });
+      }
+      throw err;
+    }
+  }
+  /**
+   * Check for option flag conflicts.
+   * Register option if no conflicts found, or throw on conflict.
+   *
+   * @param {Option} option
+   * @private
+   */
+  _registerOption(option2) {
+    const matchingOption = option2.short && this._findOption(option2.short) || option2.long && this._findOption(option2.long);
+    if (matchingOption) {
+      const matchingFlag = option2.long && this._findOption(option2.long) ? option2.long : option2.short;
+      throw new Error(`Cannot add option '${option2.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
+-  already used by option '${matchingOption.flags}'`);
+    }
+    this._initOptionGroup(option2);
+    this.options.push(option2);
+  }
+  /**
+   * Check for command name and alias conflicts with existing commands.
+   * Register command if no conflicts found, or throw on conflict.
+   *
+   * @param {Command} command
+   * @private
+   */
+  _registerCommand(command2) {
+    const knownBy = (cmd) => {
+      return [cmd.name()].concat(cmd.aliases());
+    };
+    const alreadyUsed = knownBy(command2).find(
+      (name2) => this._findCommand(name2)
+    );
+    if (alreadyUsed) {
+      const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
+      const newCmd = knownBy(command2).join("|");
+      throw new Error(
+        `cannot add command '${newCmd}' as already have command '${existingCmd}'`
+      );
+    }
+    this._initCommandGroup(command2);
+    this.commands.push(command2);
+  }
+  /**
+   * Add an option.
+   *
+   * @param {Option} option
+   * @return {Command} `this` command for chaining
+   */
+  addOption(option2) {
+    this._registerOption(option2);
+    const oname = option2.name();
+    const name2 = option2.attributeName();
+    if (option2.defaultValue !== void 0) {
+      this.setOptionValueWithSource(name2, option2.defaultValue, "default");
+    }
+    const handleOptionValue = (val, invalidValueMessage, valueSource) => {
+      if (val == null && option2.presetArg !== void 0) {
+        val = option2.presetArg;
+      }
+      const oldValue = this.getOptionValue(name2);
+      if (val !== null && option2.parseArg) {
+        val = this._callParseArg(option2, val, oldValue, invalidValueMessage);
+      } else if (val !== null && option2.variadic) {
+        val = option2._collectValue(val, oldValue);
+      }
+      if (val == null) {
+        if (option2.negate) {
+          val = false;
+        } else if (option2.isBoolean() || option2.optional) {
+          val = true;
+        } else {
+          val = "";
+        }
+      }
+      this.setOptionValueWithSource(name2, val, valueSource);
+    };
+    this.on("option:" + oname, (val) => {
+      const invalidValueMessage = `error: option '${option2.flags}' argument '${val}' is invalid.`;
+      handleOptionValue(val, invalidValueMessage, "cli");
+    });
+    if (option2.envVar) {
+      this.on("optionEnv:" + oname, (val) => {
+        const invalidValueMessage = `error: option '${option2.flags}' value '${val}' from env '${option2.envVar}' is invalid.`;
+        handleOptionValue(val, invalidValueMessage, "env");
+      });
+    }
+    return this;
+  }
+  /**
+   * Internal implementation shared by .option() and .requiredOption()
+   *
+   * @return {Command} `this` command for chaining
+   * @private
+   */
+  _optionEx(config2, flags, description2, fn, defaultValue) {
+    if (typeof flags === "object" && flags instanceof Option) {
+      throw new Error(
+        "To add an Option object use addOption() instead of option() or requiredOption()"
+      );
+    }
+    const option2 = this.createOption(flags, description2);
+    option2.makeOptionMandatory(!!config2.mandatory);
+    if (typeof fn === "function") {
+      option2.default(defaultValue).argParser(fn);
+    } else if (fn instanceof RegExp) {
+      const regex = fn;
+      fn = (val, def) => {
+        const m = regex.exec(val);
+        return m ? m[0] : def;
+      };
+      option2.default(defaultValue).argParser(fn);
+    } else {
+      option2.default(fn);
+    }
+    return this.addOption(option2);
+  }
+  /**
+   * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
+   *
+   * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
+   * option-argument is indicated by `<>` and an optional option-argument by `[]`.
+   *
+   * See the README for more details, and see also addOption() and requiredOption().
+   *
+   * @example
+   * program
+   *     .option('-p, --pepper', 'add pepper')
+   *     .option('--pt, --pizza-type <TYPE>', 'type of pizza') // required option-argument
+   *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
+   *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   * @param {(Function|*)} [parseArg] - custom option processing function or default value
+   * @param {*} [defaultValue]
+   * @return {Command} `this` command for chaining
+   */
+  option(flags, description2, parseArg, defaultValue) {
+    return this._optionEx({}, flags, description2, parseArg, defaultValue);
+  }
+  /**
+   * Add a required option which must have a value after parsing. This usually means
+   * the option must be specified on the command line. (Otherwise the same as .option().)
+   *
+   * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
+   *
+   * @param {string} flags
+   * @param {string} [description]
+   * @param {(Function|*)} [parseArg] - custom option processing function or default value
+   * @param {*} [defaultValue]
+   * @return {Command} `this` command for chaining
+   */
+  requiredOption(flags, description2, parseArg, defaultValue) {
+    return this._optionEx(
+      { mandatory: true },
+      flags,
+      description2,
+      parseArg,
+      defaultValue
+    );
+  }
+  /**
+   * Alter parsing of short flags with optional values.
+   *
+   * @example
+   * // for `.option('-f,--flag [value]'):
+   * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
+   * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
+   *
+   * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
+   * @return {Command} `this` command for chaining
+   */
+  combineFlagAndOptionalValue(combine = true) {
+    this._combineFlagAndOptionalValue = !!combine;
+    return this;
+  }
+  /**
+   * Allow unknown options on the command line.
+   *
+   * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
+   * @return {Command} `this` command for chaining
+   */
+  allowUnknownOption(allowUnknown = true) {
+    this._allowUnknownOption = !!allowUnknown;
+    return this;
+  }
+  /**
+   * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
+   *
+   * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
+   * @return {Command} `this` command for chaining
+   */
+  allowExcessArguments(allowExcess = true) {
+    this._allowExcessArguments = !!allowExcess;
+    return this;
+  }
+  /**
+   * Enable positional options. Positional means global options are specified before subcommands which lets
+   * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
+   * The default behaviour is non-positional and global options may appear anywhere on the command line.
+   *
+   * @param {boolean} [positional]
+   * @return {Command} `this` command for chaining
+   */
+  enablePositionalOptions(positional = true) {
+    this._enablePositionalOptions = !!positional;
+    return this;
+  }
+  /**
+   * Pass through options that come after command-arguments rather than treat them as command-options,
+   * so actual command-options come before command-arguments. Turning this on for a subcommand requires
+   * positional options to have been enabled on the program (parent commands).
+   * The default behaviour is non-positional and options may appear before or after command-arguments.
+   *
+   * @param {boolean} [passThrough] for unknown options.
+   * @return {Command} `this` command for chaining
+   */
+  passThroughOptions(passThrough = true) {
+    this._passThroughOptions = !!passThrough;
+    this._checkForBrokenPassThrough();
+    return this;
+  }
+  /**
+   * @private
+   */
+  _checkForBrokenPassThrough() {
+    if (this.parent && this._passThroughOptions && !this.parent._enablePositionalOptions) {
+      throw new Error(
+        `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`
+      );
+    }
+  }
+  /**
+   * Whether to store option values as properties on command object,
+   * or store separately (specify false). In both cases the option values can be accessed using .opts().
+   *
+   * @param {boolean} [storeAsProperties=true]
+   * @return {Command} `this` command for chaining
+   */
+  storeOptionsAsProperties(storeAsProperties = true) {
+    if (this.options.length) {
+      throw new Error("call .storeOptionsAsProperties() before adding options");
+    }
+    if (Object.keys(this._optionValues).length) {
+      throw new Error(
+        "call .storeOptionsAsProperties() before setting option values"
+      );
+    }
+    this._storeOptionsAsProperties = !!storeAsProperties;
+    return this;
+  }
+  /**
+   * Retrieve option value.
+   *
+   * @param {string} key
+   * @return {object} value
+   */
+  getOptionValue(key) {
+    if (this._storeOptionsAsProperties) {
+      return this[key];
+    }
+    return this._optionValues[key];
+  }
+  /**
+   * Store option value.
+   *
+   * @param {string} key
+   * @param {object} value
+   * @return {Command} `this` command for chaining
+   */
+  setOptionValue(key, value2) {
+    return this.setOptionValueWithSource(key, value2, void 0);
+  }
+  /**
+   * Store option value and where the value came from.
+   *
+   * @param {string} key
+   * @param {object} value
+   * @param {string} source - expected values are default/config/env/cli/implied
+   * @return {Command} `this` command for chaining
+   */
+  setOptionValueWithSource(key, value2, source2) {
+    if (this._storeOptionsAsProperties) {
+      this[key] = value2;
+    } else {
+      this._optionValues[key] = value2;
+    }
+    this._optionValueSources[key] = source2;
+    return this;
+  }
+  /**
+   * Get source of option value.
+   * Expected values are default | config | env | cli | implied
+   *
+   * @param {string} key
+   * @return {string}
+   */
+  getOptionValueSource(key) {
+    return this._optionValueSources[key];
+  }
+  /**
+   * Get source of option value. See also .optsWithGlobals().
+   * Expected values are default | config | env | cli | implied
+   *
+   * @param {string} key
+   * @return {string}
+   */
+  getOptionValueSourceWithGlobals(key) {
+    let source2;
+    this._getCommandAndAncestors().forEach((cmd) => {
+      if (cmd.getOptionValueSource(key) !== void 0) {
+        source2 = cmd.getOptionValueSource(key);
+      }
+    });
+    return source2;
+  }
+  /**
+   * Get user arguments from implied or explicit arguments.
+   * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
+   *
+   * @private
+   */
+  _prepareUserArgs(argv, parseOptions2) {
+    if (argv !== void 0 && !Array.isArray(argv)) {
+      throw new Error("first parameter to parse must be array or undefined");
+    }
+    parseOptions2 = parseOptions2 || {};
+    if (argv === void 0 && parseOptions2.from === void 0) {
+      if (process$1.versions?.electron) {
+        parseOptions2.from = "electron";
+      }
+      const execArgv = process$1.execArgv ?? [];
+      if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
+        parseOptions2.from = "eval";
+      }
+    }
+    if (argv === void 0) {
+      argv = process$1.argv;
+    }
+    this.rawArgs = argv.slice();
+    let userArgs;
+    switch (parseOptions2.from) {
+      case void 0:
+      case "node":
+        this._scriptPath = argv[1];
+        userArgs = argv.slice(2);
+        break;
+      case "electron":
+        if (process$1.defaultApp) {
+          this._scriptPath = argv[1];
+          userArgs = argv.slice(2);
+        } else {
+          userArgs = argv.slice(1);
+        }
+        break;
+      case "user":
+        userArgs = argv.slice(0);
+        break;
+      case "eval":
+        userArgs = argv.slice(1);
+        break;
+      default:
+        throw new Error(
+          `unexpected parse option { from: '${parseOptions2.from}' }`
+        );
+    }
+    if (!this._name && this._scriptPath)
+      this.nameFromFilename(this._scriptPath);
+    this._name = this._name || "program";
+    return userArgs;
+  }
+  /**
+   * Parse `argv`, setting options and invoking commands when defined.
+   *
+   * Use parseAsync instead of parse if any of your action handlers are async.
+   *
+   * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+   *
+   * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+   * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+   * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+   * - `'user'`: just user arguments
+   *
+   * @example
+   * program.parse(); // parse process.argv and auto-detect electron and special node flags
+   * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
+   * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+   *
+   * @param {string[]} [argv] - optional, defaults to process.argv
+   * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
+   * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
+   * @return {Command} `this` command for chaining
+   */
+  parse(argv, parseOptions2) {
+    this._prepareForParse();
+    const userArgs = this._prepareUserArgs(argv, parseOptions2);
+    this._parseCommand([], userArgs);
+    return this;
+  }
+  /**
+   * Parse `argv`, setting options and invoking commands when defined.
+   *
+   * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+   *
+   * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+   * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+   * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+   * - `'user'`: just user arguments
+   *
+   * @example
+   * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
+   * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
+   * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+   *
+   * @param {string[]} [argv]
+   * @param {object} [parseOptions]
+   * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
+   * @return {Promise}
+   */
+  async parseAsync(argv, parseOptions2) {
+    this._prepareForParse();
+    const userArgs = this._prepareUserArgs(argv, parseOptions2);
+    await this._parseCommand([], userArgs);
+    return this;
+  }
+  _prepareForParse() {
+    if (this._savedState === null) {
+      this.options.filter(
+        (option2) => option2.negate && option2.defaultValue === void 0 && this.getOptionValue(option2.attributeName()) === void 0
+      ).forEach((option2) => {
+        const positiveLongFlag = option2.long.replace(/^--no-/, "--");
+        if (!this._findOption(positiveLongFlag)) {
+          this.setOptionValueWithSource(
+            option2.attributeName(),
+            true,
+            "default"
+          );
+        }
+      });
+      this.saveStateBeforeParse();
+    } else {
+      this.restoreStateBeforeParse();
+    }
+  }
+  /**
+   * Called the first time parse is called to save state and allow a restore before subsequent calls to parse.
+   * Not usually called directly, but available for subclasses to save their custom state.
+   *
+   * This is called in a lazy way. Only commands used in parsing chain will have state saved.
+   */
+  saveStateBeforeParse() {
+    this._savedState = {
+      // name is stable if supplied by author, but may be unspecified for root command and deduced during parsing
+      _name: this._name,
+      // option values before parse have default values (including false for negated options)
+      // shallow clones
+      _optionValues: { ...this._optionValues },
+      _optionValueSources: { ...this._optionValueSources }
+    };
+  }
+  /**
+   * Restore state before parse for calls after the first.
+   * Not usually called directly, but available for subclasses to save their custom state.
+   *
+   * This is called in a lazy way. Only commands used in parsing chain will have state restored.
+   */
+  restoreStateBeforeParse() {
+    if (this._storeOptionsAsProperties)
+      throw new Error(`Can not call parse again when storeOptionsAsProperties is true.
+- either make a new Command for each call to parse, or stop storing options as properties`);
+    this._name = this._savedState._name;
+    this._scriptPath = null;
+    this.rawArgs = [];
+    this._optionValues = { ...this._savedState._optionValues };
+    this._optionValueSources = { ...this._savedState._optionValueSources };
+    this.args = [];
+    this.processedArgs = [];
+  }
+  /**
+   * Throw if expected executable is missing. Add lots of help for author.
+   *
+   * @param {string} executableFile
+   * @param {string} executableDir
+   * @param {string} subcommandName
+   */
+  _checkForMissingExecutable(executableFile, executableDir, subcommandName) {
+    if (fs.existsSync(executableFile)) return;
+    const executableDirMessage = executableDir ? `searched for local subcommand relative to directory '${executableDir}'` : "no directory for search for local subcommand, use .executableDir() to supply a custom directory";
+    const executableMissing = `'${executableFile}' does not exist
+ - if '${subcommandName}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
+ - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
+ - ${executableDirMessage}`;
+    throw new Error(executableMissing);
+  }
+  /**
+   * Execute a sub-command executable.
+   *
+   * @private
+   */
+  _executeSubCommand(subcommand, args) {
+    args = args.slice();
+    const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
+    function findFile(baseDir, baseName2) {
+      const localBin = minpath.resolve(baseDir, baseName2);
+      if (fs.existsSync(localBin)) return localBin;
+      if (sourceExt.includes(minpath.extname(baseName2))) return void 0;
+      const foundExt = sourceExt.find(
+        (ext) => fs.existsSync(`${localBin}${ext}`)
+      );
+      if (foundExt) return `${localBin}${foundExt}`;
+      return void 0;
+    }
+    this._checkForMissingMandatoryOptions();
+    this._checkForConflictingOptions();
+    let executableFile = subcommand._executableFile || `${this._name}-${subcommand._name}`;
+    let executableDir = this._executableDir || "";
+    if (this._scriptPath) {
+      let resolvedScriptPath;
+      try {
+        resolvedScriptPath = fs.realpathSync(this._scriptPath);
+      } catch {
+        resolvedScriptPath = this._scriptPath;
+      }
+      executableDir = minpath.resolve(
+        minpath.dirname(resolvedScriptPath),
+        executableDir
+      );
+    }
+    if (executableDir) {
+      let localFile2 = findFile(executableDir, executableFile);
+      if (!localFile2 && !subcommand._executableFile && this._scriptPath) {
+        const legacyName = minpath.basename(
+          this._scriptPath,
+          minpath.extname(this._scriptPath)
+        );
+        if (legacyName !== this._name) {
+          localFile2 = findFile(
+            executableDir,
+            `${legacyName}-${subcommand._name}`
+          );
+        }
+      }
+      executableFile = localFile2 || executableFile;
+    }
+    const launchWithNode = sourceExt.includes(minpath.extname(executableFile));
+    let proc;
+    if (process$1.platform !== "win32") {
+      if (launchWithNode) {
+        args.unshift(executableFile);
+        args = incrementNodeInspectorPort(process$1.execArgv).concat(args);
+        proc = childProcess.spawn(process$1.argv[0], args, { stdio: "inherit" });
+      } else {
+        proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
+      }
+    } else {
+      this._checkForMissingExecutable(
+        executableFile,
+        executableDir,
+        subcommand._name
+      );
+      args.unshift(executableFile);
+      args = incrementNodeInspectorPort(process$1.execArgv).concat(args);
+      proc = childProcess.spawn(process$1.execPath, args, { stdio: "inherit" });
+    }
+    if (!proc.killed) {
+      const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
+      signals.forEach((signal) => {
+        process$1.on(signal, () => {
+          if (proc.killed === false && proc.exitCode === null) {
+            proc.kill(signal);
+          }
+        });
+      });
+    }
+    const exitCallback = this._exitCallback;
+    proc.on("close", (code2) => {
+      code2 = code2 ?? 1;
+      if (!exitCallback) {
+        process$1.exit(code2);
+      } else {
+        exitCallback(
+          new CommanderError(
+            code2,
+            "commander.executeSubCommandAsync",
+            "(close)"
+          )
+        );
+      }
+    });
+    proc.on("error", (err) => {
+      if (err.code === "ENOENT") {
+        this._checkForMissingExecutable(
+          executableFile,
+          executableDir,
+          subcommand._name
+        );
+      } else if (err.code === "EACCES") {
+        throw new Error(`'${executableFile}' not executable`);
+      }
+      if (!exitCallback) {
+        process$1.exit(1);
+      } else {
+        const wrappedError = new CommanderError(
+          1,
+          "commander.executeSubCommandAsync",
+          "(error)"
+        );
+        wrappedError.nestedError = err;
+        exitCallback(wrappedError);
+      }
+    });
+    this.runningCommand = proc;
+  }
+  /**
+   * @private
+   */
+  _dispatchSubcommand(commandName, operands, unknown2) {
+    const subCommand = this._findCommand(commandName);
+    if (!subCommand) this.help({ error: true });
+    subCommand._prepareForParse();
+    let promiseChain;
+    promiseChain = this._chainOrCallSubCommandHook(
+      promiseChain,
+      subCommand,
+      "preSubcommand"
+    );
+    promiseChain = this._chainOrCall(promiseChain, () => {
+      if (subCommand._executableHandler) {
+        this._executeSubCommand(subCommand, operands.concat(unknown2));
+      } else {
+        return subCommand._parseCommand(operands, unknown2);
+      }
+    });
+    return promiseChain;
+  }
+  /**
+   * Invoke help directly if possible, or dispatch if necessary.
+   * e.g. help foo
+   *
+   * @private
+   */
+  _dispatchHelpCommand(subcommandName) {
+    if (!subcommandName) {
+      this.help();
+    }
+    const subCommand = this._findCommand(subcommandName);
+    if (subCommand && !subCommand._executableHandler) {
+      subCommand.help();
+    }
+    return this._dispatchSubcommand(
+      subcommandName,
+      [],
+      [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? "--help"]
+    );
+  }
+  /**
+   * Check this.args against expected this.registeredArguments.
+   *
+   * @private
+   */
+  _checkNumberOfArguments() {
+    this.registeredArguments.forEach((arg, i) => {
+      if (arg.required && this.args[i] == null) {
+        this.missingArgument(arg.name());
+      }
+    });
+    if (this.registeredArguments.length > 0 && this.registeredArguments[this.registeredArguments.length - 1].variadic) {
+      return;
+    }
+    if (this.args.length > this.registeredArguments.length) {
+      this._excessArguments(this.args);
+    }
+  }
+  /**
+   * Process this.args using this.registeredArguments and save as this.processedArgs!
+   *
+   * @private
+   */
+  _processArguments() {
+    const myParseArg = (argument, value2, previous2) => {
+      let parsedValue = value2;
+      if (value2 !== null && argument.parseArg) {
+        const invalidValueMessage = `error: command-argument value '${value2}' is invalid for argument '${argument.name()}'.`;
+        parsedValue = this._callParseArg(
+          argument,
+          value2,
+          previous2,
+          invalidValueMessage
+        );
+      }
+      return parsedValue;
+    };
+    this._checkNumberOfArguments();
+    const processedArgs = [];
+    this.registeredArguments.forEach((declaredArg, index2) => {
+      let value2 = declaredArg.defaultValue;
+      if (declaredArg.variadic) {
+        if (index2 < this.args.length) {
+          value2 = this.args.slice(index2);
+          if (declaredArg.parseArg) {
+            value2 = value2.reduce((processed, v) => {
+              return myParseArg(declaredArg, v, processed);
+            }, declaredArg.defaultValue);
+          }
+        } else if (value2 === void 0) {
+          value2 = [];
+        }
+      } else if (index2 < this.args.length) {
+        value2 = this.args[index2];
+        if (declaredArg.parseArg) {
+          value2 = myParseArg(declaredArg, value2, declaredArg.defaultValue);
+        }
+      }
+      processedArgs[index2] = value2;
+    });
+    this.processedArgs = processedArgs;
+  }
+  /**
+   * Once we have a promise we chain, but call synchronously until then.
+   *
+   * @param {(Promise|undefined)} promise
+   * @param {Function} fn
+   * @return {(Promise|undefined)}
+   * @private
+   */
+  _chainOrCall(promise, fn) {
+    if (promise?.then && typeof promise.then === "function") {
+      return promise.then(() => fn());
+    }
+    return fn();
+  }
+  /**
+   *
+   * @param {(Promise|undefined)} promise
+   * @param {string} event
+   * @return {(Promise|undefined)}
+   * @private
+   */
+  _chainOrCallHooks(promise, event) {
+    let result = promise;
+    const hooks2 = [];
+    this._getCommandAndAncestors().reverse().filter((cmd) => cmd._lifeCycleHooks[event] !== void 0).forEach((hookedCommand) => {
+      hookedCommand._lifeCycleHooks[event].forEach((callback) => {
+        hooks2.push({ hookedCommand, callback });
+      });
+    });
+    if (event === "postAction") {
+      hooks2.reverse();
+    }
+    hooks2.forEach((hookDetail) => {
+      result = this._chainOrCall(result, () => {
+        return hookDetail.callback(hookDetail.hookedCommand, this);
+      });
+    });
+    return result;
+  }
+  /**
+   *
+   * @param {(Promise|undefined)} promise
+   * @param {Command} subCommand
+   * @param {string} event
+   * @return {(Promise|undefined)}
+   * @private
+   */
+  _chainOrCallSubCommandHook(promise, subCommand, event) {
+    let result = promise;
+    if (this._lifeCycleHooks[event] !== void 0) {
+      this._lifeCycleHooks[event].forEach((hook) => {
+        result = this._chainOrCall(result, () => {
+          return hook(this, subCommand);
+        });
+      });
+    }
+    return result;
+  }
+  /**
+   * Process arguments in context of this command.
+   * Returns action result, in case it is a promise.
+   *
+   * @private
+   */
+  _parseCommand(operands, unknown2) {
+    const parsed2 = this.parseOptions(unknown2);
+    this._parseOptionsEnv();
+    this._parseOptionsImplied();
+    operands = operands.concat(parsed2.operands);
+    unknown2 = parsed2.unknown;
+    this.args = operands.concat(unknown2);
+    if (operands && this._findCommand(operands[0])) {
+      return this._dispatchSubcommand(operands[0], operands.slice(1), unknown2);
+    }
+    if (this._getHelpCommand() && operands[0] === this._getHelpCommand().name()) {
+      return this._dispatchHelpCommand(operands[1]);
+    }
+    if (this._defaultCommandName) {
+      this._outputHelpIfRequested(unknown2);
+      return this._dispatchSubcommand(
+        this._defaultCommandName,
+        operands,
+        unknown2
+      );
+    }
+    if (this.commands.length && this.args.length === 0 && !this._actionHandler && !this._defaultCommandName) {
+      this.help({ error: true });
+    }
+    this._outputHelpIfRequested(parsed2.unknown);
+    this._checkForMissingMandatoryOptions();
+    this._checkForConflictingOptions();
+    const checkForUnknownOptions = () => {
+      if (parsed2.unknown.length > 0) {
+        this.unknownOption(parsed2.unknown[0]);
+      }
+    };
+    const commandEvent = `command:${this.name()}`;
+    if (this._actionHandler) {
+      checkForUnknownOptions();
+      this._processArguments();
+      let promiseChain;
+      promiseChain = this._chainOrCallHooks(promiseChain, "preAction");
+      promiseChain = this._chainOrCall(
+        promiseChain,
+        () => this._actionHandler(this.processedArgs)
+      );
+      if (this.parent) {
+        promiseChain = this._chainOrCall(promiseChain, () => {
+          this.parent.emit(commandEvent, operands, unknown2);
+        });
+      }
+      promiseChain = this._chainOrCallHooks(promiseChain, "postAction");
+      return promiseChain;
+    }
+    if (this.parent?.listenerCount(commandEvent)) {
+      checkForUnknownOptions();
+      this._processArguments();
+      this.parent.emit(commandEvent, operands, unknown2);
+    } else if (operands.length) {
+      if (this._findCommand("*")) {
+        return this._dispatchSubcommand("*", operands, unknown2);
+      }
+      if (this.listenerCount("command:*")) {
+        this.emit("command:*", operands, unknown2);
+      } else if (this.commands.length) {
+        this.unknownCommand();
+      } else {
+        checkForUnknownOptions();
+        this._processArguments();
+      }
+    } else if (this.commands.length) {
+      checkForUnknownOptions();
+      this.help({ error: true });
+    } else {
+      checkForUnknownOptions();
+      this._processArguments();
+    }
+  }
+  /**
+   * Find matching command.
+   *
+   * @private
+   * @return {Command | undefined}
+   */
+  _findCommand(name2) {
+    if (!name2) return void 0;
+    return this.commands.find(
+      (cmd) => cmd._name === name2 || cmd._aliases.includes(name2)
+    );
+  }
+  /**
+   * Return an option matching `arg` if any.
+   *
+   * @param {string} arg
+   * @return {Option}
+   * @package
+   */
+  _findOption(arg) {
+    return this.options.find((option2) => option2.is(arg));
+  }
+  /**
+   * Display an error message if a mandatory option does not have a value.
+   * Called after checking for help flags in leaf subcommand.
+   *
+   * @private
+   */
+  _checkForMissingMandatoryOptions() {
+    this._getCommandAndAncestors().forEach((cmd) => {
+      cmd.options.forEach((anOption) => {
+        if (anOption.mandatory && cmd.getOptionValue(anOption.attributeName()) === void 0) {
+          cmd.missingMandatoryOptionValue(anOption);
+        }
+      });
+    });
+  }
+  /**
+   * Display an error message if conflicting options are used together in this.
+   *
+   * @private
+   */
+  _checkForConflictingLocalOptions() {
+    const definedNonDefaultOptions = this.options.filter((option2) => {
+      const optionKey = option2.attributeName();
+      if (this.getOptionValue(optionKey) === void 0) {
+        return false;
+      }
+      return this.getOptionValueSource(optionKey) !== "default";
+    });
+    const optionsWithConflicting = definedNonDefaultOptions.filter(
+      (option2) => option2.conflictsWith.length > 0
+    );
+    optionsWithConflicting.forEach((option2) => {
+      const conflictingAndDefined = definedNonDefaultOptions.find(
+        (defined) => option2.conflictsWith.includes(defined.attributeName())
+      );
+      if (conflictingAndDefined) {
+        this._conflictingOption(option2, conflictingAndDefined);
+      }
+    });
+  }
+  /**
+   * Display an error message if conflicting options are used together.
+   * Called after checking for help flags in leaf subcommand.
+   *
+   * @private
+   */
+  _checkForConflictingOptions() {
+    this._getCommandAndAncestors().forEach((cmd) => {
+      cmd._checkForConflictingLocalOptions();
+    });
+  }
+  /**
+   * Parse options from `argv` removing known options,
+   * and return argv split into operands and unknown arguments.
+   *
+   * Side effects: modifies command by storing options. Does not reset state if called again.
+   *
+   * Examples:
+   *
+   *     argv => operands, unknown
+   *     --known kkk op => [op], []
+   *     op --known kkk => [op], []
+   *     sub --unknown uuu op => [sub], [--unknown uuu op]
+   *     sub -- --unknown uuu op => [sub --unknown uuu op], []
+   *
+   * @param {string[]} args
+   * @return {{operands: string[], unknown: string[]}}
+   */
+  parseOptions(args) {
+    const operands = [];
+    const unknown2 = [];
+    let dest = operands;
+    function maybeOption(arg) {
+      return arg.length > 1 && arg[0] === "-";
+    }
+    const negativeNumberArg = (arg) => {
+      if (!/^-(\d+|\d*\.\d+)(e[+-]?\d+)?$/.test(arg)) return false;
+      return !this._getCommandAndAncestors().some(
+        (cmd) => cmd.options.map((opt) => opt.short).some((short) => /^-\d$/.test(short))
+      );
+    };
+    let activeVariadicOption = null;
+    let activeGroup = null;
+    let i = 0;
+    while (i < args.length || activeGroup) {
+      const arg = activeGroup ?? args[i++];
+      activeGroup = null;
+      if (arg === "--") {
+        if (dest === unknown2) dest.push(arg);
+        dest.push(...args.slice(i));
+        break;
+      }
+      if (activeVariadicOption && (!maybeOption(arg) || negativeNumberArg(arg))) {
+        this.emit(`option:${activeVariadicOption.name()}`, arg);
+        continue;
+      }
+      activeVariadicOption = null;
+      if (maybeOption(arg)) {
+        const option2 = this._findOption(arg);
+        if (option2) {
+          if (option2.required) {
+            const value2 = args[i++];
+            if (value2 === void 0) this.optionMissingArgument(option2);
+            this.emit(`option:${option2.name()}`, value2);
+          } else if (option2.optional) {
+            let value2 = null;
+            if (i < args.length && (!maybeOption(args[i]) || negativeNumberArg(args[i]))) {
+              value2 = args[i++];
+            }
+            this.emit(`option:${option2.name()}`, value2);
+          } else {
+            this.emit(`option:${option2.name()}`);
+          }
+          activeVariadicOption = option2.variadic ? option2 : null;
+          continue;
+        }
+      }
+      if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
+        const option2 = this._findOption(`-${arg[1]}`);
+        if (option2) {
+          if (option2.required || option2.optional && this._combineFlagAndOptionalValue) {
+            this.emit(`option:${option2.name()}`, arg.slice(2));
+          } else {
+            this.emit(`option:${option2.name()}`);
+            activeGroup = `-${arg.slice(2)}`;
+          }
+          continue;
+        }
+      }
+      if (/^--[^=]+=/.test(arg)) {
+        const index2 = arg.indexOf("=");
+        const option2 = this._findOption(arg.slice(0, index2));
+        if (option2 && (option2.required || option2.optional)) {
+          this.emit(`option:${option2.name()}`, arg.slice(index2 + 1));
+          continue;
+        }
+      }
+      if (dest === operands && maybeOption(arg) && !(this.commands.length === 0 && negativeNumberArg(arg))) {
+        dest = unknown2;
+      }
+      if ((this._enablePositionalOptions || this._passThroughOptions) && operands.length === 0 && unknown2.length === 0) {
+        if (this._findCommand(arg)) {
+          operands.push(arg);
+          unknown2.push(...args.slice(i));
+          break;
+        } else if (this._getHelpCommand() && arg === this._getHelpCommand().name()) {
+          operands.push(arg, ...args.slice(i));
+          break;
+        } else if (this._defaultCommandName) {
+          unknown2.push(arg, ...args.slice(i));
+          break;
+        }
+      }
+      if (this._passThroughOptions) {
+        dest.push(arg, ...args.slice(i));
+        break;
+      }
+      dest.push(arg);
+    }
+    return { operands, unknown: unknown2 };
+  }
+  /**
+   * Return an object containing local option values as key-value pairs.
+   *
+   * @return {object}
+   */
+  opts() {
+    if (this._storeOptionsAsProperties) {
+      const result = {};
+      const len = this.options.length;
+      for (let i = 0; i < len; i++) {
+        const key = this.options[i].attributeName();
+        result[key] = key === this._versionOptionName ? this._version : this[key];
+      }
+      return result;
+    }
+    return this._optionValues;
+  }
+  /**
+   * Return an object containing merged local and global option values as key-value pairs.
+   *
+   * @return {object}
+   */
+  optsWithGlobals() {
+    return this._getCommandAndAncestors().reduce(
+      (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
+      {}
+    );
+  }
+  /**
+   * Display error message and exit (or call exitOverride).
+   *
+   * @param {string} message
+   * @param {object} [errorOptions]
+   * @param {string} [errorOptions.code] - an id string representing the error
+   * @param {number} [errorOptions.exitCode] - used with process.exit
+   */
+  error(message2, errorOptions) {
+    this._outputConfiguration.outputError(
+      `${message2}
+`,
+      this._outputConfiguration.writeErr
+    );
+    if (typeof this._showHelpAfterError === "string") {
+      this._outputConfiguration.writeErr(`${this._showHelpAfterError}
+`);
+    } else if (this._showHelpAfterError) {
+      this._outputConfiguration.writeErr("\n");
+      this.outputHelp({ error: true });
+    }
+    const config2 = errorOptions || {};
+    const exitCode = config2.exitCode || 1;
+    const code2 = config2.code || "commander.error";
+    this._exit(exitCode, code2, message2);
+  }
+  /**
+   * Apply any option related environment variables, if option does
+   * not have a value from cli or client code.
+   *
+   * @private
+   */
+  _parseOptionsEnv() {
+    this.options.forEach((option2) => {
+      if (option2.envVar && option2.envVar in process$1.env) {
+        const optionKey = option2.attributeName();
+        if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
+          this.getOptionValueSource(optionKey)
+        )) {
+          if (option2.required || option2.optional) {
+            this.emit(`optionEnv:${option2.name()}`, process$1.env[option2.envVar]);
+          } else {
+            this.emit(`optionEnv:${option2.name()}`);
+          }
+        }
+      }
+    });
+  }
+  /**
+   * Apply any implied option values, if option is undefined or default value.
+   *
+   * @private
+   */
+  _parseOptionsImplied() {
+    const dualHelper = new DualOptions(this.options);
+    const hasCustomOptionValue = (optionKey) => {
+      return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
+    };
+    this.options.filter(
+      (option2) => option2.implied !== void 0 && hasCustomOptionValue(option2.attributeName()) && dualHelper.valueFromOption(
+        this.getOptionValue(option2.attributeName()),
+        option2
+      )
+    ).forEach((option2) => {
+      Object.keys(option2.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
+        this.setOptionValueWithSource(
+          impliedKey,
+          option2.implied[impliedKey],
+          "implied"
+        );
+      });
+    });
+  }
+  /**
+   * Argument `name` is missing.
+   *
+   * @param {string} name
+   * @private
+   */
+  missingArgument(name2) {
+    const message2 = `error: missing required argument '${name2}'`;
+    this.error(message2, { code: "commander.missingArgument" });
+  }
+  /**
+   * `Option` is missing an argument.
+   *
+   * @param {Option} option
+   * @private
+   */
+  optionMissingArgument(option2) {
+    const message2 = `error: option '${option2.flags}' argument missing`;
+    this.error(message2, { code: "commander.optionMissingArgument" });
+  }
+  /**
+   * `Option` does not have a value, and is a mandatory option.
+   *
+   * @param {Option} option
+   * @private
+   */
+  missingMandatoryOptionValue(option2) {
+    const message2 = `error: required option '${option2.flags}' not specified`;
+    this.error(message2, { code: "commander.missingMandatoryOptionValue" });
+  }
+  /**
+   * `Option` conflicts with another option.
+   *
+   * @param {Option} option
+   * @param {Option} conflictingOption
+   * @private
+   */
+  _conflictingOption(option2, conflictingOption) {
+    const findBestOptionFromValue = (option3) => {
+      const optionKey = option3.attributeName();
+      const optionValue = this.getOptionValue(optionKey);
+      const negativeOption = this.options.find(
+        (target) => target.negate && optionKey === target.attributeName()
+      );
+      const positiveOption = this.options.find(
+        (target) => !target.negate && optionKey === target.attributeName()
+      );
+      if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
+        return negativeOption;
+      }
+      return positiveOption || option3;
+    };
+    const getErrorMessage = (option3) => {
+      const bestOption = findBestOptionFromValue(option3);
+      const optionKey = bestOption.attributeName();
+      const source2 = this.getOptionValueSource(optionKey);
+      if (source2 === "env") {
+        return `environment variable '${bestOption.envVar}'`;
+      }
+      return `option '${bestOption.flags}'`;
+    };
+    const message2 = `error: ${getErrorMessage(option2)} cannot be used with ${getErrorMessage(conflictingOption)}`;
+    this.error(message2, { code: "commander.conflictingOption" });
+  }
+  /**
+   * Unknown option `flag`.
+   *
+   * @param {string} flag
+   * @private
+   */
+  unknownOption(flag2) {
+    if (this._allowUnknownOption) return;
+    let suggestion = "";
+    if (flag2.startsWith("--") && this._showSuggestionAfterError) {
+      let candidateFlags = [];
+      let command2 = this;
+      do {
+        const moreFlags = command2.createHelp().visibleOptions(command2).filter((option2) => option2.long).map((option2) => option2.long);
+        candidateFlags = candidateFlags.concat(moreFlags);
+        command2 = command2.parent;
+      } while (command2 && !command2._enablePositionalOptions);
+      suggestion = suggestSimilar(flag2, candidateFlags);
+    }
+    const message2 = `error: unknown option '${flag2}'${suggestion}`;
+    this.error(message2, { code: "commander.unknownOption" });
+  }
+  /**
+   * Excess arguments, more than expected.
+   *
+   * @param {string[]} receivedArgs
+   * @private
+   */
+  _excessArguments(receivedArgs) {
+    if (this._allowExcessArguments) return;
+    const expected = this.registeredArguments.length;
+    const s = expected === 1 ? "" : "s";
+    const received = receivedArgs.length;
+    const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
+    const details = receivedArgs.join(", ");
+    const message2 = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${received}: ${details}.`;
+    this.error(message2, { code: "commander.excessArguments" });
+  }
+  /**
+   * Unknown command.
+   *
+   * @private
+   */
+  unknownCommand() {
+    const unknownName = this.args[0];
+    let suggestion = "";
+    if (this._showSuggestionAfterError) {
+      const candidateNames = [];
+      this.createHelp().visibleCommands(this).forEach((command2) => {
+        candidateNames.push(command2.name());
+        if (command2.alias()) candidateNames.push(command2.alias());
+      });
+      suggestion = suggestSimilar(unknownName, candidateNames);
+    }
+    const message2 = `error: unknown command '${unknownName}'${suggestion}`;
+    this.error(message2, { code: "commander.unknownCommand" });
+  }
+  /**
+   * Get or set the program version.
+   *
+   * This method auto-registers the "-V, --version" option which will print the version number.
+   *
+   * You can optionally supply the flags and description to override the defaults.
+   *
+   * @param {string} [str]
+   * @param {string} [flags]
+   * @param {string} [description]
+   * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
+   */
+  version(str, flags, description2) {
+    if (str === void 0) return this._version;
+    this._version = str;
+    flags = flags || "-V, --version";
+    description2 = description2 || "output the version number";
+    const versionOption = this.createOption(flags, description2);
+    this._versionOptionName = versionOption.attributeName();
+    this._registerOption(versionOption);
+    this.on("option:" + versionOption.name(), () => {
+      this._outputConfiguration.writeOut(`${str}
+`);
+      this._exit(0, "commander.version", str);
+    });
+    return this;
+  }
+  /**
+   * Set the description.
+   *
+   * @param {string} [str]
+   * @param {object} [argsDescription]
+   * @return {(string|Command)}
+   */
+  description(str, argsDescription) {
+    if (str === void 0 && argsDescription === void 0)
+      return this._description;
+    this._description = str;
+    if (argsDescription) {
+      this._argsDescription = argsDescription;
+    }
+    return this;
+  }
+  /**
+   * Set the summary. Used when listed as subcommand of parent.
+   *
+   * @param {string} [str]
+   * @return {(string|Command)}
+   */
+  summary(str) {
+    if (str === void 0) return this._summary;
+    this._summary = str;
+    return this;
+  }
+  /**
+   * Set an alias for the command.
+   *
+   * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
+   *
+   * @param {string} [alias]
+   * @return {(string|Command)}
+   */
+  alias(alias) {
+    if (alias === void 0) return this._aliases[0];
+    let command2 = this;
+    if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
+      command2 = this.commands[this.commands.length - 1];
+    }
+    if (alias === command2._name)
+      throw new Error("Command alias can't be the same as its name");
+    const matchingCommand = this.parent?._findCommand(alias);
+    if (matchingCommand) {
+      const existingCmd = [matchingCommand.name()].concat(matchingCommand.aliases()).join("|");
+      throw new Error(
+        `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
+      );
+    }
+    command2._aliases.push(alias);
+    return this;
+  }
+  /**
+   * Set aliases for the command.
+   *
+   * Only the first alias is shown in the auto-generated help.
+   *
+   * @param {string[]} [aliases]
+   * @return {(string[]|Command)}
+   */
+  aliases(aliases) {
+    if (aliases === void 0) return this._aliases;
+    aliases.forEach((alias) => this.alias(alias));
+    return this;
+  }
+  /**
+   * Set / get the command usage `str`.
+   *
+   * @param {string} [str]
+   * @return {(string|Command)}
+   */
+  usage(str) {
+    if (str === void 0) {
+      if (this._usage) return this._usage;
+      const args = this.registeredArguments.map((arg) => {
+        return humanReadableArgName(arg);
+      });
+      return [].concat(
+        this.options.length || this._helpOption !== null ? "[options]" : [],
+        this.commands.length ? "[command]" : [],
+        this.registeredArguments.length ? args : []
+      ).join(" ");
+    }
+    this._usage = str;
+    return this;
+  }
+  /**
+   * Get or set the name of the command.
+   *
+   * @param {string} [str]
+   * @return {(string|Command)}
+   */
+  name(str) {
+    if (str === void 0) return this._name;
+    this._name = str;
+    return this;
+  }
+  /**
+   * Set/get the help group heading for this subcommand in parent command's help.
+   *
+   * @param {string} [heading]
+   * @return {Command | string}
+   */
+  helpGroup(heading) {
+    if (heading === void 0) return this._helpGroupHeading ?? "";
+    this._helpGroupHeading = heading;
+    return this;
+  }
+  /**
+   * Set/get the default help group heading for subcommands added to this command.
+   * (This does not override a group set directly on the subcommand using .helpGroup().)
+   *
+   * @example
+   * program.commandsGroup('Development Commands:);
+   * program.command('watch')...
+   * program.command('lint')...
+   * ...
+   *
+   * @param {string} [heading]
+   * @returns {Command | string}
+   */
+  commandsGroup(heading) {
+    if (heading === void 0) return this._defaultCommandGroup ?? "";
+    this._defaultCommandGroup = heading;
+    return this;
+  }
+  /**
+   * Set/get the default help group heading for options added to this command.
+   * (This does not override a group set directly on the option using .helpGroup().)
+   *
+   * @example
+   * program
+   *   .optionsGroup('Development Options:')
+   *   .option('-d, --debug', 'output extra debugging')
+   *   .option('-p, --profile', 'output profiling information')
+   *
+   * @param {string} [heading]
+   * @returns {Command | string}
+   */
+  optionsGroup(heading) {
+    if (heading === void 0) return this._defaultOptionGroup ?? "";
+    this._defaultOptionGroup = heading;
+    return this;
+  }
+  /**
+   * @param {Option} option
+   * @private
+   */
+  _initOptionGroup(option2) {
+    if (this._defaultOptionGroup && !option2.helpGroupHeading)
+      option2.helpGroup(this._defaultOptionGroup);
+  }
+  /**
+   * @param {Command} cmd
+   * @private
+   */
+  _initCommandGroup(cmd) {
+    if (this._defaultCommandGroup && !cmd.helpGroup())
+      cmd.helpGroup(this._defaultCommandGroup);
+  }
+  /**
+   * Set the name of the command from script filename, such as process.argv[1],
+   * or import.meta.filename.
+   *
+   * (Used internally and public although not documented in README.)
+   *
+   * @example
+   * program.nameFromFilename(import.meta.filename);
+   *
+   * @param {string} filename
+   * @return {Command}
+   */
+  nameFromFilename(filename) {
+    this._name = minpath.basename(filename, minpath.extname(filename));
+    return this;
+  }
+  /**
+   * Get or set the directory for searching for executable subcommands of this command.
+   *
+   * @example
+   * program.executableDir(import.meta.dirname);
+   * // or
+   * program.executableDir('subcommands');
+   *
+   * @param {string} [path]
+   * @return {(string|null|Command)}
+   */
+  executableDir(path) {
+    if (path === void 0) return this._executableDir;
+    this._executableDir = path;
+    return this;
+  }
+  /**
+   * Return program help documentation.
+   *
+   * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
+   * @return {string}
+   */
+  helpInformation(contextOptions) {
+    const helper = this.createHelp();
+    const context = this._getOutputContext(contextOptions);
+    helper.prepareContext({
+      error: context.error,
+      helpWidth: context.helpWidth,
+      outputHasColors: context.hasColors
+    });
+    const text2 = helper.formatHelp(this, helper);
+    if (context.hasColors) return text2;
+    return this._outputConfiguration.stripColor(text2);
+  }
+  /**
+   * @typedef HelpContext
+   * @type {object}
+   * @property {boolean} error
+   * @property {number} helpWidth
+   * @property {boolean} hasColors
+   * @property {function} write - includes stripColor if needed
+   *
+   * @returns {HelpContext}
+   * @private
+   */
+  _getOutputContext(contextOptions) {
+    contextOptions = contextOptions || {};
+    const error2 = !!contextOptions.error;
+    let baseWrite;
+    let hasColors;
+    let helpWidth;
+    if (error2) {
+      baseWrite = (str) => this._outputConfiguration.writeErr(str);
+      hasColors = this._outputConfiguration.getErrHasColors();
+      helpWidth = this._outputConfiguration.getErrHelpWidth();
+    } else {
+      baseWrite = (str) => this._outputConfiguration.writeOut(str);
+      hasColors = this._outputConfiguration.getOutHasColors();
+      helpWidth = this._outputConfiguration.getOutHelpWidth();
+    }
+    const write = (str) => {
+      if (!hasColors) str = this._outputConfiguration.stripColor(str);
+      return baseWrite(str);
+    };
+    return { error: error2, write, hasColors, helpWidth };
+  }
+  /**
+   * Output help information for this command.
+   *
+   * Outputs built-in help, and custom text added using `.addHelpText()`.
+   *
+   * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+   */
+  outputHelp(contextOptions) {
+    let deprecatedCallback;
+    if (typeof contextOptions === "function") {
+      deprecatedCallback = contextOptions;
+      contextOptions = void 0;
+    }
+    const outputContext = this._getOutputContext(contextOptions);
+    const eventContext = {
+      error: outputContext.error,
+      write: outputContext.write,
+      command: this
+    };
+    this._getCommandAndAncestors().reverse().forEach((command2) => command2.emit("beforeAllHelp", eventContext));
+    this.emit("beforeHelp", eventContext);
+    let helpInformation = this.helpInformation({ error: outputContext.error });
+    if (deprecatedCallback) {
+      helpInformation = deprecatedCallback(helpInformation);
+      if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
+        throw new Error("outputHelp callback must return a string or a Buffer");
+      }
+    }
+    outputContext.write(helpInformation);
+    if (this._getHelpOption()?.long) {
+      this.emit(this._getHelpOption().long);
+    }
+    this.emit("afterHelp", eventContext);
+    this._getCommandAndAncestors().forEach(
+      (command2) => command2.emit("afterAllHelp", eventContext)
+    );
+  }
+  /**
+   * You can pass in flags and a description to customise the built-in help option.
+   * Pass in false to disable the built-in help option.
+   *
+   * @example
+   * program.helpOption('-?, --help' 'show help'); // customise
+   * program.helpOption(false); // disable
+   *
+   * @param {(string | boolean)} flags
+   * @param {string} [description]
+   * @return {Command} `this` command for chaining
+   */
+  helpOption(flags, description2) {
+    if (typeof flags === "boolean") {
+      if (flags) {
+        if (this._helpOption === null) this._helpOption = void 0;
+        if (this._defaultOptionGroup) {
+          this._initOptionGroup(this._getHelpOption());
+        }
+      } else {
+        this._helpOption = null;
+      }
+      return this;
+    }
+    this._helpOption = this.createOption(
+      flags ?? "-h, --help",
+      description2 ?? "display help for command"
+    );
+    if (flags || description2) this._initOptionGroup(this._helpOption);
+    return this;
+  }
+  /**
+   * Lazy create help option.
+   * Returns null if has been disabled with .helpOption(false).
+   *
+   * @returns {(Option | null)} the help option
+   * @package
+   */
+  _getHelpOption() {
+    if (this._helpOption === void 0) {
+      this.helpOption(void 0, void 0);
+    }
+    return this._helpOption;
+  }
+  /**
+   * Supply your own option to use for the built-in help option.
+   * This is an alternative to using helpOption() to customise the flags and description etc.
+   *
+   * @param {Option} option
+   * @return {Command} `this` command for chaining
+   */
+  addHelpOption(option2) {
+    this._helpOption = option2;
+    this._initOptionGroup(option2);
+    return this;
+  }
+  /**
+   * Output help information and exit.
+   *
+   * Outputs built-in help, and custom text added using `.addHelpText()`.
+   *
+   * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+   */
+  help(contextOptions) {
+    this.outputHelp(contextOptions);
+    let exitCode = Number(process$1.exitCode ?? 0);
+    if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
+      exitCode = 1;
+    }
+    this._exit(exitCode, "commander.help", "(outputHelp)");
+  }
+  /**
+   * // Do a little typing to coordinate emit and listener for the help text events.
+   * @typedef HelpTextEventContext
+   * @type {object}
+   * @property {boolean} error
+   * @property {Command} command
+   * @property {function} write
+   */
+  /**
+   * Add additional text to be displayed with the built-in help.
+   *
+   * Position is 'before' or 'after' to affect just this command,
+   * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
+   *
+   * @param {string} position - before or after built-in help
+   * @param {(string | Function)} text - string to add, or a function returning a string
+   * @return {Command} `this` command for chaining
+   */
+  addHelpText(position2, text2) {
+    const allowedValues = ["beforeAll", "before", "after", "afterAll"];
+    if (!allowedValues.includes(position2)) {
+      throw new Error(`Unexpected value for position to addHelpText.
+Expecting one of '${allowedValues.join("', '")}'`);
+    }
+    const helpEvent = `${position2}Help`;
+    this.on(helpEvent, (context) => {
+      let helpStr;
+      if (typeof text2 === "function") {
+        helpStr = text2({ error: context.error, command: context.command });
+      } else {
+        helpStr = text2;
+      }
+      if (helpStr) {
+        context.write(`${helpStr}
+`);
+      }
+    });
+    return this;
+  }
+  /**
+   * Output help information if help flags specified
+   *
+   * @param {Array} args - array of options to search for help flags
+   * @private
+   */
+  _outputHelpIfRequested(args) {
+    const helpOption = this._getHelpOption();
+    const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
+    if (helpRequested) {
+      this.outputHelp();
+      this._exit(0, "commander.helpDisplayed", "(outputHelp)");
+    }
+  }
+}
+function incrementNodeInspectorPort(args) {
+  return args.map((arg) => {
+    if (!arg.startsWith("--inspect")) {
+      return arg;
+    }
+    let debugOption;
+    let debugHost = "127.0.0.1";
+    let debugPort = "9229";
+    let match;
+    if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
+      debugOption = match[1];
+    } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
+      debugOption = match[1];
+      if (/^\d+$/.test(match[3])) {
+        debugPort = match[3];
+      } else {
+        debugHost = match[3];
+      }
+    } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
+      debugOption = match[1];
+      debugHost = match[3];
+      debugPort = match[4];
+    }
+    if (debugOption && debugPort !== "0") {
+      return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
+    }
+    return arg;
+  });
+}
+function useColor() {
+  if (process$1.env.NO_COLOR || process$1.env.FORCE_COLOR === "0" || process$1.env.FORCE_COLOR === "false")
+    return false;
+  if (process$1.env.FORCE_COLOR || process$1.env.CLICOLOR_FORCE !== void 0)
+    return true;
+  return void 0;
+}
+new Command();
+const globalOptionMetadata = {
+  root: option$1.string("Workspace root to load bin/config.json from; must precede the command."),
+  lang: option$1.string("Response language for descriptions, hints and summaries.", { enum: ["en", "de"], default: "en" }),
+  events: option$1.string("Events included in the response; delivery to listeners is unaffected.", { enum: ["none", "changes", "all"], default: "changes" }),
+  json: option$1.boolean("Compact JSON output."),
+  "no-json": option$1.boolean("Indented JSON output."),
+  "dry-run": option$1.boolean("Validate and preview writes without changing files."),
+  "no-dry-run": option$1.boolean("Write even when settings.dryRun is true."),
+  "no-plugins": option$1.boolean("Skip loading user plugins; core plugins stay. Must precede the command."),
+  help: option$1.boolean("Describe the command instead of running it."),
+  version: option$1.boolean("Report the Forge version; used without a command.")
+};
+function parseBootstrap(tokens) {
+  let end2 = 0;
+  while (end2 < tokens.length) {
+    const token = tokens[end2];
+    if (token === "--" || !token.startsWith("-")) break;
+    const key = token.startsWith("--") ? token.slice(2).split("=")[0] : token === "-h" ? "help" : token === "-V" ? "version" : token;
+    const type2 = Object.hasOwn(globalOptions, key) ? globalOptions[key] : void 0;
+    if (!type2) {
+      parseArguments(tokens.slice(0, end2 + 1), globalOptions);
+    }
+    end2 += type2 === "string" && !token.includes("=") ? 2 : 1;
+  }
+  const parsed2 = parseArguments(tokens.slice(0, end2), globalOptions);
+  return { flags: parsed2.flags, args: tokens.slice(end2 + (tokens[end2] === "--" ? 1 : 0)) };
+}
+function parseArguments(tokens, options2, allowUnknown = false) {
+  const command2 = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
+  }, writeErr: () => {
+  } });
+  const seen = /* @__PURE__ */ new Set();
+  const descriptors = [];
+  for (const [key, type2] of Object.entries(options2)) {
+    const short = key === "help" ? "-h, " : key === "version" ? "-V, " : "";
+    const option2 = new Option(`${short}--${key}${type2 === "string" ? " <value>" : ""}`);
+    if (type2 === "string") option2.negate = false;
+    descriptors.push({ key, option: option2 });
+    command2.addOption(option2);
+    command2.on(`option:${option2.name()}`, () => {
+      const attribute2 = option2.attributeName();
+      ensure(!seen.has(attribute2), "DUPLICATE_OPTION", `Repeated or contradictory option --${key}.`);
+      seen.add(attribute2);
+    });
+  }
+  try {
+    command2.parse(tokens, { from: "user" });
+  } catch (error2) {
+    if (!(error2 instanceof CommanderError)) throw error2;
+    const code2 = error2.code === "commander.unknownOption" ? "UNKNOWN_OPTION" : error2.code === "commander.optionMissingArgument" ? "MISSING_ARGUMENT" : "INVALID_ARGUMENT";
+    throw forgeError(code2, error2.message.replace(/^error: /, ""));
+  }
+  const flags = /* @__PURE__ */ Object.create(null);
+  for (const { key, option: option2 } of descriptors) {
+    if (!seen.has(option2.attributeName())) continue;
+    const parsed2 = command2.getOptionValue(option2.attributeName());
+    if (option2.negate) {
+      if (parsed2 === false) flags[key] = true;
+    } else if (typeof parsed2 === "string" || parsed2 === true) flags[key] = parsed2;
+  }
+  return { args: command2.args, flags };
+}
 const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 }));
 const out = { out: option$1.string("Output directory; each generator documents its default.") };
 function generatorOptions(generator) {
@@ -62901,8 +63234,8 @@ function generatorOptions(generator) {
 function generationCommand(registry2) {
   return {
     id: "make",
-    description: "Generate code, planning documents, UI, Storybook stories, or data-source adapters and test data.",
-    usage: "make [generator Name] [--out directory] | make document Title --template name.md [--values JSON | --values-from path] [--date ISO] | make ui|stories <component-id> [--framework html|htmx|vanilla|vue|svelte|react|angular] [--project id] [--library directory] [--out directory] [--stories] [--stories-out directory] [--interactions-library directory] [--revisions-from path.json | --plan | --plan-out path.json | --check] | make data-source <id> [--library directory] [--project id] [--out directory] [--test-data-out directory] [--revisions-from path.json | --plan | --plan-out path.json | --check]",
+    description: "Run a registered generator, or list the generators.",
+    usage: "make [generator Name] [--out directory]",
     scope: "workspace",
     discovery: false,
     mutating: false,
@@ -62910,6 +63243,7 @@ function generationCommand(registry2) {
       { name: "generator", description: "A generator id; without one, make lists the generators." },
       { name: "name", description: "The name or id the generator creates from." }
     ],
+    unknownAction: "UNKNOWN_GENERATOR",
     errors: ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"],
     get actions() {
       return Object.fromEntries([...registry2.generators.values()].map((generator) => [generator.id, {
@@ -62925,7 +63259,7 @@ function generationCommand(registry2) {
     async run(args, flags, context) {
       const own2 = Object.keys(flags).filter((key) => !Object.hasOwn(globalOptions, key));
       if (args.length === 0) {
-        ensure(own2.length === 0, "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>, or make document <Title> --template <name.md>.");
+        ensure(own2.length === 0, "INVALID_ARGUMENT", "Generation options require a generator and name. Run make <generator> <Name>; help make lists each generator's usage and options.");
         return { generators: generatorCatalog(registry2) };
       }
       arity(args, 2);
@@ -62933,7 +63267,7 @@ function generationCommand(registry2) {
       ensure(generator, "UNKNOWN_GENERATOR", args[0]);
       const accepted2 = generatorOptions(generator);
       for (const key of own2) ensure(Object.hasOwn(accepted2, key), "INVALID_ARGUMENT", `--${key} is not supported by make ${generator.id}; run help make for each generator's options.`);
-      const directory = generator.fixedDirectory ? generator.directory : value$2(flags, "out") ?? generator.directory ?? "src/domain";
+      const directory = generator.fixedDirectory ? generator.directory : value$3(flags, "out") ?? generator.directory ?? "src/domain";
       const generation = new GenerationService(context.workspace);
       const request = { name: args[1], directory, flags, context, generation };
       if (generator.run) return generator.run(request);
@@ -62951,7 +63285,7 @@ function generationCommand(registry2) {
 }
 function pluginCatalog(registry2, installed) {
   const loaded = registry2.plugins.map((plugin2) => {
-    const services = { provides: Object.keys(plugin2.provides ?? {}), requires: [...plugin2.requires ?? []], optional: [...plugin2.optional ?? []] };
+    const services2 = { provides: Object.keys(plugin2.provides ?? {}), requires: [...plugin2.requires ?? []], optional: [...plugin2.optional ?? []] };
     const unavailable = registry2.unavailable.get(plugin2.manifest.id);
     return {
       ...plugin2.manifest,
@@ -62962,7 +63296,7 @@ function pluginCatalog(registry2, installed) {
         generators: (plugin2.generators ?? []).map((generator) => generator.id),
         events: (plugin2.events ?? []).map((event) => event.id),
         skills: (plugin2.skills ?? []).map((skill) => skill.id),
-        services,
+        services: services2,
         settings: plugin2.settings ? `plugins.settings.${plugin2.manifest.id}` : null,
         strings: Object.keys(plugin2.strings ?? {}).sort(),
         errors: (plugin2.errors ?? []).map((error2) => error2.code)
@@ -62979,7 +63313,7 @@ function pluginCatalog(registry2, installed) {
   }));
   return [...loaded.filter((plugin2) => plugin2.core), ...disabledCore, ...loaded.filter((plugin2) => !plugin2.core), ...others];
 }
-const discovery = { scope: "workspace", discovery: true, mutating: false };
+const discovery$1 = { scope: "workspace", discovery: true, mutating: false };
 const commandArgument = [{ name: "command", description: "A command id from the catalog." }];
 function describe(command2) {
   const { id: id2, description: description2, usage, options: options2, args, output: output2, errors: errors2 } = command2;
@@ -63008,13 +63342,13 @@ function catalogCommands(registry2) {
     skills: [...registry2.skills.keys()]
   });
   return [
-    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery, args: commandArgument, errors: ["UNKNOWN_COMMAND"], run(args) {
+    { id: "help", description: "Discover commands and usage without prompts.", usage: "help [command]", ...discovery$1, args: commandArgument, errors: ["UNKNOWN_COMMAND"], run(args) {
       arity(args, 0, 1);
       if (!args[0]) return catalog();
       const command2 = registry2.resolveCommand(args[0]);
       return { ...describe(command2), globalOptions: globalOptionMetadata };
     } },
-    { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", ...discovery, run(args) {
+    { id: "schema", description: "Machine-readable capability catalog.", usage: "schema", ...discovery$1, run(args) {
       arity(args, 0);
       const builtIn = errorCodes.map((code2) => {
         const { exitCode, category, retryable: retryable2, summary } = errorCatalog[code2];
@@ -63024,88 +63358,112 @@ function catalogCommands(registry2) {
       const { commands: commands2, ...rest } = catalog();
       return { ...rest, commands: [...registry2.commands.values()].map((command2, index2) => ({ ...commands2[index2], inputSchema: commandInputSchema(command2) })), errors: [...builtIn, ...contributed] };
     } },
-    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery, run(args) {
+    { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery$1, run(args) {
       arity(args, 0);
       return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } }
   ];
 }
 const hostNamespaces = [...hostEventNamespaces];
-const eventDelivery = "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.*, claude.* and plugin.* records are lifecycle phases; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.";
-function extensionCommands(registry2, services) {
+const eventDelivery = "Ordered, awaited, per-listener snapshots; failures become warnings. Obsidian-style vault.* records follow each committed write (new folders first, parent before child, then files in batch order); dry runs emit workspace.quick-preview instead. Once the metadata cache is loaded in the invocation, the vault.* records of each batch are followed by metadataCache.changed, metadataCache.deleted, metadataCache.resolve and one metadataCache.resolved. operation.*, command.* and plugin.* records are host lifecycle phases, and the claude core plugin's claude.* records are the phases of each Claude invocation; workspace.* records are Obsidian workspace analogues (file-open, quick-preview, layout-ready, quit, project-change). Host namespaces are host-owned: plugins observe them but emit only their own events. onAny observes all events; replay reads bounded invocation history. No persistent replay. Responses include only vault.* records by default; --events none|changes|all or settings.events selects the output without changing delivery or replay.";
+function extensionCommands(registry2, services2) {
   return [
-    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery, run(args, _, { events: events2 }) {
+    { id: "events", description: "List invocation event contracts.", usage: "events", ...discovery$1, run(args, _, { events: events2 }) {
       arity(args, 0);
       return { events: events2.ids(), contracts: events2.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
-    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery, async run(args) {
+    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery$1, async run(args) {
       arity(args, 0);
-      return { plugins: pluginCatalog(registry2, await services.installedPlugins()) };
+      return { plugins: pluginCatalog(registry2, await services2.installedPlugins()) };
     } }
   ];
 }
-function interactionCommands(services) {
-  const config2 = services.loaded.config;
-  return [{
-    id: "interactions",
-    description: "Manage reusable Markdown interaction definitions for executable UI behavior.",
-    usage: "interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]",
-    ...libraryMetadata("interaction"),
-    options: { ...libraryOptions, event: option$1.string("Browser event for create.", { enum: interactionEvents }) },
-    errors: ["INVALID_INTERACTION", "DUPLICATE_INTERACTION", "UNKNOWN_INTERACTION", "CONFLICT"],
-    async run(args, flags) {
-      const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? config2.paths.interactions;
-      ensure(flags.from === void 0 || action2 === "import", "INVALID_ARGUMENT", "--from requires interactions import.");
-      ensure(flags.out === void 0 || action2 === "export", "INVALID_ARGUMENT", "--out requires interactions export.");
-      ensure(flags.event === void 0 || action2 === "create", "INVALID_ARGUMENT", "--event requires interactions create.");
-      const library = services.interactions;
-      if (action2 === "list") {
-        arity(args, 0, 1);
-        const definitions2 = await library.list(directory);
-        return {
-          directory,
-          count: definitions2.length,
-          defaults: defaultInteractionIds,
-          status: definitions2.length ? "ready" : "empty",
-          ...!definitions2.length ? { nextStep: `Run interactions init --library ${directory}, or add a Markdown interaction definition.` } : {},
-          interactions: definitions2.map((definition2) => ({
-            id: definition2.id,
-            event: definition2.event,
-            sourcePath: definition2.sourcePath,
-            actions: definition2.actions.map((action22) => action22.type),
-            descriptionSummary: definition2.description.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() ?? ""
-          }))
-        };
+const discovery = { scope: "workspace", discovery: true };
+function workflowCommands(services2) {
+  const config2 = services2.loaded.config;
+  return [
+    {
+      id: "config",
+      description: "Inspect the validated effective configuration and its source path.",
+      usage: "config",
+      ...discovery,
+      mutating: false,
+      errors: ["INVALID_CONFIG"],
+      run(args) {
+        arity(args, 0);
+        return { ...services2.loaded, sections: services2.configSections() };
       }
-      if (action2 === "init") {
-        arity(args, 1);
-        return { directory, ...await library.init(directory) };
+    },
+    {
+      id: "setup",
+      description: "Install The Forge into this workspace and initialize missing configuration, skills, templates and project guidance.",
+      usage: "[--root project] setup [--dry-run]",
+      ...discovery,
+      mutating: true,
+      errors: ["INVALID_SETUP"],
+      run(args) {
+        arity(args, 0);
+        return services2.setup();
       }
-      if (action2 === "inspect") {
-        arity(args, 2);
-        return library.inspect(directory, args[1]);
+    },
+    {
+      id: "project",
+      description: "Manage TypeScript library projects and add tested domain/application components.",
+      usage: "project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]",
+      scope: "workspace",
+      discovery: false,
+      mutating: true,
+      defaultAction: "list",
+      errors: ["INVALID_PROJECT", "INVALID_PROJECT_NAME", "INVALID_PROJECT_CONTEXT", "PROJECT_EXISTS", "PROJECT_NOT_FOUND", "PROJECT_REQUIRED", "STALE_PROJECT_CONTEXT", "INVALID_NAME", "PLUGIN_UNAVAILABLE"],
+      actions: {
+        list: { description: "List managed projects.", mutating: false },
+        create: { description: "Create a self-contained TypeScript project." },
+        open: { description: "Select a project for file commands and generators." },
+        current: { description: "Report the selected project.", mutating: false },
+        close: { description: "Clear the project selection." },
+        inspect: { description: "Describe a project, or the selected one.", mutating: false },
+        component: { description: "Add a tested domain or application component to a project." }
+      },
+      args: [{ name: "action", description: "list (default), create, open, current, close, inspect or component.", enum: ["list", "create", "open", "current", "close", "inspect", "component"] }, { name: "target", description: "A project id, or the component name." }, { name: "name", description: "The component name when a project id precedes it." }],
+      options: { kind: option$1.string("Component kind for project component.", { enum: ["domain", "application"], default: "domain" }) },
+      async run(args, flags) {
+        const action2 = args[0] ?? "list";
+        if (action2 !== "component") ensure(flags.kind === void 0, "INVALID_ARGUMENT", "--kind is only valid with project component.");
+        if (action2 === "list") {
+          arity(args, 0, 1);
+          return { directory: config2.paths.projects, projects: await services2.projects.list() };
+        }
+        if (action2 === "current") {
+          arity(args, 1);
+          return { project: await services2.projects.current() };
+        }
+        if (action2 === "open") {
+          arity(args, 2);
+          return services2.projects.open(args[1]);
+        }
+        if (action2 === "close") {
+          arity(args, 1);
+          return services2.projects.close();
+        }
+        if (action2 === "inspect") {
+          arity(args, 1, 2);
+          return args[1] ? services2.projects.inspect(args[1]) : services2.projects.requireCurrent();
+        }
+        if (action2 === "create") {
+          arity(args, 2);
+          return services2.projects.create(args[1]);
+        }
+        ensure(action2 === "component", "INVALID_ARGUMENT", "Use project list, inspect, create, open, current, close, or component.");
+        arity(args, 2, 3);
+        const kind = value$3(flags, "kind") ?? "domain";
+        ensure(kind === "domain" || kind === "application", "INVALID_ARGUMENT", "--kind must be domain or application.");
+        const name2 = args.length === 3 ? args[1] : (await services2.projects.requireCurrent()).name;
+        return services2.projects.component(name2, args.length === 3 ? args[2] : args[1], kind);
       }
-      if (action2 === "validate") {
-        arity(args, 1);
-        return library.validate(directory);
-      }
-      if (action2 === "create") {
-        arity(args, 2);
-        const event = value$2(flags, "event");
-        ensure(event === void 0 || interactionEvents.includes(event), "INVALID_ARGUMENT", `--event must be one of: ${interactionEvents.join(", ")}.`);
-        return library.create(directory, args[1], event);
-      }
-      if (action2 === "import") {
-        arity(args, 1);
-        return library.import(value$2(flags, "from") ?? config2.paths.interactionImports, directory);
-      }
-      ensure(action2 === "export", "INVALID_ARGUMENT", "Use interactions list, init, inspect, validate, create, import, or export.");
-      arity(args, 1);
-      return library.export(directory, value$2(flags, "out") ?? config2.paths.interactionExports);
     }
-  }];
+  ];
 }
-function workflowsCommands(services) {
+function workflowsCommands(services2) {
   return [{
     id: "workflows",
     description: "Discover project-owned CI workflows and synchronize their generated GitHub entrypoints; --check reports drift.",
@@ -63126,11 +63484,11 @@ function workflowsCommands(services) {
       ensure(flags.check === void 0 || action2 === "sync", "INVALID_ARGUMENT", "--check requires workflows sync.");
       if (action2 === "list") {
         arity(args, 0, 1);
-        return services.workflows.list();
+        return services2.workflows.list();
       }
       ensure(action2 === "sync", "INVALID_ARGUMENT", "Use workflows list or workflows sync [--check].");
       arity(args, 1);
-      return flags.check === true ? services.workflows.check() : services.workflows.sync();
+      return flags.check === true ? services2.workflows.check() : services2.workflows.sync();
     }
   }];
 }
@@ -63164,9 +63522,12 @@ function replaceUniqueLiteral(text2, find, replacement2) {
   const [offset] = matches2;
   return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
 }
+function encodeText(text2) {
+  return new TextEncoder().encode(text2);
+}
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
-  const encoding = value$2(flags, "encoding") ?? "utf8";
+  const encoding = value$3(flags, "encoding") ?? "utf8";
   ensure(["utf8", "base64"].includes(encoding), "INVALID_ENCODING", "Use utf8 or base64. --from copies raw bytes by default.");
   if (encoding === "base64") {
     const text2 = Buffer.from(bytes).toString("utf8").trim();
@@ -63187,7 +63548,7 @@ const reading = { scope: "project", discovery: false, mutating: false };
 const writing = { scope: "project", discovery: false, mutating: true };
 const readParts = ["body"];
 function selectedParts(flags, kind) {
-  const requested = value$2(flags, "parts");
+  const requested = value$3(flags, "parts");
   if (requested === void 0) return /* @__PURE__ */ new Set();
   const parts = requested.split(",").map((part) => part.trim());
   ensure(parts.every((part) => readParts.includes(part)), "INVALID_ARGUMENT", `--parts accepts a comma-separated list of: ${readParts.join(", ")}.`);
@@ -63222,10 +63583,10 @@ function documentCommands() {
       },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 0);
-        const kind = value$2(flags, "kind"), glob = value$2(flags, "path");
+        const kind = value$3(flags, "kind"), glob = value$3(flags, "path");
         ensure(kind === void 0 || fileKinds.includes(kind), "INVALID_ARGUMENT", `--kind must be one of: ${fileKinds.join(", ")}.`);
         const matches2 = glob === void 0 ? () => true : pathGlob(glob);
-        const pager = new Pager({ limit: integer$1(flags, "limit", 1), cursor: value$2(flags, "cursor") }, { command: "list", kind: kind ?? null, path: glob ?? null }, (path) => [path]);
+        const pager = new Pager({ limit: integer$1(flags, "limit", 1), cursor: value$3(flags, "cursor") }, { command: "list", kind: kind ?? null, path: glob ?? null }, (path) => [path]);
         for (const path of await workspace2.files.list()) if ((!kind || fileKind(path) === kind) && matches2(path)) pager.offer(path);
         const nextCursor = pager.nextCursor();
         return { files: pager.items.map((path) => ({ path, kind: fileKind(path) })), ...nextCursor === void 0 ? {} : { nextCursor } };
@@ -63284,7 +63645,7 @@ function documentCommands() {
       errors: ["CONFLICT", "INVALID_INPUT", "INVALID_ENCODING", "INVALID_FRONTMATTER", "INVALID_CANVAS", "INVALID_BASE"],
       async run(args, flags, context) {
         arity(args, 1);
-        return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value$2(flags, "if-match") }], { diff: true });
+        return context.workspace.write([{ path: args[0], bytes: await content(flags, context), expectedRevision: value$3(flags, "if-match") }], { diff: true });
       }
     },
     {
@@ -63299,15 +63660,15 @@ function documentCommands() {
         arity(args, 1);
         const path = args[0];
         ensure(["markdown", "text"].includes(fileKind(path)), "UNSUPPORTED_EDIT", "Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.");
-        const revision = value$2(flags, "if-match", true);
+        const revision = value$3(flags, "if-match", true);
         return workspace2.edit(path, revision, (bytes) => {
           const text2 = utf8Text(bytes);
           if (flags.append) {
             ensure(flags.find === void 0 && flags.replace === void 0, "INVALID_INPUT", "Do not combine append and replace.");
-            return encodeText(text2 + value$2(flags, "content", true));
+            return encodeText(text2 + value$3(flags, "content", true));
           }
           ensure(flags.content === void 0, "INVALID_INPUT", "--content requires --append.");
-          return encodeText(replaceUniqueLiteral(text2, value$2(flags, "find", true), value$2(flags, "replace", true)));
+          return encodeText(replaceUniqueLiteral(text2, value$3(flags, "find", true), value$3(flags, "replace", true)));
         });
       }
     },
@@ -63322,9 +63683,9 @@ function documentCommands() {
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
         ensure(fileKind(args[0]) === "markdown", "UNSUPPORTED_EDIT", "Properties require a Markdown note.");
-        const changes = parseJson(value$2(flags, "set", true));
+        const changes = parseJson(value$3(flags, "set", true));
         ensure(isRecord(changes), "INVALID_INPUT", "--set must be a JSON object.");
-        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
+        return workspace2.edit(args[0], value$3(flags, "if-match", true), (bytes) => workspace2.codec.properties(bytes, changes));
       }
     },
     {
@@ -63337,8 +63698,8 @@ function documentCommands() {
       options: { pointer: option$1.string("JSON Pointer to set; /- appends to an existing array.", { required: true }), value: option$1.string("JSON value to set.", { required: true }), "if-match": ifMatch$1(true) },
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
-        const pointer2 = value$2(flags, "pointer", true), data = parseJson(value$2(flags, "value", true));
-        return workspace2.edit(args[0], value$2(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer2, data));
+        const pointer2 = value$3(flags, "pointer", true), data = parseJson(value$3(flags, "value", true));
+        return workspace2.edit(args[0], value$3(flags, "if-match", true), (bytes) => workspace2.codec.patch(args[0], bytes, pointer2, data));
       }
     }
   ];
@@ -63347,7 +63708,7 @@ const ifMatch = option$1.string("SHA-256 revision of the source file (from read)
 const linkOptions = { "if-match": ifMatch, "no-update-links": option$1.boolean("Move without rewriting links to the moved files.") };
 const vaultWrite = { scope: "project", discovery: false, mutating: true };
 const moveErrors = ["NOT_FOUND", "CONFLICT", "DESTINATION_EXISTS", "PROTECTED_PATH", "INVALID_MOVE"];
-const guard = (flags, dryRun) => value$2(flags, "if-match", !dryRun);
+const guard = (flags, dryRun) => value$3(flags, "if-match", !dryRun);
 function vaultCommands() {
   return [
     {
@@ -63396,24 +63757,21 @@ function vaultCommands() {
     }
   ];
 }
-function commands(registry2, services) {
+function commands(registry2, services2) {
   return [
-    ...workflowCommands(services),
-    ...uiCommands(services),
-    ...dataSourceCommands(services),
-    ...interactionCommands(services),
-    ...workflowsCommands(services),
+    ...workflowCommands(services2),
+    ...workflowsCommands(services2),
     ...catalogCommands(registry2),
     ...documentCommands(),
     ...vaultCommands(),
     generationCommand(registry2),
-    ...extensionCommands(registry2, services)
+    ...extensionCommands(registry2, services2)
   ];
 }
 function invocationPolicy(command2, args, flags) {
   const mode = commandMode(command2, args);
   const help = flags.help === true;
-  const requestedProject = mode.projectOption === void 0 ? void 0 : value$2(flags, mode.projectOption);
+  const requestedProject = mode.projectOption === void 0 ? void 0 : value$3(flags, mode.projectOption);
   return {
     scope: help || mode.discovery || mode.scope === "workspace" ? "workspace" : "project",
     activatePlugins: !help && !mode.discovery,
@@ -63425,13 +63783,8 @@ const germanCommands = {
   schema: "Maschinenlesbarer Katalog der verfügbaren Funktionen.",
   config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
   setup: "The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.",
-  templates: "Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.",
   project: "TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.",
-  components: "Markdown-Komponenten verwalten, prüfen, importieren und exportieren.",
-  "data-sources": "Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.",
-  interactions: "Wiederverwendbare Markdown-Interaktionen für ausführbares UI-Verhalten verwalten.",
   workflows: "Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.",
-  claude: "Native Claude-Code-Agenten, Hooks und Plugins mit Revisionsschutz und installiertem CLI verwalten.",
   formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
   list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
   read: "Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
@@ -63444,25 +63797,11 @@ const germanCommands = {
   delete: "Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.",
   move: "Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.",
   rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
-  make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
+  make: "Einen registrierten Generator ausführen oder die Generatoren auflisten.",
   events: "Ereignisverträge des Aufrufs auflisten.",
   plugins: "Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten."
 };
-function libraryActions(command2, noun) {
-  return {
-    [`${command2} list`]: `Die ${noun}definitionen der Bibliothek auflisten.`,
-    [`${command2} init`]: `Die Bibliothek mit ${noun}definitionen als Ausgangspunkt anlegen.`,
-    [`${command2} inspect`]: `Eine geparste ${noun}definition zurückgeben.`,
-    [`${command2} validate`]: `Jede ${noun}definition prüfen.`,
-    [`${command2} create`]: `Eine neue ${noun}definition anlegen.`,
-    [`${command2} import`]: `${noun}definitionen aus dem Importverzeichnis in die Bibliothek kopieren.`,
-    [`${command2} export`]: `Die ${noun}definitionen der Bibliothek in das Exportverzeichnis kopieren.`
-  };
-}
 const germanActions = {
-  "templates list": "Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.",
-  "templates inspect": "Die erforderlichen und optionalen Werte einer Vorlage melden.",
-  "templates install": "Das Vorlagenpaket für den Planungsablauf in bin/templates installieren.",
   "project list": "Die verwalteten Projekte auflisten.",
   "project create": "Ein eigenständiges TypeScript-Projekt erstellen.",
   "project open": "Ein Projekt für Dateibefehle und Generatoren auswählen.",
@@ -63470,35 +63809,14 @@ const germanActions = {
   "project close": "Die Projektauswahl aufheben.",
   "project inspect": "Ein Projekt oder das ausgewählte Projekt beschreiben.",
   "project component": "Einem Projekt eine getestete Domain- oder Anwendungskomponente hinzufügen.",
-  ...libraryActions("components", "Komponenten"),
-  ...libraryActions("data-sources", "Datenquellen"),
-  ...libraryActions("interactions", "Interaktions"),
   "workflows list": "Die erstellten Workflows jedes verwalteten Projekts und ihre generierten Einstiegspunkte auflisten.",
-  "workflows sync": "Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben.",
-  "claude capabilities": "Unterstützte Formate, Bereiche und Vorgänge beschreiben.",
-  "claude agents": "Native Agenten auflisten, prüfen, erstellen, aktualisieren, entfernen, aktivieren, deaktivieren oder exportieren.",
-  "claude hooks": "Die native Hook-Konfiguration prüfen, kontrollieren und bearbeiten.",
-  "claude plugins": "Claude-Plugin-Bestandteile erstellen oder den Plugin-Lebenszyklus des installierten CLI ausführen.",
-  "claude marketplaces": "Plugin-Marktplätze über das installierte CLI hinzufügen, auflisten, entfernen oder aktualisieren.",
-  "claude runtime": "Das installierte Claude-Code-CLI melden, diagnostizieren, installieren oder aktualisieren."
-};
-const germanGenerators = {
-  form: "Typisierte Formulardefinition mit Zod-Validierung und HTML-Vorschau in einem Forge-Projekt.",
-  entity: "Domain-Entität mit Identität und Prüfung von Invarianten.",
-  "value-object": "Unveränderliches Wertobjekt mit Gleichheitsprüfung und Validierung.",
-  "use-case": "Anwendungsfall mit injiziertem Repository-Port.",
-  event: "Typisierte Ereignisdaten mit Laufzeitbeschreibung.",
-  plugin: "Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.",
-  document: "Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.",
-  ui: "Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.",
-  stories: "Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren.",
-  "data-source": "Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren."
+  "workflows sync": "Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben."
 };
 const germanGuidance = {
   attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
   otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
   textFiles: "UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.",
-  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*-, claude.*- und plugin.*-Ereignisse sind Lebenszyklusphasen; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
+  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
   eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
   setup: {
     "node bin/forge.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
@@ -63513,10 +63831,6 @@ const germanEvents = {
   "operation.started": "Ein geschützter Workspace-Vorgang hat begonnen, auch bei Probeläufen.",
   "operation.succeeded": "Ein geschützter Workspace-Vorgang wurde abgeschlossen, auch bei Probeläufen.",
   "operation.failed": "Ein geschützter Workspace-Vorgang ist fehlgeschlagen.",
-  "claude.started": "Ein Claude-Aufruf hat mit Prüfung oder Vorschau begonnen.",
-  "claude.succeeded": "Ein Claude-Aufruf oder eine geprüfte Vorschau wurde abgeschlossen.",
-  "claude.failed": "Prüfung, Ausführung oder Ausgabeverarbeitung von Claude ist fehlgeschlagen.",
-  "claude.executed": "Der Claude-Prozess hat einen Exit-Status geliefert, auch einen von null verschiedenen.",
   "vault.create": "Ein erfolgreicher Schreibvorgang hat eine Datei oder einen Ordner angelegt.",
   "vault.modify": "Ein erfolgreicher Schreibvorgang hat eine vorhandene Datei ersetzt.",
   "vault.delete": "Eine Datei oder ein Ordner wurde entfernt; Revision und Bytes einer Datei beschreiben ihren vorherigen Inhalt.",
@@ -63635,9 +63949,9 @@ const germanErrors = {
   INVALID_PLUGIN_CONFIG: { summary: "Die Plugin-Konfiguration ist ungültig.", hint: "Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs installierter Benutzer-Plugins ein; plugins listet sie auf." },
   INCOMPATIBLE_PLUGIN: { summary: "Das Plugin benötigt eine neuere Forge-Version.", hint: "Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin." },
   DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
-  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs eines Benutzer-Plugins sowie den Dienst-IDs jedes Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, claude, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from)." },
-  PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen Dienst, den kein aktiviertes Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt (plugins zeigt die Anbieter), oder deklarieren Sie ihn in requires des Plugins." },
-  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das in diesem Aufruf nicht verfügbar ist.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
+  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs eines Benutzer-Plugins sowie den Dienst-IDs jedes Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from)." },
+  PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen erforderlichen oder optionalen Dienst, den kein aktiviertes, verfügbares Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt, und machen Sie es verfügbar (plugins zeigt Anbieter und Zustände), oder deklarieren Sie den Dienst in requires oder optional des Plugins." },
+  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
   PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
@@ -63648,7 +63962,7 @@ const germanErrors = {
   DUPLICATE_EVENT: { summary: "Die Ereignis-ID ist bereits registriert.", hint: "Verwenden Sie eine eindeutige Ereignis-ID." },
   UNKNOWN_EVENT: { summary: "Das Ereignis ist nicht registriert.", hint: "Registrierte Ereignis-IDs zeigt events." },
   EVENT_RECURSION: { summary: "Ereignisbehandler haben die maximale Rekursionstiefe überschritten.", hint: "Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen." },
-  EVENT_OWNERSHIP: { summary: "Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.", hint: "Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*, claude.*) sendet der Host." },
+  EVENT_OWNERSHIP: { summary: "Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.", hint: "Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*) sendet der Host, die Ereignisse eines anderen Plugins dieses Plugin." },
   // Claude-Code-Definitionen
   INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
@@ -63688,8 +64002,8 @@ class Localizer {
   language;
   plugins;
   german(kind, id2) {
-    const kernel = kind === "commands" ? germanCommands : kind === "generators" ? germanGenerators : germanEvents;
-    return translated(kernel, id2) ?? this.plugins?.text("de", kind, id2);
+    const kernel = kind === "commands" ? germanCommands : kind === "events" ? germanEvents : void 0;
+    return (kernel && translated(kernel, id2)) ?? this.plugins?.text("de", kind, id2);
   }
   /**
    * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
@@ -63730,9 +64044,6 @@ class Localizer {
     if (this.language === "en" || !isRecord(data)) return data;
     if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.described("generators", data.generators), errors: this.errors(data.errors) };
     if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, generators: this.described("generators", data.generators) };
-    if (["components", "data-sources", "interactions"].includes(command2) && data.status === "empty" && typeof data.directory === "string" && typeof data.nextStep === "string") {
-      return { ...data, nextStep: `Führen Sie ${command2} init --library ${data.directory} aus oder fügen Sie eine Markdown-Definition hinzu.` };
-    }
     if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
     if (command2 === "events") return { ...data, contracts: this.described("events", data.contracts), delivery: germanGuidance.delivery };
     if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
@@ -63765,7 +64076,21 @@ class Localizer {
     return { code: code2, message: german.summary, hint: german.hint, retryable: definition2.retryable, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin];
+const corePlugins = [
+  templatesPlugin,
+  scaffoldsPlugin,
+  uiPlugin,
+  dataSourcesPlugin,
+  claudePlugin,
+  basesPlugin,
+  skillsPlugin,
+  searchPlugin,
+  linksPlugin,
+  agentsPlugin,
+  connectorPlugin,
+  azureDevOpsPlugin,
+  backlogPlugin
+];
 async function run() {
   const tokens = process.argv.slice(2);
   const registry2 = new Registry(), events2 = new EventBus(new NodeEventScope());
@@ -63776,16 +64101,16 @@ async function run() {
   let eventLevel = "changes";
   try {
     const bootstrap = parseBootstrap(tokens);
-    const requestedLanguage = value$2(bootstrap.flags, "lang");
+    const requestedLanguage = value$3(bootstrap.flags, "lang");
     if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
-    const requestedEvents = value$2(bootstrap.flags, "events");
+    const requestedEvents = value$3(bootstrap.flags, "events");
     if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
     if (bootstrap.flags.version) {
       const parsed2 = parseArguments(tokens, globalOptions);
       ensure(parsed2.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
       result = { ok: true, data: { name: "The Forge", version: metadata$2.version, apiVersion: 1 } };
     } else {
-      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$2(bootstrap.flags, "root") });
+      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$3(bootstrap.flags, "root") });
       const config2 = loaded.config;
       localizer = new Localizer(requestedLanguage !== void 0 ? language(requestedLanguage) : config2.settings.language);
       config2.settings.language = localizer.language;
@@ -63803,57 +64128,52 @@ async function run() {
       });
       let environment;
       const skipUserPlugins = bootstrap.flags["no-plugins"] === true;
-      const services = {
+      const scaffolder = (action2) => registry2.requireService(projectScaffolderService, `project ${action2}`);
+      const services2 = {
         loaded,
         files,
-        templates: new MarkdownTemplates(),
         get projects() {
-          return new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold }, events2);
-        },
-        get dataSources() {
-          return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer());
-        },
-        get interactions() {
-          return new InteractionLibrary(environment, new MarkdownInteractionDefinitions());
+          return new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
         },
         get workflows() {
           return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer);
         },
-        get uiLibrary() {
-          return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
-            componentPaths: (definitions2, options2) => definitions2.map((definition2) => `${options2.outputDirectory}/${componentArtifact(definition2, options2.framework).fileName}`),
-            generate: (definitions2, options2) => [
-              ...options2.storiesOnly ? [] : renderUiComponents(definitions2, options2.framework, options2.outputDirectory, options2.interactions),
-              ...options2.storybook ? renderUiStories(definitions2, options2.framework, options2.outputDirectory, options2.storiesDirectory) : []
-            ]
-          }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config2.paths.interactions);
+        setup: async () => {
+          const templates2 = registry2.service(templateInstallerService);
+          if (templates2 === void 0) events2.warn("The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.");
+          return new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], templates2?.setupTemplates() ?? null).run();
         },
-        installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
-        setup: async () => new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], workflowTemplates).run(),
         configSections: () => registry2.settings.sections(),
         installedPlugins: () => installedPlugins("bin/plugins", config2.plugins.enabled, skipUserPlugins, files, (message2) => events2.warn(message2))
       };
-      for (const generator of [...generators, ...libraryGenerators(services)]) registry2.add(registry2.generators, generator);
-      for (const command22 of commands(registry2, services)) registry2.add(registry2.commands, command22);
-      registry2.add(registry2.commands, claudeCommand({ agentCodec: { parse: parseClaudeAgent, render: renderClaudeAgent }, target: claudeTarget }));
+      for (const command22 of commands(registry2, services2)) registry2.add(registry2.commands, command22);
       registerCorePlugins(registry2, events2, corePlugins, {
         skills: registrySkills(registry2),
         fileDates: nodeFileDates,
+        openFiles: (root, warn) => NodeFiles.at(root, warn),
+        operationId: () => events2.nextOperationId(),
         locks: nodeLockFiles,
         http: new FetchHttpClient(),
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events2);
-      config2.plugins.settings = await registry2.configure(config2.plugins.settings, async () => (await services.installedPlugins()).map((entry2) => entry2.manifest.id), (message2) => events2.warn(message2));
+      config2.plugins.settings = await registry2.configure(config2.plugins.settings, async () => (await services2.installedPlugins()).map((entry2) => entry2.manifest.id), (message2) => events2.warn(message2));
       await registry2.publishRegistered(events2);
       const id2 = bootstrap.args[0] ?? "help";
       const command2 = registry2.resolveCommand(id2);
       const actionArgs2 = hasActionOptions(command2) ? parseArguments(tokens, { ...globalOptions, ...optionTypes(command2.options) }, true).args.slice(1) : [];
-      const parsed2 = parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command2, actionArgs2)) });
-      const parsedLanguage = value$2(parsed2.flags, "lang");
+      const parsed2 = (() => {
+        try {
+          return parseArguments(tokens, { ...globalOptions, ...optionTypes(commandOptions(command2, actionArgs2)) });
+        } catch (error2) {
+          ensureKnownAction(command2, actionArgs2);
+          throw error2;
+        }
+      })();
+      const parsedLanguage = value$3(parsed2.flags, "lang");
       localizer = new Localizer(parsedLanguage !== void 0 ? language(parsedLanguage) : localizer.language, registry2.catalog);
       config2.settings.language = localizer.language;
-      const parsedEvents = value$2(parsed2.flags, "events");
+      const parsedEvents = value$3(parsed2.flags, "events");
       if (parsedEvents !== void 0) eventLevel = config2.settings.events = eventOutput(parsedEvents);
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed2.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
@@ -63866,17 +64186,16 @@ async function run() {
         await metadataCommits?.committed(changes);
       } });
       const policy = invocationPolicy(command2, parsed2.args.slice(1), parsed2.flags);
-      const projects = new ProjectService(files, environment, config2.paths.projects, { project: projectScaffold, component: componentScaffold }, events2);
-      const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects.inspect(policy.requestedProject) : await projects.current();
+      const projects2 = new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
+      const project2 = policy.scope === "workspace" ? null : policy.requestedProject !== void 0 ? await projects2.inspect(policy.requestedProject) : await projects2.current();
       const scopedFiles = project2 ? new ScopedFiles(files, project2.directory) : files;
       const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), { workspaceRoot: project2 === null });
       const metadataEvents = new MetadataCacheEvents(events2, vaultMetadata);
       metadataCommits = project2 ? scopedCommitObserver(metadataEvents, project2.directory) : metadataEvents;
       const workspace2 = project2 ? environment.within(scopedFiles, minpath.resolve(files.root, project2.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project2 ? minpath.resolve(files.root, project2.directory) : files.root, project: project2 };
-      const claude2 = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace2.dryRun }, events2);
       const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events: events2, project: project2 });
-      const context = { workspace: workspace2, environment, events: events2, claude: claude2, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
+      const context = { workspace: workspace2, environment, events: events2, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));

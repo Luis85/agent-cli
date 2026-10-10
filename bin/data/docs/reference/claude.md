@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-`claude` manages native Claude Code definitions and invokes an installed Claude Code CLI for plugin lifecycle operations. Native file operations use Forge's revisions, dry runs, path containment and post-commit events. See [manage Claude Code](../how-to/manage-claude.md) for complete editing workflows.
+`claude` manages native Claude Code definitions and invokes an installed Claude Code CLI for plugin lifecycle operations. It is delivered by the bundled `claude` [core plugin](plugins.md#bundled-core-plugins), which also owns the `claude.*` lifecycle events and provides the `claude.lifecycle` service to trusted plugins; `{"plugins": {"disabled": ["claude"]}}` removes the command and events. The Claude agent and hook validators stay in the kernel domain (`src/domain/claude/`), so the `agents` plugin validates generated agents without depending on this plugin. Native file operations use Forge's revisions, dry runs, path containment and post-commit events. See [manage Claude Code](../how-to/manage-claude.md) for complete editing workflows.
 
 ```sh
 node bin/forge.js claude capabilities --json

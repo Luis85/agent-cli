@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/application/claude/lifecycle.ts';
-import type { ClaudeRuntimeResult } from '../../src/application/claude/runtime.ts';
+import { ClaudeLifecycle } from '../../src/plugins/claude/application/lifecycle.ts';
+import type { ClaudeLifecycleRequest } from '../../src/application/plugins/claude-lifecycle.ts';
+import type { ClaudeRuntimeResult } from '../../src/plugins/claude/application/runtime.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
-import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
+import { claudeEvents } from '../../src/plugins/claude/application/events.ts';
 import { AppError } from '../../src/domain/shared/errors.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 
@@ -10,9 +11,9 @@ const scope = { cwd: '/vault/selected', dryRun: false };
 const successful = { exitCode: 0, stdout: '{"outcome":"ok"}', stderr: '' };
 function setup(dryRun = false, result: ClaudeRuntimeResult = successful) {
   const events = new EventBus(new NodeEventScope());
-  registerHostEvents(events);
+  events.defineAll(claudeEvents);
   const run = vi.fn(async () => result), runtime = vi.fn(() => ({ run }));
-  return { events, run, runtime, service: new ClaudeLifecycle(runtime, { ...scope, dryRun }, events) };
+  return { events, run, runtime, service: new ClaudeLifecycle(runtime, { ...scope, dryRun }, events, () => events.nextOperationId()) };
 }
 
 describe('Claude host lifecycle notifications', () => {
@@ -99,11 +100,11 @@ describe('Claude host lifecycle notifications', () => {
 
   it('correlates concurrent completions using invocation-wide operation ids', async () => {
     const events = new EventBus(new NodeEventScope());
-    registerHostEvents(events);
+    events.defineAll(claudeEvents);
     expect(events.nextOperationId()).toBe(1);
     let finishFirst!: (result: ClaudeRuntimeResult) => void;
     const pending = new Promise<ClaudeRuntimeResult>(resolve => { finishFirst = resolve; });
-    const service = new ClaudeLifecycle(() => ({ run: async args => args[0] === 'first' ? pending : successful }), scope, events);
+    const service = new ClaudeLifecycle(() => ({ run: async args => args[0] === 'first' ? pending : successful }), scope, events, () => events.nextOperationId());
     const first = service.execute({ args: ['first'] });
     await service.execute({ args: ['second'] });
     finishFirst(successful);
@@ -118,7 +119,7 @@ describe('Claude host lifecycle notifications', () => {
 
   it('supports isolated clients with no registered host notifications', async () => {
     const events = new EventBus(new NodeEventScope());
-    const service = new ClaudeLifecycle(() => ({ run: async () => successful }), scope, events);
+    const service = new ClaudeLifecycle(() => ({ run: async () => successful }), scope, events, () => events.nextOperationId());
     await expect(service.execute({ args: ['--version'] })).resolves.toMatchObject({ executed: true });
     expect(events.history).toEqual([]);
     expect(events.warnings).toEqual([]);

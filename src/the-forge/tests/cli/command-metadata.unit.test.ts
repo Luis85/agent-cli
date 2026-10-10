@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandAnnotations, commandInputSchema, commandMode, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
+import { commandAnnotations, commandInputSchema, commandMode, ensureKnownAction, hasActionOptions, validateCommandMetadata, type CommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { errorCodes } from '../../src/domain/shared/error-catalog.ts';
 import { jsonSchemaDialect, schemaIssues, validateJsonValue, type JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { builtinCommands } from '../support/builtin-commands.ts';
@@ -23,7 +23,15 @@ describe('built-in command metadata', () => {
     expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, defaultAction: 'list', actions: { list: { mutating: false, readOnlyHint: true }, install: { scope: 'project', mutating: true, readOnlyHint: false } } });
     expect(commandAnnotations(commands.get('bases')!)).toMatchObject({ mutating: false, readOnlyHint: true });
     expect(commandAnnotations(commands.get('make')!)).toMatchObject({ mutating: true, readOnlyHint: false });
+    // The kernel make command stays generic; each generator documents its own usage.
+    expect(commands.get('make')).toMatchObject({ description: 'Run a registered generator, or list the generators.', usage: 'make [generator Name] [--out directory]' });
+    // Library generators keep the shared review controls after --project and --library, before their own options.
+    const optionOrder = (id: string) => Object.keys(commandAnnotations(commands.get('make')!).actions![id]!.options!);
+    const library = ['out', 'project', 'library', 'revisions-from', 'plan', 'plan-out', 'check'];
+    for (const id of ['ui', 'stories']) expect(optionOrder(id)).toEqual([...library, 'framework', 'stories', 'stories-out', 'interactions-library']);
+    expect(optionOrder('data-source')).toEqual([...library, 'test-data-out']);
     expect(commandAnnotations(commands.get('make')!).actions).toMatchObject({
+      document: { usage: expect.stringContaining('make document Title --template name.md') }, 'data-source': { usage: expect.stringContaining('make data-source <id>') },
       entity: { scope: 'project', mutating: true, usage: 'make entity <Name>', options: { out: { type: 'string' } } }, plugin: { scope: 'workspace' }, ui: { scope: 'project', projectOption: 'project' },
     });
   });
@@ -90,7 +98,19 @@ describe('command modes', () => {
     expect(commandMode(command, ['constructor'])).toEqual({ scope: 'project', discovery: false, mutating: true });
   });
 
+  it('reports an unknown action with the declared code and resolves the action before options', () => {
+    const closed: CommandMetadata = { id: 'reports', description: 'Reports', usage: 'reports', actions: command.actions!, unknownAction: 'UNKNOWN_GENERATOR' };
+    expect(hasActionOptions(closed)).toBe(true);
+    expect(hasActionOptions(command)).toBe(false);
+    expect(() => ensureKnownAction(closed, ['missing', 'Name'])).toThrow(expect.objectContaining({ code: 'UNKNOWN_GENERATOR', message: 'missing' }));
+    for (const args of [[], ['publish'], ['--template', 'x.md']]) expect(() => ensureKnownAction(closed, args)).not.toThrow();
+    expect(() => ensureKnownAction(command, ['missing'])).not.toThrow();
+    expect(commands.get('make')!.unknownAction).toBe('UNKNOWN_GENERATOR');
+  });
+
   it.each([
+    [{ unknownAction: 'UNKNOWN_GENERATOR' }, 'unknownAction must be UNKNOWN_GENERATOR or INVALID_ARGUMENT for a command with actions'],
+    [{ actions: { list: { description: 'List' } }, unknownAction: 'CONFLICT' }, 'unknownAction must be UNKNOWN_GENERATOR or INVALID_ARGUMENT'],
     [{ scope: 'global' }, 'scope must be workspace or project'],
     [{ options: { label: 'string' } }, 'requires type string or boolean and a description'],
     [{ options: { label: { type: 'string', description: 'L', default: true } } }, 'default must match its type'],

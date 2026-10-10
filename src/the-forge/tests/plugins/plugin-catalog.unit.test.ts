@@ -1,10 +1,10 @@
 import { expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { Registry, type PluginManifest } from '../../src/application/plugins/registry.ts';
 import { registerCorePlugins, registrySkills, type CorePlugin } from '../../src/application/plugins/core-plugins.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { pluginCatalog } from '../../src/presentation/cli/plugin-catalog.ts';
-import { offlineHost } from '../support/core-plugins.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Catalog test', author: 'Test' });
 const core = (id: string, contributions: ReturnType<CorePlugin['create']> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
@@ -12,7 +12,7 @@ const core = (id: string, contributions: ReturnType<CorePlugin['create']> = {}):
 it('lists every plugin with one state and a reason for each state but enabled, and rejects user plugins that reuse a core id', async () => {
   const registry = new Registry(), events = new EventBus(new NodeEventScope());
   const plugins = [core('bases', { provides: { 'bases.query': {} } }), core('search'), core('backlog', { requires: ['bases.query'] })];
-  registerCorePlugins(registry, events, plugins, { skills: registrySkills(registry), fileDates: () => () => Promise.reject(new Error('unused')), ...offlineHost }, ['bases']);
+  registerCorePlugins(registry, events, plugins, testHost({ skills: registrySkills(registry), fileDates: () => () => Promise.reject(new Error('unused')) }), ['bases']);
   registry.register({ manifest: manifest('quality') }, events);
   await registry.configure({}, async () => [], () => { throw new Error('A cascade from a disabled provider must not warn'); });
   const installed = [...['bases', 'search', 'quality', 'drafts'].map(id => ({ manifest: manifest(id), skipped: false })), { manifest: manifest('later'), skipped: true }];

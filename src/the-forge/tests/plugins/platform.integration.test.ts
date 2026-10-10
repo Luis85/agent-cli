@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { testHost } from '../support/core-plugins.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { Registry, type CommandContext, type Plugin, type PluginContext, type PluginManifest } from '../../src/application/plugins/registry.ts';
@@ -7,7 +8,7 @@ import { AppError } from '../../src/domain/shared/errors.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
-import { offlineHost } from '../support/core-plugins.ts';
+import { reviewOptions } from '../../src/application/generation/controls.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
@@ -59,7 +60,7 @@ describe('plugin services', () => {
   it('keeps a core plugin whose optional service provider is disabled', () => {
     const { registry, events } = setup();
     const core = (id: string, contributions: Partial<Plugin> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
-    registerCorePlugins(registry, events, [core('hub', { provides: { 'hub.api': {} } }), core('user', { optional: ['hub.api'] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['hub']);
+    registerCorePlugins(registry, events, [core('hub', { provides: { 'hub.api': {} } }), core('user', { optional: ['hub.api'] })], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), ['hub']);
     expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['user']);
     expect(registry.disabled.map(plugin => plugin.id)).toEqual(['hub']);
   });
@@ -89,6 +90,16 @@ describe('plugin generators', () => {
     // Each generator parses only its own options, so another generator's --framework may be a boolean.
     registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, review: true, generate: () => [] }] }, events);
     expect(registry.generators.get('quality.page')).toMatchObject({ review: true });
+  });
+
+  it('lets only a reviewed generator place the host review controls among its options', () => {
+    const { registry, events } = setup();
+    const generator = (id: string, review: boolean, options: Record<string, { type: 'string' | 'boolean'; description: string }>) => ({ id, description: 'Page', review, options, generate: () => [] });
+    registry.register({ manifest: manifest('quality'), generators: [generator('quality.page', true, { project: { type: 'string', description: 'P' }, ...reviewOptions, tone: { type: 'string', description: 'T' } })] }, events);
+    expect(Object.keys(registry.generators.get('quality.page')!.options!)).toEqual(['project', 'revisions-from', 'plan', 'plan-out', 'check', 'tone']);
+    for (const [id, review, options] of [['audit.page', false, reviewOptions], ['audit.copy', true, { ...reviewOptions, plan: { ...reviewOptions.plan } }]] as const) {
+      expect(() => registry.register({ manifest: manifest(id.split('.')[0]!), generators: [generator(id, review, options)] }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    }
   });
 });
 
@@ -225,7 +236,7 @@ describe('core plugins', () => {
 
   it('registers bundled plugins enabled by default with bare command ids and records disabled ones without contributions', () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [core('search'), core('links')], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['links']);
+    registerCorePlugins(registry, events, [core('search'), core('links')], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), ['links']);
     expect([...registry.commands.keys()]).toEqual(['search']);
     expect(registry.origins.get('search')).toBe('core');
     expect(registry.disabled.map(entry => entry.id)).toEqual(['links']);
@@ -234,7 +245,7 @@ describe('core plugins', () => {
 
   it('ignores unknown ids in plugins.disabled with a warning and rejects core claims from user plugins', () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['serach']);
+    registerCorePlugins(registry, events, [core('search')], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), ['serach']);
     expect([...registry.commands.keys()]).toEqual(['search']);
     expect(events.warnings).toEqual([expect.stringContaining('ignored serach')]);
     expect(() => registry.register({ manifest: { ...manifest('quality'), core: true } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
@@ -245,18 +256,18 @@ describe('core plugins', () => {
   it('keeps core plugin events in their own namespace', () => {
     const { registry, events } = setup();
     const event = { id: 'indexed', validate: (value: unknown): value is object => typeof value === 'object' };
-    expect(() => registerCorePlugins(registry, events, [core('search', { events: [event] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, [])).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    expect(() => registerCorePlugins(registry, events, [core('search', { events: [event] })], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), [])).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
   });
 
   it('migrates the skills command and bundled skills into the skills core plugin with German strings', async () => {
     const { registry, events } = setup();
-    registerCorePlugins(registry, events, [skillsPlugin], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, []);
+    registerCorePlugins(registry, events, [skillsPlugin], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), []);
     registry.register({ manifest: manifest('quality'), skills: [{ id: 'quality.review', content: 'Review.' }] }, events);
     expect([...registry.skills.keys()]).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'quality.review']);
     expect(await registry.commands.get('skills')!.run([], {}, context as PluginContext)).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'quality.review'] });
     expect(new Localizer('de', registry.catalog).command(registry.commands.get('skills')!).description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');
     const disabled = setup();
-    registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], { skills: registrySkills(disabled.registry), fileDates: unusedFileDates, ...offlineHost }, ['skills']);
+    registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], testHost({ skills: registrySkills(disabled.registry), fileDates: unusedFileDates }), ['skills']);
     expect(disabled.registry.commands.has('skills')).toBe(false);
     expect(disabled.registry.skills.size).toBe(0);
   });

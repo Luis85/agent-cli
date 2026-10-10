@@ -77,6 +77,11 @@ function readOnly<T>(implementation: T, id: string): T {
   return view as T;
 }
 
+/** The provider's read-only view of service `id`; the caller checked that `provider` provides it. */
+export function serviceView<T>(provider: ServiceNode, id: string): T {
+  return readOnly(provider.provides![id] as T, id);
+}
+
 /**
  * The lookup a plugin's context receives: only declared services, so dependencies stay visible in manifests. Each
  * service is handed out as a read-only view, so one consumer cannot change what another consumer or the provider sees.
@@ -90,8 +95,8 @@ export function pluginServices(node: ServiceNode, providers: ReadonlyMap<string,
     get<T>(id: string): T {
       declared(id);
       const provider = providers.get(id);
-      ensure(provider, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} uses service ${id}, which no enabled plugin provides.`, { plugin: node.manifest.id, service: id });
-      return readOnly(provider.provides![id] as T, id);
+      ensure(provider, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} uses service ${id}, which no enabled, available plugin provides.`, { plugin: node.manifest.id, service: id });
+      return serviceView<T>(provider, id);
     },
     has(id: string): boolean { declared(id); return providers.has(id); },
   };

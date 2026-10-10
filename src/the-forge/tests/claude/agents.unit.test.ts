@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { validateClaudeAgent } from '../../src/domain/claude/agents.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
+import { claudeAgentCodec } from '../../src/plugins/claude/infrastructure/agents.ts';
+import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
+
+const { parse: parseClaudeAgent, render: renderClaudeAgent } = claudeAgentCodec(new ObsidianDocuments());
 
 const metadata = { name: 'code-reviewer', description: 'Review changes for correctness.' };
 

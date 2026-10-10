@@ -3,15 +3,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
 import { describe, expect, it } from 'vitest';
-import { germanActions, germanCommands, germanEvents, germanGenerators } from '../../src/presentation/localization/catalog.ts';
+import { germanActions, germanCommands, germanEvents } from '../../src/presentation/localization/catalog.ts';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
-import { claudeCommand } from '../../src/presentation/claude/commands.ts';
-import { generators } from '../../src/infrastructure/generation/generators.ts';
-import { libraryGenerators } from '../../src/presentation/generation/library-generators.ts';
 import { Registry } from '../../src/application/plugins/registry.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
 import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
@@ -21,36 +18,32 @@ import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
+import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
+import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
+import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
+import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
+import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
-import { bundledCorePlugins, offlineHost } from '../support/core-plugins.ts';
+import { bundledCorePlugins, offlineHost, testHost } from '../support/core-plugins.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
-  it('covers every registered built-in command and generator', async () => {
+  it('covers every registered kernel command, action and event', async () => {
     const root = await mkdtemp(join(tmpdir(), 'forge-locale-catalog-'));
     try {
       const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
       const services: WorkflowServices = {
         loaded,
         get files(): never { throw new Error('Catalog must not access files'); },
-        get templates(): never { throw new Error('Catalog must not access templates'); },
         get projects(): never { throw new Error('Catalog must not access projects'); },
-        get uiLibrary(): never { throw new Error('Catalog must not access UI library'); },
-        get dataSources(): never { throw new Error('Catalog must not access data sources'); },
-        get interactions(): never { throw new Error('Catalog must not access interactions'); },
         get workflows(): never { throw new Error('Catalog must not access workflows'); },
-        async installTemplates() { throw new Error('Catalog must not install templates'); },
         async setup() { throw new Error('Catalog must not run setup'); },
         configSections: () => [],
         async installedPlugins() { throw new Error('Catalog must not list plugin directories'); },
       };
       const registry = new Registry();
-      const unavailable = (): never => { throw new Error('Catalog must not invoke management services'); };
-      const management = [claudeCommand({
-        agentCodec: { parse: unavailable, render: unavailable }, target: unavailable,
-      })];
-      const kernel = [...commands(registry, services), ...management];
+      const kernel = commands(registry, services);
       const ids = kernel.map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);
       // Every kernel action has a German description; make's actions are the generators below.
@@ -59,17 +52,23 @@ describe('built-in localization catalog coverage', () => {
       const bus = new EventBus(new NodeEventScope());
       registerHostEvents(bus);
       expect(Object.keys(germanEvents).sort()).toEqual(bus.ids());
-      expect(Object.keys(germanGenerators).sort()).toEqual([...generators, ...libraryGenerators(services)].map(generator => generator.id).sort());
+      // Every generator comes from a core plugin, which declares its own German strings (next test).
+      expect(registry.generators.size).toBe(0);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
   it('covers every command and error code of the bundled core plugins in German', () => {
     const registry = new Registry(), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
-    const plugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin];
+    const plugins = [
+      templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
+      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+    ];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
-    registerCorePlugins(registry, bus, plugins, { skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }, []);
+    registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }), []);
     for (const id of registry.commands.keys()) expect(registry.catalog.text('de', 'commands', id), id).toEqual(expect.any(String));
+    expect(registry.generators.size).toBeGreaterThan(0);
+    for (const id of registry.generators.keys()) expect(registry.catalog.text('de', 'generators', id), id).toEqual(expect.any(String));
     const german = new Localizer('de', registry.catalog);
     for (const command of registry.commands.values()) {
       for (const [action, { description }] of Object.entries(german.command(command).actions ?? {})) {

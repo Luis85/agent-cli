@@ -1,11 +1,7 @@
 import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { option, type CommandOption } from '../../application/plugins/command-metadata.ts';
-export const globalOptions = {
-  root: 'string', lang: 'string', events: 'string', json: 'boolean', 'no-json': 'boolean',
-  'dry-run': 'boolean', 'no-dry-run': 'boolean', 'no-plugins': 'boolean',
-  help: 'boolean', version: 'boolean',
-} as const;
+import { globalOptions } from '../../application/plugins/command-input.ts';
 /** The global options as help and schema describe them; routing options must precede the command. */
 export const globalOptionMetadata = {
   root: option.string('Workspace root to load bin/config.json from; must precede the command.'),

@@ -5,21 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
-import { ClaudeAgents } from '../../src/application/claude/agents.ts';
-import { DataSourceLibrary } from '../../src/application/data-sources/library.ts';
+import { ClaudeAgents } from '../../src/plugins/claude/application/agents.ts';
+import { DataSourceLibrary } from '../../src/plugins/data-sources/application/library.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
-import { InteractionLibrary } from '../../src/application/interactions/library.ts';
-import { UiLibrary } from '../../src/application/ui/library.ts';
+import { InteractionLibrary } from '../../src/plugins/ui/application/interactions/library.ts';
+import { UiLibrary } from '../../src/plugins/ui/application/components/library.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
-import { parseClaudeAgent, renderClaudeAgent } from '../../src/infrastructure/claude/agents.ts';
-import { MarkdownDataSourceDefinitions } from '../../src/infrastructure/data-sources/definitions.ts';
-import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sources/generator.ts';
+import { claudeAgentCodec } from '../../src/plugins/claude/infrastructure/agents.ts';
+import { MarkdownDataSourceDefinitions } from '../../src/plugins/data-sources/infrastructure/definitions.ts';
+import { TypeScriptDataSourceRenderer } from '../../src/plugins/data-sources/infrastructure/generator.ts';
 import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
-import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
-import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
+import { MarkdownInteractionDefinitions } from '../../src/plugins/ui/infrastructure/interactions/definitions.ts';
+import { MarkdownTemplates } from '../../src/plugins/templates/infrastructure/markdown.ts';
+import { MarkdownUiDefinitions } from '../../src/plugins/ui/infrastructure/components/definitions.ts';
+import { renderUiComponents } from '../../src/plugins/ui/infrastructure/components/renderers.ts';
 
 let root: string, workspace: Workspace;
 const documents = new ObsidianDocuments();
@@ -53,7 +53,7 @@ async function properties(path: string, changes: Record<string, unknown>) {
 describe('generated Markdown as editable Obsidian source', () => {
   it('keeps template note property types, quoted internal links, tags and authored body through guarded edits', async () => {
     const template = encodeText('---\ntitle: {{title}}\ntags: {{tags}}\naliases: {{aliases}}\nrelated: {{related}}\ncomplete: {{complete}}\npriority: {{priority}}\ncreated: {{date}}\n---\n# {{title}}\n');
-    const bytes = new MarkdownTemplates().render(template, {
+    const bytes = new MarkdownTemplates(parseMarkdownParts).render(template, {
       title: 'Engineering plan', date: '2026-10-07',
       values: { tags: ['engineering/review'], aliases: ['Plan'], related: '[[Architecture]]', complete: false, priority: 2 },
     });
@@ -67,6 +67,7 @@ describe('generated Markdown as editable Obsidian source', () => {
   });
 
   it('round trips native Claude agent metadata and the authored system prompt without Obsidian wrappers', async () => {
+    const { parse: parseClaudeAgent, render: renderClaudeAgent } = claudeAgentCodec(new ObsidianDocuments());
     const agents = new ClaudeAgents(workspace, { parse: parseClaudeAgent, render: renderClaudeAgent });
     await agents.create('review', renderClaudeAgent({ metadata: { name: 'review', description: 'Review changes', tools: ['Read', 'Grep'], tags: ['agents/review'], background: false, maxTurns: 4 }, prompt: '# Review\n' }));
     const path = '.claude/agents/review.md';
@@ -79,8 +80,8 @@ describe('generated Markdown as editable Obsidian source', () => {
   });
 
   it('regenerates executable UI from source-mode component and interaction edits while retaining their note bodies', async () => {
-    const interactions = new InteractionLibrary(workspace, new MarkdownInteractionDefinitions());
-    const components = new UiLibrary(workspace, new MarkdownUiDefinitions(), [], {
+    const interactions = new InteractionLibrary(workspace, new MarkdownInteractionDefinitions(new ObsidianDocuments()));
+    const components = new UiLibrary(workspace, new MarkdownUiDefinitions(new ObsidianDocuments()), [], {
       generate: (definitions, options) => renderUiComponents(definitions, options.framework, options.outputDirectory, options.interactions),
     }, interactions);
     await interactions.create('interactions', 'mark-reviewed');
@@ -116,7 +117,7 @@ describe('generated Markdown as editable Obsidian source', () => {
   });
 
   it('regenerates typed data fixtures from YAML edits without interpreting linked Markdown as model configuration', async () => {
-    const sources = new DataSourceLibrary(workspace, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer());
+    const sources = new DataSourceLibrary(workspace, new MarkdownDataSourceDefinitions(new ObsidianDocuments()), new TypeScriptDataSourceRenderer());
     await sources.create('sources', 'work-items', 'json');
     const path = 'sources/work-items.md';
     await authorNotes(path);

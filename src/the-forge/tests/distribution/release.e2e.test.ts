@@ -92,7 +92,8 @@ describe('release distribution', () => {
     expect(await readFile(join(project, 'bin/data/THIRD-PARTY-NOTICES.md'), 'utf8')).toMatch(/## docker-agent agent-schema\.json\n\nCopied unchanged from https:\/\/github\.com\/docker\/docker-agent at commit [a-f0-9]{40}\. License: Apache-2\.0\./);
     // Plugins type dry-run write previews with the shipped SDK.
     const sdk = await readFile(join(project, 'bin/data/types/sdk.d.ts'), 'utf8');
-    for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
+    // Trusted plugins type the claude.lifecycle service without importing the claude plugin.
+    for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange', 'ClaudeLifecycleClient', 'ClaudeLifecycleRequest', 'ClaudeLifecycleResult', 'ClaudeLifecyclePlan', 'ClaudeOutput']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
     const listed = entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
     expect(listed).toContain('bin/forge.js');

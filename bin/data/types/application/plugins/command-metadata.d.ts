@@ -11,9 +11,13 @@ import { type JsonSchema } from '../../domain/schema/json-schema.ts';
  * - `actions`: refinements keyed by the first positional argument (`skills install`), with `defaultAction` used
  *   when it is omitted. A refinement inherits every field it does not set and may add its own `options`, which
  *   the parser accepts only for that action (`make <generator>`).
+ * - `unknownAction`: the code for a first argument that names no declared action, `UNKNOWN_GENERATOR` or
+ *   `INVALID_ARGUMENT`. It outranks option errors, so options of an unknown action never read as `UNKNOWN_OPTION`.
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
  */
 export type CommandScope = 'workspace' | 'project';
+declare const unknownActionCodes: readonly ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
+export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
 export interface CommandOption {
     type: 'string' | 'boolean';
@@ -49,6 +53,7 @@ export interface CommandMetadata extends CommandMode {
     args?: readonly CommandArgument[];
     actions?: Readonly<Record<string, CommandAction>>;
     defaultAction?: string;
+    unknownAction?: UnknownActionCode;
     /** Optional JSON Schema of `data` in a successful response. */
     output?: JsonSchema;
     /** Failure codes the command reports itself, beyond the input and routing codes every command can raise. */
@@ -70,8 +75,10 @@ export declare const option: {
 export declare function commandMode(command: CommandMetadata, args: readonly string[]): ResolvedMode;
 /** The options an invocation accepts: the command's own plus those of the action its arguments select. */
 export declare function commandOptions(command: CommandMetadata, args: readonly string[]): Record<string, CommandOption>;
-/** Whether some action declares its own options, so parsing must resolve the action first. */
+/** Whether parsing must resolve the action first: some action declares its own options, or unknown actions fail. */
 export declare function hasActionOptions(command: CommandMetadata): boolean;
+/** Fails with the command's `unknownAction` code when the first argument (not an option) names no declared action. */
+export declare function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void;
 /** Option types for the argument parser. */
 export declare function optionTypes(options: CommandMetadata['options']): Record<string, 'string' | 'boolean'>;
 /**
@@ -106,3 +113,4 @@ export declare function commandAnnotations(command: CommandMetadata): {
 };
 /** Validates contributed metadata before registration; every problem is INVALID_PLUGIN. */
 export declare function validateCommandMetadata(command: Record<string, unknown>): void;
+export {};
