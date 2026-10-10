@@ -119,7 +119,7 @@ export class ObsidianDocuments implements DocumentCodec {
       doc.set(key, value);
     }
     for (const key of remove) doc.delete(key);
-    const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
+    const yaml = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, parts.newline);
     const result = encode(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate('note.md', result);
     return result;
@@ -154,7 +154,7 @@ export class ObsidianDocuments implements DocumentCodec {
         const part = Array.isArray(cursor) ? (segment === '-' ? cursor.length : Number(segment)) : segment;
         pathKeys.push(part); cursor = cursor && typeof cursor === 'object' ? (cursor as Record<string, unknown>)[String(part)] : undefined;
       }
-      doc.setIn(pathKeys, value); result = styledText(doc.toString(), textOf(bytes));
+      doc.setIn(pathKeys, value); result = styledText(doc.toString({ lineWidth: 0 }), textOf(bytes));
     } else result = styledText(JSON.stringify(parsed.data, null, 2) + '\n', textOf(bytes));
     this.validate(path, result); return result;
   }
