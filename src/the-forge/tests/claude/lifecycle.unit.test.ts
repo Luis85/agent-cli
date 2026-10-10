@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClaudeLifecycle, type ClaudeLifecycleRequest } from '../../src/plugins/claude/application/lifecycle.ts';
+import { ClaudeLifecycle } from '../../src/plugins/claude/application/lifecycle.ts';
+import type { ClaudeLifecycleRequest } from '../../src/application/plugins/claude-lifecycle.ts';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 

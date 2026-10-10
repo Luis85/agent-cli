@@ -230,7 +230,7 @@ The internal plugin SDK is the kernel's application layer, chiefly `src/applicat
 The bundled `claude` core plugin provides the service `claude.lifecycle`, the same lifecycle client its `claude` command uses to invoke the installed Claude CLI. A plugin declares it in `requires` and calls `context.services.get('claude.lifecycle').execute(request)`; it needs no imports from Forge internals or a new contribution type. With `claude` disabled (`plugins.disabled`), a plugin that requires the service is unavailable and its commands fail with `PLUGIN_UNAVAILABLE`:
 
 ```ts
-import type { Plugin } from '../bin/data/types/sdk.js';
+import type { ClaudeLifecycleClient, Plugin } from '../bin/data/types/sdk.js';
 export default {
   requires: ['claude.lifecycle'],
   commands: [{
@@ -238,7 +238,7 @@ export default {
     description: 'Inspect installed Claude plugins',
     usage: 'quality.claude-plugins',
     run(_args, _flags, context) {
-      return context.services.get<{ execute(request: object): Promise<unknown> }>('claude.lifecycle').execute({
+      return context.services.get<ClaudeLifecycleClient>('claude.lifecycle').execute({
         args: ['plugin', 'list', '--json'],
         output: 'json',
       });
@@ -247,7 +247,7 @@ export default {
 } satisfies Omit<Plugin, 'manifest'>;
 ```
 
-Like every plugin service, the client is not part of the SDK's kernel types; its shape is `{ execute(request): Promise<result> }`. Requests contain literal `args` and optional `executable`, `timeoutMs`, UTF-8 `stdin`, `output` and `sensitiveArgs` indices. `output` is `text` by default, `json` for an entire JSON response, or `json-last-line` for commands whose final stdout line is native JSON. The `claude` plugin binds the client when it activates: the working directory is the invocation's selected root and its dry-run setting applies. A plugin cannot override either through this service, and the client fails with `PLUGIN_LIFECYCLE` outside an activated command invocation.
+The SDK types the client as `ClaudeLifecycleClient`, `{ execute(request: ClaudeLifecycleRequest): Promise<ClaudeLifecycleResult> }`, with `ClaudeLifecyclePlan` and `ClaudeOutput`; they are type declarations only, and the `claude` plugin implements them. Requests contain literal `args` and optional `executable`, `timeoutMs`, UTF-8 `stdin`, `output` and `sensitiveArgs` indices. `output` is `text` by default, `json` for an entire JSON response, or `json-last-line` for commands whose final stdout line is native JSON. The `claude` plugin binds the client when it activates: the working directory is the invocation's selected root and its dry-run setting applies. A plugin cannot override either through this service, and the client fails with `PLUGIN_LIFECYCLE` outside an activated command invocation.
 
 Dry runs validate the request and return `{dryRun:true, executed:false, plan}` without creating a runtime process. Real execution passes arguments directly without a shell, closes stdin after optional input, and applies timeout/output bounds. `stdin` contents are omitted from plans; plans record `inputBytes`. `--config` values and indices listed in `sensitiveArgs` are redacted in the plan. Native stdout/stderr remain available for diagnostics and may contain values echoed by Claude itself.
 

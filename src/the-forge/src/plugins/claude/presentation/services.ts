@@ -2,7 +2,7 @@ import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { DocumentCodec } from '../../../application/workspace/ports.ts';
 import type { ClaudeAgentCodec } from '../application/agents.ts';
 import type { ClaudeTarget } from '../application/target.ts';
-import type { ClaudeLifecycleClient } from '../application/lifecycle.ts';
+import type { ClaudeLifecycleClient } from '../../../application/plugins/claude-lifecycle.ts';
 
 /** What the `claude` command's handlers use within one invocation. */
 export interface ClaudeServices {

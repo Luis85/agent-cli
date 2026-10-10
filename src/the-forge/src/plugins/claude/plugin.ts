@@ -1,6 +1,7 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { ensure } from '../../domain/shared/errors.ts';
-import { ClaudeLifecycle, type ClaudeLifecycleClient } from './application/lifecycle.ts';
+import { ClaudeLifecycle } from './application/lifecycle.ts';
+import type { ClaudeLifecycleClient } from '../../application/plugins/claude-lifecycle.ts';
 import { claudeEvents } from './application/events.ts';
 import { claudeAgentCodec } from './infrastructure/agents.ts';
 import { claudeTarget } from './infrastructure/target.ts';

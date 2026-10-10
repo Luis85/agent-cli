@@ -2,28 +2,7 @@ import { forgeError, ensure, isRecord, summarizeError } from '../../../domain/sh
 import type { ClaudeRuntime } from './runtime.ts';
 import type { EventChannel } from '../../../application/plugins/events.ts';
 import { notifyClaude, type ClaudeEventMap } from './events.ts';
-
-export type ClaudeOutput = 'text' | 'json' | 'json-last-line';
-/** Literal native arguments. Plugins own operation policy; the host owns execution. */
-export interface ClaudeLifecycleRequest {
-  args: readonly string[];
-  executable?: string;
-  timeoutMs?: number;
-  stdin?: string;
-  output?: ClaudeOutput;
-  sensitiveArgs?: readonly number[];
-}
-export interface ClaudeLifecyclePlan {
-  executable: string;
-  args: string[];
-  cwd: string;
-  timeoutMs?: number;
-  inputBytes?: number;
-}
-export type ClaudeLifecycleResult =
-  | { dryRun: true; executed: false; plan: ClaudeLifecyclePlan }
-  | (ClaudeLifecyclePlan & { dryRun: false; executed: true; exitCode: number; stdout: string; stderr: string; result?: unknown });
-export interface ClaudeLifecycleClient { execute(request: ClaudeLifecycleRequest): Promise<ClaudeLifecycleResult> }
+import type { ClaudeLifecycleClient, ClaudeLifecyclePlan, ClaudeLifecycleRequest, ClaudeLifecycleResult, ClaudeOutput } from '../../../application/plugins/claude-lifecycle.ts';
 
 function nativeResult(stdout: string, output: ClaudeOutput): unknown {
   if (output === 'text') return undefined;
