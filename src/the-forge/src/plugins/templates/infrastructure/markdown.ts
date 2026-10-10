@@ -3,9 +3,9 @@ import utc from 'dayjs/plugin/utc.js';
 import advancedFormat from 'dayjs/plugin/advancedFormat.js';
 import localizedFormat from 'dayjs/plugin/localizedFormat.js';
 import { isMap, isScalar, parseDocument, visit } from 'yaml';
-import type { DocumentTemplates, TemplateInspection, TemplateOptions } from '../../application/templates/templates.ts';
-import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
-import { parseMarkdownParts } from '../documents/codec.ts';
+import type { DocumentTemplates, TemplateInspection, TemplateOptions } from '../application/templates.ts';
+import type { MarkdownParts } from '../../../application/workspace/ports.ts';
+import { forgeError, ensure, isRecord } from '../../../domain/shared/errors.ts';
 
 dayjs.extend(utc);
 dayjs.extend(advancedFormat);
@@ -117,9 +117,12 @@ function instant(date: string | undefined) {
   return parsed;
 }
 
+/** Obsidian-compatible Markdown templates; `parts` splits a template at its frontmatter (the kernel document codec). */
 export class MarkdownTemplates implements DocumentTemplates {
+  constructor(private readonly parts: (text: string) => MarkdownParts) {}
+
   inspect(bytes: Uint8Array): TemplateInspection {
-    const parts = parseMarkdownParts(textOf(bytes));
+    const parts = this.parts(textOf(bytes));
     const tokens = [...placeholders(parts.yaml), ...placeholders(parts.body)];
     if (parts.exists) renderYaml(parts.yaml, token => `{{${token.expression}}}`);
     const builtin = (token: Placeholder) => ['title', 'date', 'time'].includes(token.key);
@@ -148,7 +151,7 @@ export class MarkdownTemplates implements DocumentTemplates {
       ensure(Object.hasOwn(values, token.key), 'UNKNOWN_TEMPLATE_VARIABLE', `Missing template value: ${token.key}.`);
       return values[token.key];
     };
-    const parts = parseMarkdownParts(textOf(bytes));
+    const parts = this.parts(textOf(bytes));
     const body = replaceTokens(parts.body, placeholders(parts.body), token => asText(resolve(token)));
     const frontmatter = parts.exists ? `---${parts.newline}${renderYaml(parts.yaml, resolve).replace(/\r?\n/g, parts.newline)}---${parts.newline}` : '';
     return new TextEncoder().encode(parts.prefix + frontmatter + body);

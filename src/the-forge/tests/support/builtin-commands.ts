@@ -6,6 +6,8 @@ import { claudeCommand } from '../../src/presentation/claude/commands.ts';
 import { basesCommand } from '../../src/plugins/bases/presentation/commands.ts';
 import { skillsCommand } from '../../src/plugins/skills/presentation/commands.ts';
 import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
+import type { CorePlugin } from '../../src/application/plugins/core-plugins.ts';
+import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
 
 /**
  * Every command the bundle registers without user plugins, assembled like the composition root but with services
@@ -17,12 +19,15 @@ export function builtinCommands(): { registry: Registry; commands: Map<string, C
     get: (target, key) => key in target ? target[key as keyof typeof target] : unavailable,
   }) as unknown as WorkflowServices;
   const registry = new Registry();
-  for (const generator of [...generators, ...libraryGenerators(services)]) registry.add(registry.generators, generator);
+  const contributions = (plugin: CorePlugin) => plugin.create({ skills: { list: () => [], get: () => undefined }, fileDates: unavailable });
+  const templates = contributions(templatesPlugin);
+  for (const generator of [...generators, ...libraryGenerators(services), ...templates.generators!]) registry.add(registry.generators, generator);
   const all = [
     ...commands(registry, services),
     claudeCommand({ agentCodec: { parse: unavailable, render: unavailable }, target: unavailable }),
     basesCommand(unavailable),
     skillsCommand({ list: () => [], get: () => undefined }),
+    ...templates.commands!,
   ];
   for (const command of all) registry.add(registry.commands, command);
   return { registry, commands: registry.commands };

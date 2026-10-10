@@ -7,7 +7,7 @@ import { claudePluginCapabilities } from '../../domain/claude/plugins.ts';
 import type { Command } from '../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
 import { arity, value } from '../../application/plugins/command-input.ts';
-import { parseJson } from '../cli/input.ts';
+import { parseJson } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { claudeInput, claudeOptions } from './input.ts';
 import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from './runtime-commands.ts';

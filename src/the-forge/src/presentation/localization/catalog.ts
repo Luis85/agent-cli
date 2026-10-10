@@ -3,7 +3,6 @@ export const germanCommands = {
   schema: 'Maschinenlesbarer Katalog der verfügbaren Funktionen.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
-  templates: 'Markdown-Vorlagen und Pflichtfelder entdecken oder das Planungspaket installieren.',
   project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
   components: 'Markdown-Komponenten verwalten, prüfen, importieren und exportieren.',
   'data-sources': 'Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.',
@@ -42,9 +41,6 @@ function libraryActions(command: string, noun: string): Record<string, string> {
 
 /** German descriptions of kernel command actions, keyed `<command> <action>`; `make` actions use the generator catalog. */
 export const germanActions: Record<string, string> = {
-  'templates list': 'Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.',
-  'templates inspect': 'Die erforderlichen und optionalen Werte einer Vorlage melden.',
-  'templates install': 'Das Vorlagenpaket für den Planungsablauf in bin/templates installieren.',
   'project list': 'Die verwalteten Projekte auflisten.',
   'project create': 'Ein eigenständiges TypeScript-Projekt erstellen.',
   'project open': 'Ein Projekt für Dateibefehle und Generatoren auswählen.',
@@ -72,7 +68,6 @@ export const germanGenerators = {
   'use-case': 'Anwendungsfall mit injiziertem Repository-Port.',
   event: 'Typisierte Ereignisdaten mit Laufzeitbeschreibung.',
   plugin: 'Installierbarer Plugin-Ordner mit Manifest, Befehlsnamensraum und Lebenszyklus-Hooks.',
-  document: 'Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.',
   ui: 'Deterministischen UI-Code aus Markdown-Komponentendefinitionen generieren.',
   stories: 'Native Storybook-CSF-Stories für vorhandene UI-Komponenten generieren.',
   'data-source': 'Typisierten REST- oder lokalen JSON-Adapter mit deterministischen Testdaten aus Markdown generieren.',

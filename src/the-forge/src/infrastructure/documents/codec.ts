@@ -6,7 +6,7 @@ import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind } from '../../domain/documents/file.ts';
 import { validateCanvas } from '../../domain/documents/canvas.ts';
-import type { DocumentCodec, YamlStringReplacement } from '../../application/workspace/ports.ts';
+import type { DocumentCodec, MarkdownParts, YamlStringReplacement } from '../../application/workspace/ports.ts';
 import { replaceInYamlStrings } from './yaml-strings.ts';
 
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -48,7 +48,7 @@ function styledText(text: string, original: string): Uint8Array {
   return encode(prefix + text.replace(/^\uFEFF/, '').replace(/\r?\n/g, newline));
 }
 const markdownParser = unified().use(remarkParse).use(remarkFrontmatter, ['yaml']);
-export function parseMarkdownParts(text: string) {
+export function parseMarkdownParts(text: string): MarkdownParts {
   const prefix = text.startsWith('\uFEFF') ? '\uFEFF' : '';
   text = text.slice(prefix.length);
   const firstNode = markdownParser.parse(text).children[0];
@@ -81,6 +81,7 @@ function validateBase(value: unknown) {
   }
 }
 export class ObsidianDocuments implements DocumentCodec {
+  markdownParts(text: string): MarkdownParts { return parseMarkdownParts(text); }
   inspect(path: string, bytes: Uint8Array): unknown {
     const kind = fileKind(path);
     if (kind === 'text') {

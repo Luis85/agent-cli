@@ -3,9 +3,16 @@ import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
 import type { AppConfig } from './config.ts';
 import type { Skill } from '../plugins/registry.ts';
 import type { Workspace } from './workspace.ts';
-import type { TemplateArtifact } from '../templates/templates.ts';
 
 export interface SetupArtifact { path: string; bytes: Uint8Array }
+/** An editable Markdown template; `path` is relative to the workspace's `bin/templates`. */
+export interface TemplateArtifact { path: string; content: string }
+/**
+ * The `templates.installer` service of the `templates` core plugin: the editable templates `setup` installs into
+ * `bin/templates`. Without an available provider, setup installs no templates and warns.
+ */
+export interface TemplateInstallerService { setupTemplates(): readonly TemplateArtifact[] }
+export const templateInstallerService = 'templates.installer';
 const encode = (value: string) => new TextEncoder().encode(value);
 const instructions = `# The Forge workflow
 
@@ -27,28 +34,6 @@ Use clear names and focused functions; verify acceptance criteria and failure be
 Use the installed agent skills for the development and file-editing workflows.
 Enable only reviewed plugins: plugins execute with Node's permissions.
 `;
-const entityTemplate = `---
-type: entity
-title: '{{title}}'
-created: '{{date:YYYY-MM-DD}}'
----
-# {{title}}
-
-Created: {{date:YYYY-MM-DD}}
-
-## Purpose
-
-Describe the entity's responsibility and identity.
-
-## Invariants
-
-- Define the rules that must always hold.
-
-## Acceptance criteria
-
-- Describe observable behavior and verification.
-`;
-
 /** Idempotent installation: existing project files always remain owned by the user. */
 export class SetupService {
   constructor(
@@ -56,7 +41,8 @@ export class SetupService {
     private readonly config: AppConfig,
     private readonly artifacts: readonly SetupArtifact[],
     private readonly skills: readonly Skill[],
-    private readonly templates: readonly TemplateArtifact[] = [],
+    /** The templates to install, or null when the `templates` core plugin is disabled or unavailable. */
+    private readonly templates: readonly TemplateArtifact[] | null,
   ) {}
 
   async run() {
@@ -65,8 +51,7 @@ export class SetupService {
       ...this.artifacts.map(artifact => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: 'bin/config.json', bytes: encode(JSON.stringify(this.config, null, 2) + '\n') },
       ...this.skills.map(skill => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode(skill.content) })),
-      { path: 'bin/templates/entity.md', bytes: encode(entityTemplate) },
-      ...this.templates.map(template => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode(template.content) })),
+      ...(this.templates ?? []).map(template => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode(template.content) })),
       { path: 'bin/plugins/.gitkeep', bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
       { path: 'AGENTS.md', bytes: encode(instructions) },
@@ -88,8 +73,10 @@ export class SetupService {
     // An empty plan is a successful no-op, not an invalid workspace write.
     const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
     return { ...result, skipped, nextSteps: [
-      { scope: 'workspace', command: 'node bin/forge.js templates list', purpose: 'Discover the installed editable planning templates.' },
-      { scope: 'workspace', command: 'node bin/forge.js templates inspect workflow/prd.md', purpose: 'Inspect planning inputs before generating a requirements document.' },
+      ...(this.templates === null ? [] : [
+        { scope: 'workspace', command: 'node bin/forge.js templates list', purpose: 'Discover the installed editable planning templates.' },
+        { scope: 'workspace', command: 'node bin/forge.js templates inspect workflow/prd.md', purpose: 'Inspect planning inputs before generating a requirements document.' },
+      ]),
       { scope: 'workspace', command: 'node bin/forge.js project list', purpose: 'Find a project, then explicitly open it before generating project files.' },
     ] };
   }

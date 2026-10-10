@@ -17,7 +17,7 @@ import { TypeScriptDataSourceRenderer } from '../../src/infrastructure/data-sour
 import { ObsidianDocuments, encodeText, parseMarkdownParts } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { MarkdownInteractionDefinitions } from '../../src/infrastructure/interactions/definitions.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
+import { MarkdownTemplates } from '../../src/plugins/templates/infrastructure/markdown.ts';
 import { MarkdownUiDefinitions } from '../../src/infrastructure/ui/definitions.ts';
 import { renderUiComponents } from '../../src/infrastructure/ui/renderers.ts';
 
@@ -53,7 +53,7 @@ async function properties(path: string, changes: Record<string, unknown>) {
 describe('generated Markdown as editable Obsidian source', () => {
   it('keeps template note property types, quoted internal links, tags and authored body through guarded edits', async () => {
     const template = encodeText('---\ntitle: {{title}}\ntags: {{tags}}\naliases: {{aliases}}\nrelated: {{related}}\ncomplete: {{complete}}\npriority: {{priority}}\ncreated: {{date}}\n---\n# {{title}}\n');
-    const bytes = new MarkdownTemplates().render(template, {
+    const bytes = new MarkdownTemplates(parseMarkdownParts).render(template, {
       title: 'Engineering plan', date: '2026-10-07',
       values: { tags: ['engineering/review'], aliases: ['Plan'], related: '[[Architecture]]', complete: false, priority: 2 },
     });

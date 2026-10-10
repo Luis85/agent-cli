@@ -21,7 +21,6 @@ const configSchema = z.strictObject({
     dataFixtures: relativePath.default('test-data'), dataImports: relativePath.default('imports/data-sources'), dataExports: relativePath.default('exports/data-sources'),
   }).prefault({}),
   settings: z.strictObject({ language: z.enum(['en', 'de']).default('en'), json: z.boolean().default(false), dryRun: z.boolean().default(false), events: z.enum(eventOutputLevels).default('changes') }).prefault({}),
-  templates: z.strictObject({ dateFormat: z.string().min(1).default('YYYY-MM-DD'), timeFormat: z.string().min(1).default('HH:mm') }).prefault({}),
   // Plugin sections are validated against the schemas that registered plugins declare once they load.
   plugins: z.strictObject({
     enabled: pluginIds, disabled: pluginIds,

@@ -30,7 +30,7 @@ it('renders discovered Obsidian templates using typed values, configured paths a
     const template = '---\ntitle: {{title}}\ncreated: {{date}}\ntags: {{tags}}\nsummary: "{{summary}}"\n---\n# {{title}}\n\n[[Architecture]]\n> [!tip]\n> {{summary}}\n';
     await writeFile(join(project, 'bin/templates/entity.md'), template);
     const config = join(project, 'bin/config.json');
-    await writeFile(config, JSON.stringify({ templates: { dateFormat: 'YYYY/MM/DD' } }));
+    await writeFile(config, JSON.stringify({ plugins: { settings: { templates: { dateFormat: 'YYYY/MM/DD' } } } }));
     const args: string[] = [];
     expect(cli([...args, 'templates', 'list']).body.data.templates).toContain('entity.md');
     expect(cli([...args, 'templates', 'inspect', 'entity.md']).body.data.variables).toEqual(['date', 'summary', 'tags', 'title']);

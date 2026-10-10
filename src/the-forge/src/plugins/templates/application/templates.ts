@@ -1,6 +1,7 @@
-import { AppError, ensure } from '../../domain/shared/errors.ts';
-import { vaultPath, type WriteRequest } from '../../domain/documents/file.ts';
-import type { Workspace } from '../workspace/workspace.ts';
+import { AppError, ensure } from '../../../domain/shared/errors.ts';
+import { vaultPath, type WriteRequest } from '../../../domain/documents/file.ts';
+import type { Workspace } from '../../../application/workspace/workspace.ts';
+import type { TemplateArtifact } from '../../../application/workspace/setup.ts';
 
 /** Values supplied by a caller are data, never executable template expressions. */
 export interface TemplateOptions {
@@ -20,8 +21,6 @@ export interface TemplateInspection {
   /** Built-in expressions, preserving explicit date/time formats. */
   builtins: string[];
 }
-
-export interface TemplateArtifact { path: string; content: string }
 
 /** Install editable templates without replacing user-maintained definitions. */
 export class TemplateInstaller {

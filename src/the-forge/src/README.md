@@ -30,7 +30,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 - [command-metadata.ts](application/plugins/command-metadata.ts) defines the declarative command metadata (scope, discovery, mutating, options, arguments, actions, errors) and the JSON Schema that `schema` publishes; [invocation-policy.ts](presentation/cli/invocation-policy.ts) derives workspace/project scope, plugin activation and explicit project selection from it before services are bound.
 - [workspace.ts](application/workspace/workspace.ts) owns guarded file mutations, dry-run plans and notifications after persistence.
 - [registry.ts](application/plugins/registry.ts) owns plugin contracts and registered contributions, with [contributions.ts](application/plugins/contributions.ts) validation, [plugin-services.ts](application/plugins/plugin-services.ts) dependency order, [plugin-settings.ts](application/plugins/plugin-settings.ts) config sections and [plugin-catalog.ts](application/plugins/plugin-catalog.ts) strings and error codes; [core-plugins.ts](application/plugins/core-plugins.ts) registers bundled core plugins; [loader.ts](infrastructure/plugins/loader.ts) loads trusted user plugin modules.
-- The bundled core plugins, in the order [main.ts](main.ts) registers them: [bases](plugins/bases/plugin.ts) (Bases queries), [skills](plugins/skills/plugin.ts) (the bundled agent skills and the `skills` command), [search](plugins/search/plugin.ts) (text search), [links](plugins/links/plugin.ts) (link reports), [agents](plugins/agents/plugin.ts) (docker-agent definitions and Claude Code agent generation) and [backlog](plugins/backlog/plugin.ts) (backlog-view compatible product backlogs).
+- The bundled core plugins, in the order [main.ts](main.ts) registers them: [bases](plugins/bases/plugin.ts) (Bases queries), [skills](plugins/skills/plugin.ts) (the bundled agent skills and the `skills` command), [search](plugins/search/plugin.ts) (text search), [links](plugins/links/plugin.ts) (link reports), [agents](plugins/agents/plugin.ts) (docker-agent definitions and Claude Code agent generation), [backlog](plugins/backlog/plugin.ts) (backlog-view compatible product backlogs) and [templates](plugins/templates/plugin.ts) (Markdown templates, `make document` and the workflow pack).
 
 ## Find the concern
 
@@ -39,6 +39,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | File formats and editing | `domain/documents/`, `application/workspace/`, `infrastructure/documents/`, `presentation/documents/` |
 | Workspace configuration and setup | `application/workspace/`, `infrastructure/workspace/`, `presentation/workspace/` |
 | Projects and scaffolding | `application/projects/`, `infrastructure/projects/`, `presentation/workspace/` |
+| Markdown templates, `make document` and the workflow pack (`templates` core plugin, service `templates.installer` for `setup`) | `plugins/templates/` |
 | Plugins and event delivery | `application/plugins/`, `infrastructure/plugins/`, `presentation/cli/catalog-commands.ts` |
 | Claude definitions and installed CLI | Matching `claude/` folders in all four layers |
 | UI and interaction definitions | `domain/ui/`, `domain/interactions/` and matching application/infrastructure/presentation concerns |
@@ -47,7 +48,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | Vault metadata cache: links, tags, headings, blocks and resolution | `domain/metadata/`, `application/metadata/`, `infrastructure/metadata/` |
 | Moves, renames and deletion with link updates; the Obsidian-shaped `app` facade | `domain/metadata/link-text.ts`, `application/vault/`, `infrastructure/workspace/batch.ts`, `presentation/documents/vault-commands.ts` |
 | Bases queries (`bases` core plugin) | `plugins/bases/` |
-| Generators and templates | `application/generation/` (the shared review controls and `GenerationService` that `make` and `agents generate` use), `application/templates/`, corresponding infrastructure concerns and `presentation/generation/` (`make` routing and the kernel generators) |
+| Generation | `application/generation/` (the shared review controls and `GenerationService` that `make` and `agents generate` use) and `presentation/generation/` (`make` routing and the kernel generators), `infrastructure/generation/` (code and form scaffolds) |
 | Agent skills (`skills` core plugin) | `plugins/skills/` |
 | Link reports (`links` core plugin) | `plugins/links/` |
 | docker-agent definitions and generated Claude agents (`agents` core plugin) | `plugins/agents/`: semantic rules and the Claude mapping in `domain/`, the vendored schema and its source commit in `infrastructure/vendor/` (refreshed by `npm run vendor:docker-agent`) |
@@ -61,7 +62,7 @@ Pure interaction analysis belongs in domain. JavaScript, CSS and framework handl
 
 ## Templates, tooling and checks
 
-[docs/templates/projects/](../docs/templates/projects/) contains generated-project source and static assets consumed by [scaffolds.ts](infrastructure/projects/scaffolds.ts). [Workflow templates](../docs/templates/workflow/) and [examples](../docs/examples/) are also authored under `docs/`. Template code describes a generated application; it is not a Forge domain object or a second runtime entry point. Editable workspace templates remain under the workspace's `bin/templates/`.
+[docs/templates/projects/](../docs/templates/projects/) contains generated-project source and static assets consumed by [scaffolds.ts](infrastructure/projects/scaffolds.ts); the `templates` plugin's [pack.ts](plugins/templates/infrastructure/pack.ts) embeds the workflow templates. [Workflow templates](../docs/templates/workflow/) and [examples](../docs/examples/) are also authored under `docs/`. Template code describes a generated application; it is not a Forge domain object or a second runtime entry point. Editable workspace templates remain under the workspace's `bin/templates/`.
 
 The project's build/release/quality programs live in [../scripts/](../scripts/). Versioned tooling and distribution policies live in [../configs/](../configs/). Authored agent skills live in [../skills/](../skills/) and are packaged into the workspace `bin/skills/`. Configuration and the portable distribution live under the workspace `bin/`, which `config.distribution` in `package.json` names; update source and regenerate owned distribution files without replacing active settings. This checkout tracks a configuration with `paths.projects: "src"` and a saved `the-forge` selection. Release packaging uses generic defaults and excludes that selection.
 

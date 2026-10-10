@@ -13,7 +13,7 @@ import { ensurePluginNamespace, pluginEvents } from './ownership.ts';
 import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
 import type { CommandFlags, CommandMetadata, CommandMode, CommandOption } from './command-metadata.ts';
 import { validateContributions, type PluginOrigin } from './contributions.ts';
-import { activationOrder, pluginServices, serviceProviders, type PluginServices } from './plugin-services.ts';
+import { activationOrder, pluginServices, serviceProviders, serviceView, type PluginServices } from './plugin-services.ts';
 import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
 
@@ -187,6 +187,14 @@ export class Registry {
     const unknown = foreign.filter(id => !present.has(id)).sort();
     if (unknown.length > 0) warn(`plugins.settings names no installed plugin: ${unknown.join(', ')}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.`);
     return report.effective;
+  }
+  /**
+   * A plugin service for a kernel command (`setup` uses `templates.installer`): the provider's read-only view, or
+   * undefined when no registered plugin provides it or its provider is unavailable. Call it after `configure`.
+   */
+  service<T>(id: string): T | undefined {
+    const provider = serviceProviders(this.plugins).get(id);
+    return provider === undefined || this.unavailable.has(provider.manifest.id) ? undefined : serviceView<T>(provider, id);
   }
   /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
   private cascadeUnavailable(): void {

@@ -12,7 +12,6 @@ import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { componentScaffold, projectScaffold } from '../../src/infrastructure/projects/scaffolds.ts';
-import { MarkdownTemplates } from '../../src/infrastructure/templates/markdown.ts';
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { claudeBytes, claudeInput } from '../../src/presentation/claude/input.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
@@ -29,13 +28,12 @@ beforeEach(async () => {
   registry = new Registry();
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
-    loaded, files, templates: new MarkdownTemplates(),
+    loaded, files,
     projects: new ProjectService(files, workspace, 'projects', { project: projectScaffold, component: componentScaffold }, events),
     get uiLibrary(): never { throw new Error('Document commands must not access UI library'); },
     get dataSources(): never { throw new Error('Document commands must not access data sources'); },
     get interactions(): never { throw new Error('Document commands must not access interactions'); },
     get workflows(): never { throw new Error('Document commands must not access workflows'); },
-    async installTemplates() { throw new Error('Document commands must not install templates'); },
     setup: async () => undefined,
     configSections: () => registry.settings.sections(),
     installedPlugins: async () => [],
@@ -44,7 +42,7 @@ beforeEach(async () => {
 
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
-    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'components', 'data-sources', 'interactions', 'workflows',
+    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'project', 'components', 'data-sources', 'interactions', 'workflows',
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });

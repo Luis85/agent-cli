@@ -14,11 +14,10 @@ import { ScopedFiles, scopedCommitObserver } from './application/workspace/scope
 import type { CommitObserver } from './application/workspace/ports.ts';
 import { Registry, type CommandContext } from './application/plugins/registry.ts';
 import { ProjectService } from './application/projects/projects.ts';
-import { SetupService } from './application/workspace/setup.ts';
+import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { UiLibrary } from './application/ui/library.ts';
 import { DataSourceLibrary } from './application/data-sources/library.ts';
 import { InteractionLibrary } from './application/interactions/library.ts';
-import { TemplateInstaller } from './application/templates/templates.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
 import { NodeFiles } from './infrastructure/workspace/files.ts';
@@ -35,11 +34,10 @@ import { searchPlugin } from './plugins/search/plugin.ts';
 import { linksPlugin } from './plugins/links/plugin.ts';
 import { agentsPlugin } from './plugins/agents/plugin.ts';
 import { backlogPlugin } from './plugins/backlog/plugin.ts';
+import { templatesPlugin } from './plugins/templates/plugin.ts';
 import { libraryGenerators } from './presentation/generation/library-generators.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
 import { loadConfig } from './infrastructure/workspace/config.ts';
-import { MarkdownTemplates } from './infrastructure/templates/markdown.ts';
-import { workflowTemplates } from './infrastructure/templates/workflows.ts';
 import { projectScaffold, componentScaffold } from './infrastructure/projects/scaffolds.ts';
 import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
 import { generators } from './infrastructure/generation/generators.ts';
@@ -64,7 +62,7 @@ import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
-const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin];
+const corePlugins = [basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, backlogPlugin, templatesPlugin];
 
 async function run(): Promise<void> {
   const tokens = process.argv.slice(2);
@@ -104,7 +102,7 @@ async function run(): Promise<void> {
       let environment: Workspace;
       const skipUserPlugins = bootstrap.flags['no-plugins'] === true;
       const services: WorkflowServices = {
-        loaded, files, templates: new MarkdownTemplates(),
+        loaded, files,
         get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }, events); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
         get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
@@ -116,8 +114,12 @@ async function run(): Promise<void> {
             ...(options.storybook ? renderUiStories(definitions, options.framework, options.outputDirectory, options.storiesDirectory!) : []),
           ],
         }, new InteractionLibrary(environment, new MarkdownInteractionDefinitions()), config.paths.interactions); },
-        installTemplates: () => new TemplateInstaller(environment, workflowTemplates).install(),
-        setup: async () => new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], workflowTemplates).run(),
+        setup: async () => {
+          // The templates core plugin provides the starter templates; without it, setup installs none and says so.
+          const templates = registry.service<TemplateInstallerService>(templateInstallerService);
+          if (templates === undefined) events.warn('The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.');
+          return new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], templates?.setupTemplates() ?? null).run();
+        },
         configSections: () => registry.settings.sections(),
         installedPlugins: () => installedPlugins('bin/plugins', config.plugins.enabled, skipUserPlugins, files, message => events.warn(message)),
       };

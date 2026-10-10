@@ -20,10 +20,6 @@
     "json": false,
     "dryRun": false
   },
-  "templates": {
-    "dateFormat": "YYYY-MM-DD",
-    "timeFormat": "HH:mm"
-  },
   "plugins": {
     "enabled": []
   },
