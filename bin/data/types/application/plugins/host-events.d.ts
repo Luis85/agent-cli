@@ -13,7 +13,7 @@ interface CommandOperation {
 }
 interface WorkspaceOperation {
     operationId: number;
-    operation: 'read' | 'write' | 'edit' | 'remove';
+    operation: 'read' | 'write' | 'edit' | 'remove' | 'move' | 'delete';
     root: string | null;
     paths: string[];
     dryRun: boolean;
@@ -59,6 +59,11 @@ export interface HostEventMap {
     'operation.succeeded': WorkspaceOperation & {
         changes?: FileChange[];
         bytes?: number;
+        renames?: Array<{
+            from: string;
+            to: string;
+            kind: 'file' | 'folder';
+        }>;
     };
     'operation.failed': WorkspaceOperation & {
         error: HostError;

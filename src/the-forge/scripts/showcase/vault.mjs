@@ -1,5 +1,6 @@
 import { project } from './project.mjs';
 import { documents } from './vault-documents.mjs';
+import { maintainVault } from './vault-maintenance.mjs';
 
 export const vaultPaths = {
   hub: 'docs/Trailhead.md',
@@ -94,7 +95,8 @@ const notePath = document => `${document.out}/${document.title}.md`;
 
 /**
  * Workflow documents rendered from templates, connected through guarded
- * property and body edits, plus a hub note, a Canvas map and Bases views.
+ * property and body edits, plus a hub note, a Canvas map and Bases views,
+ * then a link-preserving rename and a delete to the trash.
  * @param {import('./cli.mjs').ForgeCli} cli
  * @returns {Promise<{ queries: { base: string, view: string, files: string[], total: number }[] }>}
  */
@@ -133,6 +135,9 @@ export async function buildVault(cli) {
     cli.create(path, content);
     cli.run(['validate', path]);
   }
+  maintainVault(cli);
+
+  cli.begin('Bases queries');
   cli.run(['bases', 'list']);
   /** @type {{ base: string, view: string }[]} */
   const selected = [];

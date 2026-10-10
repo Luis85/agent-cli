@@ -4,13 +4,18 @@ import type { EventBus, EventChannel, EventDefinition } from './events.ts';
 import type { WriteRequest } from '../../domain/documents/file.ts';
 import type { ClaudeLifecycleClient } from '../claude/lifecycle.ts';
 import type { MetadataIndex } from '../metadata/ports.ts';
+import type { App } from '../vault/app.ts';
 import { type PluginStateStore } from './plugin-state.ts';
-/** `metadata` is the lazily built metadata index of the same root as `workspace`. */
+/**
+ * `metadata` is the lazily built metadata index of the same root as `workspace`; `app` is the Obsidian-shaped
+ * facade (vault, metadataCache, fileManager, workspace) over the same scope.
+ */
 export interface CommandContext {
     workspace: Workspace;
     events: EventChannel;
     claude: ClaudeLifecycleClient;
     metadata: MetadataIndex;
+    app: App;
     workspaceRoot: string;
     root: string;
     project: ProjectInfo | null;

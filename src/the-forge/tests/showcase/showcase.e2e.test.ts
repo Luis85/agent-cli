@@ -55,7 +55,10 @@ describe('committed showcase project', () => {
 
   it('keeps a connected Obsidian vault whose wikilinks all resolve', async () => {
     const notes = tree.filter(path => path.endsWith('.md') && !path.startsWith('.'));
-    expect(notes).toEqual(expect.arrayContaining(['docs/Trailhead.md', 'docs/product/Trailhead PRD.md', 'docs/design/Trip planner design.md', 'docs/delivery/Trip planner test plan.md']));
+    expect(notes).toEqual(expect.arrayContaining(['docs/Trailhead.md', 'docs/product/Trailhead PRD.md', 'docs/design/Trip planner design.md', 'docs/delivery/Trip planner verification plan.md']));
+    // The showcase renamed the test plan and trashed a scratch note; nothing still names the old paths.
+    expect(tree).not.toContain('docs/delivery/Trip planner test plan.md');
+    expect(tree).toContain('.trash/docs/scratch/Packing ideas.md');
     const visible = tree.filter(path => !path.startsWith('.'));
     const broken = (await Promise.all(notes.map(async path => unresolvedLinks(visible, path, await readFile(join(showcase, path), 'utf8'))))).flat();
     expect(broken).toEqual([]);

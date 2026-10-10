@@ -46,6 +46,10 @@ export declare const errorCatalog: {
     readonly UNSUPPORTED_EDIT: ErrorDefinition;
     readonly INVALID_PLAN: ErrorDefinition;
     readonly WORKSPACE_BUSY: ErrorDefinition;
+    readonly DESTINATION_EXISTS: ErrorDefinition;
+    readonly PROTECTED_PATH: ErrorDefinition;
+    readonly INVALID_MOVE: ErrorDefinition;
+    readonly HAS_BACKLINKS: ErrorDefinition;
     readonly ROLLBACK_FAILED: ErrorDefinition;
     readonly INVALID_FRONTMATTER: ErrorDefinition;
     readonly INVALID_YAML: ErrorDefinition;

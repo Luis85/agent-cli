@@ -5,10 +5,10 @@ const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
 const node_crypto = require("node:crypto");
-const promises = require("node:fs/promises");
+const promises$1 = require("node:fs/promises");
+const promises = require("node:timers/promises");
 const fs = require("node:fs");
 const node_os = require("node:os");
-const promises$1 = require("node:timers/promises");
 const process$1 = require("node:process");
 const node_url = require("node:url");
 const node_module = require("node:module");
@@ -78,6 +78,10 @@ const errorCatalog = {
   UNSUPPORTED_EDIT: entry("input", "This edit is not supported for the file kind.", "Use edit for Markdown and text, properties for frontmatter, patch for Canvas and Bases, and write for attachments."),
   INVALID_PLAN: entry("input", "The write batch contains duplicate or overlapping paths.", "Write each path once and do not write a file where another write needs a directory."),
   WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
+  DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
+  PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Do not move or delete the scope root, .git, .obsidian or, at workspace scope, bin; a folder holding a .git repository is protected too."),
+  INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
+  HAS_BACKLINKS: entry("conflict", "Other notes still link to the file or folder.", "Update or remove the links in error.details.backlinks first, move the file instead, or pass --allow-broken-links to delete anyway."),
   ROLLBACK_FAILED: entry("runtime", "A failed write could not restore every file.", "Inspect the files named in the message and repair them before retrying."),
   // Documents
   INVALID_FRONTMATTER: entry("input", "The YAML frontmatter is invalid.", "Fix the frontmatter so it is a YAML mapping, then validate the note."),
@@ -395,11 +399,12 @@ const empty = (value2) => Object.keys(value2).length === 0;
 const operation$1 = (value2) => count(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
 const error$1 = (value2) => isRecord(value2) && text$5(value2.code) && status(value2.exitCode);
 const command = (value2) => operation$1(value2) && text$5(value2.command) && text$5(value2.root) && text$5(value2.workspaceRoot);
-const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove"].includes(String(value2.operation)) && (value2.root === null || text$5(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$5);
+const workspace = (value2) => operation$1(value2) && ["read", "write", "edit", "remove", "move", "delete"].includes(String(value2.operation)) && (value2.root === null || text$5(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$5);
 const claude = (value2) => operation$1(value2) && text$5(value2.executable) && text$5(value2.cwd);
 const plugin = (value2) => text$5(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
 const change = (value2) => isRecord(value2) && text$5(value2.path) && text$5(value2.revision) && count(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord(value2) && text$5(value2.from) && text$5(value2.to) && ["file", "folder"].includes(String(value2.kind));
 const optionalStatus = (value2) => value2.exitCode === void 0 || status(value2.exitCode);
 const project = (value2) => value2 === null || text$5(value2);
 const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change(value2) && Object.keys(value2).length === 5 : text$5(value2.path) && Object.keys(value2).length === 3);
@@ -412,7 +417,7 @@ const hostEventDefinitions = [
   definition$1("command.succeeded", "A routed command returned successfully.", command),
   definition$1("command.failed", "A routed command failed; error codes contain no command input.", (value2) => command(value2) && error$1(value2.error)),
   definition$1("operation.started", "A guarded workspace operation started, including previews.", workspace),
-  definition$1("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change))),
+  definition$1("operation.succeeded", "A guarded workspace operation completed, including previews.", (value2) => workspace(value2) && (value2.bytes === void 0 || count(value2.bytes)) && (value2.changes === void 0 || Array.isArray(value2.changes) && value2.changes.every(change)) && (value2.renames === void 0 || Array.isArray(value2.renames) && value2.renames.every(moved))),
   definition$1("operation.failed", "A guarded workspace operation failed.", (value2) => workspace(value2) && error$1(value2.error)),
   definition$1("claude.started", "A Claude invocation began validation or preview.", claude),
   definition$1("claude.succeeded", "A Claude invocation or validated preview completed.", (value2) => claude(value2) && optionalStatus(value2)),
@@ -693,6 +698,8 @@ function vaultPath(input) {
   ensure(!parts.some((p) => [".git", ".agent-cli.lock"].includes(p) || p.startsWith(".agent-cli-tmp-")), "INVALID_PATH", "Reserved workspace path.");
   return input;
 }
+const trashFolder = ".trash";
+const isInTrash = (path) => path === trashFolder || path.startsWith(`${trashFolder}/`);
 function ensureSeparateDirectories(source, destination) {
   vaultPath(source);
   vaultPath(destination);
@@ -852,7 +859,8 @@ ${hunk.map(formatLine).join("")}`;
 const vaultEvents = { created: "vault.create", updated: "vault.modify", deleted: "vault.delete" };
 const changeSummary = (result) => ({
   changes: result.changes.map(({ path, revision, operation: operation2, bytes }) => ({ path, revision, operation: operation2, bytes })),
-  bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0)
+  bytes: result.changes.reduce((total, change2) => total + change2.bytes, 0),
+  ...result.renames ? { renames: result.renames.map(({ from, to, kind }) => ({ from, to, kind })) } : {}
 });
 const utf8 = (bytes) => {
   try {
@@ -886,7 +894,6 @@ class Workspace {
   }
   // CLI handlers and external plugins call this through the typed CommandContext workspace.
   // A successful read is Obsidian's file-open: it emits `workspace.file-open` with the scoped path.
-  // fallow-ignore-next-line unused-class-member
   async read(path) {
     return this.observe("read", [path], async () => {
       const file = await this.files.read(path);
@@ -911,8 +918,8 @@ class Workspace {
     return this.observe("write", requests.map((request) => request.path), async () => {
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
       const { changes, folders } = await this.files.writeBatch(requests, this.dryRun);
-      const result = await this.committed(changes, folders);
-      return this.dryRun && previous2 ? { ...result, changes: await this.preview(changes, requests, previous2) } : result;
+      await this.committed({ renames: [], changes, folders, removedFolders: [] });
+      return { dryRun: this.dryRun, changes: this.dryRun && previous2 ? await this.preview(changes, requests, previous2) : changes };
     }, changeSummary);
   }
   /** Diff each planned file against the revision that the dry run checked; binary content has no diff. */
@@ -920,7 +927,7 @@ class Workspace {
     return Promise.all(changes.map(async (change2) => {
       const request = requests.find((candidate) => candidate.path === change2.path);
       const after = request && isTextLike(change2.path) ? utf8(request.bytes) : void 0;
-      if (after === void 0) return { ...change2, diff: null };
+      if (after === void 0 || change2.operation === "deleted") return { ...change2, diff: null };
       if (change2.operation === "created") return { ...change2, diff: unifiedDiff({ path: change2.path, before: "", after, created: true }) };
       const snapshot = previous2.get(change2.path) ?? await this.files.read(change2.path);
       const before = snapshot.revision === request.expectedRevision ? utf8(snapshot.bytes) : void 0;
@@ -930,28 +937,54 @@ class Workspace {
   async remove(path, expectedRevision) {
     return this.observe("remove", [path], async () => {
       const change2 = await this.files.remove(path, expectedRevision, this.dryRun);
-      return this.committed([change2]);
+      await this.committed({ renames: [], changes: [change2], folders: [], removedFolders: [] });
+      return { dryRun: this.dryRun, changes: [change2] };
     }, changeSummary);
   }
   /**
-   * Dry runs emit one `workspace.quick-preview` per planned file. Commits emit `vault.create` for each new
-   * folder (parent before child), then one `vault.*` record per file in batch order, then run the commit observer.
+   * One guarded batch of renames, writes and removals (see `FileRepository.commit`). Structured writes are
+   * validated first; dry runs return each write's diff when `options.previous` is given.
    */
-  async committed(changes, folders = []) {
+  async commit(batch, options) {
+    const paths2 = [...(batch.renames ?? []).flatMap((rename2) => [rename2.from, rename2.to]), ...(batch.writes ?? []).map((write) => write.path), ...(batch.removes ?? []).map((remove) => remove.path)];
+    return this.observe(options.operation, paths2, async () => {
+      const requests = snapshotWriteRequests(batch.writes ?? []);
+      for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
+      const result = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
+      await this.committed(result, options.trash === true);
+      const changes = this.dryRun && options.previous ? await this.preview(result.changes, requests, options.previous) : result.changes;
+      return { dryRun: this.dryRun, renames: result.renames, changes, folders: result.folders, removedFolders: result.removedFolders };
+    }, changeSummary);
+  }
+  /**
+   * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
+   * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
+   * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
+   * observer. A trash batch reports each moved file, then each moved folder (child before parent), as `vault.delete`.
+   */
+  async committed(result, trash = false) {
+    const { renames, changes, folders, removedFolders } = result;
     if (this.dryRun) {
       for (const { path, operation: operation2, bytes } of changes) await publishHostEvent(this.events, "workspace.quick-preview", { path, operation: operation2, bytes });
-      return { dryRun: this.dryRun, changes };
+      return;
     }
-    for (const path of folders) await this.notify(path, "vault.create", { path, kind: "folder", operation: "created" });
+    for (const path of folders) if (!(trash && isInTrash(path))) await this.notify(path, "vault.create", { path, kind: "folder", operation: "created" });
+    if (trash) {
+      for (const rename2 of renames) if (rename2.kind === "file") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "file", revision: rename2.revision, bytes: rename2.bytes, operation: "deleted" });
+      for (const rename2 of [...renames].reverse()) if (rename2.kind === "folder") await this.notify(rename2.from, "vault.delete", { path: rename2.from, kind: "folder", operation: "deleted" });
+    } else {
+      for (const rename2 of renames) await this.notify(rename2.to, "vault.rename", { path: rename2.to, oldPath: rename2.from, kind: rename2.kind, ...rename2.kind === "file" ? { revision: rename2.revision } : {} });
+    }
     for (const { path, revision, operation: operation2, bytes } of changes) await this.notify(path, vaultEvents[operation2], { path, kind: "file", revision, bytes, operation: operation2 });
-    if (this.observer && changes.length > 0) {
+    for (const path of removedFolders) await this.notify(path, "vault.delete", { path, kind: "folder", operation: "deleted" });
+    const moved2 = renames.filter((rename2) => rename2.kind === "file");
+    if (this.observer && moved2.length + changes.length > 0) {
       try {
-        await this.observer.committed(changes);
+        await this.observer.committed({ renames: moved2, changes });
       } catch (error2) {
-        this.warn(`Committed ${changes.length} file(s); post-commit update failed: ${errorMessage(error2)}`);
+        this.warn(`Committed ${moved2.length + changes.length} file(s); post-commit update failed: ${errorMessage(error2)}`);
       }
     }
-    return { dryRun: this.dryRun, changes };
   }
   async notify(path, id2, payload) {
     try {
@@ -1015,6 +1048,24 @@ class ScopedFiles {
     const change2 = await this.files.remove(this.prefix + vaultPath(path), expectedRevision, dryRun);
     return { ...change2, path: this.relative(change2.path) };
   }
+  async stat(path) {
+    return { ...await this.files.stat(this.prefix + vaultPath(path)), path: vaultPath(path) };
+  }
+  /** Folders created or removed above the project directory are outside this scope and are not reported. */
+  async commit(batch, dryRun) {
+    const result = await this.files.commit({
+      renames: (batch.renames ?? []).map((rename2) => ({ ...rename2, from: this.prefix + vaultPath(rename2.from), to: this.prefix + vaultPath(rename2.to) })),
+      writes: snapshotWriteRequests(batch.writes ?? []).map((write) => ({ ...write, path: this.prefix + write.path })),
+      removes: (batch.removes ?? []).map((remove) => ({ ...remove, path: this.prefix + vaultPath(remove.path) }))
+    }, dryRun);
+    const inScope = (folders) => folders.filter((folder) => folder.startsWith(this.prefix)).map((folder) => this.relative(folder));
+    return {
+      renames: result.renames.map((rename2) => ({ ...rename2, from: this.relative(rename2.from), to: this.relative(rename2.to) })),
+      changes: result.changes.map((change2) => ({ ...change2, path: this.relative(change2.path) })),
+      folders: inScope(result.folders),
+      removedFolders: inScope(result.removedFolders)
+    };
+  }
   relative(path) {
     ensure(path.startsWith(this.prefix), "INVALID_PATH", "Repository returned a path outside the selected project.");
     return vaultPath(path.slice(this.prefix.length));
@@ -1022,10 +1073,17 @@ class ScopedFiles {
 }
 function scopedCommitObserver(observer, directory) {
   const prefix = `${vaultPath(directory)}/`;
+  const within = (path) => path.startsWith(prefix);
   return {
-    async committed(changes) {
-      const inside = changes.filter((change2) => change2.path.startsWith(prefix)).map((change2) => ({ ...change2, path: change2.path.slice(prefix.length) }));
-      if (inside.length > 0) await observer.committed(inside);
+    async committed({ renames, changes }) {
+      const moved2 = [], crossed = [];
+      for (const rename2 of renames) {
+        if (within(rename2.from) && within(rename2.to)) moved2.push({ ...rename2, from: rename2.from.slice(prefix.length), to: rename2.to.slice(prefix.length) });
+        else if (within(rename2.from)) crossed.push({ path: rename2.from.slice(prefix.length), revision: rename2.revision, operation: "deleted", bytes: rename2.bytes });
+        else if (within(rename2.to)) crossed.push({ path: rename2.to.slice(prefix.length), revision: rename2.revision, operation: "created", bytes: rename2.bytes });
+      }
+      const inside2 = [...crossed, ...changes.filter((change2) => within(change2.path)).map((change2) => ({ ...change2, path: change2.path.slice(prefix.length) }))];
+      if (moved2.length + inside2.length > 0) await observer.committed({ renames: moved2, changes: inside2 });
     }
   };
 }
@@ -1312,7 +1370,7 @@ class ProjectService {
     return this.workspace.dryRun ? { preview: plan.map((file) => ({ path: file.path, content: new TextDecoder().decode(file.bytes) })) } : {};
   }
 }
-const encode$2 = (value2) => new TextEncoder().encode(value2);
+const encode$3 = (value2) => new TextEncoder().encode(value2);
 const instructions = `# The Forge workflow
 
 Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
@@ -1369,24 +1427,24 @@ class SetupService {
   templates;
   async run() {
     ensure(this.artifacts.some((artifact) => artifact.path === "forge.js") && this.artifacts.some((artifact) => artifact.path === "package.json"), "INVALID_SETUP", "Setup requires the complete built bin distribution. Run the bundled CLI or build it first.");
-    const candidates = [
+    const candidates2 = [
       ...this.artifacts.map((artifact) => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
-      { path: "bin/config.json", bytes: encode$2(JSON.stringify(this.config, null, 2) + "\n") },
-      ...this.skills.map((skill) => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode$2(skill.content) })),
-      { path: "bin/templates/entity.md", bytes: encode$2(entityTemplate) },
-      ...this.templates.map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$2(template.content) })),
+      { path: "bin/config.json", bytes: encode$3(JSON.stringify(this.config, null, 2) + "\n") },
+      ...this.skills.map((skill) => ({ path: `.agents/skills/${vaultPath(skill.id)}/SKILL.md`, bytes: encode$3(skill.content) })),
+      { path: "bin/templates/entity.md", bytes: encode$3(entityTemplate) },
+      ...this.templates.map((template) => ({ path: `bin/templates/${vaultPath(template.path)}`, bytes: encode$3(template.content) })),
       { path: "bin/plugins/.gitkeep", bytes: new Uint8Array() },
       { path: `${this.config.paths.projects}/.gitkeep`, bytes: new Uint8Array() },
-      { path: "AGENTS.md", bytes: encode$2(instructions) }
+      { path: "AGENTS.md", bytes: encode$3(instructions) }
     ];
     const seen = /* @__PURE__ */ new Set();
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       vaultPath(candidate.path);
       ensure(!seen.has(candidate.path), "INVALID_SETUP", `Setup destinations overlap: ${candidate.path}`);
       seen.add(candidate.path);
     }
     const writes = [], skipped = [];
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       try {
         await this.workspace.files.read(candidate.path);
         skipped.push(candidate.path);
@@ -2032,10 +2090,10 @@ class TemplateInstaller {
   workspace;
   artifacts;
   async install() {
-    const candidates = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
-    ensure(new Set(candidates.map((candidate) => candidate.path)).size === candidates.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
+    const candidates2 = this.artifacts.map((artifact) => ({ path: `bin/templates/${vaultPath(artifact.path)}`, bytes: new TextEncoder().encode(artifact.content) }));
+    ensure(new Set(candidates2.map((candidate) => candidate.path)).size === candidates2.length, "INVALID_TEMPLATE_PACK", "Template destinations must be unique.");
     const writes = [], skipped = [];
-    for (const candidate of candidates) {
+    for (const candidate of candidates2) {
       try {
         await this.workspace.files.read(candidate.path);
         skipped.push(candidate.path);
@@ -2110,7 +2168,7 @@ function ensureDistinctTargets(sources) {
   }
 }
 const equalBytes = (left, right) => left.length === right.length && left.every((byte, index2) => byte === right[index2]);
-const decode$3 = (bytes) => new TextDecoder().decode(bytes);
+const decode$5 = (bytes) => new TextDecoder().decode(bytes);
 const byTarget = (left, right) => left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
 class WorkflowSync {
   constructor(workspace2, projects, renderer) {
@@ -2159,14 +2217,14 @@ class WorkflowSync {
     const planned = await Promise.all(sources.map(async (source) => {
       const bytes = this.renderer.render((await this.workspace.files.read(source.source)).bytes, source);
       const current = await this.current(source.target);
-      ensure(current === void 0 || isGeneratedWorkflow(decode$3(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
+      ensure(current === void 0 || isGeneratedWorkflow(decode$5(current.bytes)), "CONFLICT", `${source.target} exists but was not generated by workflows sync. Move or delete it, then run workflows sync.`, { path: source.target });
       const status2 = current === void 0 ? "missing" : equalBytes(current.bytes, bytes) ? "unchanged" : "changed";
       return { project: source.project, concern: source.concern, source: source.source, target: source.target, status: status2, bytes, ...current ? { revision: current.revision } : {} };
     }));
     const prefix = `${generatedWorkflowDirectory}/`;
     const stale = await Promise.all(paths2.filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && !desired.has(path)).map(async (path) => {
       const current = await this.workspace.files.read(path);
-      return isGeneratedWorkflow(decode$3(current.bytes)) ? [{ project: null, concern: null, source: null, target: path, status: "stale", revision: current.revision }] : [];
+      return isGeneratedWorkflow(decode$5(current.bytes)) ? [{ project: null, concern: null, source: null, target: path, status: "stale", revision: current.revision }] : [];
     }));
     return [...planned, ...stale.flat()].sort(byTarget);
   }
@@ -2423,9 +2481,9 @@ function requireDirectives() {
       this.tags = Object.assign({}, Directives.defaultTags, tags2);
     }
     clone() {
-      const copy = new Directives(this.yaml, this.tags);
-      copy.docStart = this.docStart;
-      return copy;
+      const copy2 = new Directives(this.yaml, this.tags);
+      copy2.docStart = this.docStart;
+      return copy2;
     }
     /**
      * During parsing, get a Directives instance for the current document and
@@ -2736,10 +2794,10 @@ function requireNode() {
     }
     /** Create a copy of this node.  */
     clone() {
-      const copy = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
+      const copy2 = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
       if (this.range)
-        copy.range = this.range.slice();
-      return copy;
+        copy2.range = this.range.slice();
+      return copy2;
     }
     /** A plain JavaScript representation of this node. */
     toJS(doc, { mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
@@ -3032,13 +3090,13 @@ function requireCollection() {
      * @param schema - If defined, overwrites the original's schema
      */
     clone(schema2) {
-      const copy = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
+      const copy2 = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
       if (schema2)
-        copy.schema = schema2;
-      copy.items = copy.items.map((it) => identity2.isNode(it) || identity2.isPair(it) ? it.clone(schema2) : it);
+        copy2.schema = schema2;
+      copy2.items = copy2.items.map((it) => identity2.isNode(it) || identity2.isPair(it) ? it.clone(schema2) : it);
       if (this.range)
-        copy.range = this.range.slice();
-      return copy;
+        copy2.range = this.range.slice();
+      return copy2;
     }
     /**
      * Adds a value to the collection. For `!!map` and `!!omap` the value must
@@ -5457,9 +5515,9 @@ function requireSchema() {
       this.sortMapEntries = typeof sortMapEntries === "function" ? sortMapEntries : sortMapEntries === true ? sortMapEntriesByKey : null;
     }
     clone() {
-      const copy = Object.create(Schema2.prototype, Object.getOwnPropertyDescriptors(this));
-      copy.tags = this.tags.slice();
-      return copy;
+      const copy2 = Object.create(Schema2.prototype, Object.getOwnPropertyDescriptors(this));
+      copy2.tags = this.tags.slice();
+      return copy2;
     }
   };
   Schema.Schema = Schema$1;
@@ -5601,21 +5659,21 @@ function requireDocument() {
      * Custom Node values that inherit from `Object` still refer to their original instances.
      */
     clone() {
-      const copy = Object.create(Document2.prototype, {
+      const copy2 = Object.create(Document2.prototype, {
         [identity2.NODE_TYPE]: { value: identity2.DOC }
       });
-      copy.commentBefore = this.commentBefore;
-      copy.comment = this.comment;
-      copy.errors = this.errors.slice();
-      copy.warnings = this.warnings.slice();
-      copy.options = Object.assign({}, this.options);
+      copy2.commentBefore = this.commentBefore;
+      copy2.comment = this.comment;
+      copy2.errors = this.errors.slice();
+      copy2.warnings = this.warnings.slice();
+      copy2.options = Object.assign({}, this.options);
       if (this.directives)
-        copy.directives = this.directives.clone();
-      copy.schema = this.schema.clone();
-      copy.contents = identity2.isNode(this.contents) ? this.contents.clone(copy.schema) : this.contents;
+        copy2.directives = this.directives.clone();
+      copy2.schema = this.schema.clone();
+      copy2.contents = identity2.isNode(this.contents) ? this.contents.clone(copy2.schema) : this.contents;
       if (this.range)
-        copy.range = this.range.slice();
-      return copy;
+        copy2.range = this.range.slice();
+      return copy2;
     }
     /** Adds a value to the document. */
     add(value2) {
@@ -9614,9 +9672,303 @@ const yamlWorkflowRenderer = {
 ${document2.toString({ lineWidth: 0 })}`);
   }
 };
+const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
+const lockedFileDelays = [10, 20, 40, 80, 160, 320];
+const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
+async function retryTransient(operation2, options = {}) {
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation2();
+    } catch (error2) {
+      const code2 = errorCode$1(error2);
+      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
+      await sleep(delays[attempt]);
+    }
+  }
+}
+const missing$2 = (error2) => error2.code === "ENOENT";
+const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+const inside = (path, folder) => path === folder || path.startsWith(`${folder}/`);
+const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
+async function exists(target) {
+  try {
+    return await promises$1.lstat(target);
+  } catch (error2) {
+    if (missing$2(error2)) return void 0;
+    throw error2;
+  }
+}
+function validatePlan(renames, writes, removes) {
+  ensure(renames.length + writes.length + removes.length > 0, "INVALID_PLAN", "Plan must contain at least one change.");
+  ensure(new Set(writes.map((w) => w.path)).size === writes.length, "INVALID_PLAN", "Plan must contain unique file paths.");
+  ensure(!writes.some((a) => writes.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
+  for (const rename2 of renames) ensure(!inside(rename2.to, rename2.from) && !inside(rename2.from, rename2.to), "INVALID_PLAN", `Cannot move ${rename2.from} into itself or its parent path ${rename2.to}.`);
+  const claims = [
+    ...renames.flatMap((rename2) => [{ path: rename2.from, role: "source" }, { path: rename2.to, role: "destination" }]),
+    ...removes.map((remove) => ({ path: remove.path, role: "source" })),
+    ...writes.map((write) => ({ path: write.path, role: "write" }))
+  ];
+  for (const [index2, claim2] of claims.entries()) {
+    for (const other of claims.slice(index2 + 1)) {
+      if (claim2.role === "write" && other.role === "write") continue;
+      if (!inside(claim2.path, other.path) && !inside(other.path, claim2.path)) continue;
+      const roles = [claim2.role, other.role];
+      const allowed = roles.includes("write") && roles.includes("destination") && inside((claim2.role === "write" ? claim2 : other).path, (claim2.role === "write" ? other : claim2).path);
+      ensure(allowed, "INVALID_PLAN", `Batch steps overlap at ${claim2.path} and ${other.path}.`);
+    }
+  }
+}
+class Transaction {
+  constructor(host, batch) {
+    this.host = host;
+    const valid2 = (request, keys) => request !== null && typeof request === "object" && keys.every((key) => typeof request[key] === "string");
+    ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every((r) => valid2(r, ["from", "to", "expectedRevision"])), "INVALID_PLAN", "Renames need from, to and expectedRevision strings.");
+    ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every((r) => valid2(r, ["path", "expectedRevision"])), "INVALID_PLAN", "Removals need path and expectedRevision strings.");
+    this.renames = (batch.renames ?? []).map((r) => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
+    this.writes = snapshotWriteRequests(batch.writes ?? []);
+    this.removes = (batch.removes ?? []).map((r) => ({ path: vaultPath(r.path), expectedRevision: r.expectedRevision }));
+    validatePlan(this.renames, this.writes, this.removes);
+  }
+  host;
+  renames;
+  writes;
+  removes;
+  createdDirectories = [];
+  folders = [];
+  touched = /* @__PURE__ */ new Set();
+  staged = [];
+  committedRenames = [];
+  committedWrites = [];
+  committedRemoves = [];
+  async run(dryRun) {
+    const conflicts = [];
+    const renames = await this.planRenames(conflicts);
+    const writes = await this.planWrites(conflicts);
+    const removes = await this.planRemoves(conflicts);
+    const [conflict] = conflicts, steps = renames.length + writes.length + removes.length;
+    const message = steps === 1 && removes.length === 1 ? `File changed; read again before removing: ${conflict?.path}` : `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`;
+    ensure(conflict === void 0, "CONFLICT", message, conflict && { ...conflict, ...steps > 1 ? { conflicts } : {} });
+    if (!dryRun) {
+      try {
+        await this.apply(renames, writes, removes);
+      } catch (error2) {
+        await this.rollback();
+        throw error2;
+      }
+      await this.finalize();
+    }
+    return this.result(renames, writes, removes);
+  }
+  async entry(path) {
+    const target = await this.host.resolvePath(path, true);
+    const info = await exists(target);
+    if (!info) return void 0;
+    if ((await promises$1.lstat(target)).isDirectory()) {
+      const snapshot = await this.host.folder(path);
+      ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+      return { kind: "folder", snapshot };
+    }
+    return { kind: "file", stored: await this.host.stored(path) };
+  }
+  async planRenames(conflicts) {
+    const plans = [];
+    for (const request of this.renames) {
+      const entry2 = await this.entry(request.from);
+      if (!entry2) throw forgeError("NOT_FOUND", `File or folder not found: ${request.from}`);
+      if (entryRevision(entry2) !== request.expectedRevision) conflicts.push(revisionConflict(request.from, request.expectedRevision, entryRevision(entry2)));
+      const source = await this.host.resolvePath(request.from, true), target = await this.host.resolvePath(request.to, true);
+      const caseOnly = await this.caseOnly(request, source, target);
+      plans.push({ request, source, target, entry: entry2, caseOnly });
+    }
+    return plans;
+  }
+  /** A destination that exists is refused, unless it is the source itself under another letter case (case-insensitive filesystems). */
+  async caseOnly(request, source, target) {
+    const existing = await exists(target);
+    if (!existing) return false;
+    const original = await promises$1.lstat(source);
+    const same = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
+    ensure(same, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
+    return true;
+  }
+  /** The path a write's current content comes from once the batch's renames apply. */
+  origin(path) {
+    for (const rename2 of this.renames) if (inside(path, rename2.to)) return rename2.from + path.slice(rename2.to.length);
+    return path;
+  }
+  async planWrites(conflicts) {
+    const plans = [];
+    for (const write of this.writes) {
+      const target = await this.host.resolvePath(write.path);
+      const before = await this.host.stored(this.origin(write.path));
+      if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
+      plans.push({ write, target, before });
+    }
+    return plans;
+  }
+  async planRemoves(conflicts) {
+    const plans = [];
+    for (const request of this.removes) {
+      const entry2 = await this.entry(request.path);
+      if (!entry2) throw forgeError("NOT_FOUND", `File not found: ${request.path}`);
+      const current = entryRevision(entry2);
+      ensure(request.expectedRevision.length > 0, "CONFLICT", `Removing a file requires its current --if-match revision: ${request.path}`, revisionConflict(request.path, null, current));
+      if (current !== request.expectedRevision) conflicts.push(revisionConflict(request.path, request.expectedRevision, current));
+      plans.push({ request, target: await this.host.resolvePath(request.path, true), entry: entry2 });
+    }
+    return plans;
+  }
+  async makeParents(path) {
+    let directory = this.host.root;
+    const parts = path.split("/");
+    for (const [index2, part] of parts.slice(0, -1).entries()) {
+      directory = minpath.join(directory, part);
+      try {
+        await promises$1.mkdir(directory);
+        this.createdDirectories.push(directory);
+        this.folders.push(parts.slice(0, index2 + 1).join("/"));
+        this.touched.add(minpath.dirname(directory));
+      } catch (error2) {
+        if (error2.code !== "EEXIST") throw error2;
+      }
+    }
+  }
+  /** Immediately before a step: the file or folder still has the revision the batch checked. */
+  async verify(path, entry2, expected) {
+    if (entry2.kind === "file") {
+      await this.host.assertRevision(path, expected);
+      return;
+    }
+    const current = (await this.host.folder(path))?.revision;
+    ensure(current === expected, "CONFLICT", `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
+  }
+  async apply(renames, writes, removes) {
+    for (const plan of renames) {
+      await this.makeParents(plan.request.to);
+      await this.verify(plan.request.from, plan.entry, plan.request.expectedRevision);
+      if (!plan.caseOnly) ensure(!await exists(plan.target), "DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
+      await this.move(plan.source, plan.target, plan.caseOnly);
+      this.committedRenames.push(plan);
+      this.touched.add(minpath.dirname(plan.source)).add(minpath.dirname(plan.target));
+    }
+    for (const plan of writes) await this.makeParents(plan.write.path);
+    await this.host.stageAll(writes, this.staged);
+    for (const [index2, plan] of writes.entries()) {
+      await this.host.resolvePath(plan.write.path);
+      await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), this.staged[index2]);
+      this.committedWrites.push(plan);
+      this.touched.add(minpath.dirname(plan.target));
+    }
+    for (const plan of removes) {
+      await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
+      const temp = temporary(plan.target);
+      await retryTransient(() => promises$1.rename(plan.target, temp));
+      plan.temp = temp;
+      this.committedRemoves.push(plan);
+      this.touched.add(minpath.dirname(plan.target));
+    }
+    await this.host.syncDirectories(this.touched);
+  }
+  /** A case-only rename passes through a reserved name, which works whether or not the filesystem ignores case. */
+  async move(source, target, caseOnly) {
+    if (!caseOnly) {
+      await retryTransient(() => promises$1.rename(source, target));
+      return;
+    }
+    const temp = temporary(source);
+    await retryTransient(() => promises$1.rename(source, temp));
+    try {
+      await retryTransient(() => promises$1.rename(temp, target));
+    } catch (error2) {
+      await retryTransient(() => promises$1.rename(temp, source)).catch(() => {
+      });
+      throw error2;
+    }
+  }
+  /** Committed removals become permanent; a cleanup failure leaves a reserved temporary entry and a warning. */
+  async finalize() {
+    for (const plan of this.committedRemoves) {
+      try {
+        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
+      } catch (error2) {
+        this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error2)}`);
+      }
+    }
+    if (this.committedRemoves.length === 0) return;
+    try {
+      await this.host.syncDirectories(this.committedRemoves.map((plan) => minpath.dirname(plan.target)));
+    } catch (error2) {
+      this.host.warn(`Removed files, but syncing their folders failed: ${String(error2)}`);
+    }
+  }
+  async rollback() {
+    for (const temp of this.staged) if (temp) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
+    });
+    const failures = [];
+    for (const plan of this.committedRemoves.reverse()) {
+      try {
+        ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
+        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
+      } catch {
+        failures.push(plan.target);
+      }
+    }
+    for (const entry2 of this.committedWrites.reverse()) {
+      try {
+        const verify = () => this.host.assertRevision(entry2.write.path, this.host.revision(entry2.write.bytes));
+        if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
+        else {
+          await verify();
+          await retryTransient(() => promises$1.rm(entry2.target));
+        }
+      } catch {
+        failures.push(entry2.target);
+      }
+    }
+    for (const plan of this.committedRenames.reverse()) {
+      try {
+        if (plan.entry.kind === "file") await this.host.assertRevision(plan.request.to, plan.entry.stored.revision);
+        if (!plan.caseOnly) ensure(!await exists(plan.source), "ROLLBACK_FAILED", plan.source);
+        await this.move(plan.target, plan.source, plan.caseOnly);
+      } catch {
+        failures.push(plan.target);
+      }
+    }
+    for (const directory of this.createdDirectories.reverse()) {
+      try {
+        await retryTransient(() => promises$1.rmdir(directory));
+        this.touched.delete(directory);
+      } catch {
+      }
+    }
+    for (const directory of this.touched) {
+      try {
+        await this.host.syncDirectories([directory]);
+      } catch {
+        failures.push(directory);
+      }
+    }
+    if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
+  }
+  result(renames, writes, removes) {
+    const moved2 = renames.flatMap(({ request: { from, to }, entry: entry2 }) => {
+      if (entry2.kind === "file") return [{ from, to, kind: "file", revision: entry2.stored.revision, bytes: entry2.stored.bytes.length }];
+      const descendants = [
+        ...entry2.snapshot.folders.map((path) => ({ from: `${from}/${path}`, to: `${to}/${path}`, kind: "folder" })),
+        ...entry2.snapshot.files.map((file) => ({ from: `${from}/${file.path}`, to: `${to}/${file.path}`, kind: "file", revision: file.revision, bytes: file.bytes }))
+      ].sort((a, b) => a.to < b.to ? -1 : a.to > b.to ? 1 : 0);
+      return [{ from, to, kind: "folder" }, ...descendants];
+    });
+    const written = writes.map(({ write, before }) => ({ path: write.path, revision: this.host.revision(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
+    const removed = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [{ path, revision: entry2.stored.revision, operation: "deleted", bytes: entry2.stored.bytes.length }] : entry2.snapshot.files.map((file) => ({ path: `${path}/${file.path}`, revision: file.revision, operation: "deleted", bytes: file.bytes })));
+    const removedFolders = removes.flatMap(({ request: { path }, entry: entry2 }) => entry2.kind === "file" ? [] : [...entry2.snapshot.folders.map((folder) => `${path}/${folder}`).sort().reverse(), path]);
+    return { renames: moved2, changes: [...written, ...removed], folders: this.folders, removedFolders };
+  }
+}
 const unsupported = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
 const isUnsupported = (error2) => unsupported.has(String(error2?.code));
-async function syncDirectory(path, openDirectory = (directory) => promises.open(directory, "r")) {
+async function syncDirectory(path, openDirectory = (directory) => promises$1.open(directory, "r")) {
   let handle;
   try {
     handle = await openDirectory(path);
@@ -9630,21 +9982,6 @@ async function syncDirectory(path, openDirectory = (directory) => promises.open(
     if (!isUnsupported(error2)) throw error2;
   } finally {
     await handle.close();
-  }
-}
-const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
-const lockedFileDelays = [10, 20, 40, 80, 160, 320];
-const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
-async function retryTransient(operation2, options = {}) {
-  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await operation2();
-    } catch (error2) {
-      const code2 = errorCode$1(error2);
-      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
-      await sleep(delays[attempt]);
-    }
   }
 }
 const lockName = ".agent-cli.lock";
@@ -9666,8 +10003,8 @@ function ownerDetails(owner) {
 let identity;
 function hostIdentity() {
   identity ??= (async () => {
-    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
-    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
     return { ...text$4(pidNamespace) ? { pidNamespace } : {}, ...text$4(bootId) ? { bootId } : {} };
   })();
   return identity;
@@ -9684,17 +10021,17 @@ async function acquireLock(path, owner) {
     token
   };
   const content2 = JSON.stringify(record2) + "\n";
-  const temporary = minpath.join(minpath.dirname(path), `.agent-cli-tmp-lock-${token}`);
+  const temporary2 = minpath.join(minpath.dirname(path), `.agent-cli-tmp-lock-${token}`);
   let linked = false;
   try {
-    await writeDurably(temporary, content2);
-    await retryTransient(() => promises.link(temporary, path), { codes: ["EBUSY"] });
+    await writeDurably(temporary2, content2);
+    await retryTransient(() => promises$1.link(temporary2, path), { codes: ["EBUSY"] });
     linked = true;
   } catch (error2) {
     if (errorCode(error2) === "EEXIST") throw await busy(path);
     if (!linkUnsupported.has(errorCode(error2))) throw error2;
   } finally {
-    await retryTransient(() => promises.rm(temporary, { force: true })).catch(() => {
+    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
     });
   }
   if (!linked) await createExclusively(path, content2);
@@ -9710,12 +10047,12 @@ async function record$2(handle, content2) {
   }
 }
 async function writeDurably(path, content2) {
-  await record$2(await retryTransient(() => promises.open(path, "wx")), content2);
+  await record$2(await retryTransient(() => promises$1.open(path, "wx")), content2);
 }
 async function createExclusively(path, content2) {
   let handle;
   try {
-    handle = await retryTransient(() => promises.open(path, "wx"));
+    handle = await retryTransient(() => promises$1.open(path, "wx"));
   } catch (error2) {
     if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path);
     throw error2;
@@ -9723,7 +10060,7 @@ async function createExclusively(path, content2) {
   try {
     await record$2(handle, content2);
   } catch (error2) {
-    await retryTransient(() => promises.rm(path, { force: true })).catch(() => {
+    await retryTransient(() => promises$1.rm(path, { force: true })).catch(() => {
     });
     throw error2;
   }
@@ -9732,7 +10069,7 @@ async function releaseLock(path, token) {
   heldTokens.delete(token);
   let content2;
   try {
-    content2 = await retryTransient(() => promises.readFile(path, "utf8"));
+    content2 = await retryTransient(() => promises$1.readFile(path, "utf8"));
   } catch (error2) {
     if (errorCode(error2) === "ENOENT") return "missing";
     throw error2;
@@ -9744,7 +10081,7 @@ async function releaseLock(path, token) {
     return "foreign";
   }
   if (recorded !== token) return "foreign";
-  await retryTransient(() => promises.unlink(path));
+  await retryTransient(() => promises$1.unlink(path));
   return "released";
 }
 function parseMetadata(content2) {
@@ -9769,10 +10106,10 @@ function parseMetadata(content2) {
 }
 async function readLock(path) {
   try {
-    const entry2 = await promises.lstat(path);
+    const entry2 = await promises$1.lstat(path);
     if (!entry2.isFile()) return { lock: null, young: false };
     const young = Date.now() - entry2.mtimeMs < writingWindowMs;
-    const handle = await promises.open(path, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    const handle = await promises$1.open(path, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
     try {
       const buffer = Buffer.alloc(4096);
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
@@ -9817,28 +10154,29 @@ const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).dig
 const missing$1 = (error2) => error2.code === "ENOENT";
 const stagingConcurrency = 8;
 class NodeFiles {
-  constructor(root, warn, owner) {
+  constructor(root, warning, owner) {
     this.root = root;
-    this.warn = warn;
+    this.warning = warning;
     this.owner = owner;
   }
   root;
-  warn;
+  warning;
   owner;
   /** `owner` names the invocation recorded in the writer lock; composition code supplies it. */
   static async at(root, warn = () => {
   }, owner = () => ({})) {
-    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner);
+    return new NodeFiles(await promises$1.realpath(minpath.resolve(root)), warn, owner);
   }
-  async resolvePath(path) {
+  /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
+  async resolvePath(path, allowFolder = false) {
     const parts = vaultPath(path).split("/");
     let current = this.root;
     for (const [index2, part] of parts.entries()) {
       current = minpath.join(current, part);
       try {
-        const info = await promises.lstat(current);
+        const info = await promises$1.lstat(current);
         ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path}`);
-        ensure(index2 === parts.length - 1 ? info.isFile() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path}`);
+        ensure(index2 === parts.length - 1 ? info.isFile() || allowFolder && info.isDirectory() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path}`);
       } catch (error2) {
         if (!missing$1(error2)) throw error2;
       }
@@ -9847,7 +10185,7 @@ class NodeFiles {
   }
   async read(path) {
     try {
-      const bytes = await promises.readFile(await this.resolvePath(path));
+      const bytes = await promises$1.readFile(await this.resolvePath(path));
       return { path, bytes, revision: revisionOf(bytes) };
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File not found: ${path}`);
@@ -9857,7 +10195,7 @@ class NodeFiles {
   async list() {
     const result = [];
     const walk = async (directory, prefix) => {
-      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         if ([".git", "node_modules", lockName].includes(entry2.name) || entry2.name.startsWith(".agent-cli-tmp-")) continue;
         const path = prefix + entry2.name;
         if (entry2.isDirectory()) await walk(minpath.join(directory, entry2.name), path + "/");
@@ -9867,132 +10205,102 @@ class NodeFiles {
     await walk(this.root, "");
     return result.sort();
   }
+  /** @internal */
   async stored(path) {
     const target = await this.resolvePath(path);
     try {
-      const mode = (await promises.lstat(target)).mode & 4095;
-      const bytes = await promises.readFile(target);
+      const mode = (await promises$1.lstat(target)).mode & 4095;
+      const bytes = await promises$1.readFile(target);
       return { bytes, mode, revision: revisionOf(bytes) };
     } catch (error2) {
       if (!missing$1(error2)) throw error2;
       return void 0;
     }
   }
+  /** @internal */
   async assertRevision(path, expected) {
     const current = (await this.stored(path))?.revision;
     ensure(current === expected, "CONFLICT", `File changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
   async remove(path, expectedRevision, dryRun) {
-    path = vaultPath(path);
-    const guarded2 = typeof expectedRevision === "string" && expectedRevision.length > 0;
+    await this.resolvePath(path);
+    const { changes } = await this.commit({ removes: [{ path, expectedRevision: typeof expectedRevision === "string" ? expectedRevision : "" }] }, dryRun);
+    return changes[0];
+  }
+  async writeBatch(writes, dryRun) {
+    const requests = snapshotWriteRequests(writes);
+    ensure(requests.length > 0, "INVALID_PLAN", "Plan must contain unique file paths.");
+    const { changes, folders } = await this.commit({ writes: requests }, dryRun);
+    return { changes, folders };
+  }
+  async commit(batch, dryRun) {
+    ensure(batch !== null && typeof batch === "object", "INVALID_PLAN", "A batch must be an object.");
+    const transaction = new Transaction(this, batch);
     const lock = minpath.join(this.root, lockName);
     let token;
     try {
       if (!dryRun) token = await acquireLock(lock, this.owner);
-      const target = await this.resolvePath(path);
-      const before = await this.stored(path);
-      if (before === void 0) throw forgeError("NOT_FOUND", `File not found: ${path}`);
-      ensure(guarded2, "CONFLICT", `Removing a file requires its current --if-match revision: ${path}`, revisionConflict(path, null, before.revision));
-      ensure(before.revision === expectedRevision, "CONFLICT", `File changed; read again before removing: ${path}`, revisionConflict(path, expectedRevision, before.revision));
-      if (!dryRun) {
-        await this.assertRevision(path, expectedRevision);
-        await retryTransient(() => promises.unlink(target));
-        await this.syncDirectories([minpath.dirname(target)]);
-      }
-      return { path, revision: before.revision, operation: "deleted", bytes: before.bytes.length };
+      return await transaction.run(dryRun);
     } finally {
       if (token !== void 0) await this.cleanupLock(lock, token);
     }
   }
-  async writeBatch(writes, dryRun) {
-    const requests = snapshotWriteRequests(writes);
-    ensure(requests.length > 0 && new Set(requests.map((w) => w.path)).size === requests.length, "INVALID_PLAN", "Plan must contain unique file paths.");
-    ensure(!requests.some((a) => requests.some((b) => b.path.startsWith(a.path + "/"))), "INVALID_PLAN", "A generated file cannot also be a directory.");
-    const lock = minpath.join(this.root, lockName);
-    let token;
-    const createdDirectories = [];
-    const folders = [];
-    const committed = [];
-    const staged = [];
-    const touched = /* @__PURE__ */ new Set();
+  async stat(path) {
+    path = vaultPath(path);
+    const target = await this.resolvePath(path, true);
+    let info;
     try {
-      if (!dryRun) token = await acquireLock(lock, this.owner);
-      const plans = [];
-      const conflicts = [];
-      for (const write of requests) {
-        const target = await this.resolvePath(write.path);
-        const before = await this.stored(write.path);
-        if (write.expectedRevision !== before?.revision) conflicts.push(revisionConflict(write.path, write.expectedRevision, before?.revision));
-        plans.push({ write, target, before });
-      }
-      const [conflict] = conflicts;
-      ensure(
-        conflict === void 0,
-        "CONFLICT",
-        `Existing files require their current --if-match revision: ${conflicts.map((item) => item.path).join(", ")}`,
-        conflict && { ...conflict, ...requests.length > 1 ? { conflicts } : {} }
-      );
-      if (!dryRun) {
-        for (const plan of plans) {
-          let directory = this.root;
-          const parts = plan.write.path.split("/");
-          for (const [index2, part] of parts.slice(0, -1).entries()) {
-            directory = minpath.join(directory, part);
-            try {
-              await promises.mkdir(directory);
-              createdDirectories.push(directory);
-              folders.push(parts.slice(0, index2 + 1).join("/"));
-              touched.add(minpath.dirname(directory));
-            } catch (error2) {
-              if (error2.code !== "EEXIST") throw error2;
-            }
-          }
-        }
-        await this.stageAll(plans, staged);
-        for (const [index2, plan] of plans.entries()) {
-          await this.resolvePath(plan.write.path);
-          await this.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.assertRevision(plan.write.path, plan.before?.revision), staged[index2]);
-          committed.push(plan);
-          touched.add(minpath.dirname(plan.target));
-        }
-        await this.syncDirectories(touched);
-      }
-      const changes = plans.map(({ write, before }) => ({ path: write.path, revision: revisionOf(write.bytes), operation: before === void 0 ? "created" : "updated", bytes: write.bytes.length }));
-      return { changes, folders };
+      info = await promises$1.lstat(target);
     } catch (error2) {
-      for (const temp of staged) if (temp) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
-      });
-      const failures = [];
-      for (const entry2 of committed.reverse()) {
-        try {
-          const verify = () => this.assertRevision(entry2.write.path, revisionOf(entry2.write.bytes));
-          if (entry2.before) await this.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
-          else {
-            await verify();
-            await retryTransient(() => promises.rm(entry2.target));
-          }
-        } catch {
-          failures.push(entry2.target);
-        }
-      }
-      for (const directory of createdDirectories.reverse()) {
-        try {
-          await retryTransient(() => promises.rmdir(directory));
-          touched.delete(directory);
-        } catch {
-        }
-      }
-      for (const directory of touched) {
-        try {
-          await syncDirectory(directory);
-        } catch {
-          failures.push(directory);
-        }
-      }
-      if (failures.length) throw forgeError("ROLLBACK_FAILED", `Inspect these files before retrying: ${failures.join(", ")}`);
+      if (missing$1(error2)) throw forgeError("NOT_FOUND", `File or folder not found: ${path}`);
       throw error2;
-    } finally {
-      if (token !== void 0) await this.cleanupLock(lock, token);
+    }
+    if (info.isDirectory()) {
+      const { revision, files, folders } = await this.folder(path);
+      return { path, kind: "folder", revision, files: files.map((file) => file.path), folders };
+    }
+    const stored = await this.stored(path);
+    return { path, kind: "file", revision: stored.revision, bytes: stored.bytes.length };
+  }
+  /** @internal Batch step: the folder's revision and contents, skipping Git, node_modules, symlinks and Forge's internal files. */
+  async folder(path) {
+    const files = [], folders = [];
+    let git = false;
+    const walk = async (directory, prefix) => {
+      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
+        if (entry2.name === ".git") git = true;
+        if ([".git", "node_modules", lockName].includes(entry2.name) || entry2.name.startsWith(".agent-cli-tmp-")) continue;
+        const relative = prefix + entry2.name;
+        if (entry2.isDirectory()) {
+          folders.push(relative);
+          await walk(minpath.join(directory, entry2.name), relative + "/");
+        } else if (entry2.isFile()) {
+          const bytes = await promises$1.readFile(minpath.join(directory, entry2.name));
+          files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
+        }
+      }
+    };
+    try {
+      await walk(await this.resolvePath(path, true), "");
+    } catch (error2) {
+      if (missing$1(error2)) return void 0;
+      throw error2;
+    }
+    files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    const digest = node_crypto.createHash("sha256");
+    for (const file of files) digest.update(`${file.path}\0${file.revision}
+`);
+    return { revision: digest.digest("hex"), files, folders: folders.sort(), git };
+  }
+  /** @internal */
+  revision(bytes) {
+    return revisionOf(bytes);
+  }
+  /** @internal */
+  warn(message) {
+    try {
+      this.warning(message);
+    } catch {
     }
   }
   async cleanupLock(lock, token) {
@@ -10004,19 +10312,17 @@ class NodeFiles {
     } catch (error2) {
       warning = `Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error2)}`;
     }
-    if (warning === void 0) return;
-    try {
-      this.warn(warning);
-    } catch {
-    }
+    if (warning !== void 0) this.warn(warning);
   }
   async releaseLock(lock, token) {
     return releaseLock(lock, token);
   }
+  /** @internal */
   async syncDirectories(directories) {
     for (const directory of new Set(directories)) await syncDirectory(directory);
   }
   /** Stage every plan, waiting for all workers so that no temporary file escapes cleanup. */
+  /** @internal */
   async stageAll(plans, staged) {
     let next = 0;
     const failures = [];
@@ -10036,7 +10342,7 @@ class NodeFiles {
   /** Write a same-directory temporary file whose data is durable before any rename publishes it. */
   async stage(target, bytes, mode) {
     const temp = minpath.join(minpath.resolve(target, ".."), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-    const handle = await promises.open(temp, "wx", mode ?? 438);
+    const handle = await promises$1.open(temp, "wx", mode ?? 438);
     try {
       try {
         await handle.writeFile(bytes);
@@ -10046,22 +10352,23 @@ class NodeFiles {
         await handle.close();
       }
     } catch (error2) {
-      await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
       });
       throw error2;
     }
     return temp;
   }
   /** Publish `staged` (or freshly staged bytes) over the target; the caller fsyncs the directory entry. */
+  /** @internal */
   async replace(target, bytes, mode, verify, staged) {
     const temp = staged ?? await this.stage(target, bytes, mode);
     let renamed = false;
     try {
       await verify?.();
-      await retryTransient(() => promises.rename(temp, target));
+      await retryTransient(() => promises$1.rename(temp, target));
       renamed = true;
     } finally {
-      if (!renamed) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      if (!renamed) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
       });
     }
   }
@@ -10123,7 +10430,7 @@ function requireExtend() {
     return obj[name2];
   };
   extend$2 = function extend2() {
-    var options, name2, src, copy, copyIsArray, clone2;
+    var options, name2, src, copy2, copyIsArray, clone2;
     var target = arguments[0];
     var i = 1;
     var length = arguments.length;
@@ -10141,18 +10448,18 @@ function requireExtend() {
       if (options != null) {
         for (name2 in options) {
           src = getProperty(target, name2);
-          copy = getProperty(options, name2);
-          if (target !== copy) {
-            if (deep && copy && (isPlainObject2(copy) || (copyIsArray = isArray(copy)))) {
+          copy2 = getProperty(options, name2);
+          if (target !== copy2) {
+            if (deep && copy2 && (isPlainObject2(copy2) || (copyIsArray = isArray(copy2)))) {
               if (copyIsArray) {
                 copyIsArray = false;
                 clone2 = src && isArray(src) ? src : [];
               } else {
                 clone2 = src && isPlainObject2(src) ? src : {};
               }
-              setProperty(target, { name: name2, newValue: extend2(deep, clone2, copy) });
-            } else if (typeof copy !== "undefined") {
-              setProperty(target, { name: name2, newValue: copy });
+              setProperty(target, { name: name2, newValue: extend2(deep, clone2, copy2) });
+            } else if (typeof copy2 !== "undefined") {
+              setProperty(target, { name: name2, newValue: copy2 });
             }
           }
         }
@@ -14307,12 +14614,12 @@ function tokenizeAttention(effects, ok) {
   function start2(code2) {
     marker = code2;
     effects.enter("attentionSequence");
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === marker) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
     const token = effects.exit("attentionSequence");
     const after = classifyCharacter(code2);
@@ -14507,9 +14814,9 @@ function tokenizeCharacterEscape(effects, ok, nok) {
     effects.enter("escapeMarker");
     effects.consume(code2);
     effects.exit("escapeMarker");
-    return inside;
+    return inside2;
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (asciiPunctuation(code2)) {
       effects.enter("characterEscapeValue");
       effects.consume(code2);
@@ -14786,15 +15093,15 @@ function tokenizeCodeIndented(effects, ok, nok) {
       return effects.attempt(furtherStart, atBreak, after)(code2);
     }
     effects.enter("codeFlowValue");
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === null || markdownLineEnding(code2)) {
       effects.exit("codeFlowValue");
       return atBreak(code2);
     }
     effects.consume(code2);
-    return inside;
+    return inside2;
   }
   function after(code2) {
     effects.exit("codeIndented");
@@ -15534,22 +15841,22 @@ function factoryTitle(effects, ok, nok, type2, markerType, stringType) {
     effects.enter("chunkString", {
       contentType: "string"
     });
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === marker || code2 === null || markdownLineEnding(code2)) {
       effects.exit("chunkString");
       return atBreak(code2);
     }
     effects.consume(code2);
-    return code2 === 92 ? escape : inside;
+    return code2 === 92 ? escape : inside2;
   }
   function escape(code2) {
     if (code2 === marker || code2 === 92) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
-    return inside(code2);
+    return inside2(code2);
   }
 }
 function factoryWhitespace(effects, ok) {
@@ -16858,15 +17165,15 @@ function tokenizeListStart(effects, ok, nok) {
       if (!self.interrupt || code2 === 49) {
         effects.enter("listItemPrefix");
         effects.enter("listItemValue");
-        return inside(code2);
+        return inside2(code2);
       }
     }
     return nok(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (asciiDigit(code2) && ++size < 10) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
     if ((!self.interrupt || size < 2) && (self.containerState.marker ? code2 === self.containerState.marker : code2 === 41 || code2 === 46)) {
       effects.exit("listItemValue");
@@ -17022,12 +17329,12 @@ function tokenizeSetextUnderline(effects, ok, nok) {
   }
   function before(code2) {
     effects.enter("setextHeadingLineSequence");
-    return inside(code2);
+    return inside2(code2);
   }
-  function inside(code2) {
+  function inside2(code2) {
     if (code2 === marker) {
       effects.consume(code2);
-      return inside;
+      return inside2;
     }
     effects.exit("setextHeadingLineSequence");
     return markdownSpace(code2) ? factorySpace(effects, after, "lineSuffix")(code2) : after(code2);
@@ -17715,9 +18022,9 @@ function preprocess() {
 }
 const characterEscapeOrReference = /\\([!-/:-@[-`{-~])|&(#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});/gi;
 function decodeString(value2) {
-  return value2.replace(characterEscapeOrReference, decode$2);
+  return value2.replace(characterEscapeOrReference, decode$4);
 }
-function decode$2($0, $1, $2) {
+function decode$4($0, $1, $2) {
   if ($1) {
     return $1;
   }
@@ -18959,7 +19266,7 @@ function validateCanvas(value2) {
     ensure(color(edge.color) && (edge.label === void 0 || typeof edge.label === "string"), "INVALID_CANVAS", "Invalid edge color or label.");
   }
 }
-const encode$1 = (text2) => new TextEncoder().encode(text2);
+const encode$2 = (text2) => new TextEncoder().encode(text2);
 function textOf$1(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -19004,7 +19311,7 @@ function textStyle(text2) {
 }
 function styledText(text2, original) {
   const { prefix, newline } = textStyle(original);
-  return encode$1(prefix + text2.replace(/^\uFEFF/, "").replace(/\r?\n/g, newline));
+  return encode$2(prefix + text2.replace(/^\uFEFF/, "").replace(/\r?\n/g, newline));
 }
 const markdownParser = unified().use(remarkParse).use(remarkFrontmatter, ["yaml"]);
 function parseMarkdownParts(text2) {
@@ -19071,7 +19378,7 @@ class ObsidianDocuments {
     if (fileKind(path) === "text") textOf$1(bytes);
     else this.inspect(path, bytes);
   }
-  properties(bytes, changes) {
+  properties(bytes, changes, remove = []) {
     const parts = parseMarkdownParts(textOf$1(bytes));
     const doc = yamlDocument(parts.yaml || "{}");
     yamlValue(doc);
@@ -19082,8 +19389,9 @@ class ObsidianDocuments {
       ensure(!["__proto__", "constructor", "prototype"].includes(key), "INVALID_KEY", key);
       doc.set(key, value2);
     }
+    for (const key of remove) doc.delete(key);
     const yaml = doc.toString().replace(/\r?\n/g, parts.newline);
-    const result = encode$1(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
+    const result = encode$2(`${parts.prefix}---${parts.newline}${yaml}---${parts.newline}${parts.body}`);
     this.validate("note.md", result);
     return result;
   }
@@ -19125,7 +19433,7 @@ class ObsidianDocuments {
     return result;
   }
 }
-const encodeText$1 = encode$1;
+const encodeText$1 = encode$2;
 async function readManifest(path, files) {
   const text2 = new TextDecoder("utf-8", { fatal: true }).decode((await files.read(path)).bytes);
   let value2;
@@ -24170,8 +24478,8 @@ const parse = /* @__PURE__ */ _parse(ZodRealError);
 const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
 const safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
-const encode = /* @__PURE__ */ _encode(ZodRealError);
-const decode$1 = /* @__PURE__ */ _decode(ZodRealError);
+const encode$1 = /* @__PURE__ */ _encode(ZodRealError);
+const decode$3 = /* @__PURE__ */ _decode(ZodRealError);
 const encodeAsync = /* @__PURE__ */ _encodeAsync(ZodRealError);
 const decodeAsync = /* @__PURE__ */ _decodeAsync(ZodRealError);
 const safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
@@ -24326,10 +24634,10 @@ const ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
     return validateAsync$1(this, data, params);
   },
   encode: function _encode2(data, params) {
-    return encode(this, data, params, { callee: _encode2 });
+    return encode$1(this, data, params, { callee: _encode2 });
   },
   decode: function _decode2(data, params) {
-    return decode$1(this, data, params, { callee: _decode2 });
+    return decode$3(this, data, params, { callee: _decode2 });
   },
   encodeAsync: async function _encodeAsync2(data, params) {
     return await encodeAsync(this, data, params, { callee: _encodeAsync2 });
@@ -25098,7 +25406,7 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
   return /* @__PURE__ */ _superRefine(fn, params);
 }
-const relativePath = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
+const relativePath$1 = string$1().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
   try {
     vaultPath(value2);
     return true;
@@ -25109,20 +25417,20 @@ const relativePath = string$1().min(1).transform((value2) => value2.replace(/\/+
 const configSchema = strictObject({
   schemaVersion: literal$1(1).default(1),
   paths: strictObject({
-    projects: relativePath.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
-    components: relativePath.default("components"),
-    ui: relativePath.default("src/ui"),
-    stories: relativePath.default("stories"),
-    componentImports: relativePath.default("imports/components"),
-    componentExports: relativePath.default("exports/components"),
-    interactions: relativePath.default("interactions"),
-    interactionImports: relativePath.default("imports/interactions"),
-    interactionExports: relativePath.default("exports/interactions"),
-    dataSources: relativePath.default("data-sources"),
-    dataGenerated: relativePath.default("src/data-sources"),
-    dataFixtures: relativePath.default("test-data"),
-    dataImports: relativePath.default("imports/data-sources"),
-    dataExports: relativePath.default("exports/data-sources")
+    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects"),
+    components: relativePath$1.default("components"),
+    ui: relativePath$1.default("src/ui"),
+    stories: relativePath$1.default("stories"),
+    componentImports: relativePath$1.default("imports/components"),
+    componentExports: relativePath$1.default("exports/components"),
+    interactions: relativePath$1.default("interactions"),
+    interactionImports: relativePath$1.default("imports/interactions"),
+    interactionExports: relativePath$1.default("exports/interactions"),
+    dataSources: relativePath$1.default("data-sources"),
+    dataGenerated: relativePath$1.default("src/data-sources"),
+    dataFixtures: relativePath$1.default("test-data"),
+    dataImports: relativePath$1.default("imports/data-sources"),
+    dataExports: relativePath$1.default("exports/data-sources")
   }).prefault({}),
   settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
   templates: strictObject({ dateFormat: string$1().min(1).default("YYYY-MM-DD"), timeFormat: string$1().min(1).default("HH:mm") }).prefault({}),
@@ -25133,19 +25441,19 @@ async function loadConfig(options) {
   const root = options.root !== void 0 ? minpath.resolve(options.cwd, options.root) : minpath.resolve(minpath.dirname(options.defaultPath), "..");
   const path = minpath.resolve(root, "bin/config.json");
   let content2;
-  let exists = true;
+  let exists2 = true;
   try {
-    content2 = JSON.parse(await promises.readFile(path, "utf8"));
+    content2 = JSON.parse(await promises$1.readFile(path, "utf8"));
   } catch (error2) {
     if (error2.code === "ENOENT") {
       content2 = {};
-      exists = false;
+      exists2 = false;
     } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path}: ${errorMessage(error2)}`);
   }
   const parsed = configSchema.safeParse(content2);
   if (!parsed.success) throw forgeError("INVALID_CONFIG", parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
   const config2 = parsed.data;
-  return { path: exists ? path : null, root, config: config2 };
+  return { path: exists2 ? path : null, root, config: config2 };
 }
 var dayjs_min$1 = { exports: {} };
 var dayjs_min = dayjs_min$1.exports;
@@ -25677,12 +25985,12 @@ function renderYaml(source, resolve) {
     const exact = sentinels.indexOf(scalar2);
     if (exact >= 0) {
       consumed.add(exact);
-      const replacement = document2.createNode(resolved[exact]);
-      replacement.comment = node2.comment;
-      replacement.commentBefore = node2.commentBefore;
-      replacement.spaceBefore = node2.spaceBefore;
-      replacement.anchor = node2.anchor;
-      return replacement;
+      const replacement2 = document2.createNode(resolved[exact]);
+      replacement2.comment = node2.comment;
+      replacement2.commentBefore = node2.commentBefore;
+      replacement2.spaceBefore = node2.spaceBefore;
+      replacement2.anchor = node2.anchor;
+      return replacement2;
     }
     node2.value = scalar2.replace(sentinelPattern, (_, index2) => {
       const position2 = Number(index2);
@@ -25830,7 +26138,7 @@ const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mj
 const qualityShared = "import { readdirSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from 'node:fs';\nimport { join, resolve } from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst sourceExtension = /\\.(?:[cm]?[jt]s|[jt]sx)$/;\n\n/** @param {string} value */\nfunction containedPath(value) {\n  // oxlint-disable-next-line no-control-regex -- Source roots must reject control characters and Windows/URL separators.\n  return value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\\:\\x00-\\x1f]/.test(part));\n}\n\n/** @param {unknown} error */\nfunction missing(error) { return error instanceof Error && 'code' in error && error.code === 'ENOENT'; }\n\n/** @param {string} root */\nfunction sourceDirectories(root) {\n  const path = resolve(root, 'configs/quality/source.json');\n  /** @type {unknown} */\n  let config;\n  try { config = JSON.parse(readFileSync(path, 'utf8')); }\n  catch (error) {\n    if (missing(error)) return { sourceRoot: 'src', additionalRoots: [] };\n    throw new Error(`Cannot read source inventory configuration configs/quality/source.json: ${error instanceof Error ? error.message : String(error)}`);\n  }\n  if (!config || typeof config !== 'object' || Array.isArray(config) || !('sourceRoot' in config) || typeof config.sourceRoot !== 'string' || Object.keys(config).some(key => !['sourceRoot', 'additionalRoots'].includes(key))) {\n    throw new Error('configs/quality/source.json requires a sourceRoot string and optional additionalRoots list.');\n  }\n  if (config.sourceRoot.split('/')[0] !== 'src' || !containedPath(config.sourceRoot)) {\n    throw new Error('sourceRoot must be src or a contained POSIX subdirectory such as src/the-forge.');\n  }\n  const additional = 'additionalRoots' in config ? config.additionalRoots : [];\n  if (!Array.isArray(additional) || additional.some(value => typeof value !== 'string' || !containedPath(value))) {\n    throw new Error('additionalRoots must contain relative POSIX directory paths.');\n  }\n  /** @type {string[]} */\n  const additionalRoots = additional;\n  const roots = [config.sourceRoot, ...additionalRoots];\n  if (roots.some((root, index) => roots.some((other, otherIndex) => index !== otherIndex && (root === other || root.startsWith(other + '/'))))) {\n    throw new Error('Source inventory roots must be unique and must not contain one another.');\n  }\n  return { sourceRoot: config.sourceRoot, additionalRoots };\n}\n\n// Inventory explicitly, independent of .gitignore and analyzer discovery defaults.\nexport function sourceFiles(root = process.cwd()) {\n  /** @type {string[]} */\n  const files = [];\n  const { sourceRoot, additionalRoots } = sourceDirectories(root);\n  /** @param {string} directory */\n  function visit(directory) {\n    for (const entry of readdirSync(resolve(root, directory), { withFileTypes: true })) {\n      const path = join(directory, entry.name).replaceAll('\\\\', '/');\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${path}`);\n      if (entry.isDirectory()) visit(path);\n      else if (sourceExtension.test(path)) files.push(path);\n    }\n  }\n  const entries = readdirSync(root, { withFileTypes: true });\n  for (const selected of [sourceRoot, ...additionalRoots]) {\n    let directory = root;\n    for (const part of selected.split('/')) {\n      directory = join(directory, part);\n      let entry;\n      try { entry = lstatSync(directory); }\n      catch (error) {\n        if (missing(error)) throw new Error(`Required source directory ${selected} is missing`);\n        throw error;\n      }\n      if (entry.isSymbolicLink()) throw new Error(`Source scope contains a symbolic link: ${selected}`);\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${selected}`);\n    }\n    visit(selected);\n  }\n  for (const entry of entries) {\n    if (['tests', 'scripts', 'examples'].includes(entry.name)) {\n      if (!entry.isDirectory()) throw new Error(`Expected source directory: ${entry.name}`);\n      visit(entry.name);\n    } else if (entry.isFile() && sourceExtension.test(entry.name)) files.push(entry.name);\n  }\n  if (!files.some(file => file.startsWith(sourceRoot + '/'))) throw new Error(`Source inventory is empty: ${sourceRoot}`);\n  return [...new Set(files)].sort();\n}\n\n/** @param {string} name @param {string[]} args */\nexport function runTool(name, args) {\n  // Both pinned packages ship Node launchers. Avoid a shell (including Windows\n  // .cmd shims) so spaces and metacharacters in project filenames stay literal.\n  const command = resolve('node_modules', name, 'bin', name);\n  const result = spawnSync(process.execPath, [command, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });\n  if (result.error) throw result.error;\n  if (result.signal || result.status === null) throw new Error(`${name} did not finish normally`);\n  let report;\n  try { report = JSON.parse(result.stdout); }\n  catch { throw new Error(`${name} did not return valid JSON (exit ${result.status}): ${result.stderr || result.stdout}`); }\n  return { status: result.status, report, stderr: result.stderr };\n}\n\n/** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */\nexport function finish(tool, errors, report, scope) {\n  const result = { tool, ok: errors.length === 0, errors, scope, report };\n  mkdirSync('.quality-reports', { recursive: true });\n  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\\n`);\n  process.stdout.write(`${JSON.stringify(result, null, 2)}\\n`);\n  process.exitCode = result.ok ? 0 : 1;\n}\n";
 const lintConfig = '{\n  "$schema": "../../node_modules/oxlint/configuration_schema.json",\n  "categories": {\n    "correctness": "error"\n  },\n  "rules": {\n    "no-debugger": "error",\n    "max-lines": [\n      "error",\n      {\n        "max": 400,\n        "skipBlankLines": true,\n        "skipComments": true\n      }\n    ]\n  },\n  "overrides": [\n    {\n      "files": [\n        "**/src/domain/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}",\n        "**/src/application/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "typescript/no-require-imports": "error",\n        "no-restricted-imports": [\n          "error",\n          {\n            "patterns": [\n              {\n                "regex": "^[^.]",\n                "message": "Keep domain and application platform independent; inject a port instead."\n              }\n            ]\n          }\n        ]\n      }\n    },\n    {\n      "files": [\n        "**/tests/**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}"\n      ],\n      "rules": {\n        "max-lines": [\n          "error",\n          {\n            "max": 450,\n            "skipBlankLines": true,\n            "skipComments": true\n          }\n        ]\n      }\n    }\n  ]\n}\n';
 const textFile = (path, text2) => ({ path, bytes: new TextEncoder().encode(text2) });
-const json$3 = (value2) => JSON.stringify(value2, null, 2) + "\n";
+const json$4 = (value2) => JSON.stringify(value2, null, 2) + "\n";
 const kebab = (name2) => name2.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 function componentScaffold(project2, name2, projectsDirectory, kind = "domain") {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(project2)}`;
@@ -25890,8 +26198,8 @@ describe('${name2}', () => {
 function projectScaffold(name2, projectsDirectory) {
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name2)}`;
   const files = {
-    ".forge/project.json": json$3({ schemaVersion: 1, name: name2, type: "library" }),
-    "package.json": json$3({
+    ".forge/project.json": json$4({ schemaVersion: 1, name: name2, type: "library" }),
+    "package.json": json$4({
       name: name2,
       version: "0.1.0",
       private: true,
@@ -25921,7 +26229,7 @@ function projectScaffold(name2, projectsDirectory) {
     "scripts/quality/analyze.mjs": analyzeScript,
     "scripts/quality/shared.mjs": qualityShared,
     "configs/lint/oxlintrc.json": lintConfig,
-    "configs/quality/fallow.json": json$3({
+    "configs/quality/fallow.json": json$4({
       $schema: "../../node_modules/fallow/schema.json",
       minimumVersion: "3.31.0",
       entry: ["src/index.ts", "src/presentation/demo.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "vitest.config.ts"],
@@ -25945,11 +26253,11 @@ function projectScaffold(name2, projectsDirectory) {
         coverage: { requireAllFiles: true, allowUnmatched: ["tests/**", "scripts/**", "vite.config.ts", "vitest.config.ts", "src/vite-env.d.ts"] }
       }
     }),
-    "tsconfig.json": json$3({
+    "tsconfig.json": json$4({
       compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, noUncheckedIndexedAccess: true, noUnusedLocals: true, noUnusedParameters: true, allowImportingTsExtensions: true, allowJs: true, checkJs: true, jsx: "preserve", noEmit: true, types: ["node"], skipLibCheck: true },
       include: ["src", "tests", "vite.config.ts", "vitest.config.ts"]
     }),
-    "tsconfig.build.json": json$3({
+    "tsconfig.build.json": json$4({
       extends: "./tsconfig.json",
       compilerOptions: { noEmit: false, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist" },
       include: ["src"]
@@ -26036,7 +26344,7 @@ const distributionPolicy = {
 };
 const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
-  const root = await promises.lstat(bundleDir);
+  const root = await promises$1.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
   const readAsset = async (path) => {
     vaultPath(path);
@@ -26045,10 +26353,10 @@ async function readSetupArtifacts(bundleDir) {
     let current = bundleDir;
     for (const [index2, segment2] of segments.entries()) {
       current = minpath.join(current, segment2);
-      const entry2 = await promises.lstat(current);
+      const entry2 = await promises$1.lstat(current);
       ensure(!entry2.isSymbolicLink() && (index2 === segments.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path}`);
     }
-    return promises.readFile(current);
+    return promises$1.readFile(current);
   };
   const manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
   ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
@@ -26159,7 +26467,7 @@ const reserved$1 = new Set("arguments await break case catch children class cons
 const identifier$2 = string$1().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).refine((value2) => !reserved$1.has(value2), "Reserved prop name");
 const id = string$1().max(120).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 const value$2 = union([string$1(), number().finite(), boolean(), _null()]);
-const json$2 = lazy(() => union([value$2, array(json$2), record$1(string$1(), json$2)]));
+const json$3 = lazy(() => union([value$2, array(json$3), record$1(string$1(), json$3)]));
 const values = record$1(identifier$2, value$2);
 const prop = strictObject({ type: _enum(["string", "number", "boolean"]), default: value$2.optional(), required: boolean().optional(), description: string$1().optional() }).superRefine((property, context) => {
   if (property.default !== void 0 && typeof property.default !== property.type) context.addIssue({ code: "custom", message: "Prop default must match its declared type." });
@@ -26176,7 +26484,7 @@ const node = lazy(() => union([
   strictObject({ component: id, props: values.optional(), children: array(node).optional() }),
   strictObject({ slot: literal$1("children") })
 ]));
-const metadata = record$1(string$1(), json$2);
+const metadata = record$1(string$1(), json$3);
 const story = strictObject({ name: string$1().regex(/^[A-Z][A-Za-z0-9]*$/), args: values.optional(), parameters: metadata.optional(), tags: array(string$1()).optional() });
 const storybook = strictObject({
   title: string$1().min(1).optional(),
@@ -26274,7 +26582,7 @@ const standardUiCatalog = [
   element("time", "time", { datetime: string("2026-01-01"), label: string("Date") }, { datetime: "{{datetime}}" }, "{{label}}")
 ].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
 const ordered = (object2) => Object.entries(object2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-const json$1 = (value2) => JSON.stringify(value2).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+const json$2 = (value2) => JSON.stringify(value2).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const html = (value2) => String(value2 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const className = (definition2) => definition2.name ?? definition2.id.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("");
 const defaults = (definition2) => Object.fromEntries(ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => [key, prop2.default]));
@@ -26283,11 +26591,11 @@ function componentArtifact(definition2, framework) {
   return { fileName: `${definition2.id}.${extension2}`, exportName: framework === "angular" ? `${className(definition2)}Component` : ["html", "htmx", "vanilla"].includes(framework) ? `create${className(definition2)}` : className(definition2), namedExport: framework === "angular" };
 }
 function expression(value2, scope = "props", stateScope = "_uiState") {
-  if (typeof value2 !== "string") return json$1(value2);
+  if (typeof value2 !== "string") return json$2(value2);
   const parts = uiBindingParts(value2);
-  const binding = (name2) => name2.startsWith("state.") ? `${stateScope}[${json$1(name2.slice(6))}]` : `${scope}[${json$1(name2)}]`;
+  const binding = (name2) => name2.startsWith("state.") ? `${stateScope}[${json$2(name2.slice(6))}]` : `${scope}[${json$2(name2)}]`;
   if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
-  return parts.map((part) => "literal" in part ? json$1(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
+  return parts.map((part) => "literal" in part ? json$2(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
 }
 function evaluate(value2, props, state2 = {}) {
   if (typeof value2 !== "string") return value2;
@@ -26302,7 +26610,7 @@ function textExpression(value2, scope = "props", stateScope = "_uiState") {
   return parts.length === 1 && "prop" in parts[0] ? `(${result} ?? '')` : result;
 }
 function defaultAssignments(definition2) {
-  return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json$1(key)}] === undefined) props[${json$1(key)}] = ${json$1(prop2.default)};`).join("\n");
+  return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json$2(key)}] === undefined) props[${json$2(key)}] = ${json$2(prop2.default)};`).join("\n");
 }
 function formActionHelper(prefix, typescript, classMembers) {
   const member = classMembers ? "this." : "";
@@ -26360,7 +26668,7 @@ function stateDefaults(definition2) {
   return Object.fromEntries(ordered(definition2.state ?? {}).map(([name2, state2]) => [name2, state2.default]));
 }
 function stateType(definition2) {
-  return `{ ${ordered(definition2.state ?? {}).map(([name2, state2]) => `${json$1(name2)}: ${state2.type}`).join("; ")} }`;
+  return `{ ${ordered(definition2.state ?? {}).map(([name2, state2]) => `${json$2(name2)}: ${state2.type}`).join("; ")} }`;
 }
 const handlerName = (id2, prefix) => `${prefix}Interaction_${id2.replace(/-/g, "_")}`;
 function componentInteractions(definition2, interactions) {
@@ -26390,29 +26698,29 @@ function renderInteractionHandlers(definition2, interactions, options) {
     const asynchronous = interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type));
     const currentTarget = asynchronous ? `${prefix}Target` : `${event}.currentTarget`;
     const lines2 = [`${asynchronous ? "async " : ""}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
-    if (interaction.keys) lines2.push(`  if (!${json$1(interaction.keys)}.includes(${event}.key ?? '')) return;`);
+    if (interaction.keys) lines2.push(`  if (!${json$2(interaction.keys)}.includes(${event}.key ?? '')) return;`);
     if (interaction.preventDefault) lines2.push(`  ${event}.preventDefault();`);
     if (interaction.stopPropagation) lines2.push(`  ${event}.stopPropagation();`);
     if (asynchronous) lines2.push(`  const ${currentTarget} = ${event}.currentTarget;`);
     if (interactionUsesState(interaction)) lines2.push(`  const ${next} = { ...${options.stateScope ?? "_uiState"} };`);
     for (const [index2, action2] of interaction.actions.entries()) {
       if (action2.type === "toggle-state" || action2.type === "set-state") {
-        let assigned = action2.type === "toggle-state" ? `!${next}[${json$1(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
+        let assigned = action2.type === "toggle-state" ? `!${next}[${json$2(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
         if (action2.type === "set-state" && "fromEvent" in action2) {
           const field2 = `${prefix}Value${index2}`;
           lines2.push(`  const ${field2} = (${currentTarget}${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
-          lines2.push(`  if (typeof ${field2} !== ${json$1(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$1(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
+          lines2.push(`  if (typeof ${field2} !== ${json$2(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$2(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
           assigned = field2;
         }
-        lines2.push(`  ${next}[${json$1(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
+        lines2.push(`  ${next}[${json$2(action2.state)}] = ${assigned};`, `  ${options.commit(next)}`);
       } else if (action2.type === "emit") {
-        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json$1(key)}]` : json$1(key)}: ${value2(item)}`).join(", ")} }`;
-        lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$1(action2.event)}, ${detail});`);
+        const detail = `{ ${ordered(action2.detail ?? {}).map(([key, item]) => `${key === "__proto__" ? `[${json$2(key)}]` : json$2(key)}: ${value2(item)}`).join(", ")} }`;
+        lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Emit(${currentTarget}, ${json$2(action2.event)}, ${detail});`);
       } else if (action2.type === "navigate") {
         lines2.push(`  ${options.classMembers ? "this." : ""}${prefix}Navigate(${currentTarget}, ${value2(action2.url)});`);
       } else {
         const option = action2.type === "save-form" ? action2.key : action2.type === "upload-form" ? action2.url : action2.filename;
-        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$1(action2.type)}, ${value2(option)})) return;`);
+        lines2.push(`  if (!await ${options.classMembers ? "this." : ""}${prefix}FormAction(${currentTarget}, ${json$2(action2.type)}, ${value2(option)})) return;`);
       }
     }
     lines2.push("}");
@@ -26443,23 +26751,23 @@ function renderInteractionHandlers(definition2, interactions, options) {
 function reactiveDomModule(definition2, interactions) {
   const references = componentDependencies(definition2.root);
   const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
-  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${id2}.js`)};`).join("\n");
+  const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${id2}.js`)};`).join("\n");
   const prefix = interactionPrefix(definition2);
   function nodeCode(node2) {
     if ("slot" in node2) return "slot(children)";
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
-    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
-    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json$1(event)}: [${handlers.join(", ")}]`).join(", ");
-    return `element(${json$1(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
+    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
+    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json$2(event)}: [${handlers.join(", ")}]`).join(", ");
+    return `element(${json$2(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
   }
-  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$1([...uiBooleanAttributes].sort())});
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
 const updateProps = Symbol.for('forge.ui.updateProps');
 
 /** Create a live component; mounting and removal remain owned by the caller. */
 export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$1(defaults(definition2))}, ...input };
+  const props = { ...${json$2(defaults(definition2))}, ...input };
 ${defaultAssignments(definition2)}
-  const _uiState = ${json$1(stateDefaults(definition2))};
+  const _uiState = ${json$2(stateDefaults(definition2))};
   const updates = [];
   const refresh = () => { for (const update of updates) update(); };
 ${renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` })}
@@ -26504,7 +26812,7 @@ ${renderInteractionHandlers(definition2, interactions, { typescript: false, pref
   const result = ${nodeCode(definition2.root)};
   Object.defineProperty(result, updateProps, { configurable: true, value: input => {
     for (const key of Object.keys(props)) delete props[key];
-    Object.assign(props, ${json$1(defaults(definition2))}, input);
+    Object.assign(props, ${json$2(defaults(definition2))}, input);
 ${defaultAssignments(definition2)}
     refresh();
   } });
@@ -26540,14 +26848,14 @@ function domModule(definition2, definitions, interactions = []) {
   if (hasReactiveDom(definitions)) return reactiveDomModule(definition2, interactions);
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
-  const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}.js`)};`).join("\n");
+  const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}.js`)};`).join("\n");
   function nodeCode(node2) {
     if ("slot" in node2) return "slot(children)";
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
-    if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
-    return `element(${json$1(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$1(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
+    if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
+    return `element(${json$2(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
   }
-  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$1([...uiBooleanAttributes].sort())});
+  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
 function slot(children) {
   const fragment = document.createDocumentFragment();
   for (const child of children) if (child != null) fragment.append(child);
@@ -26566,7 +26874,7 @@ function element(tag, attributes, text, children) {
 
 /** Create DOM using text nodes and attributes; caller owns mounting and event listeners. */
 export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$1(defaults(definition2))}, ...input };
+  const props = { ...${json$2(defaults(definition2))}, ...input };
 ${defaultAssignments(definition2)}
   return ${nodeCode(definition2.root)};
 }
@@ -26575,7 +26883,7 @@ ${defaultAssignments(definition2)}
 function domDeclaration(definition2) {
   const required2 = Object.values(definition2.props).some((prop2) => prop2.required && prop2.default === void 0);
   return `export interface ${className(definition2)}Props {
-${ordered(definition2.props).map(([key, prop2]) => `  ${json$1(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n")}
+${ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n")}
 }
 
 export default function ${componentArtifact(definition2, "html").exportName}(input${required2 ? "" : "?"}: ${className(definition2)}Props, children?: readonly (Node | string | null | undefined)[]): HTMLElement | DocumentFragment;
@@ -26662,7 +26970,7 @@ function reactModule(definition2, definitions, interactions = []) {
         const property = `(element as HTMLInputElement).${key}`;
         const controlValue = value2 === null ? "''" : uiWholeBinding(value2) ? `(${rendered2} ?? '')` : rendered2;
         const converted = key === "checked" ? `(${rendered2} != null && (${rendered2} as unknown) !== false)` : `globalThis.String(${controlValue})`;
-        controls.push(`if (!globalThis.Object.hasOwn(previous, ${json$1(key)}) || previous[${json$1(key)}] !== ${converted}) ${property} = ${converted}; previous[${json$1(key)}] = ${converted};`);
+        controls.push(`if (!globalThis.Object.hasOwn(previous, ${json$2(key)}) || previous[${json$2(key)}] !== ${converted}) ${property} = ${converted}; previous[${json$2(key)}] = ${converted};`);
         return [`${key === "checked" ? "defaultChecked" : "defaultValue"}: ${converted}`];
       }
       const isStyle = "tag" in node2 && key === "style";
@@ -26670,20 +26978,20 @@ function reactModule(definition2, definitions, interactions = []) {
       const isAttribute = "tag" in node2 && !isStyle && !uiBooleanAttributes.has(key.toLowerCase());
       if (isAttribute) usesAttributes = true;
       const rendered = isStyle ? `css(${expression(value2, "props", state2)})` : isAttribute ? `attribute(${expression(value2, "props", state2)})` : expression(value2, "props", state2);
-      return [`${json$1("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
+      return [`${json$2("tag" in node2 ? reactNames[key] ?? key : key)}: ${rendered}`];
     });
     const events = groupElementInteractions(node2, interactions, prefix);
     if (events.length || controls.length) {
       const listeners = events.map(({ event, handlers }, index2) => ({ event, name: `${prefix}Listener${index2}`, body: handlers.map((handler2) => `${handler2}(event);`).join(" ") }));
       const syncControls = controls.length ? `const previous = ${prefix}ControlValues.get(element) ?? {}; ${controls.join(" ")} ${prefix}ControlValues.set(element, previous);` : "";
-      attrs.push(`ref: (() => { let cleanup: (() => void) | undefined; return (element: HTMLElement | null): void => { cleanup?.(); cleanup = undefined; if (!element) return; ${syncControls} ${listeners.map((listener) => `const ${listener.name} = (event: Event) => { ${listener.body} }; element.addEventListener(${json$1(listener.event)}, ${listener.name});`).join(" ")} cleanup = () => { ${listeners.map((listener) => `element.removeEventListener(${json$1(listener.event)}, ${listener.name});`).join(" ")} }; }; })()`);
+      attrs.push(`ref: (() => { let cleanup: (() => void) | undefined; return (element: HTMLElement | null): void => { cleanup?.(); cleanup = undefined; if (!element) return; ${syncControls} ${listeners.map((listener) => `const ${listener.name} = (event: Event) => { ${listener.body} }; element.addEventListener(${json$2(listener.event)}, ${listener.name});`).join(" ")} cleanup = () => { ${listeners.map((listener) => `element.removeEventListener(${json$2(listener.event)}, ${listener.name});`).join(" ")} }; }; })()`);
     }
-    return `_uiCreateElement(${"tag" in node2 ? json$1(node2.tag) : aliases.get(node2.component)}, {${attrs.join(", ")}}${children.length ? `, ${children.join(", ")}` : ""})`;
+    return `_uiCreateElement(${"tag" in node2 ? json$2(node2.tag) : aliases.get(node2.component)}, {${attrs.join(", ")}}${children.length ? `, ${children.join(", ")}` : ""})`;
   }
   const body = nodeCode(definition2.root);
-  const propTypes = ordered(definition2.props).map(([key, prop2]) => `  ${json$1(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n");
+  const propTypes = ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n");
   return `import { createElement as _uiCreateElement, type ReactNode as _UiReactNode${usesStyle ? ", type CSSProperties as _UiCSSProperties" : ""}${mutatesState ? ", useState as _uiUseState, useRef as _uiUseRef" : ""} } from 'react';
-${refs.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}`)};`).join("\n")}
+${refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}`)};`).join("\n")}
 export interface ${className(definition2)}Props {
 ${propTypes}${propTypes ? "\n" : ""}  children?: _UiReactNode;
 }
@@ -26694,12 +27002,12 @@ ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElem
 }
 ` : ""}
 export default function ${className(definition2)}(${usesProps ? "input" : "_input"}: ${className(definition2)}Props) {
-${usesProps ? `  const props = { ...${json$1(defaults(definition2))}, ...input };
+${usesProps ? `  const props = { ...${json$2(defaults(definition2))}, ...input };
 ${defaultAssignments(definition2)}` : ""}${mutatesState ? `
-  const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json$1(stateDefaults(definition2))}));
+  const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json$2(stateDefaults(definition2))}));
   const ${prefix}StateRef = _uiUseRef(${state2});
 ` : usesState ? `
-  const ${state2}: ${stateType(definition2)} = ${json$1(stateDefaults(definition2))};
+  const ${state2}: ${stateType(definition2)} = ${json$2(stateDefaults(definition2))};
 ` : ""}${selectedInteractions.length ? `
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: mutatesState ? `${prefix}StateRef.current` : state2, commit: (next) => `${prefix}StateRef.current = { ...${next} }; ${prefix}SetState(${prefix}StateRef.current);` })}
 ` : ""}
@@ -26723,11 +27031,11 @@ function vueModule(definition2, definitions, interactions = []) {
   }
   return `<script setup lang="ts">${interactive ? `
 import { reactive as _uiReactive } from 'vue';` : ""}
-${refs.map((id2) => `import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}.vue`)};`).join("\n")}
+${refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}.vue`)};`).join("\n")}
 const props = defineProps({
-${ordered(definition2.props).map(([key, prop2]) => `  ${json$1(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json$1(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
+${ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}: { type: ${prop2.type === "string" ? "String" : prop2.type === "number" ? "Number" : "Boolean"}, required: ${Boolean(prop2.required && prop2.default === void 0)}${prop2.default !== void 0 ? `, default: ${json$2(prop2.default)}` : prop2.type === "boolean" ? ", default: undefined" : ""} },`).join("\n")}
 });${interactive ? `
-const ${state2} = _uiReactive<${stateType(definition2)}>(${json$1(stateDefaults(definition2))});
+const ${state2} = _uiReactive<${stateType(definition2)}>(${json$2(stateDefaults(definition2))});
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, stateScope: state2, commit: (next) => `globalThis.Object.assign(${state2}, ${next});` })}
 ` : ""}
 <\/script>
@@ -26755,11 +27063,11 @@ function svelteModule(definition2, definitions, interactions = []) {
     return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
   return `<script lang="ts">
-${refs.map((id2) => `  import ${aliases.get(id2)} from ${json$1(`./${definitions.get(id2).id}.svelte`)};`).join("\n")}
-${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json$1(prop2.default)}` : prop2.required ? "" : " = undefined"};
+${refs.map((id2) => `  import ${aliases.get(id2)} from ${json$2(`./${definitions.get(id2).id}.svelte`)};`).join("\n")}
+${ordered(definition2.props).map(([key, prop2], index2) => `  let _uiProp${index2}: ${prop2.type}${prop2.required || prop2.default !== void 0 ? "" : " | undefined"}${prop2.default !== void 0 ? ` = ${json$2(prop2.default)}` : prop2.required ? "" : " = undefined"};
   export { _uiProp${index2} as ${key} };`).join("\n")}
-  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json$1(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
-  let ${state2}: ${stateType(definition2)} = ${json$1(stateDefaults(definition2))};
+  $: _uiProps = {${ordered(definition2.props).map(([key], index2) => `${json$2(key)}: _uiProp${index2}`).join(", ")}};${interactive ? `
+  let ${state2}: ${stateType(definition2)} = ${json$2(stateDefaults(definition2))};
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, prefix, propsScope: "_uiProps", stateScope: state2, commit: (next) => `${state2} = { ...${next} };` })}
 ` : ""}
 <\/script>
@@ -26774,11 +27082,11 @@ function angularModule(definition2, definitions, interactions = []) {
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   function angularExpression(value2) {
-    if (typeof value2 !== "string") return json$1(value2);
+    if (typeof value2 !== "string") return json$2(value2);
     const parts = uiBindingParts(value2);
-    const binding = (name2) => name2.startsWith("state.") ? `${state2}[${json$1(name2.slice(6))}]` : name2;
+    const binding = (name2) => name2.startsWith("state.") ? `${state2}[${json$2(name2.slice(6))}]` : name2;
     if (parts.length === 1 && "prop" in parts[0]) return binding(parts[0].prop);
-    return parts.map((part) => "literal" in part ? json$1(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
+    return parts.map((part) => "literal" in part ? json$2(part.literal) : `('' + (${binding(part.prop)} ?? ''))`).join(" + ");
   }
   function nodeCode(node2) {
     if ("slot" in node2) return "<ng-content></ng-content>";
@@ -26794,20 +27102,20 @@ function angularModule(definition2, definitions, interactions = []) {
     return `<${tag}${attrs}${events}>${"tag" in node2 && uiVoidTags.has(tag) ? "" : `${text2}${(node2.children ?? []).map(nodeCode).join("")}</${tag}>`}`;
   }
   return `import { Component${Object.keys(definition2.props).length ? ", Input" : ""} } from '@angular/core';
-${refs.map((id2) => `import { ${componentArtifact(definitions.get(id2), "angular").exportName} as ${aliases.get(id2)} } from ${json$1(`./${definitions.get(id2).id}`)};`).join("\n")}
+${refs.map((id2) => `import { ${componentArtifact(definitions.get(id2), "angular").exportName} as ${aliases.get(id2)} } from ${json$2(`./${definitions.get(id2).id}`)};`).join("\n")}
 
 @Component({
-  selector: ${json$1(`ui-${definition2.id}`)},
+  selector: ${json$2(`ui-${definition2.id}`)},
   standalone: true,
   imports: [${refs.map((id2) => aliases.get(id2)).join(", ")}],
-  template: ${json$1(nodeCode(definition2.root))},
+  template: ${json$2(nodeCode(definition2.root))},
 })
 export class ${componentArtifact(definition2, "angular").exportName} {
 ${ordered(definition2.props).map(([key, prop2]) => {
-    const options = prop2.default !== void 0 ? `{ transform: (value: ${prop2.type} | undefined) => value === undefined ? ${json$1(prop2.default)} : value }` : prop2.required ? "{ required: true }" : "";
-    return `  @Input(${options}) ${key}${prop2.required && prop2.default === void 0 ? "!" : ""}: ${prop2.type}${!prop2.required && prop2.default === void 0 ? " | undefined" : ""}${prop2.default === void 0 ? "" : ` = ${json$1(prop2.default)}`};`;
+    const options = prop2.default !== void 0 ? `{ transform: (value: ${prop2.type} | undefined) => value === undefined ? ${json$2(prop2.default)} : value }` : prop2.required ? "{ required: true }" : "";
+    return `  @Input(${options}) ${key}${prop2.required && prop2.default === void 0 ? "!" : ""}: ${prop2.type}${!prop2.required && prop2.default === void 0 ? " | undefined" : ""}${prop2.default === void 0 ? "" : ` = ${json$2(prop2.default)}`};`;
   }).join("\n")}${interactive ? `
-  ${state2}: ${stateType(definition2)} = ${json$1(stateDefaults(definition2))};
+  ${state2}: ${stateType(definition2)} = ${json$2(stateDefaults(definition2))};
 ${renderInteractionHandlers(definition2, interactions, { typescript: true, classMembers: true, prefix, propsScope: "this", stateScope: `this.${state2}`, commit: (next) => `this.${state2} = { ...${next} };` })}
 ` : ""}
 }
@@ -27279,7 +27587,7 @@ ${description2}`);
   }
 }
 const workflow = '---\nname: forge-workflow\ndescription: Use the portable Forge CLI to inspect a project, plan changes, and verify results without Obsidian.\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm paths, defaults and enabled plugins, then `node bin/forge.js schema --json` to discover commands and generator contracts. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`).\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope\'s `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: "folder"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents. For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory\'s manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured library/UI/story/import/export paths. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project\'s framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values \'{"owner":"Team"}\' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n';
-const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const vault = '---\nname: forge-vault\ndescription: Create and edit Obsidian Markdown, Canvas, Bases, and attachments with revision guards.\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected (`PROTECTED_PATH`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
 const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript features with explicit domain boundaries and evidence of correctness.\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills and events under the plugin ID. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for one-time setup after enabling and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`, `claude.*`) fail with `EVENT_OWNERSHIP`. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const builtinSkills = [
   { id: "forge-workflow", content: workflow },
@@ -27490,7 +27798,7 @@ async function claudeTarget(context, flags) {
     let root = directory;
     while (true) {
       try {
-        ensure((await promises.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
+        ensure((await promises$1.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
         break;
       } catch (error2) {
         if (error2.code !== "ENOENT") throw error2;
@@ -27552,7 +27860,7 @@ class NodeClaudeRuntime {
     );
     let directory;
     try {
-      directory = (await promises.stat(options.cwd)).isDirectory();
+      directory = (await promises$1.stat(options.cwd)).isDirectory();
     } catch (error2) {
       throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options.cwd}`, { cause: errorMessage(error2) });
     }
@@ -28910,18 +29218,18 @@ function editDistance(a, b) {
   }
   return d[a.length][b.length];
 }
-function suggestSimilar(word, candidates) {
-  if (!candidates || candidates.length === 0) return "";
-  candidates = Array.from(new Set(candidates));
+function suggestSimilar(word, candidates2) {
+  if (!candidates2 || candidates2.length === 0) return "";
+  candidates2 = Array.from(new Set(candidates2));
   const searchingOptions = word.startsWith("--");
   if (searchingOptions) {
     word = word.slice(2);
-    candidates = candidates.map((candidate) => candidate.slice(2));
+    candidates2 = candidates2.map((candidate) => candidate.slice(2));
   }
   let similar = [];
   let bestDistance = maxDistance;
   const minSimilarity = 0.4;
-  candidates.forEach((candidate) => {
+  candidates2.forEach((candidate) => {
     if (candidate.length <= 1) return;
     const distance = editDistance(word, candidate);
     const length = Math.max(word.length, candidate.length);
@@ -31661,17 +31969,17 @@ function validateClaudePlugin(value2) {
   }
 }
 const manifestPath = ".claude-plugin/plugin.json";
-function decode(bytes) {
+function decode$2(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw forgeError("INVALID_ENCODING", "Claude plugin text assets must be valid UTF-8.");
   }
 }
-function json(bytes, path) {
+function json$1(bytes, path) {
   let value2;
   try {
-    value2 = JSON.parse(decode(bytes));
+    value2 = JSON.parse(decode$2(bytes));
   } catch (error2) {
     throw forgeError("INVALID_CLAUDE_PLUGIN", `${path}: ${errorMessage(error2)}`);
   }
@@ -31720,7 +32028,7 @@ class ClaudePluginService {
     const files = (await this.workspace.files.list()).filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length)).sort();
     try {
       const snapshot = await this.workspace.files.read(`${prefix}${manifestPath}`);
-      return { directory: root, manifest: json(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
+      return { directory: root, manifest: json$1(snapshot.bytes, manifestPath), revision: snapshot.revision, files };
     } catch (error2) {
       if (!(error2 instanceof AppError) || error2.code !== "NOT_FOUND") throw error2;
       ensure(files.length > 0, "NOT_FOUND", `No regular plugin files found in ${root}.`);
@@ -31743,7 +32051,7 @@ class ClaudePluginService {
     }
     const result = { directory, asset: path, path: target, revision: snapshot.revision, bytes: snapshot.bytes.length, document: document2, ...validationError ? { validationError } : {} };
     try {
-      return { ...result, content: decode(snapshot.bytes) };
+      return { ...result, content: decode$2(snapshot.bytes) };
     } catch {
       return result;
     }
@@ -31752,7 +32060,7 @@ class ClaudePluginService {
     const target = this.path(directory, path);
     if (revision !== void 0) this.requireRevision(revision);
     const snapshot = Uint8Array.from(bytes);
-    if (path === manifestPath) validateClaudePlugin(json(snapshot, path));
+    if (path === manifestPath) validateClaudePlugin(json$1(snapshot, path));
     else {
       const { manifest } = await this.inspect(directory);
       if (manifest !== null) validateClaudePlugin(manifest);
@@ -31778,8 +32086,8 @@ class ClaudePluginService {
     const references = inspected.manifest === null ? [] : nativeReferences(inspected.manifest);
     for (const reference of references) {
       if (reference.path === "") continue;
-      const exists = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path) => path === reference.path || path.startsWith(`${reference.path}/`));
-      if (!exists) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
+      const exists2 = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path) => path === reference.path || path.startsWith(`${reference.path}/`));
+      if (!exists2) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
     }
     for (const path of inspected.files) {
       try {
@@ -31813,7 +32121,7 @@ class ClaudePluginService {
   validateAsset(path, bytes, references) {
     const warnings = [];
     if (path === manifestPath) {
-      validateClaudePlugin(json(bytes, path));
+      validateClaudePlugin(json$1(bytes, path));
       return warnings;
     }
     const kinds = new Set(references.filter((reference) => reference.path === path).map((reference) => reference.kind));
@@ -31823,23 +32131,23 @@ class ClaudePluginService {
     if (path === ".lsp.json") kinds.add("lsp");
     if (path === "settings.json") kinds.add("settings");
     if (kinds.has("agent")) {
-      const { metadata: metadata2 } = this.agentCodec.parse(decode(bytes));
+      const { metadata: metadata2 } = this.agentCodec.parse(decode$2(bytes));
       for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
         if (Object.hasOwn(metadata2, key)) warnings.push(`Claude ignores ${key} in plugin agents; use a project/user agent for per-agent configuration.`);
       }
     }
     if (kinds.has("hooks")) {
-      const config2 = json(bytes, path);
+      const config2 = json$1(bytes, path);
       ensure(config2.hooks !== void 0 || config2.modules !== void 0, "INVALID_CLAUDE_PLUGIN", `${path}: hook files require a hooks wrapper, or modules for a Claude mod.`);
       if (config2.hooks !== void 0) validateClaudeHooks(config2.hooks);
       if (config2.modules !== void 0) ensure(Array.isArray(config2.modules) && config2.modules.every((entry2) => typeof entry2 === "string"), "INVALID_CLAUDE_PLUGIN", `${path}: modules must be an array of module paths.`);
     }
     if (kinds.has("mcp") && !/\.(mcpb|dxt)$/.test(path)) {
-      const config2 = json(bytes, path);
+      const config2 = json$1(bytes, path);
       validateClaudePlugin({ name: "asset-validation", mcpServers: config2.mcpServers ?? config2 });
     }
-    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json(bytes, path) });
-    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json(bytes, path) });
+    if (kinds.has("lsp")) validateClaudePlugin({ name: "asset-validation", lspServers: json$1(bytes, path) });
+    if (kinds.has("settings")) validateClaudePlugin({ name: "asset-validation", settings: json$1(bytes, path) });
     this.workspace.codec.validate(path, bytes);
     return warnings;
   }
@@ -33220,11 +33528,11 @@ function requireMoment() {
       function mod$1(n, x) {
         return (n % x + x) % x;
       }
-      var indexOf;
+      var indexOf2;
       if (Array.prototype.indexOf) {
-        indexOf = Array.prototype.indexOf;
+        indexOf2 = Array.prototype.indexOf;
       } else {
-        indexOf = function(o) {
+        indexOf2 = function(o) {
           var i;
           for (i = 0; i < this.length; ++i) {
             if (this[i] === o) {
@@ -33319,26 +33627,26 @@ function requireMoment() {
         }
         if (strict2) {
           if (format3 === "MMM") {
-            ii = indexOf.call(this._shortMonthsParse, llc);
+            ii = indexOf2.call(this._shortMonthsParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._longMonthsParse, llc);
+            ii = indexOf2.call(this._longMonthsParse, llc);
             return ii !== -1 ? ii : null;
           }
         } else {
           if (format3 === "MMM") {
-            ii = indexOf.call(this._shortMonthsParse, llc);
+            ii = indexOf2.call(this._shortMonthsParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._longMonthsParse, llc);
+            ii = indexOf2.call(this._longMonthsParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._longMonthsParse, llc);
+            ii = indexOf2.call(this._longMonthsParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._shortMonthsParse, llc);
+            ii = indexOf2.call(this._shortMonthsParse, llc);
             return ii !== -1 ? ii : null;
           }
         }
@@ -33590,48 +33898,48 @@ function requireMoment() {
         }
         if (strict2) {
           if (format3 === "dddd") {
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else if (format3 === "ddd") {
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           }
         } else {
           if (format3 === "dddd") {
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else if (format3 === "ddd") {
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           } else {
-            ii = indexOf.call(this._minWeekdaysParse, llc);
+            ii = indexOf2.call(this._minWeekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._weekdaysParse, llc);
+            ii = indexOf2.call(this._weekdaysParse, llc);
             if (ii !== -1) {
               return ii;
             }
-            ii = indexOf.call(this._shortWeekdaysParse, llc);
+            ii = indexOf2.call(this._shortWeekdaysParse, llc);
             return ii !== -1 ? ii : null;
           }
         }
@@ -34989,7 +35297,7 @@ function requireMoment() {
       function isDurationValid(m) {
         var key, unitHasDecimal = false, i, orderLen = ordering2.length;
         for (key in m) {
-          if (hasOwnProp(m, key) && !(indexOf.call(ordering2, key) !== -1 && (m[key] == null || !isNaN(m[key])))) {
+          if (hasOwnProp(m, key) && !(indexOf2.call(ordering2, key) !== -1 && (m[key] == null || !isNaN(m[key])))) {
             return false;
           }
         }
@@ -37423,8 +37731,8 @@ class Evaluator {
         return stringValue(value2.toLowerCase());
       case "replace": {
         const pattern = args[0] ?? nullValue();
-        const replacement = stringifyValue(args[1] ?? stringValue(""));
-        return stringValue(pattern.type === "RegExp" ? value2.replace(pattern.value, replacement) : value2.split(stringifyValue(pattern)).join(replacement));
+        const replacement2 = stringifyValue(args[1] ?? stringValue(""));
+        return stringValue(pattern.type === "RegExp" ? value2.replace(pattern.value, replacement2) : value2.split(stringifyValue(pattern)).join(replacement2));
       }
       case "repeat":
         return stringValue(value2.repeat(this.asNumber(args[0] ?? numberValue(0))));
@@ -38288,7 +38596,7 @@ async function indexBaseFiles(files, cache) {
   const problems = new Map(cache.issues().map((issue2) => [issue2.path, issue2.message]));
   const indexed = cache.files().map((path) => baseFile(path, cache, problems));
   const result = await mapInOrder(indexed, pendingFileReads$1, async (file) => {
-    const info = await promises.stat(await files.resolvePath(file.path));
+    const info = await promises$1.stat(await files.resolvePath(file.path));
     return { ...file, size: info.size, ctime: info.birthtime, mtime: info.mtime };
   });
   const byPath = new Map(result.map((file) => [file.path, file]));
@@ -38550,7 +38858,7 @@ function linkIndex(paths2, aliases = /* @__PURE__ */ new Map()) {
   }
   return { paths: paths2, exact: new Set(paths2), lower, suffixes, aliases: aliasKeys };
 }
-function folderOf(path) {
+function folderOf$1(path) {
   const slash = path.lastIndexOf("/");
   return slash < 0 ? "." : slash === 0 ? "/" : path.slice(0, slash);
 }
@@ -38579,14 +38887,14 @@ function resolveLinkpath(index2, link, source, options = {}) {
   if (external(target)) return { status: "external" };
   target = target.replace(/^\//, "");
   const relative = options.relative === true;
-  const local = joinPath(folderOf(source), target);
-  const candidates = relative ? [local, target] : [target, local];
-  for (const candidate of candidates) {
+  const local = joinPath(folderOf$1(source), target);
+  const candidates2 = relative ? [local, target] : [target, local];
+  for (const candidate of candidates2) {
     for (const spelling of [candidate, `${candidate}.md`]) {
       if (index2.exact.has(spelling)) return { status: "resolved", path: spelling, via: "path" };
     }
   }
-  for (const candidate of candidates) {
+  for (const candidate of candidates2) {
     const result = matched(lookup(index2, index2.lower, candidate), target, "path");
     if (result) return result;
   }
@@ -38598,13 +38906,13 @@ function resolveLinkpath(index2, link, source, options = {}) {
 }
 function fileToLinktext(index2, path, source, omitMdExtension = true) {
   const spelling = (value2) => omitMdExtension && value2.toLowerCase().endsWith(".md") ? value2.slice(0, -3) : value2;
-  const resolvesTo = (link) => {
+  const resolvesTo2 = (link) => {
     if (parseLinktext(link).path !== link || !link) return false;
     const result = resolveLinkpath(index2, link, source);
     return result.status === "resolved" && result.path === path;
   };
   for (const candidate of [spelling(path.slice(path.lastIndexOf("/") + 1)), spelling(path)]) {
-    if (resolvesTo(candidate)) return candidate;
+    if (resolvesTo2(candidate)) return candidate;
   }
   return path;
 }
@@ -38820,15 +39128,23 @@ class MetadataCacheEvents {
   }
   events;
   index;
-  async committed(changes) {
-    const update = await this.index.update(changes.map(({ path, operation: operation2 }) => ({ path, operation: operation2 })));
+  async committed({ renames, changes }) {
+    const update = await this.index.update([
+      ...renames.map(({ from, to }) => ({ path: to, oldPath: from, operation: "renamed" })),
+      ...changes.map(({ path, operation: operation2 }) => ({ path, operation: operation2 }))
+    ]);
     if (!update) return;
     const cache = await this.index.load();
+    const written = new Set(changes.map((change2) => change2.path)), indexed = new Set(cache.files());
+    const movedOnly = new Set(renames.filter((rename2) => !written.has(rename2.to)).map((rename2) => rename2.to));
+    const movedAway = new Set(renames.filter((rename2) => indexed.has(rename2.to)).map((rename2) => rename2.from));
     for (const path of update.changed) {
+      if (movedOnly.has(path)) continue;
       const metadata2 = cache.getFileCache(path);
       if (metadata2) await publishHostEvent(this.events, "metadataCache.changed", { path, cache: record(metadata2) });
     }
     for (const path of update.deleted) {
+      if (movedAway.has(path)) continue;
       const previous2 = update.prevCaches[path] ?? null;
       await publishHostEvent(this.events, "metadataCache.deleted", { path, prevCache: previous2 && record(previous2) });
     }
@@ -43005,7 +43321,7 @@ class FormattingElementList {
   //OPTIMIZATION: at first we try to find possible candidates for exclusion using
   //lightweight heuristics without thorough attributes check.
   _getNoahArkConditionCandidates(newElement, neAttrs) {
-    const candidates = [];
+    const candidates2 = [];
     const neAttrsLength = neAttrs.length;
     const neTagName = this.treeAdapter.getTagName(newElement);
     const neNamespaceURI = this.treeAdapter.getNamespaceURI(newElement);
@@ -43018,23 +43334,23 @@ class FormattingElementList {
       if (this.treeAdapter.getTagName(element2) === neTagName && this.treeAdapter.getNamespaceURI(element2) === neNamespaceURI) {
         const elementAttrs = this.treeAdapter.getAttrList(element2);
         if (elementAttrs.length === neAttrsLength) {
-          candidates.push({ idx: i, attrs: elementAttrs });
+          candidates2.push({ idx: i, attrs: elementAttrs });
         }
       }
     }
-    return candidates;
+    return candidates2;
   }
   _ensureNoahArkCondition(newElement) {
     if (this.entries.length < NOAH_ARK_CAPACITY)
       return;
     const neAttrs = this.treeAdapter.getAttrList(newElement);
-    const candidates = this._getNoahArkConditionCandidates(newElement, neAttrs);
-    if (candidates.length < NOAH_ARK_CAPACITY)
+    const candidates2 = this._getNoahArkConditionCandidates(newElement, neAttrs);
+    if (candidates2.length < NOAH_ARK_CAPACITY)
       return;
     const neAttrsMap = new Map(neAttrs.map((neAttr) => [neAttr.name, neAttr.value]));
     let validCandidates = 0;
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
+    for (let i = 0; i < candidates2.length; i++) {
+      const candidate = candidates2[i];
       if (candidate.attrs.every((cAttr) => neAttrsMap.get(cAttr.name) === cAttr.value)) {
         validCandidates += 1;
         if (validCandidates >= NOAH_ARK_CAPACITY) {
@@ -46671,7 +46987,7 @@ function blankComments(value2) {
 function parseMarkdown(value2) {
   return parser.parse(value2);
 }
-function decoded(target) {
+function decoded$1(target) {
   try {
     return decodeURI(target);
   } catch {
@@ -46688,7 +47004,7 @@ function markdownReferences(value2, tree, inlineTags) {
   let lines2;
   const add = (target, embed, syntax, found) => {
     if (isExternalLink(target)) return;
-    const link = syntax === "wikilink" ? target : decoded(target);
+    const link = syntax === "wikilink" ? target : decoded$1(target);
     const subpath = parseLinktext(link).subpath;
     references.push({ syntax, embed, link, ...found, displayText: found.displayText ?? defaultDisplayText(link), ...subpath ? { subpath } : {} });
   };
@@ -46740,7 +47056,7 @@ function markdownReferences(value2, tree, inlineTags) {
   const collect = (node2) => {
     if (node2.type === "definition" && node2.identifier && node2.url) {
       targets.set(node2.identifier, node2.url);
-      if (!isExternalLink(node2.url)) definitions.push({ id: node2.label ?? node2.identifier, link: decoded(node2.url), original: value2.slice(start$1(node2), end$1(node2)), start: start$1(node2), end: end$1(node2) });
+      if (!isExternalLink(node2.url)) definitions.push({ id: node2.label ?? node2.identifier, link: decoded$1(node2.url), original: value2.slice(start$1(node2), end$1(node2)), start: start$1(node2), end: end$1(node2) });
     }
     node2.children?.forEach(collect);
   };
@@ -46905,6 +47221,415 @@ class ObsidianMetadataParser {
     const document2 = this.codec.inspect(path, bytes);
     return markdownMetadata(document2.content, document2.properties, document2.body);
   }
+}
+const isMarkdownPath = (path) => /\.md$/i.test(path);
+const folderOf = (path) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ".";
+function relativePath(fromFolder, to) {
+  const from = fromFolder === "." ? [] : fromFolder.split("/");
+  const parts = to.split("/");
+  let shared = 0;
+  while (shared < from.length && shared < parts.length - 1 && from[shared] === parts[shared]) shared++;
+  return [...Array.from({ length: from.length - shared }, () => ".."), ...parts.slice(shared)].join("/");
+}
+function withExtensionStyle(target, previous2) {
+  return isMarkdownPath(target) && !isMarkdownPath(previous2) ? target.slice(0, -3) : target;
+}
+function vaultLinkpath(index2, previous2, target, source) {
+  const absolute = previous2.startsWith("/");
+  if (!previous2.includes("/") || absolute && !previous2.slice(1).includes("/")) {
+    return fileToLinktext(index2, target, source, !isMarkdownPath(previous2));
+  }
+  return (absolute ? "/" : "") + withExtensionStyle(target, previous2);
+}
+function rewriteWikilink(original, link, newPath) {
+  const embed = original.startsWith("!") ? "!" : "";
+  if (!original.startsWith(`${embed}[[`) || !original.endsWith("]]")) return void 0;
+  const inner = original.slice(embed.length + 2, -2);
+  const path = parseLinktext(link).path;
+  if (!inner.startsWith(path)) return void 0;
+  return `${embed}[[${newPath}${inner.slice(path.length)}]]`;
+}
+function destinationAt(text2, from) {
+  let start2 = from;
+  while (text2[start2] === " " || text2[start2] === "	" || text2[start2] === "\n") start2++;
+  if (text2[start2] === "<") {
+    const close2 = text2.indexOf(">", start2);
+    return close2 < 0 ? void 0 : { start: start2 + 1, end: close2, raw: text2.slice(start2 + 1, close2), angle: true };
+  }
+  let end2 = start2, depth = 0;
+  while (end2 < text2.length && !/\s/.test(text2[end2])) {
+    if (text2[end2] === "\\") {
+      end2 += 2;
+      continue;
+    }
+    if (text2[end2] === "(") depth++;
+    else if (text2[end2] === ")") {
+      if (depth === 0) break;
+      depth--;
+    }
+    end2++;
+  }
+  return end2 > start2 ? { start: start2, end: end2, raw: text2.slice(start2, end2), angle: false } : void 0;
+}
+function markdownDestination(original) {
+  if (!original.endsWith(")")) return void 0;
+  for (let open2 = original.lastIndexOf("]("); open2 >= 0; open2 = original.lastIndexOf("](", open2 - 1)) {
+    const found = destinationAt(original, open2 + 2);
+    if (!found) continue;
+    const rest = original.slice(found.end + (found.angle ? 1 : 0), -1);
+    if (/^\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))?\s*$/.test(rest)) return found;
+    if (open2 === 0) break;
+  }
+  return void 0;
+}
+function definitionDestination(original) {
+  const colon = /^\s{0,3}\[(?:[^\]\\]|\\.)+\]:/.exec(original);
+  return colon ? destinationAt(original, colon[0].length) : void 0;
+}
+function attributeDestination(original) {
+  const match = /^[^=]+=\s*(["']?)/.exec(original);
+  if (!match) return void 0;
+  const quote = match[1], start2 = match[0].length;
+  const end2 = quote ? original.indexOf(quote, start2) : original.search(/\s|$/);
+  return end2 < start2 ? void 0 : { start: start2, end: end2, raw: original.slice(start2, end2), angle: false };
+}
+function decoded(raw) {
+  try {
+    return decodeURI(raw);
+  } catch {
+    return raw;
+  }
+}
+function rewriteDestination(destination, oldSource, oldTarget, newSource, target) {
+  const hash = destination.raw.indexOf("#");
+  const rawPath = hash < 0 ? destination.raw : destination.raw.slice(0, hash), fragment = hash < 0 ? "" : destination.raw.slice(hash);
+  const previous2 = decoded(rawPath);
+  const leadingSlash = previous2.startsWith("/");
+  const viaVault = leadingSlash || joinPath(folderOf(oldSource), previous2) !== oldTarget && joinPath(folderOf(oldSource), `${previous2}.md`) !== oldTarget;
+  let path = viaVault ? (leadingSlash ? "/" : "") + target : relativePath(folderOf(newSource), target);
+  if (!viaVault && previous2.startsWith("./") && !path.startsWith("../")) path = `./${path}`;
+  path = withExtensionStyle(path, previous2);
+  const encode2 = !destination.angle && (rawPath !== previous2 || /\s/.test(path));
+  return (encode2 ? encodeURI(path) : path) + fragment;
+}
+function applyEdits(text2, edits) {
+  const ordered2 = [...edits].sort((a, b) => b.start - a.start);
+  let result = text2, limit = Infinity;
+  for (const edit of ordered2) {
+    if (edit.end > limit || text2.slice(edit.start, edit.end) !== edit.original) return void 0;
+    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
+    limit = edit.start;
+  }
+  return result;
+}
+const sorted = (paths2) => [...paths2].sort();
+const isRelativeSyntax = (syntax) => !["wikilink", "canvas"].includes(syntax);
+function indexOf(paths2, cache, rename2) {
+  const aliases = /* @__PURE__ */ new Map();
+  for (const path of cache.files()) {
+    const names2 = cache.getFileCache(path)?.aliases;
+    if (names2?.length) aliases.set(rename2(path), names2);
+  }
+  return linkIndex(paths2, aliases);
+}
+function planLinkUpdates(cache, moves) {
+  const rename2 = (path) => moves.get(path) ?? path;
+  const before = indexOf(cache.files(), cache, (path) => path);
+  const after = indexOf(sorted(cache.files().map(rename2)), cache, rename2);
+  const files = [], unrewritten = [];
+  let references = 0;
+  for (const source of cache.files()) {
+    const metadata2 = cache.getFileCache(source);
+    if (!metadata2) continue;
+    const plan = { source, edits: [], frontmatter: [], canvas: [] };
+    const newSource = rename2(source);
+    for (const candidate of candidates(metadata2, plan)) {
+      const previous2 = resolveLinkpath(before, candidate.link, source, { relative: candidate.relative, aliases: true });
+      if (previous2.status !== "resolved") continue;
+      const target = rename2(previous2.path);
+      if (candidate.syntax === "canvas" ? !moves.has(previous2.path) : resolvesTo(after, candidate, newSource, target)) continue;
+      const text2 = replacement(candidate, after, source, previous2.path, newSource, target);
+      if (text2 === void 0) {
+        unrewritten.push({ source, original: candidate.original, reason: "Unrecognized link syntax." });
+        continue;
+      }
+      candidate.apply(text2);
+      references++;
+    }
+    if (plan.edits.length + plan.frontmatter.length + plan.canvas.length > 0) files.push(plan);
+  }
+  return { files, references, unrewritten };
+}
+function resolvesTo(index2, candidate, source, target) {
+  const current = resolveLinkpath(index2, candidate.link, source, { relative: candidate.relative, aliases: true });
+  return current.status === "resolved" && current.path === target;
+}
+function candidates(metadata2, plan) {
+  const result = [];
+  for (const item of [...metadata2.links ?? [], ...metadata2.embeds ?? []]) {
+    if (item.syntax === "reference") continue;
+    const { start: start2, end: end2 } = { start: item.position.start.offset, end: item.position.end.offset };
+    result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item.original, text: text2 }) });
+  }
+  for (const item of metadata2.referenceLinks ?? []) {
+    const { start: start2, end: end2 } = { start: item.position.start.offset, end: item.position.end.offset };
+    result.push({ link: item.link, original: item.original, syntax: "reference", relative: true, apply: (text2) => plan.edits.push({ start: start2, end: end2, original: item.original, text: text2 }) });
+  }
+  for (const item of metadata2.frontmatterLinks ?? []) {
+    result.push({ link: item.link, original: item.original, syntax: item.syntax, relative: isRelativeSyntax(item.syntax), apply: (text2) => {
+      if (!plan.frontmatter.some((entry2) => entry2.original === item.original)) plan.frontmatter.push({ original: item.original, text: text2 });
+    } });
+  }
+  for (const item of metadata2.canvasLinks ?? []) {
+    result.push({ link: item.link, original: item.original, syntax: "canvas", relative: false, apply: (file) => plan.canvas.push({ node: item.node, original: item.original, file }) });
+  }
+  return result;
+}
+function replacement(candidate, index2, oldSource, oldTarget, newSource, target) {
+  const { original, syntax, link } = candidate;
+  if (syntax === "canvas") return target;
+  if (syntax === "wikilink") return rewriteWikilink(original, link, vaultLinkpath(index2, parseLinktext(link).path, target, newSource));
+  const destination = syntax === "markdown" ? markdownDestination(original) : syntax === "reference" ? definitionDestination(original) : attributeDestination(original);
+  if (!destination) return void 0;
+  return original.slice(0, destination.start) + rewriteDestination(destination, oldSource, oldTarget, newSource, target) + original.slice(destination.end);
+}
+function rewriteText(plan, text2, metadata2) {
+  const unrewritten = [];
+  if (plan.canvas.length > 0) return { text: rewriteCanvas(text2, plan.canvas), unrewritten };
+  let result = applyEdits(text2, plan.edits);
+  if (result === void 0) return void 0;
+  const block = metadata2.frontmatterPosition;
+  if (block && plan.frontmatter.length > 0) {
+    let yaml = result.slice(block.start.offset, block.end.offset);
+    for (const { original, text: replacement2 } of plan.frontmatter) {
+      if (yaml.includes(original)) yaml = yaml.split(original).join(replacement2);
+      else unrewritten.push({ source: plan.source, original, reason: "The frontmatter spells this link differently, for example with YAML escapes; edit it with properties." });
+    }
+    result = result.slice(0, block.start.offset) + yaml + result.slice(block.end.offset);
+  }
+  return { text: result, unrewritten };
+}
+function rewriteCanvas(text2, nodes) {
+  const files = new Map(nodes.map((node2) => [node2.original, node2.file]));
+  const replaced = text2.replace(/("file"\s*:\s*)"((?:[^"\\]|\\.)*)"/g, (match, key, value2) => {
+    const file = files.get(JSON.parse(`"${value2}"`));
+    return file === void 0 ? match : `${key}${JSON.stringify(file)}`;
+  });
+  const data = JSON.parse(replaced.replace(/^﻿/, ""));
+  const expected = new Map(nodes.map((node2) => [node2.node, node2.file]));
+  const nodesOf = data.nodes ?? [];
+  if (nodesOf.every((node2) => !expected.has(String(node2.id)) || node2.file === expected.get(String(node2.id)))) return replaced;
+  for (const node2 of nodesOf) if (expected.has(String(node2.id))) node2.file = expected.get(String(node2.id));
+  return (text2.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(data, null, 2) + "\n";
+}
+const encoder = new TextEncoder();
+const decode$1 = (bytes) => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+const notFound = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
+const json = (value2) => JSON.stringify(value2);
+class FileManager {
+  constructor(workspace2, metadata2, scope) {
+    this.workspace = workspace2;
+    this.metadata = metadata2;
+    this.scope = scope;
+  }
+  workspace;
+  metadata;
+  scope;
+  /** Moves a file or folder and, unless `updateLinks` is false, rewrites every link to it in the same batch. */
+  async move(from, to, options = {}) {
+    from = vaultPath(from);
+    to = vaultPath(to);
+    ensure(from !== to, "INVALID_MOVE", `The destination equals the source: ${from}`);
+    ensure(!to.startsWith(`${from}/`), "INVALID_MOVE", `Cannot move ${from} into itself.`);
+    this.ensureMovable(from);
+    this.ensureMovable(to);
+    const entry2 = await this.workspace.files.stat(from);
+    await this.ensureAbsent(from, to);
+    const moves = new Map(entry2.kind === "file" ? [[from, to]] : entry2.files.map((file) => [`${from}/${file}`, `${to}/${file}`]));
+    const writes = [], previous2 = /* @__PURE__ */ new Map(), unrewritten = [];
+    let references = 0;
+    if (options.updateLinks !== false) {
+      const cache = await this.metadata.load();
+      const plan = planLinkUpdates(cache, moves);
+      references = plan.references;
+      unrewritten.push(...plan.unrewritten);
+      for (const file of plan.files) {
+        const snapshot = await this.workspace.files.read(file.source);
+        const rewritten = rewriteText(file, decode$1(snapshot.bytes), cache.getFileCache(file.source));
+        if (rewritten === void 0) throw forgeError("CONFLICT", `File changed while planning link updates; retry: ${file.source}`, revisionConflict(file.source, null, snapshot.revision));
+        unrewritten.push(...rewritten.unrewritten);
+        const path = moves.get(file.source) ?? file.source;
+        writes.push({ path, bytes: encoder.encode(rewritten.text), expectedRevision: snapshot.revision });
+        previous2.set(path, snapshot);
+      }
+    }
+    writes.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    const result = await this.workspace.commit({ renames: [{ from, to, expectedRevision: options.ifMatch ?? entry2.revision }], writes }, { operation: "move", previous: previous2 });
+    return { dryRun: result.dryRun, from, to, kind: entry2.kind, revision: entry2.revision, renames: result.renames, changes: result.changes, links: { updated: references, files: writes.length, unrewritten } };
+  }
+  /** Renames in place: `name` has no slash; a file keeps its extension when `name` omits it. */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  async rename(path, name2, options = {}) {
+    path = vaultPath(path);
+    ensure(typeof name2 === "string" && name2.length > 0 && !name2.includes("/"), "INVALID_MOVE", "rename takes a new name without slashes; use move to change folders.");
+    const entry2 = await this.workspace.files.stat(path);
+    const basename = path.slice(path.lastIndexOf("/") + 1), dot = basename.lastIndexOf(".");
+    const extension2 = entry2.kind === "file" && dot > 0 ? basename.slice(dot) : "";
+    const fullName = extension2 && !name2.toLowerCase().endsWith(extension2.toLowerCase()) ? name2 + extension2 : name2;
+    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    return this.move(path, folder + vaultPath(fullName), options);
+  }
+  /**
+   * Deletes a file, or a folder with `recursive`, moving it to `.trash/` unless `permanent` is set. Refuses with
+   * HAS_BACKLINKS while files outside the deleted path link into it, unless `allowBrokenLinks` is set.
+   */
+  async delete(path, options = {}) {
+    path = vaultPath(path);
+    this.ensureMovable(path);
+    const entry2 = await this.workspace.files.stat(path);
+    ensure(entry2.kind === "file" || options.recursive === true, "INVALID_ARGUMENT", `${path} is a folder; pass --recursive to delete it with its files.`);
+    ensure(options.permanent === true || !isInTrash(path), "INVALID_ARGUMENT", `${path} is already in ${trashFolder}; pass --permanent to remove it.`);
+    const brokenLinks = await this.brokenLinks(path, entry2);
+    ensure(brokenLinks.length === 0 || options.allowBrokenLinks === true, "HAS_BACKLINKS", `${brokenLinks.length} link(s) from other files still point into ${path}.`, { backlinks: brokenLinks });
+    const expectedRevision = options.ifMatch ?? entry2.revision;
+    if (options.permanent === true) {
+      const result2 = await this.workspace.commit({ removes: [{ path, expectedRevision }] }, { operation: "delete" });
+      return { dryRun: result2.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: true, trashPath: null, deleted: result2.changes.map(({ path: file, revision, bytes }) => ({ path: file, revision, bytes })), brokenLinks };
+    }
+    const trashPath = await this.trashDestination(path, entry2.kind);
+    const result = await this.workspace.commit({ renames: [{ from: path, to: trashPath, expectedRevision }] }, { operation: "delete", trash: true });
+    const deleted = result.renames.flatMap((rename2) => rename2.kind === "file" ? [{ path: rename2.from, revision: rename2.revision, bytes: rename2.bytes }] : []);
+    return { dryRun: result.dryRun, path, kind: entry2.kind, revision: entry2.revision, permanent: false, trashPath, deleted, brokenLinks };
+  }
+  /** Obsidian's `renameFile`: a move that updates links. */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  renameFile(path, newPath, options = {}) {
+    return this.move(path, newPath, { ...options, updateLinks: true });
+  }
+  /** Obsidian's `trashFile`: moves a file or folder to `.trash/`, refusing while other files link into it. */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  trashFile(path, options = {}) {
+    return this.delete(path, { ...options, recursive: true });
+  }
+  /**
+   * Obsidian's `processFrontMatter`: `fn` mutates a copy of the note's properties; changed keys are set and removed
+   * keys deleted in one guarded edit that preserves the body. Without `ifMatch`, the revision read here guards it.
+   */
+  // Reached through `context.app.fileManager` by the CLI and plugins.
+  // fallow-ignore-next-line unused-class-member
+  async processFrontMatter(path, fn, options = {}) {
+    ensure(fileKind(path) === "markdown", "UNSUPPORTED_EDIT", "Frontmatter requires a Markdown note.");
+    ensure(typeof fn === "function", "INVALID_ARGUMENT", "processFrontMatter needs a function.");
+    const snapshot = await this.workspace.files.read(path);
+    const revision = options.ifMatch ?? snapshot.revision;
+    ensure(snapshot.revision === revision, "CONFLICT", `File changed; read again before editing: ${path}`, revisionConflict(path, revision, snapshot.revision));
+    const before = this.workspace.codec.inspect(path, snapshot.bytes).properties;
+    const after = structuredClone(before);
+    await fn(after);
+    ensure(isRecord(after), "INVALID_FRONTMATTER", "Frontmatter must stay a mapping.");
+    const changes = Object.fromEntries(Object.entries(after).filter(([key, value2]) => json(value2) !== json(before[key])));
+    const removed = Object.keys(before).filter((key) => !Object.hasOwn(after, key));
+    if (Object.keys(changes).length + removed.length === 0) return { dryRun: this.workspace.dryRun, changes: [] };
+    return this.workspace.edit(path, revision, (bytes) => this.workspace.codec.properties(bytes, changes, removed));
+  }
+  /** Links from outside `path` that resolve to it or into it. */
+  async brokenLinks(path, entry2) {
+    const cache = await this.metadata.load();
+    const targets = entry2.kind === "file" ? [path] : entry2.files.map((file) => `${path}/${file}`);
+    const inside2 = new Set(targets);
+    return targets.flatMap((target) => cache.backlinks(target).filter((link) => !inside2.has(link.source)).map((link) => {
+      const reference = link.reference;
+      return {
+        source: link.source,
+        target,
+        kind: link.kind,
+        line: reference.position ? reference.position.start.line + 1 : null,
+        original: reference.original,
+        ...reference.key === void 0 ? {} : { key: reference.key },
+        ...reference.node === void 0 ? {} : { node: reference.node }
+      };
+    }));
+  }
+  /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
+  async trashDestination(path, kind) {
+    const slash = path.lastIndexOf("/"), name2 = path.slice(slash + 1), dot = kind === "file" ? name2.lastIndexOf(".") : -1;
+    const [stem, extension2] = dot > 0 ? [name2.slice(0, dot), name2.slice(dot)] : [name2, ""];
+    const folder = `${trashFolder}/${path.slice(0, slash + 1)}`;
+    for (let copy2 = 0; ; copy2++) {
+      const candidate = `${folder}${stem}${copy2 === 0 ? "" : ` ${copy2}`}${extension2}`;
+      try {
+        await this.workspace.files.stat(candidate);
+      } catch (error2) {
+        if (notFound(error2)) return candidate;
+        throw error2;
+      }
+    }
+  }
+  async ensureAbsent(from, to) {
+    try {
+      await this.workspace.files.stat(to);
+      ensure(from.toLowerCase() === to.toLowerCase(), "DESTINATION_EXISTS", `Destination already exists: ${to}`, { path: to, from });
+    } catch (error2) {
+      if (!notFound(error2)) throw error2;
+    }
+  }
+  ensureMovable(path) {
+    const top = path.split("/")[0];
+    const protectedRoots = [".obsidian", ".forge", ...this.scope.workspace ? ["bin"] : []];
+    ensure(!protectedRoots.includes(top), "PROTECTED_PATH", `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
+  }
+}
+const encode = (data) => typeof data === "string" ? new TextEncoder().encode(data) : data;
+const decode = (bytes) => new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+const copy = (value2) => structuredClone(value2);
+const listen = (events, prefix) => (name2, callback) => {
+  ensure(typeof name2 === "string", "INVALID_ARGUMENT", "Event names are strings.");
+  return events.on(`${prefix}.${name2}`, callback);
+};
+function createApp({ workspace: workspace2, metadata: metadata2, events, project: project2 }) {
+  const fileManager = new FileManager(workspace2, metadata2, { workspace: project2 === null });
+  const revision = async (path, options = {}) => options.ifMatch ?? (await workspace2.files.read(path)).revision;
+  const single = async (result) => {
+    const { path, revision: changed, operation: operation2, bytes } = (await result).changes[0];
+    return { path, revision: changed, operation: operation2, bytes };
+  };
+  const files = async () => (await metadata2.load()).files().slice();
+  const vault2 = {
+    read: async (path) => decode((await workspace2.files.read(path)).bytes),
+    create: (path, data) => single(workspace2.write([{ path, bytes: encode(data) }])),
+    modify: async (path, data, options) => single(workspace2.write([{ path, bytes: encode(data), expectedRevision: await revision(path, options) }])),
+    async process(path, fn, options = {}) {
+      const snapshot = await workspace2.files.read(path);
+      const text2 = await fn(decode(snapshot.bytes));
+      ensure(typeof text2 === "string", "INVALID_ARGUMENT", "vault.process needs a function returning text.");
+      await workspace2.edit(path, options.ifMatch ?? snapshot.revision, () => encode(text2));
+      return text2;
+    },
+    append: async (path, data, options) => single(workspace2.edit(path, await revision(path, options), (bytes) => encode(decode(bytes) + data))),
+    trash: (path, options = {}) => fileManager.delete(path, { ...options, recursive: true, allowBrokenLinks: true }),
+    delete: (path, options = {}) => fileManager.delete(path, { ...options, permanent: true, allowBrokenLinks: true }),
+    rename: (path, newPath, options = {}) => fileManager.move(path, newPath, { ...options, updateLinks: false }),
+    getMarkdownFiles: async () => (await files()).filter((path) => fileKind(path) === "markdown"),
+    getFiles: files,
+    on: listen(events, "vault")
+  };
+  const metadataCache = {
+    getFileCache: async (path) => copy((await metadata2.load()).getFileCache(path)),
+    getFirstLinkpathDest: async (linkpath, sourcePath) => (await metadata2.load()).getFirstLinkpathDest(linkpath, sourcePath),
+    fileToLinktext: async (path, sourcePath, omitMdExtension) => (await metadata2.load()).fileToLinktext(path, sourcePath, omitMdExtension),
+    resolvedLinks: async () => copy((await metadata2.load()).resolvedLinks),
+    unresolvedLinks: async () => copy((await metadata2.load()).unresolvedLinks),
+    on: listen(events, "metadataCache")
+  };
+  const workspaceFacade = {
+    onLayoutReady: (callback) => events.onLayoutReady(callback),
+    on: listen(events, "workspace"),
+    getActiveProject: () => project2 === null ? null : copy(project2)
+  };
+  return { vault: vault2, metadataCache, fileManager, workspace: workspaceFacade };
 }
 function basesCommand(service) {
   return {
@@ -47381,7 +48106,7 @@ function lineNumbers(text2, offsets) {
   }
   return lines2;
 }
-function replaceUniqueLiteral(text2, find, replacement) {
+function replaceUniqueLiteral(text2, find, replacement2) {
   ensure(find.length > 0, "INVALID_INPUT", "--find must not be empty.");
   const matches2 = literalMatches(text2, find);
   ensure(matches2.length > 0, "NO_MATCH", "The find text does not occur in the file. Read it again and copy the exact current text.", { find, matches: 0 });
@@ -47392,7 +48117,7 @@ function replaceUniqueLiteral(text2, find, replacement) {
     { matches: matches2.length, lines: lineNumbers(text2, matches2.slice(0, reportedMatchLines)) }
   );
   const [offset] = matches2;
-  return text2.slice(0, offset) + replacement + text2.slice(offset + find.length);
+  return text2.slice(0, offset) + replacement2 + text2.slice(offset + find.length);
 }
 async function content(flags, context) {
   const bytes = await readInputBytes(flags, context, "Choose exactly one of --content, --from, or --stdin.");
@@ -47494,6 +48219,29 @@ function documentCommands() {
     } }
   ];
 }
+const linkOptions = { "if-match": "string", "no-update-links": "boolean" };
+const guard = (flags, dryRun) => value(flags, "if-match", !dryRun);
+function vaultCommands() {
+  return [
+    { id: "delete", description: "Move a file or folder to .trash, or remove it with --permanent; refuses while other files link to it.", usage: "delete <path> --if-match sha256 [--recursive] [--permanent] [--allow-broken-links]", options: { "if-match": "string", recursive: "boolean", permanent: "boolean", "allow-broken-links": "boolean" }, async run(args, flags, { app, workspace: workspace2 }) {
+      arity(args, 1);
+      return app.fileManager.delete(args[0], {
+        ifMatch: guard(flags, workspace2.dryRun),
+        recursive: flags.recursive === true,
+        permanent: flags.permanent === true,
+        allowBrokenLinks: flags["allow-broken-links"] === true
+      });
+    } },
+    { id: "move", description: "Move or rename a file or folder and rewrite every link to it in one guarded batch.", usage: "move <from> <to> --if-match sha256 [--no-update-links]", options: linkOptions, async run(args, flags, { app, workspace: workspace2 }) {
+      arity(args, 2);
+      return app.fileManager.move(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
+    } },
+    { id: "rename", description: "Rename a file or folder in place and rewrite every link to it; a file keeps its extension.", usage: "rename <path> <new-name> --if-match sha256 [--no-update-links]", options: linkOptions, async run(args, flags, { app, workspace: workspace2 }) {
+      arity(args, 2);
+      return app.fileManager.rename(args[0], args[1], { ifMatch: guard(flags, workspace2.dryRun), updateLinks: flags["no-update-links"] !== true });
+    } }
+  ];
+}
 function skillsCommand(registry2) {
   return {
     id: "skills",
@@ -47529,6 +48277,7 @@ function commands(registry2, services) {
     ...workflowsCommands(services),
     ...catalogCommands(registry2),
     ...documentCommands(),
+    ...vaultCommands(),
     generationCommand(registry2, services),
     ...extensionCommands(registry2),
     skillsCommand(registry2)
@@ -47567,6 +48316,9 @@ const germanCommands = {
   edit: "Markdown oder UTF-8-Text ergänzen oder genau einen wörtlichen Treffer ersetzen.",
   properties: "YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.",
   patch: "Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.",
+  delete: "Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.",
+  move: "Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.",
+  rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
   make: "Code, Planungsdokumente, UI, Storybook-Stories oder Datenquellenadapter mit Testdaten generieren.",
   events: "Ereignisverträge des Aufrufs auflisten.",
   plugins: "Explizit geladene Plugin-Manifeste auflisten.",
@@ -47657,6 +48409,10 @@ const germanErrors = {
   UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
   INVALID_PLAN: { summary: "Der Schreibvorgang enthält doppelte oder überlappende Pfade.", hint: "Schreiben Sie jeden Pfad nur einmal und keine Datei dort, wo ein anderer Schreibvorgang ein Verzeichnis braucht." },
   WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
+  PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Verschieben oder löschen Sie weder die Bereichswurzel noch .git, .obsidian oder im Workspace-Bereich bin; ein Ordner mit einem .git-Repository ist ebenfalls geschützt." },
+  INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
+  HAS_BACKLINKS: { summary: "Andere Notizen verlinken noch auf die Datei oder den Ordner.", hint: "Passen Sie zuerst die Links in error.details.backlinks an oder entfernen Sie sie, verschieben Sie die Datei stattdessen oder löschen Sie mit --allow-broken-links trotzdem." },
   ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },
   // Dokumente
   INVALID_FRONTMATTER: { summary: "Das YAML-Frontmatter ist ungültig.", hint: "Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate." },
@@ -47935,7 +48691,8 @@ async function run() {
       const workspace2 = project2 ? environment.within(scopedFiles, minpath.resolve(files.root, project2.directory), metadataEvents) : environment;
       activeContext = { workspaceRoot: files.root, root: project2 ? minpath.resolve(files.root, project2.directory) : files.root, project: project2 };
       const claude2 = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: activeContext.root, dryRun: workspace2.dryRun }, events);
-      const context = { workspace: workspace2, events, claude: claude2, metadata: vaultMetadata, ...activeContext, input: async () => {
+      const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events, project: project2 });
+      const context = { workspace: workspace2, events, claude: claude2, metadata: vaultMetadata, app, ...activeContext, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");
         const chunks = [];
         for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));

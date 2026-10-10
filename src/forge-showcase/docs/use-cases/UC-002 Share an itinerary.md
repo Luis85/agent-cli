@@ -64,4 +64,4 @@ Carry these example IDs into the build spec and test plan.
 
 ## Knowledge graph
 
-Implements [[Trailhead PRD]] requirement REQ-004 using [[trips-api]]. Specified in [[Trip planner build spec]]; verified by [[Trip planner test plan]].
+Implements [[Trailhead PRD]] requirement REQ-004 using [[trips-api]]. Specified in [[Trip planner build spec]]; verified by [[Trip planner verification plan]].

@@ -181,6 +181,20 @@ node bin/forge.js create docs/bases/Requirements.base --stdin < input
 node bin/forge.js validate docs/bases/Requirements.base
 node bin/forge.js create docs/bases/Library.base --stdin < input
 node bin/forge.js validate docs/bases/Library.base
+```
+
+## Vault maintenance
+
+```sh
+node bin/forge.js rename 'docs/delivery/Trip planner test plan.md' 'Trip planner verification plan' --dry-run
+node bin/forge.js rename 'docs/delivery/Trip planner test plan.md' 'Trip planner verification plan' --if-match <revision>
+node bin/forge.js create 'docs/scratch/Packing ideas.md' --stdin < input
+node bin/forge.js delete 'docs/scratch/Packing ideas.md' --if-match <revision>
+```
+
+## Bases queries
+
+```sh
 node bin/forge.js bases list
 node bin/forge.js bases inspect docs/bases/Documents.base
 node bin/forge.js bases inspect docs/bases/Requirements.base

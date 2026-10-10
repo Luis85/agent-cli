@@ -59,6 +59,8 @@ The kernel [metadata cache](../explanation/architecture.md#kernel-metadata-cache
 
 Code spans and blocks, `%%comments%%`, inline `$…$` and display `$$…$$` math, backslash-escaped syntax, numeric-only tags and external URLs (any `scheme:` or `//host`) are not indexed. `resolvedLinks` maps each indexed source to `{destination path: count}`. `unresolvedLinks` maps it to `{link text without subpath: count}`. Missing targets and ambiguous targets both count as unresolved; the cache records the reason, and for an ambiguous target the candidates. Wikilinks and Canvas paths resolve vault-wide, and a wikilink may also resolve through a unique `aliases` entry. Markdown and HTML targets resolve relative to the source folder first. A note whose frontmatter is invalid has no cache and is reported as an issue rather than indexed partially. A Bases query fails on such a note with `BASE_INDEX_ERROR`.
 
+`move` and `rename` use this index to keep links intact: every reference the move would stop resolving is rewritten in the same guarded batch, and the files in `.trash` that `delete` creates stay outside the index. See [moving and deleting](cli.md#moving-and-deleting).
+
 These rules follow Obsidian's documented formats. They have not been compared with a running Obsidian instance, and community-plugin syntax is not recognized.
 
 ## UTF-8 text
@@ -69,7 +71,7 @@ Classification uses the extension; the content decides the representation. Bytes
 
 ## Canvas
 
-The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. File-node subpaths must start with `#`, for example `#Heading` or `#^block-id`. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Referenced file existence and URL reachability are not checked. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
+The validator follows [JSON Canvas 1.0](https://jsoncanvas.org/spec/1.0/): optional node/edge arrays; unique node IDs and edge IDs within their respective collections; text, file, link, and group nodes; integer geometry; valid colors, edge sides/ends, and existing edge endpoints. File-node subpaths must start with `#`, for example `#Heading` or `#^block-id`. This CLI additionally requires positive dimensions and nonempty IDs. Unknown extension fields are preserved. Referenced file existence and URL reachability are not checked. `move` and `rename` update the `file` value of nodes that point at a moved file in place, keeping the JSON layout. JSON formatting normalizes on pointer edits. A Canvas with currently missing edge targets must be repaired by a complete valid write.
 
 ## Bases
 

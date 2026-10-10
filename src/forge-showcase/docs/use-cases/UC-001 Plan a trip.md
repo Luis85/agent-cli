@@ -68,4 +68,4 @@ Carry these example IDs into the build spec and test plan.
 
 ## Knowledge graph
 
-Implements [[Trailhead PRD]] requirements REQ-001, REQ-003 and REQ-005 on the [[trip-planner]] page. Designed in [[Trip planner design]]; verified by [[Trip planner test plan]].
+Implements [[Trailhead PRD]] requirements REQ-001, REQ-003 and REQ-005 on the [[trip-planner]] page. Designed in [[Trip planner design]]; verified by [[Trip planner verification plan]].
