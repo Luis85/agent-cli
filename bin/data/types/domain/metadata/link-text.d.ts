@@ -39,5 +39,13 @@ export declare function attributeDestination(original: string): Destination | un
  * the source's new folder. The `#` fragment is kept verbatim, and a percent-encoded path stays encoded.
  */
 export declare function rewriteDestination(destination: Destination, oldSource: string, oldTarget: string, newSource: string, target: string): string;
-/** Applies non-overlapping edits after checking that each still replaces its original text. */
-export declare function applyEdits(text: string, edits: readonly TextEdit[]): string | undefined;
+/**
+ * Applies edits after checking that each still replaces its original text; undefined when one does not. Each edit
+ * is narrowed to the characters it changes first, so a reference nested in another one, such as an image inside a
+ * link's text or a wikilink in a link label, is rewritten together with it. An edit whose changed characters still
+ * overlap an applied edit is left out and returned in `skipped`.
+ */
+export declare function applyEdits(text: string, edits: readonly TextEdit[]): {
+    text: string;
+    skipped: TextEdit[];
+} | undefined;

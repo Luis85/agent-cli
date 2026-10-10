@@ -1,6 +1,7 @@
 export declare function vaultPath(input: string): string;
 /** Obsidian's vault trash: `delete` moves files here unless `--permanent` is passed. It is hidden from the metadata cache. */
 export declare const trashFolder = ".trash";
+/** Whether a path lies in the vault trash; letter case is ignored, as case-insensitive filesystems name one folder. */
 export declare const isInTrash: (path: string) => boolean;
 /** Recursive libraries must not copy definitions into their own discovery scope. */
 export declare function ensureSeparateDirectories(source: string, destination: string): void;

@@ -22,6 +22,13 @@ export interface BrokenLink {
     key?: string;
     node?: string;
 }
+/** A file or folder a delete removed from its path: files in batch order, then folders, child before parent. */
+interface DeletedEntry {
+    path: string;
+    kind: 'file' | 'folder';
+    revision?: string;
+    bytes?: number;
+}
 /** Which paths are off limits: the scope root's `.obsidian` and `.forge` always, and `bin` at workspace scope. */
 export interface FileManagerScope {
     workspace: boolean;
@@ -77,11 +84,7 @@ export declare class FileManager {
         revision: string;
         permanent: boolean;
         trashPath: null;
-        deleted: {
-            path: string;
-            revision: string;
-            bytes: number;
-        }[];
+        deleted: DeletedEntry[];
         brokenLinks: BrokenLink[];
     } | {
         dryRun: boolean;
@@ -90,11 +93,7 @@ export declare class FileManager {
         revision: string;
         permanent: boolean;
         trashPath: string;
-        deleted: {
-            path: string;
-            revision: string;
-            bytes: number;
-        }[];
+        deleted: DeletedEntry[];
         brokenLinks: BrokenLink[];
     }>;
     /** Obsidian's `renameFile`: a move that updates links. */
@@ -120,11 +119,7 @@ export declare class FileManager {
         revision: string;
         permanent: boolean;
         trashPath: null;
-        deleted: {
-            path: string;
-            revision: string;
-            bytes: number;
-        }[];
+        deleted: DeletedEntry[];
         brokenLinks: BrokenLink[];
     } | {
         dryRun: boolean;
@@ -133,11 +128,7 @@ export declare class FileManager {
         revision: string;
         permanent: boolean;
         trashPath: string;
-        deleted: {
-            path: string;
-            revision: string;
-            bytes: number;
-        }[];
+        deleted: DeletedEntry[];
         brokenLinks: BrokenLink[];
     }>;
     /**
@@ -155,5 +146,7 @@ export declare class FileManager {
     /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
     private trashDestination;
     private ensureAbsent;
+    /** Protected roots are compared without letter case: on case-insensitive filesystems `.Obsidian` is `.obsidian`. */
     private ensureMovable;
 }
+export {};

@@ -45,7 +45,11 @@ export declare class ActivationTracker {
     private constructor();
     static load(store: PluginStateStore): Promise<ActivationTracker>;
     activated<C>(plugin: TrackedPlugin<C>, context: C): Promise<void>;
-    /** Keeps unreached enabled plugins' entries and forgets disabled plugins; a failed save is a warning. */
+    /**
+     * Keeps unreached enabled plugins' entries and forgets disabled plugins. When another invocation changed the
+     * state since it was loaded, the save rereads it, keeps that invocation's entries for enabled plugins this one
+     * did not activate, and retries once. A failed save is a warning.
+     */
     save(plugins: ReadonlyArray<TrackedPlugin<unknown>>, warn: (message: string) => void): Promise<void>;
 }
 export {};
