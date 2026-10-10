@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, cp, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { asStep, evalsRoot, projectRoot } from './tasks.mjs';
@@ -20,6 +20,9 @@ export async function distributionPath() {
   const { config } = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
   return resolve(projectRoot, config.distribution);
 }
+
+/** Core plugins that act on the host outside the workspace; evaluation workspaces disable them. */
+export const hostPlugins = ['claude', 'connector', 'connector-azure-devops'];
 
 const sha256 = (/** @type {Buffer} */ bytes) => createHash('sha256').update(bytes).digest('hex');
 
@@ -73,8 +76,11 @@ export async function createWorkspace(task, options = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), `forge-eval-${task.id}-`)));
   try {
     await cp(options.distribution ?? await distributionPath(), join(root, 'bin'), { recursive: true });
-    // A generic installation: no checkout configuration or project selection.
-    await copyFile(join(root, 'bin/config/default.json'), join(root, 'bin/config.json'));
+    // A generic installation: no checkout configuration or project selection. Plugins that reach the host (the
+    // installed Claude Code CLI and its user configuration, remote connectors) are disabled; no task needs them.
+    const config = JSON.parse(await readFile(join(root, 'bin/config/default.json'), 'utf8'));
+    config.plugins.disabled = [...hostPlugins];
+    await writeFile(join(root, 'bin/config.json'), `${JSON.stringify(config, null, 2)}\n`);
     await rm(join(root, 'bin/data/context.json'), { force: true });
     const fixture = join(evalsRoot, 'fixtures', task.fixture);
     await cp(fixture, root, { recursive: true });

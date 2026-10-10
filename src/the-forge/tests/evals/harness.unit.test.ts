@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { categories, commandIds, loadTasks, taskSchema } from '../../scripts/eval/tasks.mjs';
 import { summarizeStream } from '../../scripts/eval/claude.mjs';
+import { refusal } from '../../scripts/eval/guard.mjs';
 import { answerFailure, describeCheck } from '../../scripts/eval/checks.mjs';
 import type { EvalWorkspace } from '../../scripts/eval/workspace.mjs';
 
@@ -57,6 +58,22 @@ describe('answer checks', () => {
     expect(validate({ ...task, checks: [{ answer: { notContains: ['y'] } }] })).toBe(false);
     expect(validate({ ...task, checks: [{ answer: { contains: ['x'], ignore: ['Home.md'] } }] })).toBe(false);
     expect(validate({ ...task, checks: [{ answer: { items: ['Home.md'], ignore: ['Ideas.md'], notContains: ['y'] } }] })).toBe(true);
+  });
+});
+
+describe('the claude driver Forge wrapper', () => {
+  it('refuses options that leave the workspace or reach the user configuration', () => {
+    for (const args of [['--root', '/', 'write', 'x.md'], ['--root=/etc', 'read', 'passwd'], ['claude', 'hooks', 'add', 'Stop', '--claude-dir', '/home/me/.claude'],
+      ['claude', 'runtime', 'update', '--claude-bin=/usr/bin/claude'], ['claude', 'hooks', 'add', 'Stop', '--scope', 'user'], ['claude', 'agents', 'create', 'x', '--scope=user']]) {
+      expect(refusal(args), args.join(' ')).toEqual(expect.any(String));
+    }
+  });
+
+  it('allows ordinary invocations and the project scope, and refuses a refused option name even as a value, except after --', () => {
+    expect(refusal(['--json', 'read', 'Home.md'])).toBeUndefined();
+    expect(refusal(['edit', 'notes/a.md', '--find', '--root', '--replace', 'x', '--if-match', 'r'])).toEqual(expect.any(String));
+    expect(refusal(['claude', 'hooks', 'add', 'Stop', '--scope', 'project'])).toBeUndefined();
+    expect(refusal(['write', 'a.md', '--', '--root'])).toBeUndefined();
   });
 });
 

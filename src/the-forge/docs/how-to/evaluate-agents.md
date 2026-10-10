@@ -23,7 +23,18 @@ npm run eval -- --driver claude
 npm run eval -- --driver claude --task bases-add-view --repeat 3 --model sonnet
 ```
 
-The `claude` driver runs `claude -p` headless in each task's workspace with `--output-format stream-json`, `--permission-mode dontAsk` and `--setting-sources project`. `setup` has already installed the Forge skills into `.claude/skills` and `.agents/skills` and written `AGENTS.md`, as in a real installation. By default the agent may run `node bin/forge.js` and the read-only native tools `Read`, `Glob` and `Grep`; pass `--allowed-tool <rule>` (repeatable) to change that, for example to compare against native `Edit`.
+The `claude` driver runs `claude -p` headless in each task's workspace with `--output-format stream-json`, `--permission-mode dontAsk` and `--setting-sources project`. `setup` has already installed the Forge skills into `.claude/skills` and `.agents/skills` and written `AGENTS.md`, as in a real installation. The agent may run exactly one shell command, a guarded Forge wrapper, plus the read-only native tools `Read`, `Glob` and `Grep`; pass `--allowed-tool <rule>` (repeatable) to replace the native tools, for example to compare against native `Edit`. The prompt tells the agent to use the wrapper wherever the skills say `node bin/forge.js`.
+
+### Isolation and residual risk
+
+An agent that may run `node bin/forge.js` with any arguments can leave its workspace: `--root <any folder>` writes elsewhere, and `claude hooks add --scope user` or `claude plugins install` change your own Claude Code configuration. Each attempt is therefore hardened (`scripts/eval/guard.mjs`):
+
+- Every evaluation workspace disables the core plugins that act on the host, `claude`, `connector` and `connector-azure-devops`, in its `bin/config.json`; no task needs them. The reference driver runs with the same configuration.
+- The only allowed shell command is `node <guard folder>/forge.mjs`. The wrapper lives in a temporary folder outside the workspace, so Forge writes cannot replace it. It runs `node bin/forge.js --root <workspace>` and refuses `--root`, `--claude-dir`, `--claude-bin` and `--scope user` with the failure code `EVAL_REFUSED` (exit 2).
+- The wrapper runs Forge with `HOME`, `USERPROFILE`, `XDG_CONFIG_HOME` and `CLAUDE_CONFIG_DIR` pointing into the guard folder, so anything that resolves a user-level location stays inside it.
+- Before every call the wrapper compares a digest of the workspace's `bin/` (the executable, `config.json` and `plugins/`; templates, documentation and the project selection may change) with the one taken after setup, and refuses to run once it differs. An agent that writes `bin/config.json` or a plugin through Forge therefore cannot get that code loaded.
+
+The Claude Code process itself keeps your environment, because its authentication lives in your home directory or keychain; isolating it with a different `HOME` or `CLAUDE_CONFIG_DIR` would log it out. Residual risk: the native `Read`, `Glob` and `Grep` tools can read any file your account can read, and `dontAsk` relies on Claude Code's own permission matching for compound commands and substitutions. Run the claude driver in a disposable container or sandbox, without credentials beyond the Claude Code login, when the tasks or the model under test are not trusted.
 
 | Option | Default | Meaning |
 | --- | --- | --- |

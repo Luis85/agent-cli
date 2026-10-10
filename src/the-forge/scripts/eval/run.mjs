@@ -11,6 +11,8 @@ import { distributionPath } from './workspace.mjs';
  * tasks in evals/tasks. The reference driver replays each task's reference commands and fails the process when a
  * task or check is invalid. The claude driver runs Claude Code headless (`claude -p`) on each task, `--repeat k`
  * times, and writes evals/results/<timestamp>.json; it needs an authenticated local `claude` and never runs in CI.
+ * The agent may run only a guarded Forge wrapper pinned to the task's workspace (scripts/eval/guard.mjs) and the
+ * native tools of `--allowed-tool` (default: Read, Glob and Grep).
  */
 const usage = 'npm run eval -- [--driver reference|claude] [--task id]... [--category name]... [--concurrency n] [--repeat k] [--model id] [--max-turns n] [--timeout seconds] [--allowed-tool rule]... [--claude path]';
 const { values } = parseArgs({

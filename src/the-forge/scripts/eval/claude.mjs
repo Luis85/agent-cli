@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { evaluateChecks } from './checks.mjs';
+import { installGuard } from './guard.mjs';
 import { createWorkspace } from './workspace.mjs';
 
 /**
@@ -14,10 +15,17 @@ import { createWorkspace } from './workspace.mjs';
  * @typedef {{ id: string, driver: 'claude', attempt: number, passed: boolean, checks: CheckResult[], transcript: Transcript, error?: string }} ClaudeResult
  */
 
-/** Tools a headless run may use without prompting: the Forge CLI and read-only native tools. */
-export const defaultAllowedTools = ['Bash(node bin/forge.js:*)', 'Read', 'Glob', 'Grep'];
+/**
+ * Native tools a headless run may use without prompting, besides the guarded Forge wrapper that every run allows
+ * (see guard.mjs): read-only tools only, so the agent changes files through Forge alone.
+ */
+export const defaultAllowedTools = ['Read', 'Glob', 'Grep'];
 
-const instructions = 'You are evaluated on this task in a workspace managed by The Forge. Use `node bin/forge.js` (see the installed skills and AGENTS.md) for vault work. Do not ask questions; finish the task, then reply with a short final answer.';
+/** @param {string} forge the guarded wrapper command */
+const instructions = forge => `You are evaluated on this task in a workspace managed by The Forge. Run The Forge as \`${forge} <command> [options]\`: it is \`node bin/forge.js\` pinned to this workspace, and the only shell command you may run, so wherever the installed skills and AGENTS.md say \`node bin/forge.js\`, use it instead. Do not ask questions; finish the task, then reply with a short final answer.`;
+
+/** Forge invocations in a shell command: the guarded wrapper or the distribution's own entry point. */
+const forgeCall = /(?:^|[\s/])(?:forge\.mjs|bin\/forge\.js)(?:\s|$)/;
 
 /** @param {unknown} value @returns {Record<string, any>} */
 const record = value => value !== null && typeof value === 'object' ? /** @type {Record<string, any>} */ (value) : {};
@@ -39,7 +47,7 @@ export function summarizeStream(stream) {
       if (event.type === 'assistant' && part.type === 'tool_use') {
         summary.toolCalls.total += 1;
         const command = String(record(part.input).command ?? '');
-        if (part.name === 'Bash' && command.includes('bin/forge.js')) summary.toolCalls.forge += 1;
+        if (part.name === 'Bash' && forgeCall.test(command)) summary.toolCalls.forge += 1;
         else if (part.name === 'Bash') summary.toolCalls.otherBash += 1;
         else summary.toolCalls.native[String(part.name)] = (summary.toolCalls.native[String(part.name)] ?? 0) + 1;
       }
@@ -86,16 +94,18 @@ function headless(executable, args, cwd, timeoutMs) {
 
 /**
  * Runs one task with Claude Code headless in a fresh fixture workspace whose `setup` installed the Forge skills
- * into `.claude/skills`, then evaluates the task's checks against the end state and the final answer.
+ * into `.claude/skills`, then evaluates the task's checks against the end state and the final answer. The agent
+ * may run only the guarded Forge wrapper and the read-only native tools; `dontAsk` denies everything else.
  * @param {Task} task @param {ClaudeOptions} options @param {number} attempt @returns {Promise<ClaudeResult>}
  */
 export async function runClaude(task, options, attempt) {
   const workspace = await createWorkspace(task, { distribution: options.distribution });
+  const guard = await installGuard(workspace.root).catch(async error => { await workspace.dispose(); throw error; });
   try {
-    const prompt = `${instructions}\n\n${await workspace.expand(task.prompt)}`;
+    const prompt = `${instructions(guard.command)}\n\n${await workspace.expand(task.prompt)}`;
     const args = [
       '-p', prompt, '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--setting-sources', 'project',
-      '--permission-mode', 'dontAsk', '--max-turns', String(options.maxTurns), '--allowedTools', ...options.allowedTools,
+      '--permission-mode', 'dontAsk', '--max-turns', String(options.maxTurns), '--allowedTools', guard.allowedTool, ...options.allowedTools,
       ...(options.model ? ['--model', options.model] : []),
     ];
     let transcript, error;
@@ -104,6 +114,7 @@ export async function runClaude(task, options, attempt) {
     const checks = await evaluateChecks(workspace, task.checks, transcript.answer);
     return { id: task.id, driver: 'claude', attempt, passed: error === undefined && checks.every(check => check.passed), checks, transcript, ...(error ? { error } : {}) };
   } finally {
+    await guard.dispose();
     await workspace.dispose();
   }
 }
