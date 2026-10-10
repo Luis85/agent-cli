@@ -26,6 +26,12 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__@types__unist-LICENSE)
 
+## ajv 8.20.0
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__ajv-LICENSE)
+
 ## bail 2.0.2
 
 License: MIT.
@@ -92,6 +98,18 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__extend-LICENSE)
 
+## fast-deep-equal 3.1.3
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__fast-deep-equal-LICENSE)
+
+## fast-uri 3.1.8
+
+License: BSD-3-Clause.
+
+- [LICENSE](licenses/node_modules__fast-uri-LICENSE)
+
 ## fault 2.0.1
 
 License: MIT.
@@ -107,6 +125,12 @@ License: MIT. [Original notice](licenses/format-Readme.md); [license terms](lice
 License: MIT.
 
 - [license](licenses/node_modules__is-plain-obj-license)
+
+## json-schema-traverse 1.0.0
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__json-schema-traverse-LICENSE)
 
 ## longest-streak 3.1.0
 
@@ -318,6 +342,12 @@ License: MIT.
 
 - [license](licenses/node_modules__remark-parse-license)
 
+## require-from-string 2.0.2
+
+License: MIT.
+
+- [license](licenses/node_modules__require-from-string-license)
+
 ## trough 2.2.0
 
 License: MIT.
@@ -383,3 +413,11 @@ License: MIT.
 License: MIT.
 
 - [license](licenses/node_modules__zwitch-license)
+
+# Vendored asset notices
+
+## docker-agent agent-schema.json
+
+Copied unchanged from https://github.com/docker/docker-agent at commit cd65d7c776dda80d554735ee20572d09cfe2d791. License: Apache-2.0.
+
+- [LICENSE](licenses/docker-agent-LICENSE)
