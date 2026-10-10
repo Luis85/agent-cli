@@ -30,12 +30,12 @@ Obsidian's [Properties editor](https://help.obsidian.md/properties) does not sup
 File location also matters: Obsidian normally excludes dot-folders such as Claude's native `.claude/agents` from its file tree, metadata index and Bases. The [Hidden Folders Access community-plugin listing](https://community.obsidian.md/plugins/hidden-folders-access) describes this separate indexing limitation. Keep a visible authoring copy when editing an agent in a standard vault, then explicitly apply the edited native source with a revision-guarded Claude agent update. A separately configured indexing integration is another option. Forge preserves Claude's native locations; it does not change Obsidian indexing or automatically synchronize authoring copies.
 
 ```sh
-node bin/app.js claude agents export reviewer --out definitions/reviewer.md --dry-run
-node bin/app.js claude agents export reviewer --out definitions/reviewer.md
-node bin/app.js claude agents inspect reviewer
+node bin/forge.js claude agents export reviewer --out definitions/reviewer.md --dry-run
+node bin/forge.js claude agents export reviewer --out definitions/reviewer.md
+node bin/forge.js claude agents inspect reviewer
 # Edit definitions/reviewer.md in Obsidian Source mode.
-node bin/app.js claude agents update reviewer --from definitions/reviewer.md --if-match NATIVE_REVISION --dry-run
-node bin/app.js claude agents update reviewer --from definitions/reviewer.md --if-match NATIVE_REVISION
+node bin/forge.js claude agents update reviewer --from definitions/reviewer.md --if-match NATIVE_REVISION --dry-run
+node bin/forge.js claude agents update reviewer --from definitions/reviewer.md --if-match NATIVE_REVISION
 ```
 
 Use the native agent's inspected revision for the update. Replacing an existing visible export instead requires that destination note's current revision with `export --if-match`. The two files have independent revision guards; exporting or editing a note does not automatically apply it to Claude.

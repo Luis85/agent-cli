@@ -10,13 +10,13 @@ states, events and actions.
 ## Initialize and inspect
 
 ```sh
-node bin/app.js interactions init --dry-run
-node bin/app.js interactions init
-node bin/app.js interactions list
-node bin/app.js interactions create toggle-details --event click --dry-run
-node bin/app.js interactions create toggle-details --event click
-node bin/app.js interactions inspect toggle-details
-node bin/app.js interactions validate
+node bin/forge.js interactions init --dry-run
+node bin/forge.js interactions init
+node bin/forge.js interactions list
+node bin/forge.js interactions create toggle-details --event click --dry-run
+node bin/forge.js interactions create toggle-details --event click
+node bin/forge.js interactions inspect toggle-details
+node bin/forge.js interactions validate
 ```
 
 Edit the created Markdown file to express the intended actions. Declare every
@@ -33,9 +33,9 @@ project first. Use `read` to obtain its revision, then `write`, `edit` or
 After initialization, inspect the shipped definitions before attaching them:
 
 ```sh
-node bin/app.js interactions inspect save
-node bin/app.js interactions inspect upload
-node bin/app.js interactions inspect download
+node bin/forge.js interactions inspect save
+node bin/forge.js interactions inspect upload
+node bin/forge.js interactions inspect download
 ```
 
 Attach `save` to a form to store its named fields under `forge-form` in browser
@@ -89,10 +89,10 @@ for exact payloads and browser limits.
 ## Transfer and select libraries
 
 ```sh
-node bin/app.js interactions export --out exchange/interactions
-node bin/app.js interactions import --from exchange/interactions --library reviewed-interactions
-node bin/app.js components validate --interactions-library reviewed-interactions
-node bin/app.js make ui contact-request --framework react --interactions-library reviewed-interactions --dry-run
+node bin/forge.js interactions export --out exchange/interactions
+node bin/forge.js interactions import --from exchange/interactions --library reviewed-interactions
+node bin/forge.js components validate --interactions-library reviewed-interactions
+node bin/forge.js make ui contact-request --framework react --interactions-library reviewed-interactions --dry-run
 ```
 
 The last command assumes your component library already contains the
@@ -108,9 +108,9 @@ same project and libraries. Review the proposed changes before authorizing an
 overwrite:
 
 ```sh
-node bin/app.js make ui contact-request --framework react --plan-out interaction-review.json
-node bin/app.js make ui contact-request --framework react --revisions-from interaction-review.json
-node bin/app.js make ui contact-request --framework react --check
+node bin/forge.js make ui contact-request --framework react --plan-out interaction-review.json
+node bin/forge.js make ui contact-request --framework react --revisions-from interaction-review.json
+node bin/forge.js make ui contact-request --framework react --check
 ```
 
 The review file is create-only; choose a new name for a later review. Inspect its

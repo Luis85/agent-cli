@@ -14,12 +14,12 @@ rm -f bin/data/context.json
 An extracted release already has generic settings and no selection. Run all CLI commands below from that workspace root. This keeps tutorial projects outside your Forge source checkout. The executable resolves its workspace from its `bin` location, not the current shell directory.
 
 ```sh
-node bin/app.js --version
-node bin/app.js setup --dry-run
-node bin/app.js setup
-node bin/app.js config --json
-node bin/app.js project close
-node bin/app.js project current --json
+node bin/forge.js --version
+node bin/forge.js setup --dry-run
+node bin/forge.js setup
+node bin/forge.js config --json
+node bin/forge.js project close
+node bin/forge.js project current --json
 ```
 
 Inspect `data.config.paths` and returned `context`; stop if they point at an unintended workspace. Closing selection in this new workspace ensures copied local context cannot route the planning document into another project. The example commands use explicit project and generation paths. Project creation follows configured `paths.projects` (default `projects`). Other relative paths in this tutorial are deliberately explicit.
@@ -33,9 +33,9 @@ Use the first [stage prompt](../examples/idea-to-production/prompts.md) to refin
 For your own product, `setup` installs reusable workflow templates under `bin/templates/workflow`. Inspect inputs before generating a new document. In this fresh workspace, no project is selected, so these commands create a workspace document under `planning`:
 
 ```sh
-node bin/app.js templates inspect workflow/prd.md
-node bin/app.js make document 'Purchase Approvals PRD' --template workflow/prd.md --values '{"owner":"Product owner"}' --date 2026-10-07 --out planning --dry-run
-node bin/app.js make document 'Purchase Approvals PRD' --template workflow/prd.md --values '{"owner":"Product owner"}' --date 2026-10-07 --out planning
+node bin/forge.js templates inspect workflow/prd.md
+node bin/forge.js make document 'Purchase Approvals PRD' --template workflow/prd.md --values '{"owner":"Product owner"}' --date 2026-10-07 --out planning --dry-run
+node bin/forge.js make document 'Purchase Approvals PRD' --template workflow/prd.md --values '{"owner":"Product owner"}' --date 2026-10-07 --out planning
 ```
 
 The fixed example date makes this exercise reproducible; supply the actual planning date for your own work. The generated document is a starting structure to fill, while this example's PRD shows the expected specificity. Other templates cover use case, build specification, design, implementation plan, test plan and release plan.
@@ -45,9 +45,9 @@ The fixed example date makes this exercise reproducible; supply the actual plann
 Read the [build specification](../examples/idea-to-production/04-build-specification.md). Its state table includes behavior beyond a static component, such as saving, stale revisions and keyboard error recovery. Inspect the two schema-valid definition files:
 
 ```sh
-node bin/app.js components list --library docs/examples/idea-to-production/components
-node bin/app.js components inspect approval-page --library docs/examples/idea-to-production/components
-node bin/app.js components validate --library docs/examples/idea-to-production/components
+node bin/forge.js components list --library docs/examples/idea-to-production/components
+node bin/forge.js components inspect approval-page --library docs/examples/idea-to-production/components
+node bin/forge.js components validate --library docs/examples/idea-to-production/components
 ```
 
 `approval-page` references `request-summary`, passes scalar props and supplies a child link to its slot. The generator traverses this dependency automatically. Product documents live outside the library directory because component discovery validates every Markdown file under the selected library. The schema excludes arbitrary framework expressions and event code; use native application code for those behaviors.
@@ -55,10 +55,10 @@ node bin/app.js components validate --library docs/examples/idea-to-production/c
 ## 3. Generate a project, UI and stories
 
 ```sh
-node bin/app.js project create purchase-approvals --dry-run
-node bin/app.js project create purchase-approvals
-node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated --dry-run
-node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated
+node bin/forge.js project create purchase-approvals --dry-run
+node bin/forge.js project create purchase-approvals
+node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated --dry-run
+node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated
 ```
 
 Inspect the preview before the final invocation. In a default workspace, output includes two `.tsx` components under `projects/purchase-approvals/src/ui/generated` and two CSF story files under `projects/purchase-approvals/stories/generated`. Check the actual response for paths and verify its `context.root`. `--project` targets this project for the invocation without changing another saved selection.
@@ -72,11 +72,11 @@ The sample's stories vary status and long text. They do not implement decisions 
 Keep data definitions in their own library and output outside domain code:
 
 ```sh
-node bin/app.js data-sources validate --library docs/examples/idea-to-production/sources
-node bin/app.js make data-source purchase-requests --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
-node bin/app.js make data-source purchase-requests --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
-node bin/app.js make data-source approvers --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
-node bin/app.js make data-source approvers --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
+node bin/forge.js data-sources validate --library docs/examples/idea-to-production/sources
+node bin/forge.js make data-source purchase-requests --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
+node bin/forge.js make data-source purchase-requests --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
+node bin/forge.js make data-source approvers --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated --dry-run
+node bin/forge.js make data-source approvers --library docs/examples/idea-to-production/sources --project purchase-approvals --out src/infrastructure/generated --test-data-out testdata/generated
 ```
 
 Each definition produces `<id>.ts` and `<id>.fixtures.json` in the selected directories. The REST adapter's `createPurchaseRequestViewDataSource({ baseUrl, fetch })` factory exposes `get(id)` for this definition; inject your application's authenticated fetch and actual URL. Generation does not contact the placeholder endpoint. The local factory `createDemoApproverDataSource({ loadJson })` uses an injected loader for the configured relative JSON path. Here that path matches the generated approver fixture; root a filesystem loader at the consuming project, or configure deliberate browser fixture serving.
@@ -88,9 +88,9 @@ Adapt the read model into UI props in native feature code: format `amountMinor /
 Edit one definition, validate it, and generate a separate comparison:
 
 ```sh
-node bin/app.js components validate --library docs/examples/idea-to-production/components
-node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories --dry-run
-node bin/app.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories
+node bin/forge.js components validate --library docs/examples/idea-to-production/components
+node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories --dry-run
+node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out review/ui --stories --stories-out review/stories
 ```
 
 Inspect the changed text and expected import-path differences. Once these directories exist, repeating a create-only generation conflicts; choose a fresh directory or use [reviewed revision-map regeneration](../how-to/manage-components.md). Determinism means identical inputs/framework/paths yield identical bytes; it does not mean existing files are automatically overwritten. Keep authored behavior outside generated files.
@@ -98,8 +98,8 @@ Inspect the changed text and expected import-path differences. Once these direct
 Library, UI, story, import and export paths have configuration settings as well as overrides; see [configuration](../reference/configuration.md). Library/transfer paths are workspace-relative, while UI/story output is relative to the explicitly selected project. You can export this exact fixture library without changing it:
 
 ```sh
-node bin/app.js components export --library docs/examples/idea-to-production/components --out exchange/purchase-ui --dry-run
-node bin/app.js components export --library docs/examples/idea-to-production/components --out exchange/purchase-ui
+node bin/forge.js components export --library docs/examples/idea-to-production/components --out exchange/purchase-ui --dry-run
+node bin/forge.js components export --library docs/examples/idea-to-production/components --out exchange/purchase-ui
 ```
 
 ## 5. Implement and verify a vertical slice
@@ -107,9 +107,9 @@ node bin/app.js components export --library docs/examples/idea-to-production/com
 Use the [delivery plan](../examples/idea-to-production/05-delivery-plan.md) and implement/test prompts. Scaffold only useful starting points after inspecting the project:
 
 ```sh
-node bin/app.js project inspect purchase-approvals --json
-node bin/app.js project component purchase-approvals PurchaseRequest --kind domain --dry-run
-node bin/app.js project component purchase-approvals PurchaseRequest --kind domain
+node bin/forge.js project inspect purchase-approvals --json
+node bin/forge.js project component purchase-approvals PurchaseRequest --kind domain --dry-run
+node bin/forge.js project component purchase-approvals PurchaseRequest --kind domain
 ```
 
 Replace generic scaffold behavior with the specified domain invariants. Implement identity, server authorization, transactional persistence, idempotency, feature orchestration and accessible interaction in the target application. Review missing loading/error states as carefully as the happy path. Generation has not supplied these behaviors.

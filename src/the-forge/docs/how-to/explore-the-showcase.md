@@ -15,15 +15,15 @@ You can also open the whole repository as a vault. Wikilinks still resolve by un
 Query the same Bases views without Obsidian. File commands need the showcase selected; restore the checkout's own selection afterwards:
 
 ```sh
-node bin/app.js project open forge-showcase
-node bin/app.js bases query docs/bases/Requirements.base --view REQ-004
-node bin/app.js project open the-forge
+node bin/forge.js project open forge-showcase
+node bin/forge.js bases query docs/bases/Requirements.base --view REQ-004
+node bin/forge.js project open the-forge
 ```
 
 UI and data-source drift checks accept `--project` and leave the selection unchanged:
 
 ```sh
-node bin/app.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/react/components --stories --stories-out ui/react/stories --check
+node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/react/components --stories --stories-out ui/react/stories --check
 ```
 
 ## Run the showcase's own checks
@@ -36,7 +36,7 @@ npm ci
 npm run check
 ```
 
-Its CI workflow is authored at `src/infrastructure/workflows/check/check.yml` inside the project and stays independent of its location. From the workspace root, `node bin/app.js workflows sync` generates `.github/workflows/forge-showcase--check.yml`, which runs the steps in the project directory on Node 22.12 and 24 and only for changes to the project; see [workflows](../reference/workflows.md). The Forge's own gate does not lint, analyze or type-check the showcase: Forge's checks cover only its own project directory, `src/the-forge`.
+Its CI workflow is authored at `src/infrastructure/workflows/check/check.yml` inside the project and stays independent of its location. From the workspace root, `node bin/forge.js workflows sync` generates `.github/workflows/forge-showcase--check.yml`, which runs the steps in the project directory on Node 22.12 and 24 and only for changes to the project; see [workflows](../reference/workflows.md). The Forge's own gate does not lint, analyze or type-check the showcase: Forge's checks cover only its own project directory, `src/the-forge`.
 
 ## Regenerate and check drift
 
@@ -48,7 +48,7 @@ npm run showcase
 npm run showcase:check
 ```
 
-`npm run showcase` runs the Forge project's `scripts/showcase.mjs`. The script finds the workspace as the parent of the `bin/` directory that `config.distribution` in `package.json` names, creates a temporary workspace with a fixed configuration, drives the workspace's bundled `bin/app.js` with `--root` and `--json`, fixed inputs and the fixed date `2026-10-10T09:00:00Z`, checks every exit status and `ok` field, and fails loudly on the first error. It then replaces exactly the workspace's `src/forge-showcase` with the generated project. It never changes the checkout's project selection, configuration, templates or plugins, and it fails if generation writes outside the project. Running it twice produces identical bytes and uses no network.
+`npm run showcase` runs the Forge project's `scripts/showcase.mjs`. The script finds the workspace as the parent of the `bin/` directory that `config.distribution` in `package.json` names, creates a temporary workspace with a fixed configuration, drives the workspace's bundled `bin/forge.js` with `--root` and `--json`, fixed inputs and the fixed date `2026-10-10T09:00:00Z`, checks every exit status and `ok` field, and fails loudly on the first error. It then replaces exactly the workspace's `src/forge-showcase` with the generated project. It never changes the checkout's project selection, configuration, templates or plugins, and it fails if generation writes outside the project. Running it twice produces identical bytes and uses no network.
 
 `npm run showcase:check` regenerates into a temporary workspace only and compares the result with the committed tree. It exits nonzero and lists each `missing`, `unexpected` or `changed` path, without modifying the checkout. Untracked toolchain outputs such as `node_modules`, `dist` and `.quality-reports` are ignored.
 

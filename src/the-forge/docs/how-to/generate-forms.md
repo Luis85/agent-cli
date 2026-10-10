@@ -5,12 +5,12 @@
 Create a typed form in an existing Forge project and inspect its HTML preview. For the model and renderer API, see [form contracts](../reference/forms.md).
 
 
-Run Forge commands from the workspace containing `bin/app.js`:
+Run Forge commands from the workspace containing `bin/forge.js`:
 
 ```sh
-node bin/app.js project open knowledge-core
-node bin/app.js make form Contact --dry-run
-node bin/app.js make form Contact
+node bin/forge.js project open knowledge-core
+node bin/forge.js make form Contact --dry-run
+node bin/forge.js make form Contact
 ```
 
 `make form` requires an open Forge project with the form runtime. It creates:

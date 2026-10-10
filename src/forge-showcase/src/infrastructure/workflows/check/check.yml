@@ -1,5 +1,5 @@
 # Quality gate for the forge-showcase project, authored inside the project.
-# The file stays independent of its location: `node bin/app.js workflows sync` in the
+# The file stays independent of its location: `node bin/forge.js workflows sync` in the
 # containing workspace generates .github/workflows/forge-showcase--check.yml from it,
 # runs its steps in the project directory, limits push and pull_request triggers to
 # the project's files and sets env.FORGE_PROJECT_PATH for action inputs such as the cache path.

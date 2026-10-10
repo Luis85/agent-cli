@@ -55,7 +55,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | [Bases queries](reference/bases.md) | Standalone native `.base` views as file repositories |
 | [Workflows](reference/workflows.md) | Project-owned CI workflows, generated GitHub entrypoints and drift checks |
 
-Run `node bin/app.js schema --json` for the installed executable's command catalog, and `node bin/app.js config --json` for its effective settings. The installed version is the authority for available commands.
+Run `node bin/forge.js schema --json` for the installed executable's command catalog, and `node bin/forge.js config --json` for its effective settings. The installed version is the authority for available commands.
 
 ## Explanation — understand the design
 

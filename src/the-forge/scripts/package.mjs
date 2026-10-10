@@ -8,15 +8,15 @@ const { version, engines, config } = JSON.parse(await readFile('package.json', '
 const bin = resolve(config.distribution);
 const workspace = dirname(bin);
 await mkdir(join(bin, 'data'), { recursive: true });
-// The local CommonJS boundary lets app.js run in projects declaring type:module.
-await writeFile(join(bin, 'package.json'), JSON.stringify({ name: 'forge-bundle', version, private: true, type: 'commonjs', main: 'app.js', engines }, null, 2) + '\n');
+// The local CommonJS boundary lets forge.js run in projects declaring type:module.
+await writeFile(join(bin, 'package.json'), JSON.stringify({ name: 'forge-bundle', version, private: true, type: 'commonjs', main: 'forge.js', engines }, null, 2) + '\n');
 try { await copyFile(join(bin, 'config/default.json'), join(bin, 'config.json'), constants.COPYFILE_EXCL); }
 catch (error) { if (error.code !== 'EEXIST') throw error; }
 for (const directory of ['plugins', 'templates']) {
   await mkdir(join(bin, directory), { recursive: true });
   await writeFile(join(bin, directory, '.gitkeep'), '');
 }
-await chmod(join(bin, 'app.js'), 0o755);
+await chmod(join(bin, 'forge.js'), 0o755);
 await copyFile(join(workspace, 'LICENSE'), join(bin, 'data/LICENSE'));
 const readme = await readFile('README.md', 'utf8');
 await writeFile(join(bin, 'data/README.md'), readme.replaceAll('(skills/', '(../skills/'));
@@ -71,5 +71,5 @@ async function collect(directory) {
 for (const directory of ownedDirectories) await collect(`data/${directory}`);
 await collect('skills');
 await writeFile(join(bin, 'data/distribution.json'), JSON.stringify({ schemaVersion: distributionPolicy.schemaVersion, files: files.sort() }, null, 2) + '\n');
-const bundle = await readFile(join(bin, 'app.js'), 'utf8');
+const bundle = await readFile(join(bin, 'forge.js'), 'utf8');
 if (/require\(["']yaml["']\)/.test(bundle)) throw new Error('YAML was not bundled');

@@ -26,4 +26,4 @@ jobs:
           node-version: '22.12.0'
       # The executable resolves the workspace from its own location, independent of the working directory.
       - name: Check generated workflows
-        run: node "$GITHUB_WORKSPACE/bin/app.js" workflows sync --check
+        run: node "$GITHUB_WORKSPACE/bin/forge.js" workflows sync --check

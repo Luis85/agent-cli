@@ -22,7 +22,7 @@ const config: AppConfig = {
 };
 const workspace = (dryRun = false) => new Workspace(files, documents, events, dryRun);
 const setup = (dryRun = false) => new SetupService(workspace(dryRun), config, [
-  { path: 'app.js', bytes: encodeText('/* executable fixture */') },
+  { path: 'forge.js', bytes: encodeText('/* executable fixture */') },
   { path: 'package.json', bytes: encodeText('{"type":"commonjs"}') },
 ], [], workflowTemplates);
 beforeEach(async () => {
@@ -36,8 +36,8 @@ describe('editable idea-to-production planning templates', () => {
     const result = await setup().run();
     expect((await files.list()).filter(path => path.startsWith('bin/templates/workflow/'))).toHaveLength(7);
     expect(result.nextSteps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ scope: 'workspace', command: 'node bin/app.js templates list' }),
-      expect.objectContaining({ scope: 'workspace', command: 'node bin/app.js project list' }),
+      expect.objectContaining({ scope: 'workspace', command: 'node bin/forge.js templates list' }),
+      expect.objectContaining({ scope: 'workspace', command: 'node bin/forge.js project list' }),
     ]));
     for (const artifact of workflowTemplates) {
       const bytes = (await files.read(`bin/templates/${artifact.path}`)).bytes;

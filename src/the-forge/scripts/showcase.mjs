@@ -5,7 +5,7 @@
 //   node scripts/showcase.mjs --check     regenerate into a temporary workspace and report drift
 //   node scripts/showcase.mjs --lockfile  regenerate, then refresh package-lock.json with npm (network)
 //
-// Generation always runs the workspace's bundled CLI (bin/app.js) against a temporary
+// Generation always runs the workspace's bundled CLI (bin/forge.js) against a temporary
 // workspace with a fixed configuration, so it never reads or changes the
 // checkout's project selection, configuration or templates.
 import { spawnSync } from 'node:child_process';
@@ -29,7 +29,7 @@ const forgeProject = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const bin = resolve(forgeProject, JSON.parse(readFileSync(join(forgeProject, 'package.json'), 'utf8')).config.distribution);
 const workspaceRoot = dirname(bin);
 const target = join(workspaceRoot, 'src', 'forge-showcase');
-const executable = join(bin, 'app.js');
+const executable = join(bin, 'forge.js');
 
 /** A generic workspace configuration: independent of local settings, with projects under src like this checkout. */
 const workspaceConfig = { schemaVersion: 1, paths: { projects: 'src' }, settings: { language: 'en' } };
@@ -45,7 +45,7 @@ function options() {
 
 /** Build the complete showcase in a fresh workspace and return the generated project directory. @param {string} workspace */
 async function generate(workspace) {
-  if (!existsSync(executable)) throw new Error('The workspace bin/app.js is missing; run npm run build in src/the-forge first');
+  if (!existsSync(executable)) throw new Error('The workspace bin/forge.js is missing; run npm run build in src/the-forge first');
   mkdirSync(join(workspace, 'bin'));
   writeFileSync(join(workspace, 'bin', 'config.json'), `${JSON.stringify(workspaceConfig, null, 2)}\n`);
   const cli = forgeCli(executable, workspace, project.directory);

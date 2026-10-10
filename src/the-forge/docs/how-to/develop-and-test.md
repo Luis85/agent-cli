@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · How-to guide
 
-Use Node >=22.12, npm and GNU tar (needed by archive tests and release packaging). `npm ci` installs locked development dependencies, including Oxlint 1.86.0 and the Rust-based fallow 3.31.0 analyzer. Their platform-specific native binaries are development tools; installation requires a supported OS/architecture and npm optional dependencies. Do not use `--omit=optional`. No Rust toolchain is needed for the prebuilt npm packages. Runtime libraries include Commander for CLI parsing, Zod for configuration, unified/remark for Markdown structure, YAML for document codecs, and Day.js for template dates. Vite includes them in the executable; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because `bin/package.json` sets `type: commonjs` for `bin/app.js`; keep both files together. Packaging copies direct and transitive runtime dependency licenses and generates `THIRD-PARTY-NOTICES.md` from the lockfile.
+Use Node >=22.12, npm and GNU tar (needed by archive tests and release packaging). `npm ci` installs locked development dependencies, including Oxlint 1.86.0 and the Rust-based fallow 3.31.0 analyzer. Their platform-specific native binaries are development tools; installation requires a supported OS/architecture and npm optional dependencies. Do not use `--omit=optional`. No Rust toolchain is needed for the prebuilt npm packages. Runtime libraries include Commander for CLI parsing, Zod for configuration, unified/remark for Markdown structure, YAML for document codecs, and Day.js for template dates. Vite includes them in the executable; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because `bin/package.json` sets `type: commonjs` for `bin/forge.js`; keep both files together. Packaging copies direct and transitive runtime dependency licenses and generates `THIRD-PARTY-NOTICES.md` from the lockfile.
 
 ```sh
 cd src/the-forge
@@ -15,7 +15,7 @@ npm run check
 npm run release
 ```
 
-Run npm from the Forge project directory `src/the-forge`; it owns `package.json`, the lockfile and `node_modules`. The workspace root has no npm toolchain. `npm test` expects the workspace `bin/app.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses, skills or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
+Run npm from the Forge project directory `src/the-forge`; it owns `package.json`, the lockfile and `node_modules`. The workspace root has no npm toolchain. `npm test` expects the workspace `bin/forge.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses, skills or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
 
 The build writes into the workspace `bin/` that `config.distribution` in `package.json` names (`../../bin`, relative to the project). Vite, `scripts/package.mjs`, `scripts/release.mjs`, the showcase script and the test support module `tests/support/workspace.ts` all read that one setting, so no script assumes the repository layout implicitly.
 
@@ -24,10 +24,10 @@ The build writes into the workspace `bin/` that `config.distribution` in `packag
 The checkout's tracked `bin/config.json` uses `paths.projects: "src"`, its `src/the-forge/.forge/project.json` marker registers the Forge project, and tracked `bin/data/context.json` selects `the-forge`. Confirm scope from the workspace root before using the bundled CLI:
 
 ```sh
-node bin/app.js project current --json
-node bin/app.js project open the-forge
-node bin/app.js read src/main.ts --json
-node bin/app.js make entity SourceProbe --out src/domain/example --dry-run
+node bin/forge.js project current --json
+node bin/forge.js project open the-forge
+node bin/forge.js read src/main.ts --json
+node bin/forge.js make entity SourceProbe --out src/domain/example --dry-run
 ```
 
 These file paths resolve relative to the project root `src/the-forge`, the same way they resolve in any generated project: `read README.md` reads the project README, `read src/main.ts` the runtime entry, and `--out src/domain/<concern>` targets a source layer concern. `project close` explicitly returns file commands to the workspace root; reopen `the-forge` to resume project work. Setup and builds preserve the saved selection, including an intentional closed selection. Release packaging restores generic configuration and omits the checkout selection in the archive.
@@ -36,7 +36,7 @@ The project's `configs/quality/source.json` declares `sourceRoot: "src"` and `ad
 
 ## Showcase drift check
 
-`src/forge-showcase` is a committed, fully generated example project; see [explore the showcase](explore-the-showcase.md). `npm run showcase:check` regenerates it into a temporary workspace through the current `bin/app.js` and lists every differing path; it never modifies the checkout. The end-to-end test `tests/showcase/showcase.e2e.test.ts` runs the same check (about 45 seconds alone, up to about 90 seconds under the full parallel suite) and also queries its Bases, validates its Canvas and checks UI and adapter drift through the CLI. When a change alters generated output, rebuild, run `npm run showcase`, review the showcase diff and commit it with the change. Forge's quality inventory excludes the showcase; run its own `npm ci` and `npm run check` from `src/forge-showcase` when its toolchain or generated code changes.
+`src/forge-showcase` is a committed, fully generated example project; see [explore the showcase](explore-the-showcase.md). `npm run showcase:check` regenerates it into a temporary workspace through the current `bin/forge.js` and lists every differing path; it never modifies the checkout. The end-to-end test `tests/showcase/showcase.e2e.test.ts` runs the same check (about 45 seconds alone, up to about 90 seconds under the full parallel suite) and also queries its Bases, validates its Canvas and checks UI and adapter drift through the CLI. When a change alters generated output, rebuild, run `npm run showcase`, review the showcase diff and commit it with the change. Forge's quality inventory excludes the showcase; run its own `npm ci` and `npm run check` from `src/forge-showcase` when its toolchain or generated code changes.
 
 ## Agent feedback loop
 
@@ -91,7 +91,7 @@ No global dependency container, Obsidian process or npm runtime installation is 
 
 ## Platform matrix
 
-GitHub Actions runs the full gate (`npm ci`, then `npm run check`, both in `src/the-forge`) for manual dispatches and for every pull request and push to `main` that touches the Forge project, the workspace `bin/` or the generated workflow itself. Pushes to other branches run only through their pull request, so each change runs the matrix once. The workflow is authored in `src/infrastructure/workflows/check/check.yml` and synchronized to `.github/workflows/the-forge--check.yml` by `node bin/app.js workflows sync`; a separate guard workflow runs `workflows sync --check` on every pull request. See [workflows](../reference/workflows.md).
+GitHub Actions runs the full gate (`npm ci`, then `npm run check`, both in `src/the-forge`) for manual dispatches and for every pull request and push to `main` that touches the Forge project, the workspace `bin/` or the generated workflow itself. Pushes to other branches run only through their pull request, so each change runs the matrix once. The workflow is authored in `src/infrastructure/workflows/check/check.yml` and synchronized to `.github/workflows/the-forge--check.yml` by `node bin/forge.js workflows sync`; a separate guard workflow runs `workflows sync --check` on every pull request. See [workflows](../reference/workflows.md).
 
 | Runner | Node | Additional steps |
 | --- | --- | --- |

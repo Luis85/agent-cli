@@ -130,7 +130,7 @@ export function forgeCli(executable, workspace, projectDirectory) {
 
 /** @param {string[]} args @param {boolean} stdin */
 function describe(args, stdin) {
-  const parts = ['node bin/app.js'];
+  const parts = ['node bin/forge.js'];
   for (let index = 0; index < args.length; index += 1) {
     const arg = /** @type {string} */ (args[index]);
     if (verboseOptions.has(arg) && index + 1 < args.length) {

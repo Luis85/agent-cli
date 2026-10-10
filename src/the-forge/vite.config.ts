@@ -6,7 +6,7 @@ import metadata from './package.json' with { type: 'json' };
 export default defineConfig({
  resolve: { conditions: ['node', 'module'], mainFields: ['module', 'main'] },
  build: { target: 'node22', outDir: resolve(metadata.config.distribution), emptyOutDir: false, minify: false,
-  lib: { entry: 'src/main.ts', formats: ['cjs'], fileName: () => 'app.js' },
+  lib: { entry: 'src/main.ts', formats: ['cjs'], fileName: () => 'forge.js' },
   rollupOptions: { external: [...builtinModules, ...builtinModules.map(m => `node:${m}`)], output: { inlineDynamicImports: true, banner: '#!/usr/bin/env node' } }
  }
 });

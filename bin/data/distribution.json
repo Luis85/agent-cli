@@ -1,7 +1,6 @@
 {
   "schemaVersion": 1,
   "files": [
-    "app.js",
     "config/default.json",
     "data/LICENSE",
     "data/README.md",
@@ -152,6 +151,7 @@
     "data/types/domain/shared/error-catalog.d.ts",
     "data/types/domain/shared/errors.d.ts",
     "data/types/sdk.d.ts",
+    "forge.js",
     "package.json",
     "skills/forge-development.md",
     "skills/forge-vault.md",

@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-Every built-in failure has a stable `code` from this catalog. The catalog is the single source of exit statuses, categories, retryability and recovery hints. `node bin/app.js schema --json` lists it at `data.errors` as `{code, exitCode, category, retryable, summary}`, so agents can discover it from the installed executable. A test fails when Forge source throws a code missing here, or when a catalogued code is no longer thrown.
+Every built-in failure has a stable `code` from this catalog. The catalog is the single source of exit statuses, categories, retryability and recovery hints. `node bin/forge.js schema --json` lists it at `data.errors` as `{code, exitCode, category, retryable, summary}`, so agents can discover it from the installed executable. A test fails when Forge source throws a code missing here, or when a catalogued code is no longer thrown.
 
 ## Failure envelope
 

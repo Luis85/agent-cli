@@ -12,7 +12,7 @@ describe('portable selected-project workflows', () => {
     const root = join(project, 'selected-workspace');
     await mkdir(root);
     expect(cli(['setup'], undefined, { root }).status).toBe(0);
-    const invocation = { entry: join(root, 'bin/app.js'), root: null, cwd: bundle };
+    const invocation = { entry: join(root, 'bin/forge.js'), root: null, cwd: bundle };
     const run = (args: string[]) => cli(args, undefined, invocation);
     expect(run(['project', 'current']).body.data.project).toBeNull();
     for (const name of ['alpha', 'beta']) expect(run(['project', 'create', name]).status).toBe(0);
@@ -187,10 +187,10 @@ describe('portable selected-project workflows', () => {
     const setup = run(['setup']);
     expect(setup.status).toBe(0);
     expect(setup.body.context).toEqual({ workspaceRoot: root, root, project: null });
-    expect(await readFile(join(root, 'bin/app.js'), 'utf8')).toBeTruthy();
+    expect(await readFile(join(root, 'bin/forge.js'), 'utf8')).toBeTruthy();
     expect(await readFile(join(root, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
     expect(await readFile(join(root, 'bin/data/context.json'))).toEqual(before);
-    await expect(readFile(join(root, 'projects/alpha/bin/app.js'))).rejects.toThrow();
+    await expect(readFile(join(root, 'projects/alpha/bin/forge.js'))).rejects.toThrow();
     expect(run(['project', 'create', 'beta']).status).toBe(0);
     expect(await readFile(join(root, 'projects/beta/.forge/project.json'), 'utf8')).toContain('beta');
     expect(run(['project', 'current']).body.data.project.name).toBe('alpha');

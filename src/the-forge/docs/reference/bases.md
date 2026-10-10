@@ -5,11 +5,11 @@
 A native Obsidian `.base` file and one of its named views define a repository of matching vault files. `bases query` evaluates that definition inside the selected Forge project or workspace and returns a JSON list of relative file paths. It runs entirely in the bundled Node CLI: Obsidian, a desktop session and runtime npm installation are not required.
 
 ```sh
-node bin/app.js bases list
-node bin/app.js bases inspect repositories/tasks.base
-node bin/app.js bases query repositories/tasks.base --view Open
-node bin/app.js bases query repositories/tasks.base --view Open --context projects/Alpha.md --limit 20
-node bin/app.js bases capabilities
+node bin/forge.js bases list
+node bin/forge.js bases inspect repositories/tasks.base
+node bin/forge.js bases query repositories/tasks.base --view Open
+node bin/forge.js bases query repositories/tasks.base --view Open --context projects/Alpha.md --limit 20
+node bin/forge.js bases capabilities
 ```
 
 ## Command contract

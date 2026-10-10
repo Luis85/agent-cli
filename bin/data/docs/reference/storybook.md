@@ -8,8 +8,8 @@ This reference describes generated CSF modules and their native extension API. I
 `make ui <id> --stories` writes UI and stories in the same planned batch. `make stories <id>` writes only stories, using `--out` as the location of previously generated UI and `--stories-out` as the story destination:
 
 ```sh
-node bin/app.js make ui dashboard --framework react --out src/dashboard
-node bin/app.js make stories dashboard --framework react --out src/dashboard --stories-out stories/dashboard --dry-run
+node bin/forge.js make ui dashboard --framework react --out src/dashboard
+node bin/forge.js make stories dashboard --framework react --out src/dashboard --stories-out stories/dashboard --dry-run
 ```
 
 Each component gets `<id>.stories.ts` using standard CSF3 default metadata and named story object exports. Props provide default args and controls; the Markdown body provides docs text. Configure your Storybook story glob to include the selected folder. The import uses `@storybook/html` for HTML/HTMX/vanilla, `@storybook/react`, `@storybook/vue3`, `@storybook/svelte` or `@storybook/angular` for the corresponding target. Install and configure the matching Storybook framework, builder and desired addons in the consuming project. The CLI does not run Storybook, install packages or alter its configuration.

@@ -55,7 +55,7 @@ describe('release distribution', () => {
     await expect(readFile(bin(root, 'data/docs/research/notes.md'))).rejects.toThrow();
     expect(await readFile(bin(root, 'skills/forge-workflow.md'), 'utf8')).toBe(await readFile(resolve('skills/forge-workflow.md'), 'utf8'));
     const manifest = JSON.parse(await readFile(bin(root, 'data/distribution.json'), 'utf8'));
-    expect(manifest.files).toContain('app.js');
+    expect(manifest.files).toContain('forge.js');
     expect(manifest.files).toContain('data/types/sdk.d.ts');
     expect(manifest.files.some((path: string) => /context|private|obsolete/.test(path))).toBe(false);
   }, 60_000);
@@ -69,7 +69,7 @@ describe('release distribution', () => {
     const checksum = await readFile(join(root, `${archive}.sha256`), 'utf8');
     expect(checksum).toBe(`${createHash('sha256').update(first).digest('hex')}  ${archive.slice('release/'.length)}\n`);
 
-    await utimes(bin(root, 'app.js'), 1_000_000, 2_000_000);
+    await utimes(bin(root, 'forge.js'), 1_000_000, 2_000_000);
     await utimes(bin(root, 'data/README.md'), 3_000_000, 4_000_000);
     await chmod(bin(root, 'data/README.md'), 0o664);
     expect(release(root)).toBe(archive);
@@ -79,7 +79,7 @@ describe('release distribution', () => {
     await mkdir(project);
     await writeFile(join(project, 'package.json'), '{"type":"module"}');
     tar(root, ['-xzf', archive, '-C', 'project']);
-    const invoke = (args: string[]) => JSON.parse(execFileSync(process.execPath, ['bin/app.js', ...args], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } }));
+    const invoke = (args: string[]) => JSON.parse(execFileSync(process.execPath, ['bin/forge.js', ...args], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } }));
     const source = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
     expect(invoke(['--version']).data.version).toBe(source.version);
     expect(invoke(['setup']).ok).toBe(true);
@@ -93,7 +93,7 @@ describe('release distribution', () => {
     for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
     const listed = entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
-    expect(listed).toContain('bin/app.js');
+    expect(listed).toContain('bin/forge.js');
     expect(listed).toContain('bin/package.json');
     expect(listed).toContain('bin/data/distribution.json');
     expect(listed).toContain('bin/plugins/.gitkeep');
@@ -144,7 +144,7 @@ describe('release distribution', () => {
     const path = bin(root, 'data/distribution.json');
     const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
     if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
-    else manifest.files.push('app.js');
+    else manifest.files.push('forge.js');
     await writeFile(path, JSON.stringify(manifest));
     expect(() => release(root)).toThrow('Missing or invalid distribution manifest');
   });

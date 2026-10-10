@@ -18,13 +18,13 @@ async function fixture(dryRun = false) {
   const parent = await mkdtemp(join(tmpdir(), 'forge-setup-')); temporary.push(parent);
   const root = join(parent, 'project'), bundle = join(parent, 'bundle');
   await mkdir(root); await mkdir(bundle);
-  await writeFile(join(bundle, 'app.js'), 'console.log("portable")');
-  await writeFile(join(bundle, 'package.json'), '{"type":"commonjs","main":"app.js"}');
+  await writeFile(join(bundle, 'forge.js'), 'console.log("portable")');
+  await writeFile(join(bundle, 'package.json'), '{"type":"commonjs","main":"forge.js"}');
   await mkdir(join(bundle, 'config'));
   await writeFile(join(bundle, 'config/default.json'), '{}\n');
   await mkdir(join(bundle, 'data/docs/reference'), { recursive: true });
   await writeFile(join(bundle, 'data/docs/reference/cli.md'), '# Commands\n');
-  await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['app.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json'] }));
+  await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['forge.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json'] }));
   const config: AppConfig = {
     schemaVersion: 1,
     paths: { projects: 'work/projects', components: 'components', ui: 'src/ui', stories: 'stories', componentImports: 'imports/components', componentExports: 'exports/components', dataSources: 'data-sources', dataGenerated: 'src/data-sources', dataFixtures: 'test-data', dataImports: 'imports/data-sources', dataExports: 'exports/data-sources', interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions' },
@@ -45,20 +45,20 @@ it('installs fixed environment directories and configured projects through works
   const installed = JSON.parse(await readFile(join(root, 'bin/config.json'), 'utf8'));
   expect(installed).toEqual(config);
   expect(installed.paths).toEqual(config.paths);
-  expect(await readFile(join(root, 'bin/app.js'), 'utf8')).toContain('portable');
+  expect(await readFile(join(root, 'bin/forge.js'), 'utf8')).toContain('portable');
   expect(await readFile(join(root, 'bin/data/docs/reference/cli.md'), 'utf8')).toBe('# Commands\n');
   expect(await readFile(join(root, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
   expect(await readFile(join(root, 'bin/plugins/.gitkeep'))).toHaveLength(0);
   const guidance = await readFile(join(root, 'AGENTS.md'), 'utf8');
-  for (const command of ['--if-match', 'node bin/app.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
-  expect(await readdir(join(root, 'bin'))).toEqual(['app.js', 'config', 'config.json', 'data', 'package.json', 'plugins', 'templates']);
+  for (const command of ['--if-match', 'node bin/forge.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
+  expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge.js', 'package.json', 'plugins', 'templates']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
   expect(events.history).toHaveLength(11);
 });
 it('preserves existing configuration, bundle, template, skill and agent instructions on repeated setup', async () => {
   const { root, setup, events } = await fixture();
   await setup.run();
-  const edited = ['bin/config.json', 'bin/app.js', 'bin/templates/entity.md', '.agents/skills/forge-workflow/SKILL.md', 'AGENTS.md'];
+  const edited = ['bin/config.json', 'bin/forge.js', 'bin/templates/entity.md', '.agents/skills/forge-workflow/SKILL.md', 'AGENTS.md'];
   for (const path of edited) await writeFile(join(root, path), `User content for ${path}`);
   const count = events.history.length;
   const result = await setup.run();
@@ -87,9 +87,9 @@ it('copies only distribution assets and excludes environment data from its fixed
   await writeFile(join(bundle, 'config.json'), '{"private":"configuration"}');
   await writeFile(join(bundle, 'data/context.json'), '{"activeProject":"private-project"}');
   const artifacts = await readSetupArtifacts(bundle);
-  expect(artifacts.map(artifact => artifact.path)).toEqual(['app.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json']);
-  await writeFile(join(bundle, 'app.js'), 'changed after snapshot');
-  expect(new TextDecoder().decode(artifacts.find(artifact => artifact.path === 'app.js')!.bytes)).toContain('portable');
+  expect(artifacts.map(artifact => artifact.path)).toEqual(['forge.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json']);
+  await writeFile(join(bundle, 'forge.js'), 'changed after snapshot');
+  expect(new TextDecoder().decode(artifacts.find(artifact => artifact.path === 'forge.js')!.bytes)).toContain('portable');
 });
 it('rejects a distribution asset replaced by a symlink before planning installation', async () => {
   const { root, bundle } = await fixture();
@@ -104,7 +104,7 @@ it.each(['missing-defaults', 'duplicate-assets'])('rejects an invalid distributi
   const path = join(bundle, 'data/distribution.json');
   const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
   if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
-  else manifest.files.push('app.js');
+  else manifest.files.push('forge.js');
   await writeFile(path, JSON.stringify(manifest));
   await expect(readSetupArtifacts(bundle)).rejects.toMatchObject({ code: 'INVALID_SETUP' });
 });

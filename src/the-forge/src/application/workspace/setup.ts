@@ -10,14 +10,14 @@ const encode = (value: string) => new TextEncoder().encode(value);
 const instructions = `# The Forge workflow
 
 Read bin/data/README.md and bin/data/docs/reference/cli.md before using the CLI.
-Run \`node bin/app.js help\` or \`node bin/app.js schema --json\` to discover commands.
+Run \`node bin/forge.js help\` or \`node bin/forge.js schema --json\` to discover commands.
 Environment settings and enabled plugins live in bin/config.json.
 Shared templates live in bin/templates and plugins live in bin/plugins.
 
-Run \`node bin/app.js project list\` to discover projects, then
-\`node bin/app.js project open <id>\` to select a project before working on its files.
-Check \`node bin/app.js project current\` before scoped operations; paths resolve inside the open project.
-Run \`node bin/app.js project close\` when finished with that project.
+Run \`node bin/forge.js project list\` to discover projects, then
+\`node bin/forge.js project open <id>\` to select a project before working on its files.
+Check \`node bin/forge.js project current\` before scoped operations; paths resolve inside the open project.
+Run \`node bin/forge.js project close\` when finished with that project.
 
 Establish acceptance criteria before generating or editing files. Read existing files first,
 preview mutations with --dry-run, and supply the current revision with --if-match when replacing files.
@@ -60,7 +60,7 @@ export class SetupService {
   ) {}
 
   async run() {
-    ensure(this.artifacts.some(artifact => artifact.path === 'app.js') && this.artifacts.some(artifact => artifact.path === 'package.json'), 'INVALID_SETUP', 'Setup requires the complete built bin distribution. Run the bundled CLI or build it first.');
+    ensure(this.artifacts.some(artifact => artifact.path === 'forge.js') && this.artifacts.some(artifact => artifact.path === 'package.json'), 'INVALID_SETUP', 'Setup requires the complete built bin distribution. Run the bundled CLI or build it first.');
     const candidates: WriteRequest[] = [
       ...this.artifacts.map(artifact => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: 'bin/config.json', bytes: encode(JSON.stringify(this.config, null, 2) + '\n') },
@@ -88,9 +88,9 @@ export class SetupService {
     // An empty plan is a successful no-op, not an invalid workspace write.
     const result = writes.length ? await this.workspace.write(writes) : { dryRun: this.workspace.dryRun, changes: [] };
     return { ...result, skipped, nextSteps: [
-      { scope: 'workspace', command: 'node bin/app.js templates list', purpose: 'Discover the installed editable planning templates.' },
-      { scope: 'workspace', command: 'node bin/app.js templates inspect workflow/prd.md', purpose: 'Inspect planning inputs before generating a requirements document.' },
-      { scope: 'workspace', command: 'node bin/app.js project list', purpose: 'Find a project, then explicitly open it before generating project files.' },
+      { scope: 'workspace', command: 'node bin/forge.js templates list', purpose: 'Discover the installed editable planning templates.' },
+      { scope: 'workspace', command: 'node bin/forge.js templates inspect workflow/prd.md', purpose: 'Inspect planning inputs before generating a requirements document.' },
+      { scope: 'workspace', command: 'node bin/forge.js project list', purpose: 'Find a project, then explicitly open it before generating project files.' },
     ] };
   }
 }

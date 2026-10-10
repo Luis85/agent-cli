@@ -38,7 +38,7 @@ describe('presentation localization', () => {
   });
   it('localizes guidance by known command and preserves authored library descriptions', () => {
     const localizer = new Localizer('de');
-    const nextSteps = [{ command: 'node bin/app.js project list', purpose: 'Find a project' }, { command: 'custom', purpose: 'Preserve me' }];
+    const nextSteps = [{ command: 'node bin/forge.js project list', purpose: 'Find a project' }, { command: 'custom', purpose: 'Preserve me' }];
     expect(localizer.result('setup', { nextSteps })).toEqual({ nextSteps: [{ command: nextSteps[0]!.command, purpose: expect.stringContaining('Ein Projekt suchen') }, nextSteps[1]] });
     const data = { status: 'empty', directory: 'my sources', nextStep: 'Initialize', description: 'Author-owned text' };
     expect(localizer.result('data-sources', data)).toEqual({ ...data, nextStep: 'Führen Sie data-sources init --library my sources aus oder fügen Sie eine Markdown-Definition hinzu.' });

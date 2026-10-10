@@ -5,11 +5,11 @@
 Templates are Markdown files with optional YAML frontmatter in the workspace's shared `bin/templates` directory. They produce ordinary Obsidian-compatible `.md` files without requiring Obsidian. Inspect the configuration and available inputs before generating:
 
 ```sh
-node bin/app.js config --json
-node bin/app.js templates list --json
-node bin/app.js templates inspect feature.md --json
-node bin/app.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}' --dry-run
-node bin/app.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}'
+node bin/forge.js config --json
+node bin/forge.js templates list --json
+node bin/forge.js templates inspect feature.md --json
+node bin/forge.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}' --dry-run
+node bin/forge.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}'
 ```
 
 `templates inspect` and `make document` both require a `.md` template (case insensitive); other extensions fail with `INVALID_TEMPLATE` before parsing. `--template` is relative to workspace `bin/templates`; output defaults to `notes` inside the active project, or workspace when none is selected. `--out` overrides that output directory within the same scope. The title becomes the output filename, so path separators and unsafe names are rejected. New documents never overwrite existing files. Dry-run validates the rendered document and returns the complete text plus planned revision without writing or emitting file events.

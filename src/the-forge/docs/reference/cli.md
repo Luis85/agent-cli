@@ -2,9 +2,9 @@
 
 [Documentation](../index.md) · Reference
 
-Run `node bin/app.js [routing options] <command> [options]`. Routing options `--root <directory>` and `--no-plugins` must precede the command because they select the workspace and loaded command catalog. For example, `node bin/app.js --root /path/to/workspace --no-plugins setup --dry-run`.
+Run `node bin/forge.js [routing options] <command> [options]`. Routing options `--root <directory>` and `--no-plugins` must precede the command because they select the workspace and loaded command catalog. For example, `node bin/forge.js --root /path/to/workspace --no-plugins setup --dry-run`.
 
-Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events none|changes|all`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/app.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md) and [language selection](language.md).
+Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events none|changes|all`, `--lang en|de` and `--help` (`-h`) before or after the command. Use `node bin/forge.js --version` (`-V`) to inspect the executable version. Prefer `--key=value` for literal values beginning with `--`; use `--` to stop option parsing. Unknown, repeated or misplaced routing options are errors. Negated boolean flags override configuration defaults. `--no-plugins` disables configured plugins for one invocation. See [configuration precedence](configuration.md) and [language selection](language.md).
 
 ## Output and errors
 
@@ -74,7 +74,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 `read` returns Markdown as `document:{kind,content,properties}`, Canvas/Bases as `{kind,data}`, text files as `{kind:"text",content}`, and attachments as `{kind,encoding:"base64",content}`. `--parts` takes a comma-separated list of optional parts; `body` adds the Markdown text after frontmatter as `document.body`. It applies only to Markdown, and unknown parts fail with `INVALID_ARGUMENT`. A file with a [text extension](formats.md#utf-8-text) whose bytes are not valid UTF-8 reads as `{kind:"attachment",encoding:"base64",content}`. To export an attachment with only Node available:
 
 ```sh
-node bin/app.js read assets/diagram.png --json | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(!r.ok)process.exit(1);process.stdout.write(Buffer.from(r.data.document.content,"base64"));})' > exported.png
+node bin/forge.js read assets/diagram.png --json | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(!r.ok)process.exit(1);process.stdout.write(Buffer.from(r.data.document.content,"base64"));})' > exported.png
 ```
 
 ## Dry-run diffs
@@ -82,7 +82,7 @@ node bin/app.js read assets/diagram.png --json | node -e 'let s="";process.stdin
 Dry-run `create`, `write`, `edit`, `properties` and `patch` add `diff` to each entry of `data.changes`. For Markdown, Canvas, Bases and text files with valid UTF-8 content, it is a unified diff with three context lines, `--- a/<path>` and `+++ b/<path>` headers (`--- /dev/null` for a new file) and paths relative to `context.root`. Unchanged content yields `""`. Binary or undecodable content has `diff: null`; compare `bytes` and `revision` instead. Real writes return no `diff`. The text applies with standard tools such as `git apply` from the command root:
 
 ```sh
-node bin/app.js edit notes/plan.md --find 'Draft' --replace 'Ready' --if-match YOUR_REVISION --dry-run --json
+node bin/forge.js edit notes/plan.md --find 'Draft' --replace 'Ready' --if-match YOUR_REVISION --dry-run --json
 ```
 
 ```json
@@ -94,13 +94,13 @@ A dry run checks `--if-match` exactly like the real write: a stale or missing re
 ## Canvas and Bases
 
 ```sh
-node bin/app.js create architecture.canvas
-node bin/app.js read architecture.canvas --json
-node bin/app.js patch architecture.canvas --pointer /nodes/- --value '{"id":"domain","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Domain"}' --if-match YOUR_REVISION
-node bin/app.js create tasks.base
-node bin/app.js read tasks.base --json
-node bin/app.js patch tasks.base --pointer /views/0/name --value '"Engineering tasks"' --if-match YOUR_REVISION
-node bin/app.js bases query tasks.base --view 'Engineering tasks'
+node bin/forge.js create architecture.canvas
+node bin/forge.js read architecture.canvas --json
+node bin/forge.js patch architecture.canvas --pointer /nodes/- --value '{"id":"domain","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Domain"}' --if-match YOUR_REVISION
+node bin/forge.js create tasks.base
+node bin/forge.js read tasks.base --json
+node bin/forge.js patch tasks.base --pointer /views/0/name --value '"Engineering tasks"' --if-match YOUR_REVISION
+node bin/forge.js bases query tasks.base --view 'Engineering tasks'
 ```
 
 JSON Pointer uses `~0` for `~` and `~1` for `/`. Parent containers must exist. Array indices must exist except `-` append. Prototype keys are forbidden. To remove a key/node/edge, or make a coordinated graph change, read the document, modify it, and use `write --stdin --if-match <revision>` with the complete result. Native Claude agents and plugin assets have guarded removal commands; there is no general filesystem delete or rename command.

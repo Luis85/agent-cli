@@ -5,13 +5,13 @@
 `setup` initializes the workspace with a fixed layout. It creates missing files and reports existing destinations as skipped, preserving local instructions, configuration, templates and project selection.
 
 ```sh
-node bin/app.js setup --dry-run
-node bin/app.js setup
+node bin/forge.js setup --dry-run
+node bin/forge.js setup
 ```
 
 ```text
 bin/
-  app.js
+  forge.js
   config.json
   package.json
   plugins/
@@ -21,9 +21,9 @@ bin/
 projects/                 # configurable with paths.projects
 ```
 
-`bin/package.json` keeps `app.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
+`bin/package.json` keeps `forge.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
 
-To initialize another existing directory, run `node /absolute/path/to/bin/app.js --root /absolute/path/to/workspace setup`. The workspace root must exist. Setup always targets the workspace, even while a project is open. It does not install npm packages or silently upgrade existing application files; replace a bundle explicitly from a reviewed distribution.
+To initialize another existing directory, run `node /absolute/path/to/bin/forge.js --root /absolute/path/to/workspace setup`. The workspace root must exist. Setup always targets the workspace, even while a project is open. It does not install npm packages or silently upgrade existing application files; replace a bundle explicitly from a reviewed distribution.
 
 ## Independent library projects
 
@@ -31,18 +31,18 @@ Newly generated projects are TypeScript libraries under `paths.projects`, defaul
 
 The Forge checkout manages The Forge itself as the self-contained project `the-forge` under configured `src`, using `src/the-forge/.forge/project.json`. Like a generated project, it owns its package, lockfile, build/test toolchain, docs and CI; its build writes the workspace `bin/`. With that selection, file commands address `src/the-forge`, so runtime source is `src/main.ts` and `--out src/domain/example` targets a source layer, exactly as in a generated project. Run `project open the-forge` to restore this project scope after working with another project. Released bundles start with generic defaults and no source-checkout selection.
 
-Each project can author its own CI under `src/infrastructure/workflows/<concern>/`. Run `node bin/app.js workflows sync` from the workspace to generate the prefixed `.github/workflows` entrypoints, and `workflows sync --check` in CI to detect drift. See [workflows](../reference/workflows.md).
+Each project can author its own CI under `src/infrastructure/workflows/<concern>/`. Run `node bin/forge.js workflows sync` from the workspace to generate the prefixed `.github/workflows` entrypoints, and `workflows sync --check` in CI to detect drift. See [workflows](../reference/workflows.md).
 
 ```sh
-node bin/app.js project list --json
-node bin/app.js project create knowledge-core --dry-run
-node bin/app.js project create knowledge-core
-node bin/app.js project inspect knowledge-core --json
-node bin/app.js project open knowledge-core
-node bin/app.js project current --json
-node bin/app.js project component WorkItem --kind domain --dry-run
-node bin/app.js project component WorkItem --kind domain
-node bin/app.js project component FindWorkItem --kind application
+node bin/forge.js project list --json
+node bin/forge.js project create knowledge-core --dry-run
+node bin/forge.js project create knowledge-core
+node bin/forge.js project inspect knowledge-core --json
+node bin/forge.js project open knowledge-core
+node bin/forge.js project current --json
+node bin/forge.js project component WorkItem --kind domain --dry-run
+node bin/forge.js project component WorkItem --kind domain
+node bin/forge.js project component FindWorkItem --kind application
 ```
 
 Use lowercase kebab-case project IDs and PascalCase component names. Project creation provides strict TypeScript, Vite, Vitest, domain/application/infrastructure boundaries and focused agent instructions. Components use the project's existing layout. The starter includes a typed `ProjectDetailsForm` and a Vite HTML showcase; `make form <Name>` adds a definition and its unit tests to an open project. See [forms and preview](../reference/forms.md). Preview the generated source and adapt generic invariants and ports to the actual domain; a generated class is not a completed business feature.
@@ -52,10 +52,10 @@ Use lowercase kebab-case project IDs and PascalCase component names. Project cre
 `project open <id>` selects a managed project for subsequent invocations. It persists in workspace `bin/data/context.json`; there is no interactive shell or long-running process. Check `project current` and its `data.project` before a series of edits. Read target files and verify those responses' `context.root` before applying changes. With `knowledge-core` open:
 
 ```sh
-node bin/app.js create notes/plan.md --content '# Plan'
-node bin/app.js make entity Decision --dry-run
-node bin/app.js make document 'Feature proposal' --template entity.md --dry-run
-node bin/app.js project close
+node bin/forge.js create notes/plan.md --content '# Plan'
+node bin/forge.js make entity Decision --dry-run
+node bin/forge.js make document 'Feature proposal' --template entity.md --dry-run
+node bin/forge.js project close
 ```
 
 The first command creates `projects/knowledge-core/notes/plan.md` with the default projects directory. TypeScript generation defaults to that project's `src/domain`; document generation defaults to its `notes`. Templates are read from workspace `bin/templates`, so all projects can reuse the same sources. `--values-from` and file-copy inputs resolve inside the active project. Skill installation defaults to its `.agents/skills`.

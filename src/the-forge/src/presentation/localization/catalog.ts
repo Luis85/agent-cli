@@ -45,8 +45,8 @@ export const germanGuidance = {
   textFiles: 'UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.',
   delivery: 'Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Lebenszyklus-Ereignisse begleiten Befehle, Workspace-Vorgänge, Claude und Plugins. Datei-Ereignisse folgen erfolgreichen Schreibvorgängen. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur Dateiänderungen; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.',
   setup: {
-    'node bin/app.js templates list': 'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',
-    'node bin/app.js templates inspect workflow/prd.md': 'Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.',
-    'node bin/app.js project list': 'Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen.',
+    'node bin/forge.js templates list': 'Die installierten, bearbeitbaren Planungsvorlagen entdecken.',
+    'node bin/forge.js templates inspect workflow/prd.md': 'Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.',
+    'node bin/forge.js project list': 'Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen.',
   },
 };

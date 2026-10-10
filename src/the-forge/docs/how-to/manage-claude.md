@@ -7,10 +7,10 @@ Use this workflow to maintain native Claude agents, hooks and authored plugins, 
 ## Choose the target and inspect it
 
 ```sh
-node bin/app.js project current --json
-node bin/app.js claude capabilities --json
-node bin/app.js claude agents list
-node bin/app.js claude hooks inspect
+node bin/forge.js project current --json
+node bin/forge.js claude capabilities --json
+node bin/forge.js claude agents list
+node bin/forge.js claude hooks inspect
 ```
 
 The default target is `.claude` inside the selected project, or the workspace when none is open. Check the response's `context` and `target` before writing. Add `--scope user` for your user configuration, optionally with `--claude-dir /absolute/path/to/claude-config`. Without that override, Forge uses `CLAUDE_CONFIG_DIR` or `~/.claude`. Inspection and previews leave a missing directory absent.
@@ -22,17 +22,17 @@ Use `--scope plugin --directory plugins/team-tools` to maintain an authored plug
 Create `reviewer` from native Markdown using `--from drafts/reviewer.md`, or supply frontmatter and prompt separately:
 
 ```sh
-node bin/app.js claude agents create reviewer --metadata '{"name":"reviewer","description":"Review changes and report concrete defects","tools":["Read","Grep","Glob"]}' --prompt 'Inspect the requested changes. Report actionable findings with evidence.' --dry-run
-node bin/app.js claude agents create reviewer --metadata '{"name":"reviewer","description":"Review changes and report concrete defects","tools":["Read","Grep","Glob"]}' --prompt 'Inspect the requested changes. Report actionable findings with evidence.'
-node bin/app.js claude agents inspect reviewer --json
+node bin/forge.js claude agents create reviewer --metadata '{"name":"reviewer","description":"Review changes and report concrete defects","tools":["Read","Grep","Glob"]}' --prompt 'Inspect the requested changes. Report actionable findings with evidence.' --dry-run
+node bin/forge.js claude agents create reviewer --metadata '{"name":"reviewer","description":"Review changes and report concrete defects","tools":["Read","Grep","Glob"]}' --prompt 'Inspect the requested changes. Report actionable findings with evidence.'
+node bin/forge.js claude agents inspect reviewer --json
 ```
 
 Copy `data.revision` from inspection. To apply an authored replacement:
 
 ```sh
-node bin/app.js claude agents update reviewer --from drafts/reviewer.md --if-match AGENT_REVISION --dry-run
-node bin/app.js claude agents update reviewer --from drafts/reviewer.md --if-match AGENT_REVISION
-node bin/app.js claude agents export reviewer --json
+node bin/forge.js claude agents update reviewer --from drafts/reviewer.md --if-match AGENT_REVISION --dry-run
+node bin/forge.js claude agents update reviewer --from drafts/reviewer.md --if-match AGENT_REVISION
+node bin/forge.js claude agents export reviewer --json
 ```
 
 The replacement source retains its authored frontmatter and prompt. `export` also provides rendered Markdown and a structured session definition. A conflict means the file changed; read it again and reconcile before retrying. `agents list` includes malformed files with their revisions so they can be repaired or removed.
@@ -40,8 +40,8 @@ The replacement source retains its authored frontmatter and prompt. `export` als
 For editing in Obsidian, export a visible Markdown copy: hidden `.claude` folders may not appear in its file explorer.
 
 ```sh
-node bin/app.js claude agents export reviewer --out agent-notes/reviewer.md --dry-run
-node bin/app.js claude agents export reviewer --out agent-notes/reviewer.md
+node bin/forge.js claude agents export reviewer --out agent-notes/reviewer.md --dry-run
+node bin/forge.js claude agents export reviewer --out agent-notes/reviewer.md
 ```
 
 Choose a new destination, or inspect an existing destination with `read agent-notes/reviewer.md` and provide its revision through `--if-match` when exporting. The destination is in the current Forge file scope even if the native agent uses `--scope user` or `--scope plugin`. Edit the exported Markdown in Obsidian, inspect the native agent again, then use `agents update reviewer --from agent-notes/reviewer.md --if-match AGENT_REVISION`. Keep the source's scope flags on inspection and update. The native revision guards the update; the editable copy's revision is only used when replacing that copy.
@@ -49,9 +49,9 @@ Choose a new destination, or inspect an existing destination with `read agent-no
 To disable delegation without removing the agent, inspect the **settings** revision first:
 
 ```sh
-node bin/app.js claude hooks inspect --json
-node bin/app.js claude agents disable reviewer --if-match SETTINGS_REVISION --dry-run
-node bin/app.js claude agents disable reviewer --if-match SETTINGS_REVISION
+node bin/forge.js claude hooks inspect --json
+node bin/forge.js claude agents disable reviewer --if-match SETTINGS_REVISION --dry-run
+node bin/forge.js claude agents disable reviewer --if-match SETTINGS_REVISION
 ```
 
 Omit `--if-match` if inspection reports `revision: null`. Disable adds an exact `Agent(reviewer)` deny rule and retains other settings. Enable removes that rule after another settings inspection; other permission policies may still deny the agent. Plugin agents are controlled through their installed plugin instead.
@@ -59,8 +59,8 @@ Omit `--if-match` if inspection reports `revision: null`. Disable adds an exact 
 To remove the definition, inspect it and use its current **agent file** revision:
 
 ```sh
-node bin/app.js claude agents remove reviewer --if-match AGENT_REVISION --dry-run
-node bin/app.js claude agents remove reviewer --if-match AGENT_REVISION
+node bin/forge.js claude agents remove reviewer --if-match AGENT_REVISION --dry-run
+node bin/forge.js claude agents remove reviewer --if-match AGENT_REVISION
 ```
 
 The committed response includes `file.deleted` with the removed file's hash and size. Removal leaves sibling files and directories in place.
@@ -83,10 +83,10 @@ Prepare a UTF-8 `drafts/hooks.json` containing the raw event map, without a `hoo
 Use a command you have reviewed and whose script exists in the intended Claude runtime. Forge stores this configuration without running the script.
 
 ```sh
-node bin/app.js claude hooks inspect --json
-node bin/app.js claude hooks set --from drafts/hooks.json --if-match SETTINGS_REVISION --dry-run
-node bin/app.js claude hooks set --from drafts/hooks.json --if-match SETTINGS_REVISION
-node bin/app.js claude hooks check
+node bin/forge.js claude hooks inspect --json
+node bin/forge.js claude hooks set --from drafts/hooks.json --if-match SETTINGS_REVISION --dry-run
+node bin/forge.js claude hooks set --from drafts/hooks.json --if-match SETTINGS_REVISION
+node bin/forge.js claude hooks check
 ```
 
 Omit the revision when creating a missing settings file. `set` replaces only its `hooks` value. To append one group, use `claude hooks add PostToolUse --content '{"matcher":"Write","hooks":[{"type":"command","command":"node","args":["scripts/check.js"]}]}' --if-match SETTINGS_REVISION`. Use a fresh settings revision for every committed change.
@@ -100,10 +100,10 @@ Hook validation covers configuration structure and supported event/type combinat
 ## Author and check a plugin
 
 ```sh
-node bin/app.js claude plugins create plugins/team-tools --content '{"name":"team-tools","version":"0.1.0","description":"Shared review tools"}' --dry-run
-node bin/app.js claude plugins create plugins/team-tools --content '{"name":"team-tools","version":"0.1.0","description":"Shared review tools"}'
-node bin/app.js claude agents create reviewer --scope plugin --directory plugins/team-tools --from drafts/reviewer.md
-node bin/app.js claude plugins check plugins/team-tools
+node bin/forge.js claude plugins create plugins/team-tools --content '{"name":"team-tools","version":"0.1.0","description":"Shared review tools"}' --dry-run
+node bin/forge.js claude plugins create plugins/team-tools --content '{"name":"team-tools","version":"0.1.0","description":"Shared review tools"}'
+node bin/forge.js claude agents create reviewer --scope plugin --directory plugins/team-tools --from drafts/reviewer.md
+node bin/forge.js claude plugins check plugins/team-tools
 ```
 
 Inspect `data.valid` and every diagnostic from `check`. Plugin agents retain native metadata, but Claude ignores their `hooks`, `mcpServers`, `permissionMode` and `initialPrompt` fields. Define plugin-wide hooks and servers in the manifest or corresponding native assets.
@@ -113,7 +113,7 @@ Use `claude plugins asset plugins/team-tools README.md` to inspect an asset and 
 Forge's structural check does not execute plugins or establish Claude runtime compatibility. When Claude is installed, request its own validator:
 
 ```sh
-node bin/app.js claude plugins validate plugins/team-tools --strict
+node bin/forge.js claude plugins validate plugins/team-tools --strict
 ```
 
 ## Manage installed plugins and marketplaces
@@ -121,12 +121,12 @@ node bin/app.js claude plugins validate plugins/team-tools --strict
 Verify the executable, then preview installation operations:
 
 ```sh
-node bin/app.js claude runtime version
-node bin/app.js claude marketplaces add owner/marketplace-repository --scope project --dry-run
-node bin/app.js claude marketplaces add owner/marketplace-repository --scope project
-node bin/app.js claude plugins list --available
-node bin/app.js claude plugins install team-tools@marketplace-name --scope project --dry-run
-node bin/app.js claude plugins install team-tools@marketplace-name --scope project
+node bin/forge.js claude runtime version
+node bin/forge.js claude marketplaces add owner/marketplace-repository --scope project --dry-run
+node bin/forge.js claude marketplaces add owner/marketplace-repository --scope project
+node bin/forge.js claude plugins list --available
+node bin/forge.js claude plugins install team-tools@marketplace-name --scope project --dry-run
+node bin/forge.js claude plugins install team-tools@marketplace-name --scope project
 ```
 
 Replace the example marketplace source and plugin ID with actual identifiers. `--claude-bin /path/to/claude` selects another executable. Commands that support scope default to `project`; the [runtime operation table](../reference/claude.md#installed-claude-cli-operations) identifies which commands accept it.
@@ -146,14 +146,14 @@ Mutation commands request native JSON automatically and require Claude Code v2.1
 Read current options using the full plugin identifier returned by `plugins list`:
 
 ```sh
-node bin/app.js claude plugins configure team-tools@marketplace-name
+node bin/forge.js claude plugins configure team-tools@marketplace-name
 ```
 
 To change options, prepare JSON mapping keys to single-line strings. Use strings even for numeric or boolean options. Omitted keys retain their saved values. For example, a private local input file might contain `{"host":"localhost","port":"8080"}`:
 
 ```sh
-node bin/app.js claude plugins configure team-tools@marketplace-name --values-stdin --stdin --dry-run < /private/path/plugin-values.json
-node bin/app.js claude plugins configure team-tools@marketplace-name --values-stdin --stdin < /private/path/plugin-values.json
+node bin/forge.js claude plugins configure team-tools@marketplace-name --values-stdin --stdin --dry-run < /private/path/plugin-values.json
+node bin/forge.js claude plugins configure team-tools@marketplace-name --values-stdin --stdin < /private/path/plugin-values.json
 ```
 
 Replace the redirected path with your local file. Forge validates the JSON and pipes it directly to Claude, with a 1 MiB input limit. The dry-run plan includes an input byte count and omits values. `--from <path>` also works for a file in the current Forge scope. Avoid literal `--content` or installation `--config` for secrets because those values enter shell history or process arguments. Claude controls redaction in its returned configuration; Forge preserves the native output.
@@ -169,9 +169,9 @@ Native scaffolding differs from Forge's contained manifest creation: `claude plu
 For evaluations, create a named case and inspect its generated files before running it:
 
 ```sh
-node bin/app.js claude plugins eval init review-case --eval-dir plugins/team-tools/evals --bare --dry-run
-node bin/app.js claude plugins eval init review-case --eval-dir plugins/team-tools/evals --bare
-node bin/app.js claude plugins eval plugins/team-tools --eval-dir evals --runs 1 --concurrency 1 --max-cost-usd 2 --no-publish --native-json --timeout 600000 --dry-run
+node bin/forge.js claude plugins eval init review-case --eval-dir plugins/team-tools/evals --bare --dry-run
+node bin/forge.js claude plugins eval init review-case --eval-dir plugins/team-tools/evals --bare
+node bin/forge.js claude plugins eval plugins/team-tools --eval-dir evals --runs 1 --concurrency 1 --max-cost-usd 2 --no-publish --native-json --timeout 600000 --dry-run
 ```
 
 After authoring the case, remove `--dry-run` to run it. `--eval-dir` is relative to the plugin for eval, and to the current Forge root for init. An executed eval makes model calls using the native account, incurs usage, and may execute plugin code. `--no-publish` requests local reports; native defaults may publish a private report to Claude depending on the environment. Use `--output-dir <path>` for report files and `--model` / `--judge-model` to select models. Native cost limits and runtime timeouts govern different parts of the run; interrupted commands may leave partial results.

@@ -5,9 +5,9 @@
 The CLI supports English (`en`, the default) and German (`de`). Select a language for one invocation:
 
 ```sh
-node bin/app.js --lang de help
-node bin/app.js help make --lang de
-node bin/app.js --lang en schema --json
+node bin/forge.js --lang de help
+node bin/forge.js help make --lang de
+node bin/forge.js --lang en schema --json
 ```
 
 For a persistent workspace preference, set `settings.language` in `bin/config.json`:

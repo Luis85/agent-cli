@@ -83,7 +83,7 @@ export class ProjectService {
     const plan = this.scaffolder.project(name, this.projectsDirectory);
     const result = await this.workspace.write(plan);
     return { project: { schemaVersion: 1, name, type: 'library', directory }, ...result, ...this.preview(plan), nextSteps: [
-      { scope: 'workspace', command: `node bin/app.js project open ${name}` },
+      { scope: 'workspace', command: `node bin/forge.js project open ${name}` },
       { scope: 'project', directory, command: 'npm install' },
       { scope: 'project', directory, command: 'npm run check' },
       { scope: 'project', directory, command: 'npm run dev' },

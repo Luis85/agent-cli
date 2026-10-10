@@ -9,13 +9,13 @@ This tutorial creates two reusable components, composes a dashboard and previews
 From a workspace containing the portable distribution:
 
 ```sh
-node bin/app.js components init --dry-run
-node bin/app.js components init
-node bin/app.js components list
-node bin/app.js components inspect page
-node bin/app.js components validate
-node bin/app.js make ui page --framework react --stories --dry-run
-node bin/app.js make ui page --framework react --stories
+node bin/forge.js components init --dry-run
+node bin/forge.js components init
+node bin/forge.js components list
+node bin/forge.js components inspect page
+node bin/forge.js components validate
+node bin/forge.js make ui page --framework react --stories --dry-run
+node bin/forge.js make ui page --framework react --stories
 ```
 
 `components init` creates starter definitions in `paths.components` (default `components`). It preserves IDs already in the library and adds missing starters. Starter components are semantic HTML building blocks; adding a component file extends the library without a CLI rebuild. `components create notice --tag aside` creates a minimal definition to customize. The library is discovered recursively from `.md` files, so organize it into subdirectories if useful. Each ID must be unique across the entire library. The starters cover page/layout/header/footer/navigation, text and links, form controls, tables/lists, disclosure/dialog and media elements, plus card, container, stack, grid, breadcrumbs, alert, status, badge, avatar, modal, accordion, toolbar, pagination and search. Layout primitives supply class names; the application supplies their CSS. They provide semantic structure. Attach [declarative interactions](../reference/interactions.md) to generate local behavior; styling and complete widget accessibility remain application work.
@@ -23,9 +23,9 @@ node bin/app.js make ui page --framework react --stories
 The generated UI defaults to `src/ui` and stories to `stories` in the open project, or the workspace when no project is open. To target a managed project for one invocation:
 
 ```sh
-node bin/app.js project create portal
-node bin/app.js make ui page --framework vue --project portal --stories --dry-run
-node bin/app.js make ui page --framework vue --project portal --stories
+node bin/forge.js project create portal
+node bin/forge.js make ui page --framework vue --project portal --stories --dry-run
+node bin/forge.js make ui page --framework vue --project portal --stories
 ```
 
 This does not open or persist the project. `project open portal` selects it for later invocations. The generated project needs the chosen framework's build dependencies and application integration; creating a Forge project does not install Vue, React or Storybook.
@@ -119,8 +119,8 @@ An overview page composed from the reusable surface component.
 Then validate and preview:
 
 ```sh
-node bin/app.js components validate
-node bin/app.js make ui dashboard --framework react --out src/dashboard --stories --stories-out stories/dashboard --dry-run
+node bin/forge.js components validate
+node bin/forge.js make ui dashboard --framework react --out src/dashboard --stories --stories-out stories/dashboard --dry-run
 ```
 
 Generation includes the selected component and its transitive component references. A component with `slot: children` renders content supplied by its caller. The first iteration has one default child slot; it does not define named slots or arbitrary template code.

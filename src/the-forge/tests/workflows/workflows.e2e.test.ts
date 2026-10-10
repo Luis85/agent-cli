@@ -59,7 +59,7 @@ describe('workflows command family', () => {
   });
 
   it('keeps this workspace\'s generated GitHub workflows in sync with every project\'s authored workflows', () => {
-    const result = spawnSync(process.execPath, [join(workspaceRoot, 'bin/app.js'), '--json', 'workflows', 'sync', '--check'], { cwd: workspaceRoot, encoding: 'utf8', timeout: 30_000 });
+    const result = spawnSync(process.execPath, [join(workspaceRoot, 'bin/forge.js'), '--json', 'workflows', 'sync', '--check'], { cwd: workspaceRoot, encoding: 'utf8', timeout: 30_000 });
     expect(result.stderr).toBe('');
     const body = JSON.parse(result.stdout);
     expect(body.error).toBeUndefined();

@@ -26,7 +26,7 @@ it('sets up a portable installation idempotently while preserving user-owned fil
     expect(await readFile(join(installation, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
     const repeated = cli(['setup'], undefined, invocation);
     expect(repeated.status).toBe(0); expect(repeated.body.data.changes).toEqual([]); expect(committedEvents(repeated.body.events)).toEqual([]);
-    const installed = { entry: join(installation, 'bin/app.js'), root: null, cwd: bundle };
+    const installed = { entry: join(installation, 'bin/forge.js'), root: null, cwd: bundle };
     const config = cli(['config'], undefined, installed);
     expect(config.status).toBe(0); expect(config.body.data.root).toBe(installation);
     expect(cli(['make', 'document', 'Installed Entity', '--template', 'entity.md', '--date', '2026-10-07'], undefined, installed).status).toBe(0);

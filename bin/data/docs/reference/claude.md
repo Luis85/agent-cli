@@ -5,8 +5,8 @@
 `claude` manages native Claude Code definitions and invokes an installed Claude Code CLI for plugin lifecycle operations. Native file operations use Forge's revisions, dry runs, path containment and post-commit events. See [manage Claude Code](../how-to/manage-claude.md) for complete editing workflows.
 
 ```sh
-node bin/app.js claude capabilities --json
-node bin/app.js help claude
+node bin/forge.js claude capabilities --json
+node bin/forge.js help claude
 ```
 
 The capabilities response lists supported hook events, handler types, plugin components and runtime operations. Forge preserves unknown metadata and extension fields while validating known fields. Claude Code determines whether those fields work in the installed version. The upstream references are [subagents](https://code.claude.com/docs/en/sub-agents), [hooks](https://code.claude.com/docs/en/hooks), [plugin components](https://code.claude.com/docs/en/plugins-reference) and [settings](https://code.claude.com/docs/en/settings).

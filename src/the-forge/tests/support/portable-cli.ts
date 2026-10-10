@@ -27,7 +27,7 @@ export function portableCli() {
   });
   function cli(args: string[], input?: string | Buffer, invocation: Invocation = {}) {
     const root = invocation.root === undefined ? project : invocation.root;
-    const result = spawnSync(process.execPath, [invocation.entry ?? join(bundle, 'bin/app.js'), ...(root === null ? [] : ['--root', root]), '--json', ...args], {
+    const result = spawnSync(process.execPath, [invocation.entry ?? join(bundle, 'bin/forge.js'), ...(root === null ? [] : ['--root', root]), '--json', ...args], {
       cwd: invocation.cwd ?? project, encoding: 'utf8', input, timeout: 30_000, env: { ...process.env, NODE_PATH: '' },
     });
     expect(result.error).toBeUndefined();

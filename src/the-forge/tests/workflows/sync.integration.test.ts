@@ -36,7 +36,7 @@ beforeEach(async () => {
   await project('app');
   await project('site');
   await put('src/app/src/infrastructure/workflows/check/check.yml', check);
-  await put('src/app/src/infrastructure/workflows/guard/workflows.yaml', 'on:\n  pull_request:\n    paths: [/**]\njobs:\n  guard:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node "$GITHUB_WORKSPACE/bin/app.js" workflows sync --check\n');
+  await put('src/app/src/infrastructure/workflows/guard/workflows.yaml', 'on:\n  pull_request:\n    paths: [/**]\njobs:\n  guard:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node "$GITHUB_WORKSPACE/bin/forge.js" workflows sync --check\n');
   await put('src/site/src/infrastructure/workflows/check/check.yml', check.replace('app check', 'site check'));
   // Not a managed project: no marker, so its workflows are ignored.
   await put('src/loose/src/infrastructure/workflows/check/check.yml', check);

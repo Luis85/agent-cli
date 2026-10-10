@@ -11,7 +11,7 @@ const { version, config } = JSON.parse(await readFile('package.json', 'utf8'));
 const bin = resolve(config.distribution);
 const bundle = JSON.parse(await readFile(join(bin, 'package.json'), 'utf8'));
 if (bundle.version !== version) throw new Error('Bundle version differs from package.json. Run npm run build before releasing.');
-const executable = JSON.parse(execFileSync(process.execPath, [join(bin, 'app.js'), '--version'], { encoding: 'utf8' }));
+const executable = JSON.parse(execFileSync(process.execPath, [join(bin, 'forge.js'), '--version'], { encoding: 'utf8' }));
 if (executable.data?.version !== version) throw new Error('Executable version differs from package.json. Run npm run build before releasing.');
 const manifest = JSON.parse(await readFile(join(bin, 'data/distribution.json'), 'utf8'));
 if (manifest === null || typeof manifest !== 'object' || manifest.schemaVersion !== distributionPolicy.schemaVersion || !Array.isArray(manifest.files) || new Set(manifest.files).size !== manifest.files.length || !distributionPolicy.requiredAssets.every(path => manifest.files.includes(path))) throw new Error('Missing or invalid distribution manifest. Run npm run build.');
@@ -49,7 +49,7 @@ try {
   }
   // Never publish local configuration, project context, plugins or templates.
   await copyFile(join(staging, 'bin/config/default.json'), join(staging, 'bin/config.json'));
-  await chmod(join(staging, 'bin/app.js'), 0o755);
+  await chmod(join(staging, 'bin/forge.js'), 0o755);
   for (const directory of ['plugins', 'templates']) {
     await mkdir(join(staging, 'bin', directory));
     await writeFile(join(staging, 'bin', directory, '.gitkeep'), '');

@@ -43,7 +43,7 @@ describe('Forge project management', () => {
     expect(result.changes.some(change => change.path === 'projects/billing/.forge/project.json')).toBe(true);
     expect(result.preview?.find(file => file.path === 'projects/billing/AGENTS.md')?.content).toContain('npm run check');
     expect(result.nextSteps).toEqual([
-      { scope: 'workspace', command: 'node bin/app.js project open billing' },
+      { scope: 'workspace', command: 'node bin/forge.js project open billing' },
       { scope: 'project', directory: 'projects/billing', command: 'npm install' },
       { scope: 'project', directory: 'projects/billing', command: 'npm run check' },
       { scope: 'project', directory: 'projects/billing', command: 'npm run dev' },

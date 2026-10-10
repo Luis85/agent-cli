@@ -4,7 +4,7 @@ Copy one prompt at a time and attach its named input files. Work in the consumin
 
 Use this instruction with every stage:
 
-> Read AGENTS.md and the actual repository scripts first. Preserve requirement/use-case/test IDs and existing decisions. Label evidence as observed, assumed, proposed or not run, and cite its source. Never invent research, test results or deployment status. Read `node bin/app.js config --json`, `schema --json` and `project current --json` from the workspace when CLI work is needed; verify context and check both exit status and JSON `ok`. Preview writes, inspect conflicts and preserve concurrent work. Continue authorized work autonomously. Ask only for missing decisions that block dependent work; use existing authorization when it already covers an action. End with changed artifacts, verification evidence and unresolved decisions, not a duplicate of every document.
+> Read AGENTS.md and the actual repository scripts first. Preserve requirement/use-case/test IDs and existing decisions. Label evidence as observed, assumed, proposed or not run, and cite its source. Never invent research, test results or deployment status. Read `node bin/forge.js config --json`, `schema --json` and `project current --json` from the workspace when CLI work is needed; verify context and check both exit status and JSON `ok`. Preview writes, inspect conflicts and preserve concurrent work. Continue authorized work autonomously. Ask only for missing decisions that block dependent work; use existing authorization when it already covers an action. End with changed artifacts, verification evidence and unresolved decisions, not a duplicate of every document.
 
 ## 1. Refine the opportunity and PRD
 
