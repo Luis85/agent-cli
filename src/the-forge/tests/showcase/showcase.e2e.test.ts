@@ -1,23 +1,16 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
-import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join, relative } from 'node:path';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 import { workspaceRoot } from '../support/workspace.ts';
+import { listFiles } from '../../scripts/showcase/tree.mjs';
 
 const showcase = join(workspaceRoot, 'src/forge-showcase');
 const targets = ['html', 'htmx', 'vanilla', 'vue', 'svelte', 'react', 'angular'];
 const libraries = ['--library', 'src/forge-showcase/library/components', '--interactions-library', 'src/forge-showcase/library/interactions'];
 const portable = portableCli();
 const cli = (args: string[]) => portable.cli(args);
-
-async function files(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { recursive: true, withFileTypes: true });
-  return entries.filter(entry => entry.isFile())
-    .map(entry => relative(showcase, join(entry.parentPath, entry.name)).split('\\').join('/'))
-    .filter(path => !path.split('/').includes('node_modules'))
-    .sort();
-}
 
 /** Obsidian-style resolution: exact vault path or unique file name, with an optional .md extension. */
 function unresolvedLinks(vault: string[], path: string, text: string) {
@@ -30,7 +23,8 @@ function unresolvedLinks(vault: string[], path: string, text: string) {
 
 let tree: string[];
 beforeAll(async () => {
-  tree = await files(showcase);
+  // The showcase script's own inventory skips its toolchain outputs (node_modules, dist, reports).
+  tree = listFiles(showcase);
   // A private copy keeps the checkout's own project selection untouched.
   await mkdir(join(portable.project, 'bin'), { recursive: true });
   await writeFile(join(portable.project, 'bin/config.json'), JSON.stringify({ schemaVersion: 1, paths: { projects: 'src' } }));
