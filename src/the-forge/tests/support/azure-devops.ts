@@ -148,6 +148,7 @@ export class FakeAzureDevOps {
       const field = /^\/fields\/(.+)$/.exec(operation.path)?.[1];
       const format = /^\/multilineFieldsFormat\/(.+)$/.exec(operation.path)?.[1];
       const relation = /^\/relations\/(\d+|-)$/.exec(operation.path)?.[1];
+      if (field && operation.op === 'remove' && !(field in item.fields)) return `TF401320: Field ${field} has no value to remove.`;
       if (field && operation.op === 'remove') delete item.fields[field];
       else if (field && (operation.op === 'add' || operation.op === 'replace')) item.fields[field] = operation.value;
       else if (format && operation.op === 'add') item.multilineFieldsFormat[format] = String(operation.value).toLowerCase();

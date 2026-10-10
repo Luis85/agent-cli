@@ -101,10 +101,11 @@ async function pushAll(context: ValueContext, { connection, connector }: BoundCo
   };
   for (const plan of plans) {
     if (plan.create && options.direction === 'pull') { report.skipped.push({ path: plan.path, reason: 'not synced yet; a push creates it' }); continue; }
-    const fields = keys(plan.create ? plan.local : plan.push);
+    const values = plan.create ? new Map([...plan.local].filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0))) : plan.push;
+    const fields = keys(values);
     if (fields.length === 0) continue;
     if (!live) { (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields }); continue; }
-    const change = remoteChange(context, plan.create ? plan.local : plan.push) as RemotePatch;
+    const change = remoteChange(context, values) as RemotePatch;
     if (change.parentId !== undefined) { const parent = parentId(change.parentId); if (parent === undefined) delete change.parentId; else change.parentId = parent; }
     try {
       const result: RemoteItem = plan.create

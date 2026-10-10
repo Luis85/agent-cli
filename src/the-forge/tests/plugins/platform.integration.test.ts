@@ -41,6 +41,29 @@ describe('plugin services', () => {
     await expect(cyclic.registry.activate(cyclic.events, context)).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_CYCLE', details: { plugins: ['alpha', 'beta', 'alpha'] } });
   });
 
+  it('orders optional services like required ones when a provider is enabled and reports their absence through has', async () => {
+    const { registry, events } = setup(), order: string[] = [];
+    let available: boolean[] = [];
+    registry.register({ manifest: manifest('backlog'), optional: ['sync.hub', 'other.hub'], onload(context) { order.push('backlog'); available = [context.services.has('sync.hub'), context.services.has('other.hub')]; } }, events);
+    registry.register({ manifest: manifest('sync'), provides: { 'sync.hub': {} }, onload() { order.push('sync'); } }, events);
+    await registry.activate(events, context);
+    expect(order).toEqual(['sync', 'backlog']);
+    expect(available).toEqual([true, false]);
+    const pluginContext = registry.pluginContext(registry.plugins[0]!, context, events);
+    expect(() => pluginContext.services.get('other.hub')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'other.hub' } }));
+    expect(() => pluginContext.services.has('undeclared.hub')).toThrow(expect.objectContaining({ code: 'PLUGIN_SERVICE_MISSING' }));
+    expect(() => setup().registry.register({ manifest: manifest('bad'), optional: ['Not An Id'] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: 'optional must list service ids.' }));
+    await registry.dispose(events);
+  });
+
+  it('keeps a core plugin whose optional service provider is disabled', () => {
+    const { registry, events } = setup();
+    const core = (id: string, contributions: Partial<Plugin> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
+    registerCorePlugins(registry, events, [core('hub', { provides: { hub: {} } }), core('user', { optional: ['hub'] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['hub']);
+    expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['user']);
+    expect(registry.disabled.map(plugin => plugin.id)).toEqual(['hub']);
+  });
+
   it('rejects duplicate providers and service ids outside a user plugin namespace', () => {
     const { registry, events } = setup();
     registry.register({ manifest: manifest('alpha'), provides: { 'alpha.api': {} } }, events);

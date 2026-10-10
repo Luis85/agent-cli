@@ -7,6 +7,8 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
 import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
+import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
+import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { backlogVault, runBacklog } from '../support/backlog.ts';
 import { offlineHost } from '../support/core-plugins.ts';
 
@@ -34,6 +36,17 @@ describe('choosing the backlog', () => {
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['bases']);
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases', 'backlog']);
     expect(registry.commands.has('backlog')).toBe(false);
+  });
+
+  it('stays enabled without the connector plugins, whose service only backlog sync uses', async () => {
+    const registry = new Registry(), events = new EventBus(new NodeEventScope());
+    registerHostEvents(events);
+    registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['connector']);
+    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['connector', 'connector-azure-devops']);
+    expect(registry.commands.has('backlog')).toBe(true);
+    vault = await backlogVault({ 'a/Backlog.base': base('a', '    connection: contoso\n'), 'a/Epic.md': note({ type: 'Epic', order: 1 }) });
+    expect((await runBacklog(vault.root, ['list'])).data.total).toBe(1);
+    await expect(runBacklog(vault.root, ['sync'])).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'connectors' } });
   });
 });
 

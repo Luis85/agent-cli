@@ -37,7 +37,9 @@ function fieldOperations(change: RemotePatch, context: PatchContext): PatchOpera
 /** The JSON Patch document that creates a work item, including its area and its parent link. */
 export function createOperations(draft: RemoteDraft, context: PatchContext): PatchOperation[] {
   const { type: _type, ...rest } = draft;
-  const operations = fieldOperations(rest, context);
+  // A new item has no value to clear: null and empty values are left out.
+  const set = Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0)));
+  const operations = fieldOperations({ ...set, ...(rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value]) => value !== null)) } : {}) }, context);
   if (draft.area) operations.push(field('System.AreaPath', draft.area));
   if (draft.parentId && context.mapping.fields.parent !== null) operations.push({ op: 'add', path: '/relations/-', value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
   return operations;
