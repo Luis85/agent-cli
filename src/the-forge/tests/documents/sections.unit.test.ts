@@ -28,6 +28,14 @@ describe('section edits by heading path', () => {
     expect(section(plan, 'Goals', 'append', 'Ship v2.')).toBe(plan.replace('Ship v1.\n', 'Ship v1.\nShip v2.\n'));
   });
 
+  it('separates appended lines from a last block that ends in its ^id, so the block keeps its id', () => {
+    const note = '# A\n\nPara ^p\n\n# B\n';
+    const edited = section(note, 'A', 'append', 'More.');
+    expect(edited).toBe('# A\n\nPara ^p\n\nMore.\n\n# B\n');
+    expect(metadata(edited).blocks).toHaveProperty('p');
+    expect(section('# A\r\n\r\n- item ^li', 'A', 'append', '- next')).toBe('# A\r\n\r\n- item ^li\r\n\r\n- next\r\n');
+  });
+
   it('matches ancestors in order, not necessarily direct parents, and falls back to letter case only without an exact match', () => {
     expect(section(plan, 'Plan > Mitigations', 'replace', 'Train.')).toBe(plan.replace('Hire early.', 'Train.'));
     expect(section(plan, 'plan > risks > mitigations', 'replace', 'Train.')).toBe(plan.replace('Hire early.', 'Train.'));

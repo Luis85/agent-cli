@@ -6,6 +6,8 @@ export type RangeEditMode = 'replace' | 'append' | 'prepend';
 export const rangeEditModes: readonly RangeEditMode[] = ['replace', 'append', 'prepend'];
 /** SECTION_NOT_FOUND and AMBIGUOUS_SECTION list at most this many headings or candidates. */
 const reportedHeadings = 50;
+/** A line that ends a block with its `^id` marker. */
+const blockIdEnding = /(?:^|\s)\^[A-Za-z0-9-]+\s*$/;
 
 interface Section { heading: HeadingCache; path: string[]; bodyStart: number; end: number }
 
@@ -110,7 +112,9 @@ export function editSection(text: string, metadata: CachedMetadata, heading: str
   const last = text.slice(start, section.end).trimEnd().length;
   const end = last === 0 ? start : Math.min(nextLine(text, start + last - 1), section.end);
   if (mode === 'prepend') return insertLines(text, start, content, newline);
-  if (mode === 'append') return insertLines(text, end, content, newline);
+  // Lines added right after a block that ends in `^id` would join that block and move its id off the end.
+  const endsInBlockId = last > 0 && blockIdEnding.test(text.slice(lineStart(text, start + last), start + last));
+  if (mode === 'append') return insertLines(text, end, endsInBlockId ? `\n${content}` : content, newline);
   const lead = start > 0 && text[start - 1] !== '\n' ? newline : '';
   return text.slice(0, start) + lead + asLines(content, newline) + text.slice(end);
 }
