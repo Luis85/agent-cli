@@ -1,0 +1,11 @@
+# Working on forge-showcase
+
+Read README.md and package.json first. Define acceptance criteria before changing behavior. Keep domain independent of frameworks and I/O; application depends on domain and injected ports. Put adapters in infrastructure and composition in presentation. Respect the enforced import boundaries in configs/.
+
+Run Forge from the containing environment directory: node bin/app.js project open forge-showcase, then node bin/app.js project current before writes. The selection persists in bin/data/context.json; project close clears it. File operations and make outputs target the selected project; project management stays environment scoped and template sources are shared in bin/templates. Add components with node bin/app.js project component WorkItem --kind domain; preview writes with --dry-run. Choose names from the domain, replace example behavior, and add focused tests for invariants and failures. Export only intentional public API from src/index.ts.
+
+Keep source files <=400 code-bearing lines and tests/test support <=450, excluding blank and comment-only lines; split responsibilities instead of compressing code. Label tests *.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts. Favor unit tests, add integration tests for boundaries, and reserve e2e tests for public workflows. Run a layer with npm test -- --project unit (replace unit with integration or e2e for those layers).
+
+Form definitions live in src/presentation/forms/*.form.ts and share the typed form-model/form-view runtime; npm run dev shows the HTML preview. Use make form from the containing environment to add a definition and unit tests. Zod owns validation; do not duplicate validation in HTML event handlers or submit data without an explicit application callback.
+
+Run npm commands from this project directory. Install with npm ci after a lockfile exists (npm install once for a fresh scaffold, then commit the lockfile). Run focused tests while editing and npm run check:fast after changes. Repair diagnostics at their source; do not weaken checks, widen entry globs, or add suppressions to obtain a pass. Run npm run check before handoff and report commands, results, and limitations. Introduce dependencies only for a concrete need.

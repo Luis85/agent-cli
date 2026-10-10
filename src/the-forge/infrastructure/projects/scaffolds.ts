@@ -78,7 +78,7 @@ export function projectScaffold(name: string, projectsDirectory: string): WriteR
           { from: 'infrastructure', allow: ['domain', 'application', 'infrastructure'] },
           { from: 'presentation', allow: ['domain', 'application', 'infrastructure', 'presentation'] },
         ],
-        coverage: { requireAllFiles: true, allowUnmatched: ['tests/**', 'scripts/**', 'vite.config.ts', 'vitest.config.ts', 'src/the-forge/vite-env.d.ts'] },
+        coverage: { requireAllFiles: true, allowUnmatched: ['tests/**', 'scripts/**', 'vite.config.ts', 'vitest.config.ts', 'src/vite-env.d.ts'] },
       },
     }),
     'tsconfig.json': json({
@@ -92,7 +92,7 @@ export function projectScaffold(name: string, projectsDirectory: string): WriteR
     }),
     'vite.config.ts': `import { defineConfig } from 'vite';\n\nexport default defineConfig(({ mode }) => ({\n  base: './',\n  build: mode === 'demo' ? { outDir: 'demo-dist' } : {\n    target: 'es2022',\n    lib: { entry: 'src/index.ts', formats: ['es'], fileName: () => 'index.js' },\n    rollupOptions: { external: ['zod'] },\n  },\n}));\n`,
     'index.html': demoHtml,
-    'src/the-forge/vite-env.d.ts': '/// <reference types="vite/client" />\n',
+    'src/vite-env.d.ts': '/// <reference types="vite/client" />\n',
     'src/presentation/demo.ts': demoScript,
     'src/presentation/demo.css': demoStyle,
     'src/presentation/forms/form-model.ts': formModel,

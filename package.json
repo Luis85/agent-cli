@@ -21,7 +21,9 @@
     "lint": "node scripts/quality/lint.mjs",
     "analyze": "node scripts/quality/analyze.mjs",
     "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
-    "check:structure": "node scripts/quality/structure.mjs --source-layout forge"
+    "check:structure": "node scripts/quality/structure.mjs --source-layout forge",
+    "showcase": "node scripts/showcase.mjs",
+    "showcase:check": "node scripts/showcase.mjs --check"
   },
   "dependencies": {
     "commander": "^15.0.0",

@@ -18,6 +18,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [plugins](plugins/) | Plugin lifecycle, generators, events, and skill installation |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
+| [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
 | [templates](templates/) | Template rendering, required inputs, planning-pack installation, and project workflows |
 | [ui](ui/) | Component definitions, composition, renderers, Storybook, real framework compilation, and CLI workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |

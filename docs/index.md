@@ -29,6 +29,7 @@ For users who already know their goal. Each guide states the needed context and 
 | Create and inspect a native HTML form | [Generate and preview forms](how-to/generate-forms.md) |
 | Extend the CLI with trusted Node modules | [Enable or disable plugins](how-to/enable-plugins.md) |
 | Maintain native Claude agents, hooks and plugin installations | [Manage Claude Code](how-to/manage-claude.md) |
+| Browse the committed example project, regenerate it and check drift | [Explore the showcase](how-to/explore-the-showcase.md) |
 | Diagnose checks and deliver a verified repository change | [Develop and test](how-to/develop-and-test.md) |
 | Package or upgrade the portable executable | [Build a release](how-to/release.md) |
 

@@ -226,6 +226,12 @@ describe('Forge project management', () => {
     expect(componentScaffold('billing', 'Invoice', 'projects')).toEqual(componentScaffold('billing', 'Invoice', 'projects'));
   });
 
+  it('places Vite client types at the generated source root without Forge source folders', () => {
+    const paths = projectScaffold('billing', 'projects').map(request => request.path);
+    expect(paths).toContain('projects/billing/src/vite-env.d.ts');
+    expect(paths.filter(path => path.includes('/src/the-forge/'))).toEqual([]);
+  });
+
   it('checks the generated library and both component kinds, diagnoses mistakes, and passes after repair', async () => {
     await service().create('billing');
     await service().component('billing', 'Invoice');
