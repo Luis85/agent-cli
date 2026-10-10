@@ -14,17 +14,28 @@ import { type JsonSchema } from '../../domain/schema/json-schema.ts';
  * - `unknownAction`: the code for a first argument that names no declared action, `UNKNOWN_GENERATOR` or
  *   `INVALID_ARGUMENT`. It outranks option errors, so options of an unknown action never read as `UNKNOWN_OPTION`.
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
+ * - `destructive`: whether a mutating mode can replace or remove existing content. Default `true` for a mutating
+ *   mode, so only modes that never touch existing files (`create`, `setup`) declare `false`.
+ * - `idempotent`: whether repeating the identical invocation has no further effect. Default: a read-only mode is
+ *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
+ *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
+ * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
  */
 export type CommandScope = 'workspace' | 'project';
 declare const unknownActionCodes: readonly ["UNKNOWN_GENERATOR", "INVALID_ARGUMENT"];
 export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
+/**
+ * `schema` describes the JSON document a string option or argument holds or names, such as `apply`'s plan; `help`
+ * and `schema` publish it with the option or argument.
+ */
 export interface CommandOption {
     type: 'string' | 'boolean';
     description: string;
     enum?: readonly string[];
     default?: string | boolean;
     required?: boolean;
+    schema?: JsonSchema;
 }
 export interface CommandArgument {
     name: string;
@@ -32,18 +43,23 @@ export interface CommandArgument {
     required?: boolean;
     enum?: readonly string[];
     variadic?: boolean;
+    schema?: JsonSchema;
 }
 export interface CommandMode {
     scope?: CommandScope;
     discovery?: boolean;
     mutating?: boolean;
     projectOption?: string;
+    destructive?: boolean;
+    idempotent?: boolean;
 }
 export interface CommandAction extends CommandMode {
     description: string;
     usage?: string;
     /** Options accepted only with this action, besides the command's own; names never repeat a command option. */
     options?: Readonly<Record<string, CommandOption>>;
+    /** JSON Schema of `data` for this action; overrides the command's `output`. */
+    output?: JsonSchema;
 }
 export interface CommandMetadata extends CommandMode {
     id: string;
@@ -88,19 +104,30 @@ export declare function optionTypes(options: CommandMetadata['options']): Record
  * options; when the first argument is optional, a further branch without arguments covers the default action.
  */
 export declare function commandInputSchema(command: CommandMetadata): JsonSchema;
+/** A declared output schema as a standalone JSON Schema 2020-12 document. */
+export declare const outputDocument: (title: string, schema: JsonSchema) => JsonSchema;
+/**
+ * The published schema of `data` in a successful response to one invocation: the selected action's own `output`,
+ * else the command's, or `undefined` when neither declares one.
+ */
+export declare function commandOutputSchema(command: CommandMetadata, args: readonly string[]): JsonSchema | undefined;
 /**
  * Annotations for agents: the default mode's scope and discovery, plus each action's refinement. `mutating` (and
- * `readOnlyHint`, its negation) covers every mode, so a command is read-only only when none of its actions mutates.
+ * `readOnlyHint`, its negation) covers every mode, so a command is read-only only when none of its actions mutates;
+ * `destructiveHint` holds when any mode is destructive and `idempotentHint` only when every mode is idempotent.
  */
 export declare function commandAnnotations(command: CommandMetadata): {
     actions?: {
         [k: string]: {
+            outputSchema?: JsonSchema | undefined;
             options?: Readonly<Record<string, CommandOption>> | undefined;
             projectOption?: string | undefined;
+            readOnlyHint: boolean;
+            destructiveHint: boolean;
+            idempotentHint: boolean;
             scope: CommandScope;
             discovery: boolean;
             mutating: boolean;
-            readOnlyHint: boolean;
             usage?: string | undefined;
             description: string;
         };
@@ -110,6 +137,8 @@ export declare function commandAnnotations(command: CommandMetadata): {
     discovery: boolean;
     mutating: boolean;
     readOnlyHint: boolean;
+    destructiveHint: boolean;
+    idempotentHint: boolean;
 };
 /** Validates contributed metadata before registration; every problem is INVALID_PLUGIN. */
 export declare function validateCommandMetadata(command: Record<string, unknown>): void;

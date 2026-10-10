@@ -16,21 +16,37 @@ import { jsonSchemaDialect, schemaIssues, type JsonSchema } from '../../domain/s
  * - `unknownAction`: the code for a first argument that names no declared action, `UNKNOWN_GENERATOR` or
  *   `INVALID_ARGUMENT`. It outranks option errors, so options of an unknown action never read as `UNKNOWN_OPTION`.
  * - `projectOption`: a string option that explicitly selects the project (`make ui --project web`).
+ * - `destructive`: whether a mutating mode can replace or remove existing content. Default `true` for a mutating
+ *   mode, so only modes that never touch existing files (`create`, `setup`) declare `false`.
+ * - `idempotent`: whether repeating the identical invocation has no further effect. Default: a read-only mode is
+ *   idempotent, and so is one that requires `--if-match`: the repeat fails on the changed revision. A mode whose
+ *   `--if-match` is optional declares `idempotent` itself when a repeat is refused or changes nothing.
+ * - `output`: the JSON Schema of `data` in a successful response, on the command or, overriding it, on an action.
  */
 export type CommandScope = 'workspace' | 'project';
 const unknownActionCodes = ['UNKNOWN_GENERATOR', 'INVALID_ARGUMENT'] as const;
 export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
+/**
+ * `schema` describes the JSON document a string option or argument holds or names, such as `apply`'s plan; `help`
+ * and `schema` publish it with the option or argument.
+ */
 export interface CommandOption {
   type: 'string' | 'boolean'; description: string;
-  enum?: readonly string[]; default?: string | boolean; required?: boolean;
+  enum?: readonly string[]; default?: string | boolean; required?: boolean; schema?: JsonSchema;
 }
-export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean }
-export interface CommandMode { scope?: CommandScope; discovery?: boolean; mutating?: boolean; projectOption?: string }
+export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean; schema?: JsonSchema }
+const documentSchema = (value: unknown) => value === undefined || schemaIssues(value).length === 0;
+export interface CommandMode {
+  scope?: CommandScope; discovery?: boolean; mutating?: boolean; projectOption?: string;
+  destructive?: boolean; idempotent?: boolean;
+}
 export interface CommandAction extends CommandMode {
   description: string; usage?: string;
   /** Options accepted only with this action, besides the command's own; names never repeat a command option. */
   options?: Readonly<Record<string, CommandOption>>;
+  /** JSON Schema of `data` for this action; overrides the command's `output`. */
+  output?: JsonSchema;
 }
 export interface CommandMetadata extends CommandMode {
   id: string; description: string; usage: string;
@@ -97,11 +113,24 @@ export function optionTypes(options: CommandMetadata['options']): Record<string,
   return Object.fromEntries(Object.entries(options ?? {}).map(([key, schema]) => [key, schema.type]));
 }
 
-function optionSchema(schema: CommandOption): JsonSchema {
-  return { type: schema.type, description: schema.description, ...(schema.enum ? { enum: [...schema.enum] } : {}), ...(schema.default === undefined ? {} : { default: schema.default }) };
+/**
+ * A string option or argument with a declared `schema` holds or names a JSON document (inline JSON, `@file`, `-` or
+ * a path, as its description says); the input schema carries the document's schema as a 2020-12 content annotation.
+ */
+function documentContent(schema: JsonSchema | undefined): JsonSchema {
+  if (schema === undefined) return {};
+  const { $schema: _dialect, ...document } = schema;
+  return { contentMediaType: 'application/json', contentSchema: document };
 }
 
-const positionalSchema = (arg: CommandArgument): JsonSchema => ({ type: 'string', description: arg.description, ...(arg.enum ? { enum: [...arg.enum] } : {}) });
+function optionSchema(schema: CommandOption): JsonSchema {
+  return {
+    type: schema.type, description: schema.description, ...(schema.enum ? { enum: [...schema.enum] } : {}),
+    ...(schema.default === undefined ? {} : { default: schema.default }), ...documentContent(schema.schema),
+  };
+}
+
+const positionalSchema = (arg: CommandArgument): JsonSchema => ({ type: 'string', description: arg.description, ...(arg.enum ? { enum: [...arg.enum] } : {}), ...documentContent(arg.schema) });
 
 /** `args` and `options` of one invocation shape; `action` pins the first argument to one action id. */
 function invocationSchema(usage: string, args: readonly CommandArgument[], options: Readonly<Record<string, CommandOption>>, action?: string): JsonSchema {
@@ -150,22 +179,55 @@ export function commandInputSchema(command: CommandMetadata): JsonSchema {
 }
 
 /**
+ * Behavior hints of one mode, named as MCP tool annotations: `readOnlyHint` negates `mutating`; `destructiveHint`
+ * and `idempotentHint` follow the declared `destructive` and `idempotent` fields or their derived defaults.
+ */
+function modeHints(command: CommandMetadata, args: readonly string[]) {
+  const action = selectedAction(command, args);
+  const { mutating } = commandMode(command, args);
+  // Only a required --if-match guards every invocation; an optional one is often omitted, as in `backlog add`.
+  const guarded = commandOptions(command, args)['if-match']?.required === true;
+  return {
+    readOnlyHint: !mutating,
+    destructiveHint: mutating && (action?.destructive ?? command.destructive ?? true),
+    idempotentHint: !mutating || (action?.idempotent ?? command.idempotent ?? guarded),
+  };
+}
+
+/** A declared output schema as a standalone JSON Schema 2020-12 document. */
+export const outputDocument = (title: string, schema: JsonSchema): JsonSchema => ({ $schema: jsonSchemaDialect, title: `${title} output`, ...schema });
+
+/**
+ * The published schema of `data` in a successful response to one invocation: the selected action's own `output`,
+ * else the command's, or `undefined` when neither declares one.
+ */
+export function commandOutputSchema(command: CommandMetadata, args: readonly string[]): JsonSchema | undefined {
+  const action = selectedAction(command, args);
+  if (action?.output) return outputDocument(`${command.id} ${args[0] ?? command.defaultAction}`, action.output);
+  return command.output ? outputDocument(command.id, command.output) : undefined;
+}
+
+/**
  * Annotations for agents: the default mode's scope and discovery, plus each action's refinement. `mutating` (and
- * `readOnlyHint`, its negation) covers every mode, so a command is read-only only when none of its actions mutates.
+ * `readOnlyHint`, its negation) covers every mode, so a command is read-only only when none of its actions mutates;
+ * `destructiveHint` holds when any mode is destructive and `idempotentHint` only when every mode is idempotent.
  */
 export function commandAnnotations(command: CommandMetadata) {
   const { scope, discovery } = commandMode(command, []);
-  const modes = [commandMode(command, []), ...Object.keys(command.actions ?? {}).map(id => commandMode(command, [id]))];
-  const mutating = modes.some(mode => mode.mutating);
+  const modes = [[], ...Object.keys(command.actions ?? {}).map(id => [id])];
+  const hints = modes.map(args => ({ ...commandMode(command, args), ...modeHints(command, args) }));
+  const mutating = hints.some(mode => mode.mutating);
   return {
     scope, discovery, mutating, readOnlyHint: !mutating,
+    destructiveHint: hints.some(mode => mode.destructiveHint), idempotentHint: hints.every(mode => mode.idempotentHint),
     ...(command.defaultAction === undefined ? {} : { defaultAction: command.defaultAction }),
     ...(command.actions ? { actions: Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
       const mode = commandMode(command, [id]);
       return [id, {
         description: action.description, ...(action.usage ? { usage: action.usage } : {}),
-        scope: mode.scope, discovery: mode.discovery, mutating: mode.mutating, readOnlyHint: !mode.mutating,
+        scope: mode.scope, discovery: mode.discovery, mutating: mode.mutating, ...modeHints(command, [id]),
         ...(mode.projectOption ? { projectOption: mode.projectOption } : {}), ...(action.options ? { options: action.options } : {}),
+        ...(action.output ? { outputSchema: commandOutputSchema(command, [id]) } : {}),
       }];
     })) } : {}),
   };
@@ -181,11 +243,13 @@ function validateOptions(options: Record<string, unknown>, shared: Readonly<Reco
     ensure(schema.enum === undefined || (Array.isArray(schema.enum) && schema.enum.length > 0 && schema.enum.every(item => typeof item === 'string')), 'INVALID_PLUGIN', `Command option ${key} enum must list strings.`);
     ensure(schema.default === undefined || typeof schema.default === schema.type, 'INVALID_PLUGIN', `Command option ${key} default must match its type.`);
     ensure(schema.required === undefined || typeof schema.required === 'boolean', 'INVALID_PLUGIN', `Command option ${key} required must be a boolean.`);
+    ensure(documentSchema(schema.schema) && (schema.schema === undefined || schema.type === 'string'), 'INVALID_PLUGIN', `Command option ${key} schema must be a supported JSON Schema on a string option.`);
   }
 }
 function validateMode(mode: Record<string, unknown>, where: string, options: CommandMetadata['options']): void {
   ensure(mode.scope === undefined || mode.scope === 'workspace' || mode.scope === 'project', 'INVALID_PLUGIN', `${where} scope must be workspace or project.`);
-  for (const key of ['discovery', 'mutating']) ensure(mode[key] === undefined || typeof mode[key] === 'boolean', 'INVALID_PLUGIN', `${where} ${key} must be a boolean.`);
+  for (const key of ['discovery', 'mutating', 'destructive', 'idempotent']) ensure(mode[key] === undefined || typeof mode[key] === 'boolean', 'INVALID_PLUGIN', `${where} ${key} must be a boolean.`);
+  ensure(mode.output === undefined || schemaIssues(mode.output).length === 0, 'INVALID_PLUGIN', `${where} output must be a supported JSON Schema: ${schemaIssues(mode.output).join('; ')}`);
   ensure(mode.projectOption === undefined || (typeof mode.projectOption === 'string' && options?.[mode.projectOption]?.type === 'string'), 'INVALID_PLUGIN', `${where} projectOption must name a declared string option.`);
 }
 
@@ -198,7 +262,7 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   validateOptions(options);
   validateMode(command, where, options as CommandMetadata['options']);
   ensure(command.args === undefined || (Array.isArray(command.args) && command.args.every((arg: unknown, index, all) => isRecord(arg) && text(arg.name) && text(arg.description)
-    && (arg.variadic === undefined || (arg.variadic === true && index === all.length - 1)))), 'INVALID_PLUGIN', `${where} args must list named, described arguments; only the last may be variadic.`);
+    && (arg.variadic === undefined || (arg.variadic === true && index === all.length - 1)) && documentSchema(arg.schema))), 'INVALID_PLUGIN', `${where} args must list named, described arguments with supported schemas; only the last may be variadic.`);
   ensure(command.actions === undefined || isRecord(command.actions), 'INVALID_PLUGIN', `${where} actions must be an object.`);
   for (const [id, action] of Object.entries((command.actions ?? {}) as Record<string, unknown>)) {
     ensure(isRecord(action) && text(action.description) && (action.usage === undefined || text(action.usage)), 'INVALID_PLUGIN', `${where} action ${id} requires a description.`);
@@ -208,6 +272,5 @@ export function validateCommandMetadata(command: Record<string, unknown>): void 
   }
   ensure(command.defaultAction === undefined || (typeof command.defaultAction === 'string' && isRecord(command.actions) && Object.hasOwn(command.actions, command.defaultAction)), 'INVALID_PLUGIN', `${where} defaultAction must name a declared action.`);
   ensure(command.unknownAction === undefined || (unknownActionCodes.includes(command.unknownAction as UnknownActionCode) && isRecord(command.actions)), 'INVALID_PLUGIN', `${where} unknownAction must be ${unknownActionCodes.join(' or ')} for a command with actions.`);
-  ensure(command.output === undefined || schemaIssues(command.output).length === 0, 'INVALID_PLUGIN', `${where} output must be a supported JSON Schema: ${schemaIssues(command.output).join('; ')}`);
   ensure(command.errors === undefined || (Array.isArray(command.errors) && command.errors.every(code => typeof code === 'string' && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code))), 'INVALID_PLUGIN', `${where} errors must list UPPER_SNAKE_CASE codes.`);
 }

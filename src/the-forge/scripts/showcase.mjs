@@ -25,7 +25,7 @@ import { buildLog, buildLogPath, readme } from './showcase/readme.mjs';
 import { configureToolchain } from './showcase/toolchain.mjs';
 import { compareTrees, listFiles, lockfileProblems, treeSize } from './showcase/tree.mjs';
 import { buildVault } from './showcase/vault.mjs';
-import { exploreVault } from './showcase/vault-explore.mjs';
+import { exploreVault, planVerification, verifyVault } from './showcase/vault-explore.mjs';
 
 const lockfile = 'package-lock.json';
 const forgeProject = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -68,10 +68,12 @@ async function generate(workspace) {
   buildAutomation(cli);
   const agents = buildAgents(cli);
   configureToolchain(cli);
+  planVerification(cli);
   cli.begin('Documentation');
   const log = [...cli.log];
   cli.create(buildLogPath, buildLog(log));
   cli.replace('README.md', readme(queries, exploration, backlog, sync, agents));
+  verifyVault(cli);
   assertContained(workspace);
   return join(workspace, project.directory);
 }

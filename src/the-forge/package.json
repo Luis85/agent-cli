@@ -22,6 +22,7 @@
     "analyze": "node scripts/quality/analyze.mjs",
     "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
     "check:structure": "node scripts/quality/structure.mjs --source-layout forge",
+    "eval": "node scripts/eval/run.mjs",
     "showcase": "node scripts/showcase.mjs",
     "showcase:check": "node scripts/showcase.mjs --check",
     "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs"

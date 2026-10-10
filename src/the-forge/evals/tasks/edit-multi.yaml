@@ -1,0 +1,16 @@
+id: edit-multi
+title: Apply several replacements to one note at once
+category: editing
+prompt: |
+  In Projects/Alpha.md, call routes trails: replace every "route" with "trail" (so "routes"
+  becomes "trails"), and correct the misspelling "recieve" to "receive". Change nothing else,
+  and apply both changes together or not at all.
+fixture: vault
+reference:
+  - [edit, Projects/Alpha.md, --if-match, "{{revision:Projects/Alpha.md}}", --edits, '[{"find":"route","replace":"trail","all":true},{"find":"recieve","replace":"receive"}]']
+checks:
+  - file: Projects/Alpha.md
+    contains: ["# Alpha: trail sharing\n", "Hikers share planned trails with their group.", "2. Ask testers to receive a trail.\n", "- GPS accuracy in valleys.\n"]
+    notContains: [route, recieve]
+    frontmatter: { status: active, owner: "[[People/Ada]]" }
+  - unchanged: Projects/Beta.md

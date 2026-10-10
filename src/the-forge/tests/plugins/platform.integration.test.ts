@@ -9,10 +9,11 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { reviewOptions } from '../../src/application/generation/controls.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events };
 };
@@ -262,9 +263,9 @@ describe('core plugins', () => {
   it('migrates the skills command and bundled skills into the skills core plugin with German strings', async () => {
     const { registry, events } = setup();
     registerCorePlugins(registry, events, [skillsPlugin], testHost({ skills: registrySkills(registry), fileDates: unusedFileDates }), []);
-    registry.register({ manifest: manifest('quality'), skills: [{ id: 'quality.review', content: 'Review.' }] }, events);
-    expect([...registry.skills.keys()]).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'quality.review']);
-    expect(await registry.commands.get('skills')!.run([], {}, context as PluginContext)).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'quality.review'] });
+    registry.register({ manifest: manifest('quality'), skills: [{ id: 'quality-review', content: '---\nname: quality-review\ndescription: Review. Use before merging.\n---\nReview.\n' }] }, events);
+    expect([...registry.skills.keys()]).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'quality-review']);
+    expect(await registry.commands.get('skills')!.run([], {}, context as PluginContext)).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'quality-review'] });
     expect(new Localizer('de', registry.catalog).command(registry.commands.get('skills')!).description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');
     const disabled = setup();
     registerCorePlugins(disabled.registry, disabled.events, [skillsPlugin], testHost({ skills: registrySkills(disabled.registry), fileDates: unusedFileDates }), ['skills']);

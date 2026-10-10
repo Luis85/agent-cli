@@ -7,6 +7,14 @@ import type { MetadataChange, MetadataIndex } from './ports.ts';
 /** Event payloads carry the cache's JSON form, detached from the live index. */
 const record = (cache: CachedMetadata): CachedMetadataRecord => JSON.parse(JSON.stringify(cache)) as CachedMetadataRecord;
 
+/** The index changes of a committed batch: renamed files, then file changes, in batch order. */
+export function metadataChanges({ renames, changes }: CommittedBatch): MetadataChange[] {
+  return [
+    ...renames.map(({ from, to }): MetadataChange => ({ path: to, oldPath: from, operation: 'renamed' })),
+    ...changes.map(({ path, operation }): MetadataChange => ({ path, operation })),
+  ];
+}
+
 /**
  * Keeps the invocation's metadata index current after each committed batch and publishes Obsidian's
  * `metadataCache` events for it. The index is never built for a write: before the first load in the invocation an
@@ -21,10 +29,7 @@ export class MetadataCacheEvents implements CommitObserver {
   constructor(private readonly events: EventBus, private readonly index: MetadataIndex) {}
 
   async committed({ renames, changes }: CommittedBatch): Promise<void> {
-    const update = await this.index.update([
-      ...renames.map(({ from, to }): MetadataChange => ({ path: to, oldPath: from, operation: 'renamed' })),
-      ...changes.map(({ path, operation }): MetadataChange => ({ path, operation })),
-    ]);
+    const update = await this.index.update(metadataChanges({ renames, changes }));
     if (!update) return;
     const cache = await this.index.load();
     const written = new Set(changes.map(change => change.path)), indexed = new Set(cache.files());

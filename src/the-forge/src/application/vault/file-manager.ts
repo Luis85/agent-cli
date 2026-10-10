@@ -96,7 +96,7 @@ export class FileManager {
       return { dryRun: result.dryRun, path, kind: entry.kind, revision: entry.revision, permanent: true, trashPath: null, deleted, brokenLinks };
     }
     const trashPath = await this.trashDestination(path, entry.kind);
-    const result = await this.workspace.commit({ renames: [{ from: path, to: trashPath, expectedRevision }] }, { operation: 'delete', trash: true });
+    const result = await this.workspace.commit({ renames: [{ from: path, to: trashPath, expectedRevision }] }, { operation: 'delete', trash: [trashPath] });
     const deleted = [
       ...result.renames.flatMap((rename): DeletedEntry[] => rename.kind === 'file' ? [{ path: rename.from, kind: 'file', revision: rename.revision, bytes: rename.bytes }] : []),
       ...folders(result.renames.flatMap(rename => rename.kind === 'folder' ? [rename.from] : []).sort().reverse()),

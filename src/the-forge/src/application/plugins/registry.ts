@@ -11,7 +11,7 @@ import { publishHostEvent } from './host-events.ts';
 import { ensurePluginNamespace, pluginEvents } from './ownership.ts';
 import { ActivationTracker, type PluginStateStore } from './plugin-state.ts';
 import type { CommandFlags, CommandMetadata, CommandMode, CommandOption } from './command-metadata.ts';
-import { validateContributions, type PluginOrigin } from './contributions.ts';
+import { validateContributions, type PluginOrigin, type SkillFrontmatterReader } from './contributions.ts';
 import { activationOrder, pluginServices, serviceProviders, serviceView, type PluginServices } from './plugin-services.ts';
 import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
@@ -99,6 +99,8 @@ export function validatePluginManifest(value: unknown, origin: PluginOrigin = 'u
   ensure(firstDifference === -1 || minimum[firstDifference]! < appVersion[firstDifference]!, 'INCOMPATIBLE_PLUGIN', `Plugin ${value.id} requires agent-cli ${value.minAppVersion} or newer.`);
 }
 export class Registry {
+  /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
+  constructor(private readonly skillFrontmatter: SkillFrontmatterReader) {}
   readonly commands = new Map<string, Command>();
   readonly generators = new Map<string, Generator>();
   readonly skills = new Map<string, Skill>();
@@ -130,7 +132,7 @@ export class Registry {
     validatePluginManifest(plugin.manifest, origin);
     const pluginId = plugin.manifest.id;
     ensure(!this.origins.has(pluginId) && !this.disabled.some(manifest => manifest.id === pluginId), 'DUPLICATE_PLUGIN', pluginId);
-    validateContributions(plugin as unknown as Record<string, unknown>, pluginId, origin);
+    validateContributions(plugin as unknown as Record<string, unknown>, pluginId, origin, this.skillFrontmatter);
     // Stage every capability before publishing any of them. Failed startup must
     // leave the registry and event bus exactly as they were before this plugin.
     const commands = new Map(this.commands), generators = new Map(this.generators), skills = new Map(this.skills);

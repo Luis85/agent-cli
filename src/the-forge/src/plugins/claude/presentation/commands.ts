@@ -18,8 +18,10 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
     scope: 'project', discovery: false, mutating: true, defaultAction: 'capabilities',
     actions: {
       capabilities: { description: 'Describe supported formats, scopes and operations.', scope: 'workspace', discovery: true, mutating: false },
-      agents: { description: 'List, inspect, create, update, remove, enable, disable or export native agents.' },
-      hooks: { description: 'Inspect, check and edit native hook configuration.' },
+      // Agent files and settings need --if-match once they exist, so a repeated write fails with CONFLICT. The
+      // plugins, marketplaces and runtime sections run the installed CLI, whose repeats Forge cannot guarantee.
+      agents: { description: 'List, inspect, create, update, remove, enable, disable or export native agents.', idempotent: true },
+      hooks: { description: 'Inspect, check and edit native hook configuration.', idempotent: true },
       plugins: { description: 'Author Claude plugin assets, or run the installed CLI\'s plugin lifecycle.' },
       marketplaces: { description: 'Add, list, remove or update plugin marketplaces through the installed CLI.' },
       runtime: { description: 'Report, diagnose, install or update the installed Claude Code CLI.' },

@@ -22,7 +22,7 @@ it('sets up a portable installation idempotently while preserving user-owned fil
     expect(setup.status).toBe(0); expect(committedEvents(setup.body.events).length).toBeGreaterThan(0);
     expect(await readFile(join(installation, 'AGENTS.md'), 'utf8')).toBe('# Existing engineering process\n');
     expect(JSON.parse(await readFile(join(installation, 'bin/config.json'), 'utf8')).paths).toEqual({ projects: 'projects' });
-    expect(await readFile(join(installation, '.agents/skills/forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
+    for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(installation, skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
     expect(await readFile(join(installation, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
     const repeated = cli(['setup'], undefined, invocation);
     expect(repeated.status).toBe(0); expect(repeated.body.data.changes).toEqual([]); expect(committedEvents(repeated.body.events)).toEqual([]);

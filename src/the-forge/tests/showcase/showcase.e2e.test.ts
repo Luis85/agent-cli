@@ -48,7 +48,7 @@ describe('committed showcase project', () => {
 
   it('contains an independent project toolchain, CI workflow, agent and skills', () => {
     for (const path of ['.forge/project.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'configs/quality/fallow.json',
-      'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md',
+      'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md', '.claude/skills/forge-workflow/SKILL.md',
       'agents/trailhead-team.yaml', '.claude/agents/trailhead-lead.md', '.claude/agents/spec-writer.md', '.claude/agents/ui-builder.md', '.claude/skills/trace/SKILL.md']) {
       expect(tree).toContain(path);
     }

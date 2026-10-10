@@ -33,6 +33,14 @@ describe('repository self-management defaults', () => {
     expect(source.body.data.document).toEqual({ kind: 'text', content: await readFile(join(selected, 'src/main.ts'), 'utf8') });
   });
 
+  it('passes the strict vault check of its selected source project with the tracked ignore globs', () => {
+    const checked = cli(['vault', 'check', '--strict']);
+    expect(checked.body.error).toBeUndefined();
+    expect(checked.body.context.root).toBe(selected);
+    expect(checked.body.data.summary).toMatchObject({ error: 0 });
+    expect(checked.body.data.summary.files).toBeGreaterThan(100);
+  }, 60_000);
+
   it('previews and commits only inside its selected source tree with the normal revision guards', async () => {
     const path = 'notes/self-management.md';
     const input = ['write', path, '--content', '# Managed by the repository CLI'];
@@ -75,6 +83,7 @@ describe('repository self-management defaults', () => {
     const config = generic.cli(['config'], undefined, { root: null });
     expect(config.status).toBe(0);
     expect(config.body.data.config.paths.projects).toBe('projects');
+    expect(config.body.data.config.plugins.settings['vault-check']).toMatchObject({ ignore: [] });
     expect(generic.cli(['project', 'current'], undefined, { root: null }).body.data.project).toBeNull();
     await expect(readFile(join(generic.bundle, 'bin/data/context.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     const manifest = JSON.parse(await readFile(join(generic.bundle, 'bin/data/distribution.json'), 'utf8')) as { files: string[] };

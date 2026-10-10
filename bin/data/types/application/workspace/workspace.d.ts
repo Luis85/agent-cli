@@ -6,13 +6,16 @@ export interface WriteOptions {
     diff?: boolean;
 }
 /**
- * How a mixed batch is reported. `trash` reports its renames as deletions, because they move files into the
- * hidden `.trash` folder, and publishes no records for folders created there. `previous` holds the snapshots a dry
- * run diffs each write against, keyed by the written path; without it dry runs carry no diffs.
+ * How a mixed batch is reported. `trash` lists trash destinations: renames to or into them are reported as
+ * deletions, because they move files into the hidden `.trash` folder, and no records are published for folders the
+ * batch creates in `.trash`. A write inside a trash destination (a plan that edits a file and then deletes it) only
+ * gives the trashed file its final content: it is neither reported as a change nor published, so the file reads as
+ * deleted. `previous` holds the snapshots a dry run diffs each write against, keyed by the written path; without it
+ * dry runs carry no diffs.
  */
 export interface CommitOptions {
-    operation: 'move' | 'delete';
-    trash?: boolean;
+    operation: 'move' | 'delete' | 'apply';
+    trash?: readonly string[];
     previous?: ReadonlyMap<string, FileSnapshot>;
 }
 export declare class Workspace {
@@ -62,7 +65,8 @@ export declare class Workspace {
      * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
      * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
      * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
-     * observer. A trash batch reports each moved file, then each moved folder (child before parent), as `vault.delete`.
+     * observer. Renames into a `trash` destination are reported after the other renames: each moved file, then each
+     * moved folder (child before parent), as `vault.delete`.
      */
     private committed;
     private notify;

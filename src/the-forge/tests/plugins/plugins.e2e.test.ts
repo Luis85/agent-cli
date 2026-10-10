@@ -18,7 +18,7 @@ it('loads runtime plugins, generators, skills and event subscriptions from a por
         { id: 'quality.fixture', description: 'Fixture', generate({ name, directory }) { return [{ path: directory + '/' + name + '.md', bytes: new TextEncoder().encode('# Fixture') }]; } },
         { id: 'quality.flagged', description: 'Flagged', options: { framework: { type: 'boolean', description: 'A boolean where make ui declares a string' } }, generate({ name, directory, flags }) { return [{ path: directory + '/' + name + '.md', bytes: new TextEncoder().encode(String(flags.framework)) }]; } },
       ],
-      skills: [{ id: 'quality.review', content: 'Review a change.' }],
+      skills: [{ id: 'quality-review', content: '---\\nname: quality-review\\ndescription: Review a change. Use before merging.\\n---\\nReview a change.\\n' }],
       onload(ctx) { this.context = ctx; ctx.events.on('vault.create', () => { throw new Error('Observer failed'); }); },
       onunload() { this.context.events.warn('cleaned up'); }
     };`);
@@ -36,7 +36,7 @@ it('loads runtime plugins, generators, skills and event subscriptions from a por
     expect(cli([...args, 'make', 'quality.flagged', 'Flag', '--framework', '--dry-run']).body.data.preview).toEqual([{ path: 'src/domain/Flag.md', content: 'true' }]);
     expect(cli([...args, 'make', 'entity', 'Order', '--out', 'src/orders', '--dry-run']).status).toBe(0);
     expect(cli([...args, 'help', 'make']).body.data.annotations.actions).toMatchObject({ ui: { options: { framework: { type: 'string' } } }, 'quality.flagged': { options: { framework: { type: 'boolean' }, out: { type: 'string' } } } });
-    expect(cli([...args, 'skills', 'show', 'quality.review']).body.data.content).toBe('Review a change.');
+    expect(cli([...args, 'skills', 'show', 'quality-review']).body.data.content).toBe('---\nname: quality-review\ndescription: Review a change. Use before merging.\n---\nReview a change.\n');
     const discovery = cli([...args, 'schema']);
     expect(discovery.status).toBe(0); expect(discovery.body.warnings).toEqual([]);
     expect(discovery.body.data.commands.map((command: { id: string }) => command.id)).toContain('quality.check');

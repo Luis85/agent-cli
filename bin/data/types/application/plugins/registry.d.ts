@@ -8,7 +8,7 @@ import type { GenerationService } from '../generation/plans.ts';
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
 import { type PluginStateStore } from './plugin-state.ts';
 import type { CommandFlags, CommandMetadata, CommandMode, CommandOption } from './command-metadata.ts';
-import { type PluginOrigin } from './contributions.ts';
+import { type PluginOrigin, type SkillFrontmatterReader } from './contributions.ts';
 import { type PluginServices } from './plugin-services.ts';
 import { PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
@@ -116,6 +116,9 @@ export interface Plugin extends PluginContributions {
 }
 export declare function validatePluginManifest(value: unknown, origin?: PluginOrigin): asserts value is PluginManifest;
 export declare class Registry {
+    private readonly skillFrontmatter;
+    /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
+    constructor(skillFrontmatter: SkillFrontmatterReader);
     readonly commands: Map<string, Command>;
     readonly generators: Map<string, Generator>;
     readonly skills: Map<string, Skill>;

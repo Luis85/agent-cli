@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { literalMatches, replaceUniqueLiteral, reportedMatchLines } from '../../src/domain/documents/literal-edit.ts';
+import { applyLiteralEdits, literalMatches, replaceUniqueLiteral, reportedMatchLines } from '../../src/domain/documents/literal-edit.ts';
+
+describe('ordered multi-edits', () => {
+  const failed = (text: string, edits: Parameters<typeof applyLiteralEdits>[1]) => {
+    try { applyLiteralEdits(text, edits); }
+    catch (error) { return error as { code: string; message: string; details?: Record<string, unknown> }; }
+    throw new Error('Expected the edits to fail.');
+  };
+
+  it('applies each edit to the result of the previous one', () => {
+    expect(applyLiteralEdits('status: draft\nowner: ana\n', [{ find: 'draft', replace: 'ready' }, { find: 'ready\nowner: ana', replace: 'ready\nowner: bo' }])).toBe('status: ready\nowner: bo\n');
+  });
+
+  it('replaces every non-overlapping occurrence with all, which still needs one match', () => {
+    expect(applyLiteralEdits('aaaa todo todo', [{ find: 'todo', replace: 'done', all: true }, { find: 'aa', replace: 'b', all: true }])).toBe('bb done done');
+    expect(failed('text', [{ find: 'z', replace: 'y', all: true }])).toMatchObject({ code: 'NO_MATCH', details: { edit: 0, matches: 0 } });
+  });
+
+  it('names the failing edit by its index and keeps the single-edit details', () => {
+    const error = failed('one two two', [{ find: 'one', replace: '1' }, { find: 'two', replace: '2' }]);
+    expect(error).toMatchObject({ code: 'AMBIGUOUS_EDIT', details: { edit: 1, matches: 2, lines: [1, 1] } });
+    expect(error.message).toMatch(/^Edit 1: /);
+    expect(failed('abc', [{ find: 'a', replace: 'x' }, { find: 'a', replace: 'y' }])).toMatchObject({ code: 'NO_MATCH', details: { edit: 1, find: 'a' } });
+    expect(failed('abc', [])).toMatchObject({ code: 'INVALID_INPUT' });
+  });
+});
 
 const failure = (text: string, find: string) => {
   try { replaceUniqueLiteral(text, find, 'x'); }

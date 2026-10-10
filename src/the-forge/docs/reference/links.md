@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-`links` reports the link graph of the command scope (the selected project, or the workspace when none is selected) from the kernel [metadata index](formats.md#metadata-index): one file's outgoing links and backlinks, every unresolved link, orphaned notes and dead ends. It is read-only and contributed by the `links` [core plugin](plugins.md#core-and-user-plugins) (`src/plugins/links/` in the Forge source), enabled by default; `plugins.disabled: ["links"]` removes it.
+`links` reports the link graph of the command scope (the selected project, or the workspace when none is selected) from the kernel [metadata index](formats.md#metadata-index): one file's outgoing links and backlinks, every unresolved link, orphaned notes and dead ends. It is read-only and contributed by the `links` [core plugin](plugins.md#core-and-user-plugins) (`src/plugins/links/` in the Forge source), enabled by default; `plugins.disabled: ["links"]` removes it. To check the whole vault with severities, missing heading and block anchors, file validity and a failing exit status for CI, use [`vault check`](vault.md).
 
 ```sh
 node bin/forge.js links out notes/plan.md

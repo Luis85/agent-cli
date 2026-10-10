@@ -11,6 +11,7 @@ import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { backlogVault, runBacklog } from '../support/backlog.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 const base = (folder: string, extra = '') => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: ${folder}\n    stateProperty: note.status\n    dependsOnProperty: note.dependsOn\n${extra}`;
 const note = (fields: Record<string, unknown>) => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n`;
@@ -31,7 +32,7 @@ describe('choosing the backlog', () => {
   });
 
   it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
-    const registry = new Registry(), events = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['bases']);
     const warnings: string[] = [];
@@ -46,7 +47,7 @@ describe('choosing the backlog', () => {
   });
 
   it('stays enabled without the connector plugins, whose service only backlog sync uses', async () => {
-    const registry = new Registry(), events = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['connector']);
     await registry.configure({}, async () => [], () => undefined);

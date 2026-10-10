@@ -17,11 +17,15 @@ const changeSummary = (result: { changes: FileChange[]; renames?: FileRename[] }
 /** Dry-run result options; `diff` adds a unified diff to each planned change. */
 export interface WriteOptions { diff?: boolean }
 /**
- * How a mixed batch is reported. `trash` reports its renames as deletions, because they move files into the
- * hidden `.trash` folder, and publishes no records for folders created there. `previous` holds the snapshots a dry
- * run diffs each write against, keyed by the written path; without it dry runs carry no diffs.
+ * How a mixed batch is reported. `trash` lists trash destinations: renames to or into them are reported as
+ * deletions, because they move files into the hidden `.trash` folder, and no records are published for folders the
+ * batch creates in `.trash`. A write inside a trash destination (a plan that edits a file and then deletes it) only
+ * gives the trashed file its final content: it is neither reported as a change nor published, so the file reads as
+ * deleted. `previous` holds the snapshots a dry run diffs each write against, keyed by the written path; without it
+ * dry runs carry no diffs.
  */
-export interface CommitOptions { operation: 'move' | 'delete'; trash?: boolean; previous?: ReadonlyMap<string, FileSnapshot> }
+export interface CommitOptions { operation: 'move' | 'delete' | 'apply'; trash?: readonly string[]; previous?: ReadonlyMap<string, FileSnapshot> }
+const into = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
 const utf8 = (bytes: Uint8Array): string | undefined => {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { return undefined; }
@@ -94,8 +98,10 @@ export class Workspace {
     return this.observe(options.operation, paths, async () => {
       const requests = snapshotWriteRequests(batch.writes ?? []);
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-      const result = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
-      await this.committed(result, options.trash === true);
+      const trash = options.trash ?? [];
+      const committed = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
+      const result = { ...committed, changes: committed.changes.filter(change => !trash.some(destination => into(change.path, destination))) };
+      await this.committed(result, trash);
       const changes = this.dryRun && options.previous ? await this.preview(result.changes, requests, options.previous) : result.changes;
       return { dryRun: this.dryRun, renames: result.renames, changes, folders: result.folders, removedFolders: result.removedFolders };
     }, changeSummary);
@@ -104,21 +110,20 @@ export class Workspace {
    * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new
    * folder (parent before child), one `vault.rename` per moved folder or file, one `vault.*` record per file change
    * in batch order, then `vault.delete` per removed folder (child before parent), and finally run the commit
-   * observer. A trash batch reports each moved file, then each moved folder (child before parent), as `vault.delete`.
+   * observer. Renames into a `trash` destination are reported after the other renames: each moved file, then each
+   * moved folder (child before parent), as `vault.delete`.
    */
-  private async committed(result: BatchResult, trash = false): Promise<void> {
+  private async committed(result: BatchResult, trash: readonly string[] = []): Promise<void> {
     const { renames, changes, folders, removedFolders } = result;
     if (this.dryRun) {
       for (const { path, operation, bytes } of changes) await publishHostEvent(this.events, 'workspace.quick-preview', { path, operation, bytes });
       return;
     }
-    for (const path of folders) if (!(trash && isInTrash(path))) await this.notify(path, 'vault.create', { path, kind: 'folder', operation: 'created' });
-    if (trash) {
-      for (const rename of renames) if (rename.kind === 'file') await this.notify(rename.from, 'vault.delete', { path: rename.from, kind: 'file', revision: rename.revision, bytes: rename.bytes, operation: 'deleted' });
-      for (const rename of [...renames].reverse()) if (rename.kind === 'folder') await this.notify(rename.from, 'vault.delete', { path: rename.from, kind: 'folder', operation: 'deleted' });
-    } else {
-      for (const rename of renames) await this.notify(rename.to, 'vault.rename', { path: rename.to, oldPath: rename.from, kind: rename.kind, ...(rename.kind === 'file' ? { revision: rename.revision } : {}) });
-    }
+    const trashed = (rename: FileRename) => trash.some(destination => into(rename.to, destination));
+    for (const path of folders) if (!(trash.length > 0 && isInTrash(path))) await this.notify(path, 'vault.create', { path, kind: 'folder', operation: 'created' });
+    for (const rename of renames) if (!trashed(rename)) await this.notify(rename.to, 'vault.rename', { path: rename.to, oldPath: rename.from, kind: rename.kind, ...(rename.kind === 'file' ? { revision: rename.revision } : {}) });
+    for (const rename of renames) if (trashed(rename) && rename.kind === 'file') await this.notify(rename.from, 'vault.delete', { path: rename.from, kind: 'file', revision: rename.revision, bytes: rename.bytes, operation: 'deleted' });
+    for (const rename of [...renames].reverse()) if (trashed(rename) && rename.kind === 'folder') await this.notify(rename.from, 'vault.delete', { path: rename.from, kind: 'folder', operation: 'deleted' });
     for (const { path, revision, operation, bytes } of changes) await this.notify(path, vaultEvents[operation], { path, kind: 'file', revision, bytes, operation });
     for (const path of removedFolders) await this.notify(path, 'vault.delete', { path, kind: 'folder', operation: 'deleted' });
     const moved = renames.filter((rename): rename is FileRename & { kind: 'file' } => rename.kind === 'file');

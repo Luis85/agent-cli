@@ -18,7 +18,7 @@ Failures have `ok:false` and `error:{code,message,hint?,retryable?,details?}`. A
 
 `context` identifies the executed scope, rather than just the saved selection: `workspaceRoot` is the environment root, `root` is the root used for this command, and `project` is the selected project metadata or `null` for workspace scope. Check it before interpreting relative paths in changes or events. `project current` reports the saved selection in `data.project`; workspace commands can have `context.project:null` while a project is open. Version output and failures before scope resolution may have no context.
 
-A listener warning does not make a committed write fail. Check the original `error`, result details and committed `vault.*` events before retrying after a warning or failure: activation, execution or result serialization can fail after earlier work changed state. Reread affected files and their revisions rather than assuming failure rolled everything back. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope schema is versioned by `schema.data.apiVersion` (currently 1).
+A listener warning does not make a committed write fail. Check the original `error`, result details and committed `vault.*` events before retrying after a warning or failure: activation, execution or result serialization can fail after earlier work changed state. Reread affected files and their revisions rather than assuming failure rolled everything back. Plugin commands must follow the same output discipline and return JSON-serializable data. The envelope is published as a JSON Schema at `schema` `data.envelope` and versioned by `data.apiVersion` (currently 1); see the [schema contract](schema.md).
 
 `events` in the envelope is selected by `--events` or `settings.events`, with the flag taking precedence:
 
@@ -34,14 +34,15 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 
 | Command | Arguments/options | Behavior |
 | --- | --- | --- |
-| `help` | `[command]` | The catalog, or one command's description, usage, described options and arguments, annotations (scope, discovery, mutating, readOnlyHint, actions) and error codes; see [command metadata](plugins.md#command-metadata) |
-| `schema` | none | Machine-readable catalog: every command with a JSON Schema 2020-12 `inputSchema`, annotations and error codes; generator and skill IDs; built-in and plugin error codes |
+| `help` | `[command]` | The catalog, or one command's description, usage, described options and arguments, annotations (scope, discovery, mutating, readOnlyHint, destructiveHint, idempotentHint, actions), error codes and output schema; see [command metadata](plugins.md#command-metadata) |
+| `schema` | `[command]` | Machine-readable contract: every command (or one) with a JSON Schema 2020-12 `inputSchema`, its `outputSchema` where declared, annotations and error codes; the response `envelope` schema; generator and skill IDs; built-in and plugin error codes. See the [schema contract](schema.md) |
 | `config` | none | Effective validated configuration and selected paths, with plugin config sections in `config.plugins.settings` and their schemas in `sections` |
 | `templates` | `[list / inspect <template.md> / install [workflow]]` | Discover template inputs or install missing editable workflow templates |
 | `formats` | none | Native extension inventory and processing limits |
 | `list` | `[--kind markdown / canvas / base / image / audio / video / pdf / text / attachment] [--path glob] [--limit count] [--cursor token]` | Sorted files and kinds; ignores symlinks, `.git`, `node_modules` and internal temporary files. See [path globs and paging](#path-globs-and-paging) |
 | `search` | `<pattern> [--regex] [--case-sensitive] [--in body / frontmatter / all] [--skip-code] [--kind markdown / canvas / base / text] [--path glob] [--tag tag] [--property key[=value]] [--context n] [--limit count] [--cursor token]` | Read-only search of visible text files; hits `{path, line, column, match, snippet, before?, after?, revision}` ordered by path, line and column, with `total` and `nextCursor`; see [search](search.md). Contributed by the `search` core plugin |
 | `links` | `out <path> / back <path> / unresolved [--path glob] / orphans [--path glob] / deadends [--path glob]` | Read-only link reports from the metadata index with source `line`/`column`, original text, target and resolution status (`missing`, or `ambiguous` with candidates); see [links](links.md). Contributed by the `links` core plugin |
+| `vault` | `check [--path glob] [--rule id[,id…]] [--strict]` (default) / `tags [--path glob] [--sort name\|count]` / `properties [--path glob] [--name property]` | Read-only vault verification: findings `{rule, severity, path, line, column, message, hint}` for broken links and embeds, invalid notes, Canvas and Bases files, property type conflicts (honouring `.obsidian/types.json`), duplicate block ids, empty files and orphaned attachments; `--strict` fails with `VAULT_CHECK_FAILED` on an `error` finding. Tag and property inventories; see [vault checks](vault.md). Contributed by the `vault-check` core plugin |
 | `agents` | `list / inspect <file[#agent]> / validate [file] / create <name> [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset types] [--if-match hash] / import <agent> --from claude [--file team.yaml] [--if-match hash] / generate --target claude [--file f] [--agent name] [--mcp inline / project] [--settings] [--commands] [--model-style id / alias] [--plan / --plan-out path / --check / --revisions-from path]` | docker-agent definitions in `agents/*.yaml`: schema and semantic validation with JSON-pointer diagnostics, comment-preserving agent creation, Claude agent import, and reviewed generation of `.claude/agents/*.md` with drift checks (`AGENT_DRIFT`, exit 5); see [agents](agents.md). Contributed by the `agents` core plugin |
 | `backlog` | `init [--folder] / list / tree / board / show <item> / add <type> <title> / move <item> / ranks seed, respace / set <item> / depend, undepend <item> --on <item> / iteration add, assign / release add, join, mark-released, readiness, notes, list / check / sync [status / resolve <item> --take local, remote [--field a,b]] [--direction push, pull, both]` with `[--base file.base] [--view name] [--today YYYY-MM-DD]` | A product backlog compatible with the Obsidian Product Backlog view (backlog-view): hierarchy, global ranks, states with stamps, iterations, releases and dependencies in frontmatter, configured by a `.base` view, and two-way sync of bound views with external trackers; see [backlog](backlog.md). Contributed by the `backlog` core plugin |
 | `connectors` | `[list / inspect <id> / test <id>]` | Workspace-scoped, read-only: connection profiles from `plugins.settings.connector.connections` with validity and whether their token variable is set, resolved mappings, and an authenticated probe; see [connectors](connectors.md). Contributed by the `connector` core plugin |
@@ -49,9 +50,10 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `validate` | `<path>` | Structural document check; text files are checked as UTF-8 (`utf8`); attachments are marked `opaque-bytes` |
 | `create` | `<path> [--content text / --from path / --stdin] [--encoding base64]` | New file only; Markdown/Canvas/Base/text can use default empty documents |
 | `write` | `<path> (--content text / --from path / --stdin) [--encoding base64] [--if-match hash]` | Create or replace; existing files require exact hash |
-| `edit` | `<note.md or text file> --if-match hash (--append --content text / --find text --replace text)` | Append or replace exactly one literal match in Markdown or UTF-8 text; no match fails with `NO_MATCH`, and multiple matches, including overlapping matches, fail with `AMBIGUOUS_EDIT` |
+| `edit` | `<note.md or text file> --if-match hash (--find text --replace text / --edits json, @file or - / --append --content text / (--section "A > B" [--section-line n] / --block id) (--replace text / --append --content text / --prepend --content text))` | Replace exactly one literal match, apply an ordered list of literal edits, append to the file, or replace, append or prepend inside a Markdown section or block; see [precise edits](#precise-edits) |
 | `properties` | `<note.md> --set JSON --if-match hash` | Merge top-level frontmatter properties; `null` stores YAML null |
 | `patch` | `<file.canvas/base> --pointer /path --value JSON --if-match hash` | Set a key or existing array element; `-` appends |
+| `apply` | `<plan.json / ->` | Run a JSON plan of `write`, `edit`, `frontmatter`, `move` and `delete` operations in order and commit them as one guarded batch; see [apply plans](#apply-plans) |
 | `move` | `<from> <to> --if-match hash [--no-update-links]` | Move or rename a file or folder and rewrite every link to it in the same batch; see [moving and deleting](#moving-and-deleting) |
 | `rename` | `<path> <new-name> --if-match hash [--no-update-links]` | `move` within the same folder; a file keeps its extension when `<new-name>` omits it |
 | `delete` | `<path> --if-match hash [--recursive] [--permanent] [--allow-broken-links]` | Move a file, or a folder with `--recursive`, to `.trash/`; `--permanent` removes it. Refuses with `HAS_BACKLINKS` while other files link into it |
@@ -69,8 +71,8 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `plugins` | none | Core and user plugins with `core`, `state` (`enabled`, `unavailable`, `disabled`, `skipped`, `rejected`), a `reason` for every state but `enabled`, and contributions; see [core and user plugins](plugins.md#core-and-user-plugins) |
 | `claude` | `capabilities / agents / hooks / plugins / marketplaces / runtime` | Native Claude Code configuration and installed CLI lifecycle; see the [Claude command reference](claude.md) |
 | `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md). Contributed by the `bases` core plugin |
-| `skills` | `[list / show <id> / install] [--out directory]` | List/read skills or create `<out>/<id>/SKILL.md`; default `.agents/skills` in active scope. Contributed by the `skills` core plugin |
-| `setup` | none | Initialize missing app/config, skills, example template and lean AGENTS.md; report existing destinations as skipped |
+| `skills` | `[list / show <id> / install [--target both / claude / agents / --out directory]]` | List/read [Agent Skills](../how-to/install-agent-skills.md) or install each as `<root>/<id>/SKILL.md` in the active scope: into `.claude/skills` and `.agents/skills` by default, one of them with `--target`, or a custom `--out` directory; existing files are refused. Contributed by the `skills` core plugin |
+| `setup` | none | Initialize missing app/config, skills (in `.claude/skills` and `.agents/skills`), example template and lean AGENTS.md; report existing destinations as skipped |
 | `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |
 | `project open` | `<id>` | Persist a managed project as the active scope |
 | `project current` | none | Report the selected project, or `null` |
@@ -93,7 +95,7 @@ node bin/forge.js read assets/diagram.png --json | node -e 'let s="";process.std
 
 ## Dry-run diffs
 
-Dry-run `create`, `write`, `edit`, `properties`, `patch`, `move` and `rename` add `diff` to each entry of `data.changes`. For Markdown, Canvas, Bases and text files with valid UTF-8 content, it is a unified diff with three context lines, `--- a/<path>` and `+++ b/<path>` headers (`--- /dev/null` for a new file) and paths relative to `context.root`. Unchanged content yields `""`. Binary or undecodable content has `diff: null`; compare `bytes` and `revision` instead. Real writes return no `diff`. The text applies with standard tools such as `git apply` from the command root:
+Dry-run `create`, `write`, `edit`, `properties`, `patch`, `move`, `rename` and `apply` add `diff` to each entry of `data.changes`. For Markdown, Canvas, Bases and text files with valid UTF-8 content, it is a unified diff with three context lines, `--- a/<path>` and `+++ b/<path>` headers (`--- /dev/null` for a new file) and paths relative to `context.root`. Unchanged content yields `""`. Binary or undecodable content has `diff: null`; compare `bytes` and `revision` instead. Real writes return no `diff`. The text applies with standard tools such as `git apply` from the command root:
 
 ```sh
 node bin/forge.js edit notes/plan.md --find 'Draft' --replace 'Ready' --if-match YOUR_REVISION --dry-run --json
@@ -104,6 +106,63 @@ node bin/forge.js edit notes/plan.md --find 'Draft' --replace 'Ready' --if-match
 ```
 
 A dry run checks `--if-match` exactly like the real write: a stale or missing revision for an existing file fails with `CONFLICT` (exit 2), with the same `details.currentRevision`, and nothing is written.
+
+## Precise edits
+
+`edit` changes Markdown or UTF-8 text in memory and writes it once, guarded by `--if-match`; a dry run returns the unified diff. Choose one mode:
+
+| Mode | Options | Behavior |
+| --- | --- | --- |
+| Single literal | `--find text --replace text` | `--find` must occur exactly once, counting overlapping matches: none is `NO_MATCH`, several are `AMBIGUOUS_EDIT` with their lines |
+| Multi-edit | `--edits <json / @file / ->` | A JSON list of `{find, replace, all?}` applied in order, each to the result of the previous one. Each `find` must match exactly once, or at least once with `all: true`, which replaces every non-overlapping occurrence. A failing edit reports its code with `details.edit`, its 0-based position; nothing is written. `@file` reads a file in the command scope and `-` standard input. The list's JSON Schema is published as the option's `schema` in `help edit` and `schema`, and as the option's `contentSchema` in `inputSchema` |
+| Append | `--append --content text` | Adds `--content` to the end of the file |
+| Section | `--section "Plan > Risks"` with `--replace text`, `--append --content text` or `--prepend --content text` | Edits the Markdown section under a heading; see below |
+| Block | `--block id` with the same three modes | Edits the block a `^id` marker names; see below |
+
+A section path lists heading texts separated by ` > `: the last segment is the heading, the others its ancestor headings in order, not necessarily direct parents. Headings match their text exactly, or ignoring letter case when no heading matches exactly. Only headings the metadata cache indexes count, so a `#` line inside a code block is not a heading. A section runs from its heading line to the next heading of the same or a higher level, so it includes its subsections. The heading line always stays: `--replace` swaps the section's content, the text between the blank lines that follow the heading and the blank lines before the next heading, keeping both; `--append` inserts after the last content line and `--prepend` before the first one; when that last line ends in a block id (`^id`), `--append` adds a blank line first so the block keeps its id. Inside a segment, write a ` > ` that belongs to the heading text as ` \> ` (`--section "In \> Out"` names the heading `# In > Out`); reported paths escape it the same way. A path that matches no heading fails with `SECTION_NOT_FOUND` and `details.headings` (each heading's full path and 1-based line); one that matches several fails with `AMBIGUOUS_SECTION` and `details.candidates`. Add an ancestor heading, or pass a candidate's line as `--section-line n` (`sectionLine` in an `apply` edit operation), which picks the matching heading that starts on that line; it is the only way to tell apart headings with the same full path. A `--section-line` that no matching heading starts on fails with `SECTION_NOT_FOUND`, `details.line` and the matching headings in `details.headings`.
+
+`--block id` (with or without `^`) addresses a paragraph or list item ending with `^id`, or the table, list, quote or other section before a line holding only `^id`, as Obsidian's block links do. Every mode keeps the id naming the block:
+
+- Paragraph or section: `--replace` swaps the block's text and keeps its marker (a replacement without the marker gets ` ^id` appended to its last line). `--append` inserts after the block, after a marker line that follows it, and `--prepend` before the block's first line; both separate the content from the block and from the text around it with blank lines, so it becomes its own block and never joins the marked paragraph.
+- List item (including a task or a nested item): the block is the item's own text, without its nested items. `--replace` keeps the item's indentation, list marker and checkbox and swaps only its text, so `- [ ] Draft ^x` with `--replace Review` becomes `- [ ] Review ^x`; content that starts with its own list marker, such as `- [x] Draft`, replaces the marker and checkbox too. Further content lines are indented under the item, and nested items stay attached. `--append` and `--prepend` insert sibling items at the item's indentation, after its nested items or before its line: the content must start with a list marker (`- `, `* `, `+ `, `1. ` or `1) `), otherwise it fails with `INVALID_INPUT`, because other text would continue the item and move its `^id` away from the item's end.
+
+A missing id fails with `SECTION_NOT_FOUND` and `details.blocks`; an id on several blocks fails with `AMBIGUOUS_SECTION`, because Obsidian links only the first.
+
+Content is inserted literally as whole lines in the file's line ending: Forge writes every line break in the content, and the one it adds when the content lacks a final one, with the file's first line ending (LF or CRLF), and never joins the content to an existing line. In section edits, add blank lines to the content yourself where Markdown needs them to separate paragraphs.
+
+```sh
+node bin/forge.js edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match YOUR_REVISION --dry-run
+node bin/forge.js edit notes/plan.md --block ship --replace "Ship the beta in May." --if-match YOUR_REVISION
+node bin/forge.js edit src/config.ts --edits '[{"find":"retries: 3","replace":"retries: 5"},{"find":"TODO","replace":"DONE","all":true}]' --if-match YOUR_REVISION
+```
+
+## Apply plans
+
+`apply <plan.json|->` runs a JSON plan, from a file in the command scope or standard input, as one guarded change:
+
+```json
+{"version":1,"operations":[
+  {"op":"edit","path":"notes/Plan.md","section":"Plan > Risks","append":"- Staffing","ifMatch":"REVISION"},
+  {"op":"frontmatter","path":"notes/Plan.md","set":{"status":"active"},"unset":["draft"]},
+  {"op":"move","from":"notes/Plan.md","to":"specs/Roadmap.md"},
+  {"op":"write","path":"specs/README.md","content":"Start at [[Roadmap]].\n"},
+  {"op":"delete","path":"notes/Scratch.md"}
+]}
+```
+
+| `op` | Fields | Behavior |
+| --- | --- | --- |
+| `write` | `path`, `content`, `encoding?` (`utf8` or `base64`) | Creates a file, or replaces one; replacing a file that existed before the plan requires `ifMatch`, like `write --if-match` |
+| `edit` | `path` and one of `edits` (the `--edits` list), `append`, or `section` (with an optional `sectionLine`) or `block` with one of `replace`, `append`, `prepend` | The `edit` modes above; the text values carry the content |
+| `frontmatter` | `path`, `set?` (object), `unset?` (property names) | Sets and removes top-level properties like Obsidian's `processFrontMatter`, keeping the body and YAML formatting; an unchanged note is not written |
+| `move` | `from`, `to`, `updateLinks?` (default `true`) | Moves or renames a file or folder and rewrites links to it, as `move` does |
+| `delete` | `path`, `recursive?`, `allowBrokenLinks?` | Moves a file, or a folder with `recursive: true`, to `.trash/` and refuses with `HAS_BACKLINKS` while other files link into it, as `delete` does; plans never delete permanently |
+
+Every operation accepts `ifMatch`: the revision the file had before the plan ran, as `read` returned it (for a folder, its folder revision). A file keeps that revision across earlier moves in the same plan, so `move a.md b.md` followed by an `edit` of `b.md` can both carry `a.md`'s revision. Without `ifMatch` an operation applies to the planned state; the final commit still guards every touched file with the revision it had when the plan read it.
+
+Operations run in order against the planned state of the vault, through the same code as the single commands: each sees the content, paths and links the operations before it produced, so a `move` rewrites links in notes an earlier `write` or `edit` produced, and an `edit` after a `move` names the new path. Nothing is written until every operation has succeeded. Then the planned state commits as one batch under the writer lock: each original file that ended at another path is renamed (a moved folder whose files stayed together is renamed as one folder), each file with new content is written guarded by its original revision, and a failure while applying rolls every applied step back. A plan that writes or moves a file into a path the same plan vacates fails with `INVALID_PLAN`, because one batch cannot reuse that path; split it into two plans.
+
+The plan is validated against its JSON Schema 2020-12, published as the `plan` argument's `schema` in `help apply` and `schema`, and as that argument's `contentSchema` in `inputSchema`; `outputSchema` describes the result. A schema violation fails with `INVALID_PLAN` and `details.issues`. A failing operation keeps its own code and details, adds `details.operation` (its 0-based index) and prefixes the message with `Operation <n> (<op>):`; a file that changed between planning and commit fails with `CONFLICT` for the operation that last wrote it, or, for the source of a move, delete or folder move, the operation that moved it away, with `details.path` naming the changed path and a message that asks for a fresh `ifMatch`. A dry run returns the whole plan's diff, each written file against its original content. The result is `{dryRun, operations, renames, changes, folders}`: `operations` lists each operation's `index`, `op` and `path` with what it did (`to`, `kind` and `links` for a move, `trashPath` and `brokenLinks` for a delete, `changed` for frontmatter), and `renames`, `changes` and `folders` describe the committed batch. A delete of files the plan created itself trashes nothing and reports `trashPath: null`. A file the plan edits and then deletes moves to `.trash` with its final content but is reported only as deleted: `changes` and the records carry nothing for its trash path. A committed plan publishes one `operation.started`/`operation.succeeded` pair with operation `apply` and one set of records: `vault.create` for new folders, `vault.rename` for moves, `vault.delete` for files moved to the trash, then `vault.create` or `vault.modify` for written files in path order, and, when the metadata cache is loaded (a plan with a move or delete loads it), one round of `metadataCache.*` records.
 
 ## Canvas and Bases
 

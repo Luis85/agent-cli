@@ -15,6 +15,7 @@ import { componentScaffold, projectScaffold } from '../../src/plugins/scaffolds/
 import { commands } from '../../src/presentation/cli/commands.ts';
 import { claudeBytes, claudeInput } from '../../src/plugins/claude/presentation/input.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 let root: string, registry: Registry, context: CommandContext, events: EventBus;
 beforeEach(async () => {
@@ -25,7 +26,7 @@ beforeEach(async () => {
   events.define({ id: 'vault.create', validate: (value): value is object => typeof value === 'object' });
   const workspace = new Workspace(files, new ObsidianDocuments(), events, false);
   context = { workspace, events, root, workspaceRoot: root, project: null, ...scopeServices(workspace, events), input: async () => new Uint8Array() };
-  registry = new Registry();
+  registry = new Registry(skillFrontmatter);
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
     loaded, files,
@@ -40,12 +41,12 @@ beforeEach(async () => {
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
     expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'project', 'workflows',
-      'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
+      'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
     const schema = await registry.commands.get('schema')!.run([], {}, context);
     expect(schema).toMatchObject({ commands: expect.arrayContaining([expect.objectContaining({ id: 'custom.run', description: 'Late command', usage: 'custom.run', options: {}, args: [], errors: [],
-      annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false } })]),
+      annotations: { scope: 'project', discovery: false, mutating: true, readOnlyHint: false, destructiveHint: true, idempotentHint: false } })]),
       generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
     expect(await registry.commands.get('make')!.run([], {}, context)).toMatchObject({ generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
   });

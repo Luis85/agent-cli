@@ -190,6 +190,8 @@ node bin/forge.js rename 'docs/delivery/Trip planner test plan.md' 'Trip planner
 node bin/forge.js rename 'docs/delivery/Trip planner test plan.md' 'Trip planner verification plan' --if-match <revision>
 node bin/forge.js create 'docs/scratch/Packing ideas.md' --stdin < input
 node bin/forge.js delete 'docs/scratch/Packing ideas.md' --if-match <revision>
+node bin/forge.js apply - --dry-run < input
+node bin/forge.js edit 'docs/delivery/Trailhead 1.0 release plan.md' --section 'Trailhead 1.0 release plan > Uncertainties and decisions' --append --content ' - Open: whether UC-003 (offline trail guides) …' --if-match <revision>
 ```
 
 ## Bases queries
@@ -325,4 +327,10 @@ node bin/forge.js claude agents inspect trailhead-lead
 node bin/forge.js project inspect forge-showcase
 node bin/forge.js write src/index.ts --stdin --if-match <revision> < input
 node bin/forge.js write configs/quality/fallow.json --stdin --if-match <revision> < input
+```
+
+## Verification
+
+```sh
+node bin/forge.js vault check --strict
 ```

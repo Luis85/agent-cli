@@ -5,11 +5,11 @@ Tests live under the concern they verify. Every executable test file declares it
 | Concern | Coverage |
 | --- | --- |
 | [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
-| [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling and disabling it through `plugins.disabled` |
+| [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling, the static `bases.validation` checks and disabling it through `plugins.disabled` |
 | [backlog](backlog/) | The `backlog` core plugin: backlog-view conformance fixtures, settings, model, ranks, writes, releases, the CLI workflow, and the sync engine (three-way field decisions, sync state, push/pull/conflict/resolve against the Azure DevOps fake, portable sync) |
 | [connector](connector/) | The `connector` core plugin: connection profiles and their validation, the connectors hub, token handling and redaction, and the kernel HTTP transport (retries, Retry-After, timeouts) |
 | [connector-azure-devops](connector-azure-devops/) | The `connector-azure-devops` core plugin: process mappings, JSON Patch documents, work item reading, Markdown to HTML, and the connector against the in-process Azure DevOps fake (`support/azure-devops.ts`) |
-| [cli](cli/) | Argument parsing, command metadata and its JSON Schema, metadata-driven invocation policy, discovery, errors, and input routing |
+| [cli](cli/) | Argument parsing, command metadata and its JSON Schema, the published schema contract (meta-schema validation, derived annotations, real outputs against output schemas), metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | The `claude` core plugin: native agents, hooks, plugin assets, guarded removal, installed CLI invocation, its `claude.*` events and the `claude.lifecycle` service for trusted plugins, and disabling it |
 | [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
@@ -22,8 +22,10 @@ Tests live under the concern they verify. Every executable test file declares it
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
 | [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
 | [links](links/) | The `links` core plugin: link reports over the metadata cache (out, back, unresolved, orphans with roots, dead ends) and its CLI contract |
+| [vault-check](vault-check/) | The `vault-check` core plugin: `vault check` rules, severities, ignore globs, `--strict`, `.obsidian/types.json`, the optional `bases.validation` service, tag and property inventories, German messages, disabling it, and The Forge's own documentation vault staying free of error findings |
 | [agents](agents/) | The `agents` core plugin: docker-agent conformance over the pinned examples (`fixtures/docker-agent`, copied with attribution by `npm run vendor:docker-agent`), semantic rules, codecs, the Claude mapping per concept, golden generation files (`golden/`, rewritten with `UPDATE_GOLDEN=1`), generation with merges and drift, authoring and import, and its CLI contract |
-| [skills](skills/) | The `skills` core plugin: listing, installation, and disabling it through `plugins.disabled` |
+| [skills](skills/) | The `skills` core plugin: Agent Skills frontmatter of the authored `skills/<id>/SKILL.md` folders, listing, installation into `.claude/skills` and `.agents/skills`, and disabling it through `plugins.disabled` |
+| [evals](evals/) | The agent evaluation harness: the task format, every task in `evals/tasks` replayed by the reference driver with discriminating checks, and the claude driver's transcript summary |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |

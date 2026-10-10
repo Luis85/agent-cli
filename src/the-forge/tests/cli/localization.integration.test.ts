@@ -16,6 +16,7 @@ import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { searchPlugin } from '../../src/plugins/search/plugin.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
+import { vaultCheckPlugin } from '../../src/plugins/vault-check/plugin.ts';
 import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
@@ -26,6 +27,7 @@ import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { bundledCorePlugins, offlineHost, testHost } from '../support/core-plugins.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 // Error-code coverage, including German summaries, lives in error-catalog tests.
 describe('built-in localization catalog coverage', () => {
@@ -42,7 +44,7 @@ describe('built-in localization catalog coverage', () => {
         configSections: () => [],
         async installedPlugins() { throw new Error('Catalog must not list plugin directories'); },
       };
-      const registry = new Registry();
+      const registry = new Registry(skillFrontmatter);
       const kernel = commands(registry, services);
       const ids = kernel.map(command => command.id).sort();
       expect(Object.keys(germanCommands).sort()).toEqual(ids);
@@ -58,11 +60,11 @@ describe('built-in localization catalog coverage', () => {
   });
 
   it('covers every command and error code of the bundled core plugins in German', () => {
-    const registry = new Registry(), bus = new EventBus(new NodeEventScope());
+    const registry = new Registry(skillFrontmatter), bus = new EventBus(new NodeEventScope());
     registerHostEvents(bus);
     const plugins = [
       templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
     ];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }), []);

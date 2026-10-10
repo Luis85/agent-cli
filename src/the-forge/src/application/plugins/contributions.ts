@@ -2,6 +2,10 @@ import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { defaultIssues, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 import { validateCommandMetadata } from './command-metadata.ts';
 import { errorPrefix, PluginCatalog } from './plugin-catalog.ts';
+import { skillIssues, type SkillFrontmatter } from '../../domain/skills/skill.ts';
+
+/** Reads the YAML frontmatter of a SKILL.md; composition injects a complete YAML parser. */
+export type SkillFrontmatterReader = (content: string) => SkillFrontmatter;
 
 export type PluginOrigin = 'core' | 'user';
 const hooks = ['onload', 'onUserEnable', 'onExternalSettingsChange', 'onunload', 'validateSettings'] as const;
@@ -10,18 +14,20 @@ const id = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/;
 
 /**
  * Validates every contribution of one plugin before anything is registered. User plugins prefix command,
- * generator, skill, event and service ids with `<id>.` and error codes with `<ID>_`; bundled core plugins may
+ * generator, event and service ids with `<id>.`, skill ids with `<id>-` and error codes with `<ID>_`; every skill
+ * is an Agent Skill whose frontmatter name equals its id. Bundled core plugins may
  * own bare command, generator, skill and service ids, while their events stay in their own `<id>.*` namespace.
  */
-export function validateContributions(plugin: Record<string, unknown>, pluginId: string, origin: PluginOrigin): void {
-  const inNamespace = (value: string) => value.startsWith(pluginId + '.');
+export function validateContributions(plugin: Record<string, unknown>, pluginId: string, origin: PluginOrigin, frontmatter: SkillFrontmatterReader): void {
+  // Skill ids are Agent Skills folder names, which allow no dots: user plugins prefix them with `<id>-`.
+  const inNamespace = (value: string, key?: typeof lists[number]) => value.startsWith(pluginId + (key === 'skills' ? '-' : '.'));
   for (const hook of hooks) ensure(plugin[hook] === undefined || typeof plugin[hook] === 'function', 'INVALID_PLUGIN', `${hook} must be a function.`);
   for (const key of lists) {
     ensure(plugin[key] === undefined || Array.isArray(plugin[key]), 'INVALID_PLUGIN', `${key} must be an array.`);
     for (const contribution of (plugin[key] ?? []) as unknown[]) {
       ensure(isRecord(contribution) && typeof contribution.id === 'string', 'INVALID_PLUGIN', `Invalid ${key} contribution.`);
       const bare = origin === 'core' && key !== 'events';
-      ensure(bare || inNamespace(contribution.id), 'PLUGIN_NAMESPACE', `Contribution ${contribution.id} must start with ${pluginId}.`);
+      ensure(bare || inNamespace(contribution.id, key), 'PLUGIN_NAMESPACE', `Contribution ${contribution.id} must start with ${pluginId}${key === 'skills' ? '-' : '.'}`);
     }
   }
   for (const command of (plugin.commands ?? []) as Record<string, unknown>[]) {
@@ -29,7 +35,11 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
     validateCommandMetadata(command);
   }
   for (const generator of (plugin.generators ?? []) as Record<string, unknown>[]) validateGenerator(generator);
-  for (const skill of (plugin.skills ?? []) as Record<string, unknown>[]) ensure(typeof skill.content === 'string', 'INVALID_PLUGIN', 'Invalid skill.');
+  for (const skill of (plugin.skills ?? []) as Record<string, unknown>[]) {
+    ensure(typeof skill.content === 'string', 'INVALID_PLUGIN', 'Invalid skill.');
+    const issues = skillIssues(skill.id as string, frontmatter(skill.content));
+    ensure(issues.length === 0, 'INVALID_PLUGIN', issues.join(' '));
+  }
   ensure(plugin.provides === undefined || isRecord(plugin.provides), 'INVALID_PLUGIN', 'provides must map service ids to implementations.');
   for (const key of ['requires', 'optional']) {
     const services = plugin[key];

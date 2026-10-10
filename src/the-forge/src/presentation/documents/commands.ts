@@ -1,12 +1,13 @@
-import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
+import { ensure, isRecord } from '../../domain/shared/errors.ts';
 import { fileKinds, fileKind } from '../../domain/documents/file.ts';
-import { replaceUniqueLiteral } from '../../domain/documents/literal-edit.ts';
 import { pathGlob } from '../../domain/documents/path-glob.ts';
 import { Pager } from '../../domain/shared/paging.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import { arity, integer, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
 import { option } from '../../application/plugins/command-metadata.ts';
 import { encodeText } from '../cli/input.ts';
+import { applyCommand, editCommand } from './edit-commands.ts';
+import { listOutput, readOutput, validateOutput } from './output.ts';
 
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');
@@ -40,10 +41,6 @@ function selectedParts(flags: Record<string, string | boolean>, kind: string): S
   ensure(kind === 'markdown', 'INVALID_ARGUMENT', '--parts body requires a Markdown file.');
   return new Set(parts);
 }
-function utf8Text(bytes: Uint8Array): string {
-  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
-  catch { throw forgeError('INVALID_ENCODING', 'Edits require valid UTF-8 text; use write for binary content.'); }
-}
 
 function defaultDocument(kind: ReturnType<typeof fileKind>): Uint8Array {
   if (kind === 'canvas') return encodeText('{"nodes":[],"edges":[]}\n');
@@ -60,7 +57,7 @@ export function documentCommands(): Command[] {
         path: option.string('Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).'),
         limit: option.string('Maximum number of files; a truncated page returns nextCursor.'),
         cursor: option.string('Continue after the page that returned this nextCursor, with the same --kind and --path.'),
-      }, async run(args, flags, { workspace }) {
+      }, output: listOutput, async run(args, flags, { workspace }) {
       arity(args, 0); const kind = value(flags, 'kind'), glob = value(flags, 'path');
       ensure(kind === undefined || fileKinds.includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${fileKinds.join(', ')}.`);
       const matches = glob === undefined ? () => true : pathGlob(glob);
@@ -70,19 +67,19 @@ export function documentCommands(): Command[] {
       return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
     { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body]', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
-      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts }) }, async run(args, flags, { workspace }) {
+      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts }) }, output: readOutput, async run(args, flags, { workspace }) {
       arity(args, 1); const parts = selectedParts(flags, fileKind(args[0]!));
       const result = await workspace.read(args[0]!);
       if (!isRecord(result.document) || result.document.kind !== 'markdown' || parts.has('body')) return result;
       const { body: _body, ...document } = result.document;
       return { ...result, document };
     } },
-    { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.', usage: 'validate <path>', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'], async run(args, _, { workspace }) {
+    { id: 'validate', description: 'Validate Markdown frontmatter, Canvas graph, Base structure or UTF-8 text.', usage: 'validate <path>', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER', 'INVALID_YAML', 'INVALID_CANVAS', 'INVALID_BASE', 'INVALID_ENCODING'], output: validateOutput, async run(args, _, { workspace }) {
       arity(args, 1); const file = await workspace.files.read(args[0]!); workspace.codec.validate(file.path, file.bytes);
       const kind = fileKind(file.path);
       return { path: file.path, valid: true, kind, validation: ['markdown', 'canvas', 'base'].includes(kind) ? 'structure' : kind === 'text' ? 'utf8' : 'opaque-bytes' };
     } },
-    { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64]', ...writing, args: [pathArgument('New vault path.')], options: contentOptions,
+    { id: 'create', description: 'Create a note, Canvas, Base, or file. Existing files are refused.', usage: 'create <path> [--content text | --from path | --stdin] [--encoding base64]', ...writing, destructive: false, idempotent: true, args: [pathArgument('New vault path.')], options: contentOptions,
       errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
       arity(args, 1); const path = args[0]!;
       const hasInput = flags.content !== undefined || flags.from !== undefined || flags.stdin === true;
@@ -92,22 +89,13 @@ export function documentCommands(): Command[] {
       const bytes = hasInput ? await content(flags, context) : defaultDocument(kind);
       return context.workspace.write([{ path, bytes }], { diff: true });
     } },
-    { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', ...writing, args: [pathArgument()],
+    // Idempotent although --if-match is optional: it is required once the file exists, so a repeat is refused with
+    // CONFLICT, or writes the same bytes when the revision still matches.
+    { id: 'write', description: 'Create or replace a file; replacement requires its current revision.', usage: 'write <path> (--content text | --from path | --stdin) [--encoding base64] [--if-match sha256]', ...writing, idempotent: true, args: [pathArgument()],
       options: { ...contentOptions, 'if-match': ifMatch() }, errors: ['CONFLICT', 'INVALID_INPUT', 'INVALID_ENCODING', 'INVALID_FRONTMATTER', 'INVALID_CANVAS', 'INVALID_BASE'], async run(args, flags, context) {
       arity(args, 1); return context.workspace.write([{ path: args[0]!, bytes: await content(flags, context), expectedRevision: value(flags, 'if-match') }], { diff: true });
     } },
-    { id: 'edit', description: 'Append to Markdown or UTF-8 text, or replace exactly one literal match.', usage: 'edit <note.md|text-file> --if-match sha256 (--append --content text | --find text --replace text)', ...writing, args: [pathArgument()], errors: ['CONFLICT', 'NO_MATCH', 'AMBIGUOUS_EDIT', 'UNSUPPORTED_EDIT', 'INVALID_INPUT', 'INVALID_ENCODING'],
-      options: { 'if-match': ifMatch(true), append: option.boolean('Append --content to the end of the file.'), content: option.string('Text to append with --append.'), find: option.string('Exact literal text that must occur once.'), replace: option.string('Replacement for the --find match.') }, async run(args, flags, { workspace }) {
-      arity(args, 1); const path = args[0]!;
-      ensure(['markdown', 'text'].includes(fileKind(path)), 'UNSUPPORTED_EDIT', 'Use edit for Markdown and text files, patch for Canvas/Bases, and write for attachments.');
-      const revision = value(flags, 'if-match', true)!;
-      return workspace.edit(path, revision, bytes => {
-        const text = utf8Text(bytes);
-        if (flags.append) { ensure(flags.find === undefined && flags.replace === undefined, 'INVALID_INPUT', 'Do not combine append and replace.'); return encodeText(text + value(flags, 'content', true)!); }
-        ensure(flags.content === undefined, 'INVALID_INPUT', '--content requires --append.');
-        return encodeText(replaceUniqueLiteral(text, value(flags, 'find', true)!, value(flags, 'replace', true)!));
-      });
-    } },
+    editCommand(),
     { id: 'properties', description: 'Merge YAML frontmatter properties while preserving the Markdown body.', usage: 'properties <note.md> --set JSON --if-match sha256', ...writing, args: [pathArgument('Markdown note path.')], errors: ['CONFLICT', 'UNSUPPORTED_EDIT', 'INVALID_JSON', 'INVALID_INPUT', 'INVALID_KEY', 'INVALID_FRONTMATTER'],
       options: { set: option.string('JSON object of properties to set.', { required: true }), 'if-match': ifMatch(true) }, async run(args, flags, { workspace }) {
       arity(args, 1); ensure(fileKind(args[0]!) === 'markdown', 'UNSUPPORTED_EDIT', 'Properties require a Markdown note.');
@@ -119,5 +107,6 @@ export function documentCommands(): Command[] {
       arity(args, 1); const pointer = value(flags, 'pointer', true)!, data = parseJson(value(flags, 'value', true)!);
       return workspace.edit(args[0]!, value(flags, 'if-match', true)!, bytes => workspace.codec.patch(args[0]!, bytes, pointer, data));
     } },
+    applyCommand(),
   ];
 }

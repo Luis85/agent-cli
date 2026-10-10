@@ -8,6 +8,15 @@
     "dryRun": false
   },
   "plugins": {
-    "enabled": []
+    "enabled": [],
+    "settings": {
+      "vault-check": {
+        "ignore": [
+          "src/README.md",
+          "tests/**",
+          "evals/fixtures/**"
+        ]
+      }
+    }
   }
 }

@@ -1,0 +1,19 @@
+id: links-new-note
+title: Create a linked project note
+category: linking
+prompt: |
+  Create the project note Projects/Gamma.md titled "Gamma: group chat" with the
+  frontmatter properties status: planned and tags: [project], and add a link to it
+  below Beta in the Projects list of Home.md.
+fixture: vault
+reference:
+  - [create, Projects/Gamma.md, --content, "---\nstatus: planned\ntags: [project]\n---\n# Gamma: group chat\n"]
+  - [edit, Home.md, --if-match, "{{revision:Home.md}}", --find, "- [[Projects/Beta]]\n", --replace, "- [[Projects/Beta]]\n- [[Projects/Gamma]]\n"]
+checks:
+  - file: Projects/Gamma.md
+    contains: ["Gamma: group chat"]
+    frontmatter: { status: planned, tags: [project] }
+  - command: [links, back, Projects/Gamma.md]
+    data: { pointer: /backlinks, contains: { source: Home.md } }
+  - command: [links, unresolved]
+    data: { pointer: /links, length: 1 }

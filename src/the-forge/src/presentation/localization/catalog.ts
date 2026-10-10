@@ -1,6 +1,6 @@
 export const germanCommands = {
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
-  schema: 'Maschinenlesbarer Katalog der verfügbaren Funktionen.',
+  schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
   project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
@@ -11,7 +11,8 @@ export const germanCommands = {
   validate: 'Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.',
   create: 'Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.',
   write: 'Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.',
-  edit: 'Markdown oder UTF-8-Text ergänzen oder genau einen wörtlichen Treffer ersetzen.',
+  edit: 'Markdown oder UTF-8-Text gezielt bearbeiten: wörtliche Ersetzungen, Anhängen am Ende oder Bearbeiten eines Abschnitts oder Blocks.',
+  apply: 'Einen JSON-Plan aus Schreib-, Bearbeitungs-, Frontmatter-, Verschiebe- und Löschvorgängen als einen geschützten Stapel ausführen.',
   properties: 'YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.',
   patch: 'Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.',
   delete: 'Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.',

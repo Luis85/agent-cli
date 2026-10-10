@@ -4,10 +4,11 @@ import { registerHostEvents } from '../../src/application/plugins/host-events.ts
 import { Registry, type CommandContext, type PluginManifest } from '../../src/application/plugins/registry.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import type { JsonSchema } from '../../src/domain/schema/json-schema.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Availability test', author: 'Test' });
 const setup = () => {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   return { registry, events };
 };

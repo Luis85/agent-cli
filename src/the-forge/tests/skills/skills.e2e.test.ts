@@ -15,10 +15,24 @@ describe('the skills core plugin', () => {
     expect(cli(['skills', 'show', 'forge-vault']).body.data).toEqual({ id: 'forge-vault', content: expect.stringContaining('name: forge-vault') });
     expect(cli(['skills', 'show', 'missing']).body.error.code).toBe('UNKNOWN_SKILL');
     expect(cli(['skills', 'list', '--out', 'x']).body.error.code).toBe('INVALID_ARGUMENT');
-    expect(cli(['skills', 'install']).status).toBe(0);
-    expect(await readFile(join(fixture.project, '.agents/skills/forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
+    expect(cli(['skills', 'list', '--target', 'claude']).body.error.code).toBe('INVALID_ARGUMENT');
+    const installed = cli(['skills', 'install']);
+    expect(installed.status).toBe(0);
+    // Both agent skill roots by default: Claude Code reads .claude/skills, other agents .agents/skills.
+    expect(installed.body.data.changes.map((change: { path: string }) => change.path)).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog']
+      .flatMap(id => [`.claude/skills/${id}/SKILL.md`, `.agents/skills/${id}/SKILL.md`]));
+    for (const root of ['.claude/skills', '.agents/skills']) {
+      expect(await readFile(join(fixture.project, root, 'forge-workflow/SKILL.md'), 'utf8')).toBe(cli(['skills', 'show', 'forge-workflow']).body.data.content);
+    }
     expect(cli(['skills', 'install']).body.error.code).toBe('CONFLICT');
     await rm(join(fixture.project, '.agents'), { recursive: true, force: true });
+    expect(cli(['skills', 'install', '--target', 'agents']).status).toBe(0);
+    expect(await readFile(join(fixture.project, '.agents/skills/forge-vault/SKILL.md'), 'utf8')).toContain('name: forge-vault');
+    const custom = cli(['skills', 'install', '--out', 'tools/skills', '--dry-run']);
+    expect(custom.body.data.changes.map((change: { path: string }) => change.path)).toContain('tools/skills/forge-backlog/SKILL.md');
+    expect(cli(['skills', 'install', '--out', 'x', '--target', 'claude']).body.error.code).toBe('INVALID_ARGUMENT');
+    expect(cli(['skills', 'install', '--target', 'cursor']).body.error.code).toBe('INVALID_ARGUMENT');
+    for (const root of ['.agents', '.claude']) await rm(join(fixture.project, root), { recursive: true, force: true });
   });
 
   it('is listed as an enabled core plugin, and disabling it removes its command and skills from schema and help', async () => {
@@ -50,9 +64,9 @@ describe('the skills core plugin', () => {
     expect(skills.inputSchema).toMatchObject({ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['args', 'options'] });
     expect(skills.inputSchema.oneOf.map((branch: { title: string }) => branch.title)).toEqual(['skills (list)', 'skills list', 'skills show', 'skills install']);
     expect(skills.inputSchema.oneOf[3]).toMatchObject({
-      properties: { args: { type: 'array', maxItems: 2, prefixItems: [{ const: 'install' }, { type: 'string' }] }, options: { properties: { out: { type: 'string', default: '.agents/skills' } }, additionalProperties: false } },
+      properties: { args: { type: 'array', maxItems: 2, prefixItems: [{ const: 'install' }, { type: 'string' }] }, options: { properties: { target: { type: 'string', enum: ['both', 'claude', 'agents'] }, out: { type: 'string' } }, additionalProperties: false } },
     });
-    expect(skills.annotations).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, actions: { list: { readOnlyHint: true }, install: { scope: 'project', mutating: true } } });
+    expect(skills.annotations).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, destructiveHint: false, actions: { list: { readOnlyHint: true }, install: { scope: 'project', mutating: true, destructiveHint: false, idempotentHint: true } } });
     const { inputSchema: _inputSchema, ...described } = skills;
     expect(cli(['help', 'skills']).body.data).toEqual({ ...described, globalOptions: schema.globalOptions });
     expect(cli(['--lang', 'de', 'help', 'skills']).body.data.description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');

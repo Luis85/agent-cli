@@ -13,6 +13,7 @@ import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts'
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { linksPlugin } from '../../src/plugins/links/plugin.ts';
 import { scopeServices } from '../support/metadata.ts';
+import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
 let root: string;
 const put = async (path: string, content: string) => {
@@ -21,7 +22,7 @@ const put = async (path: string, content: string) => {
 };
 /** Registers the links core plugin like the composition root, with `settings` as plugins.settings. */
 async function links(settings: Record<string, unknown> = {}) {
-  const registry = new Registry(), events = new EventBus(new NodeEventScope());
+  const registry = new Registry(skillFrontmatter), events = new EventBus(new NodeEventScope());
   registerHostEvents(events);
   registerCorePlugins(registry, events, [linksPlugin], testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('links reads no file dates'); } }), []);
   await registry.configure(settings, async () => [], message => events.warn(message));

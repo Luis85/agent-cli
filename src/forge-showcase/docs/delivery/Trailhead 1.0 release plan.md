@@ -66,6 +66,8 @@ Identify intended recipients; this document does not send messages or publish an
 
 Record unresolved operational risks, decisions, owners, and evidence needed for readiness.
 
+- Open: whether UC-003 (offline trail guides) ships in 1.0 or is deferred; owner: Trailhead product team.
+
 ## Execution evidence and review
 
 Record authorization, artifact/commit, timestamps, observed results, and rollback decisions

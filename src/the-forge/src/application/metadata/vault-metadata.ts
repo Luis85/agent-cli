@@ -62,10 +62,12 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   private pending: Promise<unknown> = Promise.resolve();
 
   private readonly member: (path: string) => boolean;
+  private readonly workspaceRoot: boolean;
 
   /** `workspaceRoot` marks an index of the workspace root, which leaves out the workspace's `bin/` distribution. */
   constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser, options: { workspaceRoot?: boolean } = {}) {
     const workspaceRoot = options.workspaceRoot ?? false;
+    this.workspaceRoot = workspaceRoot;
     this.member = path => vaultMember(path, workspaceRoot);
   }
 
@@ -83,6 +85,28 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     if (!this.member(path) || !this.parser.indexes(path)) return null;
     try { return this.parser.parse(path, bytes); }
     catch { return null; }
+  }
+
+  parseContent(path: string, bytes: Uint8Array): CachedMetadata | null {
+    return this.parser.indexes(path) ? this.parser.parse(path, bytes) : null;
+  }
+
+  async fork(repository: FileRepository): Promise<VaultMetadata> {
+    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot });
+    if (!this.loading) return fork;
+    await this.load();
+    await this.pending;
+    // Cached metadata, reference lists, link counts and the link index are replaced on change, never mutated.
+    fork.paths = [...this.paths];
+    for (const [path, cache] of this.caches) fork.caches.set(path, cache);
+    for (const [path, issue] of this.problems) fork.problems.set(path, issue);
+    for (const [path, references] of this.outgoing) fork.outgoing.set(path, references);
+    for (const [path, sources] of this.incoming) fork.incoming.set(path, new Set(sources));
+    Object.assign(fork.resolvedLinks, this.resolvedLinks);
+    Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
+    fork.index = this.index;
+    fork.loading = Promise.resolve();
+    return fork;
   }
 
   update(changes: readonly MetadataChange[]): Promise<MetadataUpdate | null> {
