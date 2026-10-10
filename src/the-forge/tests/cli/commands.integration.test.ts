@@ -32,6 +32,7 @@ beforeEach(async () => {
     get uiLibrary(): never { throw new Error('Document commands must not access UI library'); },
     get dataSources(): never { throw new Error('Document commands must not access data sources'); },
     get interactions(): never { throw new Error('Document commands must not access interactions'); },
+    get workflows(): never { throw new Error('Document commands must not access workflows'); },
     async installTemplates() { throw new Error('Document commands must not install templates'); },
     setup: async () => undefined,
   })) registry.add(registry.commands, command);
@@ -39,7 +40,7 @@ beforeEach(async () => {
 
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
-    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'components', 'data-sources', 'interactions',
+    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'templates', 'project', 'components', 'data-sources', 'interactions', 'workflows',
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'make', 'events', 'plugins', 'skills']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });

@@ -31,7 +31,7 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `conflict` | 2 | The target exists or changed since it was read |
 | `not-found` | 3 | A file, project or selected project is missing |
 | `busy` | 4 | Another Forge writer holds the workspace lock |
-| `drift` | 5 | Generated UI or data-source output differs from its definitions |
+| `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
 | `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
 
 ## Recovering edits and guarded writes
@@ -115,6 +115,8 @@ Plugin-defined codes are not in this catalog. They keep their own shape, without
 | `INVALID_GENERATION_REVISIONS` | 2 | input | no | The revision approval does not match the reviewed plan. | Create a new plan with `--plan-out` and pass that file to `--revisions-from`. |
 | `UI_DRIFT` | 5 | drift | no | Generated UI files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
 | `DATA_SOURCE_DRIFT` | 5 | drift | no | Generated data-source files are missing or differ from their definitions. | Run the same command with `--plan` to review, then regenerate. |
+| `INVALID_WORKFLOW` | 2 | input | no | An authored project workflow is invalid or two workflows generate the same file. | Fix or rename the workflow under `src/infrastructure/workflows/<concern>/` named in the message, then run `workflows sync`. |
+| `WORKFLOW_DRIFT` | 5 | drift | no | Generated GitHub workflows are missing, changed or stale. | Run `workflows sync`, review the changes in `.github/workflows` and commit them with their sources. |
 | `INVALID_UI` | 2 | input | no | A component definition is invalid. | Fix the definition named in the message; run components validate. |
 | `INVALID_UI_LIBRARY` | 2 | input | no | The component library is invalid. | Run components validate and fix the reported definitions. |
 | `INVALID_UI_FRAMEWORK` | 2 | input | no | The UI target is not supported. | Use html, htmx, vanilla, vue, svelte, react or angular. |

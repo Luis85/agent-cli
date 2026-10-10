@@ -87,6 +87,9 @@ export const errorCatalog = {
   INVALID_GENERATION_REVISIONS: entry('input', 'The revision approval does not match the reviewed plan.', 'Create a new plan with --plan-out and pass that file to --revisions-from.'),
   UI_DRIFT: entry('drift', 'Generated UI files are missing or differ from their definitions.', 'Run the same command with --plan to review, then regenerate.'),
   DATA_SOURCE_DRIFT: entry('drift', 'Generated data-source files are missing or differ from their definitions.', 'Run the same command with --plan to review, then regenerate.'),
+  // Project workflows
+  INVALID_WORKFLOW: entry('input', 'An authored project workflow is invalid or two workflows generate the same file.', 'Fix or rename the workflow under src/infrastructure/workflows/<concern>/ named in the message, then run workflows sync.'),
+  WORKFLOW_DRIFT: entry('drift', 'Generated GitHub workflows are missing, changed or stale.', 'Run workflows sync, review the changes in .github/workflows and commit them with their sources.'),
   // UI, interactions and data sources
   INVALID_UI: entry('input', 'A component definition is invalid.', 'Fix the definition named in the message; run components validate.'),
   INVALID_UI_LIBRARY: entry('input', 'The component library is invalid.', 'Run components validate and fix the reported definitions.'),

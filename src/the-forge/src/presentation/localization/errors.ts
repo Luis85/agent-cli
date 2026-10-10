@@ -71,6 +71,9 @@ export const germanErrors = {
   INVALID_GENERATION_REVISIONS: { summary: 'Die Revisionsfreigabe passt nicht zum geprüften Plan.', hint: 'Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from.' },
   UI_DRIFT: { summary: 'Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.', hint: regenerateHint },
   DATA_SOURCE_DRIFT: { summary: 'Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.', hint: regenerateHint },
+  // Projekt-Workflows
+  INVALID_WORKFLOW: { summary: 'Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.', hint: 'Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus.' },
+  WORKFLOW_DRIFT: { summary: 'Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.', hint: 'Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen.' },
   // UI, Interaktionen und Datenquellen
   INVALID_UI: { summary: 'Eine Komponentendefinition ist ungültig.', hint: 'Korrigieren Sie die genannte Definition; prüfen Sie mit components validate.' },
   INVALID_UI_LIBRARY: { summary: 'Die Komponentenbibliothek ist ungültig.', hint: 'Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen.' },

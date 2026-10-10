@@ -16,6 +16,8 @@ import { UiLibrary } from './application/ui/library.ts';
 import { DataSourceLibrary } from './application/data-sources/library.ts';
 import { InteractionLibrary } from './application/interactions/library.ts';
 import { TemplateInstaller } from './application/templates/templates.ts';
+import { WorkflowSync } from './application/workflows/workflows.ts';
+import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
 import { NodeFiles } from './infrastructure/workspace/files.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
@@ -89,6 +91,7 @@ async function run(): Promise<void> {
         get projects() { return new ProjectService(files, environment, config.paths.projects, { project: projectScaffold, component: componentScaffold }); },
         get dataSources() { return new DataSourceLibrary(environment, new MarkdownDataSourceDefinitions(), new TypeScriptDataSourceRenderer()); },
         get interactions() { return new InteractionLibrary(environment, new MarkdownInteractionDefinitions()); },
+        get workflows() { return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer); },
         get uiLibrary() { return new UiLibrary(environment, new MarkdownUiDefinitions(), standardUiCatalog, {
           componentPaths: (definitions, options) => definitions.map(definition => `${options.outputDirectory}/${componentArtifact(definition, options.framework).fileName}`),
           generate: (definitions, options) => [

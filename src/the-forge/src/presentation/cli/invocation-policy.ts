@@ -11,7 +11,7 @@ export function invocationPolicy(id: string, args: readonly string[], flags: Par
   const discovery = ['help', 'schema', 'config', 'formats', 'events', 'plugins', 'setup'].includes(id);
   const claudeCapabilities = id === 'claude' && (args.length === 0 || args[0] === 'capabilities');
   const workspace = flags.help === true || discovery || claudeCapabilities
-    || ['project', 'templates', 'components', 'data-sources', 'interactions'].includes(id)
+    || ['project', 'templates', 'components', 'data-sources', 'interactions', 'workflows'].includes(id)
     || (id === 'make' && (args.length === 0 || args[0] === 'plugin'))
     || (id === 'skills' && args[0] !== 'install');
   const requestedProject = id === 'make' && ['ui', 'stories', 'data-source'].includes(args[0] ?? '') ? value(flags, 'project') : undefined;
