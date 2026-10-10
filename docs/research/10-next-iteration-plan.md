@@ -2,7 +2,7 @@
 
 [Research index](README.md) · Drafted 2026-10-10 · Status: proposal for review
 
-This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request, in the order M1, M1b, M2, M3, M4, M5, M6. Each milestone defines its acceptance examples first and ends with `npm run check`.
+This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request, in the order M1, M1b, M2, M3, M4, M4b, M5, M6. Each milestone defines its acceptance examples first and ends with `npm run check`.
 
 ## Product direction
 
@@ -190,6 +190,50 @@ All writes go through guarded `processFrontMatter`, with the plugin's refusal ru
 - **Acceptance:** conformance fixtures copied from backlog-view (its `docs/Product Backlog.base` and plugin-written notes) round-trip unchanged. Notes created by Forge match the plugin's create output byte for byte, in a fixture-based comparison.
 - **Deferred:** estimation writes, My Work and absences, which Forge reads but does not edit yet.
 
+### M4b: Backlog connectors, starting with Azure DevOps Boards
+
+The backlog connects to external work trackers through dedicated, configurable connectors. Each connector is a self-contained plugin service built on a shared connector contract, so GitHub Issues/Projects and Jira can be added later without changing the backlog or the sync engine.
+
+- **Connector contract.** A connector implements one port: authenticate, query remote items by id or changed-since, create, update, and map between remote items and backlog items. Connectors live in `src/the-forge/src/plugins/connector-<platform>/` and are registered as core plugins. The connector-independent **sync engine** lives in the `backlog` plugin. It owns the item mapping, the per-field three-way comparison, conflict detection and the guarded vault writes. The HTTP transport is an infrastructure adapter behind a port, and tests use a recorded fake of each platform's REST API with no live calls.
+- **Connection profiles in workspace config.** A validated `connectors` config section (contributed by the plugin under plugin contract v2) defines named connections. For Azure DevOps each connection has:
+  - the organization URL and the project;
+  - optionally an area path and an iteration root;
+  - the credential source: the name of an environment variable that holds a personal access token (default `AZURE_DEVOPS_EXT_PAT`), with an optional later Entra ID / `az` CLI token source;
+  - type, state and field mappings, with defaults for the Agile, Scrum and Basic processes.
+
+  Secrets are never stored in config or notes, and responses redact credential values. One repository can define any number of connections to different organizations and projects.
+- **Bases as the sync baseline.** The user creates a `.base` with several views. Each view's query defines the set of backlog items held in sync, and a view option `connection: <id>` binds the view to a connection, so different views can sync different item sets to different organizations or projects. `backlog sync` without arguments syncs every bound view. `--base <file> --view <name>` limits the run to one view.
+- **Two-way sync with explicit conflicts.**
+  - Vault changes push to Azure DevOps, and remote changes pull into the notes.
+  - For each item and connection Forge stores sync state: the remote id and URL, the remote revision, and the field hashes from the last successful sync. The remote URL also goes into a visible frontmatter link property that opens in Obsidian.
+  - A field that changed on one side only is synced. A field that changed on both sides is a conflict: it is reported and left untouched until it is resolved with `backlog sync resolve <item> --take local|remote [--field …]`.
+  - Items the view query no longer returns are not deleted remotely. They are reported as "left the sync set".
+- **Mapped fields in increment one:**
+  - title;
+  - type (Epic, Feature, PBI/User Story, Task, Bug, Issue);
+  - state, mapped to backlog states;
+  - parent hierarchy, through work item links;
+  - iteration and area path;
+  - priority, effort/story points and tags;
+  - description, with the Markdown note body converted to the format Azure DevOps expects.
+
+  Fields that are not mapped are preserved on both sides. Dependencies (`dependsOn` ↔ predecessor links) are included if they fit the increment, otherwise they follow.
+- **Commands:**
+  - `connectors list|inspect|test <id>`: validates config and runs an authenticated, read-only probe.
+  - `backlog sync [--base … --view …] [--dry-run] [--direction push|pull|both]`: by default both directions.
+  - `backlog sync status`: shows pending changes and conflicts without writing.
+  - `backlog sync resolve …`: settles a conflict in favor of one side.
+
+  Every remote write is planned first. `--dry-run` shows the planned remote operations and vault diffs without writing anywhere, while still reading the remote.
+- **Events:** `connector.pushed`, `connector.pulled`, `connector.conflict`, `backlog.synced`, plus normal `vault.*` records for note changes.
+- **Showcase:** the showcase gains a connectors config example, using a fake connection in tests, and a sync Base with two views bound to two different connections.
+- **Acceptance:**
+  - Against the recorded Azure DevOps fake: an initial push creates work items with a correct hierarchy, and a remote state change pulls into the note.
+  - A concurrent title change on both sides is reported as a conflict and changes nothing.
+  - `--dry-run` writes nothing.
+  - Two views sync to two organizations from one repository.
+  - Credentials never appear in output.
+
 ### M5: Migrate the remaining features into core plugins
 
 Migrate `templates`, `scaffolds` (including forms), `ui` (with interactions), `data-sources` and `claude` one per pull request. Generated-project output contracts are preserved. Each migration moves its tests under `tests/<plugin>/` and updates docs, skills and localization.
@@ -214,6 +258,7 @@ The knowledge-graph vision builds on M2 and M6. Specs, backlog items, docs and c
 | Delete semantics | Move to `.trash/` by default, with `--permanent` to remove |
 | Core plugin source layout | `src/the-forge/plugins/<id>/<layer>/…`, with the kernel staying in the existing layer folders |
 | Backlog first cut | Items, hierarchy, ranks, states, dependencies, iterations and releases; estimation, My Work and absences read-only for now |
-| Milestone order | M1 → M1b → M2 → M3 → M4 → M5 → M6 (approved; M1b added for self-contained projects) |
+| Milestone order | M1 → M1b → M2 → M3 → M4 → M4b → M5 → M6 (approved; M1b added for self-contained projects, M4b for backlog connectors) |
+| Connectors | Two-way sync with explicit conflicts; connection profiles in workspace config; Azure DevOps first, then GitHub and Jira (approved) |
 | Project independence | Every project under `src/`, The Forge included, is self-contained with its own toolchain, tests and workflows (approved) |
 | Workflow wiring | Project-authored workflows synced into `.github/workflows/` by `workflows sync`, drift-checked in CI (approved) |
