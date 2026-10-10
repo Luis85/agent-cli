@@ -80,7 +80,7 @@ export async function editNotes(session: BacklogSession, edits: readonly NoteEdi
  * target is written (a dry run linking a note it only plans to rename).
  */
 export function itemEdit(session: BacklogSession, write: ItemWrite, links?: (target: string, source: string) => string): NoteEdit {
-  const env = { settings: session.settings, wikilink: links ?? ((target: string, source: string) => wikilink(session, target, source)), resolve: (linkpath: string, source: string) => session.cache.getFirstLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
+  const env = { settings: session.settings, wikilink: links ?? ((target: string, source: string) => wikilink(session, target, source)), resolve: (linkpath: string, source: string) => session.cache.getClosestLinkpathDest(linkpath, source), typeOf: (path: string) => typeOf(session, path) };
   return {
     path: write.path,
     edit: frontmatter => { const refusal = applyItemWrite(frontmatter, write, env); return refusal ? refused(refusal, `${write.path}: ${messages[refusal]}`, { path: write.path }) : null; },

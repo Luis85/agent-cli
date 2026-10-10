@@ -22,7 +22,17 @@ export const basesPlugin: CorePlugin = {
       commands: [basesCommand(bases)],
       // `bases.query` evaluates a saved view in the caller's command scope: its result files in result order.
       provides: { 'bases.query': { query: (context: CommandContext, path: string, options: { view?: string }) => bases(context).query(path, options) } },
-      strings: { de: { commands: { bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.' } } },
+      strings: {
+        de: {
+          commands: { bases: 'Native Obsidian-Bases-Ansichten ohne laufendes Obsidian als Datei-Repositories abfragen.' },
+          actions: {
+            'bases list': 'Die sichtbaren .base-Dateien im Bereich des Befehls auflisten.',
+            'bases inspect': 'Eine .base-Definition mit ihren Ansichten zurückgeben.',
+            'bases query': 'Eine Ansicht auswerten und ihre passenden Dateien zurückgeben.',
+            'bases capabilities': 'Das Kompatibilitätsprofil der eigenständigen Bases-Auswertung beschreiben.',
+          },
+        },
+      },
     };
   },
 };

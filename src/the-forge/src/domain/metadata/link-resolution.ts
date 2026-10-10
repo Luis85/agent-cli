@@ -100,6 +100,37 @@ export function resolveLinkpath(index: LinkIndex, link: string, source: string, 
   return alias ?? { status: 'unresolved', linkpath: target, reason: 'missing' };
 }
 
+const folderParts = (path: string) => path.split('/').slice(0, -1);
+
+/**
+ * The candidate an Obsidian-style lookup opens for an ambiguous path match: the one whose folder is the fewest
+ * folder steps from the source's folder (steps up to their deepest common folder plus steps down from it), then
+ * the one with the fewest path segments, then the first in vault path order. A candidate in the source's own
+ * folder is therefore always chosen.
+ */
+export function closestCandidate(candidates: readonly string[], source: string): string {
+  const from = folderParts(source);
+  const distance = (path: string) => {
+    const to = folderParts(path);
+    let common = 0;
+    while (common < from.length && common < to.length && from[common] === to[common]) common++;
+    return from.length - common + to.length - common;
+  };
+  const ranked = candidates.map(path => ({ path, distance: distance(path), depth: path.split('/').length }));
+  ranked.sort((a, b) => a.distance - b.distance || a.depth - b.depth || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return ranked[0]!.path;
+}
+
+/**
+ * The file a resolution opens like Obsidian's `getFirstLinkpathDest`: a resolved path, or for a link whose path
+ * matches several files, the closest candidate. Missing targets and alias matches stay null.
+ */
+export function closestDestination(resolution: LinkResolution, source: string): string | null {
+  if (resolution.status === 'resolved' && resolution.via === 'path') return resolution.path;
+  if (resolution.status === 'unresolved' && resolution.reason === 'ambiguous' && resolution.via === 'path') return closestCandidate(resolution.candidates, source);
+  return null;
+}
+
 /**
  * Obsidian's default "shortest" link text for `path` from `source`: the file name when it resolves back to the
  * file, otherwise the full path. Markdown files omit `.md` unless `omitMdExtension` is false.

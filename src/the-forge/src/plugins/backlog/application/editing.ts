@@ -1,11 +1,11 @@
 import { ensure } from '../../../domain/shared/errors.ts';
 import { refused } from '../domain/errors.ts';
-import { daysBetween, formatCivil, readDate, reversedSpan, sameValue } from '../domain/fields.ts';
+import { daysBetween, declaredSpelling, formatCivil, readDate, reversedSpan, sameValue } from '../domain/fields.ts';
 import { dependentsClosure } from '../domain/dependencies.ts';
 import type { BacklogItem } from '../domain/model.ts';
-import { isDoneValue, isStartedValue, type BacklogSettings } from '../domain/settings.ts';
+import { isDoneValue, isStartedValue, workflowKey, workflowOf, workflowValues, type BacklogSettings, type Workflow } from '../domain/settings.ts';
 import {
-  ABSENCE_TYPE, RESOURCE_TYPE, canonicalType, inCatalog, isDeliverableType, isIterationType, isMarkerType, isReleaseType, placementEnds, sameType,
+  ABSENCE_TYPE, RESOURCE_TYPE, canonicalType, isIterationType, isMarkerType, isReleaseType, placementEnds, sameType,
 } from '../domain/vocabulary.ts';
 import type { AxisWrite, ItemWrite } from '../domain/writes.ts';
 import { findItem, typeOf, type BacklogSession } from './session.ts';
@@ -21,14 +21,16 @@ const option = (value: string | undefined) => (value === undefined ? undefined :
 const bound = (key: string, name: string) => {
   if (!key) throw refused('unbound-property', `Bind ${name} in the backlog view first.`, { option: name });
 };
-/** A declared value in its declared spelling, or the value as given. */
-const declared = (values: readonly string[], value: string) => values.find(entry => sameValue(entry, value)) ?? value;
+/** The item's current state in its own workflow. */
+function currentState(item: BacklogItem, workflow: Workflow): string | null {
+  return workflow === 'deliverable' ? item.deliverableStateValue : workflow === 'test' ? item.testStateValue : item.stateValue;
+}
 
 /** The state write of the item's own workflow; only the requirements workflow stamps started and finished dates. */
-export function stateWrite(item: BacklogItem, state: string | null, settings: BacklogSettings, today: string): Partial<ItemWrite> | null {
-  if (isDeliverableType(item.typeName)) return sameValue(item.deliverableStateValue, state) ? null : state === null ? { removeDeliverableStateKey: true } : { deliverableState: state };
-  if (inCatalog(item)) return sameValue(item.testStateValue, state) ? null : state === null ? { removeTestStateKey: true } : { testState: state };
-  if (sameValue(item.stateValue, state)) return null;
+export function stateWrite(item: BacklogItem, workflow: Workflow, state: string | null, settings: BacklogSettings, today: string): Partial<ItemWrite> | null {
+  if (sameValue(currentState(item, workflow), state)) return null;
+  if (workflow === 'deliverable') return state === null ? { removeDeliverableStateKey: true } : { deliverableState: state };
+  if (workflow === 'test') return state === null ? { removeTestStateKey: true } : { testState: state };
   return {
     ...(state === null ? { removeStateKey: true } : { state }),
     ...(settings.startedDateKey && isStartedValue(settings, state) ? { startedDate: today } : {}),
@@ -61,23 +63,25 @@ export async function setFields(session: BacklogSession, request: SetRequest): P
   const item = findItem(session, request.item);
   const write: ItemWrite = { path: item.path };
   const today = formatCivil(session.today);
-  const state = option(request.state);
+  // A typed state takes the spelling its workflow declares, as a board column writes it.
+  const workflow = workflowOf(item.typeName, item.ladder), typed = option(request.state);
+  const state = typed === undefined || typed === null ? typed : declaredSpelling(workflowValues(settings, workflow), typed);
   let stateChange: Partial<ItemWrite> | null = null;
   if (state !== undefined) {
-    bound(isDeliverableType(item.typeName) ? settings.deliverableStateKey || settings.stateKey : inCatalog(item) ? settings.testStateKey || settings.stateKey : settings.stateKey, 'stateProperty');
-    stateChange = stateWrite(item, state, settings, today);
+    bound(workflowKey(settings, workflow), 'stateProperty');
+    stateChange = stateWrite(item, workflow, state, settings, today);
     Object.assign(write, stateChange);
   }
   const horizon = option(request.horizon);
   if (horizon !== undefined) {
     bound(settings.horizonKey, 'horizonProperty');
-    if (horizon === null ? item.ownKeys.horizon : !sameValue(item.horizon.value, horizon)) write.axis = { horizon: horizon === null ? null : declared(settings.horizonValues, horizon) };
+    if (horizon === null ? item.ownKeys.horizon : !sameValue(item.horizon.value, horizon)) write.axis = { horizon: horizon === null ? null : declaredSpelling(settings.horizonValues, horizon) };
   }
   for (const [field, raw, key, name, values, current] of [['risk', request.risk, settings.riskKey, 'riskProperty', settings.riskValues, item.riskValue], ['priority', request.priority, settings.priorityKey, 'priorityProperty', settings.priorityValues, item.priorityValue]] as const) {
     const value = option(raw);
     if (value === undefined) continue;
     bound(key, name);
-    if (value === null ? item.ownKeys[field] : !sameValue(current, value)) write[field] = value === null ? null : declared(values, value);
+    if (value === null ? item.ownKeys[field] : !sameValue(current, value)) write[field] = value === null ? null : declaredSpelling(values, value);
   }
   const schedule = scheduleWrite(session, item, option(request.start), option(request.due));
   if (schedule) write.axis = { ...write.axis, ...schedule };
@@ -96,7 +100,7 @@ export async function setFields(session: BacklogSession, request: SetRequest): P
   }
   const result = await writeItems(session, [write], request.ifMatch);
   const summary = { path: item.path, title: item.title };
-  if (stateChange) await announce(session, result, 'backlog.state-changed', { ...summary, from: item.stateValue, to: state, ...(stateChange.startedDate ? { started: stateChange.startedDate } : {}), ...(stateChange.finish ? { finished: stateChange.finish.toDone ? stateChange.finish.date : null } : {}) });
+  if (stateChange) await announce(session, result, 'backlog.state-changed', { ...summary, from: currentState(item, workflow), to: state, ...(stateChange.startedDate ? { started: stateChange.startedDate } : {}), ...(stateChange.finish ? { finished: stateChange.finish.toDone ? stateChange.finish.date : null } : {}) });
   return { ...result, item: summary };
 }
 

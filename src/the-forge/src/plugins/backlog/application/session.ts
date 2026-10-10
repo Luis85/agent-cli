@@ -8,9 +8,11 @@ import { buildModel, type BacklogItem, type BacklogModel } from '../domain/model
 import { resolveReleaseSettings, resolveSettings, type ReleaseSettings, type ViewOptions } from '../domain/settings-resolve.ts';
 import type { BacklogSettings } from '../domain/settings.ts';
 
-/** The `bases` plugin's declared query service: a view's result files in result order. */
+/** A note the Bases index read with less than its full metadata (`unparseable-note`, `ambiguous-link`). */
+export interface IndexWarning { code: string; path: string; message: string; link?: string }
+/** The `bases` plugin's declared query service: a view's result files in result order and its index warnings. */
 export interface BasesQueryService {
-  query(context: CommandContext, path: string, options: { view?: string }): Promise<{ files: string[]; view: string }>;
+  query(context: CommandContext, path: string, options: { view?: string }): Promise<{ files: string[]; view: string; warnings: IndexWarning[] }>;
 }
 /**
  * Ports the plugin entry wires: Obsidian-style YAML serialization of a new note, a frontmatter edit that rewrites
@@ -39,6 +41,8 @@ export interface BacklogSession {
   /** The base's first `product-release` view, if any. */
   releaseView: { name: string; settings: ReleaseSettings; options: ViewOptions } | null;
   results: string[];
+  /** The Bases index warnings of the evaluation, over every note of the scope. */
+  warnings: IndexWarning[];
 }
 
 function views(data: unknown): View[] {
@@ -92,20 +96,20 @@ async function selectView(context: CommandContext, cache: MetadataCache, selecti
   return { base, view: matches[0]! };
 }
 
-/** NoteSource over the kernel metadata cache: frontmatter, frontmatter links and `getFirstLinkpathDest`. */
+/** NoteSource over the kernel metadata cache: frontmatter, frontmatter links and Obsidian's closest-file resolution. */
 function cacheSource(cache: MetadataCache): NoteSource {
   return {
     frontmatter: path => cache.getFileCache(path)?.frontmatter,
     frontmatterLinks: path => (cache.getFileCache(path)?.frontmatterLinks ?? []).map(link => ({ key: link.key, link: link.link })),
-    resolve: (linkpath, sourcePath) => cache.getFirstLinkpathDest(linkpath, sourcePath),
+    resolve: (linkpath, sourcePath) => cache.getClosestLinkpathDest(linkpath, sourcePath),
   };
 }
 
 /** Builds the model of one view: its Bases results plus context ancestors, read through the metadata cache. */
 async function evaluate(context: CommandContext, bases: BasesQueryService, cache: MetadataCache, base: string, view: string, settings: BacklogSettings) {
-  const results = (await bases.query(context, base, { view })).files;
+  const { files: results, warnings } = await bases.query(context, base, { view });
   const files = new Set(cache.files());
-  return { results, model: buildModel(cacheSource(cache), results, settings, path => files.has(path)) };
+  return { results, warnings, model: buildModel(cacheSource(cache), results, settings, path => files.has(path)) };
 }
 
 export async function openBacklog(context: CommandContext, bases: BasesQueryService, ports: BacklogPorts, selection: Selection): Promise<BacklogSession> {
@@ -113,9 +117,9 @@ export async function openBacklog(context: CommandContext, bases: BasesQueryServ
   const { base, view } = await selectView(context, cache, selection);
   const settings = resolveSettings(view.options);
   const release = base.views.find(entry => entry.type === RELEASE_VIEW);
-  const { results, model } = await evaluate(context, bases, cache, base.path, view.name, settings);
+  const { results, warnings, model } = await evaluate(context, bases, cache, base.path, view.name, settings);
   return {
-    context, ports, cache, source: cacheSource(cache), base, view, settings, model, results, today: selection.today ?? ports.today(),
+    context, ports, cache, source: cacheSource(cache), base, view, settings, model, results, warnings, today: selection.today ?? ports.today(),
     releaseView: release ? { name: release.name, settings: resolveReleaseSettings(release.options), options: release.options } : null,
   };
 }

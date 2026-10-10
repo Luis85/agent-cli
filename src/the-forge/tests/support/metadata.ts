@@ -12,9 +12,9 @@ import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
 
-/** The composed kernel metadata index over a repository, as `main.ts` binds it. */
-export function metadataIndex(files: FileRepository): VaultMetadata {
-  return new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()));
+/** The composed kernel metadata index over a repository, as `main.ts` binds it; `workspaceRoot` leaves out `bin/`. */
+export function metadataIndex(files: FileRepository, options: { workspaceRoot?: boolean } = {}): VaultMetadata {
+  return new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()), options);
 }
 
 /** The scope services of a command context, as `main.ts` binds them: the metadata index and the `app` facade over the workspace. */

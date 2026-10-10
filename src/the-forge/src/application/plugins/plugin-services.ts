@@ -47,7 +47,40 @@ export function activationOrder<T extends ServiceNode>(nodes: readonly T[]): T[]
   return ordered;
 }
 
-/** The lookup a plugin's context receives: only declared services, so dependencies stay visible in manifests. */
+const views = new WeakMap<object, object>();
+
+/**
+ * A read-only view of a service implementation: consumers cannot add, replace or delete its members or change its
+ * prototype (TypeError), while methods still run against the provider's own object, so the provider keeps its
+ * state. The view is shallow: values a method returns are the provider's to protect. Primitives pass through.
+ */
+function readOnly<T>(implementation: T, id: string): T {
+  if (implementation === null || (typeof implementation !== 'object' && typeof implementation !== 'function')) return implementation;
+  const target = implementation as object;
+  const cached = views.get(target);
+  if (cached) return cached as T;
+  const bound = new WeakMap<(...args: unknown[]) => unknown, unknown>();
+  const refuse = (): never => { throw new TypeError(`Service ${id} is read-only for its consumers.`); };
+  const view = new Proxy(target, {
+    get(object, key) {
+      const value: unknown = Reflect.get(object, key, object);
+      const descriptor = Reflect.getOwnPropertyDescriptor(object, key);
+      // A frozen own property must be returned as is (a proxy invariant); everything else callable runs on the provider.
+      if (typeof value !== 'function' || (descriptor && !descriptor.configurable && descriptor.writable === false)) return value;
+      const method = value as (...args: unknown[]) => unknown;
+      if (!bound.has(method)) bound.set(method, method.bind(object));
+      return bound.get(method);
+    },
+    set: refuse, defineProperty: refuse, deleteProperty: refuse, setPrototypeOf: refuse, preventExtensions: refuse,
+  });
+  views.set(target, view);
+  return view as T;
+}
+
+/**
+ * The lookup a plugin's context receives: only declared services, so dependencies stay visible in manifests. Each
+ * service is handed out as a read-only view, so one consumer cannot change what another consumer or the provider sees.
+ */
 export function pluginServices(node: ServiceNode, providers: ReadonlyMap<string, ServiceNode>): PluginServices {
   const declared = (id: string) => {
     const known = (node.requires ?? []).includes(id) || (node.optional ?? []).includes(id) || Object.hasOwn(node.provides ?? {}, id);
@@ -58,7 +91,7 @@ export function pluginServices(node: ServiceNode, providers: ReadonlyMap<string,
       declared(id);
       const provider = providers.get(id);
       ensure(provider, 'PLUGIN_SERVICE_MISSING', `Plugin ${node.manifest.id} uses service ${id}, which no enabled plugin provides.`, { plugin: node.manifest.id, service: id });
-      return provider.provides![id] as T;
+      return readOnly(provider.provides![id] as T, id);
     },
     has(id: string): boolean { declared(id); return providers.has(id); },
   };

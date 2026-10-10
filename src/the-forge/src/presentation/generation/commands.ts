@@ -5,19 +5,20 @@ import { option } from '../../application/plugins/command-metadata.ts';
 import { GenerationService } from '../../application/generation/plans.ts';
 import { ensure } from '../../domain/shared/errors.ts';
 import { globalOptions } from '../cli/arguments.ts';
-import { generationControls, reviewOptions } from './controls.ts';
+import { generationControls, reviewOptions } from '../../application/generation/controls.ts';
 
 export const generatorCatalog = (registry: Registry) => [...registry.generators.values()].map(({ id, description }) => ({ id, description }));
 const out = { out: option.string('Output directory; each generator documents its default.') };
 
-/** The flags a generator accepts besides the global options. */
+/** The flags a generator accepts besides the global options: host-owned --out and review controls plus its own. */
 function generatorOptions(generator: Generator): Record<string, CommandOption> {
   return { ...(generator.fixedDirectory ? {} : out), ...generator.options, ...(generator.review ? reviewOptions : {}) };
 }
 
 /**
- * `make` routes to registered generators by id: kernel, core plugin and user plugin generators alike. Its options
- * and actions are the union of the generators' declared metadata, so scope and help follow each generator.
+ * `make` routes to registered generators by id: kernel, core plugin and user plugin generators alike. Each
+ * generator is one action with its own mode and options, so the parser accepts a generator's options only after
+ * `make <generator>` and one generator's option types never affect another's.
  */
 export function generationCommand(registry: Registry): Command {
   return {
@@ -30,13 +31,12 @@ export function generationCommand(registry: Registry): Command {
       { name: 'name', description: 'The name or id the generator creates from.' },
     ],
     errors: ['UNKNOWN_GENERATOR', 'INVALID_NAME', 'CONFLICT', 'GENERATION_DRIFT', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS', 'PROJECT_REQUIRED'],
-    get options() {
-      return Object.assign({}, ...[...registry.generators.values()].map(generatorOptions)) as Record<string, CommandOption>;
-    },
     get actions() {
       return Object.fromEntries([...registry.generators.values()].map((generator): [string, CommandAction] => [generator.id, {
-        description: generator.description, scope: generator.scope ?? 'project', discovery: false, mutating: generator.mutating ?? true,
+        description: generator.description, usage: generator.usage ?? `make ${generator.id} <Name>`,
+        scope: generator.scope ?? 'project', discovery: false, mutating: generator.mutating ?? true,
         ...(generator.projectOption ? { projectOption: generator.projectOption } : {}),
+        options: generatorOptions(generator),
       }]));
     },
     async run(args, flags, context) {

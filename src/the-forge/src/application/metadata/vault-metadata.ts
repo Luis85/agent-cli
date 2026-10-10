@@ -1,13 +1,25 @@
 import { AppError, errorMessage } from '../../domain/shared/errors.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
-import { fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
+import { closestDestination, fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import type {
   Backlink, LinkCounts, MetadataCache, MetadataChange, MetadataIndex, MetadataIssue, MetadataParser, MetadataUpdate, SourceReference,
 } from './ports.ts';
 
 const pendingFileReads = 16;
-const visible = (path: string) => !path.split('/').some(part => part.startsWith('.'));
+/** The workspace's fixed distribution folder: configuration, plugins, templates and the bundle, not vault content. */
+const workspaceDistribution = 'bin';
+
+/**
+ * The vault rule of enumeration: a path belongs to the vault when no segment starts with a dot (`.obsidian`,
+ * `.trash`, `.forge`, `.git`) and, at the workspace root, it is not below the workspace's `bin/` distribution
+ * (compared without letter case). The index, `search`, `links`, Bases and the `app.vault` listings enumerate only
+ * these paths; direct reads such as `read bin/config.json` are unaffected.
+ */
+export function vaultMember(path: string, workspaceRoot: boolean): boolean {
+  const segments = path.split('/');
+  return !segments.some(part => part.startsWith('.')) && !(workspaceRoot && segments.length > 1 && segments[0]!.toLowerCase() === workspaceDistribution);
+}
 const missing = (error: unknown) => error instanceof AppError && error.code === 'NOT_FOUND';
 const counts = (): Record<string, number> => Object.create(null) as Record<string, number>;
 const vaultOrder = (paths: Iterable<string>) => [...paths].sort();
@@ -49,11 +61,28 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   private loading: Promise<void> | undefined;
   private pending: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser) {}
+  private readonly member: (path: string) => boolean;
+
+  /** `workspaceRoot` marks an index of the workspace root, which leaves out the workspace's `bin/` distribution. */
+  constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser, options: { workspaceRoot?: boolean } = {}) {
+    const workspaceRoot = options.workspaceRoot ?? false;
+    this.member = path => vaultMember(path, workspaceRoot);
+  }
 
   load(): Promise<MetadataCache> {
     this.loading ??= this.build();
     return this.loading.then(() => this);
+  }
+
+  async vaultFiles(): Promise<readonly string[]> {
+    if (this.loading) return (await this.load()).files();
+    return (await this.repository.list()).filter(this.member);
+  }
+
+  parseFile(path: string, bytes: Uint8Array): CachedMetadata | null {
+    if (!this.member(path) || !this.parser.indexes(path)) return null;
+    try { return this.parser.parse(path, bytes); }
+    catch { return null; }
   }
 
   update(changes: readonly MetadataChange[]): Promise<MetadataUpdate | null> {
@@ -77,6 +106,10 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     return result.status === 'resolved' ? result.path : null;
   }
 
+  getClosestLinkpathDest(linkpath: string, sourcePath: string): string | null {
+    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
+  }
+
   fileToLinktext(path: string, sourcePath: string, omitMdExtension = true): string {
     return fileToLinktext(this.index, path, sourcePath, omitMdExtension);
   }
@@ -88,7 +121,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   }
 
   private async build(): Promise<void> {
-    this.paths = (await this.repository.list()).filter(visible);
+    this.paths = (await this.repository.list()).filter(this.member);
     await eachConcurrently(this.paths.filter(path => this.parser.indexes(path)), pendingFileReads, async path => {
       this.parse(path, (await this.repository.read(path)).bytes);
     });
@@ -116,7 +149,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     for (const path of touched) removed.delete(path);
     const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map(path => [path, this.aliasKey(path)]));
     const contents = new Map<string, Uint8Array>();
-    await eachConcurrently([...touched].filter(visible), pendingFileReads, async path => {
+    await eachConcurrently([...touched].filter(this.member), pendingFileReads, async path => {
       try { contents.set(path, (await this.repository.read(path)).bytes); }
       catch (error) { if (!missing(error)) throw error; removed.add(path); }
     });

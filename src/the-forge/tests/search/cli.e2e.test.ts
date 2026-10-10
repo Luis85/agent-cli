@@ -12,6 +12,11 @@ const configure = async (value: unknown) => {
 
 describe('the search core plugin through the portable CLI', () => {
   it('finds hits with revisions that guard a follow-up edit, pages them and publishes no events', async () => {
+    // The workspace's own bin/ distribution is not searched at the workspace root, but stays readable.
+    await mkdir(join(fixture.project, 'bin/data/docs'), { recursive: true });
+    await writeFile(join(fixture.project, 'bin/data/docs/plan.md'), 'A plan inside the distribution links [[nowhere]].\n');
+    expect(cli(['read', 'bin/data/docs/plan.md']).status).toBe(0);
+    expect(cli(['links', 'unresolved']).body.data.links).toEqual([]);
     expect(cli(['create', 'notes/plan.md', '--content', '---\nstatus: draft\ntags: [roadmap]\n---\n# Plan\nShip the -beta plan.\n']).status).toBe(0);
     expect(cli(['create', 'notes/other.md', '--content', 'Another plan.\n']).status).toBe(0);
     const found = cli(['--events', 'all', 'search', 'plan', '--tag', 'roadmap', '--in', 'body', '--context', '1']);

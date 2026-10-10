@@ -59,16 +59,18 @@ describe('plugin services', () => {
   it('keeps a core plugin whose optional service provider is disabled', () => {
     const { registry, events } = setup();
     const core = (id: string, contributions: Partial<Plugin> = {}): CorePlugin => ({ manifest: { ...manifest(id), core: true }, create: () => contributions });
-    registerCorePlugins(registry, events, [core('hub', { provides: { hub: {} } }), core('user', { optional: ['hub'] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['hub']);
+    registerCorePlugins(registry, events, [core('hub', { provides: { 'hub.api': {} } }), core('user', { optional: ['hub.api'] })], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['hub']);
     expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['user']);
     expect(registry.disabled.map(plugin => plugin.id)).toEqual(['hub']);
   });
 
-  it('rejects duplicate providers and service ids outside a user plugin namespace', () => {
+  it('rejects service ids outside the provider\'s namespace, for core plugins too, so providers never collide', () => {
     const { registry, events } = setup();
     registry.register({ manifest: manifest('alpha'), provides: { 'alpha.api': {} } }, events);
-    // Only core plugins may provide bare or foreign service ids, so only they can collide.
-    expect(() => registry.register({ manifest: { ...manifest('beta'), core: true }, provides: { catalog: {}, 'alpha.api': {} } }, events, 'core')).toThrow(expect.objectContaining({ code: 'DUPLICATE_OR_INVALID_ID' }));
+    // A service id names its provider, which lets the host attribute a missing service to a disabled core plugin.
+    for (const provides of [{ catalog: {} }, { 'alpha.api': {} }]) {
+      expect(() => registry.register({ manifest: { ...manifest('beta'), core: true }, provides }, events, 'core')).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    }
     expect(() => registry.register({ manifest: manifest('beta'), provides: { 'alpha.api': {} } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(() => registry.register({ manifest: manifest('gamma'), provides: { catalog: {} } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['alpha']);
@@ -76,13 +78,16 @@ describe('plugin services', () => {
 });
 
 describe('plugin generators', () => {
-  it('keeps one type per make option across generators', () => {
+  it('lets generators declare option names independently but reserves the options make owns', () => {
     const { registry, events } = setup();
     registry.add(registry.generators, { id: 'ui', description: 'UI', options: { framework: { type: 'string', description: 'Target' } }, run: () => null });
-    expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, generate: () => [] }] }, events))
-      .toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('--framework as boolean, but ui declares it as string') }));
+    for (const owned of ['out', 'plan', 'plan-out', 'check', 'revisions-from']) {
+      expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { [owned]: { type: 'boolean', description: 'Flag' } }, generate: () => [] }] }, events))
+        .toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE', message: expect.stringContaining(`cannot declare --${owned}`) }));
+    }
     expect(() => registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', generate: () => [], run: () => null }] }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
-    registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'string', description: 'Target' } }, review: true, generate: () => [] }] }, events);
+    // Each generator parses only its own options, so another generator's --framework may be a boolean.
+    registry.register({ manifest: manifest('quality'), generators: [{ id: 'quality.page', description: 'Page', options: { framework: { type: 'boolean', description: 'Flag' } }, review: true, generate: () => [] }] }, events);
     expect(registry.generators.get('quality.page')).toMatchObject({ review: true });
   });
 });
@@ -95,7 +100,7 @@ describe('plugin config sections', () => {
     let received: unknown;
     registry.register({ manifest: manifest('quality'), settings, onload(context) { received = context.settings; } }, events);
     registry.register({ manifest: manifest('plain') }, events);
-    const effective = registry.settings.configure({ quality: { label: 'Docs' }, removed: { kept: true } }, new Set(registry.origins.keys()));
+    const effective = await registry.configure({ quality: { label: 'Docs' }, removed: { kept: true } }, async () => ['removed'], message => { throw new Error(message); });
     expect(effective).toEqual({ quality: { threshold: 3, label: 'Docs' }, removed: { kept: true } });
     expect(registry.settings.sections()).toEqual([{ plugin: 'quality', path: 'plugins.settings.quality', schema: settings }]);
     expect(registry.settings.canonical('quality')).toBe('{"label":"Docs","threshold":3}');
@@ -104,19 +109,24 @@ describe('plugin config sections', () => {
     expect(received).toEqual({ threshold: 3, label: 'Docs' });
   });
 
-  it('reports every invalid value with its config path and rejects sections for plugins without settings', () => {
+  it('reports every invalid value with its config path on the unavailable plugin and warns about sections without settings', async () => {
     const { registry, events } = setup();
-    registry.register({ manifest: manifest('quality'), settings }, events);
+    registry.register({ manifest: manifest('quality'), settings, commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', run: () => 'ran' }] }, events);
     registry.register({ manifest: manifest('plain') }, events);
-    expect(() => registry.settings.configure({ quality: { threshold: 0, extra: true }, plain: {} }, new Set(registry.origins.keys()))).toThrow(expect.objectContaining({
-      code: 'INVALID_CONFIG',
-      details: { issues: ['plugins.settings.plain: plugin plain declares no settings', 'plugins.settings.quality.threshold: must be at least 1', 'plugins.settings.quality.extra: is not allowed'] },
-    }));
+    const warnings: string[] = [];
+    expect(await registry.configure({ quality: { threshold: 0, extra: true }, plain: {} }, async () => [], message => warnings.push(message))).toEqual({ quality: { threshold: 0, extra: true }, plain: {} });
+    expect(warnings).toEqual([
+      expect.stringContaining('Plugin quality is unavailable in this invocation: plugins.settings.quality is invalid'),
+      'plugins.settings has sections for plugins that declare no settings: plain; they are ignored.',
+    ]);
+    await expect(registry.commands.get('quality.run')!.run([], {}, context)).rejects.toMatchObject({
+      code: 'PLUGIN_UNAVAILABLE', details: { command: 'quality.run', plugin: 'quality', issues: ['plugins.settings.quality.threshold: must be at least 1', 'plugins.settings.quality.extra: is not allowed'] },
+    });
   });
 
   it('rejects settings schemas outside the supported JSON Schema subset', () => {
     const { registry, events } = setup();
-    expect(() => registry.register({ manifest: manifest('quality'), settings: { type: 'object', oneOf: [] } as never }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('unsupported keyword oneOf') }));
+    expect(() => registry.register({ manifest: manifest('quality'), settings: { type: 'object', anyOf: [] } as never }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN', message: expect.stringContaining('unsupported keyword anyOf') }));
     expect(() => registry.register({ manifest: manifest('quality'), settings: { type: 'string' } }, events)).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN' }));
   });
 });
@@ -155,12 +165,54 @@ describe('plugin strings and error catalog', () => {
     expect(t('de')('missing')).toBe('missing');
   });
 
+  it('maps only codes the throwing plugin registered, or built-in codes; another plugin\'s code stays opaque', async () => {
+    const { registry, events } = setup();
+    registry.register(localized, events);
+    const thrower = (code: string) => ({ id: `audit.${code.toLowerCase().replaceAll('_', '-')}`, description: 'Throw', usage: 'audit', run() { throw Object.assign(new Error(`Raised ${code}.`), { code, details: { by: 'audit' } }); } });
+    registry.register({ manifest: manifest('audit'), commands: [thrower('QUALITY_UNOWNED'), thrower('NOT_FOUND')] }, events);
+    const failure = (id: string) => Promise.resolve(registry.commands.get(id)!.run([], {}, context)).catch((error: unknown) => error);
+    const borrowed = await failure('audit.quality-unowned');
+    expect(borrowed).not.toBeInstanceOf(AppError);
+    expect(new Localizer('en', registry.catalog).error(borrowed)).toMatchObject({ code: 'OPERATION_FAILED', message: 'Raised QUALITY_UNOWNED.' });
+    expect(await failure('audit.not-found')).toMatchObject({ code: 'NOT_FOUND', exitCode: 3, details: { by: 'audit' } });
+    expect(await failure('quality.check')).toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5 });
+  });
+
+  it('maps a code of a plugin that provides a service the thrower declares, since its failures surface through the consumer', async () => {
+    const { registry, events } = setup();
+    const fail = () => { throw Object.assign(new Error('Owners unknown.'), { code: 'QUALITY_UNOWNED' }); };
+    registry.register({ ...localized, provides: { 'quality.owners': { check: fail } } }, events);
+    const consumer = (id: string, key: 'requires' | 'optional') => ({
+      manifest: manifest(id), [key]: ['quality.owners'],
+      commands: [{ id: `${id}.run`, description: 'Run', usage: `${id}.run`, run: (_args: string[], _flags: unknown, pluginContext: PluginContext) => pluginContext.services.get<{ check(): void }>('quality.owners').check() }],
+    });
+    registry.register(consumer('board', 'requires'), events);
+    registry.register(consumer('report', 'optional'), events);
+    for (const id of ['board.run', 'report.run']) {
+      await expect(Promise.resolve(registry.commands.get(id)!.run([], {}, context))).rejects.toMatchObject({ code: 'QUALITY_UNOWNED', exitCode: 5, message: 'Owners unknown.' });
+    }
+  });
+
+  it('gives a user plugin error code to the plugin with the longest matching prefix, whatever the load order', () => {
+    const error = (code: string) => ({ code, category: 'input' as const, summary: 'S', hint: 'H' });
+    const outer = setup();
+    outer.registry.register({ manifest: manifest('a'), errors: [error('A_B_X')] }, outer.events);
+    expect(() => outer.registry.register({ manifest: manifest('a-b'), errors: [error('A_B_Y')] }, outer.events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE', message: expect.stringContaining('A_B_X of plugin a falls in the namespace A_B_ of plugin a-b') }));
+    expect(outer.registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['a']);
+    const inner = setup();
+    inner.registry.register({ manifest: manifest('a-b'), errors: [error('A_B_Y')] }, inner.events);
+    expect(() => inner.registry.register({ manifest: manifest('a'), errors: [error('A_B_X')] }, inner.events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
+    inner.registry.register({ manifest: manifest('a'), errors: [error('A_X')] }, inner.events);
+    expect(inner.registry.catalog.errors().map(entry => [entry.pluginId, entry.code])).toEqual([['a-b', 'A_B_Y'], ['a', 'A_X']]);
+  });
+
   it.each([
     [{ errors: [{ code: 'UNOWNED', category: 'drift', summary: 'S', hint: 'H' }] }, 'PLUGIN_NAMESPACE'],
     [{ errors: [{ code: 'QUALITY_X', category: 'unknown', summary: 'S', hint: 'H' }] }, 'INVALID_PLUGIN'],
     [{ errors: [{ code: 'NOT_FOUND', category: 'input', summary: 'S', hint: 'H' }] }, 'PLUGIN_NAMESPACE'],
     [{ strings: { fr: {} } }, 'INVALID_PLUGIN'],
     [{ strings: { de: { commands: { 'other.run': 'Fremd' } } } }, 'PLUGIN_NAMESPACE'],
+    [{ strings: { de: { actions: { 'other.run list': 'Fremd' } } } }, 'PLUGIN_NAMESPACE'],
     [{ strings: { de: { errors: { QUALITY_UNKNOWN: { summary: 'S', hint: 'H' } } } } }, 'PLUGIN_NAMESPACE'],
   ])('rejects invalid strings and error contributions %#', (contribution, code) => {
     const { registry, events } = setup();
@@ -180,9 +232,11 @@ describe('core plugins', () => {
     expect(() => registry.register({ manifest: manifest('links') }, events)).toThrow(expect.objectContaining({ code: 'DUPLICATE_PLUGIN' }));
   });
 
-  it('rejects unknown ids in plugins.disabled and core claims from user plugins', () => {
+  it('ignores unknown ids in plugins.disabled with a warning and rejects core claims from user plugins', () => {
     const { registry, events } = setup();
-    expect(() => registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['quality'])).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN_CONFIG' }));
+    registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates, ...offlineHost }, ['serach']);
+    expect([...registry.commands.keys()]).toEqual(['search']);
+    expect(events.warnings).toEqual([expect.stringContaining('ignored serach')]);
     expect(() => registry.register({ manifest: { ...manifest('quality'), core: true } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(() => registry.register({ manifest: manifest('search') }, events, 'core')).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(() => registry.register({ manifest: manifest('quality'), commands: [{ id: 'check', description: 'Bare', usage: 'check', run: () => null }] }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));

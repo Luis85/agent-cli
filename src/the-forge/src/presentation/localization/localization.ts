@@ -1,5 +1,5 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
-import { germanCommands, germanEvents, germanGenerators, germanGuidance } from './catalog.ts';
+import { germanActions, germanCommands, germanEvents, germanGenerators, germanGuidance } from './catalog.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -25,9 +25,22 @@ export class Localizer {
     return translated(kernel, id) ?? this.plugins?.text('de', kind, id);
   }
 
-  command<T extends { id: string; description: string }>(command: T): T {
-    const description = this.language === 'de' ? this.german('commands', command.id) : undefined;
-    return description ? { ...command, description } : command;
+  /**
+   * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
+   * `<command> <action>` in the kernel and plugin catalogs; `make` actions are generators.
+   */
+  command<T extends { id: string; description: string; actions?: Readonly<Record<string, { description: string }>> }>(command: T): T {
+    if (this.language !== 'de') return command;
+    const description = this.german('commands', command.id);
+    let translatedActions = false;
+    const actions = command.actions && Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
+      const key = `${command.id} ${id}`;
+      const german = translated(germanActions, key) ?? this.plugins?.text('de', 'actions', key) ?? (command.id === 'make' ? this.german('generators', id) : undefined);
+      if (german) translatedActions = true;
+      return [id, german ? { ...action, description: german } : action];
+    }));
+    if (!description && !translatedActions) return command;
+    return { ...command, ...(description ? { description } : {}), ...(translatedActions ? { actions } : {}) };
   }
 
   private described(kind: 'generators' | 'events', items: unknown): unknown {

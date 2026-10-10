@@ -65,8 +65,6 @@ export const errorCatalog = {
   BASE_EVALUATION_ERROR: entry('input', 'A Bases expression failed while evaluating a file.', 'Check the view, file and expression named in the message.'),
   BASE_VIEW_NOT_FOUND: entry('input', 'The requested Bases view does not exist.', 'Run bases inspect <file.base> and pass an existing --view.'),
   BASE_CONTEXT_NOT_FOUND: entry('input', 'The context file is not an indexed vault file.', 'Pass an existing vault file to --context.'),
-  BASE_INDEX_ERROR: entry('input', 'A vault file could not be indexed.', 'Fix or validate the file named in the message.'),
-  AMBIGUOUS_BASE_LINK: entry('input', 'An internal link matches several files.', 'Use a longer link path that identifies one file.'),
   INVALID_BASE_PROPERTY_TYPES: entry('input', 'The Obsidian property type registry is invalid.', 'Fix .obsidian/types.json so it is a JSON object of property types.'),
   UNSUPPORTED_BASE_PROPERTY_TYPE: entry('input', 'An Obsidian property type is not supported.', 'Use a supported type in .obsidian/types.json.'),
   // Configuration, setup and projects
@@ -115,11 +113,12 @@ export const errorCatalog = {
   DATA_SOURCE_RENDERER_UNAVAILABLE: entry('input', 'No generator is available for this data source.', 'Use a supported data-source kind; run help make for data-source generation.'),
   // Plugins, skills and events
   INVALID_PLUGIN: entry('input', 'A plugin manifest or implementation is invalid.', 'Fix the plugin named in the message, or disable it with --no-plugins.'),
-  INVALID_PLUGIN_CONFIG: entry('input', 'The plugin configuration is invalid.', 'List unique lowercase kebab-case user plugin ids in plugins.enabled and only bundled core plugin ids in plugins.disabled in bin/config.json; run plugins to list them.'),
+  INVALID_PLUGIN_CONFIG: entry('input', 'The plugin configuration is invalid.', 'List unique lowercase kebab-case ids of installed user plugins in plugins.enabled in bin/config.json; run plugins to list them.'),
   INCOMPATIBLE_PLUGIN: entry('input', 'The plugin requires a newer Forge version.', 'Update The Forge or disable the plugin.'),
   DUPLICATE_PLUGIN: entry('input', 'The plugin is registered twice.', 'Enable each plugin once.'),
-  PLUGIN_NAMESPACE: entry('input', 'A plugin id or contribution is outside its namespace.', 'Prefix user plugin command, generator, skill, event and service ids with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle.'),
+  PLUGIN_NAMESPACE: entry('input', 'A plugin id or contribution is outside its namespace.', 'Prefix user plugin command, generator, skill and event ids, and the service ids of every plugin, with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, claude, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle, and do not declare the options make owns (out, plan, plan-out, check, revisions-from) on a generator.'),
   PLUGIN_SERVICE_MISSING: entry('input', 'A plugin requires a service that no enabled plugin provides, or uses one it did not declare.', 'Enable the plugin that provides the service named in error.details.service (plugins lists providers), or declare it in the plugin\'s requires.'),
+  PLUGIN_UNAVAILABLE: entry('input', 'The command or generator belongs to a plugin that is unavailable in this invocation.', 'error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, or enable the disabled provider it names (remove it from plugins.disabled), then rerun. Run plugins to see each plugin\'s state and reason.'),
   PLUGIN_SERVICE_CYCLE: entry('input', 'Plugin service requirements form a cycle.', 'Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another.'),
   PLUGIN_LIFECYCLE: entry('input', 'A plugin used the host outside its lifecycle.', 'Register contributions before activation and stop using the host after disposal.'),
   DUPLICATE_OR_INVALID_ID: entry('input', 'A contribution id is invalid or already registered.', 'Use a unique lowercase dotted id.'),

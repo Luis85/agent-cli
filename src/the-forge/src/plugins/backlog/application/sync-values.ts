@@ -3,6 +3,7 @@ import type { ConnectorMapping, RemoteItem, SyncField } from '../../../domain/co
 import { formatCivil, ownValue, readNumber, readString, setOwn, type Frontmatter } from '../domain/fields.ts';
 import { displayType, type BacklogItem } from '../domain/model.ts';
 import { comments, sanitizeTitle, withoutComments } from '../domain/notes.ts';
+import { workflowOf } from '../domain/settings.ts';
 import { isIterationType } from '../domain/vocabulary.ts';
 import {
   iterationName, iterationPath, localState, localType, priorityLabel, priorityNumber, remoteState, remoteType, type FieldKey, type FieldValue,
@@ -143,7 +144,7 @@ export function pulledNote(context: ValueContext, item: BacklogItem, pulls: Valu
       if (local === undefined) note.skipped.push({ field, code: 'unmapped-remote-type', reason: `remote type ${value} has no local type mapping; add it to mappings.types` });
       else note.write.typeName = local;
     }
-    else if (field === 'state') Object.assign(note.write, stateWrite(item, value === null ? null : localState(context.mapping, type, String(value), item.stateValue, settings.states), settings, formatCivil(session.today)));
+    else if (field === 'state') Object.assign(note.write, stateWrite(item, workflowOf(item.typeName, item.ladder), value === null ? null : localState(context.mapping, type, String(value), item.stateValue, settings.states), settings, formatCivil(session.today)));
     else if (field === 'parent') {
       const parent = value === null ? null : pathOfRemote(String(value));
       if (value !== null && parent === null) note.skipped.push({ field, code: 'unsynced-parent', reason: `remote parent ${String(value)} is not synced on this connection` });

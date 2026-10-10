@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` disables `backlog` too. `backlog sync` uses the optional `connectors` service of the `connector` core plugin; without it every other action keeps working.
+`backlog` manages a product backlog that the Obsidian [Product Backlog view](https://github.com/Luis85/backlog-view) (backlog-view) opens unchanged: Epics, Features, PBIs and Tasks in a hierarchy, one global rank, workflow states, iterations, releases and dependencies, all as frontmatter of ordinary Markdown notes. It is contributed by the `backlog` [core plugin](plugins.md#bundled-core-plugins) (`src/plugins/backlog/` in the Forge source), enabled by default. It requires the `bases.query` service of the `bases` core plugin, so disabling `bases` makes `backlog` unavailable: `plugins` lists it as `unavailable` with the reason, and its commands fail with `PLUGIN_UNAVAILABLE`. `backlog sync` uses the optional `connector.hub` service of the `connector` core plugin; while `connector` is disabled or unavailable, `backlog sync` fails with `PLUGIN_SERVICE_MISSING` and every other action keeps working.
 
 Forge conforms to backlog-view 0.10.0 (plugin id `product-backlog-view`) with the global rank and release-join dates of commit `fb813df` on its `main` branch. The [conformance](#conformance) section lists what the fixtures prove and where Forge differs.
 
@@ -54,12 +54,12 @@ Every action except `init` and `sync` opens one backlog: `--base <file.base> [--
 ## The model
 
 - **Results and context rows.** The view's results are the items, in Bases result order. With `showOutsideParents`, ancestors the filter leaves out are loaded as read-only context rows (`context: true`): they place results in the tree but are never written or counted.
-- **Hierarchy.** A note's parent is the first frontmatter link of the parent key (a list uses its first entry); a bare name or `[[Note#Heading|Alias]]` resolves like Obsidian's `getFirstLinkpathDest`. An unresolved parent makes the note an orphan root (`orphan: true`). A parent loop is cut at the note that closes it (`backlog check` reports `parent-cycle`). In folder mode, a note without a parent value hangs under the nearest folder note (`a/b/b.md`); `parent: ""` is an explicit root. With `hierarchyOnly`, a root subtree with no parent links, folder parents or known types is pruned (`ignored`).
+- **Hierarchy.** A note's parent is the first frontmatter link of the parent key (a list uses its first entry); a bare name or `[[Note#Heading|Alias]]` resolves like Obsidian's `getFirstLinkpathDest`: a name several notes share opens the closest one (see [Bases file context](bases.md#file-context)). An unresolved parent makes the note an orphan root (`orphan: true`). A parent loop is cut at the note that closes it (`backlog check` reports `parent-cycle`). In folder mode, a note without a parent value hangs under the nearest folder note (`a/b/b.md`); `parent: ""` is an explicit root. With `hierarchyOnly`, a root subtree with no parent links, folder parents or known types is pruned (`ignored`).
 - **Types.** Matched case-insensitively and written canonically. The ladder is Epic → Feature → PBI → Task, the test ladder Test suite → Test case → Task; a child takes the rung below its parent and the deepest rung is clamped. Issue, Bug, Idea, Deliverable and Improvement rank with PBI. Milestone, Iteration and Release are markers. Untyped notes take the implied rung (`impliedType: true`); unknown types are kept. `Resource` and `Absence` notes are never items.
 - **Ranks.** `order` is one global rank across everything the base returns. Items sort by rank, ties by result order, unranked last; siblings use the same order. `rank` in the output is the 1-based global position.
 - **States.** `done` matches the done values case-insensitively. Deliverables and test-ladder items use their own workflow keys and values, falling back to the requirements workflow.
 - **Dependencies.** Entries of the dependsOn list that are unresolved, self-referencing or on a loop (Tarjan's strongly connected components) are broken (`brokenDependencies` with `reason` `unresolved` or `cycle`) but stay on disk. Markers and context rows declare none.
-- **Releases.** An item belongs to a release when its membership key holds exactly one link to a `type: Release` note of the release view. `''` names none; a list of two or more, a non-string, a non-Release target, a marker or a test-ladder item is an unresolved membership.
+- **Releases.** An item belongs to a release when its membership key holds exactly one link to a `type: Release` note of the release view. A missing key or an empty list names none; `''` (such as `release: ""`), a list of two or more, a non-string, a non-Release target, a marker or a test-ladder item is an unresolved membership.
 
 ## Commands
 
@@ -94,7 +94,7 @@ Mutating actions accept `--dry-run` (planned changes with unified diffs, nothing
 | --- | --- |
 | `backlog.item-created` | `{path, title, type, id, parent?, order?}` for `add`, `iteration add` and `release add` |
 | `backlog.item-moved` | `{path, parent, order, previousParent, previousOrder}` |
-| `backlog.state-changed` | `{path, title, from, to, started?, finished?}` (`finished: null` when leaving done) |
+| `backlog.state-changed` | `{path, title, from, to, started?, finished?}`: `from` and `to` are values of the item's own workflow (requirements, deliverable or test); `started` and `finished` belong to the requirements workflow (`finished: null` when leaving done) |
 | `backlog.released` | `{path, name, status, released}` |
 | `backlog.synced` | `{base, view, connection, created, updated, pulled, conflicts, left, failed}` once per synced view |
 
@@ -186,7 +186,7 @@ Remote writes are planned before anything is written. A live sync holds the lock
 
 ## New notes
 
-A new note is one file holding only frontmatter, `---\n<yaml>---\n`, with keys in backlog-view's order: `pbl-id`, type, parent (`""` for a root in folder mode, otherwise absent), order, goal, iteration, release, then horizon, start and target. Forge appends the optional `--state` (with its stamps), `--assignee` and `--tags` after them, in the order a later edit would add them.
+A new note is one file holding only frontmatter, `---\n<yaml>---\n`, with keys in backlog-view's order: `pbl-id`, type, parent (`""` for a root in folder mode, otherwise absent), order, goal, iteration, release, then horizon, start and target. Forge appends the optional `--state` (in its [workflow's spelling](#state-writes), with its stamps), `--assignee` and `--tags` after them, in the order a later edit would add them. `--tags` is read like a frontmatter tags string, split on commas and whitespace with a leading `#` optional, and each tag is normalized as the plugin's tag editor writes it: characters Obsidian does not allow are trimmed at the edges and become `-` inside (`needs-review!` gives `needs-review`, `a!b` gives `a-b`), tags without a non-digit character such as `2026` are dropped, and duplicates are removed case-insensitively.
 
 - **Name.** The title passes `sanitizeTitle`: `\ / : * ? " < > | # ^ [ ]` become `-`, whitespace collapses, leading `-`, space and `.` and trailing `-` and space are trimmed, and an empty result is `Untitled`. A taken name gets ` 1`, ` 2`… (compared case-insensitively). The basename is the title; no title property is written.
 - **Folder.** In folder mode, beside the parent; otherwise `typeFolder.<type>`, else `homeFolder`, else the folder most results live in. `--folder` overrides.
@@ -199,11 +199,11 @@ Releases get `pbl-id`, type and the stated version, target date, status and desc
 
 ## Ranks
 
-`move` places the note between the neighbours its position implies in the global rank: the midpoint rounded to 6 decimals, or `floor(neighbour) ± 1000` at an edge, 1000 in an empty backlog. On a global tie it falls back to sibling-scoped arithmetic when that rank is free. Otherwise it refuses with `BACKLOG_NO_GAP` and `details.reason`: `tied`, `gapSpent`, `unranked` (a neighbour has no rank) or `unseededList`. Run `ranks respace` (or `ranks seed`) and move again. A move under the note itself or a descendant is refused (`parent-cycle`), and so is a move between the plan and the test catalog (`projection`). Ranks need not be unique; `check` reports ties.
+`move` places the note between the neighbours its position implies in the global rank: the midpoint rounded to 6 decimals, or `floor(neighbour) ± 1000` at an edge, 1000 in an empty backlog. On a global tie it falls back to sibling-scoped arithmetic when that rank is free. Otherwise it refuses with `BACKLOG_NO_GAP` and `details.reason`: `tied`, `gapSpent`, `unranked` (a neighbour has no rank). Run `ranks respace` (or `ranks seed`) and move again. A move that keeps the parent and lands the note where it already is among its siblings (such as `--last` on the last sibling) writes nothing: `changes` is empty and no event follows, unless it clears a parent link that resolves to nothing. A move under the note itself or a descendant is refused (`parent-cycle`), and so is a move between the plan and the test catalog (`projection`). Ranks need not be unique; `check` reports ties.
 
 ## State writes
 
-A state write uses the item's own workflow. In the requirements workflow, `startedDateProperty` is stamped with `--today` when the state actually changes into a `startedStates` value and the key is empty; `finishedDateProperty` is stamped when crossing into a done value and deleted when crossing out; done to done writes nothing. Dates are `YYYY-MM-DD`; an existing time suffix on a planned date is kept, and an equal date is left alone.
+A state write uses the item's own workflow: Deliverables use the deliverable workflow, test-ladder items the test workflow, everything else the requirements workflow. A typed state that matches one of the workflow's declared values (its state values and done values) case-insensitively is written in the declared spelling (`--state "in progress"` writes `In Progress`), as a board column writes it; other values are written as typed. `--horizon`, `--priority` and `--risk` match `horizonValues`, `priorityValues` and `riskValues` the same way. Setting the state the item already holds, in any case, writes nothing. In the requirements workflow, `startedDateProperty` is stamped with `--today` when the state actually changes into a `startedStates` value and the key is empty; `finishedDateProperty` is stamped when crossing into a done value and deleted when crossing out; done to done writes nothing. Dates are `YYYY-MM-DD`; an existing time suffix on a planned date is kept, and an equal date is left alone.
 
 ## Refusals and the write gate
 
@@ -244,6 +244,9 @@ The file starts with the marker `<!-- Generated by the Product Backlog view from
 | `broken-assignee` | warning | An assignee that is not a Resource note |
 | `unreadable-date`, `unreadable-horizon`, `reversed-span` | warning | Values the plugin shelves |
 | `rank-tie`, `unranked` | warning | Results sharing a rank; results other than releases without one (releases are created unranked) |
+| `unparseable-note`, `ambiguous-link` | warning | The Bases index [warnings](bases.md#compatibility-and-errors) about results and context rows: a note read without properties because it cannot be parsed, and a link (`value`) several notes match that resolves to the closest |
+
+One unparseable note or ambiguous link never fails a backlog command, wherever it is in the scope.
 
 ## Conformance
 
@@ -263,7 +266,7 @@ Fixtures copied from backlog-view `fb813df` (its `docs/Product Backlog.base` and
 Known differences and open questions:
 
 - Obsidian rewrites the whole frontmatter on every `processFrontMatter`; Forge rewrites only changed entries. Both read the same. YAML style is taken from plugin-written notes; the plugin's tests do not pin Obsidian's exact `stringifyYaml` output, such as where it folds long strings.
-- Link resolution follows the kernel metadata cache: an ambiguous link resolves to nothing instead of the closest file, and a link with an ambiguous path fails the Bases evaluation (`AMBIGUOUS_BASE_LINK`).
+- Links in notes resolve like Obsidian: a name several notes share opens the closest one, and a note whose frontmatter cannot be parsed is read without properties; `check` reports both as warnings. Item names given on the command line (`--parent`, `--on`, `--assignee`) must stay unambiguous.
 - A bare property name in a view option is read as a note property; Obsidian's `getAsPropertyId` for such hand-edited values is unverified.
 - Generated release notes use the plugin's English sentences; the plugin writes its own catalog's text.
 - Batches are transactional in Forge, where the plugin applies writes one note at a time and stops at the first refusal.

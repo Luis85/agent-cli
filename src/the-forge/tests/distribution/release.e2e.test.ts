@@ -85,9 +85,11 @@ describe('release distribution', () => {
     expect(invoke(['setup']).ok).toBe(true);
     expect(invoke(['make', 'entity', 'ReleaseTask', '--out', 'src/domain']).ok).toBe(true);
     expect(await readFile(join(project, 'src/domain/release-task.ts'), 'utf8')).toContain('class ReleaseTask');
-    for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
+    for (const path of ['docs/reference/cli.md', 'types/sdk.d.ts', 'licenses/node_modules__yaml-LICENSE', 'licenses/node_modules__ajv-LICENSE', 'licenses/docker-agent-LICENSE', 'docs/examples/plugins/quality/main.mjs']) {
       expect((await readFile(join(project, 'bin/data', path))).length).toBeGreaterThan(0);
     }
+    // The agents plugin embeds docker-agent's Apache-2.0 schema; its notice names the vendored commit.
+    expect(await readFile(join(project, 'bin/data/THIRD-PARTY-NOTICES.md'), 'utf8')).toMatch(/## docker-agent agent-schema\.json\n\nCopied unchanged from https:\/\/github\.com\/docker\/docker-agent at commit [a-f0-9]{40}\. License: Apache-2\.0\./);
     // Plugins type dry-run write previews with the shipped SDK.
     const sdk = await readFile(join(project, 'bin/data/types/sdk.d.ts'), 'utf8');
     for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));

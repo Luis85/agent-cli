@@ -64,6 +64,3 @@ export function metadataMatches(cache: CachedMetadata | null, query: Pick<Search
   }
   return true;
 }
-
-/** Whether a root-relative path is visible: no segment starts with a dot. */
-export const visiblePath = (path: string) => !path.split('/').some(segment => segment.startsWith('.'));

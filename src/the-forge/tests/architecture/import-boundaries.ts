@@ -4,6 +4,18 @@ import ts from 'typescript';
 const layers = ['domain', 'application', 'infrastructure', 'presentation'] as const;
 type Layer = typeof layers[number];
 const within = (directory: string, target: string) => target.startsWith(directory + sep);
+/** The only modules that may import a computed specifier: the user plugin loader executes trusted plugin entries. */
+const computedImports = ['src/infrastructure/plugins/loader.ts'];
+/**
+ * Project files outside `src/` that infrastructure may bundle as assets, relative to the project root: a prefix
+ * ending in `/` admits a folder, any other entry one file (with an optional `?query`). Nothing else escapes `src/`.
+ */
+const assetRoots = ['package.json', 'vitest.config.ts', 'configs/', 'docs/templates/', 'scripts/quality/', 'skills/'];
+const projectPath = (target: string) => relative(resolve('.'), target).split(sep).join('/');
+function approvedAssetRoot(target: string): boolean {
+  const path = projectPath(target);
+  return !path.startsWith('..') && assetRoots.some(root => root.endsWith('/') ? path.startsWith(root) : path === root || path.startsWith(`${root}?`));
+}
 /** Directories a layer may import within one dependency ring: the kernel or a single core plugin. */
 const inward: Record<Layer, readonly Layer[]> = {
   domain: ['domain'], application: ['domain', 'application'],
@@ -34,30 +46,43 @@ function allowedDirectories(owner: { layer: Layer | 'entry'; plugin?: string }):
   return [...kernelLayers.map(kernel), ...pluginLayers.map(own)];
 }
 
-/** Inspect syntax rather than matching text, so every module dependency is checked. */
+/**
+ * Inspect syntax rather than matching text, so every module dependency is checked: static and dynamic imports,
+ * `require`, import types and `import.meta.glob` patterns. A computed specifier cannot prove a boundary and is
+ * rejected outside the allowlisted plugin loader; relative paths may leave `src/` only for approved asset roots.
+ */
 export function boundaryViolations(file: string, source: string): string[] {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   // Other entries (the SDK) may reach kernel domain and application only.
   const owner = classify(file) ?? { layer: 'application' as const };
   const isInfrastructure = owner.layer === 'infrastructure', isKernelPresentation = owner.layer === 'presentation' && owner.plugin === undefined;
+  const computedAllowed = computedImports.includes(projectPath(file));
   const allowed = allowedDirectories(owner);
   const violations: string[] = [];
   const check = (specifier: ts.Node | undefined) => {
     if (!specifier || !ts.isStringLiteralLike(specifier)) {
-      if (!isInfrastructure) violations.push('Computed module dependencies cannot prove inward boundaries.');
+      if (!computedAllowed) violations.push(`${relative(process.cwd(), file)}: computed module dependencies cannot prove inward boundaries.`);
       return;
     }
-    const path = specifier.text;
-    const target = resolve(dirname(file), path);
-    const external = !path.startsWith('.');
+    // A glob negation excludes files; a leading / is relative to the project root in Vite.
+    const path = specifier.text.replace(/^!/, '');
+    const target = path.startsWith('/') ? resolve('.', path.slice(1)) : resolve(dirname(file), path);
+    const external = !path.startsWith('.') && !path.startsWith('/');
     const approvedExternal = isInfrastructure || (isKernelPresentation && path === 'commander');
-    const approvedAsset = (isKernelPresentation && target === resolve('package.json')) || (isInfrastructure && !within(resolve('src'), target));
+    const approvedAsset = (isKernelPresentation && target === resolve('package.json')) || (isInfrastructure && !within(resolve('src'), target) && approvedAssetRoot(target));
     if (external ? !approvedExternal : !approvedAsset && !allowed.some(directory => within(directory, target))) {
-      violations.push(`${relative(process.cwd(), file)} imports ${path}`);
+      violations.push(`${relative(process.cwd(), file)} imports ${specifier.text}`);
     }
   };
   visitDependencies(tree, check);
   return violations;
+}
+
+/** `import.meta.glob(pattern | patterns, options?)`: every pattern is a dependency. */
+function isImportMetaGlob(node: ts.CallExpression): boolean {
+  const callee = node.expression;
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === 'glob' && ts.isMetaProperty(callee.expression)
+    && callee.expression.keywordToken === ts.SyntaxKind.ImportKeyword && callee.expression.name.text === 'meta';
 }
 
 function visitDependencies(tree: ts.SourceFile, check: (specifier: ts.Node | undefined) => void): void {
@@ -70,6 +95,10 @@ function visitDependencies(tree: ts.SourceFile, check: (specifier: ts.Node | und
       check(node.argument.literal);
     } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
       check(node.arguments[0]);
+    } else if (ts.isCallExpression(node) && isImportMetaGlob(node)) {
+      const patterns = node.arguments[0];
+      if (patterns && ts.isArrayLiteralExpression(patterns)) for (const pattern of patterns.elements) check(pattern);
+      else check(patterns);
     }
     ts.forEachChild(node, visit);
   };

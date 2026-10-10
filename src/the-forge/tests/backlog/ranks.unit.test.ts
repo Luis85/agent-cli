@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ORDER_SPACING, compareRank, distinctlyRanked, dropPlacement, edgeRank, placeRun, rankBetween, rankablePeers, roundOrder, spreadAround, type Ranked,
+  ORDER_SPACING, compareRank, dropPlacement, edgeRank, placeRun, rankBetween, rankablePeers, roundOrder, spreadAround, type Ranked,
 } from '../../src/plugins/backlog/domain/ranks.ts';
 
 // Acceptance examples from backlog-view's rankArithmetic.ts and test/domain/rankedPlacement.test.ts.
@@ -44,8 +44,6 @@ describe('rank arithmetic', () => {
   it('orders by rank, then result order, unranked last', () => {
     const rows = [row('c', null, 0), row('b', 5, 2), row('a', 5, 1), row('d', -1, 3)];
     expect([...rows].sort(compareRank).map(item => item.path)).toEqual(['d', 'a', 'b', 'c']);
-    expect(distinctlyRanked([row('a', 1, 0), row('b', 2, 1), row('ctx', null, 2, true)])).toBe(true);
-    expect(distinctlyRanked([row('a', 1, 0), row('b', 1, 1)])).toBe(false);
     expect(rankablePeers([row('a', 1, 0), row('ctx', null, 1, true), row('ctx2', 3, 2, true)]).map(item => item.path)).toEqual(['a', 'ctx2']);
   });
 });

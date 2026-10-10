@@ -13,7 +13,7 @@ function connectorError(code: ConnectorErrorCode, message: string, details?: Rec
 export interface ConnectionStatus { profile: Profile; connector: BacklogConnector | null; issues: string[]; bound: BoundConnection | null }
 
 /**
- * The `connectors` service. Platform connectors register here when they load; connection profiles come from the
+ * The `connector.hub` service. Platform connectors register here when they load; connection profiles come from the
  * `connector` plugin's settings, which the plugin binds on activation together with its event channel, so only the
  * owning plugin publishes `connector.*` events.
  */

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/application/plugins/events.ts';
 import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
-import { Registry } from '../../src/application/plugins/registry.ts';
+import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
 import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
@@ -30,23 +30,33 @@ describe('choosing the backlog', () => {
     await expect(runBacklog(vault.root, ['list'], { folder: 'x' })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 
-  it('is disabled together with the bases plugin whose service it requires', () => {
+  it('becomes unavailable when the bases plugin whose service it requires is disabled, and its command reports why', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['bases']);
-    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases', 'backlog']);
-    expect(registry.commands.has('backlog')).toBe(false);
+    const warnings: string[] = [];
+    await registry.configure({}, async () => [], message => warnings.push(message));
+    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
+    const reason = 'Requires service bases.query; its provider bases is disabled.';
+    expect(registry.unavailable.get('backlog')).toEqual({ reason, issues: [] });
+    // plugins.disabled asked for the cascade, so it is reported by plugins and the command, not as a warning.
+    expect(warnings).toEqual([]);
+    await expect(registry.resolveCommand('backlog').run(['list'], {}, {} as CommandContext)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason, issues: [] } });
+    expect(() => registry.resolveCommand('bases')).toThrow(expect.objectContaining({ code: 'UNKNOWN_COMMAND' }));
   });
 
   it('stays enabled without the connector plugins, whose service only backlog sync uses', async () => {
     const registry = new Registry(), events = new EventBus(new NodeEventScope());
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], { skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }, ['connector']);
-    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['connector', 'connector-azure-devops']);
-    expect(registry.commands.has('backlog')).toBe(true);
+    await registry.configure({}, async () => [], () => undefined);
+    expect(registry.disabled.map(manifest => manifest.id)).toEqual(['connector']);
+    // The Azure DevOps connector requires the hub and becomes unavailable; backlog only optionally uses it.
+    expect([...registry.unavailable]).toEqual([['connector-azure-devops', { reason: 'Requires service connector.hub; its provider connector is disabled.', issues: [] }]]);
+    expect(registry.resolveCommand('backlog')).toBeDefined();
     vault = await backlogVault({ 'a/Backlog.base': base('a', '    connection: contoso\n'), 'a/Epic.md': note({ type: 'Epic', order: 1 }) });
     expect((await runBacklog(vault.root, ['list'])).data.total).toBe(1);
-    await expect(runBacklog(vault.root, ['sync'])).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'connectors' } });
+    await expect(runBacklog(vault.root, ['sync'])).rejects.toMatchObject({ code: 'PLUGIN_SERVICE_MISSING', details: { plugin: 'backlog', service: 'connector.hub' } });
   });
 });
 
@@ -83,6 +93,34 @@ describe('ranks and dependencies', () => {
     expect(respaced.data.changes.length).toBeGreaterThan(0);
     expect((await runBacklog(vault.root, ['tree'])).data.roots.map((root: { title: string; order: number; items: Array<{ title: string; order: number }> }) => [root.title, root.order, root.items.map(item => [item.title, item.order])]))
       .toEqual([['C', 1000, [['D', 4000]]], ['A', 2000, [['B', 3000]]]]);
+  });
+
+  it('writes nothing for a move that keeps the parent and the position', async () => {
+    const files = {
+      'm/Backlog.base': base('m'),
+      'm/A.md': note({ type: 'Epic', order: 1000 }), 'm/B.md': note({ type: 'Epic', order: 2000 }),
+      'm/C.md': note({ type: 'Feature', parent: '[[A]]', order: 3000 }),
+    };
+    vault = await backlogVault(files);
+    const noOps: Array<[string, Record<string, string | boolean>]> = [
+      ['B', { last: true }], ['B', {}], ['A', { first: true }], ['A', { top: true, first: true }], ['C', { first: true }], ['C', { last: true }],
+      ['C', { parent: 'A' }], ['B', { after: 'A' }], ['A', { before: 'B' }],
+    ];
+    for (const [item, flags] of noOps) {
+      const moved = await runBacklog(vault.root, ['move', item], flags);
+      expect(moved.data.changes, `${item} ${JSON.stringify(flags)}`).toEqual([]);
+      expect(moved.events).toEqual([]);
+    }
+    for (const [path, content] of Object.entries(files)) expect(await vault.read(path)).toBe(content);
+    expect((await runBacklog(vault.root, ['move', 'A'], { last: true })).events.map(event => event.id)).toEqual(['backlog.item-moved']);
+    expect(await vault.read('m/A.md')).toBe(note({ type: 'Epic', order: 2500 }));
+  });
+
+  it('still clears a stale parent link when the position stays', async () => {
+    vault = await backlogVault({ 'o/Backlog.base': base('o'), 'o/A.md': note({ type: 'Epic', parent: '[[Gone]]', order: 1000 }) });
+    expect((await runBacklog(vault.root, ['move', 'A'], { first: true })).data.changes).toHaveLength(1);
+    expect(await vault.read('o/A.md')).toBe(note({ type: 'Epic', order: 1000 }));
+    expect((await runBacklog(vault.root, ['move', 'A'], { top: true })).data.changes).toEqual([]);
   });
 
   it('adds and removes dependsOn entries, deleting the key when the list empties', async () => {

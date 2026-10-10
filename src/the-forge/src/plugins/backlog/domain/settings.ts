@@ -1,4 +1,4 @@
-import { FILED_TYPES, byName, defaultResourceFolder, defaultTypeFolder, DEFAULT_HOME_FOLDER } from './vocabulary.ts';
+import { FILED_TYPES, TEST_LEVELS, byName, defaultResourceFolder, defaultTypeFolder, isDeliverableType, DEFAULT_HOME_FOLDER } from './vocabulary.ts';
 import { sameValue } from './fields.ts';
 
 /**
@@ -105,6 +105,21 @@ export function optionalKeyFor(settings: BacklogSettings, field: OptionalField):
 /** The Deliverable workflow's key: its own, or the requirements state key. */
 export const deliverableStateKey = (settings: BacklogSettings) => settings.deliverableStateKey || settings.stateKey;
 export const testStateKey = (settings: BacklogSettings) => settings.testStateKey || settings.stateKey;
+
+/** The workflow whose state an item holds: Deliverables and the test ladder have their own, everything else the requirements one. */
+export type Workflow = 'requirements' | 'deliverable' | 'test';
+export function workflowOf(type: string | null, ladder: readonly string[]): Workflow {
+  return isDeliverableType(type) ? 'deliverable' : ladder === TEST_LEVELS ? 'test' : 'requirements';
+}
+export function workflowKey(settings: BacklogSettings, workflow: Workflow): string {
+  return workflow === 'deliverable' ? deliverableStateKey(settings) : workflow === 'test' ? testStateKey(settings) : settings.stateKey;
+}
+/** A workflow's declared values (its states and done values), against which a typed state is canonicalized. */
+export function workflowValues(settings: BacklogSettings, workflow: Workflow): string[] {
+  if (workflow === 'deliverable') return [...settings.deliverableStates, ...settings.deliverableDoneValues];
+  if (workflow === 'test') return [...settings.testStates, ...settings.testDoneValues];
+  return [...settings.states, ...settings.doneValues];
+}
 
 export function isDoneValue(settings: Pick<BacklogSettings, 'doneValues'>, state: string | null): boolean {
   return state !== null && settings.doneValues.some(value => sameValue(value, state));

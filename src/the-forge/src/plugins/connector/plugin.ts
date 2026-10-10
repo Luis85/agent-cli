@@ -15,6 +15,11 @@ const events: EventDefinition[] = [
 
 const de = {
   commands: { connectors: 'Die in plugins.settings.connector.connections konfigurierten Backlog-Verbindungen auflisten, prüfen und testen.' },
+  actions: {
+    'connectors list': 'Jede Verbindung mit Plattform, Gültigkeit, Warnungen und der Angabe, ob ihre Token-Variable gesetzt ist.',
+    'connectors inspect': 'Eine Verbindung mit ihren aufgelösten Typ-, Status- und Feldzuordnungen.',
+    'connectors test': 'Eine authentifizierte, nur lesende Prüfung einer Verbindung.',
+  },
   events: {
     'connector.pushed': 'Eine Notiz wurde in ihr entferntes Work Item übertragen.',
     'connector.pulled': 'Entfernte Änderungen wurden in eine Notiz geschrieben.',
@@ -31,7 +36,7 @@ const de = {
 /**
  * The `connector` core plugin: the shared backlog connector hub. It owns the connection profiles in
  * `plugins.settings.connector.connections`, the `connectors` command and the `connector.*` events, and provides the
- * `connectors` service with which platform connectors (`connector-azure-devops`) register and the backlog sync
+ * `connector.hub` service with which platform connectors (`connector-azure-devops`) register and the backlog sync
  * engine resolves connections.
  */
 export const connectorPlugin: CorePlugin = {
@@ -42,7 +47,7 @@ export const connectorPlugin: CorePlugin = {
   create: host => {
     const hub = new Hub(host.environment);
     return {
-      provides: { connectors: hub },
+      provides: { 'connector.hub': hub },
       onload(context) { hub.bind(context.settings, context.events); },
       commands: [connectorsCommand(hub, host.environment)],
       events,

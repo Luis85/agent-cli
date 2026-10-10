@@ -4,7 +4,7 @@ import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch } from '../
 /**
  * The platform-neutral backlog connector contract. A connector maps one external work tracker (Azure DevOps Boards
  * first; GitHub and Jira later) onto neutral remote items; the backlog sync engine compares and writes them without
- * knowing the platform. Connectors are plugin services registered with the `connectors` hub service.
+ * knowing the platform. Connectors are plugin services registered with the `connector.hub` service.
  */
 
 /**
@@ -72,7 +72,7 @@ export interface ConnectorEventPayloads {
   conflict: { connection: string; platform: string; path: string; remoteId: string; url: string; fields: string[] };
 }
 
-/** The `connectors` hub service: connection profiles from workspace config and the registered platform connectors. */
+/** The `connector.hub` service: connection profiles from workspace config and the registered platform connectors. */
 export interface ConnectorHub {
   register(connector: BacklogConnector): void;
   /** The connection with its connector; CONNECTOR_NOT_FOUND or CONNECTION_INVALID otherwise. */

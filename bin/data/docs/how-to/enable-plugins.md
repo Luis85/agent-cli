@@ -10,7 +10,7 @@ Use this guide to scaffold, review and activate a trusted user plugin, to config
 node bin/forge.js plugins --json
 ```
 
-Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `disabled` or `skipped`, and `contributions` lists what each enabled plugin adds.
+Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `unavailable`, `disabled`, `skipped` or `rejected` with a `reason` for every state but `enabled`, and `contributions` lists what each enabled plugin adds.
 
 ## Enable a user plugin
 
@@ -45,7 +45,7 @@ A plugin that declares a config section reads it from `plugins.settings.<id>`. R
 { "plugins": { "enabled": ["quality"], "settings": { "quality": { "ownerProperty": "maintainer" } } } }
 ```
 
-An invalid value fails every command with `INVALID_CONFIG` and names its path, such as `plugins.settings.quality.ownerProperty`. After a change, the plugin's `onExternalSettingsChange` hook runs on its next activation.
+An invalid value makes only that plugin unavailable for the invocation: every response carries a warning naming the path, such as `plugins.settings.quality.ownerProperty`, `plugins` lists the plugin with `state: "unavailable"` and a `reason`, and its commands and generators fail with `PLUGIN_UNAVAILABLE`, with the reason in `error.details.reason` and the issues in `error.details.issues`. `config`, `help`, `plugins` and every other command keep working, so you can inspect and fix the file. A section whose id names no installed plugin, such as a misspelled `serach`, is kept and reported in a warning. After a change, the plugin's `onExternalSettingsChange` hook runs on its next activation.
 
 ## Disable or re-enable a core plugin
 
@@ -55,9 +55,9 @@ Core plugins are bundled and enabled by default. List their ids under `plugins.d
 { "plugins": { "disabled": ["skills"] } }
 ```
 
-The bundled core plugins are `bases`, `skills`, `search`, `links` and `backlog`; see [bundled core plugins](../reference/plugins.md#bundled-core-plugins). For example, disabling `bases` removes the `bases` command while `.base` files stay ordinary documents for `read`, `validate` and `patch`; it also disables `backlog`, which requires the `bases.query` service. Core plugins configure through `plugins.settings` like user plugins: `search.timeoutMs`, `links.roots` and `backlog.base`/`backlog.view`.
+The bundled core plugins are `bases`, `skills`, `search`, `links`, `agents`, `connector`, `connector-azure-devops` and `backlog`; see [bundled core plugins](../reference/plugins.md#bundled-core-plugins). For example, disabling `bases` removes the `bases` command while `.base` files stay ordinary documents for `read`, `validate` and `patch`. It also leaves `backlog` without the `bases.query` service it requires: `backlog` stays listed by `help` and `plugins`, `plugins` shows it as `unavailable` with its `reason`, and `backlog` commands fail with `PLUGIN_UNAVAILABLE` until `bases` is enabled again. An optional service never does that: disabling `connector` makes `connector-azure-devops` unavailable, while `backlog` stays enabled and only `backlog sync` fails with `PLUGIN_SERVICE_MISSING`. Core plugins configure through `plugins.settings` like user plugins: `search.timeoutMs`, `links.roots`, `agents.directory` and `agents.defaultModel`, `backlog.base`/`backlog.view`, and `connector.connections`.
 
-A disabled core plugin contributes nothing: `help` and `schema` no longer list its commands, and its skills and services are gone. `plugins` still lists it with `state: "disabled"`. Remove the id from `plugins.disabled` to restore it; its first activation afterwards runs `onUserEnable` again. Only bundled core plugin ids are accepted there, and `--no-plugins` never disables core plugins.
+A disabled core plugin contributes nothing: `help` and `schema` no longer list its commands, and its skills and services are gone. `plugins` still lists it with `state: "disabled"`. Remove the id from `plugins.disabled` to restore it; its first activation afterwards runs `onUserEnable` again. Other ids there are ignored with a warning rather than blocking the CLI, and `--no-plugins` never disables core plugins.
 
 ## Observe events
 

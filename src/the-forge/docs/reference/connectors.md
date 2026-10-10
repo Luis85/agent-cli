@@ -6,11 +6,11 @@ Connectors link the [backlog](backlog.md) to external work trackers. Each platfo
 
 | Core plugin | Role |
 | --- | --- |
-| `connector` | The hub: connection profiles in workspace config, the `connectors` command, the `connector.*` events and the `connectors` service that platform connectors register with |
-| `connector-azure-devops` | The Azure DevOps Boards connector; provides `connectors.azure-devops` and requires `connectors` |
-| `backlog` | The sync engine (`backlog sync`); optionally uses `connectors` |
+| `connector` | The hub: connection profiles in workspace config, the `connectors` command, the `connector.*` events and the `connector.hub` service that platform connectors register with |
+| `connector-azure-devops` | The Azure DevOps Boards connector; provides `connector-azure-devops.connector` and requires `connector.hub` |
+| `backlog` | The sync engine (`backlog sync`); optionally uses `connector.hub` |
 
-Disabling `connector` disables `connector-azure-devops` too; `backlog` keeps working, and only `backlog sync` fails with `PLUGIN_SERVICE_MISSING`. Disabling only `connector-azure-devops` leaves its connections listed as unavailable (`CONNECTOR_NOT_FOUND` on use).
+Disabling `connector`, or an invalid `plugins.settings.connector` section, makes `connector-azure-devops` unavailable too (`plugins` lists it as `unavailable` with the reason; it registers no platform); `backlog` keeps working, and only `backlog sync` fails with `PLUGIN_SERVICE_MISSING`. Disabling only `connector-azure-devops` leaves its connections listed as unavailable (`CONNECTOR_NOT_FOUND` on use).
 
 ## Connection profiles
 
@@ -78,7 +78,7 @@ The `connector` plugin owns these events; the backlog sync engine reports throug
 
 ## The connector contract
 
-A connector implements `BacklogConnector` (exported as a type from the SDK, with the neutral data types) and registers itself with the `connectors` hub service when it loads:
+A connector implements `BacklogConnector` (exported as a type from the SDK, with the neutral data types) and registers itself with the `connector.hub` service when it loads:
 
 ```ts
 interface BacklogConnector {

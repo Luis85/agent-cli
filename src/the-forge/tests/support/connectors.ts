@@ -52,10 +52,9 @@ export async function invocation(root: string, connections: Record<string, unkno
   return {
     context, events, registry,
     async run(command: string, args: string[], flags: Record<string, string | boolean> = {}) {
-      try {
-        const data = await registry.commands.get(command)!.run(args, flags, context) as Record<string, any>;
-        return { data, events: events.history, output: JSON.stringify({ data, events: events.history }) };
-      } catch (error) { throw registry.catalog.normalize(error); }
+      // Registered commands already map coded plugin failures through the catalog.
+      const data = await registry.commands.get(command)!.run(args, flags, context) as Record<string, any>;
+      return { data, events: events.history, output: JSON.stringify({ data, events: events.history }) };
     },
   };
 }

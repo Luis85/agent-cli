@@ -25,6 +25,14 @@ describe('frontmatter edits', () => {
     expect(editFrontmatter('---\n{a: 1}\n---\n', { a: 1, b: 'x' }, { b: 'x' }, [])).toBe('---\na: 1\nb: x\n---\n');
   });
 
+  it('rewrites a block with anchors or aliases whole, resolving the aliases', () => {
+    const anchored = '---\nbase: &owner "[[Ada]]"\nassignee: *owner\norder: 1\n---\nBody\n';
+    expect(editFrontmatter(anchored, { base: '[[Ada]]', assignee: '[[Ada]]', order: 2 }, { order: 2 }, []))
+      .toBe('---\nbase: "[[Ada]]"\nassignee: "[[Ada]]"\norder: 2\n---\nBody\n');
+    expect(editFrontmatter('---\nlist: &l [a]\ncopy: *l\nstatus: Open\n---\n', { copy: ['a'], status: 'Open' }, {}, ['list']))
+      .toBe('---\ncopy:\n  - a\nstatus: Open\n---\n');
+  });
+
   it('serializes new notes like stringifyYaml', () => {
     expect(stringifyYaml({ 'pbl-id': 3, type: 'PBI', parent: '[[Route sharing]]', order: 1500.5, goal: '', tags: ['a', 'b'], due: '2026-10-01', id: '12' }))
       .toBe('pbl-id: 3\ntype: PBI\nparent: "[[Route sharing]]"\norder: 1500.5\ngoal: ""\ntags:\n  - a\n  - b\ndue: 2026-10-01\nid: "12"\n');

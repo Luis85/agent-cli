@@ -66,6 +66,11 @@ export interface Generator extends CommandMode {
     generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
     run?(request: GeneratorRequest): unknown | Promise<unknown>;
 }
+/**
+ * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
+ * A plugin generator that declares one fails registration with PLUGIN_NAMESPACE.
+ */
+export declare const hostGeneratorOptions: readonly ["out", "plan", "plan-out", "check", "revisions-from"];
 export interface Skill {
     id: string;
     content: string;
@@ -93,6 +98,11 @@ export interface PluginContributions {
     optional?: string[];
     /** JSON Schema (type object) of the plugin's config section `plugins.settings.<id>`. */
     settings?: JsonSchema;
+    /**
+     * Checks the schema-valid section (with defaults) beyond what JSON Schema expresses, such as glob syntax. Each
+     * returned issue `<path>: <problem>` makes the section invalid like a schema violation. Runs without I/O.
+     */
+    validateSettings?(settings: Readonly<Record<string, unknown>>): readonly string[];
     strings?: PluginStrings;
     errors?: PluginErrorDefinition[];
     onload?(context: PluginContext): void | Promise<void>;
@@ -111,11 +121,23 @@ export declare class Registry {
     readonly generators: Map<string, Generator>;
     readonly skills: Map<string, Skill>;
     readonly plugins: Plugin[];
-    /** Registered plugins with their origin, and bundled core plugins disabled in configuration. */
+    /** Registered plugins with their origin. */
     readonly origins: Map<string, PluginOrigin>;
+    /** Bundled core plugins listed in `plugins.disabled`: they contribute nothing, and their commands are unknown. */
     readonly disabled: PluginManifest[];
+    private readonly disabledReasons;
     readonly catalog: PluginCatalog;
     readonly settings: PluginSettings;
+    /**
+     * Registered plugins that cannot run in this invocation, with a `reason` sentence: an invalid settings section
+     * (`issues` lists its problems), or a required service whose provider is disabled or itself unavailable (`issues`
+     * are the provider's). They stay listed with their contributions but never activate; their commands and
+     * generators fail with PLUGIN_UNAVAILABLE.
+     */
+    readonly unavailable: Map<string, {
+        reason: string;
+        issues: string[];
+    }>;
     private cleanups;
     private published;
     private state;
@@ -123,9 +145,28 @@ export declare class Registry {
         id: string;
     }>(map: Map<string, T>, item: T): void;
     register(plugin: Plugin, events: EventBus, origin?: PluginOrigin): void;
-    /** A bundled core plugin disabled in `plugins.disabled`: listed by `plugins`, contributing nothing. */
-    disable(manifest: PluginManifest): void;
-    /** The context a plugin's hooks, commands and generators run with. */
+    /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
+    disable(manifest: PluginManifest, reason: string): void;
+    /** Why a disabled core plugin contributes nothing. */
+    disabledReason(pluginId: string): string | undefined;
+    /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
+    resolveCommand(commandId: string): Command;
+    /**
+     * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
+     * section becomes unavailable with a warning instead of failing the invocation, and so does every plugin that
+     * requires its services; a plugin that requires a service of a disabled core plugin (`backlog` without `bases`)
+     * becomes unavailable without a warning, since `plugins.disabled` asked for it. Discovery and recovery commands
+     * keep working; only the unavailable plugins' commands and generators fail with PLUGIN_UNAVAILABLE. Sections of
+     * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
+     * ids), are kept unchanged with a warning.
+     */
+    configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>>;
+    /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
+    private cascadeUnavailable;
+    /**
+     * The context a plugin's hooks, commands and generators run with. Unavailable plugins provide no services, so an
+     * optional service whose provider is unavailable reads as absent (`services.has` is false).
+     */
     pluginContext(plugin: Plugin, context: CommandContext, events: EventBus): PluginContext;
     publishRegistered(events: EventBus): Promise<void>;
     /**
@@ -134,6 +175,12 @@ export declare class Registry {
      */
     activate(events: EventBus, context: CommandContext, state?: PluginStateStore): Promise<void>;
     dispose(events: EventBus): Promise<void>;
+    /** Service providers by service id among available plugins: an unavailable plugin provides nothing. */
+    private availableProviders;
+    /** The available plugins providing services that `plugin` requires or optionally uses; their error codes surface through it. */
+    private serviceProviderIds;
+    /** PLUGIN_UNAVAILABLE, with `details` `{command|generator, plugin, reason, issues}`, when the plugin cannot run. */
+    private ensureAvailable;
     /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
     private ownedCommand;
     private ownedGenerator;
