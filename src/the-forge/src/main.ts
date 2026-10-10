@@ -125,7 +125,7 @@ async function run(): Promise<void> {
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
       registerCorePlugins(registry, events, corePlugins, { skills: registrySkills(registry), fileDates: nodeFileDates }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
-      config.plugins.settings = registry.settings.configure(config.plugins.settings, new Set(registry.origins.keys()));
+      config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';
       const command = registry.commands.get(id);

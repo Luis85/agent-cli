@@ -74,7 +74,7 @@ describe('plugin config sections', () => {
     let received: unknown;
     registry.register({ manifest: manifest('quality'), settings, onload(context) { received = context.settings; } }, events);
     registry.register({ manifest: manifest('plain') }, events);
-    const effective = registry.settings.configure({ quality: { label: 'Docs' }, removed: { kept: true } }, new Set(registry.origins.keys()));
+    const effective = await registry.configure({ quality: { label: 'Docs' }, removed: { kept: true } }, async () => ['removed'], message => { throw new Error(message); });
     expect(effective).toEqual({ quality: { threshold: 3, label: 'Docs' }, removed: { kept: true } });
     expect(registry.settings.sections()).toEqual([{ plugin: 'quality', path: 'plugins.settings.quality', schema: settings }]);
     expect(registry.settings.canonical('quality')).toBe('{"label":"Docs","threshold":3}');
@@ -83,14 +83,19 @@ describe('plugin config sections', () => {
     expect(received).toEqual({ threshold: 3, label: 'Docs' });
   });
 
-  it('reports every invalid value with its config path and rejects sections for plugins without settings', () => {
+  it('reports every invalid value with its config path on the unavailable plugin and warns about sections without settings', async () => {
     const { registry, events } = setup();
-    registry.register({ manifest: manifest('quality'), settings }, events);
+    registry.register({ manifest: manifest('quality'), settings, commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', run: () => 'ran' }] }, events);
     registry.register({ manifest: manifest('plain') }, events);
-    expect(() => registry.settings.configure({ quality: { threshold: 0, extra: true }, plain: {} }, new Set(registry.origins.keys()))).toThrow(expect.objectContaining({
-      code: 'INVALID_CONFIG',
-      details: { issues: ['plugins.settings.plain: plugin plain declares no settings', 'plugins.settings.quality.threshold: must be at least 1', 'plugins.settings.quality.extra: is not allowed'] },
-    }));
+    const warnings: string[] = [];
+    expect(await registry.configure({ quality: { threshold: 0, extra: true }, plain: {} }, async () => [], message => warnings.push(message))).toEqual({ quality: { threshold: 0, extra: true }, plain: {} });
+    expect(warnings).toEqual([
+      expect.stringContaining('Plugin quality is unavailable in this invocation: plugins.settings.quality is invalid'),
+      'plugins.settings has sections for plugins that declare no settings: plain; they are ignored.',
+    ]);
+    await expect(registry.commands.get('quality.run')!.run([], {}, context)).rejects.toMatchObject({
+      code: 'INVALID_CONFIG', details: { plugin: 'quality', issues: ['plugins.settings.quality.threshold: must be at least 1', 'plugins.settings.quality.extra: is not allowed'] },
+    });
   });
 
   it('rejects settings schemas outside the supported JSON Schema subset', () => {
@@ -185,9 +190,11 @@ describe('core plugins', () => {
     expect(() => registry.register({ manifest: manifest('links') }, events)).toThrow(expect.objectContaining({ code: 'DUPLICATE_PLUGIN' }));
   });
 
-  it('rejects unknown ids in plugins.disabled and core claims from user plugins', () => {
+  it('ignores unknown ids in plugins.disabled with a warning and rejects core claims from user plugins', () => {
     const { registry, events } = setup();
-    expect(() => registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates }, ['quality'])).toThrow(expect.objectContaining({ code: 'INVALID_PLUGIN_CONFIG' }));
+    registerCorePlugins(registry, events, [core('search')], { skills: registrySkills(registry), fileDates: unusedFileDates }, ['serach']);
+    expect([...registry.commands.keys()]).toEqual(['search']);
+    expect(events.warnings).toEqual([expect.stringContaining('ignored serach')]);
     expect(() => registry.register({ manifest: { ...manifest('quality'), core: true } }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(() => registry.register({ manifest: manifest('search') }, events, 'core')).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));
     expect(() => registry.register({ manifest: manifest('quality'), commands: [{ id: 'check', description: 'Bare', usage: 'check', run: () => null }] }, events)).toThrow(expect.objectContaining({ code: 'PLUGIN_NAMESPACE' }));

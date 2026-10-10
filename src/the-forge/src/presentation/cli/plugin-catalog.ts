@@ -8,8 +8,10 @@ import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts'
 export function pluginCatalog(registry: Registry, installed: readonly InstalledPlugin[]) {
   const loaded = registry.plugins.map(plugin => {
     const services = { provides: Object.keys(plugin.provides ?? {}), requires: [...plugin.requires ?? []] };
+    const unavailable = registry.unavailable.get(plugin.manifest.id);
     return {
-      ...plugin.manifest, core: registry.origins.get(plugin.manifest.id) === 'core', state: 'enabled' as const,
+      ...plugin.manifest, core: registry.origins.get(plugin.manifest.id) === 'core',
+      ...(unavailable ? { state: 'unavailable' as const, reason: unavailable.reason } : { state: 'enabled' as const }),
       contributions: {
         commands: (plugin.commands ?? []).map(command => command.id),
         generators: (plugin.generators ?? []).map(generator => generator.id),

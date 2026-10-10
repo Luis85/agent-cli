@@ -72,6 +72,19 @@ function closer(left: string[], right: string[]): boolean {
   return left.reduce((sum, issue) => sum + depth(issue), 0) > right.reduce((sum, issue) => sum + depth(issue), 0);
 }
 
+/** Every `default` that its own schema rejects, as `<schema path>: <problem>`; run on schemas that passed `schemaIssues`. */
+export function defaultIssues(schema: JsonSchema, path = 'schema'): string[] {
+  const own = schema.default === undefined ? [] : validateJsonValue(schema, schema.default, `${path}.default`).issues;
+  const children: Array<[JsonSchema, string]> = [
+    ...Object.entries(schema.properties ?? {}).map(([key, child]): [JsonSchema, string] => [child, `${path}.properties.${key}`]),
+    ...(schema.items ? [[schema.items, `${path}.items`] as [JsonSchema, string]] : []),
+    ...(schema.prefixItems ?? []).map((child, index): [JsonSchema, string] => [child, `${path}.prefixItems[${index}]`]),
+    ...(typeof schema.additionalProperties === 'object' ? [[schema.additionalProperties, `${path}.additionalProperties`] as [JsonSchema, string]] : []),
+    ...(schema.oneOf ?? []).map((child, index): [JsonSchema, string] => [child, `${path}.oneOf[${index}]`]),
+  ];
+  return [...own, ...children.flatMap(([child, at]) => defaultIssues(child, at))];
+}
+
 /**
  * The value completed by the one matching branch. Without exactly one match it reports that several branches match,
  * or the issues of the closest branch: one without a `const` mismatch, then the fewest issues, then the deepest

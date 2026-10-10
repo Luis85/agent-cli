@@ -1,4 +1,3 @@
-import { ensure } from '../../domain/shared/errors.ts';
 import type { EventBus } from './events.ts';
 import type { PluginContributions, PluginManifest, Registry, Skill } from './registry.ts';
 
@@ -35,12 +34,13 @@ export interface CorePlugin {
 
 /**
  * Registers the bundled core plugins in bundle order. They are enabled by default; ids in `disabled`
- * (`plugins.disabled`) are recorded as disabled and contribute nothing. Unknown ids are INVALID_PLUGIN_CONFIG.
+ * (`plugins.disabled`) are recorded as disabled and contribute nothing. Unknown ids are ignored with a warning, so a
+ * typo never blocks the CLI.
  */
 export function registerCorePlugins(registry: Registry, events: EventBus, plugins: readonly CorePlugin[], host: CorePluginHost, disabled: readonly string[]): void {
   const ids = plugins.map(plugin => plugin.manifest.id);
   const unknown = disabled.filter(id => !ids.includes(id));
-  ensure(unknown.length === 0, 'INVALID_PLUGIN_CONFIG', `plugins.disabled names only bundled core plugins (${ids.join(', ')}); remove ${unknown.join(', ')}. Disable a user plugin by removing it from plugins.enabled.`);
+  if (unknown.length > 0) events.warn(`plugins.disabled names only bundled core plugins (${ids.join(', ')}); ignored ${unknown.join(', ')}. Disable a user plugin by removing it from plugins.enabled.`);
   for (const plugin of plugins) {
     if (disabled.includes(plugin.manifest.id)) registry.disable(plugin.manifest);
     else registry.register({ ...plugin.create(host), manifest: plugin.manifest }, events, 'core');

@@ -34,7 +34,9 @@ describe('the skills core plugin', () => {
       expect(cli(['skills']).body.error.code).toBe('UNKNOWN_COMMAND');
       expect(cli(['plugins']).body.data.plugins).toContainEqual(expect.objectContaining({ id: 'skills', core: true, state: 'disabled', contributions: null }));
       await config({ plugins: { disabled: ['quality'] } });
-      expect(cli(['help']).body.error).toMatchObject({ code: 'INVALID_PLUGIN_CONFIG', message: expect.stringContaining('remove quality') });
+      const help = cli(['help']);
+      expect(help.status).toBe(0);
+      expect(help.body.warnings).toEqual([expect.stringContaining('ignored quality')]);
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     expect(ids(cli(['help']).body.data.commands)).toContain('skills');
     expect(cli(['--no-plugins', 'skills']).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development']);

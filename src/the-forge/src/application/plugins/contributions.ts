@@ -1,5 +1,5 @@
 import { ensure, isRecord } from '../../domain/shared/errors.ts';
-import { schemaIssues } from '../../domain/schema/json-schema.ts';
+import { defaultIssues, schemaIssues, type JsonSchema } from '../../domain/schema/json-schema.ts';
 import { validateCommandMetadata } from './command-metadata.ts';
 import { errorPrefix, PluginCatalog } from './plugin-catalog.ts';
 
@@ -38,6 +38,8 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
   }
   ensure(plugin.validateSettings === undefined || plugin.settings !== undefined, 'INVALID_PLUGIN', 'validateSettings requires settings.');
   ensure(plugin.settings === undefined || (isRecord(plugin.settings) && plugin.settings.type === 'object' && schemaIssues(plugin.settings).length === 0), 'INVALID_PLUGIN', `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin.settings).join('; ')}`);
+  const defaults = plugin.settings === undefined ? [] : defaultIssues(plugin.settings as JsonSchema, 'settings');
+  ensure(defaults.length === 0, 'INVALID_PLUGIN', `settings defaults must satisfy their own schemas: ${defaults.join('; ')}`);
   const owned = (key: typeof lists[number]) => ((plugin[key] ?? []) as Array<{ id: string }>).map(item => item.id);
   PluginCatalog.validate(pluginId, plugin.strings, plugin.errors, { commands: owned('commands'), generators: owned('generators'), events: owned('events') }, origin === 'core' ? null : errorPrefix(pluginId));
 }
