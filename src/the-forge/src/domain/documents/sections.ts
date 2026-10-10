@@ -67,9 +67,10 @@ function findSection(text: string, headings: readonly HeadingCache[], heading: s
   return matches[0]!;
 }
 
-/** Content as whole lines: a nonempty text gains a final line break when it lacks one. */
+/** Content as whole lines in the file's line ending: every break becomes `newline`, and a final one is added. */
 export function asLines(content: string, newline: string): string {
-  return content === '' || content.endsWith('\n') ? content : content + newline;
+  const lines = content.replace(/\r?\n/g, newline);
+  return lines === '' || lines.endsWith('\n') ? lines : lines + newline;
 }
 
 /** Inserts whole lines at a line start, first ending an unterminated last line. */

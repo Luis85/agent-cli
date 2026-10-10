@@ -46,6 +46,9 @@ describe('section edits by heading path', () => {
 
   it('keeps CRLF line endings, edits a section at the end of a file without a final newline and ignores headings in code', () => {
     expect(section('# A\r\n\r\ntext\r\n', 'A', 'append', 'more')).toBe('# A\r\n\r\ntext\r\nmore\r\n');
+    expect(section('# A\r\n\r\ntext\r\n', 'A', 'append', 'one\ntwo\r\nthree\n')).toBe('# A\r\n\r\ntext\r\none\r\ntwo\r\nthree\r\n');
+    expect(section('# A\r\n\r\ntext\r\n', 'A', 'replace', 'one\ntwo')).toBe('# A\r\n\r\none\r\ntwo\r\n');
+    expect(section('# A\n\ntext\n', 'A', 'prepend', 'one\r\ntwo')).toBe('# A\n\none\ntwo\ntext\n');
     expect(section('# A\n\ntext', 'A', 'append', 'more')).toBe('# A\n\ntext\nmore\n');
     expect(section('# A', 'A', 'replace', 'body')).toBe('# A\nbody\n');
     expect(section('# A\n```\n# not a heading\n```\n# B\n', 'A', 'replace', 'x')).toBe('# A\nx\n# B\n');

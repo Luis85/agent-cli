@@ -61,6 +61,12 @@ describe('block edits by ^id', () => {
     expect(failure(() => block(note, 'nope', 'append', 'x'))).toMatchObject({ code: 'SECTION_NOT_FOUND', details: { block: 'nope', blocks: ['ship', 'two', 'table'] } });
     expect(failure(() => block('One ^dup\n\nTwo ^dup\n', 'dup', 'append', 'x'))).toMatchObject({ code: 'AMBIGUOUS_SECTION', details: { block: 'dup', matches: 2 } });
   });
+
+  it('writes every inserted line break with the file\'s CRLF line ending', () => {
+    expect(block('Para ^p\r\n', 'p', 'append', 'a\nb')).toBe('Para ^p\r\n\r\na\r\nb\r\n');
+    expect(block('- one ^li\r\n', 'li', 'replace', 'a\r\nb')).toBe('- a\r\n  b ^li\r\n');
+    expect(block('- one ^li\r\n', 'li', 'append', '- a\n- b')).toBe('- one ^li\r\n- a\r\n- b\r\n');
+  });
 });
 
 describe('the block id keeps resolving after every edit', () => {

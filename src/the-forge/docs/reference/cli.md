@@ -128,7 +128,7 @@ A section path lists heading texts separated by ` > `: the last segment is the h
 
 A missing id fails with `SECTION_NOT_FOUND` and `details.blocks`; an id on several blocks fails with `AMBIGUOUS_SECTION`, because Obsidian links only the first.
 
-Content is inserted literally as whole lines: Forge adds a line break when the content lacks one and never joins it to an existing line, using the file's first line ending (LF or CRLF). In section edits, add blank lines to the content yourself where Markdown needs them to separate paragraphs.
+Content is inserted literally as whole lines in the file's line ending: Forge writes every line break in the content, and the one it adds when the content lacks a final one, with the file's first line ending (LF or CRLF), and never joins the content to an existing line. In section edits, add blank lines to the content yourself where Markdown needs them to separate paragraphs.
 
 ```sh
 node bin/forge.js edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match YOUR_REVISION --dry-run
