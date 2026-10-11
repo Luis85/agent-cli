@@ -27,7 +27,24 @@ describe('deterministic UI rendering', () => {
   it.each(['html', 'htmx', 'vanilla'] as const)('expands default props, references and projected children to portable %s HTML', framework => {
     expect(text(page, framework, 'html')).toBe('<main><h1>Dashboard</h1><button aria-label="Continue Dashboard" type="button">Continue Dashboard<span> →</span></button></main>\n');
     expect(text(page, framework, 'js')).toContain('import UiChild_0 from "./action-button.js";');
-    expect(text(page, framework, 'js')).toContain('export default function createPage(input = {}, children = [])');
+    // The page projects no children, so the parameter is marked unused; the JSDoc types match its declaration.
+    expect(text(page, framework, 'js')).toContain('export default function createPage(input = {}, _children = [])');
+    expect(text(page, framework, 'js')).toContain('/** @typedef {{ "title"?: string }} Props */');
+    expect(text(page, framework, 'js')).toContain('  /** @type {Props} */\n  const props = { "title": "Dashboard", ...input };\n');
+    expect(text(button, framework, 'js')).toContain('export default function createActionButton(input = {}, children = [])');
+  });
+
+  it.each(uiFrameworks)('emits no unused helper, parameter or literal spread (%s)', framework => {
+    const extension = componentArtifact(page, framework).fileName.split('.').pop()!;
+    const bare: UiDefinition = { ...button, id: 'bare', props: {}, root: { tag: 'hr' } };
+    for (const definition of [page, button, bare]) {
+      const source = text(definition, framework, extension);
+      expect(source, definition.id).not.toMatch(/\.\.\.\{/);
+      if (['html', 'htmx', 'vanilla'].includes(framework)) {
+        expect(source.includes('function slot('), definition.id).toBe(source.includes('slot(children)'));
+        expect(source.includes('(input'), definition.id).toBe(definition.id !== 'bare');
+      }
+    }
   });
 
   it('escapes dangerous text and attributes while retaining aria false and boolean attribute semantics', () => {

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,6 +80,29 @@ describe.skipIf(process.platform === 'win32')('the claude driver with a fake cla
     expect(JSON.parse(run.stdout)).toMatchObject({ passRate: 0, timedOut: 0 });
     expect(await readdir(results)).toHaveLength(1);
   }, 150_000);
+
+  it('on SIGINT removes the attempt\'s temporary folders and writes a report marking it interrupted before it ends', async () => {
+    const temporary = await realpath(await mkdtemp(join(tmpdir(), 'forge-eval-signal-')));
+    const [results, pids] = [join(temporary, 'results'), join(folder, 'signal.pids')];
+    const env: NodeJS.ProcessEnv = { ...process.env, TMPDIR: temporary, FAKE_CLAUDE_MODE: 'hang', FAKE_CLAUDE_PIDS: pids };
+    delete env.CI;
+    // The driver leads its own group, like the foreground job a terminal sends Ctrl+C to.
+    const driver = spawn(process.execPath, ['scripts/eval/run.mjs', '--driver', 'claude', '--task', task.id, '--repeat', '2', '--claude', claude, '--results', results], { env, detached: true, stdio: 'ignore' });
+    const ended = new Promise<NodeJS.Signals | null>(resolvePromise => driver.on('exit', (_code, signal) => resolvePromise(signal)));
+    try {
+      await vi.waitFor(async () => JSON.parse(await readFile(pids, 'utf8')) as number[], { timeout: 60_000, interval: 100 });
+      process.kill(-driver.pid!, 'SIGINT');
+      expect(await ended).toBe('SIGINT');
+      expect((await readdir(temporary)).filter(name => name.startsWith('forge-eval-'))).toEqual([]);
+      const [report] = await readdir(results);
+      const { summary, results: attempts } = JSON.parse(await readFile(join(results, report!), 'utf8')) as { summary: Record<string, unknown>; results: Array<Record<string, unknown>> };
+      expect(summary).toMatchObject({ interrupted: 'SIGINT', attempts: 2, notStarted: 1, passRate: 0 });
+      expect(attempts).toEqual([expect.objectContaining({ id: task.id, attempt: 1, passed: false, interrupted: true })]);
+    } finally {
+      try { process.kill(-driver.pid!, 'SIGKILL'); } catch { /* already ended */ }
+      await rm(temporary, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe('the guarded Forge environment', () => {

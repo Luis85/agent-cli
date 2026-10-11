@@ -40,6 +40,8 @@ import createDashboard from './ui/html/components/dashboard.js';
 document.querySelector('#app').append(createDashboard({ title: 'Workspace', count: 5 }));
 ```
 
+The JS factories are typed through JSDoc that matches their declaration files, and no target emits an unused helper, an unused parameter (one the component does not read is named with a leading `_`) or a literal object spread. Generated output therefore passes a generated project's `lint` and `typecheck` (strict TypeScript with `checkJs`) also when you place it in the project's source with `--out`, for example `src/presentation/ui/<target>`. The project's `analyze` gate additionally requires the output to be imported from an entry point (otherwise its files are reported as unused), the framework packages that React, Vue, Svelte and Angular output imports to be listed as dependencies, and the folder to belong to a boundary zone (as `src/presentation/` does, unlike `src/ui/`). The default `ui/<target>` folders are outside these gates.
+
 Serve modules through your application's HTTP server. HTMX attributes are preserved, but the CLI does not install HTMX or define server endpoints. Dynamic nodes may require the consuming application's normal HTMX initialization. Generated output includes declared component-local state and interactions, but does not include an application router, global state manager, stylesheet, design system, API implementation or framework build configuration.
 
 

@@ -30,8 +30,8 @@ export function azureConnection(fake: FakeAzureDevOps, organization: string, pro
   return { platform: 'azure-devops', organization: fake.organization(organization), project, tokenEnv: TOKEN_ENV, iterationRoot: project, ...extra };
 }
 
-/** `project` runs the command in the project scope of that folder (the workspace stays at `root`). */
-export interface Invocation { dryRun?: boolean; env?: Record<string, string | undefined>; project?: string }
+/** `project` runs the command in the project scope of that folder (the workspace stays at `root`); `language` is the response language. */
+export interface Invocation { dryRun?: boolean; env?: Record<string, string | undefined>; project?: string; language?: 'en' | 'de' }
 
 /**
  * One activated invocation like `src/main.ts` composes it, with the bases, connector, Azure DevOps and backlog core
@@ -58,7 +58,7 @@ export async function invocation(root: string, connections: Record<string, unkno
   const environment = options.project === undefined ? workspace : new Workspace(rootFiles, codec, events, options.dryRun === true, root);
   const app = createApp({ workspace, metadata, events, project: null });
   const project = options.project === undefined ? null : { schemaVersion: 1, name: options.project, type: 'library', directory: options.project };
-  const context = { workspace, environment, events, metadata, app, root: scope, workspaceRoot: root, project, language: 'en', input: async () => new Uint8Array() } as unknown as CommandContext;
+  const context = { workspace, environment, events, metadata, app, root: scope, workspaceRoot: root, project, language: options.language ?? 'en', input: async () => new Uint8Array() } as unknown as CommandContext;
   await registry.activate(events, context);
   return {
     context, events, registry,

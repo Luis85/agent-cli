@@ -1,5 +1,5 @@
 import { forgeError, ensure, isRecord, errorMessage } from '../../domain/shared/errors.ts';
-import { kernelMessage, renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { isKernelMessage, kernelMessage, renderWarning, warningText, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 export interface EventDefinition<T = unknown> { id: string; description?: string; validate: (payload: unknown) => payload is T }
 export interface EventRecord { id: string; payload: unknown }
@@ -58,7 +58,7 @@ export class EventBus implements EventChannel {
   /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
   readonly warningRecords: Array<string | KernelMessage> = [];
   /** The warnings in English. */
-  get warnings(): string[] { return this.warningRecords.map(warning => typeof warning === 'string' ? warning : renderKernelMessage(warning)); }
+  get warnings(): string[] { return this.warningRecords.map(warning => renderWarning(warning)); }
 
   constructor(private readonly delivery: EventDeliveryScope) {}
 
@@ -144,7 +144,10 @@ export class EventBus implements EventChannel {
       }
     });
   }
-  warn(message: string | KernelMessage): void { if (this.warningRecords.length < 1000) this.warningRecords.push(message); }
+  /** Records a warning: a host message by code, anything else as text (see warningText), so no value can break the response. */
+  warn(message: string | KernelMessage): void {
+    if (this.warningRecords.length < 1000) this.warningRecords.push(isKernelMessage(message) ? message : warningText(message));
+  }
   onLayoutReady(callback: Callback): void {
     this.ensureCallback(callback);
     if (!this.layoutReady) { this.layoutCallbacks.push(callback); return; }

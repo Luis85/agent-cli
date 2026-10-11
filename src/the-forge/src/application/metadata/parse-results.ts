@@ -85,6 +85,9 @@ export class ParseResults {
     if (this.records.delete(path)) this.changed = true;
   }
 
+  /** The vault's paths or aliases changed, so the stored link resolutions no longer match. */
+  outdated(): void { this.changed = true; }
+
   /**
    * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
    * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is

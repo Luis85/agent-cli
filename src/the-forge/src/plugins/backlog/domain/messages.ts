@@ -1,3 +1,5 @@
+import { fill, type MessageParams } from '../../../domain/shared/messages.ts';
+
 /**
  * English templates of the `backlog check` problem messages and the configuration problems it reports, filled with
  * `fill` from the kernel message helpers. The presentation renders them in the response language from the same
@@ -57,3 +59,13 @@ export const syncMessages = {
 } as const satisfies Record<string, string>;
 
 export type SyncMessage = keyof typeof syncMessages;
+
+/** English templates of the warnings `backlog sync` reports; the presentation passes their texts in the response language. */
+export const syncWarnings = {
+  lockLeft: "The backlog sync lock {lock} no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs.",
+} as const satisfies Record<string, string>;
+
+export type SyncWarning = keyof typeof syncWarnings;
+/** A `backlog sync` warning in the response language. */
+export type SyncWarningText = (key: SyncWarning, params?: MessageParams) => string;
+export const englishSyncWarning: SyncWarningText = (key, params) => fill(syncWarnings[key], params);

@@ -1,7 +1,7 @@
 import { evaluateChecks } from './checks.mjs';
 import { installGuard } from './guard.mjs';
 import { createWorkspace } from './workspace.mjs';
-import { HeadlessError, headless } from './process.mjs';
+import { HeadlessError, completeBeforeSignal, headless } from './process.mjs';
 
 /**
  * @typedef {import('./tasks.mjs').Task} Task
@@ -13,7 +13,7 @@ import { HeadlessError, headless } from './process.mjs';
  *   toolCalls: { total: number, forge: number, otherBash: number, native: Record<string, number> }, forgeErrors: string[],
  *   init: { mcpServers: string[], plugins: string[] } | null,
  * }} Transcript
- * @typedef {{ id: string, driver: 'claude', attempt: number, passed: boolean, checks: CheckResult[], transcript: Transcript, error?: string, timedOut?: boolean }} ClaudeResult
+ * @typedef {{ id: string, driver: 'claude', attempt: number, passed: boolean, checks: CheckResult[], transcript: Transcript, error?: string, timedOut?: boolean, interrupted?: boolean }} ClaudeResult
  */
 
 /**
@@ -98,9 +98,16 @@ export function isolationFailure(transcript) {
  * Runs one task with Claude Code headless in a fresh fixture workspace whose `setup` installed the Forge skills
  * into `.claude/skills`, then evaluates the task's checks against the end state and the final answer. The agent
  * may run only the guarded Forge wrapper and the read-only native tools; `dontAsk` denies everything else.
+ * A SIGINT or SIGTERM to the driver ends the agent, fails the attempt as `interrupted` without evaluating its checks,
+ * and removes its temporary folders before the driver ends.
  * @param {Task} task @param {ClaudeOptions} options @param {number} attempt @returns {Promise<ClaudeResult>}
  */
-export async function runClaude(task, options, attempt) {
+export function runClaude(task, options, attempt) {
+  return completeBeforeSignal(attemptClaude(task, options, attempt));
+}
+
+/** @param {Task} task @param {ClaudeOptions} options @param {number} attempt @returns {Promise<ClaudeResult>} */
+async function attemptClaude(task, options, attempt) {
   const workspace = await createWorkspace(task, { distribution: options.distribution });
   const guard = await installGuard(workspace.root).catch(async error => { await workspace.dispose(); throw error; });
   try {
@@ -110,17 +117,21 @@ export async function runClaude(task, options, attempt) {
       ...isolationArgs, '--permission-mode', 'dontAsk', '--max-turns', String(options.maxTurns), '--allowedTools', guard.allowedTool, ...options.allowedTools,
       ...(options.model ? ['--model', options.model] : []),
     ];
-    let transcript, error, timedOut = false;
+    let transcript, error, timedOut = false, interrupted = false;
     try {
       transcript = summarizeStream(await headless(options.executable, args, workspace.root, options.timeoutMs));
       error = isolationFailure(transcript);
     } catch (failure) {
       error = failure instanceof Error ? failure.message : String(failure);
       timedOut = failure instanceof HeadlessError && failure.timedOut;
+      interrupted = failure instanceof HeadlessError && failure.interrupted;
       transcript = summarizeStream('');
     }
-    const checks = await evaluateChecks(workspace, task.checks, transcript.answer);
-    return { id: task.id, driver: 'claude', attempt, passed: error === undefined && checks.every(check => check.passed), checks, transcript, ...(error ? { error } : {}), ...(timedOut ? { timedOut } : {}) };
+    const checks = interrupted ? [] : await evaluateChecks(workspace, task.checks, transcript.answer);
+    return {
+      id: task.id, driver: 'claude', attempt, passed: error === undefined && checks.every(check => check.passed), checks, transcript,
+      ...(error ? { error } : {}), ...(timedOut ? { timedOut } : {}), ...(interrupted ? { interrupted } : {}),
+    };
   } finally {
     await guard.dispose();
     await workspace.dispose();

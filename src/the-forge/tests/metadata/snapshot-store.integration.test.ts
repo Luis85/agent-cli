@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { MetadataParser } from '../../src/application/metadata/ports.ts';
+import type { MetadataChange, MetadataParser } from '../../src/application/metadata/ports.ts';
 import { VaultMetadata } from '../../src/application/metadata/vault-metadata.ts';
 import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import type { FileRepository } from '../../src/application/workspace/ports.ts';
@@ -112,6 +112,34 @@ describe('metadata snapshots in the workspace cache folder', () => {
     expect(settled.reads).toEqual(['Notes/Plan.md']);
     expect(settled.cache.unresolvedLinks['Notes/Plan.md']).toEqual({ Mending: 1 });
     expect(settled.state).toEqual(settled.fresh);
+  });
+
+  it('saves the snapshot after a commit that only moves, creates or deletes a file the index does not parse', async () => {
+    const first = await invocation({ later: 10_000 });
+    const storedPaths = async () => (JSON.parse((await readFile(first.file, 'utf8')).split('\n')[1]!) as { links: { paths: string[] } }).links.paths;
+    expect(await storedPaths()).toContain('image.png');
+    /** A mutating command: it loads the index, commits `change` and tells the index, then persists. Whether it saved. */
+    const commit = async (change: () => Promise<void>, changes: MetadataChange[]) => {
+      const files = await NodeFiles.at(root);
+      const store = new NodeMetadataSnapshotStore(root, snapshotFile(null), program, async stamped => {
+        const listing = await stampedFiles(files, undefined, stamped);
+        return { ...listing, checkedAtMs: listing.checkedAtMs + 10_000 };
+      });
+      const metadata = new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()), { workspaceRoot: true, snapshots: { store, key: 'forge test; parser 1', save: true } });
+      await metadata.load();
+      const loaded = (await stat(first.file, { bigint: true })).mtimeNs;
+      await change();
+      await metadata.update(changes);
+      await metadata.persist();
+      return (await stat(first.file, { bigint: true })).mtimeNs !== loaded;
+    };
+    expect(await commit(() => rename(join(root, 'image.png'), join(root, 'picture.png')), [{ operation: 'renamed', oldPath: 'image.png', path: 'picture.png' }])).toBe(true);
+    expect(await storedPaths()).toEqual(expect.arrayContaining(['picture.png']));
+    expect(await storedPaths()).not.toContain('image.png');
+    expect(await commit(() => writeFile(join(root, 'diagram.png'), 'bytes'), [{ operation: 'created', path: 'diagram.png' }])).toBe(true);
+    expect(await storedPaths()).toContain('diagram.png');
+    expect(await commit(() => rm(join(root, 'diagram.png')), [{ operation: 'deleted', path: 'diagram.png' }])).toBe(true);
+    expect(await storedPaths()).not.toContain('diagram.png');
   });
 
   it('follows external renames, deletions and new files', async () => {

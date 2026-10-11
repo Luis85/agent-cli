@@ -2,7 +2,8 @@ import { componentDependencies } from '../../../domain/components/library.ts';
 import type { UiDefinition, UiNode, UiValue } from '../../../domain/components/definition.ts';
 import type { InteractionDefinition } from '../../../domain/interactions/definition.ts';
 import { uiVoidTags as voidTags, uiBooleanAttributes as booleanAttrs } from '../../../domain/components/syntax.ts';
-import { ordered, html, defaults, evaluate, json, expression, defaultAssignments, componentArtifact, className } from '../rendering.ts';
+import { ordered, html, defaults, evaluate, json, expression, defaultAssignments } from '../rendering.ts';
+import { domFactory, domProps, domSlot, domTypedefs } from './dom-source.ts';
 import { hasReactiveDom, reactiveDomModule } from './dom-interactions.ts';
 import { stateDefaults } from '../interactions/handlers.ts';
 
@@ -30,18 +31,17 @@ export function domModule(definition: UiDefinition, definitions: Map<string, UiD
   const refs = componentDependencies(definition.root);
   const aliases = new Map(refs.map((id, index) => [id, `UiChild_${index}`]));
   const imports = refs.map(id => `import ${aliases.get(id)} from ${json(`./${definitions.get(id)!.id}.js`)};`).join('\n');
+  let slots = false;
   function nodeCode(node: UiNode): string {
-    if ('slot' in node) return 'slot(children)';
+    if ('slot' in node) { slots = true; return 'slot(children)'; }
     const children = `[${(node.children ?? []).map(nodeCode).join(', ')}]`;
     if ('component' in node) return `${aliases.get(node.component)}({${ordered(node.props ?? {}).map(([key, value]) => `${json(key)}: ${expression(value)}`).join(', ')}}, ${children})`;
     return `element(${json(node.tag)}, {${ordered(node.attrs ?? {}).map(([key, value]) => `${json(key)}: ${expression(value)}`).join(', ')}}, ${node.text === undefined ? 'null' : expression(node.text)}, ${children})`;
   }
-  return `${imports}${imports ? '\n\n' : ''}const booleanAttributes = new Set(${json([...booleanAttrs].sort())});
-function slot(children) {
-  const fragment = document.createDocumentFragment();
-  for (const child of children) if (child != null) fragment.append(child);
-  return fragment;
-}
+  const root = nodeCode(definition.root), assignments = defaultAssignments(definition);
+  const usesProps = root.includes('props[') || assignments !== '';
+  const elements = root.includes('element(');
+  return `${imports}${imports ? '\n\n' : ''}${domTypedefs(definition)}${elements ? `const booleanAttributes = new Set(${json([...booleanAttrs].sort())});\n` : ''}${slots ? domSlot : ''}${elements ? `/** @param {string} tag @param {Record<string, unknown>} attributes @param {unknown} text @param {readonly Node[]} children */
 function element(tag, attributes, text, children) {
   const result = document.createElement(tag);
   for (const [key, value] of Object.entries(attributes)) {
@@ -52,17 +52,9 @@ function element(tag, attributes, text, children) {
   result.append(...children);
   return result;
 }
-
-/** Create DOM using text nodes and attributes; caller owns mounting and event listeners. */
-export default function ${componentArtifact(definition, 'html').exportName}(input = {}, children = []) {
-  const props = { ...${json(defaults(definition))}, ...input };
-${defaultAssignments(definition)}
-  return ${nodeCode(definition.root)};
+` : ''}
+${domFactory(definition, 'Create DOM using text nodes and attributes; caller owns mounting and event listeners.', { props: usesProps, children: slots })}
+${usesProps ? `${domProps(definition)}${assignments}${assignments ? '\n' : ''}` : ''}  return ${root};
 }
 `;
-}
-
-export function domDeclaration(definition: UiDefinition): string {
-  const required = Object.values(definition.props).some(prop => prop.required && prop.default === undefined);
-  return `export interface ${className(definition)}Props {\n${ordered(definition.props).map(([key, prop]) => `  ${json(key)}${prop.required && prop.default === undefined ? '' : '?'}: ${prop.type};`).join('\n')}\n}\n\nexport default function ${componentArtifact(definition, 'html').exportName}(input${required ? '' : '?'}: ${className(definition)}Props, children?: readonly (Node | string | null | undefined)[]): HTMLElement | DocumentFragment;\n`;
 }

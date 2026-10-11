@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fill } from '../../src/domain/shared/messages.ts';
-import { syncMessages, type SyncMessage } from '../../src/plugins/backlog/domain/messages.ts';
-import { germanSyncMessages, localizedSync } from '../../src/plugins/backlog/presentation/messages.ts';
+import { syncMessages, syncWarnings, type SyncMessage, type SyncWarning } from '../../src/plugins/backlog/domain/messages.ts';
+import { germanSyncMessages, germanSyncWarnings, localizedSync, syncWarningText } from '../../src/plugins/backlog/presentation/messages.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]!).sort();
 const view = (skipped: Array<Record<string, string> & { reason: string }>, failed: Array<Record<string, string> & { message: string }>) => ({ base: 'Backlog.base', view: 'Backlog', skipped, failed });
@@ -11,6 +11,14 @@ describe('backlog sync messages', () => {
     for (const key of Object.keys(syncMessages) as SyncMessage[]) {
       expect(germanSyncMessages[key], key).not.toBe(syncMessages[key]);
       expect(placeholders(germanSyncMessages[key]), key).toEqual(placeholders(syncMessages[key]));
+    }
+  });
+
+  it('have a distinct German warning with the same placeholders for every English one', () => {
+    for (const key of Object.keys(syncWarnings) as SyncWarning[]) {
+      expect(germanSyncWarnings[key], key).not.toBe(syncWarnings[key]);
+      expect(placeholders(germanSyncWarnings[key]), key).toEqual(placeholders(syncWarnings[key]));
+      expect(syncWarningText('en')(key, { lock: 'L' }), key).toBe(fill(syncWarnings[key], { lock: 'L' }));
     }
   });
 

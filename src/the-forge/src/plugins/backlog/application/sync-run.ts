@@ -4,6 +4,7 @@ import type { CommandContext } from '../../../application/plugins/registry.ts';
 import { AppError } from '../../../domain/shared/errors.ts';
 import { backlogError } from '../domain/errors.ts';
 import type { CivilDate } from '../domain/fields.ts';
+import { englishSyncWarning, type SyncWarningText } from '../domain/messages.ts';
 import { lockPath } from '../domain/sync-state.ts';
 import { BACKLOG_VIEW, discover, findItem, isBound, openBacklog, readBase, type BacklogPorts, type BacklogSession, type BaseFile, type BasesQueryService } from './session.ts';
 import type { Direction } from './sync-plan.ts';
@@ -63,9 +64,10 @@ const totals = (views: readonly ViewReport[], left: readonly Left[]) => ({
  * `backlog sync`, `backlog sync status` and `backlog sync resolve`. Each bound view syncs with its own connection,
  * so views of one repository can sync to different organizations and projects. Status reads both sides and writes
  * nothing; a dry run additionally plans the vault writes and returns their diffs. A live run holds the lock file
- * of every connection it syncs from start to end, so two syncs of one connection never interleave.
+ * of every connection it syncs from start to end, so two syncs of one connection never interleave. `warning`
+ * renders its warnings in the response language.
  */
-export async function runSync(context: CommandContext, services: SyncServices, request: SyncRequest) {
+export async function runSync(context: CommandContext, services: SyncServices, request: SyncRequest, warning: SyncWarningText = englishSyncWarning) {
   const views = await boundViews(context, request);
   const live = request.mode === 'sync' && !context.workspace.dryRun;
   const open = (view: BoundView) => openBacklog(context, services.bases, services.ports, { base: view.base, view: view.view, ...(request.today ? { today: request.today } : {}) });
@@ -84,14 +86,14 @@ export async function runSync(context: CommandContext, services: SyncServices, r
   }
   const connections = [...new Set(targets.map(view => view.connection))];
   const bound = new Map(connections.map(id => [id, services.hub.connection(id)]));
-  const releases: ReleaseLock[] = [];
+  const releases: Array<{ lock: string; release: ReleaseLock }> = [];
   const reports: ViewReport[] = [];
   let left: Left[] = [];
   services.activity.syncing = true;
   const interruption = live ? services.interrupts() : null;
   const checkpoint = () => { if (interruption?.signal) throw interrupted(interruption.signal); };
   try {
-    if (live) for (const id of [...connections].sort()) releases.push(await services.lock(lockPath(id), 'backlog sync'));
+    if (live) for (const id of [...connections].sort()) releases.push({ lock: lockPath(id), release: await services.lock(lockPath(id), 'backlog sync') });
     const stores = new Map<string, SyncStore>();
     for (const id of connections) stores.set(id, await SyncStore.open(context.workspace, id));
     const all = request.base === undefined && request.view === undefined ? views : [...views, ...await boundViews(context, {})];
@@ -110,7 +112,7 @@ export async function runSync(context: CommandContext, services: SyncServices, r
   } finally {
     interruption?.dispose();
     services.activity.syncing = false;
-    for (const release of releases.reverse()) if (!(await release())) context.events.warn('A backlog sync lock no longer carried this run\'s token and was left in place; inspect .forge/sync for concurrent syncs.');
+    for (const { lock, release } of releases.reverse()) if (!(await release())) context.events.warn(warning('lockLeft', { lock }));
   }
   return {
     dryRun: request.mode === 'status' || context.workspace.dryRun, mode: request.resolve ? 'resolve' : request.mode, direction: request.resolve ? 'both' : request.direction,

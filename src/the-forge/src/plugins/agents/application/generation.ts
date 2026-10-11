@@ -77,9 +77,7 @@ export class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.render(file)) }));
-    // A run over some definitions re-derives only their permission origins; rules of the others stay.
-    const coverage: GenerationCoverage = request.file === undefined && request.agent === undefined ? { files: null } : { files: sources.map(source => source.path), ...(request.agent ? { agent: request.agent } : {}) };
-    const merged = project ? this.projectWrites(project, generated, coverage) : { writes: [], revoked: [] };
+    const merged = project ? this.projectWrites(project, generated, await this.coverage(request, sources)) : { writes: [], revoked: [] };
     writes.push(...merged.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === 'plan' ? request.manifestPath : undefined);
@@ -128,6 +126,16 @@ export class AgentGeneration {
     const written = { servers, ...(generated.settings?.agent ? { agent: generated.settings.agent } : {}), ...(settings ? { permissions: settings.owned } : {}) };
     const files = { ...project, ...(settings ? { settings: settings.text } : {}) };
     return { writes: [...writes, { path: manifestPath, bytes: encode(nextManifest(project.manifest, project.manifestText, files, written)) }], revoked: settings?.revoked ?? [] };
+  }
+
+  /**
+   * A run over some definitions re-derives only their permission origins, so the rules of the others stay. Every
+   * run re-derives the origins of definition files that no longer exist.
+   */
+  private async coverage(request: GenerateRequest, sources: readonly DefinitionSource[]): Promise<GenerationCoverage> {
+    if (request.file === undefined && request.agent === undefined) return { files: null };
+    const files = sources.map(source => source.path);
+    return { files, ...(request.agent ? { agent: request.agent } : {}), existing: [...new Set([...await this.definitions.paths(), ...files])] };
   }
 
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */

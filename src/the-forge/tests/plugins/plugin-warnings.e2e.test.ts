@@ -15,11 +15,31 @@ const plugin = `const values = {
   object: () => ({ attempt: 2, ok: false }),
   forged: () => ({ code: 'PLUGIN_SKIPPED', params: {} }),
   nested: () => ({ code: 'PLUGIN_MISSING_WARNING', params: { reason: { code: 'PLUGIN_SKIPPED', params: {} } } }),
+  circular: () => { const value = { name: 'loop', items: [1] }; value.self = value; value.items.push(value); return value; },
+  shared: () => { const item = { id: 1 }; return { first: item, second: item }; },
+  bigint: () => ({ count: 10n }),
+  function: () => () => 'function-body-secret',
+  nestedFunction: () => ({ check: () => 'function-body-secret', tag: Symbol('tag') }),
+  symbol: () => Symbol('tag'),
+  unreadable: () => ({ toJSON() { throw new Error('no json'); }, toString() { throw new Error('no text'); } }),
+  bare: () => Object.create(null),
 };
+/** Reaches the host's own warning sink past context.events, as plain JavaScript can. */
+function hostSink(context) {
+  const bus = context.workspace.events;
+  bus.warn({ code: 'PLUGIN_SKIPPED', params: {} });
+  bus.warn(new Error('raw'));
+  bus.warn(null);
+  bus.warn({ code: 'PLUGIN_MISSING_WARNING', params: null });
+  bus.warningRecords.push({ code: 'NOT_A_CODE', params: {} });
+  bus.warningRecords.push(42);
+}
 export default {
   commands: [
     { id: 'warner.run', description: 'Warn', usage: 'warner.run <kind>', mutating: false,
       async run([kind], flags, context) { context.events.warn(values[kind]()); return { done: true }; } },
+    { id: 'warner.sink', description: 'Warn through the host sink', usage: 'warner.sink', mutating: false,
+      async run(args, flags, context) { hostSink(context); return { done: true }; } },
     { id: 'warner.write', description: 'Write, warn and return unserializable data', usage: 'warner.write', mutating: true,
       async run(args, flags, context) {
         await context.workspace.write([{ path: 'written.md', bytes: new TextEncoder().encode('# Written'), mode: 'create' }]);
@@ -44,11 +64,29 @@ describe('plugin warnings', () => {
     ['object', '{"attempt":2,"ok":false}'],
     ['forged', '{"code":"PLUGIN_SKIPPED","params":{}}'],
     ['nested', '{"code":"PLUGIN_MISSING_WARNING","params":{"reason":{"code":"PLUGIN_SKIPPED","params":{}}}}'],
+    ['circular', '{"name":"loop","items":[1,"[circular]"],"self":"[circular]"}'],
+    ['shared', '{"first":{"id":1},"second":{"id":1}}'],
+    ['bigint', '{"count":"10n"}'],
+    ['function', '[function]'],
+    ['nestedFunction', '{"check":"[function]","tag":"Symbol(tag)"}'],
+    ['symbol', 'Symbol(tag)'],
+    ['unreadable', 'Operation failed with an unreadable error.'],
+    ['bare', '{}'],
   ])('reports a %s warning as plain text in every language, never as a host message', async (kind, text) => {
     for (const language of ['en', 'de']) {
       const result = await cli(['--lang', language, 'warner.run', kind]);
       expect(result.status).toBe(0);
       expect(result.body).toMatchObject({ ok: true, data: { done: true }, warnings: [text] });
+    }
+  });
+
+  it('reports values a plugin hands the host warning sink directly as plain text, without crashing', async () => {
+    for (const language of ['en', 'de']) {
+      const result = await cli(['--lang', language, 'warner.sink']);
+      expect(result.status).toBe(0);
+      expect(result.body).toMatchObject({ ok: true, data: { done: true }, warnings: [
+        '{"code":"PLUGIN_SKIPPED","params":{}}', 'raw', 'null', '{"code":"PLUGIN_MISSING_WARNING","params":null}', '{"code":"NOT_A_CODE","params":{}}', '42',
+      ] });
     }
   });
 

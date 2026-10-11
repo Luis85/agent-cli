@@ -44,6 +44,20 @@ describe('the headless runner', () => {
     expect(await module.headless(process.execPath, ['-e', 'process.stdout.write(\'{"type":"result"}\')'], process.cwd(), 60_000)).toBe('{"type":"result"}');
     expect(taskkill).not.toHaveBeenCalled();
   });
+
+  it('on Windows, names the taskkill tree termination in a timeout, not a process group', async () => {
+    // The stand-in for taskkill /T /F ends the child, as the real one ends its tree.
+    const taskkill = vi.fn((_command: string, args: string[]) => { process.kill(Number(args[1]), 'SIGKILL'); return { status: 0 }; });
+    vi.doMock('node:child_process', async original => ({ ...await original<typeof import('node:child_process')>(), spawnSync: taskkill }));
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    let module: typeof import('../../scripts/eval/process.mjs');
+    try { module = await import('../../scripts/eval/process.mjs'); } finally { Object.defineProperty(process, 'platform', platform); }
+    const failure = await module.headless(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], process.cwd(), 300).then(() => undefined, (error: Error) => error);
+    expect(taskkill).toHaveBeenCalledWith('taskkill', expect.arrayContaining(['/T', '/F']), expect.anything());
+    expect(failure?.message).toMatch(/timed out after 0\.3 s; its process tree was ended with taskkill/);
+    expect(failure?.message).not.toContain('process group');
+  });
 });
 
 describe.skipIf(process.platform === 'win32')('a signal to the eval driver', () => {

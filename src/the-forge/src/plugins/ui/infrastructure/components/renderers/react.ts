@@ -4,7 +4,7 @@ import { interactionUsesState, interactionValues } from '../../../domain/compone
 import { componentDependencies } from '../../../domain/components/library.ts';
 import type { UiDefinition, UiNode, UiValue } from '../../../domain/components/definition.ts';
 import { uiBooleanAttributes as booleanAttrs, uiBindings, uiWholeBinding } from '../../../domain/components/syntax.ts';
-import { ordered, textExpression, json, expression, defaults, defaultAssignments, className } from '../rendering.ts';
+import { ordered, textExpression, json, expression, propsWithDefaults, defaultAssignments, className } from '../rendering.ts';
 import { reactStyleHelper } from './react-style.ts';
 
 const reactNames: Record<string, string> = { class: 'className', for: 'htmlFor', tabindex: 'tabIndex', readonly: 'readOnly', autofocus: 'autoFocus', autocomplete: 'autoComplete', colspan: 'colSpan', rowspan: 'rowSpan', maxlength: 'maxLength', minlength: 'minLength', contenteditable: 'contentEditable', spellcheck: 'spellCheck', srcset: 'srcSet', usemap: 'useMap', datetime: 'dateTime', crossorigin: 'crossOrigin', novalidate: 'noValidate', formnovalidate: 'formNoValidate', acceptcharset: 'acceptCharset', httpequiv: 'httpEquiv' };
@@ -69,7 +69,7 @@ ${propTypes}${propTypes ? '\n' : ''}  children?: _UiReactNode;
 ${usesStyle ? reactStyleHelper : ''}
 ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElement, Record<string, unknown>>();\n` : ''}${usesAttributes ? `function attribute(value: unknown): string | undefined {\n  return value == null ? undefined : globalThis.String(value);\n}\n` : ''}
 export default function ${className(definition)}(${usesProps ? 'input' : '_input'}: ${className(definition)}Props) {
-${usesProps ? `  const props = { ...${json(defaults(definition))}, ...input };
+${usesProps ? `  const props = ${propsWithDefaults(definition)};
 ${defaultAssignments(definition)}` : ''}${mutatesState ? `
   const [${state}, ${prefix}SetState] = _uiUseState<${stateType(definition)}>(() => (${json(stateDefaults(definition))}));
   const ${prefix}StateRef = _uiUseRef(${state});

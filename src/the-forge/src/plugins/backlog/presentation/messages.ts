@@ -1,6 +1,13 @@
 import type { Language } from '../../../application/plugins/plugin-catalog.ts';
-import { retranslate } from '../../../domain/shared/messages.ts';
-import { checkMessages, syncMessages, type CheckMessage, type SyncMessage } from '../domain/messages.ts';
+import { fill, retranslate } from '../../../domain/shared/messages.ts';
+import { checkMessages, syncMessages, syncWarnings, type CheckMessage, type SyncMessage, type SyncWarning, type SyncWarningText } from '../domain/messages.ts';
+
+/** German `backlog sync` warnings. */
+export const germanSyncWarnings: Record<SyncWarning, string> = {
+  lockLeft: 'Die Sperre {lock} von backlog sync trug nicht mehr das Token dieses Laufs und wurde nicht entfernt; prüfen Sie .forge/sync auf gleichzeitige Synchronisierungen.',
+};
+/** `backlog sync` warnings in `language`. */
+export const syncWarningText = (language: Language): SyncWarningText => (key, params) => fill((language === 'de' ? germanSyncWarnings : syncWarnings)[key], params);
 
 /** German `backlog check` problems; `{…}` placeholders keep note titles, keys and values as written. */
 export const germanCheckMessages: Record<CheckMessage, string> = {
