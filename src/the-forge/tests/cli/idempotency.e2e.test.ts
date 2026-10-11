@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
+import { cacheFolder } from '../../src/infrastructure/workspace/files.ts';
 import { portableCli } from '../support/portable-cli.ts';
 
 /**
@@ -104,9 +105,14 @@ const unprobed: Record<string, string> = {
   'claude runtime': 'runs the installed Claude Code CLI',
 };
 
+/**
+ * Every workspace file with its digest. The derived metadata cache is left out, as `list`, revisions and events leave
+ * it out: it records parse results of what a command read, not a change the command made, in either direction.
+ */
 async function snapshot(directory = fixture.project, files: Record<string, string> = {}): Promise<Record<string, string>> {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
+    if (entry.isDirectory() && relative(fixture.project, path).split('\\').join('/') === cacheFolder) continue;
     if (entry.isDirectory()) await snapshot(path, files);
     else files[relative(fixture.project, path)] = createHash('sha256').update(await readFile(path)).digest('hex');
   }
