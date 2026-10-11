@@ -71,7 +71,8 @@ describe('release distribution', () => {
 
     await utimes(bin(root, 'forge.js'), 1_000_000, 2_000_000);
     await utimes(bin(root, 'data/README.md'), 3_000_000, 4_000_000);
-    await chmod(bin(root, 'data/README.md'), 0o664);
+    await chmod(bin(root, 'data/README.md'), 0o775);
+    await chmod(bin(root, 'forge-runtime.js'), 0o755);
     expect(release(root)).toBe(archive);
     expect(await readFile(join(root, archive))).toEqual(first);
 

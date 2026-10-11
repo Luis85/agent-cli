@@ -11,25 +11,21 @@ Requires **Node 22.12 or newer**. Extract a release into a new workspace, or cop
 The following quickstart assumes a new portable workspace. This source checkout instead selects its own `src/the-forge` project; see [source organization](#source-organization) before running file or generation commands here.
 
 ```sh
-node bin/forge.js --help
-node bin/forge.js schema --json
+node bin/forge.js --version
 node bin/forge.js setup --dry-run
 node bin/forge.js setup
 node bin/forge.js project create knowledge-core --dry-run
 node bin/forge.js project create knowledge-core
 node bin/forge.js project open knowledge-core
 node bin/forge.js project current --json
-node bin/forge.js project component WorkItem --kind domain
-node bin/forge.js make form Contact --dry-run
-node bin/forge.js make form Contact
-node bin/forge.js make entity Decision --out src/domain --dry-run
-node bin/forge.js make entity Decision --out src/domain
+node bin/forge.js create notes/plan.md --content '# Development plan' --dry-run
 node bin/forge.js create notes/plan.md --content '# Development plan'
 node bin/forge.js read notes/plan.md --json
-node bin/forge.js project close
-node bin/forge.js components init
-node bin/forge.js make ui page --framework react --stories --dry-run
 ```
+
+Run these commands from the workspace root. Continue only when `ok` is `true` and the process exits successfully. The last response should identify `projects/knowledge-core` in `context.root` and return the note's `data.revision`. You now have a project and a planning note; use that revision in the [safe-edit loop](#edit-safely), or follow the [getting-started tutorial](docs/tutorials/getting-started.md) through validation.
+
+For a known task, use `help <command>` for usage and `schema <command> --json` for its exact contract, for example `help edit` and `schema edit --json`. Request the full `schema --json` only when you need the complete installed catalog. The [documentation hub](docs/index.md) routes to code, UI, backlog and agent workflows when you need them.
 
 `setup` initializes missing app/config files, shared `bin/plugins` and `bin/templates`, packaged assets in `bin/data`, process skills as Agent Skills folders in `.claude/skills` and `.agents/skills`, and a lean `AGENTS.md`. It preserves existing files. Configure the projects directory, component-library/UI/story/import/export paths, formatting, enabled and disabled plugins and plugin settings such as template date formats (`plugins.settings.templates`) in `bin/config.json`; the `bin` layout is fixed.
 
@@ -84,7 +80,7 @@ node bin/forge.js properties notes/plan.md --set '{"status":"draft","tags":["eng
 node bin/forge.js properties notes/plan.md --set '{"status":"draft","tags":["engineering"]}' --if-match YOUR_REVISION
 ```
 
-Use `--stdin` for multiline text or binary input. For example:
+Use `--stdin` for multiline text or binary input. After applying, read the file again and run `validate notes/plan.md`; a successful write is separate from verification of its intended content. For example:
 
 ```sh
 node bin/forge.js write assets/diagram.png --stdin < diagram.png

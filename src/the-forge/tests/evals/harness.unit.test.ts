@@ -114,4 +114,11 @@ describe('the claude driver isolation', () => {
     expect(env).not.toHaveProperty('NODE_OPTIONS');
     expect(redact('auth failed for ghp_secret and abc', { GITHUB_TOKEN: 'ghp_secret', PLAIN: 'abc' })).toBe('auth failed for *** and abc');
   });
+
+  it('redacts complete overlapping credentials regardless of environment insertion order', () => {
+    const env = { API_KEY: 'shared-prefix', ACCESS_TOKEN: 'shared-prefix-private-suffix' };
+    const message = 'shared-prefix-private-suffix and shared-prefix';
+    expect(redact(message, env)).toBe('*** and ***');
+    expect(redact(message, { ACCESS_TOKEN: env.ACCESS_TOKEN, API_KEY: env.API_KEY })).toBe('*** and ***');
+  });
 });

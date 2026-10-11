@@ -1,7 +1,7 @@
 /**
  * The source of a stand-in for `claude -p --output-format stream-json` that never calls a model. It runs Forge only
  * through the guarded wrapper named in --allowedTools, as the Bash tool would, prints stream-json events and records
- * what it saw in FAKE_CLAUDE_LOG. FAKE_CLAUDE_MODE selects the behavior: pass (default), wrong, probe, hang or mcp.
+ * what it saw in FAKE_CLAUDE_LOG. FAKE_CLAUDE_MODE selects pass (default), wrong, probe, hang, mcp or error-result.
  * Tests write it to a temporary executable file, which runs through its shebang.
  */
 export const fakeClaudeSource = [
@@ -40,7 +40,7 @@ export const fakeClaudeSource = [
   '  if (process.env.FAKE_CLAUDE_LOG) writeFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, calls }));',
   "  const answer = mode === 'wrong' ? 'Alpha is planned.' : 'Alpha is ' + properties.status + ' and owned by ' + properties.owner + '.';",
   "  events.push({ type: 'assistant', message: { content: [{ type: 'text', text: answer }] } });",
-  "  events.push({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: id + 1, duration_ms: 10, total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 } });",
+  "  events.push({ type: 'result', subtype: mode === 'error-result' ? 'error_max_turns' : 'success', is_error: mode === 'error-result', result: answer, num_turns: id + 1, duration_ms: 10, total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 } });",
   "  for (const event of events) process.stdout.write(JSON.stringify(event) + '\\n');",
   '}',
   '',

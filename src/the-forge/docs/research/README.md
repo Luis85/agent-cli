@@ -1,6 +1,8 @@
 # Product research
 
-Researched 2026-10-10 · Maintainer material, not packaged into `bin/data/docs`; it does not define runtime contracts.
+Historical research baseline: 2026-10-10 · Maintainer material, not packaged into `bin/data/docs`; it does not define runtime contracts.
+
+Start with the [current agent-first polishing review](12-agent-first-polish-review.md) for the 2026-10-11 assessment and verified improvements. The synthesis below preserves the earlier research baseline and roadmap candidates. Many listed gaps have since closed, including search and link-aware file operations, command schemas, Agent Skills installation, response formatting and stale-lock recovery. Its command counts, measurements and missing-capability statements describe that earlier snapshot; they are not current acceptance criteria. Use the installed `help` and `schema <command>` plus the [product documentation](../index.md) to establish what exists now.
 
 This research asks four questions about The Forge at v0.1.0. What can it help with today? Where is it lacking? What should improve? What should be added? Seven research passes each took one product perspective and surveyed the 2025–2026 landscape on the web. Each pass then compared The Forge against that landscape and proposed prioritized recommendations. This page synthesizes the passes for planning the next iteration. The perspective reports hold the evidence and sources. The maintainer then set the direction: The Forge is a terminal project companion, the agent's independent interface to an Obsidian-compatible vault. The [next iteration plan](10-next-iteration-plan.md) turns that direction into milestones. It supersedes the positioning options and roadmap candidates below wherever they differ.
 
@@ -17,8 +19,9 @@ This research asks four questions about The Forge at v0.1.0. What can it help wi
 | 09 | [backlog-view compatibility contract](09-backlog-view-contract.md) | Reference: on-disk format and write rules of the backlog-view plugin | none |
 | 11 | [docker-agent contract](11-docker-agent-contract.md) | Reference: docker-agent YAML format, Claude Code artifacts and the generation mapping | none |
 | 10 | [Next iteration plan](10-next-iteration-plan.md) | Product direction, kernel and core-plugin architecture, event parity, milestones M1–M6 | none |
+| 12 | [Agent-first polishing review](12-agent-first-polish-review.md) | Current review of existing workflows, resolved gaps, research and verification evidence | No new capabilities |
 
-## What The Forge helps with today
+## Strengths at the research baseline
 
 The reports independently converge on one combination that no surveyed tool offers. The Forge makes **guarded, previewable, machine-readable writes to Markdown, Canvas and Bases files without a running application**. Its building blocks:
 
@@ -34,7 +37,7 @@ Secondary strengths:
 - Revision-guarded editing of Claude Code agents, hooks and plugin assets.
 - A disciplined architecture and quality gate.
 
-## Where it is lacking
+## Gaps identified at the research baseline
 
 The reports raise these gaps repeatedly:
 
@@ -66,7 +69,7 @@ The reports propose two compatible positions. The next iteration should pick one
 
 Both share the same core: guarded writes, a JSON contract and a dry-run/plan/check discipline. The difference is the front door. Position A competes directly with the official Obsidian CLI and the vault MCP servers on safety. Position B competes with spec-driven frameworks as the deterministic layer beneath them. A combined pitch is plausible: a guarded write and trace layer for agent-maintained Markdown, whether that Markdown holds notes, specs or memory. That pitch only works if the README leads with one job.
 
-## Consolidated candidates for the next iteration
+## Historical next-iteration candidates
 
 The table merges overlapping recommendations across the reports. "Sources" lists the original IDs; their rationale and evidence live in the linked reports.
 

@@ -10,15 +10,16 @@ Use this guide to scaffold, review and activate a trusted user plugin, to config
 node bin/forge.js plugins --json
 ```
 
-Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `unavailable`, `disabled`, `skipped` or `rejected` with a `reason` for every state but `enabled`, and `contributions` lists what each enabled plugin adds.
+Core plugins such as `skills` come first with `core: true`; user plugins follow. `state` is `enabled`, `unavailable`, `disabled`, `missing`, `skipped` or `rejected` with a `reason` for every state but `enabled`, and `contributions` lists what each enabled plugin adds.
 
 ## Enable a user plugin
 
 ```sh
+node bin/forge.js make plugin Quality --dry-run
 node bin/forge.js make plugin Quality
 ```
 
-The generator creates `quality/manifest.json` and `quality/main.mjs` under workspace `bin/plugins`, including while a project is open. This location is fixed; `make plugin` rejects `--out`. Review the code, then add the directory ID to `bin/config.json`:
+The generator creates `quality/manifest.json` and `quality/main.mjs` under workspace `bin/plugins`, including while a project is open. This location is fixed; `make plugin` rejects `--out`. Review the generated code and its dependencies, then merge the directory ID into `plugins.enabled` in the workspace `bin/config.json`. Preserve existing project paths, settings and enabled plugins; the following is an illustrative configuration, not a replacement for your file:
 
 ```json
 {
@@ -65,4 +66,4 @@ Inspect available notifications with `node bin/forge.js events --json`. Event di
 
 The [quality example](../examples/plugins/quality/main.mjs) demonstrates named listeners, `onAny` for future notifications and awaited `replay` for the retained history of the current invocation. Register observers in `onload` and release subscriptions in `onunload`. Command start and registration can precede activation, so use replay explicitly if you need those earlier records. Replay is bounded and does not load events from an earlier CLI run.
 
-After an operation, inspect the response's original error, warnings and events together. Observers cannot veto work: a warning can follow a committed write, and a command can fail after changing state. Responses include only committed `vault.*` records by default; rerun with `--events all` to see lifecycle, workspace and plugin records in the envelope, including those of core plugins. Match started/terminal phase records by `operationId` and inspect `root` or `cwd` before interpreting paths. Check committed `vault.*` records and reread affected files before retrying. Low-level repository calls and arbitrary plugin code do not automatically produce operation phases; see the [event contract](../reference/plugins.md#host-events-and-correlation).
+After an operation, inspect the response's original error, warnings and events together. Observers cannot veto work: a warning can follow a committed write, and a command can fail after changing state. Responses include only committed `vault.*` records by default; include `--events all` on the original invocation when you need lifecycle, workspace and plugin records in the envelope, including those of core plugins. Event history is local to that invocation: rerunning a mutation executes it again and cannot retrieve the earlier history. Do not repeat a write merely to collect more events. Match started/terminal phase records by `operationId` and inspect `root` or `cwd` before interpreting paths. Check committed `vault.*` records and reread affected files before retrying. Low-level repository calls and arbitrary plugin code do not automatically produce operation phases; see the [event contract](../reference/plugins.md#host-events-and-correlation).

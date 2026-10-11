@@ -173,10 +173,10 @@ export class FileManager {
     } catch (error) { if (!notFound(error)) throw error; }
   }
 
-  /** Protected roots are compared without letter case: on case-insensitive filesystems `.Obsidian` is `.obsidian`. */
+  /** Protect case-insensitive names and Windows trailing-dot/space aliases of the reserved roots. */
   private ensureMovable(path: string): void {
     const top = path.split('/')[0]!;
     const protectedRoots = ['.obsidian', '.forge', ...(this.scope.workspace ? ['bin'] : [])];
-    ensure(!protectedRoots.includes(top.toLowerCase()), 'PROTECTED_PATH', `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
+    ensure(!protectedRoots.includes(top.toLowerCase().replace(/[. ]+$/, '')), 'PROTECTED_PATH', `${top} is protected; Forge does not move or delete it.`, { path, protected: top });
   }
 }

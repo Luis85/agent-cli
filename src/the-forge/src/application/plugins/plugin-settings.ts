@@ -1,4 +1,4 @@
-import { isRecord } from '../../domain/shared/errors.ts';
+import { errorMessage, isRecord } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import { validateJsonValue, type JsonSchema } from '../../domain/schema/json-schema.ts';
 
@@ -51,6 +51,8 @@ export class PluginSettings {
    * normalized here, the one place every consumer reads from: `config`, the settings revision and `context.settings`.
    */
   configure(sections: Readonly<Record<string, unknown>>, loaded: ReadonlySet<string>): SettingsReport {
+    this.values.clear();
+    this.frozen.clear();
     const invalid = new Map<string, string[]>();
     const effective: Record<string, unknown> = { ...sections };
     const undeclared = Object.keys(sections).filter(pluginId => loaded.has(pluginId) && !this.schemas.has(pluginId)).sort();
@@ -71,7 +73,7 @@ export class PluginSettings {
     const { paths = [], check } = this.declarations.get(pluginId) ?? {};
     const value = normalizedPaths(result.value, paths);
     const issues = pathIssues(pluginId, value, paths);
-    if (issues.length === 0) issues.push(...check?.(frozenCopy(value)) ?? []);
+    if (issues.length === 0 && check) issues.push(...checkIssues(pluginId, check, value));
     return issues.length > 0 ? { issues } : { value, issues };
   }
 
@@ -108,4 +110,20 @@ function pathIssues(pluginId: string, section: Readonly<Record<string, unknown>>
     try { vaultPath(String(section[key])); return []; }
     catch { return [`plugins.settings.${pluginId}.${key}: must be a contained workspace-relative path`]; }
   });
+}
+
+/** Faulty user validators make their own section invalid without blocking discovery or other plugins. */
+function checkIssues(pluginId: string, check: SettingsCheck, value: Record<string, unknown>): string[] {
+  const path = `plugins.settings.${pluginId}`;
+  try {
+    const issues: unknown = check(frozenCopy(value));
+    // JavaScript plugins can accidentally return a rejected Promise despite the synchronous SDK contract.
+    if (issues instanceof Promise) void issues.catch(() => {});
+    if (!Array.isArray(issues) || [...issues].some(issue => typeof issue !== 'string' || issue.trim().length === 0)) {
+      return [`${path}: validateSettings must return an array of nonempty issue strings synchronously`];
+    }
+    return issues as string[];
+  } catch (error) {
+    return [`${path}: validateSettings failed: ${errorMessage(error)}`];
+  }
 }

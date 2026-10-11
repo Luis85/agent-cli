@@ -1,11 +1,19 @@
 import { ensure } from '../shared/errors.ts';
 
+/** Reserved names also cover case-insensitive filesystems and Windows trailing-dot/space aliases. */
+export function reservedPathSegment(segment: string): 'git' | 'internal' | undefined {
+  const name = segment.toLowerCase().replace(/[. ]+$/, '');
+  if (name === '.git') return 'git';
+  if (name === '.agent-cli.lock' || name.startsWith('.agent-cli-tmp-')) return 'internal';
+  return undefined;
+}
+
 export function vaultPath(input: string): string {
   // oxlint-disable-next-line no-control-regex -- Vault paths must reject ASCII control characters.
-  ensure(typeof input === 'string' && input.length > 0 && !/[\x00-\x1f\\:]/.test(input), 'INVALID_PATH', 'Use a nonempty, relative POSIX path.');
+  ensure(typeof input === 'string' && input.length > 0 && !/[\x00-\x1f\x7f\\:]/.test(input), 'INVALID_PATH', 'Use a nonempty, relative POSIX path.');
   const parts = input.split('/');
   ensure(parts.every(p => p && p !== '.' && p !== '..'), 'INVALID_PATH', 'Absolute paths, empty segments and traversal are forbidden.');
-  ensure(!parts.some(p => ['.git', '.agent-cli.lock'].includes(p) || p.startsWith('.agent-cli-tmp-')), 'INVALID_PATH', 'Reserved workspace path.');
+  ensure(!parts.some(p => reservedPathSegment(p) !== undefined), 'INVALID_PATH', 'Reserved workspace path.');
   return input;
 }
 

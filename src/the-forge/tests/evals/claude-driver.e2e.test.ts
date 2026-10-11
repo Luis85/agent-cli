@@ -54,6 +54,12 @@ describe.skipIf(process.platform === 'win32')('the claude driver with a fake cla
     expect(result).toMatchObject({ passed: false, error: expect.stringContaining('MCP server github') });
   }, 120_000);
 
+  it('fails an unsuccessful agent result even when its answer passes every task check', async () => {
+    const { result } = await attempt('error-result');
+    expect(result.checks.every(check => check.passed)).toBe(true);
+    expect(result).toMatchObject({ passed: false, transcript: { isError: true }, error: 'the agent did not report a successful result' });
+  }, 120_000);
+
   it('refuses options that leave the workspace and stops once the distribution changes', async () => {
     const { log } = await attempt('probe');
     const { calls } = JSON.parse(await readFile(log, 'utf8')) as { calls: Array<{ args: string[]; status: number; code?: string }> };

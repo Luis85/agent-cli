@@ -30,7 +30,9 @@ function fromBase64url(text: string): Uint8Array | undefined {
 /** FNV-1a over the canonical query, so a cursor is only accepted by the query that issued it. */
 function fingerprint(query: unknown): string {
   let hash = 0x811c9dc5;
-  for (const char of JSON.stringify(query)) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+  const text = JSON.stringify(query);
+  // Hash every UTF-16 code unit: code-point iteration loses the low surrogate with charCodeAt(0).
+  for (let index = 0; index < text.length; index++) hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
   return hash.toString(16).padStart(8, '0');
 }
 const validKey = (value: unknown): value is PageKey =>

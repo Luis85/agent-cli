@@ -22,7 +22,7 @@ bin/
 projects/                 # configurable with paths.projects
 ```
 
-`bin/package.json` keeps `forge.js` and `forge-runtime.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
+`bin/package.json` keeps `forge.js` and `forge-runtime.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.claude/skills` and `.agents/skills` and creates a lean workspace `AGENTS.md`.
 
 To initialize another existing directory, run `node /absolute/path/to/bin/forge.js --root /absolute/path/to/workspace setup`. The workspace root must exist. Setup always targets the workspace, even while a project is open. It does not install npm packages or silently upgrade existing application files; replace a bundle explicitly from a reviewed distribution.
 
@@ -59,11 +59,11 @@ node bin/forge.js make document 'Feature proposal' --template entity.md --dry-ru
 node bin/forge.js project close
 ```
 
-The first command creates `projects/knowledge-core/notes/plan.md` with the default projects directory. TypeScript generation defaults to that project's `src/domain`; document generation defaults to its `notes`. Templates are read from workspace `bin/templates`, so all projects can reuse the same sources. `--values-from` and file-copy inputs resolve inside the active project. Skill installation defaults to its `.agents/skills`.
+The first command creates `projects/knowledge-core/notes/plan.md` with the default projects directory. TypeScript generation defaults to that project's `src/domain`; document generation defaults to its `notes`. Templates are read from workspace `bin/templates`, so all projects can reuse the same sources. `--values-from` and file-copy inputs resolve inside the active project. Skill installation defaults to its `.claude/skills` and `.agents/skills`.
 
 `project list`, `create` and `inspect` operate on the workspace's managed-project directory. `project inspect` without an ID inspects the selected project. `project component <id> <Name>` targets an explicit managed project; omit the ID to use the open project. `project close` clears selection and restores workspace-relative document paths. Context-changing commands support `--dry-run`; previews do not change the selection. A corrupt selection fails with `INVALID_PROJECT_CONTEXT`; a missing or invalid selected project fails with `STALE_PROJECT_CONTEXT`. Writes never silently fall back to the workspace. Commands that require a selection fail with `PROJECT_REQUIRED` when none is open. Use project discovery and `project close` to recover, then open a valid project.
 
-Selection is shared by CLI invocations using the same workspace. Coordinate agents before changing it; check each mutation's returned `context` to verify the target. `--root` chooses a workspace, not an alternative spelling for an open project.
+Selection is shared by CLI invocations using the same workspace. Keep it fixed while parallel agents use file commands: checking `project current` does not lock the selection for the next invocation. Coordinate `project open` and `project close` before starting their work, then verify each read and mutation's `context.root`. For commands that declare `--project` (such as `make ui` and `make stories`), prefer that per-invocation target; inspect `schema <command>` rather than assuming every command accepts it. Agents that need different selected projects at the same time should use separate workspaces or checkouts. `--root` chooses a workspace, not an alternative spelling for an open project.
 
 Saved selection includes the project's workspace-relative directory. Changing `paths.projects` makes the selection stale, even if the new directory contains a project with the same name. Run `project open <id>` to explicitly select the new location, or `project close` to return to workspace scope. Older selection files without a directory are invalid and can be repaired with the same commands.
 

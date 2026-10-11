@@ -84,6 +84,9 @@ describe('moving notes with link updates', () => {
     await expect(app.fileManager.move('a.md', '.obsidian/a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.move('a.md', '.Obsidian/a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.move('a.md', 'BIN/a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(app.fileManager.move('a.md', '.obsidian./a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(app.fileManager.move('a.md', 'BIN /a.md')).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    await expect(app.fileManager.delete('.FORGE. ', { recursive: true, permanent: true })).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.delete('.FORGE', { recursive: true, permanent: true })).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
     await expect(app.fileManager.rename('a.md', 'x/b')).rejects.toMatchObject({ code: 'INVALID_MOVE' });
     await expect(app.fileManager.move('a.md', 'a.md')).rejects.toMatchObject({ code: 'INVALID_MOVE' });

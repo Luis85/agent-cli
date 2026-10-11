@@ -60,6 +60,22 @@ describe('staging before renames', () => {
     expect(await readFile(join(root, 'guides/sub/b.md'), 'utf8')).toBe('B2');
   });
 
+  it('removes newly created subfolders before rolling a moved folder back', async () => {
+    await put({ 'docs/a.md': 'A', 'index.md': 'Index' });
+    const folder = await files.stat('docs');
+    const replace = adapter().replace.bind(files);
+    vi.spyOn(adapter(), 'replace').mockImplementation(async (target, ...args) => {
+      if (basename(target) === 'index.md') throw new Error('Injected write failure');
+      await replace(target, ...args);
+    });
+    await expect(files.commit({
+      renames: [{ from: 'docs', to: 'deep/guides', expectedRevision: folder.revision }],
+      writes: [{ path: 'deep/guides/new/nested/b.md', bytes: encodeText('B') }, { path: 'index.md', bytes: encodeText('Changed'), expectedRevision: rev('Index') }],
+    }, false)).rejects.toThrow('Injected write failure');
+    expect(await walk()).toEqual(['docs/a.md', 'index.md']);
+    expect((await files.stat('docs')).revision).toBe(folder.revision);
+  });
+
   it('rolls back a folder move and removes writes staged inside it when publishing fails', async () => {
     await put({ 'docs/a.md': 'A', 'docs/sub/b.md': 'B' });
     const folder = await files.stat('docs');
@@ -93,6 +109,17 @@ describe('rename destinations', () => {
 });
 
 describe('folders with special entries', () => {
+  it.each(['rename', 'remove'] as const)('protects a Git repository initialized after %s preflight', async operation => {
+    await put({ 'docs/a.md': 'A' });
+    const { revision } = await files.stat('docs');
+    vi.spyOn(files, 'stageAll').mockImplementation(async () => { await put({ 'docs/.git/HEAD': 'ref: refs/heads/main' }); });
+    const batch = operation === 'rename'
+      ? { renames: [{ from: 'docs', to: 'guides', expectedRevision: revision }] }
+      : { removes: [{ path: 'docs', expectedRevision: revision }] };
+    await expect(files.commit(batch, false)).rejects.toMatchObject({ code: 'PROTECTED_PATH' });
+    expect(await walk()).toEqual(['docs/.git/HEAD', 'docs/a.md']);
+  });
+
   it('covers empty folders, symlinks and node_modules in the folder revision', async () => {
     await put({ 'docs/a.md': 'A' });
     const revisions = [(await files.stat('docs')).revision];

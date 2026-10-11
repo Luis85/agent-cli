@@ -46,6 +46,9 @@ try {
     const destination = join(staging, 'bin', path);
     await mkdir(dirname(destination), { recursive: true });
     await copyFile(current, destination);
+    // Checkout execute bits (including Windows defaults) are not part of an asset's content.
+    // Only the launcher below is executable in the portable distribution.
+    await chmod(destination, 0o644);
   }
   // Never publish local configuration, project context, plugins or templates.
   await copyFile(join(staging, 'bin/config/default.json'), join(staging, 'bin/config.json'));

@@ -146,7 +146,7 @@ export declare class FileManager {
     /** `.trash/<path>`, or with ` 1`, ` 2`… before the extension when that name is taken, as Obsidian names trash copies. */
     private trashDestination;
     private ensureAbsent;
-    /** Protected roots are compared without letter case: on case-insensitive filesystems `.Obsidian` is `.obsidian`. */
+    /** Protect case-insensitive names and Windows trailing-dot/space aliases of the reserved roots. */
     private ensureMovable;
 }
 export {};

@@ -18,9 +18,12 @@ Requires **Node 22.12 or newer**. The committed `bin/` needs no installation. Th
 
 ```sh
 node bin/forge.js project current --json
+node bin/forge.js help read --json
 node bin/forge.js read src/main.ts --json
 node bin/forge.js project list
 ```
+
+For an agent, start with `help <command>` for usage and `schema <command> --json` for the exact input/output contract. Use the complete `schema --json` only when you need the entire installed catalog. Check both `ok` and the exit status, verify `context.root`, and preview mutations before applying them with the current file revision. The [workflow skill](src/the-forge/skills/forge-workflow/SKILL.md) describes this loop.
 
 To start a new, empty workspace instead, follow the quickstart in [The Forge README](src/the-forge/README.md#use-the-committed-bundle).
 

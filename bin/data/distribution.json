@@ -165,6 +165,7 @@
     "data/types/application/vault/app.d.ts",
     "data/types/application/vault/file-manager.d.ts",
     "data/types/application/vault/link-plan.d.ts",
+    "data/types/application/workspace/batch-plan.d.ts",
     "data/types/application/workspace/ports.d.ts",
     "data/types/application/workspace/workspace.d.ts",
     "data/types/domain/connectors/items.d.ts",

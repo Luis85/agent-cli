@@ -120,7 +120,7 @@ async function attemptClaude(task, options, attempt) {
     let transcript, error, timedOut = false, interrupted = false;
     try {
       transcript = summarizeStream(await headless(options.executable, args, workspace.root, options.timeoutMs));
-      error = isolationFailure(transcript);
+      error = isolationFailure(transcript) ?? (transcript.isError ? 'the agent did not report a successful result' : undefined);
     } catch (failure) {
       error = failure instanceof Error ? failure.message : String(failure);
       timedOut = failure instanceof HeadlessError && failure.timedOut;

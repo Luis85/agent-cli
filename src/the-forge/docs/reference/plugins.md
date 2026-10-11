@@ -87,7 +87,7 @@ Each declares German strings for its name and description, its commands, actions
 The shipped type-only SDK is `bin/data/types/sdk.d.ts`. A user plugin module exports an object or a class instantiated with its manifest; the loader supplies the manifest to the resulting instance. A TypeScript module can declare contributions as follows:
 
 ```ts
-import type { Plugin } from '../bin/data/types/sdk.js';
+import type { PluginContributions } from '../bin/data/types/sdk.js';
 const plugin = {
   commands: [{
     id: 'quality.status',
@@ -102,9 +102,11 @@ const plugin = {
   settings: { type: 'object', additionalProperties: false, properties: { threshold: { type: 'integer', minimum: 1, default: 3 } } },
   errors: [{ code: 'QUALITY_NOT_READY', category: 'drift', summary: 'The workspace is not ready.', hint: 'Run quality.status --verbose and fix the failing checks.' }],
   strings: { de: { commands: { 'quality.status': 'Bereitschaft melden' }, descriptions: { 'Include every check.': 'Jede Prüfung einschließen.' } } },
-} satisfies Omit<Plugin, 'manifest'>;
+} satisfies PluginContributions;
 export default plugin;
 ```
+
+`PluginContributions` infers `PluginContext` for command callbacks and for `request.context` in both generator forms, including settings, services and translations. Standalone declarations can use `Command<PluginContext>`, `Generator<PluginContext>` and `GeneratorRequest<PluginContext>`; their defaults describe the kernel command context.
 
 Invalid contributions or duplicate IDs reject the complete plugin registration, leaving no partially registered capabilities. All contributions register before lifecycle activation.
 
@@ -142,7 +144,7 @@ One declaration drives argument parsing, the invocation policy, `help` and `sche
 | `output` | Optional JSON Schema of `data` in a successful response; an action's own `output` replaces it for that action | none |
 | `errors` | Codes the command reports itself (built-in or the plugin's registered codes); the host adds `PLUGIN_UNAVAILABLE` to every plugin command and generator | `[]` |
 
-Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns the catalog; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, outputSchema?, globalOptions}`. `schema` returns the same entry for every command plus `inputSchema`, a JSON Schema 2020-12 document of one invocation; `schema <command>` returns one. Declared output schemas are published as standalone documents with `$schema` and a `title` such as `read output`. The [schema contract](schema.md) describes the complete document, the envelope schema and how the annotations are derived. For a command without actions it describes `args` and `options` directly:
+Invalid metadata fails registration with `INVALID_PLUGIN`. `help` returns a compact catalog of command ids, descriptions, usage and behavior annotations; `help <command>` (or `<command> --help`) returns `{id, description, usage, options, args, annotations, errors, globalOptions}`, plus action details where declared. `schema` returns the full entry for every command, including `inputSchema`, a JSON Schema 2020-12 document of one invocation, and declared `outputSchema`; `schema <command>` returns one. Declared output schemas are published as standalone documents with `$schema` and a `title` such as `read output`. The [schema contract](schema.md) describes the complete document, the envelope schema and how the annotations are derived. For a command without actions it describes `args` and `options` directly:
 
 ```json
 {
@@ -187,7 +189,7 @@ A plugin declares its settings as a JSON Schema of type `object` in `settings`. 
 { "plugins": { "enabled": ["quality"], "settings": { "quality": { "ownerProperty": "maintainer" } } } }
 ```
 
-After plugins register, the host validates each declared section, fills `default`s, normalizes the folders that `pathSettings` names (top-level string settings: a trailing slash is dropped, and an absolute path, an empty segment or `..` is an issue `plugins.settings.<id>.<key>: must be a contained workspace-relative path`), runs the plugin's optional `validateSettings(settings)` for checks JSON Schema cannot express (it returns `<path>: <problem>` issues and performs no I/O; the `links` plugin uses it to compile its root globs) and hands the result to the plugin as `context.settings` (`null` without a schema), a frozen deep copy that plugin code cannot change. Every `default` in the schema must satisfy its own schema; otherwise registration fails with `INVALID_PLUGIN`. An invalid section never blocks the CLI: the plugin becomes unavailable for the invocation (`state: "unavailable"` with a `reason` in `plugins`), together with every plugin that requires one of its services, and every response carries a warning naming each path, such as `plugins.settings.quality.ownerProperty: must have at least 1 characters`. Unavailable plugins never activate; their commands and generators fail with `PLUGIN_UNAVAILABLE`, with `error.details` `{command or generator, plugin, reason, issues}`. Discovery and recovery commands (`config`, `help`, `schema`, `plugins`) and the other plugins keep working. A section for a loaded plugin that declares no settings is ignored with a warning, and a section whose id names no registered, disabled or installed plugin (a misspelled id such as `serach`) is kept unchanged with a warning; sections of disabled or uninstalled plugins are kept unchanged. `config` shows the effective sections in `data.config.plugins.settings`, the same normalized values `context.settings` holds and the settings revision hashes, and their schemas in `data.sections` (`[{plugin, path, schema}]`). Changing a section triggers [`onExternalSettingsChange`](#lifecycle-hooks-layout-ready-and-quit) once.
+After plugins register, the host validates each declared section, fills `default`s, normalizes the folders that `pathSettings` names (top-level string settings: a trailing slash is dropped, and an absolute path, an empty segment or `..` is an issue `plugins.settings.<id>.<key>: must be a contained workspace-relative path`), runs the plugin's optional `validateSettings(settings)` for checks JSON Schema cannot express (it returns `<path>: <problem>` issues and performs no I/O; the `links` plugin uses it to compile its root globs) and hands the result to the plugin as `context.settings` (`null` without a schema), a frozen deep copy that plugin code cannot change. Every `default` in the schema must satisfy its own schema; otherwise registration fails with `INVALID_PLUGIN`. Custom validators must return an array of nonempty issue strings synchronously. A thrown error, a Promise or an invalid return value makes that plugin's section invalid and produces a diagnostic naming `plugins.settings.<id>` and `validateSettings`. An invalid section never blocks the CLI: the plugin becomes unavailable for the invocation (`state: "unavailable"` with a `reason` in `plugins`), together with every plugin that requires one of its services, and every response carries a warning naming each path, such as `plugins.settings.quality.ownerProperty: must have at least 1 characters`. Unavailable plugins never activate; their commands and generators fail with `PLUGIN_UNAVAILABLE`, with `error.details` `{command or generator, plugin, reason, issues}`. Discovery and recovery commands (`config`, `help`, `schema`, `plugins`) and the other plugins keep working. A section for a loaded plugin that declares no settings is ignored with a warning, and a section whose id names no registered, disabled or installed plugin (a misspelled id such as `serach`) is kept unchanged with a warning; sections of disabled or uninstalled plugins are kept unchanged. `config` shows the effective sections in `data.config.plugins.settings`, the same normalized values `context.settings` holds and the settings revision hashes, and their schemas in `data.sections` (`[{plugin, path, schema}]`). Changing a section triggers [`onExternalSettingsChange`](#lifecycle-hooks-layout-ready-and-quit) once.
 
 ## Strings and error codes
 
@@ -230,14 +232,14 @@ src/plugins/<id>/
 | Kernel layers | Never `src/plugins/` |
 | `src/main.ts` | Each plugin's `plugin.ts` only |
 
-The internal plugin SDK is the kernel's application layer, chiefly `src/application/plugins/`: the contracts (`Command`, `Generator`, `PluginContributions`, `CorePlugin`, `CorePluginHost`), command metadata helpers (`option`), command input helpers (`arity`, `value`, `globalOptions`, `parseJson`, `readInputBytes` in `command-input.ts`), the definition library command helpers (`library-commands.ts`: `libraryMetadata`, `libraryOptions`, `localizedLibraryResult`), path settings checks (`relativePathIssues`, `relativePathSetting` in `plugin-settings.ts`) and the generation controls next to `GenerationService` (`src/application/generation/controls.ts`: `reviewOptions`, `generationControls`, `libraryGenerationOptions`, `generationOutputPath`). Plugins never import kernel infrastructure or presentation, or another plugin; they use declared services instead. `src/main.ts` lists the bundled plugins and calls `registerCorePlugins` with a `CorePluginHost` of kernel ports (`skills`, the live skill catalog; `fileDates`, which reads file sizes and filesystem dates below a command root for Bases; `openFiles`, which opens the guarded repository at a directory outside the workspace for Claude's user scope and reports its diagnostics as host warnings; `operationId`, the invocation-wide operation counter that `claude.*` records share with `command.*` and `operation.*`; `http`, the `HttpClient` port over `fetch` with timeouts and 429/503 retries of repeatable requests for connectors; `locks`, exclusive lock files below a command root with holder metadata (the backlog sync lock); and `environment`, which reads one environment variable such as a connector's token variable); `create(host)` wires the plugin's adapters to those ports without I/O. When a plugin needs another kernel capability, add a port to `CorePluginHost` and supply its adapter in `src/main.ts`. Architecture tests and `npm run check:structure` enforce the layout and these rules. Tests for a core plugin live in `tests/<id>/`.
+The internal plugin SDK is the kernel's application layer, chiefly `src/application/plugins/`: the contracts (`Command`, `Generator`, `PluginContributions`, `CorePlugin`, `CorePluginHost`), command metadata helpers (`option`), command input helpers (`arity`, `value`, `globalOptions`, `parseJson`, `readInputBytes` in `command-input.ts`), the definition library command helpers (`library-commands.ts`: `libraryMetadata`, `libraryOptions`, `localizedLibraryResult`), path settings declarations (`pathSettings` on `PluginContributions`, normalized and checked by `PluginSettings` in `plugin-settings.ts`) and the generation controls next to `GenerationService` (`src/application/generation/controls.ts`: `reviewOptions`, `generationControls`, `libraryGenerationOptions`, `generationOutputPath`). Plugins never import kernel infrastructure or presentation, or another plugin; they use declared services instead. `src/main.ts` lists the bundled plugins and calls `registerCorePlugins` with a `CorePluginHost` of kernel ports (`skills`, the live skill catalog; `fileDates`, which reads file sizes and filesystem dates below a command root for Bases; `openFiles`, which opens the guarded repository at a directory outside the workspace for Claude's user scope and reports its diagnostics as host warnings; `operationId`, the invocation-wide operation counter that `claude.*` records share with `command.*` and `operation.*`; `http`, the `HttpClient` port over `fetch` with timeouts and 429/503 retries of repeatable requests for connectors; `locks`, exclusive lock files below a command root with holder metadata (the backlog sync lock); and `environment`, which reads one environment variable such as a connector's token variable); `create(host)` wires the plugin's adapters to those ports without I/O. When a plugin needs another kernel capability, add a port to `CorePluginHost` and supply its adapter in `src/main.ts`. Architecture tests and `npm run check:structure` enforce the layout and these rules. Tests for a core plugin live in `tests/<id>/`.
 
 ## Reuse Claude lifecycle execution
 
 The bundled `claude` core plugin provides the service `claude.lifecycle`, the same lifecycle client its `claude` command uses to invoke the installed Claude CLI. A plugin declares it in `requires` and calls `context.services.get('claude.lifecycle').execute(request)`; it needs no imports from Forge internals or a new contribution type. With `claude` disabled (`plugins.disabled`), a plugin that requires the service is unavailable and its commands fail with `PLUGIN_UNAVAILABLE`:
 
 ```ts
-import type { ClaudeLifecycleClient, Plugin } from '../bin/data/types/sdk.js';
+import type { ClaudeLifecycleClient, PluginContributions } from '../bin/data/types/sdk.js';
 export default {
   requires: ['claude.lifecycle'],
   commands: [{
@@ -251,7 +253,7 @@ export default {
       });
     },
   }],
-} satisfies Omit<Plugin, 'manifest'>;
+} satisfies PluginContributions;
 ```
 
 The SDK types the client as `ClaudeLifecycleClient`, `{ execute(request: ClaudeLifecycleRequest): Promise<ClaudeLifecycleResult> }`, with `ClaudeLifecyclePlan` and `ClaudeOutput`; they are type declarations only, and the `claude` plugin implements them. Requests contain literal `args` and optional `executable`, `timeoutMs`, UTF-8 `stdin`, `output` and `sensitiveArgs` indices. `output` is `text` by default, `json` for an entire JSON response, or `json-last-line` for commands whose final stdout line is native JSON. The `claude` plugin binds the client when it activates: the working directory is the invocation's selected root and its dry-run setting applies. A plugin cannot override either through this service, and the client fails with `PLUGIN_LIFECYCLE` outside an activated command invocation.
@@ -330,7 +332,7 @@ Like Obsidian's MetadataCache, the kernel index publishes its events after the v
 Differences from Obsidian: the metadata cache is built lazily per invocation, so `metadataCache` accessors return promises and the link maps are methods; `vault` listing methods are asynchronous for the same reason. Subscriptions last for the invocation. Calls the facade makes inside a listener are ordinary guarded writes and publish their own records.
 
 ```ts
-import type { Plugin } from '../bin/data/types/sdk.js';
+import type { PluginContributions } from '../bin/data/types/sdk.js';
 export default {
   onload({ app, events }) {
     app.vault.on('rename', ({ path, oldPath }) => events.warn(`Moved ${oldPath} to ${path}`));
@@ -343,7 +345,7 @@ export default {
       return app.fileManager.processFrontMatter(path!, frontmatter => { frontmatter.reviewed = true; });
     },
   }],
-} satisfies Omit<Plugin, 'manifest'>;
+} satisfies PluginContributions;
 ```
 
 ## Event ownership
@@ -376,7 +378,7 @@ Each invocation owns one bus. Payloads must be finite JSON data: primitives, arr
 For example, observe the routed command that began before activation, then subscribe to future host and plugin events without logging to stdout:
 
 ```ts
-import type { EventRecord, HostEventMap, Plugin } from '../bin/data/types/sdk.js';
+import type { EventRecord, HostEventMap, PluginContributions } from '../bin/data/types/sdk.js';
 
 const observedIds: string[] = [];
 const observe = (record: EventRecord) => {
@@ -398,7 +400,7 @@ export default {
     unsubscribeFailure?.();
     unsubscribe?.();
   },
-} satisfies Omit<Plugin, 'manifest'>;
+} satisfies PluginContributions;
 ```
 
 Synchronous throws and asynchronous listener rejections become warnings and delivery continues. Host observers cannot veto operations, replace original failures or undo committed work, even on a `started` event. Callbacks must settle; arbitrary Node plugin code has no forced timeout. Cleanup continues in reverse order after failures. A listener that unsubscribes inside its own cleanup will not receive the later `plugin.unloaded` event. Dispose removes subscriptions and rejects later bus use. Records appear in the command result; history is neither persistent replay nor a filesystem watcher.

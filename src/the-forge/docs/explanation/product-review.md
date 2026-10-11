@@ -1,4 +1,6 @@
-# The Forge product review
+# Historical product review — 2026-10-07
+
+This page preserves the findings and verification limits of the 2026-10-07 review. It is a historical snapshot, not the current capability or limitation list. Later work added standalone Bases expression evaluation, automatic recovery of provably stale writer locks and broader platform CI, superseding the corresponding statements below. See the [current agent-first polishing review](https://github.com/Luis85/agent-cli/blob/main/src/the-forge/docs/research/12-agent-first-polish-review.md), the [CLI contract](../reference/cli.md) and [Bases capabilities](../reference/bases.md) for the current behavior.
 
 Reviewed on 2026-10-07. This pass improves the existing portable CLI, generated forms and documentation without adding commands, generators or product features. The strongest foundations are explicit execution scope, guarded writes, discoverable JSON contracts and a small distribution. The highest-impact improvements protect those contracts in edge cases and make the existing form showcase clearer on small screens.
 

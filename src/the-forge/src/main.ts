@@ -144,6 +144,9 @@ async function run(): Promise<void> {
           throw error;
         }
       })();
+      // Apply the parsed output preference before any value or routing validation can fail.
+      config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
+      compact = config.settings.json;
       const parsedLanguage = value(parsed.flags, 'lang');
       // From here on, plugin-contributed strings and error catalog entries localize responses too.
       localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
@@ -156,9 +159,7 @@ async function run(): Promise<void> {
       // help describes a command without running it, so its declared constraints do not apply.
       const flags = parsed.flags.help ? parsed.flags : declaredValues(commandOptions(command, parsed.args.slice(1)), parsed.flags);
       for (const option of ['root', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
-      config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
-      compact = config.settings.json;
       // Environment commits reach the metadata index once the command's scope binds it below.
       let metadataCommits: CommitObserver | undefined;
       environment = new Workspace(files, new ObsidianDocuments(), events, config.settings.dryRun, files.root, { committed: async changes => { await metadataCommits?.committed(changes); } });

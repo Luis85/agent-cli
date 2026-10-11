@@ -4,7 +4,7 @@ import { lstatSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
-import { vaultPath, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
+import { reservedPathSegment, vaultPath, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
 import type { FileStamp } from '../../domain/metadata/snapshot.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch, FileRepository, RecoveredLock, WriteBatchResult } from '../../application/workspace/ports.ts';
@@ -21,7 +21,7 @@ const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'E
  */
 export const cacheFolder = '.forge/cache';
 /** Entries `list()` never reports or enters: Git, dependencies, Forge's own lock and temporary files and the root cache folder. */
-const unlisted = (name: string, path: string) => ['.git', 'node_modules', lockName].includes(name) || name.startsWith('.agent-cli-tmp-') || path === cacheFolder;
+const unlisted = (name: string, path: string) => reservedPathSegment(name) !== undefined || name.toLowerCase() === 'node_modules' || path.toLowerCase() === cacheFolder;
 /** Concurrent staging lets the filesystem group fsyncs while bounding open handles. */
 const stagingConcurrency = 8;
 
@@ -128,11 +128,12 @@ export class NodeFiles implements FileRepository, BatchHost {
     let git = false;
     const walk = async (directory: string, prefix: string) => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
-        if (entry.name === '.git') { git = true; continue; }
-        if (entry.name === lockName || entry.name.startsWith('.agent-cli-tmp-')) continue;
+        const reserved = reservedPathSegment(entry.name);
+        if (reserved === 'git') { git = true; continue; }
+        if (reserved === 'internal') continue;
         const relative = prefix + entry.name, absolute = join(directory, entry.name);
         if (entry.isSymbolicLink()) special.push({ path: relative, kind: 'symlink', target: await readlink(absolute) });
-        else if (entry.isDirectory() && entry.name === 'node_modules') special.push({ path: relative, kind: 'node_modules' });
+        else if (entry.isDirectory() && entry.name.toLowerCase() === 'node_modules') special.push({ path: relative, kind: 'node_modules' });
         else if (entry.isDirectory()) { folders.push(relative); await walk(absolute, relative + '/'); }
         else if (entry.isFile()) {
           const bytes = await readFile(absolute);

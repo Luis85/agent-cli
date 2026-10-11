@@ -4,9 +4,10 @@ import { link, lstat, mkdir, rename, rm, rmdir, unlink } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
-import { vaultPath, type FileChange, type FileRename, type RemoveRequest, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
-import { revisionConflict, snapshotWriteRequests, type RevisionConflict } from '../../domain/documents/write-plan.ts';
+import type { FileChange, FileRename, RemoveRequest, RenameRequest, WriteRequest } from '../../domain/documents/file.ts';
+import { revisionConflict, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch } from '../../application/workspace/ports.ts';
+import { snapshotBatch } from '../../application/workspace/batch-plan.ts';
 import { linkUnsupported } from './lock.ts';
 import { retryTransient } from './retry.ts';
 
@@ -105,12 +106,10 @@ export class Transaction {
   private readonly committedRemoves: RemovePlan[] = [];
 
   constructor(private readonly host: BatchHost, batch: FileBatch) {
-    const valid = (request: unknown, keys: string[]) => request !== null && typeof request === 'object' && keys.every(key => typeof (request as Record<string, unknown>)[key] === 'string');
-    ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every(r => valid(r, ['from', 'to', 'expectedRevision'])), 'INVALID_PLAN', 'Renames need from, to and expectedRevision strings.');
-    ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every(r => valid(r, ['path', 'expectedRevision'])), 'INVALID_PLAN', 'Removals need path and expectedRevision strings.');
-    this.renames = (batch.renames ?? []).map(r => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
-    this.writes = snapshotWriteRequests(batch.writes ?? []);
-    this.removes = (batch.removes ?? []).map(r => ({ path: vaultPath(r.path), expectedRevision: r.expectedRevision }));
+    const snapshot = snapshotBatch(batch);
+    this.renames = [...snapshot.renames];
+    this.writes = [...snapshot.writes];
+    this.removes = [...snapshot.removes];
     validatePlan(this.renames, this.writes, this.removes);
   }
 
@@ -215,7 +214,9 @@ export class Transaction {
   /** Immediately before a step: the file or folder still has the revision the batch checked. */
   private async verify(path: string, entry: Entry, expected: string): Promise<void> {
     if (entry.kind === 'file') { await this.host.assertRevision(path, expected); return; }
-    const current = (await this.host.folder(path))?.revision;
+    const snapshot = await this.host.folder(path);
+    ensure(!snapshot?.git, 'PROTECTED_PATH', `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+    const current = snapshot?.revision;
     ensure(current === expected, 'CONFLICT', `Folder changed; read again before modifying: ${path}`, revisionConflict(path, expected, current));
   }
 
@@ -331,6 +332,8 @@ export class Transaction {
         else { await verify(); await retryTransient(() => rm(entry.target)); }
       } catch { failures.push(entry.target); }
     }
+    // Remove empty folders at their current paths before a rollback rename carries them away.
+    await this.removeCreatedDirectories();
     for (const plan of this.committedRenames.reverse()) {
       try {
         if (plan.entry.kind === 'file') await this.host.assertRevision(plan.request.to, plan.entry.stored.revision);
@@ -338,16 +341,21 @@ export class Transaction {
         await this.move(plan, plan.target, plan.source);
       } catch { failures.push(plan.target); }
     }
-    for (const directory of this.createdDirectories.reverse()) {
-      try { await retryTransient(() => rmdir(directory)); this.touched.delete(directory); }
-      catch { /* A directory still holding external files remains in place. */ }
-    }
+    // Parents of rename destinations become empty only after their moved entries return home.
+    await this.removeCreatedDirectories();
     for (const directory of this.touched) {
       // A folder that rollback moved back no longer exists here; its parent was touched by the move.
       try { if (await exists(directory)) await this.host.syncDirectories([directory]); }
       catch { failures.push(directory); }
     }
     if (failures.length) throw forgeError('ROLLBACK_FAILED', `Inspect these files before retrying: ${failures.join(', ')}`);
+  }
+
+  private async removeCreatedDirectories(): Promise<void> {
+    for (const directory of [...this.createdDirectories].reverse()) {
+      try { await retryTransient(() => rmdir(directory)); this.touched.delete(directory); }
+      catch { /* A directory still holding external files remains in place. */ }
+    }
   }
 
   private result(renames: RenamePlan[], writes: FilePlan[], removes: RemovePlan[]): BatchResult {

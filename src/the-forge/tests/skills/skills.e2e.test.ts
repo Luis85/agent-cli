@@ -67,8 +67,23 @@ describe('the skills core plugin', () => {
       properties: { args: { type: 'array', maxItems: 2, prefixItems: [{ const: 'install' }, { type: 'string' }] }, options: { properties: { target: { type: 'string', enum: ['both', 'claude', 'agents'] }, out: { type: 'string' } }, additionalProperties: false } },
     });
     expect(skills.annotations).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, destructiveHint: false, actions: { list: { readOnlyHint: true }, install: { scope: 'project', mutating: true, destructiveHint: false, idempotentHint: true } } });
+    expect(skills.annotations.actions.list.outputSchema).toMatchObject({
+      $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['skills'],
+      properties: { skills: { type: 'array', items: { type: 'string' } } },
+    });
+    expect(skills.annotations.actions.show.outputSchema).toMatchObject({
+      $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['id', 'content'],
+      properties: { id: { type: 'string' }, content: { type: 'string' } },
+    });
     const { inputSchema: _inputSchema, ...described } = skills;
-    expect((await cli(['help', 'skills'])).body.data).toEqual({ ...described, globalOptions: schema.globalOptions });
+    const actions = Object.fromEntries(Object.entries<Record<string, unknown>>(skills.annotations.actions).map(([id, action]) => {
+      const { outputSchema: _outputSchema, ...description } = action;
+      return [id, description];
+    }));
+    const help = (await cli(['help', 'skills'])).body.data;
+    expect(help).toEqual({ ...described, annotations: { ...skills.annotations, actions }, globalOptions: schema.globalOptions });
+    expect(help).not.toHaveProperty('outputSchema');
+    for (const action of Object.values(help.annotations.actions)) expect(action).not.toHaveProperty('outputSchema');
     expect((await cli(['--lang', 'de', 'help', 'skills'])).body.data.description).toBe('Mitgelieferte und von Plugins bereitgestellte Agent-Skills auflisten, lesen oder installieren.');
   });
 });

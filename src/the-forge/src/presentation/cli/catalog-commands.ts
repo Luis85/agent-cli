@@ -24,29 +24,45 @@ export const commonErrors = [
 ];
 
 /** One command as help and schema describe it, generated from its metadata. */
-function describe(command: Command) {
+function describe(command: Command, includeOutput = true) {
   const { id, description, usage, options, args, output, errors } = command;
+  const annotations = commandAnnotations(command);
+  if (!includeOutput && annotations.actions) {
+    annotations.actions = Object.fromEntries(Object.entries(annotations.actions).map(([id, action]) => {
+      const { outputSchema: _output, ...description } = action;
+      return [id, description];
+    }));
+  }
   return {
-    id, description, usage, options: options ?? {}, args: args ?? [], annotations: commandAnnotations(command),
-    errors: errors ?? [], ...(output ? { outputSchema: outputDocument(id, output) } : {}),
+    id, description, usage, options: options ?? {}, args: args ?? [], annotations,
+    errors: errors ?? [], ...(includeOutput && output ? { outputSchema: outputDocument(id, output) } : {}),
   };
 }
 
 export function catalogCommands(registry: Registry): Command[] {
+  const identity = { name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node };
   const catalog = () => ({
-    name: 'The Forge', version: metadata.version, apiVersion: 1, node: metadata.engines.node, dialect: jsonSchemaDialect,
+    ...identity, dialect: jsonSchemaDialect,
     globalOptions: globalOptionMetadata, envelope: envelopeSchema,
     eventOutput: { option: '--events', setting: 'settings.events', levels: eventOutputLevels, default: 'changes', changes: 'Only committed vault.* records: vault.create, vault.modify, vault.delete and vault.rename, for files and folders.' },
-    commands: [...registry.commands.values()].map(describe),
+    commands: [...registry.commands.values()].map(command => describe(command)),
     generators: generatorCatalog(registry),
     skills: [...registry.skills.keys()],
   });
   return [
     { id: 'help', description: 'Discover commands and usage without prompts.', usage: 'help [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'], run(args) {
       arity(args, 0, 1);
-      if (!args[0]) return catalog();
+      // The entry catalog helps an agent choose its next command without consuming every command's schemas.
+      if (!args[0]) return {
+        ...identity, globalOptions: globalOptionMetadata,
+        commands: [...registry.commands.values()].map(command => {
+          const { actions: _actions, ...annotations } = commandAnnotations(command);
+          return { id: command.id, description: command.description, usage: command.usage, annotations };
+        }),
+        generators: generatorCatalog(registry), skills: [...registry.skills.keys()],
+      };
       const command = registry.resolveCommand(args[0]);
-      return { ...describe(command), globalOptions: globalOptionMetadata };
+      return { ...describe(command, false), globalOptions: globalOptionMetadata };
     } },
     { id: 'schema', description: 'Machine-readable contract: JSON Schema 2020-12 input and output schemas, annotations and error codes of every command, or of one.', usage: 'schema [command]', ...discovery, args: commandArgument, errors: ['UNKNOWN_COMMAND'], output: schemaOutput, run(args) {
       arity(args, 0, 1);
