@@ -7,6 +7,7 @@ import { ensure } from '../../domain/shared/errors.ts';
 import { generationControls, reviewOptions } from '../../application/generation/controls.ts';
 
 export const generatorCatalog = (registry: Registry) => [...registry.generators.values()].map(({ id, description }) => ({ id, description }));
+const makeErrors = ['UNKNOWN_GENERATOR', 'INVALID_NAME', 'CONFLICT', 'GENERATION_DRIFT', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS', 'PROJECT_REQUIRED'];
 const out = { out: option.string('Output directory; each generator documents its default.') };
 
 /** The flags a generator accepts besides the global options: host-owned --out and review controls plus its own. */
@@ -31,7 +32,10 @@ export function generationCommand(registry: Registry): Command {
       { name: 'name', description: 'The name or id the generator creates from.' },
     ],
     unknownAction: 'UNKNOWN_GENERATOR',
-    errors: ['UNKNOWN_GENERATOR', 'INVALID_NAME', 'CONFLICT', 'GENERATION_DRIFT', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS', 'PROJECT_REQUIRED'],
+    // make's own codes, then each registered generator's, so schema make covers every generator.
+    get errors() {
+      return [...new Set([...makeErrors, ...[...registry.generators.values()].flatMap(generator => generator.errors ?? [])])];
+    },
     get actions() {
       return Object.fromEntries([...registry.generators.values()].map((generator): [string, CommandAction] => [generator.id, {
         description: generator.description, usage: generator.usage ?? `make ${generator.id} <Name>`,

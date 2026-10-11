@@ -8,7 +8,7 @@ This reference describes generated CSF modules and their native extension API. `
 `make ui <id> --stories` writes UI and stories in the same planned batch. `make stories <id>` writes only stories, using `--out` as the location of previously generated UI and `--stories-out` as the story destination:
 
 ```sh
-node bin/forge.js make ui dashboard --framework react --out src/dashboard
+node bin/forge.js make ui dashboard --framework react --out ui/react/dashboard
 node bin/forge.js make stories dashboard --framework react --out ui/react/dashboard --stories-out ui/react/stories/dashboard --dry-run
 ```
 

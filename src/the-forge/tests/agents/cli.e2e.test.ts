@@ -75,4 +75,19 @@ describe('the agents core plugin through the portable CLI', () => {
     try { expect((await cli(['agents', 'list'])).body.error.code).toBe('UNKNOWN_COMMAND'); }
     finally { await rm(join(fixture.project, 'bin/config.json')); }
   });
+
+  it('tells how to replace a generation manifest of an older format', async () => {
+    const manifest = join(fixture.project, '.claude/forge-generated.json');
+    const current = await readFile(manifest, 'utf8').catch(() => undefined);
+    await mkdir(join(fixture.project, '.claude'), { recursive: true });
+    // Before rule origins were recorded, the manifest listed permission rules as strings.
+    await writeFile(manifest, JSON.stringify({ mcpServers: {}, settings: { permissions: { deny: ['Bash(*sudo*)'] } } }));
+    try {
+      for (const [language, words] of [['en', 'delete .claude/forge-generated.json'], ['de', 'Löschen Sie .claude/forge-generated.json']] as const) {
+        const old = await cli(['--lang', language, 'agents', 'generate', '--target', 'claude', '--settings', '--check']);
+        expect(old.status).toBe(2);
+        expect(old.body.error).toMatchObject({ code: 'INVALID_CLAUDE_SETTINGS', hint: expect.stringContaining(words) });
+      }
+    } finally { await (current === undefined ? rm(manifest) : writeFile(manifest, current)); }
+  });
 });

@@ -29,11 +29,17 @@ describe('error catalog completeness', () => {
         "function drift(code: 'UNION_A' | 'UNION_B') { throw forgeError(code, 'm'); }",
         "function fallback(code = 'DEFAULT_CODE') { ensure(a, code, 'm'); }",
         "ensure(a, codes[index], 'm'); throw new AppError('DIRECT', 'm');",
+        "type PluginCode = 'PLUGIN_A' | 'PLUGIN_B';",
+        "function pluginError(code: PluginCode, message: string) { return Object.assign(new Error(message), { code }); }",
+        "throw pluginError('PLUGIN_B', 'm'); helpers.pluginError('NOT_A_MEMBER', 'm'); throw Object.assign(new Error('m'), { code: 'LITERAL_PLUGIN' });",
       ].join('\n'));
       const inventory = await inventoryErrorCodes(root);
       expect([...inventory.codes.keys()].sort()).toEqual(['CONST_CODE', 'DEFAULT_CODE', 'FALSE_CODE', 'FORWARDED_CODE', 'LITERAL_CODE', 'TRUE_CODE', 'UNION_A', 'UNION_B']);
       expect(inventory.unresolved).toEqual(['sample.ts:7 codes[index]']);
       expect(inventory.directConstructions).toEqual(['sample.ts:7']);
+      // Plugin coded failures: a helper typed with a code union raises its union; its callers raise their literal.
+      expect(Object.fromEntries(inventory.coded)).toEqual({ PLUGIN_A: ['sample.ts:9'], PLUGIN_B: ['sample.ts:9'], LITERAL_PLUGIN: ['sample.ts:10'] });
+      expect(Object.fromEntries(inventory.forwarded)).toEqual({ PLUGIN_B: ['sample.ts:10'] });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 

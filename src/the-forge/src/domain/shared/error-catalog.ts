@@ -137,7 +137,7 @@ export const errorCatalog = {
   INVALID_CLAUDE_AGENT: entry('input', 'The Claude agent definition is invalid.', claudeDefinitionHint),
   INVALID_CLAUDE_HOOKS: entry('input', 'The Claude hook configuration is invalid.', claudeDefinitionHint),
   INVALID_CLAUDE_PLUGIN: entry('input', 'The Claude plugin manifest or a plugin file is invalid.', claudeDefinitionHint),
-  INVALID_CLAUDE_SETTINGS: entry('input', 'The Claude settings file is invalid.', 'Fix the JSON structure of the settings file named in the message.'),
+  INVALID_CLAUDE_SETTINGS: entry('input', 'The Claude settings file is invalid.', 'Fix the JSON structure of the settings file named in the message. When it names the generation manifest .claude/forge-generated.json, an older Forge wrote it: delete .claude/forge-generated.json and run agents generate again; the rules it listed stay in .claude/settings.json until you remove them.'),
   INVALID_CLAUDE_COMMAND: entry('input', 'The Claude command is not supported.', 'Run claude capabilities.'),
   INVALID_CLAUDE_ARGUMENT: entry('input', 'A Claude command argument is invalid.', argumentsHint),
   INVALID_CLAUDE_OPTION: entry('input', 'The option is not allowed for this Claude command.', 'Run help claude and remove the option.'),

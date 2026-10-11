@@ -79,7 +79,7 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       { name: 'target', description: 'inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path.' },
     ],
     options,
-    errors: ['INVALID_AGENT_DEFINITION', 'AGENT_NOT_FOUND', 'AGENT_EXISTS', 'AGENT_DRIFT', 'AGENT_MERGE_CONFLICT', 'NOT_FOUND', 'CONFLICT', 'INVALID_NAME', 'INVALID_PATH', 'INVALID_YAML', 'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_SETTINGS', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS'],
+    errors: ['INVALID_AGENT_DEFINITION', 'AGENT_NOT_FOUND', 'AGENT_EXISTS', 'AGENT_DRIFT', 'AGENT_MERGE_CONFLICT', 'NOT_FOUND', 'CONFLICT', 'INVALID_NAME', 'INVALID_PATH', 'INVALID_YAML', 'INVALID_ENCODING', 'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_SETTINGS', 'INVALID_GENERATION_PLAN', 'INVALID_GENERATION_REVISIONS'],
     async run(args, flags, context) {
       const action = (args[0] ?? 'list') as Action;
       ensure((actions as readonly string[]).includes(action), 'INVALID_ARGUMENT', `Use agents ${actions.join(', agents ')}.`);

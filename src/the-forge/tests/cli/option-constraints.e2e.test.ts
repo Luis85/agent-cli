@@ -52,9 +52,11 @@ describe('declared option constraints', () => {
 
   it('checks every item of a comma-separated list option and publishes the list as a pattern', async () => {
     expect((await cli(['create', 'notes/parts.md', '--content', '# Parts\n'])).status).toBe(0);
-    const read = await cli(['read', 'notes/parts.md', '--parts', 'body,body']);
-    expect(read.body.error).toBeUndefined();
-    expect(read.body.data.document.body).toBeDefined();
+    for (const parts of ['body,body', 'body, body']) {
+      const read = await cli(['read', 'notes/parts.md', '--parts', parts]);
+      expect(read.body.error, parts).toBeUndefined();
+      expect(read.body.data.document.body).toBeDefined();
+    }
     expect((await cli(['read', 'notes/parts.md', '--parts', 'body,nope'])).body.error)
       .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['body'] } });
     const german = (await cli(['--lang', 'de', 'read', 'notes/parts.md', '--parts', 'body,nope'])).body.error;
@@ -64,13 +66,19 @@ describe('declared option constraints', () => {
     expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['body'], list: true });
     const published = contract.inputSchema.properties.options.properties.parts as { enum?: string[]; pattern: string };
     expect(published.enum).toBeUndefined();
-    expect(['body', 'body,body'].map(value => new RegExp(published.pattern, 'u').test(value))).toEqual([true, true]);
-    expect(['', 'nope', 'body,', 'body,nope'].some(value => new RegExp(published.pattern, 'u').test(value))).toBe(false);
+    expect(['body', 'body,body', 'body, body', ' body ,body '].map(value => new RegExp(published.pattern, 'u').test(value))).toEqual([true, true, true, true]);
+    expect(['', 'nope', 'body,', 'body, ,body', 'body,nope'].some(value => new RegExp(published.pattern, 'u').test(value))).toBe(false);
   });
 
   it('enforces the enum of the global --events option before and after the command', async () => {
     for (const tokens of [['--events', 'xx', 'list'], ['list', '--events', 'xx']]) {
       expect((await cli(tokens)).body.error, tokens.join(' ')).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'events', value: 'xx', allowed: ['none', 'changes', 'all'] } });
+    }
+    // help describes a command without running it, so no declared value applies, the global --events included.
+    for (const tokens of [['--events', 'xx', 'list', '--help'], ['list', '--events', 'xx', '--help'], ['--events', 'xx', '--help', 'list']]) {
+      const help = await cli(tokens);
+      expect(help.body.error, tokens.join(' ')).toBeUndefined();
+      expect(help.body.data.id, tokens.join(' ')).toBe('list');
     }
   });
 

@@ -44,15 +44,16 @@ describe('reference documentation consistency', () => {
   it('documents every option of a command on its own reference: its CLI command rows or its own page', () => {
     // A shared flag such as --limit or --out counts only where its command is described, never on another page.
     const cli = reference['cli.md']!.split('\n');
-    const own = (id: string) => [...cli.filter(line => line.startsWith(`| \`${id}\``) || line.startsWith(`| \`${id} `)), reference[`${id}.md`] ?? ''].join('\n');
+    const rows = (id: string) => cli.filter(line => line.startsWith(`| \`${id}\``) || line.startsWith(`| \`${id} `));
+    const own = (id: string) => [...rows(id), reference[`${id}.md`] ?? ''].join('\n');
+    // An action with its own command rows (`make data-source`) documents its options there, not on a sibling's row.
+    const ownAction = (id: string, action: string) => rows(`${id} ${action}`).length > 0 ? [...rows(`${id} ${action}`), reference[`${id}.md`] ?? ''].join('\n') : own(id);
     const mentioned = (text: string, name: string) => new RegExp(`--${name}(?![a-z-])`).test(text);
-    const undocumented = [...registry.commands.values()].flatMap(command => {
-      const text = own(command.id);
-      return [
-        ...Object.keys(command.options ?? {}).map(name => [name, `${command.id} --${name}`] as const),
-        ...Object.entries(command.actions ?? {}).flatMap(([action, definition]) => Object.keys(definition.options ?? {}).map(name => [name, `${command.id} ${action} --${name}`] as const)),
-      ].filter(([name]) => !mentioned(text, name)).map(([, entry]) => entry);
-    });
+    const undocumented = [...registry.commands.values()].flatMap(command => [
+      ...Object.keys(command.options ?? {}).filter(name => !mentioned(own(command.id), name)).map(name => `${command.id} --${name}`),
+      ...Object.entries(command.actions ?? {}).flatMap(([action, definition]) => Object.keys(definition.options ?? {})
+        .filter(name => !mentioned(ownAction(command.id, action), name)).map(name => `${command.id} ${action} --${name}`)),
+    ]);
     expect(undocumented).toEqual([]);
     // Global options are described before the command table, where the CLI reference explains invocation.
     const invocation = reference['cli.md']!.split('\n## Commands\n')[0]!;

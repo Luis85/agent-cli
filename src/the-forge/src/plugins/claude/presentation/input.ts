@@ -4,7 +4,7 @@ import { globalOptions, readInputBytes } from '../../../application/plugins/comm
 
 export function claudeOptions(flags: Record<string, string | boolean>, allowed: readonly string[]): void {
   const unexpected = Object.keys(flags).filter(key => !Object.hasOwn(globalOptions, key) && !allowed.includes(key));
-  ensure(unexpected.length === 0, 'INVALID_ARGUMENT', `Options do not apply to this Claude action: ${unexpected.map(key => `--${key}`).join(', ')}.`);
+  ensure(unexpected.length === 0, 'INVALID_CLAUDE_OPTION', `Options do not apply to this Claude action: ${unexpected.map(key => `--${key}`).join(', ')}.`);
 }
 
 export async function claudeInput(flags: Record<string, string | boolean>, context: CommandContext): Promise<string> {

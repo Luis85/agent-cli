@@ -36,7 +36,7 @@ export const uiStrings: PluginStrings = {
       'Interaction library directory used to validate component interactions.': 'Verzeichnis der Interaktionsbibliothek, mit dem Komponenteninteraktionen geprüft werden.',
       'Browser event for create.': 'Browserereignis für create.',
       'UI target; defaults to plugins.settings.ui.framework.': 'UI-Ziel; standardmäßig plugins.settings.ui.framework.',
-      'Also generate Storybook stories (make ui).': 'Zusätzlich Storybook-Stories generieren (make ui).',
+      'Also generate Storybook stories.': 'Zusätzlich Storybook-Stories generieren.',
       'Stories output directory; defaults to plugins.settings.ui.stories.': 'Ausgabeverzeichnis der Stories; standardmäßig plugins.settings.ui.stories.',
       'Interaction library directory; defaults to plugins.settings.ui.interactions.': 'Verzeichnis der Interaktionsbibliothek; standardmäßig plugins.settings.ui.interactions.',
       'Default UI target of make ui and make stories.': 'Standard-UI-Ziel von make ui und make stories.',

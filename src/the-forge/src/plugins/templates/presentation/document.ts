@@ -14,6 +14,7 @@ export function documentGenerator(templates: (context: CommandContext) => Docume
     id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.', usage: 'make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]',
     // Create-only: the document is written without a revision, so a repeat fails with CONFLICT.
     directory: 'notes', destructive: false, idempotent: true,
+    errors: ['INVALID_TEMPLATE', 'INVALID_TEMPLATE_VALUES', 'INVALID_TEMPLATE_DATE', 'UNKNOWN_TEMPLATE_VARIABLE', 'INVALID_INPUT', 'INVALID_JSON', 'INVALID_ENCODING', 'INVALID_NAME', 'NOT_FOUND', 'CONFLICT'],
     options: {
       template: option.string('Markdown template under bin/templates.', { required: true }),
       values: option.string('Template values as a JSON object.'),

@@ -179,7 +179,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `INVALID_CLAUDE_AGENT` | 2 | input | no | The Claude agent definition is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_HOOKS` | 2 | input | no | The Claude hook configuration is invalid. | Fix the field named in the message, then rerun the command. |
 | `INVALID_CLAUDE_PLUGIN` | 2 | input | no | The Claude plugin manifest or a plugin file is invalid. | Fix the field named in the message, then rerun the command. |
-| `INVALID_CLAUDE_SETTINGS` | 2 | input | no | The Claude settings file is invalid. | Fix the JSON structure of the settings file named in the message. |
+| `INVALID_CLAUDE_SETTINGS` | 2 | input | no | The Claude settings file is invalid. | Fix the JSON structure of the settings file named in the message. When it names the generation manifest `.claude/forge-generated.json`, an older Forge wrote it: delete `.claude/forge-generated.json` and run `agents generate` again; the rules it listed stay in `.claude/settings.json` until you remove them. |
 | `INVALID_CLAUDE_COMMAND` | 2 | input | no | The Claude command is not supported. | Run claude capabilities. |
 | `INVALID_CLAUDE_ARGUMENT` | 2 | input | no | A Claude command argument is invalid. | Correct the arguments named in the message; run `help <command>` for usage. |
 | `INVALID_CLAUDE_OPTION` | 2 | input | no | The option is not allowed for this Claude command. | Run help claude and remove the option. |

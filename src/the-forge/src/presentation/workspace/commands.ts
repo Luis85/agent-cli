@@ -30,7 +30,7 @@ export function workflowCommands(services: WorkflowServices): Command[] {
       run(args) { arity(args, 0); return services.setup(); } },
     { id: 'project', description: 'Manage TypeScript library projects and add tested domain/application components.', usage: 'project list | create <id> | open <id> | current | close | inspect [id] | component [id] <Name> [--kind domain|application]',
       scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list',
-      errors: ['INVALID_PROJECT', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT_CONTEXT', 'PROJECT_EXISTS', 'PROJECT_NOT_FOUND', 'PROJECT_REQUIRED', 'STALE_PROJECT_CONTEXT', 'INVALID_NAME', 'PLUGIN_UNAVAILABLE'],
+      errors: ['INVALID_PROJECT', 'INVALID_PROJECT_NAME', 'INVALID_PROJECT_CONTEXT', 'PROJECT_EXISTS', 'PROJECT_NOT_FOUND', 'PROJECT_REQUIRED', 'STALE_PROJECT_CONTEXT', 'INVALID_NAME', 'INVALID_COMPONENT_KIND', 'PLUGIN_UNAVAILABLE'],
       actions: {
         list: { description: 'List managed projects.', mutating: false, output: { type: 'object', required: ['directory', 'projects'], properties: { directory: { type: 'string' }, projects: { type: 'array', items: projectInfoSchema } } } },
         create: { description: 'Create a self-contained TypeScript project.', ...additive },

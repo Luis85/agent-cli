@@ -14,7 +14,7 @@ export function interactionsCommand(services: UiServicesFactory): Command {
     usage: 'interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]',
     ...libraryMetadata('interaction'),
     options: { ...libraryOptions, event: option.string('Browser event for create.', { enum: interactionEvents }) },
-    errors: ['INVALID_INTERACTION', 'DUPLICATE_INTERACTION', 'UNKNOWN_INTERACTION', 'CONFLICT'],
+    errors: ['INVALID_INTERACTION', 'DUPLICATE_INTERACTION', 'UNKNOWN_INTERACTION', 'EMPTY_INTERACTION_LIBRARY', 'CONFLICT'],
     async run(args, flags, context) {
       const { settings, interactions: library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.interactions;

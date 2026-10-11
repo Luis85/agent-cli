@@ -45,6 +45,14 @@ describe('claude --scope per section', () => {
     expect((await claude(['runtime', 'version', '--scope', 'user', '--dry-run'])).body.error).toMatchObject({ code: 'UNKNOWN_OPTION' });
   });
 
+  it('refuses --scope with INVALID_CLAUDE_OPTION on every plugins action that has no scope', async () => {
+    // Authoring actions run in Forge, validate and list run the installed CLI: both report the same code.
+    for (const args of [['plugins', 'create', 'demo', '--directory', 'plugin-root'], ['plugins', 'validate', './plugin-root'], ['marketplaces', 'list']]) {
+      const refused = await claude([...args, '--scope', 'user', '--claude-bin', join(root, 'claude'), '--dry-run']);
+      expect(refused.body.error, args.join(' ')).toMatchObject({ code: 'INVALID_CLAUDE_OPTION', message: expect.stringContaining('--scope') });
+    }
+  });
+
   it('accepts every scope of native agents and hooks', async () => {
     const claudeDir = join(root, 'claude-home');
     const scoped = { project: [], user: ['--claude-dir', claudeDir], plugin: ['--directory', 'plugin-root'] } as Record<string, string[]>;
