@@ -41,15 +41,22 @@ describe('reference documentation consistency', () => {
     expect([...registry.generators.keys()].filter(id => !rows.includes(`make ${id}`))).toEqual([]);
   });
 
-  it('documents every option of every command and every global option in the reference pages', () => {
-    const text = Object.values(reference).join('\n');
-    const mentioned = (name: string) => new RegExp(`--${name}(?![a-z-])`).test(text);
-    const options = [...registry.commands.values()].flatMap(command => [
-      ...Object.keys(command.options ?? {}).map(name => `${command.id} --${name}`),
-      ...Object.entries(command.actions ?? {}).flatMap(([action, definition]) => Object.keys(definition.options ?? {}).map(name => `${command.id} ${action} --${name}`)),
-    ]);
-    expect(options.filter(entry => !mentioned(entry.split('--')[1]!))).toEqual([]);
-    expect(Object.keys(globalOptionMetadata).filter(name => !mentioned(name))).toEqual([]);
+  it('documents every option of a command on its own reference: its CLI command rows or its own page', () => {
+    // A shared flag such as --limit or --out counts only where its command is described, never on another page.
+    const cli = reference['cli.md']!.split('\n');
+    const own = (id: string) => [...cli.filter(line => line.startsWith(`| \`${id}\``) || line.startsWith(`| \`${id} `)), reference[`${id}.md`] ?? ''].join('\n');
+    const mentioned = (text: string, name: string) => new RegExp(`--${name}(?![a-z-])`).test(text);
+    const undocumented = [...registry.commands.values()].flatMap(command => {
+      const text = own(command.id);
+      return [
+        ...Object.keys(command.options ?? {}).map(name => [name, `${command.id} --${name}`] as const),
+        ...Object.entries(command.actions ?? {}).flatMap(([action, definition]) => Object.keys(definition.options ?? {}).map(name => [name, `${command.id} ${action} --${name}`] as const)),
+      ].filter(([name]) => !mentioned(text, name)).map(([, entry]) => entry);
+    });
+    expect(undocumented).toEqual([]);
+    // Global options are described before the command table, where the CLI reference explains invocation.
+    const invocation = reference['cli.md']!.split('\n## Commands\n')[0]!;
+    expect(Object.keys(globalOptionMetadata).filter(name => !mentioned(invocation, name))).toEqual([]);
   });
 
   it('gives every built-in and plugin error code exactly one row in the error reference', () => {

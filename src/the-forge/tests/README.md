@@ -13,7 +13,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [claude](claude/) | The `claude` core plugin: native agents, hooks, plugin assets, guarded removal, installed CLI invocation, its `claude.*` events and the `claude.lifecycle` service for trusted plugins, and disabling it |
 | [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, standalone execution, the launcher's compile cache and the non-blocking portable CLI harness |
-| [documentation](documentation/) | Source and packaged navigation, executable worked examples, and reference docs that agree with the registry (commands, generators, options, error codes, core plugins and settings) |
+| [documentation](documentation/) | Source and packaged navigation, executable worked examples, and reference docs that agree with the registry (commands, generators, each option on its own command row or page, error codes, core plugins and settings) |
 | [documents](documents/) | Markdown (including frontmatter detection pinned against remark-frontmatter), Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | The shared generation service: review plans, revision manifests, and guarded writes |
