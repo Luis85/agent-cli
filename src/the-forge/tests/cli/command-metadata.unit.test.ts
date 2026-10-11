@@ -32,7 +32,8 @@ describe('built-in command metadata', () => {
     // Library generators keep the shared review controls after --project and --library, before their own options.
     const optionOrder = (id: string) => Object.keys(commandAnnotations(commands.get('make')!).actions![id]!.options!);
     const library = ['out', 'project', 'library', 'revisions-from', 'plan', 'plan-out', 'check'];
-    for (const id of ['ui', 'stories']) expect(optionOrder(id)).toEqual([...library, 'framework', 'stories', 'stories-out', 'interactions-library']);
+    expect(optionOrder('ui')).toEqual([...library, 'framework', 'stories', 'stories-out', 'interactions-library']);
+    expect(optionOrder('stories')).toEqual([...library, 'framework', 'stories-out', 'interactions-library']);
     expect(optionOrder('data-source')).toEqual([...library, 'test-data-out']);
     expect(commandAnnotations(commands.get('make')!).actions).toMatchObject({
       document: { usage: expect.stringContaining('make document Title --template name.md') }, 'data-source': { usage: expect.stringContaining('make data-source <id>') },
