@@ -1,0 +1,143 @@
+import { fill, type MessageFragments, type MessageParams } from '../../../domain/shared/messages.ts';
+
+/**
+ * English templates of the diagnostics Forge writes about the docker-agent ↔ Claude Code mapping, filled with `say`.
+ * The presentation renders the same templates in the response language. A template whose text another template
+ * could also render (`toolFilterNone` within `toolFilter`) is listed first. The semantic and schema diagnostics of
+ * definition files reproduce docker-agent's own validation messages and stay as docker-agent words them.
+ */
+export const agentMessages = {
+  // Toolsets (claude-tools, claude-mcp).
+  toolFilterNone: 'The tools filter {filter} is approximated by the Claude tools (none).',
+  toolFilter: 'The tools filter {filter} is approximated by the Claude tools {tools}.',
+  toolsetFieldUnsupported: '{label} (the field {field}) have no Claude equivalent and are not emitted.',
+  filesystemApproximated: 'The filesystem toolset is approximated by the Claude tools {tools}.',
+  allowListUnsupported: 'allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent\'s file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).',
+  denyListApproximated: 'deny_list becomes Read and Edit deny rules in project settings with --settings.',
+  readonlyShell: 'A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.',
+  allowedDomainsUnsupported: 'allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.',
+  blockedDomainsApproximated: 'blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.',
+  taskToolsetApproximated: 'The {type} toolset is approximated by Claude\'s task tools {tools}.',
+  memoryApproximated: 'The memory toolset is approximated by memory: project; its database path is not used.',
+  userPromptApproximated: 'The user_prompt toolset is approximated by AskUserQuestion.',
+  thinkNotEmitted: 'The think toolset is not emitted; Claude models think natively, tuned by effort.',
+  mcpReadonly: 'Claude cannot select read-only tools of MCP server {server}; every granted tool is emitted.',
+  toolsetUnsupported: 'The {type} toolset has no Claude equivalent and is not emitted.',
+  readonlyApproximated: 'readonly keeps read-only tools and disallows {tools}.',
+  mcpTemplateLiteral: 'The template expression {expression} has no Claude MCP equivalent and is kept literally.',
+  oauthUnsupported: 'OAuth {field} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.',
+  dockerGateway: '{ref} runs through the Docker MCP Gateway: {command}.',
+  mcpToolsetUnsupported: 'The MCP toolset has no command, remote URL or Docker ref and is not emitted.',
+  // Models (claude-models).
+  modelAlias: 'Model {id} is emitted as the alias {alias}, which Claude Code resolves to the newest model of that family.',
+  modelNoAlias: 'Model {id} has no Claude alias; its id is emitted.',
+  effortLevel: 'thinking_budget {budget} is emitted as effort: {effort}.',
+  effortBudget: 'A thinking budget of {budget} tokens is approximated as effort: {effort}.',
+  effortNone: 'thinking_budget {budget} disables or minimizes thinking; no effort is emitted.',
+  modelSettingUnsupported: 'Model setting {key} has no Claude agent equivalent and is not emitted.',
+  harnessUnsupported: 'The {type} harness has no Claude agent equivalent; the agent inherits the session model.',
+  harnessApproximated: 'The claude-code harness runs the agent in Claude Code; its model and effort are emitted on the generated agent.',
+  modelMissing: 'The agent names no model; the Claude agent inherits the session model.',
+  modelNoAnthropic: 'Model {reference} has no Anthropic candidate; the Claude agent inherits the session model.',
+  modelSelected: 'Model {reference} selects among several models; the first Anthropic candidate {candidate} is emitted.',
+  // Hooks and commands (claude-hooks, claude-commands, claude-execution).
+  hookTypeUnsupported: 'A {type} hook has no Claude equivalent and is not emitted.',
+  hookFieldUnsupported: 'Hook {field} is not emitted.',
+  hookEventUnsupported: 'The {event} hook event has no Claude equivalent and is not emitted.',
+  hookMatcherApproximated: 'Matcher alternatives {matchers} have no known Claude tool and are kept literally.',
+  preemptYolo: 'preempt_yolo is not emitted.',
+  hookApproximated: '{event} hooks run on Claude\'s {target} event, which sends Claude Code\'s hook input; check each command\'s input and decision format.',
+  commandUrl: 'The /{command} command opens a URL, which a Claude skill cannot do; it is not emitted.',
+  commandTemplateLiteral: 'The template expression {expression} is kept literally; Claude skills do not evaluate docker-agent expressions.',
+  bangToolCall: 'The bang tool call {call} is kept literally.',
+  commandDescription: 'The /{command} command has no description; "{description}" is emitted.',
+  commandForked: 'docker-agent switches the conversation to {target}; the Claude skill runs in a forked {agent} subagent instead.',
+  mcpNotGenerated: 'MCP server {server} is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it. Its command or URL: {target}',
+  mcpExecutes: 'MCP server {server} (written to {file}) runs the command: {command}',
+  hooksNotGenerated: 'Hooks run commands and are generated only with --hooks; skipped {hooks}.',
+  hookExecutes: 'The {event} hook of {agent} runs the command: {command}',
+  toolsNone: 'No toolset grants a Claude tool, so {agent} gets tools: [] and disallows {tools} instead of inheriting every tool.',
+  // Permissions (claude-permissions); the reasons are fragments of permissionPartial and permissionDropped.
+  reasonNoBuiltin: 'names no docker-agent built-in tool with a Claude permission rule',
+  reasonUnmappedOne: 'matches {tools}, which has no Claude permission rule of the same reach',
+  reasonUnmapped: 'matches {tools}, which have no Claude permission rule of the same reach',
+  reasonMcpNone: 'names an MCP server, and no MCP server is generated without --mcp inline or --mcp project',
+  reasonMcpUnknown: 'names the MCP server {server}, which no generated agent defines',
+  reasonArguments: 'matches tool arguments, which Claude permission rules express only for shell commands',
+  permissionPartial: 'The {list} pattern {pattern} {reason}; only {rules} is emitted.',
+  permissionDropped: 'The {list} pattern {pattern} {reason}; it is not emitted.',
+  permissionApproximated: 'permissions.{list} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.',
+  broadPermission: 'The rule {rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.',
+  grantsPermissionBroad: '.claude/settings.json permissions.{list} gets the rule {rule} (broad, allowed by --allow-broad-permissions).',
+  grantsPermission: '.claude/settings.json permissions.{list} gets the rule {rule}.',
+  revokesPermission: '.claude/settings.json permissions.{list} loses the rule {rule}, which Forge wrote and no definition grants any more.',
+  // Agents (claude-agent).
+  envTemplateLiteral: '{expression} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.',
+  templateLiteral: '{expression} is kept literally; Claude Code cannot evaluate docker-agent template expressions.',
+  addDate: 'Claude Code adds the current date to its system prompt itself.',
+  addEnvironment: 'Claude Code adds working directory, platform and Git information to its system prompt itself.',
+  promptFilesUnsupported: '{field} is not emitted; Claude Code loads CLAUDE.md files instead.',
+  welcomeMessage: 'Claude agents have no welcome message.',
+  externalSubAgent: 'The external sub-agent {agent} is not generated.',
+  subAgentsApproximated: 'Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when {agent} runs as the main thread.',
+  delegationUnsupported: '{field} is not emitted; Claude delegates only through the Agent tool.',
+  skillsDiscovered: 'Claude Code discovers project and user skills itself.',
+  skillsDisabled: 'Skills are disabled; Claude agents cannot disable skill discovery.',
+  inlineSkill: 'The inline skill {skill} is not generated; write it as .claude/skills/{skill}/SKILL.md.',
+  skillSource: 'The skill source {source} is not emitted; Claude Code loads skills from .claude/skills.',
+  namedSkills: 'Named skills are preloaded through the skills frontmatter; Claude Code resolves them by name.',
+  nameSanitized: 'Agent {name} is generated as {claude}.',
+  agentDescription: 'The agent has no description; "{description}" is emitted so Claude Code can delegate to it.',
+  maxIterations: 'max_iterations is emitted as maxTurns: {turns}; Claude counts agentic turns, not model calls.',
+  settingUnsupported: '{field} has no Claude agent equivalent and is not emitted.',
+  // Import (claude-import).
+  importAlias: 'The alias {alias} is imported as anthropic/{model}.',
+  importOmittedModel: 'An omitted model is imported as the configured default {default}.',
+  importModel: 'Model {model} is imported as the configured default {default}.',
+  serverReference: 'The server reference {server} names a server configured outside the agent; add it as an mcp toolset or mcps definition.',
+  transportUnsupported: 'The {type} transport has no docker-agent equivalent; the server is not imported.',
+  toolsInherited: 'The Claude agent inherits every tool; filesystem, shell, fetch, todo and user_prompt toolsets are imported.',
+  fileToolsReadonly: 'File tools are imported as a read-only filesystem toolset.',
+  fileTools: 'File tools are imported as a filesystem toolset.',
+  taskTools: 'Task tools are imported as a todo toolset.',
+  askUser: 'AskUserQuestion is imported as a user_prompt toolset.',
+  toolUnsupported: 'The Claude tool {tool} has no docker-agent toolset and is not imported.',
+  disallowedUnsupported: 'Disallowing {tool} has no docker-agent equivalent.',
+  memoryImported: 'memory: {memory} is imported as a memory toolset.',
+  importHookUnsupported: 'The {event} hook event has no docker-agent equivalent.',
+  importHookApproximated: '{event} command hooks are imported as {target}; only command hooks are kept and docker-agent sends its own hook input.',
+  importNameSanitized: 'Agent {name} is imported as {imported}.',
+  generatedAgent: 'This agent was generated from {source}; edit that definition instead, since an import is lossy.',
+  subAgentsImported: 'Agent(…) entries become sub_agents: {agents}.',
+  subAgentMissing: 'Agent({agent}) is not imported because {agent} is not defined in the target file; import it first.',
+  importFieldUnsupported: '{field} has no docker-agent equivalent and is not imported.',
+  unknownField: 'The unknown field {field} is not imported.',
+  maxTurnsImported: 'maxTurns is imported as max_iterations, which counts model calls.',
+  skillsImported: 'Preloaded skills are imported as skill names; docker-agent loads them on demand.',
+  // Generation (claude-generation) and definition files.
+  mcpServerConflict: '.mcp.json already defines the server {server}, which Forge did not generate; rename the toolset\'s server or pass --rename-conflicts.',
+  mcpServerRenamed: '.mcp.json already defines a different server {server}; this one is generated as {name}.',
+  commandsNotGenerated: 'Commands become Claude skills with --commands.',
+  topLevelUnsupported: 'The top-level {key} section has no Claude equivalent and is not emitted.',
+  permissionsNotGenerated: 'Permissions become project settings rules with --settings.',
+  commandLabel: '/{command} command of agent {agent}',
+  commandCollision: 'The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.',
+  commandRenamed: 'Several agents define a different /{command}; this one becomes the skill {name}.',
+  agentCollision: 'Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.',
+  mainAgent: 'The default agent {agent} becomes the project\'s main agent ("agent": "{claude}").',
+  settingsAgentConflict: '.claude/settings.json already sets agent to {agent}, which Forge did not generate; remove it to let Forge set {claude}.',
+  encoding: 'Definition files must be valid UTF-8.',
+} as const satisfies Record<string, string>;
+
+export type AgentMessage = keyof typeof agentMessages;
+
+const reasons = ['reasonNoBuiltin', 'reasonUnmappedOne', 'reasonUnmapped', 'reasonMcpNone', 'reasonMcpUnknown', 'reasonArguments'] as const;
+/** The parameters whose value is itself a message of this catalog; every other parameter is user data. */
+export const agentFragments: MessageFragments<AgentMessage> = {
+  permissionPartial: { reason: reasons },
+  permissionDropped: { reason: reasons },
+  commandCollision: { label: ['commandLabel'], owner: ['commandLabel'] },
+};
+
+/** An English diagnostic message from its template. */
+export const say = (key: AgentMessage, params: MessageParams = {}): string => fill(agentMessages[key], params);

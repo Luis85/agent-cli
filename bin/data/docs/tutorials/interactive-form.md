@@ -14,12 +14,12 @@ Start with the complete `bin` distribution, Node >=22.12, and a workspace where
 ## Import the definitions
 
 ```sh
-node bin/app.js interactions import --from bin/data/docs/examples/interactions/definitions
-node bin/app.js components import --from bin/data/docs/examples/interactions/components
-node bin/app.js interactions validate
-node bin/app.js components validate
-node bin/app.js components inspect contact-request
-node bin/app.js interactions inspect prepare-request
+node bin/forge.js interactions import --from bin/data/docs/examples/interactions/definitions
+node bin/forge.js components import --from bin/data/docs/examples/interactions/components
+node bin/forge.js interactions validate
+node bin/forge.js components validate
+node bin/forge.js components inspect contact-request
+node bin/forge.js interactions inspect prepare-request
 ```
 
 Use a fresh library for this exercise: imports refuse duplicate IDs and existing
@@ -43,9 +43,9 @@ status when submission runs.
 ## Generate and mount the browser component
 
 ```sh
-node bin/app.js project create interaction-demo
-node bin/app.js make ui contact-request --framework vanilla --project interaction-demo --dry-run
-node bin/app.js make ui contact-request --framework vanilla --project interaction-demo
+node bin/forge.js project create interaction-demo
+node bin/forge.js make ui contact-request --framework vanilla --project interaction-demo --dry-run
+node bin/forge.js make ui contact-request --framework vanilla --project interaction-demo
 ```
 
 Create `projects/interaction-demo/contact.html` with this content:
@@ -64,7 +64,7 @@ Create `projects/interaction-demo/contact.html` with this content:
     <h2>Application event</h2>
     <pre id="result">No request prepared.</pre>
     <script type="module">
-      import createContactRequest from './src/ui/contact-request.js';
+      import createContactRequest from './ui/vanilla/components/contact-request.js';
       const app = document.querySelector('#app');
       app.addEventListener('contact:requested', event => {
         document.querySelector('#result').textContent = JSON.stringify(event.detail, null, 2);
@@ -99,7 +99,7 @@ Return to the workspace root after stopping the server:
 
 ```sh
 cd ../..
-node bin/app.js make ui contact-request --framework react --project interaction-demo --out src/react-ui --stories --stories-out stories/react --dry-run
+node bin/forge.js make ui contact-request --framework react --project interaction-demo --stories --dry-run
 ```
 
 The same definitions produce React state and handlers. Replace `react` with

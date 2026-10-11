@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-Markdown files describe a framework-neutral component tree; YAML frontmatter is the strict schema and the body is documentation. For a worked example, follow [your first UI](../tutorials/first-ui.md). For path configuration, transfer and guarded regeneration, use [manage components](../how-to/manage-components.md).
+Markdown files describe a framework-neutral component tree; YAML frontmatter is the strict schema and the body is documentation. The bundled `ui` core plugin provides the `components` command and the `make ui` and `make stories` generators; its settings live in `plugins.settings.ui` (`framework`, `components`, `componentImports`, `componentExports`, `output`, `stories` and the interaction folders), and `{"plugins": {"disabled": ["ui"]}}` removes it, together with `interactions`. For a worked example, follow [your first UI](../tutorials/first-ui.md). For path configuration, transfer and guarded regeneration, use [manage components](../how-to/manage-components.md).
 
 ## Definition contract
 
@@ -33,12 +33,14 @@ Frontmatter is a strict schema: unrelated keys are rejected. Use normal HTML att
 | `svelte` | `.svelte` component | Svelte with TypeScript support and legacy component/slot syntax support |
 | `angular` | `.ts` standalone component | Angular with standalone components, required inputs and TypeScript/decorator tooling |
 
-HTML fragments use defaults at generation time; their JS factories accept runtime props and child DOM nodes. Companion declaration files let TypeScript consumers typecheck those factories without enabling unchecked JavaScript imports. For example, after generating the sample dashboard as `html` into `src/ui`, mount it from a browser module:
+HTML fragments use defaults at generation time; their JS factories accept runtime props and child DOM nodes. Companion declaration files let TypeScript consumers typecheck those factories without enabling unchecked JavaScript imports. For example, after generating the sample dashboard as `html` into its default folder `ui/html/components`, mount it from a browser module:
 
 ```js
-import createDashboard from './src/ui/dashboard.js';
+import createDashboard from './ui/html/components/dashboard.js';
 document.querySelector('#app').append(createDashboard({ title: 'Workspace', count: 5 }));
 ```
+
+The JS factories are typed through JSDoc that matches their declaration files, and no target emits an unused helper, an unused parameter (one the component does not read is named with a leading `_`) or a literal object spread. Generated output therefore passes a generated project's `lint` and `typecheck` (strict TypeScript with `checkJs`) also when you place it in the project's source with `--out`, for example `src/presentation/ui/<target>`. The project's `analyze` gate additionally requires the output to be imported from an entry point (otherwise its files are reported as unused), the framework packages that React, Vue, Svelte and Angular output imports to be listed as dependencies, and the folder to belong to a boundary zone (as `src/presentation/` does, unlike `src/ui/`). The default `ui/<target>` folders are outside these gates.
 
 Serve modules through your application's HTTP server. HTMX attributes are preserved, but the CLI does not install HTMX or define server endpoints. Dynamic nodes may require the consuming application's normal HTMX initialization. Generated output includes declared component-local state and interactions, but does not include an application router, global state manager, stylesheet, design system, API implementation or framework build configuration.
 

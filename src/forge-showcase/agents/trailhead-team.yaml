@@ -1,0 +1,54 @@
+# Trailhead delivery team in docker-agent format (https://github.com/docker/docker-agent).
+# The Forge validates this file and generates the Claude Code agents in .claude/agents from it.
+models:
+  claude:
+    provider: anthropic
+    model: claude-sonnet-5
+    thinking_budget: medium # becomes effort: medium
+
+agents:
+  trailhead-lead:
+    model: claude
+    description: Leads Trailhead changes from a REQ ID to a reviewed pull request and delegates specs and UI work.
+    instruction: |
+      You lead changes to the Trailhead trip planner.
+
+      1. Start at docs/Trailhead.md and the PRD; name the REQ IDs a change touches.
+      2. Delegate requirement and use-case updates to spec-writer, and component work to ui-builder.
+      3. Regenerate generated code with the Forge CLI instead of editing it by hand.
+    sub_agents: [spec-writer, ui-builder]
+    toolsets:
+      - type: filesystem
+      - type: todo
+      # GitHub issues and pull requests through the official MCP server.
+      - type: mcp
+        name: github
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${env.GITHUB_TOKEN}
+        tools: [list_issues, get_issue, create_pull_request]
+    commands:
+      trace:
+        description: Trace one requirement through specs, design, code and tests
+        instruction: |
+          Trace ${args[0]} from the PRD through use cases, design, build spec, implementation tasks and the verification plan.
+          Report every missing link as a file path with the missing reference.
+
+  spec-writer:
+    model: anthropic/claude-haiku-4-5
+    description: Writes and links Trailhead requirements, use cases and delivery notes in the Obsidian vault.
+    instruction: |
+      You maintain Trailhead's Markdown specs under docs/.
+      Keep every REQ ID linked from the PRD, use wikilinks between notes, and never rename a note by copying it.
+    toolsets:
+      - type: filesystem
+
+  ui-builder:
+    model: anthropic/claude-haiku-4-5
+    description: Builds Trailhead UI components from library definitions and keeps generated targets in sync.
+    instruction: |
+      You change component and interaction definitions under library/ and regenerate ui/ with the Forge CLI. Never edit generated framework files.
+    toolsets:
+      - type: filesystem
+      - type: shell

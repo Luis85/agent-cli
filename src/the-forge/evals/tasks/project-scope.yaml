@@ -1,0 +1,19 @@
+id: project-scope
+title: Work inside a project and restore workspace scope
+category: projects
+prompt: |
+  Open the managed project "demo", create the note notes/Plan.md inside it with the
+  heading "# Demo plan", then close the project again.
+fixture: vault
+reference:
+  - [project, open, demo]
+  - [project, current]
+  - [create, notes/Plan.md, --content, "# Demo plan\n"]
+  - [project, close]
+checks:
+  - file: projects/demo/notes/Plan.md
+    contains: ["# Demo plan"]
+  - file: notes/Plan.md
+    exists: false
+  - command: [project, current]
+    data: { pointer: /project, equals: null }

@@ -1,0 +1,40 @@
+filters:
+  and:
+    - "file.inFolder(\"backlog\")"
+    - file.ext == "md"
+views:
+  - type: product-backlog
+    name: Backlog
+    homeFolder: "backlog"
+    stateProperty: note.status
+    stateValues: Open, Active, Done
+    startedStates: Active
+    startedDateProperty: note.started
+    finishedDateProperty: note.finished
+    startProperty: note.start
+    targetProperty: note.due
+    priorityProperty: note.priority
+    riskProperty: note.risk
+    assigneeProperty: note.assignee
+    dependsOnProperty: note.dependsOn
+    iterationProperty: note.iteration
+    iterationGoalProperty: note.goal
+    releaseProperty: note.release
+    wipLimit.active: "2"
+    columnPolicy.done: Reviewed and merged
+  - type: product-release
+    name: Releases
+    membershipProperty: note.release
+    versionProperty: note.version
+    targetDateProperty: note.target-date
+    releaseStatusProperty: note.status
+    stateProperty: note.status
+    releasedDateProperty: note.released
+    releasedStatusValues: Released
+    releasedTransitionValue: Released
+    dependsOnProperty: note.dependsOn
+    riskProperty: note.risk
+    criticalRiskValues: 1 - High
+    addressedRiskValues: Mitigated
+    releaseFolder: backlog/releases
+    releaseNotesFolder: backlog/release-notes

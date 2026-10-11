@@ -26,6 +26,12 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__@types__unist-LICENSE)
 
+## ajv 8.20.0
+
+License: MIT.
+
+- [LICENSE](licenses/node_modules__ajv-LICENSE)
+
 ## bail 2.0.2
 
 License: MIT.
@@ -80,27 +86,23 @@ License: BSD-2-Clause.
 
 - [LICENSE](licenses/node_modules__entities-LICENSE)
 
-## escape-string-regexp 5.0.0
-
-License: MIT.
-
-- [license](licenses/node_modules__escape-string-regexp-license)
-
 ## extend 3.0.2
 
 License: MIT.
 
 - [LICENSE](licenses/node_modules__extend-LICENSE)
 
-## fault 2.0.1
+## fast-deep-equal 3.1.3
 
 License: MIT.
 
-- [license](licenses/node_modules__fault-license)
+- [LICENSE](licenses/node_modules__fast-deep-equal-LICENSE)
 
-## format 0.2.2
+## fast-uri 3.1.8
 
-License: MIT. [Original notice](licenses/format-Readme.md); [license terms](licenses/format-LICENSE).
+License: BSD-3-Clause.
+
+- [LICENSE](licenses/node_modules__fast-uri-LICENSE)
 
 ## is-plain-obj 4.1.0
 
@@ -108,35 +110,17 @@ License: MIT.
 
 - [license](licenses/node_modules__is-plain-obj-license)
 
-## longest-streak 3.1.0
+## json-schema-traverse 1.0.0
 
 License: MIT.
 
-- [license](licenses/node_modules__longest-streak-license)
+- [LICENSE](licenses/node_modules__json-schema-traverse-LICENSE)
 
 ## mdast-util-from-markdown 2.1.0
 
 License: MIT.
 
 - [license](licenses/node_modules__mdast-util-from-markdown-license)
-
-## mdast-util-frontmatter 2.0.1
-
-License: MIT.
-
-- [license](licenses/node_modules__mdast-util-frontmatter-license)
-
-## mdast-util-phrasing 4.1.0
-
-License: MIT.
-
-- [license](licenses/node_modules__mdast-util-phrasing-license)
-
-## mdast-util-to-markdown 2.2.0
-
-License: MIT.
-
-- [license](licenses/node_modules__mdast-util-to-markdown-license)
 
 ## mdast-util-to-string 4.0.0
 
@@ -155,12 +139,6 @@ License: MIT.
 License: MIT.
 
 - [license](licenses/node_modules__micromark-core-commonmark-license)
-
-## micromark-extension-frontmatter 2.0.0
-
-License: MIT.
-
-- [license](licenses/node_modules__micromark-extension-frontmatter-license)
 
 ## micromark-factory-destination 2.0.1
 
@@ -306,17 +284,17 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__parse5-LICENSE)
 
-## remark-frontmatter 5.0.0
-
-License: MIT.
-
-- [license](licenses/node_modules__remark-frontmatter-license)
-
 ## remark-parse 11.0.0
 
 License: MIT.
 
 - [license](licenses/node_modules__remark-parse-license)
+
+## require-from-string 2.0.2
+
+License: MIT.
+
+- [license](licenses/node_modules__require-from-string-license)
 
 ## trough 2.2.0
 
@@ -330,29 +308,11 @@ License: MIT.
 
 - [license](licenses/node_modules__unified-license)
 
-## unist-util-is 6.0.1
-
-License: MIT.
-
-- [license](licenses/node_modules__unist-util-is-license)
-
 ## unist-util-stringify-position 4.0.0
 
 License: MIT.
 
 - [license](licenses/node_modules__unist-util-stringify-position-license)
-
-## unist-util-visit 5.1.0
-
-License: MIT.
-
-- [license](licenses/node_modules__unist-util-visit-license)
-
-## unist-util-visit-parents 6.0.2
-
-License: MIT.
-
-- [license](licenses/node_modules__unist-util-visit-parents-license)
 
 ## vfile 6.0.3
 
@@ -378,8 +338,10 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__zod-LICENSE)
 
-## zwitch 2.0.4
+# Vendored asset notices
 
-License: MIT.
+## docker-agent agent-schema.json
 
-- [license](licenses/node_modules__zwitch-license)
+Copied unchanged from https://github.com/docker/docker-agent at commit cd65d7c776dda80d554735ee20572d09cfe2d791. License: Apache-2.0.
+
+- [LICENSE](licenses/docker-agent-LICENSE)

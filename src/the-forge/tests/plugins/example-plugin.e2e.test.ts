@@ -1,0 +1,84 @@
+import { beforeAll, describe, expect, it } from 'vitest';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { portableCli } from '../support/portable-cli.ts';
+import { bundledCorePlugins } from '../support/core-plugins.ts';
+
+const fixture = portableCli();
+let root: string;
+const run = (...args: string[]) => fixture.cli(args, undefined, { root });
+const uiDefaults = {
+  framework: 'html', components: 'components', componentImports: 'imports/components', componentExports: 'exports/components',
+  interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions', output: 'ui/{framework}/components', stories: 'ui/{framework}/stories',
+};
+const dataSourceDefaults = { library: 'data-sources', imports: 'imports/data-sources', exports: 'exports/data-sources', output: 'src/data-sources', fixtures: 'test-data' };
+const configure = (settings: Record<string, unknown>) => writeFile(join(root, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['quality'], settings: { quality: settings } } }));
+
+beforeAll(async () => {
+  root = join(fixture.project, 'example');
+  await mkdir(join(root, 'bin/plugins'), { recursive: true });
+  await cp(join(fixture.bundle, 'bin/data/docs/examples/plugins/quality'), join(root, 'bin/plugins/quality'), { recursive: true });
+  await writeFile(join(root, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['quality'] } }));
+});
+
+describe('the packaged quality example plugin', () => {
+  it('reacts to vault renames and edits frontmatter through the app facade', async () => {
+    expect((await run('create', 'notes/Spec.md', '--content', '---\ndraft: true\n---\n# Spec\n')).status).toBe(0);
+    expect((await run('quality.check')).body.data).toEqual({ notes: 1 });
+
+    const preview = await run('quality.mark-reviewed', 'notes/Spec.md', '--dry-run');
+    expect(preview.body.data.changes[0].diff).toContain('-draft: true\n+reviewed: true');
+    const reviewed = await run('quality.mark-reviewed', 'notes/Spec.md');
+    expect(reviewed.status, reviewed.stdout).toBe(0);
+    expect(await readFile(join(root, 'notes/Spec.md'), 'utf8')).toBe('---\nreviewed: true\n---\n# Spec\n');
+
+    const revision = (await run('read', 'notes/Spec.md')).body.data.revision;
+    const moved = await run('rename', 'notes/Spec.md', 'Requirements', '--if-match', revision);
+    expect(moved.status, moved.stdout).toBe(0);
+    expect(moved.body.warnings).toEqual(['Quality noticed notes/Spec.md moved to notes/Requirements.md; review notes that describe it.']);
+    const back = await run('--lang', 'de', 'rename', 'notes/Requirements.md', 'Spec', '--if-match', revision);
+    expect(back.body.warnings).toEqual(['Quality hat bemerkt, dass notes/Requirements.md nach notes/Spec.md verschoben wurde; prüfen Sie Notizen, die es beschreiben.']);
+  });
+
+  it('contributes a validated config section shown by config, with defaults and change notifications', async () => {
+    const config = await run('config');
+    // Core plugin sections (templates, ui, data-sources, search, links, vault-check, agents, connector, backlog) come first, in bundle order; each section lists the plugin that declares it.
+    expect(config.body.data.config.plugins.settings).toEqual({ templates: { dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' }, ui: uiDefaults, 'data-sources': dataSourceDefaults, search: { timeoutMs: 10_000 }, links: { roots: [] }, 'vault-check': { rules: {}, ignore: [] }, agents: { directory: 'agents', defaultModel: 'anthropic/claude-sonnet-5' }, connector: { connections: {} }, backlog: {}, quality: { ownerProperty: 'owner' } });
+    expect(config.body.data.sections.map((section: { plugin: string; path: string }) => [section.plugin, section.path])).toEqual([
+      ['templates', 'plugins.settings.templates'], ['ui', 'plugins.settings.ui'], ['data-sources', 'plugins.settings.data-sources'], ['search', 'plugins.settings.search'], ['links', 'plugins.settings.links'], ['vault-check', 'plugins.settings.vault-check'], ['agents', 'plugins.settings.agents'], ['connector', 'plugins.settings.connector'], ['backlog', 'plugins.settings.backlog'], ['quality', 'plugins.settings.quality'],
+    ]);
+    expect(config.body.data.sections.at(-1).schema).toMatchObject({ type: 'object' });
+    await configure({ ownerProperty: '' });
+    // An invalid section disables only the plugin for the invocation: config still reports it, its commands fail.
+    const invalid = await run('config');
+    expect(invalid.status).toBe(0);
+    expect(invalid.body.warnings).toEqual([expect.stringContaining('plugins.settings.quality.ownerProperty: must have at least 1 characters')]);
+    expect((await run('quality.check')).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'quality.check', plugin: 'quality', issues: ['plugins.settings.quality.ownerProperty: must have at least 1 characters'] } });
+    await configure({ ownerProperty: 'maintainer' });
+    const changed = await run('quality.check');
+    expect(changed.body.warnings).toEqual(['Quality settings changed; owner property is now maintainer.']);
+    expect((await run('quality.check')).body.warnings).toEqual([]);
+  });
+
+  it('reads note metadata through app.metadataCache and fails with its own localized error code', async () => {
+    const unowned = await run('quality.owners');
+    expect(unowned.status).toBe(5);
+    expect(unowned.body.error).toEqual({
+      code: 'QUALITY_UNOWNED', message: '1 notes have no maintainer.', retryable: false,
+      hint: 'Add the owner property named in error.details.property to each note in error.details.notes.', details: { property: 'maintainer', notes: ['notes/Spec.md'] },
+    });
+    expect((await run('--lang', 'de', 'quality.owners')).body.error).toMatchObject({ code: 'QUALITY_UNOWNED', message: 'Einige Notizen haben keine Verantwortlichen.' });
+    const revision = (await run('read', 'notes/Spec.md')).body.data.revision;
+    expect((await run('properties', 'notes/Spec.md', '--set', '{"maintainer":"Ada"}', '--if-match', revision)).status).toBe(0);
+    expect((await run('quality.owners')).body.data).toEqual({ property: 'maintainer', unowned: [] });
+  });
+
+  it('describes its commands in German and lists its contributions and error codes', async () => {
+    expect((await run('--lang', 'de', 'help', 'quality.owners')).body.data).toMatchObject({ description: 'Notizen ohne Verantwortliche finden', errors: ['QUALITY_UNOWNED', 'PLUGIN_UNAVAILABLE'], annotations: { mutating: false } });
+    const schema = (await run('schema')).body.data;
+    expect(schema.errors).toContainEqual({ code: 'QUALITY_UNOWNED', exitCode: 5, category: 'drift', retryable: false, summary: 'Some notes have no owner.', plugin: 'quality' });
+    const plugins = (await run('plugins')).body.data.plugins;
+    expect(plugins.map((plugin: { id: string; core: boolean; state: string }) => [plugin.id, plugin.core, plugin.state])).toEqual([...bundledCorePlugins.map(id => [id, true, 'enabled']), ['quality', false, 'enabled']]);
+    expect(plugins.at(-1).contributions).toMatchObject({ commands: ['quality.check', 'quality.mark-reviewed', 'quality.owners'], settings: 'plugins.settings.quality', strings: ['de', 'en'], errors: ['QUALITY_UNOWNED'] });
+  });
+});

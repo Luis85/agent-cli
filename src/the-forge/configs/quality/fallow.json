@@ -1,0 +1,37 @@
+{
+  "$schema": "../../node_modules/fallow/schema.json",
+  "minimumVersion": "3.31.0",
+  "entry": ["src/main.ts", "src/sdk.ts", "tests/**/*.{unit,integration,e2e}.test.{ts,mts,cts,tsx,js,mjs,cjs,jsx}", "vite.config.ts", "docs/examples/plugins/*/main.mjs"],
+  "ignorePatterns": ["release/**"],
+  "failOnParseError": true,
+  "rules": {
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error",
+    "boundary-violation": "error",
+    "policy-violation": "off"
+  },
+  "boundaries": {
+    "zones": [
+      { "name": "domain", "patterns": ["src/domain/**"] },
+      { "name": "application", "patterns": ["src/application/**"] },
+      { "name": "infrastructure", "patterns": ["src/infrastructure/**"] },
+      { "name": "presentation", "patterns": ["src/presentation/**"] },
+      { "name": "plugin-domain", "patterns": ["src/plugins/*/domain/**"] },
+      { "name": "plugin-application", "patterns": ["src/plugins/*/application/**"] },
+      { "name": "plugin-infrastructure", "patterns": ["src/plugins/*/infrastructure/**"] },
+      { "name": "plugin-presentation", "patterns": ["src/plugins/*/presentation/**"] },
+      { "name": "plugin-entry", "patterns": ["src/plugins/*/plugin.ts"] }
+    ],
+    "rules": [
+      { "from": "domain", "allow": ["domain"] },
+      { "from": "application", "allow": ["domain", "application"] },
+      { "from": "infrastructure", "allow": ["domain", "application", "infrastructure"] },
+      { "from": "presentation", "allow": ["domain", "application", "presentation"] },
+      { "from": "plugin-domain", "allow": ["domain", "plugin-domain"] },
+      { "from": "plugin-application", "allow": ["domain", "application", "plugin-domain", "plugin-application"] },
+      { "from": "plugin-infrastructure", "allow": ["domain", "application", "plugin-domain", "plugin-application", "plugin-infrastructure"] },
+      { "from": "plugin-presentation", "allow": ["domain", "application", "plugin-domain", "plugin-application", "plugin-presentation"] },
+      { "from": "plugin-entry", "allow": ["domain", "application", "plugin-domain", "plugin-application", "plugin-infrastructure", "plugin-presentation"] }
+    ]
+  }
+}

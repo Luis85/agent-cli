@@ -1,0 +1,32 @@
+filters:
+  and:
+    - "file.inFolder(\"backlog\")"
+    - file.ext == "md"
+views:
+  - type: product-backlog
+    name: Planning
+    filters:
+      or:
+        - type == "Epic"
+        - type == "Feature"
+        - type == "PBI"
+    homeFolder: "backlog"
+    stateProperty: note.status
+    stateValues: Open, Active, Done
+    priorityProperty: note.priority
+    iterationProperty: note.iteration
+    dependsOnProperty: note.dependsOn
+    connection: contoso
+  - type: product-backlog
+    name: Delivery
+    filters:
+      or:
+        - type == "Task"
+        - type == "Bug"
+    homeFolder: "backlog"
+    stateProperty: note.status
+    stateValues: Open, Active, Done
+    priorityProperty: note.priority
+    iterationProperty: note.iteration
+    dependsOnProperty: note.dependsOn
+    connection: fabrikam

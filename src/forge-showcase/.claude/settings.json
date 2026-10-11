@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm",
+            "args": [
+              "run",
+              "check:structure"
+            ],
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

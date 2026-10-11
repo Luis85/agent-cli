@@ -1,0 +1,14 @@
+id: make-document
+title: Generate a note from a workspace template
+category: generation
+prompt: |
+  Record a decision note titled "Use offline tiles", owned by Ada, from the workspace
+  template decision.md. Put it in the folder "decisions".
+fixture: vault
+reference:
+  - [templates, inspect, decision.md]
+  - [make, document, Use offline tiles, --template, decision.md, --values, '{"owner":"Ada"}', --out, decisions]
+checks:
+  - file: decisions/Use offline tiles.md
+    frontmatter: { title: Use offline tiles, status: proposed, owner: Ada }
+    contains: ["## Decision", "Owner: Ada"]

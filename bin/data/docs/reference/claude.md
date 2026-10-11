@@ -2,11 +2,11 @@
 
 [Documentation](../index.md) · Reference
 
-`claude` manages native Claude Code definitions and invokes an installed Claude Code CLI for plugin lifecycle operations. Native file operations use Forge's revisions, dry runs, path containment and post-commit events. See [manage Claude Code](../how-to/manage-claude.md) for complete editing workflows.
+`claude` manages native Claude Code definitions and invokes an installed Claude Code CLI for plugin lifecycle operations. It is delivered by the bundled `claude` [core plugin](plugins.md#bundled-core-plugins), which also owns the `claude.*` lifecycle events and provides the `claude.lifecycle` service to trusted plugins; `{"plugins": {"disabled": ["claude"]}}` removes the command and events. The Claude agent and hook validators stay in the kernel domain (`src/domain/claude/`), so the `agents` plugin validates generated agents without depending on this plugin. Native file operations use Forge's revisions, dry runs, path containment and post-commit events. See [manage Claude Code](../how-to/manage-claude.md) for complete editing workflows.
 
 ```sh
-node bin/app.js claude capabilities --json
-node bin/app.js help claude
+node bin/forge.js claude capabilities --json
+node bin/forge.js help claude
 ```
 
 The capabilities response lists supported hook events, handler types, plugin components and runtime operations. Forge preserves unknown metadata and extension fields while validating known fields. Claude Code determines whether those fields work in the installed version. The upstream references are [subagents](https://code.claude.com/docs/en/sub-agents), [hooks](https://code.claude.com/docs/en/hooks), [plugin components](https://code.claude.com/docs/en/plugins-reference) and [settings](https://code.claude.com/docs/en/settings).
@@ -18,7 +18,7 @@ Native agent and hook operations use these targets:
 | `--scope` | Agents | Hooks/settings |
 | --- | --- | --- |
 | `project` (default) | `.claude/agents/` | `.claude/settings.json` |
-| `local` | Unsupported | `.claude/settings.local.json` |
+| `local` | Unsupported (`INVALID_OPTION_VALUE`) | `.claude/settings.local.json` |
 | `user` | `<claude-dir>/agents/` | `<claude-dir>/settings.json` |
 | `plugin` | `<directory>/agents/` | `<directory>/hooks/hooks.json` |
 
@@ -26,9 +26,11 @@ Project and local paths are relative to the selected Forge project's root, or th
 
 For native user scope, `--claude-dir <path>` overrides `CLAUDE_CONFIG_DIR`, which overrides `~/.claude`. A relative `--claude-dir` resolves from the selected Forge file scope. This option applies only to native user-scope operations. Reading or previewing a missing user directory does not create it. A committed native write creates missing directories through the guarded repository. Responses include `target.scope` and `target.directory`; check these before editing a user configuration outside the selected project. User scope selects the native configuration destination; Forge input/export paths and the runtime working directory still follow project selection.
 
-Text inputs accept exactly one of `--from <path>`, `--content <text>` or `--stdin`. `--from` always reads from the current Forge file scope, including when the destination has user or plugin scope. Inputs must be UTF-8. Native mutation commands support `--dry-run`; a preview does not execute Claude, change files or emit file events.
+Text inputs accept exactly one of `--from <path>`, `--content <text>` or `--stdin`. `--from` always reads from the current Forge file scope, including when the destination has user or plugin scope. Inputs must be UTF-8. Native mutation commands support `--dry-run`; a preview does not execute Claude, change files or emit `vault.*` events.
 
 ## Agents
+
+To keep agents as docker-agent YAML definitions and generate these files from them, use [`agents generate --target claude`](agents.md#generation); generated files carry `x-forge-source` provenance and are inspected like any other agent here.
 
 | Command | Input and behavior |
 | --- | --- |
@@ -144,7 +146,7 @@ These commands launch the executable named `claude`, or `--claude-bin <executabl
 | `claude runtime install [version\|stable\|latest]` | `claude install [version\|stable\|latest]` | Requires an already callable Claude executable |
 | `claude runtime update` | `claude update` | — |
 
-Commands supporting `--scope` default to `project` and pass it explicitly, including marketplace removal. The exceptions are `plugins disable --all` and `marketplaces add --claudeai`, which reject scope and use native behavior. Other commands reject that option. Native `plugins init` creates a plugin under `~/.claude/skills/<name>`; it has no project destination or scope option. Use Forge's `plugins create <directory>` to author a manifest in a selected project. Runtime operations inherit the process environment, including `CLAUDE_CONFIG_DIR`; the native-file `--claude-dir` option does not apply to them.
+Each section declares the scopes it accepts, and `schema claude` publishes them under `annotations.actions.<section>.options.scope`: `agents` takes `project`, `user` and `plugin`; `hooks` adds `local`; `plugins` takes `project`, `local`, `user` and `managed`; `marketplaces` takes `project`, `local` and `user`; `capabilities` and `runtime` take none. A value outside the section's set fails with `INVALID_OPTION_VALUE` before the section runs, and an installed-CLI command that does not support a declared scope, such as `plugins install --scope managed`, fails with `INVALID_CLAUDE_SCOPE`. Commands supporting `--scope` default to `project` and pass it explicitly, including marketplace removal. The exceptions are `plugins disable --all` and `marketplaces add --claudeai`, which reject scope and use native behavior. Other commands reject that option. Native `plugins init` creates a plugin under `~/.claude/skills/<name>`; it has no project destination or scope option. Use Forge's `plugins create <directory>` to author a manifest in a selected project. Runtime operations inherit the process environment, including `CLAUDE_CONFIG_DIR`; the native-file `--claude-dir` option does not apply to them.
 
 Pass each list option as one argument: for example, `--with '["agents","hooks"]'`, `--sparse '["plugins/a","plugins/b"]'`, `--allow-tools '["Read","Grep"]'` or `--config '["host=localhost","port=8080"]'`. Allowed `--with` components are `skills`, `agents`, `hooks`, `mcp`, `lsp`, `output-style` and `channel`. `--config` expands into repeated native options; use configuration stdin for sensitive values because process arguments and dry-run plans contain option values.
 
@@ -180,10 +182,10 @@ Forge supports the explicitly listed options from the [official plugin CLI refer
 
 Native version-specific flags outside this list are rejected. In particular, eval's `--report` is not exposed because the upstream reference does not specify its argument contract; use the installed `claude plugin eval --help` and native CLI for it. Forge's `--json` controls its response envelope; eval's `--native-json` and `--native-json-output` select Claude's own JSON output. Installed releases may support fewer documented commands or flags.
 
-A missing installation reports `CLAUDE_NOT_INSTALLED`. Failed or interrupted native operations may already have changed Claude's installation state; inspect the captured output and installed state before retrying. Forge revision guards and `file.*` events cover its own file mutations, not changes made by the native executable. The repository verifies this integration using fixture executables; it does not claim end-to-end verification against an installed Claude Code release.
+A missing installation reports `CLAUDE_NOT_INSTALLED`. Failed or interrupted native operations may already have changed Claude's installation state; inspect the captured output and installed state before retrying. Forge revision guards and `vault.*` events cover its own file mutations, not changes made by the native executable. The repository verifies this integration using fixture executables; it does not claim end-to-end verification against an installed Claude Code release.
 
 The host's `claude.started`, `claude.succeeded` and `claude.failed` events cover service validation, previews, execution and output processing with a shared invocation-local `operationId`. Payloads identify the executable, `cwd` and dry-run state, plus received exit status or a safe error code/status summary when applicable; they exclude native arguments, stdin, stdout and stderr. The original diagnostics remain in the command response. `claude.executed` remains available whenever a process returns an exit status, including a nonzero status; previews and process failures without a status do not emit it. A native exit of zero can still precede `claude.failed` if JSON parsing fails, so inspect external state before retrying. These Forge notifications are separate from Claude's configured hook events. See the [host event contract](plugins.md#host-events-and-correlation).
 
 ## File integrity
 
-All native authoring writes use contained regular-file paths, collision checks and SHA-256 revisions. Dry runs produce the same validation and planned changes without writing. A stale revision fails with `CONFLICT`; reread and reconcile instead of reusing it. Removal emits `file.deleted` only after success; its `revision` and `bytes` identify the removed content. Created and replaced files emit `file.created` and `file.updated`. Listener failures become warnings after persistence. See the [write contract](cli.md#write-contract).
+All native authoring writes use contained regular-file paths, collision checks and SHA-256 revisions. Dry runs produce the same validation and planned changes without writing. A stale revision fails with `CONFLICT`; reread and reconcile instead of reusing it. Removal emits `vault.delete` only after success; its `revision` and `bytes` identify the removed content. Created and replaced files emit `vault.create` and `vault.modify`, and each newly created folder emits `vault.create` with `kind: "folder"`. Listener failures become warnings after persistence. See the [write contract](cli.md#write-contract).

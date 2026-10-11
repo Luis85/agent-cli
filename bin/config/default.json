@@ -1,34 +1,17 @@
 {
   "schemaVersion": 1,
   "paths": {
-    "projects": "projects",
-    "components": "components",
-    "ui": "src/ui",
-    "stories": "stories",
-    "componentImports": "imports/components",
-    "componentExports": "exports/components",
-    "dataSources": "data-sources",
-    "dataGenerated": "src/data-sources",
-    "dataFixtures": "test-data",
-    "dataImports": "imports/data-sources",
-    "dataExports": "exports/data-sources",
-    "interactions": "interactions",
-    "interactionImports": "imports/interactions",
-    "interactionExports": "exports/interactions"
+    "projects": "projects"
   },
   "settings": {
     "language": "en",
     "json": false,
-    "dryRun": false
-  },
-  "templates": {
-    "dateFormat": "YYYY-MM-DD",
-    "timeFormat": "HH:mm"
+    "dryRun": false,
+    "events": "changes"
   },
   "plugins": {
-    "enabled": []
-  },
-  "ui": {
-    "framework": "html"
+    "enabled": [],
+    "disabled": [],
+    "settings": {}
   }
 }

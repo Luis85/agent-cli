@@ -1,0 +1,18 @@
+id: make-component
+title: Generate a tested domain component in a project
+category: generation
+prompt: |
+  In the managed project "demo", add a domain component named Itinerary together with
+  its unit test, using the Forge generators. Leave the workspace's project selection as
+  it was.
+fixture: vault
+reference:
+  - [project, list]
+  - [project, component, demo, Itinerary, --kind, domain]
+checks:
+  - file: projects/demo/src/domain/itinerary.ts
+    contains: [export class Itinerary]
+  - file: projects/demo/tests/itinerary.domain.unit.test.ts
+    contains: [Itinerary]
+  - command: [project, current]
+    data: { pointer: /project, equals: null }

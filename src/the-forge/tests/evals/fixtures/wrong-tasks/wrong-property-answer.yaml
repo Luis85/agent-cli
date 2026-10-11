@@ -1,0 +1,13 @@
+id: wrong-property-answer
+title: A question whose reference answer names a wrong value
+category: reading
+prompt: |
+  What is the status of the project note Projects/Alpha.md? Answer with the value.
+fixture: vault
+reference:
+  - [read, Projects/Alpha.md]
+# Wrong on purpose: Alpha is active, not paused.
+answer: Alpha is paused.
+checks:
+  - answer: { contains: [paused] }
+  - unchanged: Projects/Alpha.md

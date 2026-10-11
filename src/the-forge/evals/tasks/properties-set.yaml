@@ -1,0 +1,15 @@
+id: properties-set
+title: Set frontmatter properties without touching the body
+category: editing
+prompt: |
+  Mark Projects/Beta.md as active and set its owner property to the link [[People/Ada]].
+  Do not change the note's text.
+fixture: vault
+reference:
+  - [properties, Projects/Beta.md, --set, '{"status":"active","owner":"[[People/Ada]]"}', --if-match, "{{revision:Projects/Beta.md}}"]
+checks:
+  - file: Projects/Beta.md
+    frontmatter: { status: active, owner: "[[People/Ada]]", tags: [project] }
+    contains: ["# Beta: offline maps\n", "Testers should recieve the offline bundle by email."]
+  - command: [links, back, People/Ada.md]
+    data: { pointer: /backlinks, contains: { source: Projects/Beta.md, kind: frontmatter } }

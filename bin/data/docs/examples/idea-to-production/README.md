@@ -15,8 +15,8 @@ Read in order:
 | [05-delivery-plan.md](05-delivery-plan.md) | Sequence independently verifiable implementation slices |
 | [06-validation-and-release.md](06-validation-and-release.md) | Plan verification, rollout, rollback and operational ownership |
 | [prompts.md](prompts.md) | Copy stage prompts with explicit inputs and expected evidence |
-| [components](components) | Valid Markdown UI definitions for a static detail view |
-| [sources](sources) | REST read-model and local-JSON definitions with explicit synthetic test records |
+| `components`: [approval-page.md](components/approval-page.md), [request-summary.md](components/request-summary.md) | Valid Markdown UI definitions for a static detail view |
+| `sources`: [purchase-requests.md](sources/purchase-requests.md), [approvers.md](sources/approvers.md) | REST read-model and local-JSON definitions with explicit synthetic test records |
 
 The [walkthrough](../../tutorials/idea-to-production.md) demonstrates real Forge commands. Keep product documents, `components` and `sources` separate: each library recursively validates its Markdown files against its own strict schema. Product frontmatter is ordinary document metadata, not a UI or data-source definition.
 
