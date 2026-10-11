@@ -12,7 +12,8 @@ import type { DocumentTemplates } from '../application/templates.ts';
 export function documentGenerator(templates: (context: CommandContext) => DocumentTemplates): Generator {
   return {
     id: 'document', description: 'Render an Obsidian Markdown/frontmatter template with typed values.', usage: 'make document Title --template name.md [--values JSON | --values-from path] [--date ISO] [--out notes]',
-    directory: 'notes',
+    // Create-only: the document is written without a revision, so a repeat fails with CONFLICT.
+    directory: 'notes', destructive: false, idempotent: true,
     options: {
       template: option.string('Markdown template under bin/templates.', { required: true }),
       values: option.string('Template values as a JSON object.'),

@@ -12,7 +12,7 @@ export function workflowsCommands(services: WorkflowServices): Command[] {
     scope: 'workspace', discovery: false, mutating: true, defaultAction: 'list',
     actions: {
       list: { description: 'List every managed project\'s authored workflows and their generated entrypoints.', mutating: false },
-      sync: { description: 'Write the generated .github/workflows entrypoints; with --check, report drift without writing.' },
+      sync: { description: 'Write the generated .github/workflows entrypoints; with --check, report drift without writing.', idempotent: true },
     },
     args: [{ name: 'action', description: 'list (default) or sync.', enum: ['list', 'sync'] }],
     options: { check: option.boolean('With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.') },

@@ -17,7 +17,8 @@ export const scaffoldsPlugin: CorePlugin = {
     description: 'Generate tested TypeScript projects, components, domain and application code, typed forms and plugin folders.',
   },
   create: () => ({
-    generators: scaffoldGenerators,
+    // Every scaffold is a new file the host writes create-only: a generator never replaces existing content.
+    generators: scaffoldGenerators.map(generator => ({ ...generator, destructive: false })),
     provides: { [projectScaffolderService]: projects },
     strings: {
       de: {

@@ -72,7 +72,7 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       // Idempotent although --if-match is optional: it is required once the team file exists, so a repeat fails.
       create: { description: 'Add a docker-agent agent, or a bundled template\'s agents, to a new or existing team file, preserving comments.', mutating: true, idempotent: true },
       import: { description: 'Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.', mutating: true, idempotent: true },
-      generate: { description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true },
+      generate: { description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true, idempotent: true },
     },
     args: [
       { name: 'action', description: 'list (default), inspect, validate, create, import or generate.', enum: actions },

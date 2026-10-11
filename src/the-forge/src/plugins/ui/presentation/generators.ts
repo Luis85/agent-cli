@@ -44,7 +44,7 @@ async function makeUi(kind: 'ui' | 'stories', id: string, flags: CommandFlags, c
  * the one `--project` names for this invocation. `make` adds `--out` and the review controls.
  */
 export function uiGenerators(services: UiServicesFactory): Generator[] {
-  const library = { projectOption: 'project', review: true, options: uiGenerationOptions } as const;
+  const library = { projectOption: 'project', review: true, idempotent: true, options: uiGenerationOptions } as const;
   return [
     {
       id: 'ui', description: 'Generate deterministic UI code from Markdown component definitions.', usage: 'make ui <component-id> [--framework target] [--stories] [--project id] [--out directory]',
