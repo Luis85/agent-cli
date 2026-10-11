@@ -6,7 +6,8 @@ import { commandSkills, type CommandSkill } from './claude-commands.ts';
 import type { ModelStyle } from './claude-models.ts';
 import { completeAgent, type McpMode } from './claude-execution.ts';
 import { reviewedRules, serverNames, topLevelRules, type PermissionRule } from './claude-permissions.ts';
-import type { ForeignEntries } from './claude-merge.ts';
+import type { ForeignEntries, GeneratedSettings } from './claude-merge.ts';
+import { origins, type RuleOrigin } from './claude-rule-ownership.ts';
 
 export interface ClaudeGenerationOptions {
   /** `none` (the default) writes no MCP servers; `inline` puts them in agent frontmatter; `project` merges them into `.mcp.json`. */
@@ -43,7 +44,7 @@ export interface ClaudeGeneration {
   /** Servers for the project's `.mcp.json` (`mcp: project`). */
   mcpServers: Record<string, Record<string, unknown>>;
   /** Project settings to merge (`settings`). */
-  settings?: { permissions: { allow: string[]; ask: string[]; deny: string[] }; agent?: string };
+  settings?: GeneratedSettings;
   diagnostics: GenerationDiagnostic[];
 }
 
@@ -90,11 +91,18 @@ function generateSource(source: DefinitionSource, names: ReadonlyMap<string, str
   return { drafts, skills, diagnostics };
 }
 
-/** The settings rules of one definition file: its agents' deny rules and its top-level permissions, reviewed. */
-function settingsRules(source: DefinitionSource, drafts: readonly ClaudeAgentDraft[], options: ClaudeGenerationOptions, diagnostics: AgentDiagnostic[]): PermissionRule[] {
+/**
+ * The settings rules of one definition file, reviewed: its agents' deny rules, whose origin names the agent, and its
+ * top-level permissions, whose origin is the file.
+ */
+function settingsRules(source: DefinitionSource, drafts: readonly ClaudeAgentDraft[], options: ClaudeGenerationOptions, diagnostics: AgentDiagnostic[]): Array<PermissionRule & { origin: RuleOrigin }> {
   const top = topLevelRules(source.config, serverNames(drafts), options.mcp);
   diagnostics.push(...top.diagnostics);
-  return reviewedRules([...drafts.flatMap(draft => draft.permissions), ...top.rules], options.allowBroadPermissions === true, diagnostics);
+  const rules = [
+    ...drafts.flatMap(draft => draft.permissions.map(rule => ({ ...rule, origin: { file: source.path, agent: draft.agent } }))),
+    ...top.rules.map(rule => ({ ...rule, origin: { file: source.path } })),
+  ];
+  return reviewedRules(rules, options.allowBroadPermissions === true, diagnostics);
 }
 
 /**
@@ -138,7 +146,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
   }
   const output: ClaudeGeneration = { agents: [], skills: [], mcpServers: {}, diagnostics };
   if (diagnostics.length > 0) return output;
-  const skills: Array<CommandSkill & { source: DefinitionSource }> = [], permissions = { allow: [] as string[], ask: [] as string[], deny: [] as string[] };
+  const skills: Array<CommandSkill & { source: DefinitionSource }> = [], permissions: GeneratedSettings['permissions'] = { allow: [], ask: [], deny: [] };
   for (const source of sources) {
     const generated = generateSource(source, names, options);
     if (options.mcp === 'project') projectServers(generated.drafts, output.mcpServers, options, generated.diagnostics);
@@ -148,7 +156,13 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
       output.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source.path, metadata, body: draft.prompt });
     }
     skills.push(...generated.skills.map(skill => ({ ...skill, source })));
-    if (options.settings) for (const rule of settingsRules(source, generated.drafts, options, generated.diagnostics)) permissions[rule.list].push(rule.rule);
+    if (options.settings) {
+      for (const { list, rule, origin } of settingsRules(source, generated.drafts, options, generated.diagnostics)) {
+        const granted = permissions[list].find(entry => entry.rule === rule);
+        if (granted) granted.origins = origins(granted.origins, [origin]);
+        else permissions[list].push({ rule, origins: [origin] });
+      }
+    }
     diagnostics.push(...generated.diagnostics.map(entry => ({ ...entry, path: source.path })));
   }
   output.skills = uniqueSkills(skills, diagnostics);
@@ -160,7 +174,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
     if (agent !== undefined && foreignAgent !== undefined && foreignAgent !== agent) {
       diagnostics.push({ ...diagnostic('error', 'settings-agent-conflict', pointer('agents', main!), `.claude/settings.json already sets agent to ${foreignAgent}, which Forge did not generate; remove it to let Forge set ${agent}.`), path: sources[0]!.path });
     }
-    output.settings = { permissions: Object.fromEntries(Object.entries(permissions).map(([list, rules]) => [list, [...new Set(rules)]])) as typeof permissions, ...(agent ? { agent } : {}) };
+    output.settings = { permissions, ...(agent ? { agent } : {}) };
   }
   output.diagnostics = dedupe(diagnostics);
   return output;

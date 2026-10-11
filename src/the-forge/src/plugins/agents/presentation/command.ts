@@ -33,7 +33,7 @@ const options = {
   agent: option.string('generate: only this docker-agent agent.'),
   mcp: option.string('generate: MCP servers start processes or reach remote services, so none are written by default; inline writes them in agent frontmatter, project merges them into the project .mcp.json.', { enum: ['none', 'inline', 'project'], default: 'none' }),
   hooks: option.boolean('generate: write agent hooks, which run commands; without it hooks are reported and skipped.'),
-  settings: option.boolean('generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic.'),
+  settings: option.boolean('generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic and every rule it removes as revokes-permission.'),
   'rename-conflicts': option.boolean('generate --mcp project: give a generated MCP server whose name .mcp.json already uses for a server Forge did not generate a numbered name, instead of failing with AGENT_MERGE_CONFLICT.'),
   'allow-broad-permissions': option.boolean('generate --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors.'),
   commands: option.boolean('generate: generate commands as .claude/skills/<name>/SKILL.md.'),

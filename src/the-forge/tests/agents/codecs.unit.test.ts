@@ -4,6 +4,8 @@ import { yamlDefinitions } from '../../src/plugins/agents/infrastructure/yaml-de
 import { ajvDefinitionSchema } from '../../src/plugins/agents/infrastructure/schema.ts';
 import { markdownFrontmatter } from '../../src/plugins/agents/infrastructure/frontmatter.ts';
 import { foreignEntries, mergeMcpServers, mergeSettings, nextManifest, parseManifest } from '../../src/plugins/agents/domain/claude-merge.ts';
+/** A generated rule granted by one definition file. */
+const granted = (rule: string) => ({ rule, origins: [{ file: 'agents/team.yaml' }] });
 
 const team = [
   '# Team header comment',
@@ -103,11 +105,11 @@ describe('Claude file codecs and merges', () => {
     const empty = parseManifest(undefined);
     const mcp = mergeMcpServers('{\n    "mcpServers": {\n        "mine": {"command": "x"},\n        "tools": {"command": "old"}\n    },\n    "other": true\n}', { tools: { type: 'stdio', command: 'old' } }, { mcpServers: { tools: { command: 'old' } }, settings: {} });
     expect(mcp).toBe('{\n    "mcpServers": {\n        "mine": {\n            "command": "x"\n        },\n        "tools": {\n            "type": "stdio",\n            "command": "old"\n        }\n    },\n    "other": true\n}');
-    const settings = mergeSettings('{\r\n\t"model": "opus",\r\n\t"permissions": {"allow": ["Read"], "defaultMode": "plan"}\r\n}\r\n', { permissions: { allow: ['Read', 'Bash(ls*)'], ask: [], deny: ['WebFetch'] }, agent: 'root' }, empty).text;
+    const settings = mergeSettings('{\r\n\t"model": "opus",\r\n\t"permissions": {"allow": ["Read"], "defaultMode": "plan"}\r\n}\r\n', { permissions: { allow: [granted('Read'), granted('Bash(ls*)')], ask: [], deny: [granted('WebFetch')] }, agent: 'root' }, empty).text;
     expect(settings).toBe('{\r\n\t"model": "opus",\r\n\t"permissions": {\r\n\t\t"allow": [\r\n\t\t\t"Read",\r\n\t\t\t"Bash(ls*)"\r\n\t\t],\r\n\t\t"defaultMode": "plan",\r\n\t\t"deny": [\r\n\t\t\t"WebFetch"\r\n\t\t]\r\n\t},\r\n\t"agent": "root"\r\n}\r\n');
     expect(JSON.parse(mergeSettings(undefined, { permissions: { allow: [], ask: [], deny: [] } }, empty).text)).toEqual({});
     expect(() => mergeMcpServers('{', {}, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
-    expect(() => mergeSettings('{"permissions": {"allow": "Read"}}', { permissions: { allow: ['x'], ask: [], deny: [] } }, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
+    expect(() => mergeSettings('{"permissions": {"allow": "Read"}}', { permissions: { allow: [granted('x')], ask: [], deny: [] } }, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
   });
 
   it('replaces only entries the manifest records with their current content', () => {

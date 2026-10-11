@@ -4,8 +4,9 @@ import { GenerationService } from '../../../application/generation/plans.ts';
 import type { GenerationMode } from '../../../application/generation/controls.ts';
 import { AppError, forgeError } from '../../../domain/shared/errors.ts';
 import type { WriteRequest } from '../../../domain/documents/file.ts';
-import { hasErrors, isObject, record } from '../domain/config.ts';
-import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource } from '../domain/claude-generation.ts';
+import { diagnostic, hasErrors, isObject, pointer, record } from '../domain/config.ts';
+import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource, type GenerationDiagnostic } from '../domain/claude-generation.ts';
+import type { GenerationCoverage, RevokedRule } from '../domain/claude-rule-ownership.ts';
 import { foreignEntries, manifestPath, mergeMcpServers, mergeSettings, nextManifest, parseManifest, type ForgeManifest } from '../domain/claude-merge.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentDefinitions } from './definitions.ts';
@@ -29,6 +30,12 @@ const conflictCodes = ['mcp-server-conflict', 'settings-agent-conflict'];
 interface ProjectFiles { mcp?: string; settings?: string; manifestText?: string; manifest: ForgeManifest }
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const encode = (text: string) => new TextEncoder().encode(text);
+
+/** A rule this generation removes from the settings, reported at the definition that granted it. */
+function revocation({ list, rule, origins: [origin] }: RevokedRule): GenerationDiagnostic {
+  const at = origin!.agent === undefined ? pointer('permissions', list) : pointer('agents', origin!.agent);
+  return { ...diagnostic('warning', 'revokes-permission', at, `.claude/settings.json permissions.${list} loses the rule ${rule}, which Forge wrote and no definition grants any more.`), path: origin!.file };
+}
 
 /**
  * `agents generate --target claude`: definitions → Claude agents (and opt-in MCP, settings and skill files) through
@@ -69,7 +76,10 @@ export class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.render(file)) }));
-    if (project) writes.push(...this.projectWrites(project, generated));
+    // A run over some definitions re-derives only their permission origins; rules of the others stay.
+    const coverage: GenerationCoverage = request.file === undefined && request.agent === undefined ? { files: null } : { files: sources.map(source => source.path), ...(request.agent ? { agent: request.agent } : {}) };
+    const merged = project ? this.projectWrites(project, generated, coverage) : { writes: [], revoked: [] };
+    writes.push(...merged.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === 'plan' ? request.manifestPath : undefined);
     const generatedMarkdown = new Set(markdown.map(file => file.path));
@@ -80,7 +90,7 @@ export class AgentGeneration {
       agents: generated.agents.map(({ path, name, agent, source }) => ({ agent, name, path, source })),
       skills: generated.skills.map(skill => skill.path),
       files: outputs.map(({ path, status }) => ({ path, status })), stale,
-      diagnostics: generated.diagnostics,
+      diagnostics: [...generated.diagnostics, ...merged.revoked.map(revocation)],
     };
     if (request.mode === 'check') {
       const drift = outputs.filter(output => output.status !== 'unchanged').map(({ path, status }) => ({ path, status }));
@@ -107,16 +117,16 @@ export class AgentGeneration {
     return { ...(mcp === undefined ? {} : { mcp }), ...(settings === undefined ? {} : { settings }), ...(manifestText === undefined ? {} : { manifestText }), manifest: parseManifest(manifestText) };
   }
 
-  /** Merged `.mcp.json` and settings, and the manifest recording what Forge now owns in them. */
-  private projectWrites(project: ProjectFiles, generated: ReturnType<typeof generateClaude>): WriteRequest[] {
+  /** Merged `.mcp.json` and settings, the manifest recording what Forge now owns in them, and the revoked rules. */
+  private projectWrites(project: ProjectFiles, generated: ReturnType<typeof generateClaude>, coverage: GenerationCoverage): { writes: WriteRequest[]; revoked: RevokedRule[] } {
     const servers = generated.mcpServers, writes: WriteRequest[] = [];
     if (Object.keys(servers).length > 0) writes.push({ path: mcpPath, bytes: encode(mergeMcpServers(project.mcp, servers, project.manifest)) });
-    const settings = generated.settings ? mergeSettings(project.settings, generated.settings, project.manifest) : undefined;
+    const settings = generated.settings ? mergeSettings(project.settings, generated.settings, project.manifest, coverage) : undefined;
     if (settings) writes.push({ path: settingsPath, bytes: encode(settings.text) });
-    if (writes.length === 0) return [];
+    if (writes.length === 0) return { writes, revoked: [] };
     const written = { servers, ...(generated.settings?.agent ? { agent: generated.settings.agent } : {}), ...(settings ? { permissions: settings.owned } : {}) };
     const files = { ...project, ...(settings ? { settings: settings.text } : {}) };
-    return [...writes, { path: manifestPath, bytes: encode(nextManifest(project.manifest, project.manifestText, files, written)) }];
+    return { writes: [...writes, { path: manifestPath, bytes: encode(nextManifest(project.manifest, project.manifestText, files, written)) }], revoked: settings?.revoked ?? [] };
   }
 
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */
