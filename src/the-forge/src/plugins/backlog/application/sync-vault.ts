@@ -8,6 +8,8 @@ import { pathTaken, wikilink, type BacklogSession } from './session.ts';
 import { conflictOn, type SyncStore } from './sync-store.ts';
 import { pulledNote, type PulledNote, type ValueContext } from './sync-values.ts';
 import { itemEdit, planNoteEdits, type NoteEdit } from './writer.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { syncMessages } from '../domain/messages.ts';
 
 const basename = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/i, '');
 
@@ -31,7 +33,7 @@ export function landings(session: BacklogSession, context: ValueContext, plans: 
     if (note.title !== undefined) {
       const folder = plan.path.includes('/') ? plan.path.slice(0, plan.path.lastIndexOf('/') + 1) : '';
       const target = `${folder}${note.title}.md`;
-      if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) { pulled.delete('title'); skipped.push({ path: plan.path, field: 'title', code: 'title-taken', reason: `${target} already exists` }); }
+      if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) { pulled.delete('title'); skipped.push({ path: plan.path, field: 'title', code: 'title-taken', reason: fill(syncMessages.titleTaken, { path: target }) }); }
       else if (target !== plan.path) renameTo = target;
     }
     return { plan, note, pulled, renameTo, skipped };

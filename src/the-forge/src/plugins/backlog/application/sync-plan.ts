@@ -4,6 +4,8 @@ import type { BacklogItem } from '../domain/model.ts';
 import { canonical, decide, decideDescription, remoteType, type Decision, type FieldKey, type FieldValue } from '../domain/sync-fields.ts';
 import { pathOfRemote, REMOTE_BASE, type SyncEntry, type SyncState } from '../domain/sync-state.ts';
 import { itemType, linkValue, localValues, remoteValues, type ValueContext, type Values } from './sync-values.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { syncMessages } from '../domain/messages.ts';
 
 export type Direction = 'push' | 'pull' | 'both';
 /**
@@ -56,14 +58,14 @@ export function identify(context: ValueContext, items: readonly Source[], state:
   const mapped = items.filter(({ item }) => {
     const type = itemType(item);
     if (type !== null && remoteType(context.mapping, type) !== undefined) return true;
-    skipped.push({ path: item.path, code: 'unmapped-type', reason: `type ${type ?? '(none)'} has no remote type mapping` });
+    skipped.push({ path: item.path, code: 'unmapped-type', reason: type === null ? syncMessages.untyped : fill(syncMessages.unmappedType, { type }) });
     return false;
   });
   const linkOf = ({ frontmatter }: Source) => { const link = linkValue(context.connection, frontmatter); return { link, id: link === null ? null : linkId(link) }; };
   for (const source of mapped) {
     const entry = state.items[source.item.path];
     if (entry === undefined) continue;
-    if (claimed.has(entry.id)) { skipped.push({ path: source.item.path, code: 'duplicate-link', reason: `${claimed.get(entry.id)} already syncs remote item ${entry.id}` }); continue; }
+    if (claimed.has(entry.id)) { skipped.push({ path: source.item.path, code: 'duplicate-link', reason: fill(syncMessages.duplicateLink, { holder: claimed.get(entry.id)!, id: entry.id }) }); continue; }
     claimed.set(entry.id, source.item.path);
     members.push({ ...source, id: entry.id, entry, relink: linkOf(source).id !== entry.id });
   }
@@ -72,12 +74,12 @@ export function identify(context: ValueContext, items: readonly Source[], state:
   for (const { id } of linkOnly) if (id !== null) linking.set(id, (linking.get(id) ?? 0) + 1);
   for (const { source, link, id } of linkOnly) {
     const { path } = source.item;
-    if (link !== null && id === null) { skipped.push({ path, code: 'foreign-link', reason: `${context.connection.linkProperty} links an item of another connection` }); continue; }
+    if (link !== null && id === null) { skipped.push({ path, code: 'foreign-link', reason: fill(syncMessages.foreignLink, { property: context.connection.linkProperty }) }); continue; }
     const previous = id === null ? null : pathOfRemote(state, id);
     const holder = id === null ? undefined : claimed.get(id) ?? (previous !== null && exists(previous) ? previous : undefined);
-    if (holder !== undefined) { skipped.push({ path, code: 'duplicate-link', reason: `${holder} already syncs remote item ${id}; remove or change ${context.connection.linkProperty} in this copy` }); continue; }
+    if (holder !== undefined) { skipped.push({ path, code: 'duplicate-link', reason: fill(syncMessages.duplicateLinkCopy, { holder, id: id!, property: context.connection.linkProperty }) }); continue; }
     // Without a state entry nothing tells the original from its copies: none of them claims the item.
-    if (id !== null && linking.get(id)! > 1) { skipped.push({ path, code: 'duplicate-link', reason: `${linking.get(id)} notes link remote item ${id}; keep ${context.connection.linkProperty} in one of them` }); continue; }
+    if (id !== null && linking.get(id)! > 1) { skipped.push({ path, code: 'duplicate-link', reason: fill(syncMessages.duplicateLinkNotes, { count: linking.get(id)!, id, property: context.connection.linkProperty }) }); continue; }
     let entry: SyncEntry | null = null;
     if (previous !== null) { entry = state.items[previous]!; adopted.push({ from: previous, to: path }); }
     if (id !== null) claimed.set(id, path);
@@ -91,10 +93,10 @@ export function identify(context: ValueContext, items: readonly Source[], state:
 export interface PlanOptions { direction: Direction; resolution?: Resolution; hash(text: string): string }
 
 const fieldSkip = (path: string, field: FieldKey, local: boolean, base: boolean): Skip => (field === 'description' && base
-  ? { path, field, code: 'remote-format-unknown', reason: 'the remote description changed but is not known to be Markdown, so it is not pulled; edit the note or run backlog sync resolve with --field description' }
+  ? { path, field, code: 'remote-format-unknown', reason: syncMessages.remoteFormatUnknown }
   : local
-    ? { path, field, code: 'unexpressible', reason: `the note's ${field} cannot be expressed on this connection, so the remote value is not pulled over it` }
-    : { path, field, code: 'unreadable-remote', reason: `the remote ${field} cannot be read, so the note's value is not pushed over it` });
+    ? { path, field, code: 'unexpressible', reason: fill(syncMessages.unexpressible, { field }) }
+    : { path, field, code: 'unreadable-remote', reason: fill(syncMessages.unreadableRemote, { field }) });
 
 /**
  * The three-way plan of one member. The remote side is unchanged for every field while the remote revision equals
@@ -110,7 +112,7 @@ export function planItem(context: ValueContext, member: Member, remote: RemoteIt
     remoteMarkdown: false, baseFrom: new Map(), skipped: [], relink: member.relink,
   };
   if (plan.create) return plan;
-  if (remote === null) return { path: item.path, code: 'remote-missing', reason: `remote item ${member.id} no longer exists or is not readable` };
+  if (remote === null) return { path: item.path, code: 'remote-missing', reason: fill(syncMessages.remoteMissing, { id: String(member.id) }) };
   plan.remoteValues = remoteValues(context, remote);
   plan.remoteMarkdown = remote.description === null || remote.descriptionMarkdown === true;
   const unchangedRemote = entry !== null && entry.rev === remote.rev;
@@ -164,10 +166,10 @@ export function settlePush(context: ValueContext, plan: ItemPlan, result: Remote
     if (local === undefined || canonical(field, local) === canonical(field, remote)) continue;
     if (!empty(local)) {
       plan.baseFrom.set(field, 'remote');
-      plan.skipped.push({ path: plan.path, field, code: 'server-kept', reason: `the platform stored ${canonical(field, remote)} instead of ${canonical(field, local)}; the next sync pushes the note's value again` });
+      plan.skipped.push({ path: plan.path, field, code: 'server-kept', reason: fill(syncMessages.serverKept, { stored: canonical(field, remote), sent: canonical(field, local) }) });
     } else if (direction === 'push') {
       plan.remoteChanged.push(field);
-      plan.skipped.push({ path: plan.path, field, code: 'server-applied', reason: `the platform applied ${canonical(field, remote)}; a pull takes it into the note` });
+      plan.skipped.push({ path: plan.path, field, code: 'server-applied', reason: fill(syncMessages.serverApplied, { value: canonical(field, remote) }) });
     } else {
       plan.remoteChanged.push(field);
       plan.pull.set(field, remote);

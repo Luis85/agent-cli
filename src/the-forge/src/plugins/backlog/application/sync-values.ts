@@ -11,6 +11,8 @@ import {
 import type { ItemWrite } from '../domain/writes.ts';
 import { stateWrite } from './editing.ts';
 import type { BacklogSession } from './session.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { syncMessages } from '../domain/messages.ts';
 
 /** What field values depend on besides the item: the connection, its mapping and remote ids of other notes. */
 export interface ValueContext {
@@ -152,23 +154,23 @@ export function pulledNote(context: ValueContext, item: BacklogItem, pulls: Valu
     if (field === 'title') note.title = sanitizeTitle(String(value));
     else if (field === 'type' && typeof value === 'string') {
       const local = localType(context.mapping, value, type);
-      if (local === undefined) note.skipped.push({ field, code: 'unmapped-remote-type', reason: `remote type ${value} has no local type mapping; add it to mappings.types` });
+      if (local === undefined) note.skipped.push({ field, code: 'unmapped-remote-type', reason: fill(syncMessages.unmappedRemoteType, { type: String(value) }) });
       else note.write.typeName = local;
     }
     else if (field === 'state') Object.assign(note.write, stateWrite(item, workflowOf(item.typeName, item.ladder), value === null ? null : localState(context.mapping, type, String(value), item.stateValue, settings.states), settings, formatCivil(session.today)));
     else if (field === 'parent') {
       const parent = value === null ? null : pathOfRemote(String(value));
-      if (value !== null && parent === null) note.skipped.push({ field, code: 'unsynced-parent', reason: `remote parent ${String(value)} is not synced on this connection` });
+      if (value !== null && parent === null) note.skipped.push({ field, code: 'unsynced-parent', reason: fill(syncMessages.unsyncedParent, { parent: String(value) }) });
       else note.write.parent = parent;
     } else if (field === 'dependencies' && Array.isArray(value)) {
       const paths = value.map(id => pathOfRemote(id));
       const missing = value.filter((_id, index) => paths[index] === null);
-      if (missing.length > 0) note.skipped.push({ field, code: 'unsynced-dependency', reason: `remote predecessor ${missing.join(', ')} is not synced on this connection` });
+      if (missing.length > 0) note.skipped.push({ field, code: 'unsynced-dependency', reason: fill(syncMessages.unsyncedDependency, { ids: missing.join(', ') }) });
       else note.dependsOn = paths as string[];
     } else if (field === 'iteration') {
       const name = iterationName(iterationRoot(context)!, value === null ? null : String(value));
       const target = name === null ? null : iterationNote(session, name);
-      if (name !== null && target === null) note.skipped.push({ field, code: 'missing-iteration', reason: `no iteration note named ${name}` });
+      if (name !== null && target === null) note.skipped.push({ field, code: 'missing-iteration', reason: fill(syncMessages.missingIteration, { name }) });
       else note.write.iteration = target;
     } else if (field === 'priority') note.write.priority = value === null ? null : priorityLabel(Number(value), settings.priorityValues);
     else if (field === 'tags' && Array.isArray(value)) {

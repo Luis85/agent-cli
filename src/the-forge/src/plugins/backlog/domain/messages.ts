@@ -26,3 +26,33 @@ export const checkMessages = {
 } as const satisfies Record<string, string>;
 
 export type CheckMessage = keyof typeof checkMessages;
+
+/**
+ * English templates of the `backlog sync` skip reasons (`skipped[].reason`) and of the Forge's own per-item failure
+ * (`failed[].message`); a remote failure's message is its diagnostic as raised. Longer templates come first, since a
+ * shorter one could also match their text.
+ */
+export const syncMessages = {
+  duplicateLinkCopy: '{holder} already syncs remote item {id}; remove or change {property} in this copy',
+  duplicateLinkNotes: '{count} notes link remote item {id}; keep {property} in one of them',
+  duplicateLink: '{holder} already syncs remote item {id}',
+  unmappedType: 'type {type} has no remote type mapping',
+  untyped: 'the note has no type, so it has no remote type mapping',
+  foreignLink: '{property} links an item of another connection',
+  remoteFormatUnknown: 'the remote description changed but is not known to be Markdown, so it is not pulled; edit the note or run backlog sync resolve with --field description',
+  unexpressible: "the note's {field} cannot be expressed on this connection, so the remote value is not pulled over it",
+  unreadableRemote: "the remote {field} cannot be read, so the note's value is not pushed over it",
+  remoteMissing: 'remote item {id} no longer exists or is not readable',
+  serverKept: "the platform stored {stored} instead of {sent}; the next sync pushes the note's value again",
+  serverApplied: 'the platform applied {value}; a pull takes it into the note',
+  notCreated: 'not synced yet; a push creates it',
+  predecessorNotCreated: 'a predecessor was not created in this run; the links follow on the next sync',
+  unmappedRemoteType: 'remote type {type} has no local type mapping; add it to mappings.types',
+  unsyncedParent: 'remote parent {parent} is not synced on this connection',
+  unsyncedDependency: 'remote predecessor {ids} is not synced on this connection',
+  missingIteration: 'no iteration note named {name}',
+  titleTaken: '{path} already exists',
+  remoteChanged: 'The remote item changed during the sync; run the sync again.',
+} as const satisfies Record<string, string>;
+
+export type SyncMessage = keyof typeof syncMessages;

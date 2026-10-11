@@ -8,6 +8,8 @@ import type { SyncStore } from './sync-store.ts';
 import { nextBase, settlePush, type ItemPlan } from './sync-plan.ts';
 import { localValues, remoteChange, remoteValues, type ValueContext, type Values } from './sync-values.ts';
 import type { ViewReport, ViewSyncOptions } from './sync.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { syncMessages } from '../domain/messages.ts';
 
 /** The id of a note that a planned create is still to give an id: `new:<path>`. */
 export const PLACEHOLDER = 'new:';
@@ -38,7 +40,7 @@ export async function pushAll(context: ValueContext, bound: BoundConnection, pla
   };
   const links: Array<{ plan: ItemPlan; wanted: string[] }> = [];
   for (const plan of plans) {
-    if (plan.create && options.direction === 'pull') { report.skipped.push({ path: plan.path, code: 'not-created', reason: 'not synced yet; a push creates it' }); continue; }
+    if (plan.create && options.direction === 'pull') { report.skipped.push({ path: plan.path, code: 'not-created', reason: syncMessages.notCreated }); continue; }
     const values = plan.create ? new Map([...plan.local].filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0))) : plan.push;
     if (values.size === 0) continue;
     if (!live) { (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: [...values.keys()] }); continue; }
@@ -69,7 +71,7 @@ export async function pushAll(context: ValueContext, bound: BoundConnection, pla
   for (const { plan, wanted } of links) {
     const resolved = wanted.map(resolve);
     if (resolved.some(id => id === undefined)) {
-      plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: 'unsynced-dependency', reason: 'a predecessor was not created in this run; the links follow on the next sync' });
+      plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: 'unsynced-dependency', reason: syncMessages.predecessorNotCreated });
       continue;
     }
     options.checkpoint?.();
@@ -104,7 +106,7 @@ function fail({ report, options }: Run, plan: ItemPlan, error: unknown): void {
   if (codeOf(error) === 'CONNECTOR_AUTH_FAILED') throw error;
   const stale = isStale(error);
   if (stale && options.resolution) throw backlogError('SYNC_CONFLICT', `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
-  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? 'SYNC_CONFLICT' : codeOf(error), message: stale ? 'The remote item changed during the sync; run the sync again.' : String((error as Error).message) });
+  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? 'SYNC_CONFLICT' : codeOf(error), message: stale ? syncMessages.remoteChanged : String((error as Error).message) });
 }
 
 /** Records a created item (and, after its links landed, their base) in the state file right away. */
@@ -137,6 +139,6 @@ function settleLinks(context: ValueContext, plan: ItemPlan, result: RemoteItem, 
   const stored = plan.remoteValues.get(DEPENDENCIES);
   if (stored !== undefined && canonical(DEPENDENCIES, stored) !== canonical(DEPENDENCIES, resolved)) {
     plan.baseFrom.set(DEPENDENCIES, 'remote');
-    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: 'server-kept', reason: `the platform stored ${canonical(DEPENDENCIES, stored)} instead of ${canonical(DEPENDENCIES, resolved)}; the next sync pushes the note's value again` });
+    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: 'server-kept', reason: fill(syncMessages.serverKept, { stored: canonical(DEPENDENCIES, stored), sent: canonical(DEPENDENCIES, resolved) }) });
   }
 }
