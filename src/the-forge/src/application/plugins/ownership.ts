@@ -1,4 +1,4 @@
-import { ensure } from '../../domain/shared/errors.ts';
+import { ensure, errorMessage } from '../../domain/shared/errors.ts';
 import type { EventBus, EventChannel } from './events.ts';
 import { hostEventNamespaces } from './host-events.ts';
 
@@ -7,6 +7,18 @@ const isHostNamespace = (namespace: string) => (hostEventNamespaces as readonly 
 /** Plugin ids name their event namespace, so a plugin cannot claim a host namespace. */
 export function ensurePluginNamespace(pluginId: string): void {
   ensure(!isHostNamespace(pluginId), 'PLUGIN_NAMESPACE', `Plugin id ${pluginId} is reserved for host events (${hostEventNamespaces.join(', ')}).`);
+}
+
+/**
+ * A plugin warning as the text the response reports. Plugins are plain JavaScript and may pass any value: an error
+ * reports its message, a plain object its JSON. Only the host emits coded kernel messages, so a plugin value that
+ * looks like one stays literal text and is never rendered from the host catalog.
+ */
+export function pluginWarningText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value instanceof Error || typeof value !== 'object' || value === null) return errorMessage(value);
+  try { return JSON.stringify(value) ?? errorMessage(value); }
+  catch { return errorMessage(value); }
 }
 
 /**
@@ -21,7 +33,7 @@ export function pluginEvents(bus: EventBus, pluginId: string): EventChannel {
     once: (id, listener) => bus.once(id, listener),
     onAny: listener => bus.onAny(listener),
     replay: listener => bus.replay(listener),
-    warn: message => bus.warn(message),
+    warn: (message: unknown) => bus.warn(pluginWarningText(message)),
     onLayoutReady: callback => bus.onLayoutReady(callback),
     onQuit: task => bus.onQuit(task),
     async emit(id, payload) {
