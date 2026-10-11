@@ -12,8 +12,6 @@ export const lockName = '.agent-cli.lock';
 /** Invocation details supplied by composition code; the filesystem adapter cannot know them. */
 export interface LockOwner { command?: string; operationId?: number }
 export type LockRelease = 'released' | 'missing' | 'foreign';
-/** A held lock: the token that releases it and the stale lock this acquisition removed first, if any. */
-export interface AcquiredLock { token: string; recovered: RecoveredLock | null }
 
 const staleReasons: Record<StaleReason, string> = {
   'dead-process': 'its process no longer runs', 'reused-pid': 'its pid was reused by another process', rebooted: 'it was written before this host restarted',
@@ -42,23 +40,25 @@ function ownerDetails(owner: () => LockOwner): LockOwner {
 /**
  * Create the lock with its holder record already in place, returning the token that releases it. `display` names the
  * lock relative to its root in messages and details. When the lock exists and its holder provably no longer runs
- * (see `inspectLock`), the stale lock is broken atomically and the acquisition retried once; the removed holder is
- * returned in `recovered`. Any other existing lock fails with WORKSPACE_BUSY.
+ * (see `inspectLock`), the stale lock is broken atomically and the acquisition retried; the removed holder is passed
+ * to `recovered` as soon as it is removed, also when another writer then takes the lock first. Any other existing
+ * lock fails with WORKSPACE_BUSY.
  */
-export async function acquireLock(path: string, owner: () => LockOwner, display = lockName): Promise<AcquiredLock> {
+export async function acquireLock(path: string, owner: () => LockOwner, display = lockName, recovered: (lock: RecoveredLock) => void = () => {}): Promise<string> {
   const token = randomUUID();
   const record = { ...(await ownHolder()), ...ownerDetails(owner), forgeVersion: metadata.version, token };
   const content = JSON.stringify(record) + '\n';
-  let recovered: RecoveredLock | null = null;
   // A lock that disappears or is broken between attempts is taken on the next one; a few attempts bound the races.
   for (let attempt = 1; ; attempt++) {
-    if (await createHeld(path, content, token)) return { token, recovered };
+    if (await createHeld(path, content, token)) return token;
     const found = await inspectLock(path);
     if (attempt === acquireAttempts) throw busy(display, found);
     if (found.missing) continue;
     if (found.stale !== 'stale') throw busy(display, found);
-    try { if (await breakStale(path, found.content!)) recovered = { path: display, holder: found.lock!, reason: found.reason! }; }
+    let broken: boolean;
+    try { broken = await breakStale(path, found.content!); }
     catch (error) { throw busy(display, found, `Forge could not remove it (${errorCode(error) || String(error)})`); }
+    if (broken) recovered({ path: display, holder: found.lock!, reason: found.reason! });
   }
 }
 

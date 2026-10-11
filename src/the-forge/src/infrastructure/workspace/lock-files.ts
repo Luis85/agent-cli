@@ -13,8 +13,7 @@ export function nodeLockFiles(root: string, recovered: RecoveredLockReport): (pa
   return async (path, command) => {
     const target = await (await NodeFiles.at(root)).resolvePath(path);
     await mkdir(dirname(target), { recursive: true });
-    const acquired = await acquireLock(target, () => ({ command }), path);
-    if (acquired.recovered) recovered(acquired.recovered, recoveredLockMessage(acquired.recovered));
-    return async () => (await releaseLock(target, acquired.token)) === 'released';
+    const token = await acquireLock(target, () => ({ command }), path, lock => recovered(lock, recoveredLockMessage(lock)));
+    return async () => (await releaseLock(target, token)) === 'released';
   };
 }

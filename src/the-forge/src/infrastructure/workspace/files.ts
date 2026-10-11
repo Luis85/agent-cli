@@ -94,11 +94,7 @@ export class NodeFiles implements FileRepository, BatchHost {
     const lock = join(this.root, lockName);
     let token: string | undefined;
     try {
-      if (!dryRun) {
-        const acquired = await acquireLock(lock, this.owner);
-        token = acquired.token;
-        if (acquired.recovered) this.report(acquired.recovered);
-      }
+      if (!dryRun) token = await acquireLock(lock, this.owner, lockName, recovered => this.report(recovered));
       return await transaction.run(dryRun);
     } finally { if (token !== undefined) await this.cleanupLock(lock, token); }
   }

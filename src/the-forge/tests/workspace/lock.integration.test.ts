@@ -106,13 +106,13 @@ describe('owned writer lock', () => {
   });
   it('omits invalid or failing owner details instead of failing the write', async () => {
     files = await NodeFiles.at(root, () => {}, () => { throw new Error('owner unavailable'); });
-    const { token } = await acquireLock(lock, () => ({ command: '', operationId: -1 }));
+    const token = await acquireLock(lock, () => ({ command: '', operationId: -1 }));
     expect(JSON.parse(await readFile(lock, 'utf8'))).toEqual({ pid: process.pid, hostname: hostname(), startedAt: expect.any(String), forgeVersion: metadata.version, ...identity, ...ownStartField, token });
     expect(await releaseLock(lock, token)).toBe('released');
     await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject({ changes: [{ operation: 'created' }] });
   });
   it('acquires atomically and reports the existing holder', async () => {
-    const { token } = await acquireLock(lock, () => ({ command: 'write' }));
+    const token = await acquireLock(lock, () => ({ command: 'write' }));
     await expect(acquireLock(lock, () => ({ command: 'edit' }))).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', details: { stale: 'active', lock: { pid: process.pid, command: 'write' } } });
     expect(await releaseLock(lock, token)).toBe('released');
     expect(await releaseLock(lock, token)).toBe('missing');

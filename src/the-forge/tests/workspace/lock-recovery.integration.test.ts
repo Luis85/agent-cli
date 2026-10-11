@@ -77,19 +77,22 @@ describe('breaking a stale writer lock', () => {
   it('lets exactly one of many concurrent contenders take a stale lock and leaves no guard or temporary files', async () => {
     for (let round = 0; round < 10; round++) {
       await writeFile(lock, holder({ pid: exitedPid() }));
-      const outcomes = await Promise.allSettled(Array.from({ length: 6 }, () => acquireLock(lock, () => ({}))));
+      const recoveries: unknown[] = [];
+      const outcomes = await Promise.allSettled(Array.from({ length: 6 }, () => acquireLock(lock, () => ({}), '.agent-cli.lock', recovered => recoveries.push(recovered))));
       const won = outcomes.flatMap(outcome => (outcome.status === 'fulfilled' ? [outcome.value] : []));
       expect(won).toHaveLength(1);
       for (const outcome of outcomes) if (outcome.status === 'rejected') expect(outcome.reason).toMatchObject({ code: 'WORKSPACE_BUSY', retryable: true, details: { stale: 'active' } });
-      expect(JSON.parse(await readFile(lock, 'utf8')).token).toBe(won[0]!.token);
-      expect(await releaseLock(lock, won[0]!.token)).toBe('released');
+      // Exactly one contender removed the stale lock and reported it, whether or not it then took the lock.
+      expect(recoveries).toEqual([expect.objectContaining({ reason: 'dead-process', holder: expect.objectContaining({ command: 'create' }) })]);
+      expect(JSON.parse(await readFile(lock, 'utf8')).token).toBe(won[0]);
+      expect(await releaseLock(lock, won[0]!)).toBe('released');
       expect(await readdir(root)).toEqual([]);
     }
   });
 
   it('never removes a lock that another contender took after the stale one was diagnosed', async () => {
     const stale = holder({ pid: exitedPid() });
-    const { token } = await acquireLock(lock, () => ({ command: 'write' }));
+    const token = await acquireLock(lock, () => ({ command: 'write' }));
     expect(await breakStale(lock, stale)).toBe(false);
     expect(JSON.parse(await readFile(lock, 'utf8')).token).toBe(token);
     expect(await releaseLock(lock, token)).toBe('released');
