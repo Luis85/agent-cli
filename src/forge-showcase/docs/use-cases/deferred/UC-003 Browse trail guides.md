@@ -3,7 +3,7 @@ schemaVersion: 1
 type: use-case
 title: UC-003 Browse trail guides
 owner: Trailhead product team
-status: accepted
+status: deferred
 created: 2026-10-10
 stage: 2
 tags:
@@ -16,7 +16,7 @@ design: "[[Trip planner design]]"
 ---
 # UC-003 Browse trail guides
 
-Owner: Trailhead product team. Use case ID: UC-003. Status: accepted.
+Owner: Trailhead product team. Use case ID: UC-003. Status: deferred.
 
 ## Requirement links and goal
 
@@ -59,7 +59,7 @@ until the uncertainty is resolved explicitly.
 
 ## Review and evidence
 
-Link walkthrough notes and review decisions. Execution evidence: not collected.
+Link walkthrough notes and review decisions. Execution evidence: not collected; deferred until after Trailhead 1.0.
 Carry these example IDs into the build spec and test plan.
 
 ## Knowledge graph

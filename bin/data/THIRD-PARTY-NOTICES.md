@@ -86,12 +86,6 @@ License: BSD-2-Clause.
 
 - [LICENSE](licenses/node_modules__entities-LICENSE)
 
-## escape-string-regexp 5.0.0
-
-License: MIT.
-
-- [license](licenses/node_modules__escape-string-regexp-license)
-
 ## extend 3.0.2
 
 License: MIT.
@@ -110,16 +104,6 @@ License: BSD-3-Clause.
 
 - [LICENSE](licenses/node_modules__fast-uri-LICENSE)
 
-## fault 2.0.1
-
-License: MIT.
-
-- [license](licenses/node_modules__fault-license)
-
-## format 0.2.2
-
-License: MIT. [Original notice](licenses/format-Readme.md); [license terms](licenses/format-LICENSE).
-
 ## is-plain-obj 4.1.0
 
 License: MIT.
@@ -132,35 +116,11 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__json-schema-traverse-LICENSE)
 
-## longest-streak 3.1.0
-
-License: MIT.
-
-- [license](licenses/node_modules__longest-streak-license)
-
 ## mdast-util-from-markdown 2.1.0
 
 License: MIT.
 
 - [license](licenses/node_modules__mdast-util-from-markdown-license)
-
-## mdast-util-frontmatter 2.0.1
-
-License: MIT.
-
-- [license](licenses/node_modules__mdast-util-frontmatter-license)
-
-## mdast-util-phrasing 4.1.0
-
-License: MIT.
-
-- [license](licenses/node_modules__mdast-util-phrasing-license)
-
-## mdast-util-to-markdown 2.2.0
-
-License: MIT.
-
-- [license](licenses/node_modules__mdast-util-to-markdown-license)
 
 ## mdast-util-to-string 4.0.0
 
@@ -179,12 +139,6 @@ License: MIT.
 License: MIT.
 
 - [license](licenses/node_modules__micromark-core-commonmark-license)
-
-## micromark-extension-frontmatter 2.0.0
-
-License: MIT.
-
-- [license](licenses/node_modules__micromark-extension-frontmatter-license)
 
 ## micromark-factory-destination 2.0.1
 
@@ -330,12 +284,6 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__parse5-LICENSE)
 
-## remark-frontmatter 5.0.0
-
-License: MIT.
-
-- [license](licenses/node_modules__remark-frontmatter-license)
-
 ## remark-parse 11.0.0
 
 License: MIT.
@@ -360,29 +308,11 @@ License: MIT.
 
 - [license](licenses/node_modules__unified-license)
 
-## unist-util-is 6.0.1
-
-License: MIT.
-
-- [license](licenses/node_modules__unist-util-is-license)
-
 ## unist-util-stringify-position 4.0.0
 
 License: MIT.
 
 - [license](licenses/node_modules__unist-util-stringify-position-license)
-
-## unist-util-visit 5.1.0
-
-License: MIT.
-
-- [license](licenses/node_modules__unist-util-visit-license)
-
-## unist-util-visit-parents 6.0.2
-
-License: MIT.
-
-- [license](licenses/node_modules__unist-util-visit-parents-license)
 
 ## vfile 6.0.3
 
@@ -407,12 +337,6 @@ License: ISC.
 License: MIT.
 
 - [LICENSE](licenses/node_modules__zod-LICENSE)
-
-## zwitch 2.0.4
-
-License: MIT.
-
-- [license](licenses/node_modules__zwitch-license)
 
 # Vendored asset notices
 

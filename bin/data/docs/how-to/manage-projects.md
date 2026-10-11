@@ -11,7 +11,8 @@ node bin/forge.js setup
 
 ```text
 bin/
-  forge.js
+  forge.js                # launcher: enables Node's compile cache, then loads forge-runtime.js
+  forge-runtime.js
   config.json
   package.json
   plugins/
@@ -21,7 +22,7 @@ bin/
 projects/                 # configurable with paths.projects
 ```
 
-`bin/package.json` keeps `forge.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
+`bin/package.json` keeps `forge.js` and `forge-runtime.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
 
 To initialize another existing directory, run `node /absolute/path/to/bin/forge.js --root /absolute/path/to/workspace setup`. The workspace root must exist. Setup always targets the workspace, even while a project is open. It does not install npm packages or silently upgrade existing application files; replace a bundle explicitly from a reviewed distribution.
 
@@ -89,6 +90,8 @@ For an agent, use this feedback loop:
 3. Diagnose each failure and fix its cause. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured diagnostics; npm may also print its script banner, so read `.quality-reports/structure.json`, `.quality-reports/oxlint.json` and `.quality-reports/fallow.json`, or invoke `node scripts/quality/structure.mjs`, `node scripts/quality/lint.mjs` and `node scripts/quality/analyze.mjs` directly to parse stdout.
 4. Rerun the failed stage (`check:structure`, `lint`, `analyze`, `typecheck`, `build` or `test`), then finish with `npm run check` from the project directory.
 5. Review the diff and report the acceptance evidence, checks run and any unresolved failures. Do not delete coverage, broaden exclusions or suppress findings merely to pass a gate.
+
+Generated code joins these checks like authored code. Export generated data-source adapters from `src/index.ts` once they are part of the library, because they have no generated test and `analyze` otherwise reports them as unused. Generate framework UI and Storybook stories for downstream applications under `ui/<framework>` (for example `make ui trip-card --framework react --project <name> --out ui/react/components --stories-out ui/react/stories`): React, Vue, Svelte and Angular are not dependencies of the library, so the scaffold's fallow configuration ignores `ui/**` and its lint and type checks cover only the library source, tests and configuration.
 
 The Forge's repository checks validate the scaffold and distribution; they do not validate business behavior added later to a generated project. Run the selected project's own checks after scaffolding components or editing its code.
 

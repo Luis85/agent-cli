@@ -16,7 +16,8 @@
   "rules": {
     "unused-dev-dependencies": "error",
     "unused-optional-dependencies": "error",
-    "boundary-violation": "error"
+    "boundary-violation": "error",
+    "policy-violation": "off"
   },
   "boundaries": {
     "zones": [

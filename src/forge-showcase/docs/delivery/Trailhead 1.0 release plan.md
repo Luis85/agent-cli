@@ -25,6 +25,8 @@ Owner: Trailhead product team. Status: draft. Release readiness: not assessed. D
 
 ## Scope and release identity
 
+Scope note: UC-003 [[UC-003 Browse trail guides]] is deferred to a later release; see the decisions below.
+
 Link approved requirements, completed implementation tasks, reviewed change/PR, and target
 version or commit. State included changes and explicit exclusions.
 
@@ -66,7 +68,8 @@ Identify intended recipients; this document does not send messages or publish an
 
 Record unresolved operational risks, decisions, owners, and evidence needed for readiness.
 
-- Open: whether UC-003 (offline trail guides) ships in 1.0 or is deferred; owner: Trailhead product team.
+- Decided: UC-003 (offline trail guides) is deferred until after 1.0; owner: Trailhead product team. ^uc-003-scope
+- Follow-up: plan offline trail guides for Trailhead 1.1 once the trip planner ships.
 
 ## Execution evidence and review
 

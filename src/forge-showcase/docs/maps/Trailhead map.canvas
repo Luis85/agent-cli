@@ -39,7 +39,7 @@
     {
       "id": "uc-003",
       "type": "file",
-      "file": "docs/use-cases/UC-003 Browse trail guides.md",
+      "file": "docs/use-cases/deferred/UC-003 Browse trail guides.md",
       "x": 660,
       "y": 30,
       "width": 260,

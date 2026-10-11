@@ -2,7 +2,7 @@
 pbl-id: 11
 type: Task
 parent: "[[Draft a trip itinerary]]"
-order: 1656.25
+order: 6000
 assignee: "[[Mara]]"
 status: Done
 started: 2026-10-13

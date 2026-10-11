@@ -27,6 +27,7 @@ export declare const errorCatalog: {
     readonly UNKNOWN_OPTION: ErrorDefinition;
     readonly MISSING_ARGUMENT: ErrorDefinition;
     readonly INVALID_ARGUMENT: ErrorDefinition;
+    readonly INVALID_OPTION_VALUE: ErrorDefinition;
     readonly DUPLICATE_OPTION: ErrorDefinition;
     readonly INVALID_INPUT: ErrorDefinition;
     readonly INPUT_REQUIRED: ErrorDefinition;

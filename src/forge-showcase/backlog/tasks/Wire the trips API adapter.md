@@ -2,7 +2,7 @@
 pbl-id: 12
 type: Task
 parent: "[[Draft a trip itinerary]]"
-order: 1671.875
+order: 7000
 assignee: "[[Theo]]"
 status: Active
 started: 2026-10-14

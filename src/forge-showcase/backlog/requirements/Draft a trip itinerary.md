@@ -2,7 +2,7 @@
 pbl-id: 6
 type: PBI
 parent: "[[Itinerary builder]]"
-order: 1625
+order: 5000
 assignee: "[[Mara]]"
 status: Active
 started: 2026-10-13

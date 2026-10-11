@@ -47,6 +47,16 @@ node bin/forge.js agents generate --target claude --commands --mcp inline --plan
 
 The README's "Agent definitions" section counts the diagnostics by code; see [manage agent definitions](manage-agents.md).
 
+The vault also records restructuring and precise edits: UC-003 was moved to `docs/use-cases/deferred` with `move`, which rewrote every link to it, and a committed `apply` plan set its status and decided the open question in the release plan in one guarded batch. The README's other sections record a native Claude hook and a local plugin with their checks (`claude hooks check`, `claude plugins check`), an `agents import --from claude` preview, library exports and an import preview, and the published contract: `schema apply`, `help backlog --lang de` and the bundled skills from `skills list` and `skills show`.
+
+```sh
+node bin/forge.js vault tags
+node bin/forge.js vault properties
+node bin/forge.js links out docs/Trailhead.md
+node bin/forge.js schema apply
+node bin/forge.js help backlog --lang de
+```
+
 UI and data-source drift checks accept `--project` and leave the selection unchanged:
 
 ```sh
@@ -77,7 +87,7 @@ npm run showcase:check
 
 `npm run showcase` runs the Forge project's `scripts/showcase.mjs`. The script finds the workspace as the parent of the `bin/` directory that `config.distribution` in `package.json` names, creates a temporary workspace with a fixed configuration, drives the workspace's bundled `bin/forge.js` with `--root` and `--json`, fixed inputs and the fixed date `2026-10-10T09:00:00Z`, checks every exit status and `ok` field, and fails loudly on the first error. It then replaces exactly the workspace's `src/forge-showcase` with the generated project. It never changes the checkout's project selection, configuration, templates or plugins, and it fails if generation writes outside the project. Running it twice produces identical bytes and uses no network.
 
-`npm run showcase:check` regenerates into a temporary workspace only and compares the result with the committed tree. It exits nonzero and lists each `missing`, `unexpected` or `changed` path, without modifying the checkout. Untracked toolchain outputs such as `node_modules`, `dist` and `.quality-reports` are ignored.
+`npm run showcase:check` regenerates into a temporary workspace only and compares the result with the committed tree; `npm run check` runs it as its last stage. It exits nonzero and lists each `missing`, `unexpected` or `changed` path, without modifying the checkout. Untracked toolchain outputs such as `node_modules`, `dist` and `.quality-reports` are ignored.
 
 The lockfile is produced by npm, not by the CLI. Regeneration keeps the committed `package-lock.json`, and the drift check verifies that it still names the generated package's direct dependencies. After changing the scaffold's dependencies, refresh it explicitly; this step uses the npm registry:
 

@@ -95,8 +95,8 @@ node bin/forge.js write library/data-sources/trail-guides.md --stdin --if-match 
 node bin/forge.js data-sources validate --library src/forge-showcase/library/data-sources
 node bin/forge.js data-sources list --library src/forge-showcase/library/data-sources
 node bin/forge.js make data-source trips-api --library src/forge-showcase/library/data-sources --out src/infrastructure/data-sources --test-data-out test-data
-node bin/forge.js make data-source trips-api --library src/forge-showcase/library/data-sources --out src/infrastructure/data-sources --test-data-out test-data --check
 node bin/forge.js make data-source trail-guides --library src/forge-showcase/library/data-sources --out src/infrastructure/data-sources --test-data-out test-data
+node bin/forge.js make data-source trips-api --library src/forge-showcase/library/data-sources --out src/infrastructure/data-sources --test-data-out test-data --check
 node bin/forge.js make data-source trail-guides --library src/forge-showcase/library/data-sources --out src/infrastructure/data-sources --test-data-out test-data --check
 ```
 
@@ -169,17 +169,17 @@ node bin/forge.js patch 'docs/maps/Trailhead map.canvas' --pointer /nodes --valu
 node bin/forge.js patch 'docs/maps/Trailhead map.canvas' --pointer /nodes/- --value '{"id":"code","type":"text","text":"## Code\n\n-…' --if-match <revision>
 node bin/forge.js patch 'docs/maps/Trailhead map.canvas' --pointer /edges --value '[{"id":"prd--uc-001","fromNode":"prd","fromSide…' --if-match <revision>
 node bin/forge.js patch 'docs/maps/Trailhead map.canvas' --pointer /edges/- --value '{"id":"trips-api--code","fromNode":"trips-api",…' --if-match <revision>
-node bin/forge.js validate 'docs/maps/Trailhead map.canvas'
 ```
 
 ## Bases
 
 ```sh
 node bin/forge.js create docs/bases/Documents.base --stdin < input
-node bin/forge.js validate docs/bases/Documents.base
 node bin/forge.js create docs/bases/Requirements.base --stdin < input
-node bin/forge.js validate docs/bases/Requirements.base
 node bin/forge.js create docs/bases/Library.base --stdin < input
+node bin/forge.js validate 'docs/maps/Trailhead map.canvas'
+node bin/forge.js validate docs/bases/Documents.base
+node bin/forge.js validate docs/bases/Requirements.base
 node bin/forge.js validate docs/bases/Library.base
 ```
 
@@ -190,8 +190,14 @@ node bin/forge.js rename 'docs/delivery/Trip planner test plan.md' 'Trip planner
 node bin/forge.js rename 'docs/delivery/Trip planner test plan.md' 'Trip planner verification plan' --if-match <revision>
 node bin/forge.js create 'docs/scratch/Packing ideas.md' --stdin < input
 node bin/forge.js delete 'docs/scratch/Packing ideas.md' --if-match <revision>
-node bin/forge.js apply - --dry-run < input
 node bin/forge.js edit 'docs/delivery/Trailhead 1.0 release plan.md' --section 'Trailhead 1.0 release plan > Uncertainties and decisions' --append --content ' - Open: whether UC-003 (offline trail guides) …' --if-match <revision>
+node bin/forge.js move 'docs/use-cases/UC-003 Browse trail guides.md' 'docs/use-cases/deferred/UC-003 Browse trail guides.md' --dry-run
+node bin/forge.js move 'docs/use-cases/UC-003 Browse trail guides.md' 'docs/use-cases/deferred/UC-003 Browse trail guides.md' --if-match <revision>
+node bin/forge.js apply - --dry-run < input
+node bin/forge.js apply - < input
+node bin/forge.js edit 'docs/use-cases/deferred/UC-003 Browse trail guides.md' --edits '[{"find":"Use case ID: UC-003. Status: accepted…' --if-match <revision>
+node bin/forge.js edit 'docs/delivery/Trailhead 1.0 release plan.md' --block uc-003-scope --append --content '- Follow-up: plan offline trail guides for Trai…' --if-match <revision>
+node bin/forge.js edit 'docs/delivery/Trailhead 1.0 release plan.md' --section 'Trailhead 1.0 release plan > Scope and release identity' --prepend --content 'Scope note: UC-003 [[UC-003 Browse trail guides…' --if-match <revision>
 ```
 
 ## Bases queries
@@ -220,6 +226,10 @@ node bin/forge.js search REQ-004 --kind markdown --path 'docs/**' --in body
 node bin/forge.js links back 'docs/product/Trailhead PRD.md'
 node bin/forge.js links unresolved
 node bin/forge.js links orphans --path 'docs/**'
+node bin/forge.js links out docs/Trailhead.md
+node bin/forge.js links deadends --path 'docs/**'
+node bin/forge.js vault tags
+node bin/forge.js vault properties
 ```
 
 ## Product backlog
@@ -275,12 +285,21 @@ node bin/forge.js backlog release notes 'Trailhead 1.0'
 node bin/forge.js edit docs/Trailhead.md --append --content ' ## Product backlog - Backlog view: [[Product B…' --if-match <revision>
 ```
 
+## Backlog maintenance
+
+```sh
+node bin/forge.js backlog undepend 'Add the share dialog' --on 'Build the trip card component'
+node bin/forge.js backlog ranks respace
+```
+
 ## Backlog reports
 
 ```sh
 node bin/forge.js backlog tree
 node bin/forge.js backlog board
 node bin/forge.js backlog release list --today 2026-10-20
+node bin/forge.js backlog show 'Share an itinerary link'
+node bin/forge.js backlog list
 node bin/forge.js backlog check
 ```
 
@@ -289,6 +308,7 @@ node bin/forge.js backlog check
 ```sh
 node bin/forge.js create 'backlog/Azure DevOps sync.base' --stdin < input
 node bin/forge.js connectors list
+node bin/forge.js connectors inspect contoso
 node bin/forge.js backlog sync --base 'backlog/Azure DevOps sync.base' --dry-run
 ```
 
@@ -321,12 +341,40 @@ node bin/forge.js agents generate --target claude --commands --mcp inline --chec
 node bin/forge.js claude agents inspect trailhead-lead
 ```
 
+## Native Claude configuration
+
+```sh
+node bin/forge.js claude hooks set --stdin < input
+node bin/forge.js claude plugins create claude-plugins/trailhead-tools --stdin < input
+node bin/forge.js claude plugins write-asset claude-plugins/trailhead-tools commands/trace.md --stdin < input
+node bin/forge.js claude hooks check
+node bin/forge.js claude plugins check claude-plugins/trailhead-tools
+node bin/forge.js agents import trailhead-reviewer --from claude --file trailhead-reviewer.yaml --dry-run
+```
+
+## Library exchange
+
+```sh
+node bin/forge.js data-sources export --library src/forge-showcase/library/data-sources --out src/forge-showcase/.exchange/data-sources
+node bin/forge.js components export --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out src/forge-showcase/.exchange/components --dry-run
+node bin/forge.js interactions export --library src/forge-showcase/library/interactions --out src/forge-showcase/.exchange/interactions --dry-run
+node bin/forge.js data-sources import --from src/forge-showcase/.exchange/data-sources --library src/forge-showcase/.exchange/library --dry-run
+```
+
+## Contract and skills
+
+```sh
+node bin/forge.js schema apply
+node bin/forge.js help backlog --lang de
+node bin/forge.js skills list
+node bin/forge.js skills show forge-backlog
+```
+
 ## Project toolchain
 
 ```sh
 node bin/forge.js project inspect forge-showcase
 node bin/forge.js write src/index.ts --stdin --if-match <revision> < input
-node bin/forge.js write configs/quality/fallow.json --stdin --if-match <revision> < input
 ```
 
 ## Verification

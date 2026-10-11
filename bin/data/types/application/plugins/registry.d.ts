@@ -102,6 +102,12 @@ export interface PluginContributions {
      * returned issue `<path>: <problem>` makes the section invalid like a schema violation. Runs without I/O.
      */
     validateSettings?(settings: Readonly<Record<string, unknown>>): readonly string[];
+    /**
+     * Top-level string settings that hold folders relative to the workspace or the output project. The host drops
+     * their trailing slashes before `validateSettings` and rejects absolute, empty or traversing paths, so `config`,
+     * the settings revision and `context.settings` all show the one effective value.
+     */
+    pathSettings?: readonly string[];
     strings?: PluginStrings;
     errors?: PluginErrorDefinition[];
     onload?(context: PluginContext): void | Promise<void>;
@@ -140,6 +146,8 @@ export declare class Registry {
         reason: string;
         issues: string[];
     }>;
+    /** Enabled user plugins without a manifest in the plugin directory, with the `reason` `plugins` lists. */
+    readonly missing: Map<string, string>;
     private cleanups;
     private published;
     private state;
@@ -149,6 +157,11 @@ export declare class Registry {
     register(plugin: Plugin, events: EventBus, origin?: PluginOrigin): void;
     /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
     disable(manifest: PluginManifest, reason: string): void;
+    /**
+     * A user plugin that `plugins.enabled` names but whose manifest does not exist: it never loads, `plugins` lists it
+     * as `missing`, and every response warns, while every other command keeps working.
+     */
+    recordMissing(pluginId: string, manifestPath: string, events: EventBus): void;
     /** Why a disabled core plugin contributes nothing. */
     disabledReason(pluginId: string): string | undefined;
     /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */

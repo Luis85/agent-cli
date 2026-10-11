@@ -1,6 +1,14 @@
 import { type JsonSchema } from '../../domain/schema/json-schema.ts';
 /** A plugin's own check of its schema-valid section; returns `<path>: <problem>` issues. */
 export type SettingsCheck = (settings: Readonly<Record<string, unknown>>) => readonly string[];
+/**
+ * How the host completes a plugin's schema-valid section: `paths` names top-level string settings that hold contained
+ * relative folders, which the host normalizes and checks; `check` is the plugin's own check of the result.
+ */
+export interface SettingsDeclaration {
+    paths?: readonly string[];
+    check?: SettingsCheck;
+}
 /** One plugin's config section as `config` describes it. */
 export interface SettingsSection {
     plugin: string;
@@ -24,22 +32,20 @@ export interface SettingsReport {
  */
 export declare class PluginSettings {
     private readonly schemas;
-    private readonly checks;
+    private readonly declarations;
     private readonly values;
     private readonly frozen;
-    declare(pluginId: string, schema: JsonSchema, check?: SettingsCheck): void;
-    /** Validates every declared section; problems are reported per plugin rather than thrown. */
+    declare(pluginId: string, schema: JsonSchema, declaration?: SettingsDeclaration): void;
+    /**
+     * Validates every declared section; problems are reported per plugin rather than thrown. Path settings are
+     * normalized here, the one place every consumer reads from: `config`, the settings revision and `context.settings`.
+     */
     configure(sections: Readonly<Record<string, unknown>>, loaded: ReadonlySet<string>): SettingsReport;
+    /** One section through the schema (filling defaults), path normalization and the plugin's own check. */
+    private complete;
     /** The plugin's effective section as a frozen deep copy, so plugin code cannot change it; null without one. */
     value(pluginId: string): Readonly<Record<string, unknown>> | null;
     /** Canonical JSON of the effective section, which the settings revision hashes; null without a section. */
     canonical(pluginId: string): string | null;
     sections(): SettingsSection[];
 }
-/** A workspace-relative path setting without trailing slashes, as `paths.*` in the kernel configuration. */
-export declare const relativePathSetting: (value: unknown) => string;
-/**
- * `validateSettings` issues for string settings that must be contained workspace-relative paths; a trailing slash is
- * accepted and dropped by `relativePathSetting`.
- */
-export declare function relativePathIssues(pluginId: string, settings: Readonly<Record<string, unknown>>, keys: readonly string[]): string[];
