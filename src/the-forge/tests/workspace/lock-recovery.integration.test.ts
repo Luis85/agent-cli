@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { acquireLock, breakStale, hostIdentity, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
+import { englishWarning } from '../support/events.ts';
 
 /**
  * A lock whose holder provably no longer runs (same host, pid namespace and boot, and a dead or reused pid; or a
@@ -14,7 +15,7 @@ import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 let root: string, lock: string, warnings: string[], files: NodeFiles, identity: Awaited<ReturnType<typeof hostIdentity>>;
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), 'forge-lock-recovery-'))); lock = join(root, '.agent-cli.lock');
-  warnings = []; files = await NodeFiles.at(root, message => warnings.push(message)); identity = await hostIdentity();
+  warnings = []; files = await NodeFiles.at(root, message => warnings.push(englishWarning(message))); identity = await hostIdentity();
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const write = (path: string) => ({ path, bytes: encodeText('Hello') });

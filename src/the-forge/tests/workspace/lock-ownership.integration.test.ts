@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { englishWarning } from '../support/events.ts';
 
 /** Inject filesystem failures into the lock adapter while every other call uses the real filesystem. */
 const faults = vi.hoisted(() => ({ link: undefined as string | undefined, openLock: undefined as string | undefined }));
@@ -27,7 +28,7 @@ const write = (path: string) => ({ path, bytes: encodeText('Hello') });
 describe('writer lock ownership', () => {
   it('never removes a lock that another writer replaced, and warns instead', async () => {
     const warnings: string[] = [];
-    const files = await NodeFiles.at(root, message => warnings.push(message));
+    const files = await NodeFiles.at(root, message => warnings.push(englishWarning(message)));
     const foreign = JSON.stringify({ pid: 1, hostname: 'elsewhere', startedAt: '2026-10-10T08:00:00.000Z', token: 'foreign' });
     const adapter = files as unknown as { stageAll(...args: unknown[]): Promise<void> };
     const stageAll = adapter.stageAll.bind(files);

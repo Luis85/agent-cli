@@ -3,6 +3,7 @@ import type { Stats } from 'node:fs';
 import { link, lstat, mkdir, rename, rm, rmdir, unlink } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
+import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 import { vaultPath, type FileChange, type FileRename, type RemoveRequest, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch } from '../../application/workspace/ports.ts';
@@ -34,7 +35,7 @@ export interface BatchHost {
   stageAll(plans: readonly FilePlan[], staged: string[]): Promise<void>;
   replace(target: string, bytes: Uint8Array, mode?: number, verify?: () => Promise<void>, staged?: string): Promise<void>;
   syncDirectories(directories: Iterable<string>): Promise<void>;
-  warn(message: string): void;
+  warn(message: KernelMessage): void;
 }
 
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
@@ -307,11 +308,11 @@ export class Transaction {
   private async finalize(): Promise<void> {
     for (const plan of this.committedRemoves) {
       try { await retryTransient(() => rm(plan.temp!, { recursive: true, force: true })); }
-      catch (error) { this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error)}`); }
+      catch (error) { this.host.warn(kernelMessage('REMOVAL_TEMPORARY_LEFT', { path: plan.request.path, temporary: plan.temp!, diagnostic: String(error) })); }
     }
     if (this.committedRemoves.length === 0) return;
     try { await this.host.syncDirectories(this.committedRemoves.map(plan => dirname(plan.target))); }
-    catch (error) { this.host.warn(`Removed files, but syncing their folders failed: ${String(error)}`); }
+    catch (error) { this.host.warn(kernelMessage('REMOVAL_SYNC_FAILED', { diagnostic: String(error) })); }
   }
 
   private async rollback(): Promise<void> {

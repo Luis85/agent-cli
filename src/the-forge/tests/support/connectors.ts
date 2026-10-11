@@ -43,7 +43,7 @@ export async function invocation(root: string, connections: Record<string, unkno
   registerHostEvents(events);
   const env = options.env ?? {};
   registerCorePlugins(registry, events, [basesPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin], testHost({
-    skills: registrySkills(registry), fileDates: nodeFileDates, locks: lockRoot => nodeLockFiles(lockRoot, (_lock, message) => events.warn(message)), http: new FetchHttpClient({ sleep: async () => {} }), environment: name => env[name],
+    skills: registrySkills(registry), fileDates: nodeFileDates, locks: lockRoot => nodeLockFiles(lockRoot, message => events.warn(message)), http: new FetchHttpClient({ sleep: async () => {} }), environment: name => env[name],
   }), []);
   registry.settings.configure({ connector: { connections } }, new Set(registry.origins.keys()));
   const scope = options.project === undefined ? root : join(root, options.project);

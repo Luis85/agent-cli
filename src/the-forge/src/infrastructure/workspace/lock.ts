@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import metadata from '../../../package.json';
 import type { RecoveredLock, StaleReason } from '../../application/workspace/ports.ts';
 import { forgeError, type AppError } from '../../domain/shared/errors.ts';
+import { kernelMessage, type KernelMessage, type KernelMessageCode } from '../../domain/shared/kernel-messages.ts';
 import { errorCode, heldTokens, inspectLock, ownHolder, text, tokenOf, type LockInspection } from './lock-holder.ts';
 import { retryTransient } from './retry.ts';
 
@@ -13,12 +14,13 @@ export const lockName = '.agent-cli.lock';
 export interface LockOwner { command?: string; operationId?: number }
 export type LockRelease = 'released' | 'missing' | 'foreign';
 
-const staleReasons: Record<StaleReason, string> = {
-  'dead-process': 'its process no longer runs', 'reused-pid': 'its pid was reused by another process', rebooted: 'it was written before this host restarted',
+const staleReasons: Record<StaleReason, KernelMessageCode> = {
+  'dead-process': 'LOCK_STALE_DEAD_PROCESS', 'reused-pid': 'LOCK_STALE_REUSED_PID', rebooted: 'LOCK_STALE_REBOOTED',
 };
-/** The English warning for a stale lock an acquisition removed; German comes from the presentation catalog. */
-export function recoveredLockMessage({ path, holder, reason }: RecoveredLock): string {
-  return `Removed the stale lock ${path} of pid ${holder.pid} on ${holder.hostname} (since ${holder.startedAt}${holder.command ? `, command ${holder.command}` : ''}): ${staleReasons[reason]}. Inspect what that run left unfinished (for example git status or backlog sync status).`;
+/** The warning for a stale lock an acquisition removed; the response language renders it. */
+export function recoveredLockMessage({ path, holder, reason }: RecoveredLock): KernelMessage {
+  const command = holder.command ? kernelMessage('LOCK_HOLDER_COMMAND', { command: holder.command }) : '';
+  return kernelMessage('LOCK_RECOVERED', { path, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command, reason: kernelMessage(staleReasons[reason]) });
 }
 
 /** Hard links are unavailable on some filesystems (FAT, exFAT, some network shares). */

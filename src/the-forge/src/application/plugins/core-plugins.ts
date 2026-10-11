@@ -37,9 +37,9 @@ export interface CorePluginHost {
   fileDates: FileDatesReader;
   /**
    * Opens the guarded file repository at an existing absolute directory outside the workspace, such as Claude Code's
-   * user configuration directory; `warn` receives its diagnostics.
+   * user configuration directory; its diagnostics become host warnings of this invocation.
    */
-  openFiles(root: string, warn: (message: string) => void): Promise<FileRepository>;
+  openFiles(root: string): Promise<FileRepository>;
   /** The next invocation-wide operation id, shared with the host's command.* and operation.* records. */
   operationId(): number;
   /** Outbound HTTP for connectors to external services. */

@@ -9,7 +9,7 @@ import { vaultPath } from '../../../domain/documents/file.ts';
 import type { FileRepository } from '../../../application/workspace/ports.ts';
 
 /** Opens a guarded repository at an existing absolute directory (the kernel's file adapter). */
-export type OpenFiles = (root: string, warn: (message: string) => void) => Promise<FileRepository>;
+export type OpenFiles = (root: string) => Promise<FileRepository>;
 
 /** Resolve an explicit native configuration target without creating directories. */
 export const claudeTarget = (openFiles: OpenFiles) => async (context: CommandContext, flags: Record<string, string | boolean>): Promise<ClaudeTarget> => {
@@ -31,7 +31,7 @@ export const claudeTarget = (openFiles: OpenFiles) => async (context: CommandCon
         const parent = dirname(root); ensure(parent !== root, 'INVALID_PATH', 'Cannot resolve Claude user directory.'); root = parent;
       }
     }
-    const files = await openFiles(root, message => context.events.warn(message));
+    const files = await openFiles(root);
     const prefix = relative(root, directory).split('\\').join('/');
     const scoped = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
     return { workspace: context.workspace.within(scoped, directory), scope, directory,

@@ -127,7 +127,7 @@ export class Registry {
    */
   readonly unavailable = new Map<string, { reason: KernelMessage; issues: string[] }>();
   /** Enabled user plugins without a manifest in the plugin directory, with the `reason` `plugins` lists. */
-  readonly missing = new Map<string, string>();
+  readonly missing = new Map<string, KernelMessage>();
   private cleanups: Array<{ pluginId: string; run: () => void | Promise<void> }> = [];
   private published = new Set<string>();
   private state: 'registering' | 'activating' | 'active' | 'failed' | 'disposed' = 'registering';
@@ -178,9 +178,9 @@ export class Registry {
    * as `missing`, and every response warns, while every other command keeps working.
    */
   recordMissing(pluginId: string, manifestPath: string, events: EventBus): void {
-    const reason = `plugins.enabled names ${pluginId}, but ${manifestPath} does not exist; install the plugin there, or remove it from plugins.enabled.`;
+    const reason = kernelMessage('PLUGIN_MISSING', { plugin: pluginId, path: manifestPath });
     this.missing.set(pluginId, reason);
-    events.warn(`${reason} Its commands are unavailable in this invocation.`);
+    events.warn(kernelMessage('PLUGIN_MISSING_WARNING', { reason }));
   }
   /** Why a disabled core plugin contributes nothing. */
   disabledReason(pluginId: string): KernelMessage | undefined { return this.disabledReasons.get(pluginId); }

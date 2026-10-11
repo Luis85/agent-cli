@@ -83,7 +83,7 @@ describe('guarded filesystem', () => {
     vi.spyOn(adapter, 'releaseLock').mockRejectedValue(new Error('Cleanup denied'));
     await writeFile(join(root, 'existing.md'), 'Original');
     await expect(files.writeBatch([write('existing.md')], false)).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect(warning).toHaveBeenCalledWith(expect.stringContaining('Cleanup denied'));
+    expect(warning).toHaveBeenCalledWith({ code: 'LOCK_UNREMOVABLE', params: { lock: '.agent-cli.lock', diagnostic: expect.stringContaining('Cleanup denied') } });
     expect(await readFile(join(root, 'existing.md'), 'utf8')).toBe('Original');
   });
   it('snapshots mutable plugin plans before asynchronous filesystem work', async () => {

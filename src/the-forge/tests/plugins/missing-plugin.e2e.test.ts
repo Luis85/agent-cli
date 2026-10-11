@@ -22,5 +22,9 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     expect(listed.find(plugin => plugin.id === 'nope')).toEqual({ id: 'nope', core: false, state: 'missing', reason: expect.stringContaining('remove it from plugins.enabled'), contributions: null });
     expect(listed.find(plugin => plugin.id === 'hello')).toMatchObject({ state: 'enabled' });
     expect((await cli(['nope.run'])).body.error.code).toBe('UNKNOWN_COMMAND');
+    // The warning and the reason are kernel messages: German responses render them in German.
+    const german = await cli(['--lang', 'de', 'plugins']);
+    expect(german.body.warnings).toEqual(expect.arrayContaining([expect.stringContaining('plugins.enabled nennt nope, aber bin/plugins/nope/manifest.json existiert nicht')]));
+    expect(german.body.data.plugins.find((plugin: { id: string }) => plugin.id === 'nope').reason).toContain('entfernen Sie es aus plugins.enabled');
   });
 });

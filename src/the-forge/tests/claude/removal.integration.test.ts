@@ -8,6 +8,7 @@ import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { englishWarning } from '../support/events.ts';
 
 let root: string, files: NodeFiles, events: EventBus;
 const asset = '.claude/agents/reviewer.md';
@@ -101,7 +102,7 @@ describe('guarded native asset removal', () => {
 
   it('returns committed evidence when notifications or lock cleanup fail', async () => {
     const warnings: string[] = [];
-    files = await NodeFiles.at(root, message => warnings.push(message));
+    files = await NodeFiles.at(root, message => warnings.push(englishWarning(message)));
     const before = await files.read(asset);
     events.on('vault.delete', () => { throw new Error('Observer failed'); });
     const adapter = files as unknown as { releaseLock(path: string): Promise<void> };

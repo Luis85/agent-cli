@@ -13,7 +13,8 @@ import { claudeTarget as targetAt } from '../../src/plugins/claude/infrastructur
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 
-const claudeTarget = targetAt((root, warn) => NodeFiles.at(root, warn));
+// The host reports the opened repository's diagnostics as warnings of the invocation, as src/main.ts composes it.
+const claudeTarget = targetAt(root => NodeFiles.at(root, message => events.warn(message)));
 let root: string, context: CommandContext, events: EventBus;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'forge-claude-target-'));

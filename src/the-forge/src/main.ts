@@ -17,7 +17,7 @@ import { ProjectService, projectScaffolderService, type ProjectScaffolder, type 
 import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
-import { NodeFiles, stampedFiles, type RecoveredLockReport } from './infrastructure/workspace/files.ts';
+import { NodeFiles, stampedFiles } from './infrastructure/workspace/files.ts';
 import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
@@ -53,7 +53,7 @@ import { commands } from './presentation/cli/commands.ts';
 import { ensureDeclaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
-import { kernelMessage } from './domain/shared/kernel-messages.ts';
+import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
 const corePlugins = [
@@ -94,8 +94,8 @@ async function run(): Promise<void> {
       compact = config.settings.json;
       let lockOwner: LockOwner = {};
       // A stale lock an acquisition removed is reported in the invocation's language.
-      const recovered: RecoveredLockReport = (lock, message) => events.warn(localizer.recoveredLock(lock, message));
-      const files = await NodeFiles.at(loaded.root, message => events.warn(message), () => lockOwner, recovered);
+      const warn = (message: KernelMessage) => events.warn(message);
+      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events);
       // The writer lock names the routed command so WORKSPACE_BUSY can identify its holder.
@@ -121,8 +121,8 @@ async function run(): Promise<void> {
       // Bundled core plugins register in bundle order before user plugins; --no-plugins skips only user plugins.
       registerCorePlugins(registry, events, corePlugins, {
         skills: registrySkills(registry), fileDates: nodeFileDates,
-        openFiles: (root, warn) => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
-        locks: root => nodeLockFiles(root, recovered), http: new FetchHttpClient(), environment: name => process.env[name],
+        openFiles: root => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
+        locks: root => nodeLockFiles(root, warn), http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));

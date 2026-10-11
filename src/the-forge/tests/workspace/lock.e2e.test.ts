@@ -25,6 +25,7 @@ it('breaks a writer lock whose process no longer runs and reports it in the invo
   const german = await cli(['create', 'second.md', '--content', '# Note', '--lang', 'de']);
   expect(german.status).toBe(0);
   expect(german.body.warnings).toEqual([expect.stringContaining(`Die verwaiste Sperre .agent-cli.lock von PID ${pid}`)]);
+  expect(german.body.warnings[0]).toMatch(/, Befehl create\) wurde entfernt: ihr Prozess läuft nicht mehr\./);
   expect(await lockFiles()).toEqual([]);
 });
 

@@ -1,5 +1,5 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
-import { germanActions, germanCommands, germanEvents, germanGuidance, germanRecoveredLock } from './catalog.ts';
+import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
 import { germanDescriptions } from './descriptions.ts';
 import { germanKernelMessages } from './messages.ts';
 import { renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
@@ -7,7 +7,6 @@ import type { CommandArgument, CommandOption } from '../../application/plugins/c
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
-import type { RecoveredLock } from '../../application/workspace/ports.ts';
 
 export interface LocalizedError { code: string; message: string; hint?: string; retryable?: boolean; details?: Record<string, unknown> }
 export function language(value: string): Language {
@@ -129,14 +128,6 @@ export class Localizer {
       }),
     };
     return data;
-  }
-
-  /** The warning for a stale lock an acquisition removed: `english` as the adapter wrote it, or the German text. */
-  recoveredLock({ path, holder, reason }: RecoveredLock, english: string): string {
-    if (this.language !== 'de') return english;
-    const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key]));
-    const command = holder.command === undefined ? '' : fill(germanRecoveredLock.command, { command: holder.command });
-    return fill(germanRecoveredLock.message, { path, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command, reason: germanRecoveredLock.reasons[reason] });
   }
 
   /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
