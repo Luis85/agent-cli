@@ -4,6 +4,8 @@ import { claudePluginCapabilities, validateClaudePlugin } from '../domain/plugin
 import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
 import type { ClaudeAgentCodec } from './agents.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { claudeMessages } from '../domain/messages.ts';
 
 const manifestPath = '.claude-plugin/plugin.json';
 type AssetKind = 'agent' | 'hooks' | 'mcp' | 'lsp' | 'settings' | 'other';
@@ -126,8 +128,8 @@ export class ClaudePluginService {
       const exists = reference.file ? inspected.files.includes(reference.path)
         : inspected.files.some(path => path === reference.path || path.startsWith(`${reference.path}/`));
       if (!exists) diagnostics.push({ path: reference.path, severity: reference.file ? 'error' : 'warning', message: reference.file
-        ? 'Manifest component file was not found among regular plugin files.'
-        : 'No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence.' });
+        ? claudeMessages.componentFileMissing
+        : claudeMessages.componentPathEmpty });
     }
     for (const path of inspected.files) {
       try {
@@ -139,7 +141,7 @@ export class ClaudePluginService {
       }
     }
     return { ...inspected, valid: !diagnostics.some(item => item.severity === 'error'), diagnostics, validation: 'structure',
-      limitations: ['No plugin code, hooks, MCP or LSP servers were executed.', 'Claude Code remains authoritative for runtime compatibility and version-specific fields.'],
+      limitations: [claudeMessages.noCodeExecuted, claudeMessages.claudeAuthoritative],
     };
   }
 
@@ -164,7 +166,7 @@ export class ClaudePluginService {
     if (kinds.has('agent')) {
       const { metadata } = this.agentCodec.parse(decode(bytes));
       for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
-        if (Object.hasOwn(metadata, key)) warnings.push(`Claude ignores ${key} in plugin agents; use a project/user agent for per-agent configuration.`);
+        if (Object.hasOwn(metadata, key)) warnings.push(fill(claudeMessages.ignoredAgentField, { key }));
       }
     }
     if (kinds.has('hooks')) {
