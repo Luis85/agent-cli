@@ -1,5 +1,6 @@
 import type { JsonSchema } from '../../domain/schema/json-schema.ts';
 import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch } from '../../domain/connectors/items.ts';
+import type { Language } from '../plugins/plugin-catalog.ts';
 
 /**
  * The platform-neutral backlog connector contract. A connector maps one external work tracker (Azure DevOps Boards
@@ -43,7 +44,8 @@ export interface ProbeResult { ok: true; target: Record<string, unknown> }
 /** One platform. Every member that talks to the platform is read-only except `create` and `update`. */
 export interface BacklogConnector {
   readonly id: string;
-  describe(): ConnectorDescription;
+  /** The connector's self-description; its `description` and `warnings` read in `language` (English by default). */
+  describe(language?: Language): ConnectorDescription;
   /** The connection's mapping: the process defaults merged with its `mappings` overrides. */
   mapping(connection: Connection): ConnectorMapping;
   /** The web URL of a remote item, and the remote id a URL names for this connection (null when it is foreign). */

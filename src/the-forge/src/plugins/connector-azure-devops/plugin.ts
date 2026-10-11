@@ -1,7 +1,7 @@
 import type { ConnectorHub } from '../../application/connectors/contract.ts';
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { AzureDevOpsConnector } from './application/connector.ts';
-import { azureDevOpsStrings } from './presentation/strings.ts';
+import { azureDevOpsStrings, germanConnectorMessages } from './presentation/strings.ts';
 
 /**
  * The `connector-azure-devops` core plugin: Azure DevOps Boards for the backlog sync engine. It provides the
@@ -15,7 +15,7 @@ export const azureDevOpsPlugin: CorePlugin = {
   },
   strings: azureDevOpsStrings,
   create: host => {
-    const connector = new AzureDevOpsConnector(host.http);
+    const connector = new AzureDevOpsConnector(host.http, { de: germanConnectorMessages });
     return {
       provides: { 'connector-azure-devops.connector': connector },
       requires: ['connector.hub'],

@@ -1,5 +1,7 @@
 import { FILED_TYPES, TEST_LEVELS, byName, defaultResourceFolder, defaultTypeFolder, isDeliverableType, DEFAULT_HOME_FOLDER } from './vocabulary.ts';
 import { sameValue } from './fields.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { checkMessages } from './messages.ts';
 
 /**
  * The resolved configuration of one `product-backlog` view, as backlog-view's `BacklogSettings` holds it. Every
@@ -157,7 +159,7 @@ export function configProblems(settings: BacklogSettings): string[] {
   for (const { role, key } of ownedProperties(settings)) if (key) keys.set(key, [...(keys.get(key) ?? []), role]);
   const problems: string[] = [];
   for (const [key, roles] of keys) {
-    if (roles.length > 1 && !roles.every(role => workflowRoles.includes(role))) problems.push(`The properties ${roles.join(', ')} all use the key "${key}".`);
+    if (roles.length > 1 && !roles.every(role => workflowRoles.includes(role))) problems.push(fill(checkMessages.sharedKey, { roles: roles.join(', '), key }));
   }
   return problems;
 }

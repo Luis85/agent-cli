@@ -3,6 +3,8 @@ import { sameValue } from './fields.ts';
 import {
   DEFAULT_ITERATION_DAYS, OPTIONAL_PROPERTIES, STATE_COLOR_NAMES, defaultSettings, nameTable, ownedProperties, type BacklogSettings,
 } from './settings.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { checkMessages } from './messages.ts';
 
 /**
  * Reading a `.base` view's stored options exactly as backlog-view's `settingsResolve.ts` and `releaseOptions.ts`
@@ -161,10 +163,10 @@ function releaseOwned(settings: ReleaseSettings): { role: string; key: string }[
 export function releaseNoteProblems(settings: ReleaseSettings): string[] {
   const keys = new Map<string, string[]>();
   for (const { role, key } of releaseOwned(settings)) if (key) keys.set(key, [...(keys.get(key) ?? []), role]);
-  const problems = [...keys].filter(([, roles]) => roles.length > 1).map(([key, roles]) => `The release properties ${roles.join(', ')} all use the key "${key}".`);
-  if (settings.releasedDateKey !== '' && settings.releasedDateKey === settings.targetDateKey) problems.push(`The released date and the target date share the key "${settings.releasedDateKey}".`);
+  const problems = [...keys].filter(([, roles]) => roles.length > 1).map(([key, roles]) => fill(checkMessages.sharedReleaseKey, { roles: roles.join(', '), key }));
+  if (settings.releasedDateKey !== '' && settings.releasedDateKey === settings.targetDateKey) problems.push(fill(checkMessages.releasedDateIsTarget, { key: settings.releasedDateKey }));
   if (settings.releasedTransition !== '' && settings.releasedValues.length > 0 && !settings.releasedValues.some(value => sameValue(value, settings.releasedTransition))) {
-    problems.push(`The released transition value "${settings.releasedTransition}" is not one of the released status values.`);
+    problems.push(fill(checkMessages.releasedTransition, { value: settings.releasedTransition }));
   }
   return problems;
 }
@@ -174,5 +176,5 @@ export function membershipCollision(release: ReleaseSettings, plan: BacklogSetti
   if (release.membershipKey === '') return null;
   const owners = [...ownedProperties(plan).filter(owned => owned.role !== 'release'), ...releaseOwned(release)];
   const owner = owners.find(({ key }) => key !== '' && key === release.membershipKey);
-  return owner ? `The release membership key "${release.membershipKey}" is also the ${owner.role} property.` : null;
+  return owner ? fill(checkMessages.membershipCollision, { key: release.membershipKey, role: owner.role }) : null;
 }
