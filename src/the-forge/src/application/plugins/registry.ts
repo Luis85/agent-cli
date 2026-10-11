@@ -42,6 +42,7 @@ export interface GeneratorRequest { name: string; directory: string; flags: Comm
 /**
  * `make <id> <Name>`. A `generate` generator returns a write plan the host previews or writes (with `review`, the
  * host also offers --plan, --plan-out, --check and --revisions-from); a `run` generator returns its own result.
+ * `idempotent` defaults to false for both: a plan whose `expectedRevision` is the current revision applies again.
  */
 export interface Generator extends CommandMode {
   id: string; description: string; usage?: string;

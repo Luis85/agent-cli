@@ -79,6 +79,22 @@ describe('extracted command boundaries', () => {
     await expect(make.run(['custom.note', 'Plan'], { template: 'x.md' }, context)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('--template is not supported by make custom.note') });
   });
 
+  it('publishes a generator as idempotent only when it declares so, since a guarded plan may apply again', async () => {
+    const journal = 'notes/journal.md';
+    await mkdir(join(root, 'notes'));
+    await writeFile(join(root, journal), '# Journal\n');
+    // The documented plan shape lets an expectedRevision of the current revision append on every run.
+    registry.add(registry.generators, { id: 'custom.entry', description: 'Append an entry', directory: 'notes', async generate({ name, context: { workspace } }) {
+      const current = await workspace.files.read(journal);
+      return [{ path: journal, bytes: new TextEncoder().encode(`${new TextDecoder().decode(current.bytes)}- ${name}\n`), expectedRevision: current.revision }];
+    } });
+    registry.add(registry.generators, { id: 'custom.page', description: 'Create a page', directory: 'notes', idempotent: true, generate: ({ name, directory }) => [{ path: `${directory}/${name}.md`, bytes: new TextEncoder().encode(`# ${name}\n`) }] });
+    const make = registry.commands.get('make')!;
+    expect([make.actions!['custom.entry']!.idempotent, make.actions!['custom.page']!.idempotent]).toEqual([false, true]);
+    for (let run = 0; run < 2; run++) await make.run(['custom.entry', 'Shipped'], {}, context);
+    expect(await readFile(join(root, journal), 'utf8')).toBe('# Journal\n- Shipped\n- Shipped\n');
+  });
+
   it('shares raw input selection within the selected workspace without decoding binary attachments', async () => {
     await mkdir(join(root, 'selected'));
     await writeFile(join(root, 'input.bin'), 'workspace input');
