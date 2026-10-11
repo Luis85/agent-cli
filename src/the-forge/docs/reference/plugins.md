@@ -32,7 +32,7 @@ A core plugin's manifest also declares `"core": true`. Only bundled plugins may:
 
 | | Core plugins | User plugins |
 | --- | --- | --- |
-| Location | `src/plugins/<id>/plugin.ts` in the Forge source, bundled into `bin/forge.js` | Workspace `bin/plugins/<id>/` |
+| Location | `src/plugins/<id>/plugin.ts` in the Forge source, bundled into `bin/forge-runtime.js` | Workspace `bin/plugins/<id>/` |
 | Enabled | By default; `plugins.disabled: ["<id>"]` disables one | Only when `plugins.enabled` lists it, in that load order |
 | `--no-plugins` | Still loaded: they are part of the product | Skipped for the invocation |
 | Command and generator ids | May be bare (`skills`, `search`) | Must start with `<id>.` |
