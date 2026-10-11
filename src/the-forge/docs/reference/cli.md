@@ -8,7 +8,7 @@ Commander accepts `--json`, `--no-json`, `--dry-run`, `--no-dry-run`, `--events 
 
 ## Output and errors
 
-Every built-in invocation emits one JSON document on stdout, with no prompts or ANSI sequences. A committed write returns its `vault.*` change records, including a `kind: "folder"` record for each parent folder it created:
+Every built-in invocation emits one JSON document on stdout, with no prompts or ANSI sequences. When the reader closes the pipe early (`forge.js schema | head -c 10`), Forge stops writing quietly and keeps the exit status of the invocation. A committed write returns its `vault.*` change records, including a `kind: "folder"` record for each parent folder it created:
 
 ```json
 {"ok":true,"data":{"dryRun":false,"changes":[{"path":"notes/plan.md","revision":"9f2c…","operation":"created","bytes":18}]},"context":{"workspaceRoot":"/workspace","root":"/workspace","project":null},"events":[{"id":"vault.create","payload":{"path":"notes","kind":"folder","operation":"created"}},{"id":"vault.create","payload":{"path":"notes/plan.md","kind":"file","revision":"9f2c…","operation":"created","bytes":18}}],"warnings":[]}

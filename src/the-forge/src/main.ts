@@ -224,4 +224,14 @@ async function run(): Promise<void> {
     process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }) + '\n');
   }
 }
+/**
+ * A reader that closed the pipe early (`forge schema | head -c 10`) wants no more output: stop quietly with the
+ * status so far instead of an unhandled stream error. Windows reports a closed pipe as EOF.
+ */
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'EPIPE' && error.code !== 'EOF') throw error;
+    process.exit(process.exitCode ?? 0);
+  });
+}
 void run();
