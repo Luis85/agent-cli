@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { backlogVault } from '../support/backlog.ts';
@@ -20,7 +20,7 @@ afterEach(async () => { fake.afterWrite = null; fake.beforeWrite = null; await v
 
 const connections = () => ({ contoso: azureConnection(fake, 'contoso', 'Trailhead') });
 const holder = async (fields: Record<string, unknown>) => JSON.stringify({ hostname: hostname(), startedAt: '2026-10-10T08:00:00.000Z', command: 'backlog sync', ...(await hostIdentity()), token: 'crashed', ...fields });
-const sync = async (options: { project?: string } = {}) => {
+const sync = async (options: { project?: string; language?: 'en' | 'de' } = {}) => {
   const session = await invocation(vault!.root, connections(), { env, ...options });
   const result = await session.run('backlog', ['sync']).catch((error: unknown) => ({ error }));
   return { ...result, warnings: session.events.warnings };
@@ -44,6 +44,21 @@ describe('the backlog sync lock', () => {
     const result = await sync();
     expect(result).toMatchObject({ error: { code: 'WORKSPACE_BUSY', retryable: true, details: { stale: 'active', path: LOCK } } });
     expect(fake.writes().length).toBe(writes);
+  });
+
+  it('leaves a lock another sync took over in place, with a warning in the response language', async () => {
+    for (const language of ['en', 'de'] as const) {
+      vault = await backlogVault(planningNotes());
+      // Another sync replaces the lock while this one runs, so its token is gone at release time.
+      fake.afterWrite = () => { fake.afterWrite = null; writeFileSync(join(vault!.root, LOCK), '{"token":"someone-else"}'); };
+      const result = await sync({ language });
+      expect(result.warnings).toEqual([language === 'en'
+        ? 'The backlog sync lock .forge/sync/contoso.lock no longer carried this run\'s token and was left in place; inspect .forge/sync for concurrent syncs.'
+        : 'Die Sperre .forge/sync/contoso.lock von backlog sync trug nicht mehr das Token dieses Laufs und wurde nicht entfernt; prüfen Sie .forge/sync auf gleichzeitige Synchronisierungen.']);
+      expect(await vault.read(LOCK)).toBe('{"token":"someone-else"}');
+      await vault.dispose();
+      vault = undefined;
+    }
   });
 
   it('keeps project-scope and workspace-scope syncs of one connection apart: the lock lives at the workspace root', async () => {

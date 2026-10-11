@@ -6,7 +6,7 @@ import { SYNC_FIELDS } from '../../../domain/connectors/items.ts';
 import type { CivilDate } from '../domain/fields.ts';
 import type { Direction } from '../application/sync-plan.ts';
 import { runSync, type SyncRequest, type SyncServices } from '../application/sync-run.ts';
-import { localizedSync } from './messages.ts';
+import { localizedSync, syncWarningText } from './messages.ts';
 
 /** The `backlog sync` options besides the backlog selection. */
 export const syncOptions: Readonly<Record<string, CommandOption>> = {
@@ -28,7 +28,7 @@ export function syncAction(rest: string[], flags: CommandFlags, context: Command
   const [sub, ...args] = rest;
   const direction = (value(flags, 'direction') ?? 'both') as Direction;
   ensure(['push', 'pull', 'both'].includes(direction), 'INVALID_ARGUMENT', '--direction must be push, pull or both.');
-  const run = async (request: SyncRequest) => localizedSync(await runSync(context, services, request), context.language);
+  const run = async (request: SyncRequest) => localizedSync(await runSync(context, services, request, syncWarningText(context.language)), context.language);
   if (sub === undefined) return run({ ...selection, direction, mode: 'sync' });
   if (sub === 'status') { arity(args, 0); return run({ ...selection, direction, mode: 'status' }); }
   ensure(sub === 'resolve', 'INVALID_ARGUMENT', 'Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.');
