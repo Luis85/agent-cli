@@ -103,7 +103,7 @@ describe('breaking a stale writer lock', () => {
     const guard = join(root, '.agent-cli-tmp-break-.agent-cli.lock');
     await writeFile(guard, holder({ pid: process.ppid, command: 'break stale lock' }));
     await writeFile(lock, holder({ pid: exitedPid() }));
-    const failure = await acquireLock(lock, () => ({})).catch((error: unknown) => error as Error);
+    const failure = await acquireLock(lock, () => ({})).then(() => new Error('acquired'), (error: unknown) => error as Error);
     expect(failure).toMatchObject({ code: 'WORKSPACE_BUSY', retryable: true, details: { stale: 'active', reason: 'dead-process', path: '.agent-cli.lock', breaker: { pid: process.ppid, command: 'break stale lock' } } });
     expect(failure.message).toMatch(/another Forge process .* is removing it/);
     expect(failure.message).not.toMatch(/delete/i);
