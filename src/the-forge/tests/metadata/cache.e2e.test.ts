@@ -64,6 +64,21 @@ describe('the persisted metadata cache through the portable CLI', () => {
     expect(tags((await cli(['vault', 'tags'])).body)).toEqual({ '#edited': ['Notes/Ideas.md'], '#plan': ['Notes/Plan.md'] });
   });
 
+  it('identifies the build by the runtime bundle, not by the compile-cache launcher', async () => {
+    await rm(join(fixture.project, '.forge'), { recursive: true, force: true });
+    await new Promise(resolve => setTimeout(resolve, racyWindowMs + 200));
+    expect((await cli(['vault', 'tags'])).status).toBe(0);
+    await plantTag('Notes/Plan.md', '#from-cache');
+    // Rewriting the launcher leaves the build unchanged, so the snapshot is still reused.
+    const launcher = join(fixture.bundle, 'bin/forge.js');
+    await writeFile(launcher, `${await readFile(launcher, 'utf8')}\n`);
+    expect(tags((await cli(['vault', 'tags'])).body)).toMatchObject({ '#from-cache': ['Notes/Plan.md'] });
+    // Another runtime bundle is another build: its snapshot is ignored and every note is parsed again.
+    const runtime = join(fixture.bundle, 'bin/forge-runtime.js');
+    await writeFile(runtime, `${await readFile(runtime, 'utf8')}\n// rebuilt\n`);
+    expect(tags((await cli(['vault', 'tags'])).body)).toEqual({ '#edited': ['Notes/Ideas.md'], '#plan': ['Notes/Plan.md'] });
+  });
+
   it('warns in the response language when the cache cannot be saved', async () => {
     await rm(join(fixture.project, '.forge'), { recursive: true, force: true });
     // A file where the cache folder belongs makes every save fail.
