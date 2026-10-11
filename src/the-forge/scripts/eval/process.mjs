@@ -57,7 +57,7 @@ function interrupted(signal) {
   const forced = setTimeout(() => { for (const child of agents) killTree(child, 'SIGKILL'); }, graceMs);
   void Promise.all(running.values()).then(async () => {
     clearTimeout(forced);
-    while (pending.size > 0) await Promise.allSettled([...pending]);
+    while (pending.size > 0) await Promise.allSettled(pending);
     process.kill(process.pid, signal);
   });
 }
