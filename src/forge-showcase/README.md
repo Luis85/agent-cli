@@ -373,14 +373,14 @@ Generation never contacts Azure DevOps: no note is linked yet, so `backlog sync 
 - `backlog/requirements/Save trip drafts offline.md` (title, type, parent)
 - `backlog/requirements/Group sharing.md` (title, type)
 - `backlog/requirements/Share links.md` (title, type, parent)
-- `backlog/requirements/Share an itinerary link.md` (title, type, state, parent, priority)
+- `backlog/requirements/Share an itinerary link.md` (title, type, state, parent, dependencies, priority)
 
 **Delivery** → `fabrikam`: 4 work items to create, parents first:
 
 - `backlog/bugs/Duplicate stops after reordering.md` (title, type, state, priority)
 - `backlog/tasks/Build the trip card component.md` (title, type, state)
 - `backlog/tasks/Wire the trips API adapter.md` (title, type, state)
-- `backlog/tasks/Add the share dialog.md` (title, type)
+- `backlog/tasks/Add the share dialog.md` (title, type, dependencies)
 
 The Forge documentation explains the setup in its how-to guide "Sync a backlog with Azure DevOps".
 

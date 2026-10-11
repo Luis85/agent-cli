@@ -5,10 +5,10 @@ const node_crypto = require("node:crypto");
 const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
-const promises$1 = require("node:fs/promises");
+const promises = require("node:fs/promises");
 const fs = require("node:fs");
 const node_os = require("node:os");
-const promises = require("node:timers/promises");
+const promises$1 = require("node:timers/promises");
 const process$1 = require("node:process");
 const node_url = require("node:url");
 const node_module = require("node:module");
@@ -79,7 +79,7 @@ const errorCatalog = {
   SECTION_NOT_FOUND: entry("input", "No heading matches the --section path, or no block has the --block id.", 'Read the note and copy a heading path from error.details.headings (segments joined with " > ") or a block id from error.details.blocks.'),
   AMBIGUOUS_SECTION: entry("input", "The --section path matches several headings, or the --block id occurs more than once.", "Add ancestor headings to the path (Parent > Heading) until one of error.details.candidates remains, or pass a candidate's line as --section-line (sectionLine in an apply plan); give each block a unique id."),
   INVALID_PLAN: entry("input", "The apply plan or write batch is invalid: it does not match the plan schema, or its steps have duplicate or overlapping paths.", "Fix the operation named in error.details.operation (see error.details.issues and the plan schema in help apply); write each path once and do not reuse a path that the same plan moves or deletes."),
-  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", `Wait and retry. If error.details.stale is "likely" (same host, pid namespace and boot; the pid no longer runs), inspect the holder's changes, confirm no Forge writer runs, then delete the lock file. If "unknown", verify the holder in error.details.lock yourself first.`, true),
+  WORKSPACE_BUSY: entry("busy", "Another Forge writer holds the workspace lock or a backlog sync lock.", 'error.details.stale says why the lock stays (a lock whose holder provably no longer runs is removed automatically with a warning). "active": the holder runs; wait and retry. "unknown": Forge cannot verify the holder (another host, pid namespace or boot, or an unreadable lock), so error.retryable is false; confirm in error.details.lock that it no longer runs, inspect its unfinished changes, then delete the file named in error.details.path (relative to the workspace root) and retry.', true),
   DESTINATION_EXISTS: entry("conflict", "The move or rename destination already exists.", "Choose a destination that does not exist (error.details.path), or move or delete the existing file first; Forge never overwrites a destination."),
   PROTECTED_PATH: entry("input", "The path is protected from moves and deletion.", "Forge never moves or deletes .obsidian, .forge or, at workspace scope, bin (in any letter case), nor a folder holding a .git repository; it permanently deletes only folders without symlinks, node_modules or special files, so move such a folder to the trash instead. The scope root and .git paths are refused as INVALID_PATH."),
   INVALID_MOVE: entry("input", "The move or rename is not possible.", "Use a destination that differs from the source and is not inside it; rename takes a new name without slashes."),
@@ -191,24 +191,26 @@ function errorDefinition(code2) {
   return Object.hasOwn(errorCatalog, code2) ? errorCatalog[code2] : void 0;
 }
 class AppError extends Error {
-  constructor(code2, message2, exitCode = 1, details) {
+  constructor(code2, message2, exitCode = 1, details, retryable2) {
     super(message2);
     this.code = code2;
     this.exitCode = exitCode;
     this.details = details;
+    this.retryable = retryable2;
   }
   code;
   exitCode;
   details;
+  retryable;
 }
-function forgeError(code2, message2, details, exitCode = errorCatalog[code2].exitCode) {
-  return new AppError(code2, message2, exitCode, details);
+function forgeError(code2, message2, details, exitCode = errorCatalog[code2].exitCode, retryable2) {
+  return new AppError(code2, message2, exitCode, details, retryable2);
 }
 function codedError(code2, message2, exitCode, details) {
   return new AppError(code2, message2, exitCode, details);
 }
 function locatedError(error2, prefix, details) {
-  return new AppError(error2.code, `${prefix}${error2.message}`, error2.exitCode, { ...error2.details, ...details });
+  return new AppError(error2.code, `${prefix}${error2.message}`, error2.exitCode, { ...error2.details, ...details }, error2.retryable);
 }
 function summarizeError(error2) {
   return error2 instanceof AppError ? { code: error2.code, exitCode: error2.exitCode } : { code: "OPERATION_FAILED", exitCode: errorCatalog.OPERATION_FAILED.exitCode };
@@ -1046,14 +1048,14 @@ function pluginEvents(bus, pluginId) {
 }
 const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
 const types$2 = ["object", "array", "string", "number", "integer", "boolean", "null"];
-const record$4 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+const record$5 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 const count$2 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const keywords = {
   $schema: (value2, path2) => value2 === jsonSchemaDialect ? [] : [`${path2}.$schema must be ${jsonSchemaDialect}`],
   title: (value2, path2) => typeof value2 === "string" ? [] : [`${path2}.title must be a string`],
   description: (value2, path2) => typeof value2 === "string" ? [] : [`${path2}.description must be a string`],
   type: (value2, path2) => types$2.includes(value2) ? [] : [`${path2}.type must be one of ${types$2.join(", ")}`],
-  properties: (value2, path2) => record$4(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path2}.properties.${key}`)) : [`${path2}.properties must be an object`],
+  properties: (value2, path2) => record$5(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path2}.properties.${key}`)) : [`${path2}.properties must be an object`],
   required: (value2, path2) => Array.isArray(value2) && value2.every((item) => typeof item === "string") && new Set(value2).size === value2.length ? [] : [`${path2}.required must list unique property names`],
   additionalProperties: (value2, path2) => typeof value2 === "boolean" ? [] : schemaIssues(value2, `${path2}.additionalProperties`),
   items: (value2, path2) => schemaIssues(value2, `${path2}.items`),
@@ -1081,11 +1083,11 @@ const keywords = {
   }
 };
 function schemaIssues(schema2, path2 = "schema") {
-  if (!record$4(schema2)) return [`${path2} must be a schema object`];
+  if (!record$5(schema2)) return [`${path2} must be a schema object`];
   return Object.entries(schema2).flatMap(([key, value2]) => Object.hasOwn(keywords, key) ? keywords[key](value2, path2) : [`${path2} uses unsupported keyword ${key}`]);
 }
 function typeMatches(type2, value2) {
-  if (type2 === "object") return record$4(value2);
+  if (type2 === "object") return record$5(value2);
   if (type2 === "array") return Array.isArray(value2);
   if (type2 === "integer") return Number.isSafeInteger(value2);
   if (type2 === "number") return typeof value2 === "number" && Number.isFinite(value2);
@@ -1147,7 +1149,7 @@ function validateJsonValue(schema2, value2, path2) {
         return itemSchema ? visit2(itemSchema, item, `${at}[${index2}]`) : item;
       });
     }
-    if (!record$4(current)) return current;
+    if (!record$5(current)) return current;
     const result = {};
     for (const key of node2.required ?? []) if (!Object.hasOwn(current, key) && node2.properties?.[key]?.default === void 0) issues2.push(`${at}.${key}: is required`);
     for (const [key, child] of Object.entries(node2.properties ?? {})) {
@@ -1440,7 +1442,8 @@ class PluginCatalog {
    * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
    * category's exit status. A code of one of `providers`, the plugins providing services that `pluginId` declared,
    * maps too, since their failures surface through their consumer's calls. Any other plugin's code stays an uncoded
-   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged.
+   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged. An `interrupted` code thrown
+   * with `exitCode: 143` (SIGTERM) keeps it.
    */
   normalize(error2, pluginId, providers = []) {
     if (error2 instanceof AppError || !(error2 instanceof Error) || !("code" in error2) || typeof error2.code !== "string") return error2;
@@ -1449,7 +1452,8 @@ class PluginCatalog {
     if (builtIn) return codedError(error2.code, error2.message, builtIn.exitCode, details);
     const entry2 = this.codes.get(error2.code);
     if (!entry2 || entry2.pluginId !== pluginId && !providers.includes(entry2.pluginId)) return error2;
-    return codedError(entry2.code, error2.message, entry2.exitCode, details);
+    const exitCode = entry2.category === "interrupted" && "exitCode" in error2 && error2.exitCode === 143 ? 143 : entry2.exitCode;
+    return codedError(entry2.code, error2.message, exitCode, details);
   }
 }
 const skillTargets = { claude: ".claude/skills", agents: ".agents/skills" };
@@ -1669,8 +1673,8 @@ function canonicalJson$1(value2) {
   return JSON.stringify(value2);
 }
 const relativePathSetting = (value2) => String(value2).replace(/\/+$/, "");
-function relativePathIssues(pluginId, settings2, keys2) {
-  return keys2.flatMap((key) => {
+function relativePathIssues(pluginId, settings2, keys) {
+  return keys.flatMap((key) => {
     try {
       vaultPath(relativePathSetting(settings2[key]));
       return [];
@@ -4705,12 +4709,12 @@ ${cn.comment}` : item.comment;
           } else
             throw new TypeError(`Expected [key, value] tuple: ${it}`);
         } else if (it && it instanceof Object) {
-          const keys2 = Object.keys(it);
-          if (keys2.length === 1) {
-            key = keys2[0];
+          const keys = Object.keys(it);
+          if (keys.length === 1) {
+            key = keys[0];
             value2 = it[key];
           } else {
-            throw new TypeError(`Expected tuple with one key, not ${keys2.length} keys`);
+            throw new TypeError(`Expected tuple with one key, not ${keys.length} keys`);
           }
         } else {
           key = it;
@@ -5254,8 +5258,8 @@ function requireTags() {
       if (Array.isArray(customTags))
         tags2 = [];
       else {
-        const keys2 = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
-        throw new Error(`Unknown schema "${schemaName}"; use one of ${keys2} or define customTags array`);
+        const keys = Array.from(schemas.keys()).filter((key) => key !== "yaml11").map((key) => JSON.stringify(key)).join(", ");
+        throw new Error(`Unknown schema "${schemaName}"; use one of ${keys} or define customTags array`);
       }
     }
     if (Array.isArray(customTags)) {
@@ -5270,8 +5274,8 @@ function requireTags() {
       const tagObj = typeof tag === "string" ? tagsByName[tag] : tag;
       if (!tagObj) {
         const tagName = JSON.stringify(tag);
-        const keys2 = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
-        throw new Error(`Unknown custom tag ${tagName}; use one of ${keys2}`);
+        const keys = Object.keys(tagsByName).map((key) => JSON.stringify(key)).join(", ");
+        throw new Error(`Unknown custom tag ${tagName}; use one of ${keys}`);
       }
       if (!tags3.includes(tagObj))
         tags3.push(tagObj);
@@ -9811,122 +9815,31 @@ const yamlWorkflowRenderer = {
 ${document2.toString({ lineWidth: 0 })}`);
   }
 };
-const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
-const lockedFileDelays = [10, 20, 40, 80, 160, 320];
-const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
-async function retryTransient(operation2, options2 = {}) {
-  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options2;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await operation2();
-    } catch (error2) {
-      const code2 = errorCode$1(error2);
-      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
-      await sleep(delays[attempt]);
-    }
-  }
-}
-const lockName = ".agent-cli.lock";
 const writingWindowMs = 5e3;
-const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
-const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
 const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
 const text$g = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
-const errorCode = (error2) => error2.code ?? "";
-function ownerDetails(owner) {
-  try {
-    const { command: command2, operationId } = owner();
-    return { ...text$g(command2) ? { command: command2 } : {}, ...positiveInteger(operationId) ? { operationId } : {} };
-  } catch {
-    return {};
-  }
-}
+const errorCode$1 = (error2) => error2.code ?? "";
 let identity;
 function hostIdentity() {
   identity ??= (async () => {
-    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
-    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
     return { ...text$g(pidNamespace) ? { pidNamespace } : {}, ...text$g(bootId) ? { bootId } : {} };
   })();
   return identity;
 }
-async function acquireLock(path2, owner, label2 = `Workspace lock ${lockName}`) {
-  const token = node_crypto.randomUUID();
-  const record2 = {
-    pid: process.pid,
-    hostname: node_os.hostname(),
-    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    ...ownerDetails(owner),
-    forgeVersion: metadata$2.version,
-    ...await hostIdentity(),
-    token
-  };
-  const content2 = JSON.stringify(record2) + "\n";
-  const temporary2 = minpath.join(minpath.dirname(path2), `.agent-cli-tmp-lock-${token}`);
-  let linked = false;
-  try {
-    await writeDurably(temporary2, content2);
-    await retryTransient(() => promises$1.link(temporary2, path2), { codes: ["EBUSY"] });
-    linked = true;
-  } catch (error2) {
-    if (errorCode(error2) === "EEXIST") throw await busy(path2, label2);
-    if (!linkUnsupported.has(errorCode(error2))) throw error2;
-  } finally {
-    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
-    });
-  }
-  if (!linked) await createExclusively(path2, content2, label2);
-  heldTokens.add(token);
-  return token;
+async function processStart(pid) {
+  const stat = await promises.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
+  const fields2 = stat?.slice(stat.lastIndexOf(")") + 2).split(" ");
+  const start2 = fields2?.[19];
+  return start2 !== void 0 && /^\d+$/.test(start2) ? start2 : void 0;
 }
-async function record$3(handle, content2) {
-  try {
-    await handle.writeFile(content2);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
+async function ownHolder() {
+  const start2 = await processStart(process.pid);
+  return { pid: process.pid, hostname: node_os.hostname(), startedAt: (/* @__PURE__ */ new Date()).toISOString(), ...await hostIdentity(), ...start2 ? { processStart: start2 } : {} };
 }
-async function writeDurably(path2, content2) {
-  await record$3(await retryTransient(() => promises$1.open(path2, "wx")), content2);
-}
-async function createExclusively(path2, content2, label2) {
-  let handle;
-  try {
-    handle = await retryTransient(() => promises$1.open(path2, "wx"));
-  } catch (error2) {
-    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) throw await busy(path2, label2);
-    throw error2;
-  }
-  try {
-    await record$3(handle, content2);
-  } catch (error2) {
-    await retryTransient(() => promises$1.rm(path2, { force: true })).catch(() => {
-    });
-    throw error2;
-  }
-}
-async function releaseLock(path2, token) {
-  heldTokens.delete(token);
-  let content2;
-  try {
-    content2 = await retryTransient(() => promises$1.readFile(path2, "utf8"));
-  } catch (error2) {
-    if (errorCode(error2) === "ENOENT") return "missing";
-    throw error2;
-  }
-  let recorded;
-  try {
-    recorded = JSON.parse(content2).token;
-  } catch {
-    return "foreign";
-  }
-  if (recorded !== token) return "foreign";
-  await retryTransient(() => promises$1.unlink(path2));
-  return "released";
-}
-function parseMetadata(content2) {
+function parseHolder(content2) {
   let value2;
   try {
     value2 = JSON.parse(content2);
@@ -9934,7 +9847,7 @@ function parseMetadata(content2) {
     return null;
   }
   if (!isRecord$1(value2) || !positiveInteger(value2.pid) || !text$g(value2.hostname) || !text$g(value2.startedAt)) return null;
-  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId } = value2;
+  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId, processStart: start2 } = value2;
   return {
     pid,
     hostname: host,
@@ -9943,30 +9856,32 @@ function parseMetadata(content2) {
     ...positiveInteger(operationId) ? { operationId } : {},
     ...text$g(forgeVersion) ? { forgeVersion } : {},
     ...text$g(pidNamespace) ? { pidNamespace } : {},
-    ...text$g(bootId) ? { bootId } : {}
+    ...text$g(bootId) ? { bootId } : {},
+    ...text$g(start2) ? { processStart: start2 } : {}
   };
 }
 async function readLock(path2) {
   try {
-    const entry2 = await promises$1.lstat(path2);
-    if (!entry2.isFile()) return { lock: null, young: false };
+    const entry2 = await promises.lstat(path2);
+    if (!entry2.isFile()) return { content: null, young: false };
     const young = Date.now() - entry2.mtimeMs < writingWindowMs;
-    const handle = await promises$1.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    const handle = await promises.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
     try {
       const buffer = Buffer.alloc(4096);
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      const content2 = buffer.subarray(0, bytesRead).toString("utf8");
-      let token;
-      try {
-        token = JSON.parse(content2)?.token;
-      } catch {
-      }
-      return { lock: parseMetadata(content2), token, young };
+      return { content: buffer.subarray(0, bytesRead).toString("utf8"), young };
     } finally {
       await handle.close();
     }
+  } catch (error2) {
+    return { content: null, young: false, ...errorCode$1(error2) === "ENOENT" ? { missing: true } : {} };
+  }
+}
+function tokenOf(content2) {
+  try {
+    return content2 === null ? void 0 : JSON.parse(content2)?.token;
   } catch {
-    return { lock: null, young: false };
+    return void 0;
   }
 }
 function processAlive(pid) {
@@ -9974,23 +9889,184 @@ function processAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error2) {
-    return errorCode(error2) === "ESRCH" ? false : errorCode(error2) === "EPERM" ? true : void 0;
+    return errorCode$1(error2) === "ESRCH" ? false : errorCode$1(error2) === "EPERM" ? true : void 0;
   }
 }
+const bootedAt = () => Date.now() - node_os.uptime() * 1e3;
 async function inspectLock(path2) {
-  const { lock, token, young } = await readLock(path2);
-  if (lock === null) return { lock, stale: young ? "active" : "unknown" };
+  const { content: content2, young, missing: missing2 } = await readLock(path2);
+  const lock = content2 === null ? null : parseHolder(content2);
+  if (lock === null) return { lock, stale: young ? "active" : "unknown", ...missing2 ? { missing: missing2 } : {} };
+  const stale = (reason) => ({ lock, stale: "stale", reason, content: content2 });
   const current = await hostIdentity();
-  if (lock.hostname !== node_os.hostname() || lock.pidNamespace !== current.pidNamespace || lock.bootId !== current.bootId) return { lock, stale: "unknown" };
-  if (lock.pid === process.pid) return { lock, stale: typeof token === "string" && heldTokens.has(token) ? "active" : "likely" };
+  if (lock.hostname !== node_os.hostname() || lock.pidNamespace !== current.pidNamespace) return { lock, stale: "unknown" };
+  if (lock.bootId !== current.bootId) {
+    return lock.bootId !== void 0 && current.bootId !== void 0 && Date.parse(lock.startedAt) < bootedAt() ? stale("rebooted") : { lock, stale: "unknown" };
+  }
+  if (lock.pid === process.pid) {
+    const token = tokenOf(content2);
+    return typeof token === "string" && heldTokens.has(token) ? { lock, stale: "active" } : stale("reused-pid");
+  }
   const alive = processAlive(lock.pid);
-  return { lock, stale: alive === void 0 ? "unknown" : alive ? "active" : "likely" };
+  if (alive === void 0) return { lock, stale: "unknown" };
+  if (!alive) return stale("dead-process");
+  const start2 = lock.processStart === void 0 ? void 0 : await processStart(lock.pid);
+  return start2 !== void 0 && start2 !== lock.processStart ? stale("reused-pid") : { lock, stale: "active" };
 }
-async function busy(path2, label2) {
-  const details = await inspectLock(path2);
-  const { lock, stale } = details;
+const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
+const lockedFileDelays = [10, 20, 40, 80, 160, 320];
+const errorCode = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
+async function retryTransient(operation2, options2 = {}) {
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options2;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation2();
+    } catch (error2) {
+      const code2 = errorCode(error2);
+      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
+      await sleep(delays[attempt]);
+    }
+  }
+}
+const lockName = ".agent-cli.lock";
+const staleReasons = {
+  "dead-process": "its process no longer runs",
+  "reused-pid": "its pid was reused by another process",
+  rebooted: "it was written before this host restarted"
+};
+function recoveredLockMessage({ path: path2, holder, reason }) {
+  return `Removed the stale lock ${path2} of pid ${holder.pid} on ${holder.hostname} (since ${holder.startedAt}${holder.command ? `, command ${holder.command}` : ""}): ${staleReasons[reason]}. Inspect what that run left unfinished (for example git status or backlog sync status).`;
+}
+const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
+const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
+const acquireAttempts = 3;
+const temporaryName = (path2, kind2) => minpath.join(minpath.dirname(path2), `.agent-cli-tmp-${kind2}-${node_crypto.randomUUID()}`);
+function ownerDetails(owner) {
+  try {
+    const { command: command2, operationId } = owner();
+    return { ...text$g(command2) ? { command: command2 } : {}, ...Number.isSafeInteger(operationId) && operationId > 0 ? { operationId } : {} };
+  } catch {
+    return {};
+  }
+}
+async function acquireLock(path2, owner, display = lockName, recovered = () => {
+}) {
+  const token = node_crypto.randomUUID();
+  const record2 = { ...await ownHolder(), ...ownerDetails(owner), forgeVersion: metadata$2.version, token };
+  const content2 = JSON.stringify(record2) + "\n";
+  for (let attempt = 1; ; attempt++) {
+    if (await createHeld(path2, content2, token)) return token;
+    const found = await inspectLock(path2);
+    if (attempt === acquireAttempts) throw busy(display, found);
+    if (found.missing) continue;
+    if (found.stale !== "stale") throw busy(display, found);
+    let broken;
+    try {
+      broken = await breakStale(path2, found.content);
+    } catch (error2) {
+      throw busy(display, found, `Forge could not remove it (${errorCode$1(error2) || String(error2)})`);
+    }
+    if (broken) recovered({ path: display, holder: found.lock, reason: found.reason });
+  }
+}
+async function createHeld(path2, content2, token) {
+  heldTokens.add(token);
+  let created = false;
+  try {
+    created = await create$1(path2, content2);
+    return created;
+  } finally {
+    if (!created) heldTokens.delete(token);
+  }
+}
+async function create$1(path2, content2) {
+  const temporary2 = temporaryName(path2, "lock");
+  try {
+    await writeDurably(temporary2, content2);
+    await retryTransient(() => promises.link(temporary2, path2), { codes: ["EBUSY"] });
+    return true;
+  } catch (error2) {
+    if (errorCode$1(error2) === "EEXIST") return false;
+    if (!linkUnsupported.has(errorCode$1(error2))) throw error2;
+  } finally {
+    await retryTransient(() => promises.rm(temporary2, { force: true })).catch(() => {
+    });
+  }
+  return createExclusively(path2, content2);
+}
+const guardPath = (path2) => minpath.join(minpath.dirname(path2), `.agent-cli-tmp-break-${minpath.basename(path2)}`);
+async function removeUnchanged(path2, expected) {
+  const current = await promises.readFile(path2, "utf8").catch(() => null);
+  if (current !== expected) return false;
+  try {
+    await retryTransient(() => promises.unlink(path2));
+    return true;
+  } catch (error2) {
+    if (errorCode$1(error2) === "ENOENT") return false;
+    throw error2;
+  }
+}
+async function breakStale(path2, diagnosed) {
+  const guard2 = guardPath(path2), token = node_crypto.randomUUID();
+  const content2 = JSON.stringify({ ...await ownHolder(), command: "break stale lock", forgeVersion: metadata$2.version, token }) + "\n";
+  if (!await createHeld(guard2, content2, token)) {
+    const left = await inspectLock(guard2);
+    if (left.stale !== "stale" || !await removeUnchanged(guard2, left.content) || !await createHeld(guard2, content2, token)) return false;
+  }
+  try {
+    return await removeUnchanged(path2, diagnosed);
+  } finally {
+    await releaseLock(guard2, token).catch(() => {
+    });
+  }
+}
+async function record$4(handle, content2) {
+  try {
+    await handle.writeFile(content2);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function writeDurably(path2, content2) {
+  await record$4(await retryTransient(() => promises.open(path2, "wx")), content2);
+}
+async function createExclusively(path2, content2) {
+  let handle;
+  try {
+    handle = await retryTransient(() => promises.open(path2, "wx"));
+  } catch (error2) {
+    if (errorCode$1(error2) === "EEXIST" || deniedCodes.has(errorCode$1(error2))) return false;
+    throw error2;
+  }
+  try {
+    await record$4(handle, content2);
+  } catch (error2) {
+    await retryTransient(() => promises.rm(path2, { force: true })).catch(() => {
+    });
+    throw error2;
+  }
+  return true;
+}
+async function releaseLock(path2, token) {
+  heldTokens.delete(token);
+  let content2;
+  try {
+    content2 = await retryTransient(() => promises.readFile(path2, "utf8"));
+  } catch (error2) {
+    if (errorCode$1(error2) === "ENOENT") return "missing";
+    throw error2;
+  }
+  if (tokenOf(content2) !== token) return "foreign";
+  await retryTransient(() => promises.unlink(path2));
+  return "released";
+}
+function busy(display, inspection, failure2) {
+  const { lock, stale, reason } = inspection;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
-  return forgeError("WORKSPACE_BUSY", `${label2} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host's pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.`, details);
+  const details = { lock, stale, path: display, ...reason ? { reason } : {} };
+  const message2 = stale === "active" ? `Lock ${display} is held${holder} by a running Forge process or one still writing it. Wait for it to finish and retry.` : stale === "stale" ? `Lock ${display}${holder} is stale (${reason}), but ${failure2 ?? "it could not be removed"}. Confirm no Forge process uses it, delete ${display} and retry.` : `Lock ${display} exists${holder}; Forge cannot tell whether its holder still runs (another host, pid namespace or boot, or an unreadable lock), so it never removes it. Verify the holder in error.details.lock; once it no longer runs, inspect its unfinished changes (for example git status), delete ${display} and retry.`;
+  return forgeError("WORKSPACE_BUSY", message2, details, void 0, stale === "active");
 }
 const missing$2 = (error2) => error2.code === "ENOENT";
 const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
@@ -9998,7 +10074,7 @@ const inside$1 = (path2, folder) => path2 === folder || path2.startsWith(`${fold
 const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
 async function exists(target) {
   try {
-    return await promises$1.lstat(target);
+    return await promises.lstat(target);
   } catch (error2) {
     if (missing$2(error2)) return void 0;
     throw error2;
@@ -10032,7 +10108,7 @@ function validatePlan(renames, writes, removes) {
 class Transaction {
   constructor(host, batch) {
     this.host = host;
-    const valid2 = (request, keys2) => request !== null && typeof request === "object" && keys2.every((key) => typeof request[key] === "string");
+    const valid2 = (request, keys) => request !== null && typeof request === "object" && keys.every((key) => typeof request[key] === "string");
     ensure(Array.isArray(batch.renames ?? []) && (batch.renames ?? []).every((r) => valid2(r, ["from", "to", "expectedRevision"])), "INVALID_PLAN", "Renames need from, to and expectedRevision strings.");
     ensure(Array.isArray(batch.removes ?? []) && (batch.removes ?? []).every((r) => valid2(r, ["path", "expectedRevision"])), "INVALID_PLAN", "Removals need path and expectedRevision strings.");
     this.renames = (batch.renames ?? []).map((r) => ({ from: vaultPath(r.from), to: vaultPath(r.to), expectedRevision: r.expectedRevision }));
@@ -10076,7 +10152,7 @@ class Transaction {
     const target = await this.host.resolvePath(path2, true);
     const info = await exists(target);
     if (!info) return void 0;
-    if ((await promises$1.lstat(target)).isDirectory()) {
+    if ((await promises.lstat(target)).isDirectory()) {
       const snapshot = await this.host.folder(path2);
       ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path2} contains a Git repository; Forge never moves or removes .git.`);
       return { kind: "folder", snapshot };
@@ -10099,7 +10175,7 @@ class Transaction {
   async caseOnly(request, source2, target) {
     const existing = await exists(target);
     if (!existing) return false;
-    const original = await promises$1.lstat(source2);
+    const original = await promises.lstat(source2);
     const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
     ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
     return true;
@@ -10139,7 +10215,7 @@ class Transaction {
     for (const [index2, part] of parts.slice(0, -1).entries()) {
       directory = minpath.join(directory, part);
       try {
-        await promises$1.mkdir(directory);
+        await promises.mkdir(directory);
         this.createdDirectories.push(directory);
         this.folders.push(parts.slice(0, index2 + 1).join("/"));
         this.touched.add(minpath.dirname(directory));
@@ -10198,7 +10274,7 @@ class Transaction {
     for (const plan of removes) {
       await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
       const temp = temporary(plan.target);
-      await retryTransient(() => promises$1.rename(plan.target, temp));
+      await retryTransient(() => promises.rename(plan.target, temp));
       plan.temp = temp;
       this.committedRemoves.push(plan);
       this.touched.add(minpath.dirname(plan.target));
@@ -10215,11 +10291,11 @@ class Transaction {
   async move(plan, source2, target) {
     if (plan.caseOnly) {
       const temp = temporary(source2);
-      await retryTransient(() => promises$1.rename(source2, temp));
+      await retryTransient(() => promises.rename(source2, temp));
       try {
-        await retryTransient(() => promises$1.rename(temp, target));
+        await retryTransient(() => promises.rename(temp, target));
       } catch (error2) {
-        await retryTransient(() => promises$1.rename(temp, source2)).catch(() => {
+        await retryTransient(() => promises.rename(temp, source2)).catch(() => {
         });
         throw error2;
       }
@@ -10228,12 +10304,12 @@ class Transaction {
     const occupied = () => forgeError("DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
     if (plan.entry.kind === "file" && await this.linkInPlace(source2, target, occupied)) return;
     if (await exists(target)) throw occupied();
-    await retryTransient(() => promises$1.rename(source2, target));
+    await retryTransient(() => promises.rename(source2, target));
   }
   /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
   async linkInPlace(source2, target, occupied) {
     try {
-      await retryTransient(() => promises$1.link(source2, target), { codes: ["EBUSY"] });
+      await retryTransient(() => promises.link(source2, target), { codes: ["EBUSY"] });
     } catch (error2) {
       const code2 = error2.code ?? "";
       if (code2 === "EEXIST") throw occupied();
@@ -10241,9 +10317,9 @@ class Transaction {
       throw error2;
     }
     try {
-      await retryTransient(() => promises$1.unlink(source2));
+      await retryTransient(() => promises.unlink(source2));
     } catch (error2) {
-      await retryTransient(() => promises$1.unlink(target)).catch(() => {
+      await retryTransient(() => promises.unlink(target)).catch(() => {
       });
       throw error2;
     }
@@ -10253,7 +10329,7 @@ class Transaction {
   async finalize() {
     for (const plan of this.committedRemoves) {
       try {
-        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
+        await retryTransient(() => promises.rm(plan.temp, { recursive: true, force: true }));
       } catch (error2) {
         this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error2)}`);
       }
@@ -10266,13 +10342,13 @@ class Transaction {
     }
   }
   async rollback() {
-    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises$1.rm(this.stagedAt(index2), { force: true })).catch(() => {
+    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises.rm(this.stagedAt(index2), { force: true })).catch(() => {
     });
     const failures = [];
     for (const plan of this.committedRemoves.reverse()) {
       try {
         ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
-        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
+        await retryTransient(() => promises.rename(plan.temp, plan.target));
       } catch {
         failures.push(plan.target);
       }
@@ -10283,7 +10359,7 @@ class Transaction {
         if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
         else {
           await verify();
-          await retryTransient(() => promises$1.rm(entry2.target));
+          await retryTransient(() => promises.rm(entry2.target));
         }
       } catch {
         failures.push(entry2.target);
@@ -10300,7 +10376,7 @@ class Transaction {
     }
     for (const directory of this.createdDirectories.reverse()) {
       try {
-        await retryTransient(() => promises$1.rmdir(directory));
+        await retryTransient(() => promises.rmdir(directory));
         this.touched.delete(directory);
       } catch {
       }
@@ -10331,7 +10407,7 @@ class Transaction {
 }
 const unsupported$1 = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
 const isUnsupported = (error2) => unsupported$1.has(String(error2?.code));
-async function syncDirectory(path2, openDirectory = (directory) => promises$1.open(directory, "r")) {
+async function syncDirectory(path2, openDirectory = (directory) => promises.open(directory, "r")) {
   let handle;
   try {
     handle = await openDirectory(path2);
@@ -10351,18 +10427,23 @@ const revisionOf = (bytes) => node_crypto.createHash("sha256").update(bytes).dig
 const missing$1 = (error2) => error2.code === "ENOENT";
 const stagingConcurrency = 8;
 class NodeFiles {
-  constructor(root, warning2, owner) {
+  constructor(root, warning2, owner, recovered) {
     this.root = root;
     this.warning = warning2;
     this.owner = owner;
+    this.recovered = recovered;
   }
   root;
   warning;
   owner;
-  /** `owner` names the invocation recorded in the writer lock; composition code supplies it. */
+  recovered;
+  /**
+   * `owner` names the invocation recorded in the writer lock; composition code supplies it. `recovered` reports a
+   * stale writer lock a commit removed (by default as an English warning).
+   */
   static async at(root, warn = () => {
-  }, owner = () => ({})) {
-    return new NodeFiles(await promises$1.realpath(minpath.resolve(root)), warn, owner);
+  }, owner = () => ({}), recovered) {
+    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner, recovered ?? ((_lock, message2) => warn(message2)));
   }
   /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
   async resolvePath(path2, allowFolder = false) {
@@ -10371,7 +10452,7 @@ class NodeFiles {
     for (const [index2, part] of parts.entries()) {
       current = minpath.join(current, part);
       try {
-        const info = await promises$1.lstat(current);
+        const info = await promises.lstat(current);
         ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path2}`);
         ensure(index2 === parts.length - 1 ? info.isFile() || allowFolder && info.isDirectory() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path2}`);
       } catch (error2) {
@@ -10382,7 +10463,7 @@ class NodeFiles {
   }
   async read(path2) {
     try {
-      const bytes = await promises$1.readFile(await this.resolvePath(path2));
+      const bytes = await promises.readFile(await this.resolvePath(path2));
       return { path: path2, bytes, revision: revisionOf(bytes) };
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File not found: ${path2}`);
@@ -10392,7 +10473,7 @@ class NodeFiles {
   async list() {
     const result = [];
     const walk = async (directory, prefix) => {
-      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
         if ([".git", "node_modules", lockName].includes(entry2.name) || entry2.name.startsWith(".agent-cli-tmp-")) continue;
         const path2 = prefix + entry2.name;
         if (entry2.isDirectory()) await walk(minpath.join(directory, entry2.name), path2 + "/");
@@ -10406,8 +10487,8 @@ class NodeFiles {
   async stored(path2) {
     const target = await this.resolvePath(path2);
     try {
-      const mode = (await promises$1.lstat(target)).mode & 4095;
-      const bytes = await promises$1.readFile(target);
+      const mode = (await promises.lstat(target)).mode & 4095;
+      const bytes = await promises.readFile(target);
       return { bytes, mode, revision: revisionOf(bytes) };
     } catch (error2) {
       if (!missing$1(error2)) throw error2;
@@ -10436,7 +10517,7 @@ class NodeFiles {
     const lock = minpath.join(this.root, lockName);
     let token;
     try {
-      if (!dryRun2) token = await acquireLock(lock, this.owner);
+      if (!dryRun2) token = await acquireLock(lock, this.owner, lockName, (recovered) => this.report(recovered));
       return await transaction.run(dryRun2);
     } finally {
       if (token !== void 0) await this.cleanupLock(lock, token);
@@ -10447,7 +10528,7 @@ class NodeFiles {
     const target = await this.resolvePath(path2, true);
     let info;
     try {
-      info = await promises$1.lstat(target);
+      info = await promises.lstat(target);
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File or folder not found: ${path2}`);
       throw error2;
@@ -10468,20 +10549,20 @@ class NodeFiles {
     const files = [], folders2 = [], special = [];
     let git = false;
     const walk = async (directory, prefix) => {
-      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
         if (entry2.name === ".git") {
           git = true;
           continue;
         }
         if (entry2.name === lockName || entry2.name.startsWith(".agent-cli-tmp-")) continue;
         const relative = prefix + entry2.name, absolute = minpath.join(directory, entry2.name);
-        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises$1.readlink(absolute) });
+        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises.readlink(absolute) });
         else if (entry2.isDirectory() && entry2.name === "node_modules") special.push({ path: relative, kind: "node_modules" });
         else if (entry2.isDirectory()) {
           folders2.push(relative);
           await walk(absolute, relative + "/");
         } else if (entry2.isFile()) {
-          const bytes = await promises$1.readFile(absolute);
+          const bytes = await promises.readFile(absolute);
           files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
         } else special.push({ path: relative, kind: "other" });
       }
@@ -10513,6 +10594,12 @@ class NodeFiles {
   warn(message2) {
     try {
       this.warning(message2);
+    } catch {
+    }
+  }
+  report(lock) {
+    try {
+      this.recovered(lock, recoveredLockMessage(lock));
     } catch {
     }
   }
@@ -10555,7 +10642,7 @@ class NodeFiles {
   /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
   async stage(target, bytes, mode, directory = minpath.dirname(target)) {
     const temp = minpath.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-    const handle = await promises$1.open(temp, "wx", mode ?? 438);
+    const handle = await promises.open(temp, "wx", mode ?? 438);
     try {
       try {
         await handle.writeFile(bytes);
@@ -10565,7 +10652,7 @@ class NodeFiles {
         await handle.close();
       }
     } catch (error2) {
-      await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
+      await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
       });
       throw error2;
     }
@@ -10578,10 +10665,10 @@ class NodeFiles {
     let renamed = false;
     try {
       await verify?.();
-      await retryTransient(() => promises$1.rename(temp, target));
+      await retryTransient(() => promises.rename(temp, target));
       renamed = true;
     } finally {
-      if (!renamed) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
+      if (!renamed) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
       });
     }
   }
@@ -10589,7 +10676,7 @@ class NodeFiles {
 function nodeFileDates(root) {
   let files;
   return async (path2) => {
-    const info = await promises$1.stat(await (await (files ??= NodeFiles.at(root))).resolvePath(path2));
+    const info = await promises.stat(await (await (files ??= NodeFiles.at(root))).resolvePath(path2));
     return { size: info.size, ctime: info.birthtime, mtime: info.mtime };
   };
 }
@@ -19533,8 +19620,8 @@ function candidates$2(node2, source2, value2, pairs2) {
 }
 function replaceInYamlStrings(yaml, document2, replacements) {
   const targets2 = [];
-  for (const [node2, { path: path2, keys: keys2 }] of stringScalars(document2)) {
-    const indexes2 = replacements.flatMap((replacement2, index2) => keys2.includes(replacement2.key) ? [index2] : []);
+  for (const [node2, { path: path2, keys }] of stringScalars(document2)) {
+    const indexes2 = replacements.flatMap((replacement2, index2) => keys.includes(replacement2.key) ? [index2] : []);
     if (indexes2.length) targets2.push({ path: path2, node: node2, replacements: indexes2 });
   }
   const expected = document2.clone();
@@ -19705,15 +19792,15 @@ class ObsidianDocuments {
     const parsed2 = this.inspect(path2, bytes);
     jsonValue$2(value2, kind2 === "canvas" ? "INVALID_CANVAS" : "INVALID_BASE");
     ensure(pointer2.startsWith("/") && !/~(?![01])/g.test(pointer2), "INVALID_POINTER", "Use a JSON Pointer such as /views/0/name.");
-    const keys2 = pointer2.slice(1).split("/").map((k) => k.replace(/~1/g, "/").replace(/~0/g, "~"));
-    ensure(keys2.every((k) => !["__proto__", "constructor", "prototype"].includes(k)), "INVALID_POINTER", "Unsafe pointer segment.");
+    const keys = pointer2.slice(1).split("/").map((k) => k.replace(/~1/g, "/").replace(/~0/g, "~"));
+    ensure(keys.every((k) => !["__proto__", "constructor", "prototype"].includes(k)), "INVALID_POINTER", "Unsafe pointer segment.");
     let parent2 = parsed2.data;
-    for (const key2 of keys2.slice(0, -1)) {
+    for (const key2 of keys.slice(0, -1)) {
       ensure(parent2 !== null && typeof parent2 === "object" && Object.hasOwn(parent2, key2), "INVALID_POINTER", `Missing parent ${key2}.`);
       parent2 = parent2[key2];
     }
     ensure(parent2 !== null && typeof parent2 === "object", "INVALID_POINTER", "Pointer parent is not a container.");
-    const key = keys2.at(-1);
+    const key = keys.at(-1);
     if (Array.isArray(parent2)) {
       ensure(key === "-" || /^(0|[1-9]\d*)$/.test(key) && Number(key) < parent2.length, "INVALID_POINTER", "Use an existing index or - to append.");
       if (key === "-") parent2.push(value2);
@@ -19724,7 +19811,7 @@ class ObsidianDocuments {
       const doc = yamlDocument(textOf$1(bytes));
       const pathKeys = [];
       let cursor = this.inspect(path2, bytes).data;
-      for (const segment2 of keys2) {
+      for (const segment2 of keys) {
         ensure(!distExports.isAlias(doc.getIn(pathKeys, true)), "INVALID_POINTER", "Cannot edit through a YAML alias; replace the alias value or edit its anchor.");
         const part = Array.isArray(cursor) ? segment2 === "-" ? cursor.length : Number(segment2) : segment2;
         pathKeys.push(part);
@@ -21592,11 +21679,11 @@ function requireMoment() {
           this.set(config2);
         }
       }
-      var keys2;
+      var keys;
       if (Object.keys) {
-        keys2 = Object.keys;
+        keys = Object.keys;
       } else {
-        keys2 = function(obj) {
+        keys = function(obj) {
           var i, res = [];
           for (i in obj) {
             if (hasOwnProp(obj, i)) {
@@ -22096,7 +22183,7 @@ function requireMoment() {
         return chooseLocale(key);
       }
       function listLocales() {
-        return keys2(locales);
+        return keys(locales);
       }
       function checkOverflow(m) {
         var overflow, a = m._a;
@@ -24869,8 +24956,8 @@ function addLinkResolution(map2, target, resolvedPath) {
 }
 function addFileResolution(map2, file) {
   const normalized = createFileContext(file);
-  const keys2 = [normalized.path, withoutMarkdownExtension$1(normalized.path), normalized.name, normalized.basename].filter((key) => Boolean(key));
-  for (const key of keys2) {
+  const keys = [normalized.path, withoutMarkdownExtension$1(normalized.path), normalized.name, normalized.basename].filter((key) => Boolean(key));
+  for (const key of keys) {
     map2[key] = normalized.path;
     map2[key.toLowerCase()] = normalized.path;
   }
@@ -25895,13 +25982,13 @@ class BaseRowContexts {
     this.table = createLinkResolutionMap(this.contexts);
     const writers = /* @__PURE__ */ new Map();
     this.writtenKeys = this.contexts.map((file) => {
-      const keys2 = Object.keys(createLinkResolutionMap([file]));
-      for (const key of keys2) {
+      const keys = Object.keys(createLinkResolutionMap([file]));
+      for (const key of keys) {
         const previous2 = writers.get(key);
         if (previous2 !== void 0) this.shadowed.set(key, previous2);
         writers.set(key, file.path);
       }
-      return keys2;
+      return keys;
     });
     this.thisFile = createFileContext({ ...shared.thisFile, path: shared.thisFile.path ?? "" });
     this.dateTypes = Object.keys(shared.propertyTypes).filter((name2) => shared.propertyTypes[name2] === "date");
@@ -26017,8 +26104,8 @@ function joinPath(folder, target) {
   const joined = parts.join("/") || ".";
   return target.endsWith("/") ? `${joined}/` : joined;
 }
-function lookup(index2, keys2, spelling) {
-  const positions2 = /* @__PURE__ */ new Set([...keys2.get(spelling.toLowerCase()) ?? [], ...keys2.get(`${spelling}.md`.toLowerCase()) ?? []]);
+function lookup(index2, keys, spelling) {
+  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
   return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
 }
 function matched(found, linkpath, via) {
@@ -26540,7 +26627,7 @@ const basesPlugin = {
   }
 };
 const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then `node bin/forge.js schema --json` to discover commands and generator contracts. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`; nothing was written.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
-const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nOn `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace and bootId) and `stale` is `active`, `likely` or `unknown`. Wait and retry while it is `active`. `likely` means the lock comes from this host\'s pid namespace and boot and its pid no longer runs; `unknown` covers another host, container or boot and unreadable locks. Never delete `.agent-cli.lock` blindly. Remove it only when `stale` is `likely`, or after verifying that the recorded pid in the recorded host and container is not a running Forge writer; first inspect the interrupted changes with `git status` and read-back, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
+const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active` or `unknown`. Wait and retry while it is `active` (`retryable: true`). `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
 const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add a task with reference steps and deterministic checks and validate it with `npm run eval -- --task <id>`. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
@@ -26633,7 +26720,7 @@ const skillsPlugin = {
 const maxGlobExpansions = 256;
 const maxGlobLength = 1024;
 const characters = (text2) => Array.from(text2);
-function characterClass(pattern2, start2, fail) {
+function characterClass(pattern2, start2, fail2) {
   let index2 = start2 + 1;
   const negated = pattern2[index2] === "!" || pattern2[index2] === "^";
   if (negated) index2++;
@@ -26661,25 +26748,25 @@ function characterClass(pattern2, start2, fail) {
       continue;
     }
     const to = members2[member2 + 2];
-    if (from.codePointAt(0) > to.codePointAt(0)) fail(`has the reversed class range [${from}-${to}].`);
+    if (from.codePointAt(0) > to.codePointAt(0)) fail2(`has the reversed class range [${from}-${to}].`);
     ranges.push([from, to]);
     member2 += 2;
   }
   return { atom: { kind: "class", negated, ranges }, end: index2 };
 }
-function tokenize(pattern2, fail) {
+function tokenize(pattern2, fail2) {
   const tokens = [];
   let depth2 = 0;
   for (let index2 = 0; index2 < pattern2.length; index2++) {
     const char = pattern2[index2];
     if (char === "\\") {
-      if (index2 + 1 >= pattern2.length) fail("ends with an unescaped backslash.");
+      if (index2 + 1 >= pattern2.length) fail2("ends with an unescaped backslash.");
       tokens.push({ kind: "char", value: pattern2[++index2] });
     } else if (char === "*") tokens.push({ kind: "star" });
     else if (char === "?") tokens.push({ kind: "any" });
     else if (char === "/") tokens.push({ kind: "slash" });
     else if (char === "[") {
-      const parsed2 = characterClass(pattern2, index2, fail);
+      const parsed2 = characterClass(pattern2, index2, fail2);
       if (parsed2) {
         tokens.push(parsed2.atom);
         index2 = parsed2.end;
@@ -26693,13 +26780,13 @@ function tokenize(pattern2, fail) {
       tokens.push({ kind: "close" });
     } else tokens.push({ kind: "char", value: char });
   }
-  if (depth2 > 0) fail("has an unclosed {.");
+  if (depth2 > 0) fail2("has an unclosed {.");
   return tokens;
 }
-function expand(tokens, fail) {
+function expand(tokens, fail2) {
   let position2 = 0;
   const product = (left, right) => {
-    if (left.length * right.length > maxGlobExpansions) fail(`expands to more than ${maxGlobExpansions} alternatives.`);
+    if (left.length * right.length > maxGlobExpansions) fail2(`expands to more than ${maxGlobExpansions} alternatives.`);
     return left.flatMap((prefix) => right.map((suffix) => [...prefix, ...suffix]));
   };
   const sequence = () => {
@@ -26715,7 +26802,7 @@ function expand(tokens, fail) {
       const alternatives = [];
       for (; ; ) {
         alternatives.push(...sequence());
-        if (alternatives.length > maxGlobExpansions) fail(`expands to more than ${maxGlobExpansions} alternatives.`);
+        if (alternatives.length > maxGlobExpansions) fail2(`expands to more than ${maxGlobExpansions} alternatives.`);
         const next = tokens[position2++];
         if (next.kind === "close") break;
       }
@@ -26789,11 +26876,11 @@ function pathMatches(pattern2, path2) {
   return visit2(0, 0);
 }
 function pathGlob(pattern2, option2 = "--path") {
-  const fail = (message2) => {
+  const fail2 = (message2) => {
     throw forgeError("INVALID_ARGUMENT", `${option2} ${message2}`);
   };
   ensure(pattern2.length > 0 && pattern2.length <= maxGlobLength, "INVALID_ARGUMENT", `${option2} must be a glob of 1 to ${maxGlobLength} characters.`);
-  const alternatives = expand(tokenize(characters(pattern2.replace(/^\.\//, "")), fail), fail).map(segments);
+  const alternatives = expand(tokenize(characters(pattern2.replace(/^\.\//, "")), fail2), fail2).map(segments);
   return (path2) => {
     const parts = path2.split("/").map(characters);
     return alternatives.some((alternative) => pathMatches(alternative, parts));
@@ -28091,7 +28178,7 @@ const vaultCheckPlugin = {
 const isObject$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 const text$a = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 const stringList = (value2) => Array.isArray(value2) ? value2.filter((item) => typeof item === "string") : [];
-const record$2 = (value2) => isObject$1(value2) ? value2 : {};
+const record$3 = (value2) => isObject$1(value2) ? value2 : {};
 function pointer(...segments2) {
   return segments2.map((segment2) => `/${String(segment2).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 }
@@ -28102,10 +28189,10 @@ function diagnostic(severity2, code2, path2, message2, fidelity) {
   return { severity: severity2, code: code2, pointer: path2, message: message2, ...fidelity ? { fidelity } : {} };
 }
 function agentEntries(config2) {
-  return Object.entries(record$2(config2.agents)).map(([name2, agent]) => [name2, record$2(agent)]);
+  return Object.entries(record$3(config2.agents)).map(([name2, agent]) => [name2, record$3(agent)]);
 }
 function defaultAgent(config2) {
-  const names2 = Object.keys(record$2(config2.agents));
+  const names2 = Object.keys(record$3(config2.agents));
   return names2.includes("root") ? "root" : names2[0];
 }
 function instructionText(value2) {
@@ -28162,7 +28249,7 @@ function expandModelReference(config2, reference, seen = /* @__PURE__ */ new Set
   const trimmed = reference.trim();
   if (trimmed === "") return [];
   if (!trimmed.includes(",")) {
-    const model2 = record$2(config2.models)[trimmed];
+    const model2 = record$3(config2.models)[trimmed];
     if (!isObject$1(model2) || !isAlloy(model2) || seen.has(trimmed)) return [trimmed];
     return expandModelReference(config2, model2.model, /* @__PURE__ */ new Set([...seen, trimmed]));
   }
@@ -28170,11 +28257,11 @@ function expandModelReference(config2, reference, seen = /* @__PURE__ */ new Set
 }
 function modelResolves(config2, reference) {
   const name2 = reference.trim();
-  return name2 === "" || name2 === "auto" || Object.hasOwn(record$2(config2.models), name2) || parseModelReference(name2) !== void 0;
+  return name2 === "" || name2 === "auto" || Object.hasOwn(record$3(config2.models), name2) || parseModelReference(name2) !== void 0;
 }
 function effectiveProvider(config2, provider) {
   if (typeof provider !== "string" || provider === "") return void 0;
-  const custom = record$2(config2.providers)[provider];
+  const custom = record$3(config2.providers)[provider];
   return isObject$1(custom) && typeof custom.provider === "string" && custom.provider !== "" ? custom.provider : provider;
 }
 const firstAvailable = (model2) => isObject$1(model2) && Array.isArray(model2.first_available) ? stringList(model2.first_available) : void 0;
@@ -28237,7 +28324,7 @@ function loopback(host) {
   return name2 === "localhost" || name2 === "::1" || /^127(?:\.\d{1,3}){3}$/.test(name2);
 }
 function oauth(remote, at) {
-  const settings2 = record$2(remote.oauth);
+  const settings2 = record$3(remote.oauth);
   const where2 = `${at}/remote/oauth`;
   if (!isObject$1(remote.oauth)) return [];
   if (!text$a(remote.url)) return [diagnostic("error", "invalid-toolset", where2, "oauth requires remote url to be set.")];
@@ -28255,26 +28342,26 @@ function oauth(remote, at) {
   return [];
 }
 function typeRequirements(toolset, at) {
-  const type2 = toolset.type, remote = record$2(toolset.remote);
-  const fail = (message2, field2 = "") => [diagnostic("error", "invalid-toolset", `${at}${field2}`, message2)];
+  const type2 = toolset.type, remote = record$3(toolset.remote);
+  const fail2 = (message2, field2 = "") => [diagnostic("error", "invalid-toolset", `${at}${field2}`, message2)];
   if (type2 === "mcp") {
     const sources = [text$a(toolset.command), text$a(remote.url), text$a(toolset.ref)].filter(Boolean).length;
-    if (sources !== 1) return fail(sources === 0 ? "either command, remote or ref must be set." : "either command, remote or ref must be set, but only one of those.");
-    if (enabled(toolset.allow_private_ips) && !text$a(remote.url) && !text$a(toolset.ref)) return fail("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
-    if (present(toolset.working_dir) && text$a(remote.url)) return fail("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
+    if (sources !== 1) return fail2(sources === 0 ? "either command, remote or ref must be set." : "either command, remote or ref must be set, but only one of those.");
+    if (enabled(toolset.allow_private_ips) && !text$a(remote.url) && !text$a(toolset.ref)) return fail2("allow_private_ips can only be used with type 'fetch', 'api', 'openapi', 'a2a' or remote MCP toolsets.", "/allow_private_ips");
+    if (present(toolset.working_dir) && text$a(remote.url)) return fail2("working_dir is not valid for remote MCP toolsets (no local subprocess).", "/working_dir");
     return oauth(remote, at);
   }
   const required2 = { a2a: "url", lsp: "command", openapi: "url", open_url: "url" };
-  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$a(toolset[required2[type2]])) return fail(`${type2} toolset requires a ${required2[type2]} to be set.`);
-  if (type2 === "model_picker" && !present(toolset.models)) return fail("model_picker toolset requires at least one model in the 'models' list.");
-  if (type2 === "rag" && !text$a(toolset.ref) && !isObject$1(toolset.rag_config)) return fail("rag toolset requires either ref or rag_config.");
+  if (typeof type2 === "string" && Object.hasOwn(required2, type2) && !text$a(toolset[required2[type2]])) return fail2(`${type2} toolset requires a ${required2[type2]} to be set.`);
+  if (type2 === "model_picker" && !present(toolset.models)) return fail2("model_picker toolset requires at least one model in the 'models' list.");
+  if (type2 === "rag" && !text$a(toolset.ref) && !isObject$1(toolset.rag_config)) return fail2("rag toolset requires either ref or rag_config.");
   return [];
 }
 function toolsetDiagnostics(toolset, at) {
   if (!isObject$1(toolset)) return [];
   const type2 = String(toolset.type ?? "");
   const misplaced = fieldRules.filter(([field2, types2, set2 = present]) => set2(toolset[field2]) && !types2.includes(type2)).map(([field2, types2]) => diagnostic("error", "invalid-toolset", `${at}/${field2}`, `${field2} can only be used with type ${listTypes(types2)}.`));
-  const remote = record$2(toolset.remote);
+  const remote = record$3(toolset.remote);
   if ((present(remote.url) || present(remote.transport_type) || present(remote.oauth)) && type2 !== "mcp") misplaced.push(diagnostic("error", "invalid-toolset", `${at}/remote`, "remote can only be used with type 'mcp'."));
   if (present(remote.headers) && type2 !== "mcp" && type2 !== "a2a") misplaced.push(diagnostic("error", "invalid-toolset", `${at}/remote/headers`, "remote headers can only be used with type 'mcp' or 'a2a'."));
   if (present(toolset.allowed_domains) && present(toolset.blocked_domains)) misplaced.push(diagnostic("error", "invalid-toolset", at, "allowed_domains and blocked_domains are mutually exclusive."));
@@ -28289,13 +28376,13 @@ function toolsetDiagnostics(toolset, at) {
 function harnessDiagnostics(agent, at) {
   if (!isObject$1(agent.harness)) return [];
   const harness = agent.harness, where2 = `${at}/harness`;
-  const fail = (message2, field2 = "") => diagnostic("error", "invalid-harness", `${where2}${field2}`, message2);
+  const fail2 = (message2, field2 = "") => diagnostic("error", "invalid-harness", `${where2}${field2}`, message2);
   const problems = [];
   if (text$a(agent.compaction_model)) problems.push(diagnostic("error", "invalid-harness", `${at}/compaction_model`, "compaction_model cannot be used with a harness; the harness manages its own context compaction."));
-  if (record$2(agent.structured_output).mode === "tool") problems.push(diagnostic("error", "invalid-harness", `${at}/structured_output/mode`, "structured_output.mode 'tool' cannot be used with a harness; use mode 'native'."));
-  if (text$a(harness.effort) && harness.type !== "claude-code") problems.push(fail("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
-  if (text$a(harness.agent) && harness.type !== "opencode") problems.push(fail("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
-  if (harness.thinking === true && harness.type !== "opencode") problems.push(fail("harness.thinking can only be used with harness.type 'opencode'.", "/thinking"));
+  if (record$3(agent.structured_output).mode === "tool") problems.push(diagnostic("error", "invalid-harness", `${at}/structured_output/mode`, "structured_output.mode 'tool' cannot be used with a harness; use mode 'native'."));
+  if (text$a(harness.effort) && harness.type !== "claude-code") problems.push(fail2("harness.effort can only be used with harness.type 'claude-code'.", "/effort"));
+  if (text$a(harness.agent) && harness.type !== "opencode") problems.push(fail2("harness.agent can only be used with harness.type 'opencode'.", "/agent"));
+  if (harness.thinking === true && harness.type !== "opencode") problems.push(fail2("harness.thinking can only be used with harness.type 'opencode'.", "/thinking"));
   return problems;
 }
 const selectorConflicts = [
@@ -28341,13 +28428,13 @@ function semanticDiagnostics(config2, version2) {
     ...versionDiagnostics(config2, version2),
     ...agents.length === 0 ? [diagnostic("error", "no-agents", "/agents", "At least one agent must be configured (add an entry under 'agents').")] : [],
     ...providerDiagnostics(config2),
-    ...Object.entries(record$2(config2.models)).flatMap(([name2, model2]) => modelDiagnostics(model2, pointer("models", name2))),
-    ...Object.entries(record$2(config2.toolsets)).flatMap(([name2, toolset]) => toolsetDiagnostics(toolset, pointer("toolsets", name2))),
-    ...Object.entries(record$2(config2.mcps)).flatMap(([name2, definition2]) => {
-      const ref2 = record$2(definition2).ref;
+    ...Object.entries(record$3(config2.models)).flatMap(([name2, model2]) => modelDiagnostics(model2, pointer("models", name2))),
+    ...Object.entries(record$3(config2.toolsets)).flatMap(([name2, toolset]) => toolsetDiagnostics(toolset, pointer("toolsets", name2))),
+    ...Object.entries(record$3(config2.mcps)).flatMap(([name2, definition2]) => {
+      const ref2 = record$3(definition2).ref;
       return typeof ref2 === "string" && ref2 !== "" && !ref2.startsWith("docker:") ? [diagnostic("error", "invalid-mcp-definition", pointer("mcps", name2, "ref"), `MCP definition '${name2}': only docker refs are supported (e.g., 'docker:context7').`)] : [];
     }),
-    ...Object.entries(record$2(config2.skills)).flatMap(([name2, group]) => skillsDiagnostics(group, pointer("skills", name2), `skill group '${name2}'`)),
+    ...Object.entries(record$3(config2.skills)).flatMap(([name2, group]) => skillsDiagnostics(group, pointer("skills", name2), `skill group '${name2}'`)),
     ...modelReferenceDiagnostics(config2),
     ...agents.flatMap(([name2, agent]) => agentDiagnostics(config2, name2, agent)),
     ...forceHandoffDiagnostics(config2)
@@ -28358,24 +28445,24 @@ function versionDiagnostics(config2, version2) {
   return [diagnostic("error", "unsupported-version", "/version", `Forge reads docker-agent configuration version ${version2}; version ${JSON.stringify(config2.version)} is not migrated. Update the file to version ${version2} syntax (docker-agent migrates older files when it loads them) or remove the version key.`)];
 }
 function providerDiagnostics(config2) {
-  return Object.entries(record$2(config2.providers)).flatMap(([name2, value2]) => {
-    const provider = record$2(value2), at = pointer("providers", name2);
-    const fail = (message2, field2 = "") => [diagnostic("error", "invalid-provider", `${at}${field2}`, `provider '${name2}': ${message2}`)];
-    if (name2.trim() === "") return fail("name cannot be empty");
-    if (name2.trim() !== name2) return fail("name cannot have leading or trailing whitespace");
-    if (name2.includes("/")) return fail("name cannot contain '/'");
+  return Object.entries(record$3(config2.providers)).flatMap(([name2, value2]) => {
+    const provider = record$3(value2), at = pointer("providers", name2);
+    const fail2 = (message2, field2 = "") => [diagnostic("error", "invalid-provider", `${at}${field2}`, `provider '${name2}': ${message2}`)];
+    if (name2.trim() === "") return fail2("name cannot be empty");
+    if (name2.trim() !== name2) return fail2("name cannot have leading or trailing whitespace");
+    if (name2.includes("/")) return fail2("name cannot contain '/'");
     const apiType = provider.api_type ?? "";
-    if (!["", "openai_chatcompletions", "openai_responses"].includes(String(apiType))) return fail(`invalid api_type '${String(apiType)}' (must be one of: openai_chatcompletions, openai_responses)`, "/api_type");
+    if (!["", "openai_chatcompletions", "openai_responses"].includes(String(apiType))) return fail2(`invalid api_type '${String(apiType)}' (must be one of: openai_chatcompletions, openai_responses)`, "/api_type");
     const openAiCompatible = apiType !== "" || provider.provider === void 0 || provider.provider === "" || provider.provider === "openai";
-    if (!text$a(provider.base_url) && openAiCompatible) return fail("base_url is required for OpenAI-compatible providers", "/base_url");
+    if (!text$a(provider.base_url) && openAiCompatible) return fail2("base_url is required for OpenAI-compatible providers", "/base_url");
     return [];
   });
 }
 function modelReferenceDiagnostics(config2) {
   const unknown2 = (reference, at, owner) => typeof reference === "string" && !modelResolves(config2, reference) ? [diagnostic("error", "unknown-model", at, `${owner} references non-existent model '${reference}'.`)] : [];
   return [
-    ...Object.entries(record$2(config2.models)).flatMap(([name2, model2]) => (Array.isArray(record$2(model2).routing) ? record$2(model2).routing : []).flatMap((rule2, index2) => unknown2(record$2(rule2).model, pointer("models", name2, "routing", index2, "model"), `routing rule ${index2} in model '${name2}'`))),
-    ...Object.entries(record$2(config2.rag)).flatMap(([name2, rag]) => (Array.isArray(record$2(rag).strategies) ? record$2(rag).strategies : []).flatMap((strategy, index2) => unknown2(record$2(strategy).model, pointer("rag", name2, "strategies", index2, "model"), `RAG strategy '${String(record$2(strategy).type)}' in RAG '${name2}'`)))
+    ...Object.entries(record$3(config2.models)).flatMap(([name2, model2]) => (Array.isArray(record$3(model2).routing) ? record$3(model2).routing : []).flatMap((rule2, index2) => unknown2(record$3(rule2).model, pointer("models", name2, "routing", index2, "model"), `routing rule ${index2} in model '${name2}'`))),
+    ...Object.entries(record$3(config2.rag)).flatMap(([name2, rag]) => (Array.isArray(record$3(rag).strategies) ? record$3(rag).strategies : []).flatMap((strategy, index2) => unknown2(record$3(strategy).model, pointer("rag", name2, "strategies", index2, "model"), `RAG strategy '${String(record$3(strategy).type)}' in RAG '${name2}'`)))
   ];
 }
 const sourceUrl = (source2) => source2.startsWith("http://") || source2.startsWith("https://");
@@ -28383,27 +28470,27 @@ function skillsDiagnostics(skills2, at, label2) {
   if (!Array.isArray(skills2)) return [];
   const seen = /* @__PURE__ */ new Set();
   return skills2.flatMap((entry2, index2) => {
-    const where2 = `${at}/${index2}`, fail = (message2) => [diagnostic("error", "invalid-skills", where2, `${label2} ${message2}`)];
+    const where2 = `${at}/${index2}`, fail2 = (message2) => [diagnostic("error", "invalid-skills", where2, `${label2} ${message2}`)];
     if (typeof entry2 === "string") {
-      if (entry2.trim() === "") return fail("has an empty skills entry.");
-      if (entry2 !== "local" && sourceUrl(entry2) && !URL.canParse(entry2)) return fail(`has invalid skills source URL '${entry2}'.`);
+      if (entry2.trim() === "") return fail2("has an empty skills entry.");
+      if (entry2 !== "local" && sourceUrl(entry2) && !URL.canParse(entry2)) return fail2(`has invalid skills source URL '${entry2}'.`);
       return [];
     }
-    const skill = record$2(entry2), name2 = typeof skill.name === "string" ? skill.name : "";
-    if (name2.trim() === "") return fail("has an inline skill with no name.");
-    if (/\s/.test(name2)) return fail(`inline skill '${name2}' must not have whitespace in its name: it doubles as the /${name2} command.`);
-    if (!text$a(skill.description)) return fail(`inline skill '${name2}' is missing a description.`);
-    if (!text$a(skill.instructions)) return fail(`inline skill '${name2}' is missing instructions.`);
-    if (skill.context !== void 0 && skill.context !== "fork") return fail(`inline skill '${name2}' has invalid context '${String(skill.context)}' (only 'fork' is supported).`);
-    if (skill.context !== "fork" && stringList(skill.toolsets).length > 0) return fail(`inline skill '${name2}' declares toolsets but is not a fork skill (set context: fork).`);
-    if (skill.context !== "fork" && stringList(skill.allowed_tools).length > 0) return fail(`inline skill '${name2}' declares allowed_tools but is not a fork skill (set context: fork).`);
-    if (seen.has(name2)) return fail(`has duplicate inline skill '${name2}'.`);
+    const skill = record$3(entry2), name2 = typeof skill.name === "string" ? skill.name : "";
+    if (name2.trim() === "") return fail2("has an inline skill with no name.");
+    if (/\s/.test(name2)) return fail2(`inline skill '${name2}' must not have whitespace in its name: it doubles as the /${name2} command.`);
+    if (!text$a(skill.description)) return fail2(`inline skill '${name2}' is missing a description.`);
+    if (!text$a(skill.instructions)) return fail2(`inline skill '${name2}' is missing instructions.`);
+    if (skill.context !== void 0 && skill.context !== "fork") return fail2(`inline skill '${name2}' has invalid context '${String(skill.context)}' (only 'fork' is supported).`);
+    if (skill.context !== "fork" && stringList(skill.toolsets).length > 0) return fail2(`inline skill '${name2}' declares toolsets but is not a fork skill (set context: fork).`);
+    if (skill.context !== "fork" && stringList(skill.allowed_tools).length > 0) return fail2(`inline skill '${name2}' declares allowed_tools but is not a fork skill (set context: fork).`);
+    if (seen.has(name2)) return fail2(`has duplicate inline skill '${name2}'.`);
     seen.add(name2);
     return [];
   });
 }
 function referenceDiagnostics(config2, name2, agent) {
-  const names2 = new Set(Object.keys(record$2(config2.agents)));
+  const names2 = new Set(Object.keys(record$3(config2.agents)));
   return ["sub_agents", "handoffs"].flatMap((field2) => stringList(agent[field2]).flatMap((reference, index2) => {
     const at = pointer("agents", name2, field2, index2), kind2 = field2 === "sub_agents" ? "sub-agent" : "handoff agent";
     if (!names2.has(reference) && !isExternalReference(reference)) return [diagnostic("error", "unknown-agent-reference", at, `agent '${name2}' references non-existent ${kind2} '${reference}'.`)];
@@ -28417,15 +28504,15 @@ function definitionDiagnostics(config2, name2, agent) {
     ["use_commands", "commands", "unknown-command-group", "command group"],
     ["use_skills", "skills", "unknown-skill-group", "skill group"]
   ];
-  const problems = groups.flatMap(([field2, section2, code2, kind2]) => stringList(agent[field2]).flatMap((reference, index2) => Object.hasOwn(record$2(config2[section2]), reference) ? [] : [diagnostic("error", code2, pointer("agents", name2, field2, index2), `agent '${name2}' references non-existent ${kind2} '${reference}'.`)]));
+  const problems = groups.flatMap(([field2, section2, code2, kind2]) => stringList(agent[field2]).flatMap((reference, index2) => Object.hasOwn(record$3(config2[section2]), reference) ? [] : [diagnostic("error", code2, pointer("agents", name2, field2, index2), `agent '${name2}' references non-existent ${kind2} '${reference}'.`)]));
   (Array.isArray(agent.toolsets) ? agent.toolsets : []).forEach((toolset, index2) => {
-    const { type: type2, ref: ref2 } = record$2(toolset);
+    const { type: type2, ref: ref2 } = record$3(toolset);
     if (typeof ref2 !== "string" || ref2 === "") return;
-    if (type2 === "mcp" && !ref2.startsWith("docker:") && !Object.hasOwn(record$2(config2.mcps), ref2)) problems.push(diagnostic("error", "unknown-mcp-definition", pointer("agents", name2, "toolsets", index2, "ref"), `agent '${name2}' references non-existent MCP definition '${ref2}'.`));
-    if (type2 === "rag" && !Object.hasOwn(record$2(config2.rag), ref2)) problems.push(diagnostic("error", "unknown-rag-definition", pointer("agents", name2, "toolsets", index2, "ref"), `agent '${name2}' references non-existent RAG definition '${ref2}'.`));
+    if (type2 === "mcp" && !ref2.startsWith("docker:") && !Object.hasOwn(record$3(config2.mcps), ref2)) problems.push(diagnostic("error", "unknown-mcp-definition", pointer("agents", name2, "toolsets", index2, "ref"), `agent '${name2}' references non-existent MCP definition '${ref2}'.`));
+    if (type2 === "rag" && !Object.hasOwn(record$3(config2.rag), ref2)) problems.push(diagnostic("error", "unknown-rag-definition", pointer("agents", name2, "toolsets", index2, "ref"), `agent '${name2}' references non-existent RAG definition '${ref2}'.`));
   });
-  const inline2 = [agent.skills, ...stringList(agent.use_skills).map((group) => record$2(config2.skills)[group])].flatMap((skills2) => Array.isArray(skills2) ? skills2.filter(isObject$1) : []);
-  for (const skill of inline2) for (const ref2 of stringList(skill.toolsets)) if (!Object.hasOwn(record$2(config2.toolsets), ref2)) {
+  const inline2 = [agent.skills, ...stringList(agent.use_skills).map((group) => record$3(config2.skills)[group])].flatMap((skills2) => Array.isArray(skills2) ? skills2.filter(isObject$1) : []);
+  for (const skill of inline2) for (const ref2 of stringList(skill.toolsets)) if (!Object.hasOwn(record$3(config2.toolsets), ref2)) {
     problems.push(diagnostic("error", "unknown-toolset", pointer("agents", name2, "skills"), `agent '${name2}' inline skill '${String(skill.name)}' references non-existent toolset '${ref2}'.`));
   }
   return problems;
@@ -28438,7 +28525,7 @@ function agentDiagnostics(config2, name2, agent) {
   instructionFiles(agent).forEach((path2, index2) => {
     if (localPath(path2) === void 0) problems.push(diagnostic("error", "invalid-instruction-file", typeof agent.instruction_file === "string" ? `${at}/instruction_file` : `${at}/instruction_file/${index2}`, `instruction_file "${path2}" must be a relative path to a file in the definition file's folder or below it.`));
   });
-  for (const budget of stringList(agent.budgets)) if (!Object.hasOwn(record$2(config2.budgets), budget)) {
+  for (const budget of stringList(agent.budgets)) if (!Object.hasOwn(record$3(config2.budgets), budget)) {
     problems.push(diagnostic("error", "unknown-budget", `${at}/budgets`, `agents.${name2}: budgets: unknown budget "${budget}"; define it under the top-level 'budgets'.`));
   }
   if (!isObject$1(agent.harness) && typeof agent.model === "string") {
@@ -28450,7 +28537,7 @@ function agentDiagnostics(config2, name2, agent) {
   return [...problems, ...definitionDiagnostics(config2, name2, agent), ...referenceDiagnostics(config2, name2, agent), ...skillsDiagnostics(agent.skills, `${at}/skills`, `agent '${name2}'`)];
 }
 function forceHandoffDiagnostics(config2) {
-  const names2 = new Set(Object.keys(record$2(config2.agents)));
+  const names2 = new Set(Object.keys(record$3(config2.agents)));
   const problems = [], edges = /* @__PURE__ */ new Map();
   for (const [name2, agent] of agentEntries(config2)) {
     const target = agent.force_handoff, at = pointer("agents", name2, "force_handoff");
@@ -28592,7 +28679,7 @@ class AgentDefinitions {
     if (name2 === void 0) {
       return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), default: config2 ? defaultAgent(config2) ?? null : null, config: config2 ?? null, diagnostics: loaded.diagnostics };
     }
-    const agents = record$2(config2?.agents);
+    const agents = record$3(config2?.agents);
     if (!Object.hasOwn(agents, name2)) throw agentError("AGENT_NOT_FOUND", `${path2} defines no agent ${name2}; defined: ${Object.keys(agents).join(", ") || "none"}.`, { path: path2, agent: name2, agents: Object.keys(agents) });
     return {
       path: path2,
@@ -28884,8 +28971,8 @@ function mcpToolsets(metadata2, grants, diagnostics2) {
       diagnostics2.push(diagnostic("warning", "mcp-reference-unsupported", at, `The server reference ${entry2} names a server configured outside the agent; add it as an mcp toolset or mcps definition.`, "U"));
       return [];
     }
-    return Object.entries(record$2(entry2)).flatMap(([name2, value2]) => {
-      const server = record$2(value2), type2 = server.type ?? "stdio", tools = grants.get(name2)?.filter((tool) => tool !== "*") ?? [];
+    return Object.entries(record$3(entry2)).flatMap(([name2, value2]) => {
+      const server = record$3(value2), type2 = server.type ?? "stdio", tools = grants.get(name2)?.filter((tool) => tool !== "*") ?? [];
       const filter = tools.length > 0 ? { tools } : {};
       if (type2 === "stdio") return [{ type: "mcp", name: name2, command: server.command, ...stringList(server.args).length > 0 ? { args: stringList(server.args) } : {}, ...isObject$1(server.env) ? { env: server.env } : {}, ...filter }];
       if (type2 === "http" || type2 === "sse") {
@@ -28934,15 +29021,15 @@ function toolsets$1(metadata2, diagnostics2) {
 }
 function hooks$2(value2, diagnostics2) {
   const result = {};
-  for (const [event, groups] of Object.entries(record$2(value2))) {
+  for (const [event, groups] of Object.entries(record$3(value2))) {
     const target = reverseEvents[event];
     if (!target) {
       diagnostics2.push(diagnostic("warning", "hook-unsupported", pointer("hooks", event), `The ${event} hook event has no docker-agent equivalent.`, "U"));
       continue;
     }
     const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target);
-    for (const group of Array.isArray(groups) ? groups.map(record$2) : []) {
-      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$2) : []).filter((handler2) => handler2.type === "command" && text$a(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
+    for (const group of Array.isArray(groups) ? groups.map(record$3) : []) {
+      const handlers = (Array.isArray(group.hooks) ? group.hooks.map(record$3) : []).filter((handler2) => handler2.type === "command" && text$a(handler2.command)).map((handler2) => ({ type: "command", command: handler2.command, ...typeof handler2.timeout === "number" ? { timeout: Math.max(1, Math.round(handler2.timeout)) } : {} }));
       if (handlers.length === 0) continue;
       const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
       result[target] = [...result[target] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
@@ -28958,7 +29045,7 @@ function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   const diagnostics2 = [];
   const name2 = importedName(metadata2.name);
   if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", `Agent ${String(metadata2.name)} is imported as ${name2}.`, "E"));
-  const source2 = record$2(metadata2["x-forge-source"]);
+  const source2 = record$3(metadata2["x-forge-source"]);
   if (text$a(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
   const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
   const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
@@ -29074,7 +29161,7 @@ class AgentAuthoring {
   async knownAgents(path2) {
     const current = await this.current(path2);
     if (!current) return [];
-    return Object.keys(record$2(this.definitions.check(decoder$3.decode(current.bytes)).config?.agents));
+    return Object.keys(record$3(this.definitions.check(decoder$3.decode(current.bytes)).config?.agents));
   }
   async current(path2) {
     try {
@@ -29092,7 +29179,7 @@ class AgentAuthoring {
       ensure(ifMatch2 !== void 0, "CONFLICT", `${path2} exists; pass its current revision with --if-match to add ${names2.join(", ")} to it.`, revisionConflict(path2, null, current.revision));
       ensure(ifMatch2 === current.revision, "CONFLICT", `${path2} changed; read it again and pass its current revision with --if-match.`, revisionConflict(path2, ifMatch2, current.revision));
       text2 = decoder$3.decode(current.bytes);
-      const defined = record$2(this.definitions.check(text2).config?.agents), existing = names2.find((entry2) => Object.hasOwn(defined, entry2));
+      const defined = record$3(this.definitions.check(text2).config?.agents), existing = names2.find((entry2) => Object.hasOwn(defined, entry2));
       if (existing !== void 0) throw agentError("AGENT_EXISTS", `${path2} already defines agent ${existing}.`, { path: path2, agent: existing });
       for (const [entry2, agent] of entries2) text2 = this.ports.codec.addAgent(text2, entry2, agent);
     } else {
@@ -29178,7 +29265,7 @@ const efforts = ["low", "medium", "high", "xhigh", "max"];
 const mappedModelKeys = ["provider", "model", "description", "thinking_budget"];
 function candidates$1(config2, reference, seen = /* @__PURE__ */ new Set()) {
   return expandModelReference(config2, reference).flatMap((part) => {
-    const named = record$2(config2.models)[part];
+    const named = record$3(config2.models)[part];
     if (isObject$1(named)) {
       const selector = firstAvailable(named);
       if (selector) return seen.has(part) ? [] : selector.flatMap((candidate) => candidates$1(config2, candidate, /* @__PURE__ */ new Set([...seen, part])));
@@ -29206,7 +29293,7 @@ function effort$1(budget, at) {
   return { diagnostics: [diagnostic("info", "effort-approximated", at, `thinking_budget ${JSON.stringify(budget)} disables or minimizes thinking; no effort is emitted.`, "A")] };
 }
 function unsupportedSettings(config2, named) {
-  const model2 = record$2(record$2(config2.models)[named]);
+  const model2 = record$3(record$3(config2.models)[named]);
   return Object.keys(model2).filter((key) => !mappedModelKeys.includes(key)).map((key) => diagnostic(
     "info",
     "model-setting-unsupported",
@@ -29216,7 +29303,7 @@ function unsupportedSettings(config2, named) {
   ));
 }
 function harnessModel(agent, at, style) {
-  const harness = record$2(agent.harness);
+  const harness = record$3(agent.harness);
   if (harness.type !== "claude-code") {
     return { model: "inherit", diagnostics: [diagnostic("warning", "harness-unsupported", `${at}/harness`, `The ${String(harness.type)} harness has no Claude agent equivalent; the agent inherits the session model.`, "U")] };
   }
@@ -29237,9 +29324,9 @@ function claudeModel(config2, name2, agent, style) {
   if (!anthropic) {
     return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, `Model ${reference} has no Anthropic candidate; the Claude agent inherits the session model.`, "A")] };
   }
-  const exact2 = options2.length === 1 && expandModelReference(config2, reference).length === 1 && !firstAvailable(record$2(config2.models)[reference]);
+  const exact2 = options2.length === 1 && expandModelReference(config2, reference).length === 1 && !firstAvailable(record$3(config2.models)[reference]);
   const chosen = styled(anthropic.id, style, `${at}/model`);
-  const thinking = anthropic.named ? effort$1(record$2(record$2(config2.models)[anthropic.named]).thinking_budget, pointer("models", anthropic.named, "thinking_budget")) : { diagnostics: [] };
+  const thinking = anthropic.named ? effort$1(record$3(record$3(config2.models)[anthropic.named]).thinking_budget, pointer("models", anthropic.named, "thinking_budget")) : { diagnostics: [] };
   return {
     model: chosen.model,
     ...thinking.effort ? { effort: thinking.effort } : {},
@@ -29325,7 +29412,7 @@ const serverName = (name2) => name2.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-
 function derivedName(toolset) {
   if (text$a(toolset.name)) return toolset.name;
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) return toolset.ref.slice("docker:".length);
-  const remote = record$2(toolset.remote);
+  const remote = record$3(toolset.remote);
   if (text$a(remote.url)) {
     try {
       return new URL(remote.url).hostname.replace(/^(?:www|mcp|api)\./, "").split(".")[0];
@@ -29350,7 +29437,7 @@ function variableMap(value2, at, diagnostics2) {
 function remoteServer(remote, at, diagnostics2) {
   const type2 = remote.transport_type === "sse" ? "sse" : "http";
   const headers = variableMap(remote.headers, `${at}/remote/headers`, diagnostics2);
-  const oauth2 = record$2(remote.oauth), mapped = {};
+  const oauth2 = record$3(remote.oauth), mapped = {};
   if (text$a(oauth2.clientId)) mapped.clientId = oauth2.clientId;
   if (typeof oauth2.callbackPort === "number") mapped.callbackPort = oauth2.callbackPort;
   for (const field2 of ["clientSecret", "scopes", "callbackRedirectURL"]) if (oauth2[field2] !== void 0) {
@@ -29367,7 +29454,7 @@ function mcpServer(toolset, at, taken) {
   }
   const env = variableMap(toolset.env, `${at}/env`, diagnostics2);
   const args = stringList(toolset.args).map((arg, index2) => variables(arg, `${at}/args/${index2}`, diagnostics2));
-  const remote = record$2(toolset.remote);
+  const remote = record$3(toolset.remote);
   if (text$a(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) {
     const gateway = ["mcp", "gateway", "run", "--servers", toolset.ref.slice("docker:".length)];
@@ -29380,14 +29467,14 @@ function mcpServer(toolset, at, taken) {
 }
 const toolName = (grant) => typeof grant === "string" ? grant : `mcp__${grant.server.name}__${grant.tool}`;
 function resolvedToolsets(config2, name2, agent) {
-  const inline2 = (Array.isArray(agent.toolsets) ? agent.toolsets : []).map((toolset, index2) => ({ toolset: record$2(toolset), at: pointer("agents", name2, "toolsets", index2) }));
-  const shared = stringList(agent.use_toolsets).map((ref2) => ({ toolset: record$2(record$2(config2.toolsets)[ref2]), at: pointer("toolsets", ref2) }));
+  const inline2 = (Array.isArray(agent.toolsets) ? agent.toolsets : []).map((toolset, index2) => ({ toolset: record$3(toolset), at: pointer("agents", name2, "toolsets", index2) }));
+  const shared = stringList(agent.use_toolsets).map((ref2) => ({ toolset: record$3(record$3(config2.toolsets)[ref2]), at: pointer("toolsets", ref2) }));
   return [...inline2, ...shared].map(({ toolset, at }) => {
     const ref2 = toolset.ref;
-    if (toolset.type !== "mcp" || typeof ref2 !== "string" || ref2.startsWith("docker:") || !isObject$1(record$2(config2.mcps)[ref2])) return { toolset, at };
-    const definition2 = record$2(record$2(config2.mcps)[ref2]);
+    if (toolset.type !== "mcp" || typeof ref2 !== "string" || ref2.startsWith("docker:") || !isObject$1(record$3(config2.mcps)[ref2])) return { toolset, at };
+    const definition2 = record$3(record$3(config2.mcps)[ref2]);
     const merged = { ...definition2, name: ref2, ...Object.fromEntries(Object.entries(toolset).filter(([key, value2]) => key !== "ref" && value2 !== void 0 && value2 !== "" && !(Array.isArray(value2) && value2.length === 0))) };
-    if (isObject$1(definition2.env) || isObject$1(toolset.env)) merged.env = { ...record$2(definition2.env), ...record$2(toolset.env) };
+    if (isObject$1(definition2.env) || isObject$1(toolset.env)) merged.env = { ...record$3(definition2.env), ...record$3(toolset.env) };
     if (typeof definition2.ref === "string") merged.ref = definition2.ref;
     else delete merged.ref;
     return { toolset: merged, at };
@@ -29496,7 +29583,7 @@ function handler(definition2, at, diagnostics2) {
 }
 function claudeHooks(name2, hooks2) {
   const diagnostics2 = [], result = {}, commands2 = [];
-  for (const [event, entries2] of Object.entries(record$2(hooks2))) {
+  for (const [event, entries2] of Object.entries(record$3(hooks2))) {
     const at = pointer("agents", name2, "hooks", event), target = hookEvents[event];
     if (!target) {
       diagnostics2.push(diagnostic("warning", "hook-unsupported", at, `The ${event} hook event has no Claude equivalent and is not emitted.`, "U"));
@@ -29580,7 +29667,7 @@ function skills(name2, agent) {
   return { skills: names2, diagnostics: diagnostics2 };
 }
 function claudeAgent(config2, name2, instructions2, names2, style) {
-  const agent = record$2(record$2(config2.agents)[name2]), at = pointer("agents", name2), claude = names2.get(name2);
+  const agent = record$3(record$3(config2.agents)[name2]), at = pointer("agents", name2), claude = names2.get(name2);
   const diagnostics2 = [];
   if (claude !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, `Agent ${name2} is generated as ${claude}.`, "E"));
   let description2 = typeof agent.description === "string" ? agent.description : "";
@@ -29617,11 +29704,11 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
 function commandEntries(config2, name2, agent) {
   const entries2 = /* @__PURE__ */ new Map();
   const add = (commands2, at) => {
-    const maps = Array.isArray(commands2) ? commands2.map((item, index2) => [record$2(item), `${at}/${index2}`]) : [[record$2(commands2), at]];
+    const maps = Array.isArray(commands2) ? commands2.map((item, index2) => [record$3(item), `${at}/${index2}`]) : [[record$3(commands2), at]];
     for (const [map2, where2] of maps) for (const [command2, value2] of Object.entries(map2)) if (!entries2.has(command2)) entries2.set(command2, [value2, `${where2}${pointer(command2)}`]);
   };
   add(agent.commands, pointer("agents", name2, "commands"));
-  for (const group of stringList(agent.use_commands)) add(record$2(config2.commands)[group], pointer("commands", group));
+  for (const group of stringList(agent.use_commands)) add(record$3(config2.commands)[group], pointer("commands", group));
   return [...entries2].map(([command2, [value2, at]]) => [command2, value2, at]);
 }
 function commandSkills(config2, name2, agent, agentNames) {
@@ -29751,7 +29838,7 @@ function serverNames(drafts) {
 function topLevelRules(config2, servers2, mode) {
   const rules2 = [], diagnostics2 = [];
   for (const list2 of ["allow", "ask", "deny"]) {
-    const patterns = stringList(record$2(config2.permissions)[list2]);
+    const patterns = stringList(record$3(config2.permissions)[list2]);
     patterns.forEach((pattern2, index2) => {
       const at = pointer("permissions", list2, index2), mapped = patternRules(pattern2, servers2, mode);
       if (mapped.reason) diagnostics2.push(diagnostic(list2 === "allow" ? "info" : "warning", "permission-unsupported", at, `The ${list2} pattern ${pattern2} ${mapped.reason}; ${mapped.rules.length > 0 ? `only ${mapped.rules.join(", ")} is emitted` : "it is not emitted"}.`, "U"));
@@ -29967,7 +30054,7 @@ class AgentGeneration {
   }
   /** The rendered file with its complete provenance. */
   render(file) {
-    const provenance = { ...record$2(file.metadata["x-forge-source"]), outputHash: this.outputHash(file) };
+    const provenance = { ...record$3(file.metadata["x-forge-source"]), outputHash: this.outputHash(file) };
     return this.ports.markdown.render({ ...file.metadata, "x-forge-source": provenance }, file.body);
   }
   async run(request) {
@@ -30048,14 +30135,14 @@ class AgentGeneration {
     }
     const sources = loaded.map((file) => ({ path: file.path, sourceHash: this.ports.digest(JSON.stringify([file.revision, file.instructions])), config: file.config, instructions: file.instructions }));
     if (request.agent === void 0) return sources;
-    const owner = sources.filter((source2) => Object.hasOwn(record$2(source2.config.agents), request.agent));
+    const owner = sources.filter((source2) => Object.hasOwn(record$3(source2.config.agents), request.agent));
     if (owner.length === 0) throw agentError("AGENT_NOT_FOUND", `No definition in ${request.file === void 0 ? `${this.definitions.directory}/` : paths2[0]} defines agent ${request.agent}.`, { agent: request.agent });
     return owner;
   }
   status(output2) {
     if (output2.status !== "changed" || output2.currentContent === void 0) return output2.status;
     try {
-      const current = this.ports.markdown.parse(output2.currentContent), recorded = record$2(current.metadata["x-forge-source"]).outputHash;
+      const current = this.ports.markdown.parse(output2.currentContent), recorded = record$3(current.metadata["x-forge-source"]).outputHash;
       return typeof recorded === "string" && recorded === this.outputHash(current) ? "changed" : "hand-edited";
     } catch {
       return "hand-edited";
@@ -32204,7 +32291,7 @@ function requireFastDeepEqual() {
     if (a === b) return true;
     if (a && b && typeof a == "object" && typeof b == "object") {
       if (a.constructor !== b.constructor) return false;
-      var length, i, keys2;
+      var length, i, keys;
       if (Array.isArray(a)) {
         length = a.length;
         if (length != b.length) return false;
@@ -32215,13 +32302,13 @@ function requireFastDeepEqual() {
       if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
       if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
       if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
-      keys2 = Object.keys(a);
-      length = keys2.length;
+      keys = Object.keys(a);
+      length = keys.length;
       if (length !== Object.keys(b).length) return false;
       for (i = length; i-- !== 0; )
-        if (!Object.prototype.hasOwnProperty.call(b, keys2[i])) return false;
+        if (!Object.prototype.hasOwnProperty.call(b, keys[i])) return false;
       for (i = length; i-- !== 0; ) {
-        var key = keys2[i];
+        var key = keys[i];
         if (!equal2(a[key], b[key])) return false;
       }
       return true;
@@ -37370,8 +37457,28 @@ function editFrontmatter(text2, frontmatter2, changes2, removed) {
   if (appended.length > 0 && result.length > 0 && !result.endsWith("\n")) result += newline;
   return `${bom}${source2.slice(0, start2)}${result}${appended.join("")}${source2.slice(end2)}`;
 }
-const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync a product backlog stored as Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way Azure DevOps Boards sync. Use when the user mentions backlog items, epics, features, PBIs, tasks, ranks, iterations, releases or work item sync.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. States, horizons, priorities and risks are written in the spelling the view declares (`--state "in progress"` writes `In Progress`); Deliverables and test-ladder items use their own workflow values. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nSync with an external tracker (Azure DevOps Boards): connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`); the token comes from the environment variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`) and never from config or notes, so never print or write it. Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (read-only probe). A `product-backlog` view with the option `connection: <id>` is a sync set. Always run `backlog sync status` or `backlog sync --dry-run` first: it reads the remote and lists `created`, `updated`, `pulled`, `conflicts` and `skipped` (each with a `code`) per view, and `left` per connection. A skip is never an error to work around: read its `code` (for example `duplicate-link` for a copied note, `remote-format-unknown` for a remote description that is not Markdown, `server-kept`) and tell the user. Then `backlog sync` (`--direction push|pull`, `--view` to narrow). Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand, and never copy a note with its link property. Without the state file, notes relink by their link property and every differing field is a conflict; nothing is overwritten. `WORKSPACE_BUSY` naming `.forge/sync/<id>.lock` means another sync of that connection runs. A field changed on both sides is a conflict that the sync leaves alone; ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`. Rename notes with `move`/`rename` so the sync state follows. `CONNECTOR_AUTH_FAILED` means the token variable is unset or rejected; `SYNC_CONFLICT` means the remote item changed during the sync: rerun status and sync. `PLUGIN_SERVICE_MISSING` for `connector.hub` means the `connector` core plugin is disabled or its settings are invalid; `plugins` shows its state and reason.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
+const backlog = '---\nname: forge-backlog\ndescription: Plan, decompose, rank, release and sync a product backlog stored as Obsidian Product Backlog (backlog-view) compatible notes with the backlog command, including two-way Azure DevOps Boards sync. Use when the user mentions backlog items, epics, features, PBIs, tasks, ranks, iterations, releases or work item sync.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nThe `backlog` command manages a product backlog that the Obsidian Product Backlog view (backlog-view) opens unchanged. The `.base` file\'s `product-backlog` view options are the configuration: which properties hold parent, order, type, state, dates, iteration, release and dependencies. Never edit backlog frontmatter with `properties` or `write`; the backlog command keeps the plugin\'s rules (ranks, stamps, refusals, YAML style).\n\nStart: `backlog check` (or `backlog list`) finds the backlog. With no backlog yet, `backlog init --folder docs/backlog` writes the plugin\'s `Product Backlog.base`; bind the properties you need by editing the view options (`stateProperty: note.status`, `stateValues: Open, Active, Done`, `startedDateProperty`, `finishedDateProperty`, `startedStates`, `dependsOnProperty`, `iterationProperty`, `releaseProperty`, `startProperty`, `targetProperty`) and add a `product-release` view for releases. Several backlogs need `--base <file> --view <name>` (or `plugins.settings.backlog.base`). `BACKLOG_AMBIGUOUS` lists the candidates in `error.details.candidates`.\n\nRead before you write: `backlog tree` (hierarchy in sibling rank order), `backlog list` (global rank; `rank` is 1-based, `context: true` rows are ancestors outside the filter and read-only), `backlog board` (columns by state with `limit` and `over`), `backlog show <item>`. Items are named by vault path, title, link text or `pbl-id` (`#12`).\n\nDecompose top-down with the type ladder Epic → Feature → PBI → Task (Issue, Bug, Idea, Deliverable and Improvement hang under any rung above Task; Milestone, Iteration and Release are markers): `backlog add Epic "Trip planning"`, then `backlog add Feature "Route sharing" --parent "Trip planning"`, then PBIs and Tasks. A new item gets the next `pbl-id`, its type folder, and the rank at the end of its siblings. Preview with `--dry-run`; `data.changes[].diff` shows the exact note.\n\nRank and reparent with `backlog move <item> --before <sibling>` / `--after` / `--first` / `--last`, or `--parent <item>` / `--top`; only `parent` and `order` change. `BACKLOG_NO_GAP` (`details.reason`: `gapSpent`, `tied`, `unranked`) means run `backlog ranks respace` (or `backlog ranks seed` when ranks are missing) and move again.\n\nTrack work with `backlog set <item> --state Active` (stamps `started` on entering a started state and `finished` on crossing into done; leaving done deletes it), `--priority`, `--risk`, `--horizon`, `--start`/`--due` (YYYY-MM-DD), `--assignee <Resource note>` and `--type`. An empty value (`--horizon ""`) deletes the key. States, horizons, priorities and risks are written in the spelling the view declares (`--state "in progress"` writes `In Progress`); Deliverables and test-ladder items use their own workflow values. Dependencies: `backlog depend <item> --on <prerequisite>` refuses loops; `backlog undepend` removes the entry.\n\nIterations: `backlog iteration add --goal "Share a route"` names the note `<N> - Iteration - <goal>` and starts the day after the latest iteration; `backlog iteration assign <item> <iteration>` links it and copies the iteration\'s dates. Releases: `backlog release add "1.0" --release-version 1.0.0 --target-date 2026-12-01`, `backlog release join <item> <release>` (fills empty start/target dates), `backlog release readiness <release>` (estimated, blocked and risk criteria with `outstandingPaths`), `backlog release notes <release>` (regenerates the release notes file it owns, never a foreign one) and `backlog release mark-released <release>`. Pass `--today YYYY-MM-DD` for reproducible stamps.\n\nSync with an external tracker (Azure DevOps Boards): connections live in `bin/config.json` under `plugins.settings.connector.connections.<id>` (`platform`, `organization`, `project`, `process`, `iterationRoot`, `tokenEnv`); the token comes from the environment variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`) and never from config or notes, so never print or write it. Check with `connectors list` (`valid`, `tokenSet`), `connectors inspect <id>` (mappings) and `connectors test <id>` (read-only probe). A `product-backlog` view with the option `connection: <id>` is a sync set. Always run `backlog sync status` or `backlog sync --dry-run` first: it reads the remote and lists `created`, `updated`, `pulled`, `conflicts` and `skipped` (each with a `code`) per view, and `left` per connection. A skip is never an error to work around: read its `code` (for example `duplicate-link` for a copied note, `remote-format-unknown` for a remote description that is not Markdown, `server-kept`) and tell the user. Then `backlog sync` (`--direction push|pull`, `--view` to narrow). Never edit the link property (`azure-devops`) or `.forge/sync/<id>.json` by hand, and never copy a note with its link property. Without the state file, notes relink by their link property and every differing field is a conflict; nothing is overwritten. `WORKSPACE_BUSY` naming `.forge/sync/<id>.lock` means another sync of that connection runs (wait and retry while `retryable` is true); a lock left by a killed sync is removed automatically with a warning. `SYNC_INTERRUPTED` means a signal stopped the sync at a safe point: rerun `backlog sync status`, then `backlog sync`. With `dependsOnProperty` bound, `dependsOn` lists sync with predecessor links: edit them with `backlog depend`/`undepend`, never as raw ids; a list naming a note that is not synced on the connection is skipped as `unexpressible`, and a remote predecessor without a note as `unsynced-dependency`. Remote items without a note are never imported; create the note with `backlog add`. A field changed on both sides is a conflict that the sync leaves alone; ask which side wins, then `backlog sync resolve <item> --take local|remote [--field title,state]`. Rename notes with `move`/`rename` so the sync state follows. `CONNECTOR_AUTH_FAILED` means the token variable is unset or rejected; `SYNC_CONFLICT` means the remote item changed during the sync: rerun status and sync. `PLUGIN_SERVICE_MISSING` for `connector.hub` means the `connector` core plugin is disabled or its settings are invalid; `plugins` shows its state and reason.\n\nFinish with `backlog check`: `ok: false` lists errors (parent or dependency cycles, broken links, unresolved release memberships, configuration problems, fields a type may not hold); warnings cover rank ties, unranked items and unreadable dates. `BACKLOG_WRITE_REFUSED` carries `details.reason` (for example `outside-filter`, `field-not-held`, `not-a-release`, `dependency-cycle`, `unbound-property`); `BACKLOG_CONFIG_PROBLEM` means two roles share one property key or a release option is missing.\n';
 const backlogSkill = { id: "forge-backlog", content: backlog };
+function watchSignals() {
+  let received = null;
+  const interrupt = () => {
+    received = "SIGINT";
+    dispose();
+  };
+  const terminate = () => {
+    received = "SIGTERM";
+    dispose();
+  };
+  const dispose = () => {
+    process.removeListener("SIGINT", interrupt);
+    process.removeListener("SIGTERM", terminate);
+  };
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", terminate);
+  return { get signal() {
+    return received;
+  }, dispose };
+}
 const absent = () => ({ value: null, invalid: false });
 function ownValue(frontmatter2, key) {
   return frontmatter2 !== void 0 && key !== "" && Object.hasOwn(frontmatter2, key) ? frontmatter2[key] : void 0;
@@ -37684,10 +37791,10 @@ function ownedProperties(settings2) {
 }
 const workflowRoles = ["state", "deliverableState", "testState"];
 function configProblems(settings2) {
-  const keys2 = /* @__PURE__ */ new Map();
-  for (const { role, key } of ownedProperties(settings2)) if (key) keys2.set(key, [...keys2.get(key) ?? [], role]);
+  const keys = /* @__PURE__ */ new Map();
+  for (const { role, key } of ownedProperties(settings2)) if (key) keys.set(key, [...keys.get(key) ?? [], role]);
   const problems = [];
-  for (const [key, roles] of keys2) {
+  for (const [key, roles] of keys) {
     if (roles.length > 1 && !roles.every((role) => workflowRoles.includes(role))) problems.push(`The properties ${roles.join(", ")} all use the key "${key}".`);
   }
   return problems;
@@ -37847,9 +37954,9 @@ function releaseOwned(settings2) {
   ];
 }
 function releaseNoteProblems(settings2) {
-  const keys2 = /* @__PURE__ */ new Map();
-  for (const { role, key } of releaseOwned(settings2)) if (key) keys2.set(key, [...keys2.get(key) ?? [], role]);
-  const problems = [...keys2].filter(([, roles]) => roles.length > 1).map(([key, roles]) => `The release properties ${roles.join(", ")} all use the key "${key}".`);
+  const keys = /* @__PURE__ */ new Map();
+  for (const { role, key } of releaseOwned(settings2)) if (key) keys.set(key, [...keys.get(key) ?? [], role]);
+  const problems = [...keys].filter(([, roles]) => roles.length > 1).map(([key, roles]) => `The release properties ${roles.join(", ")} all use the key "${key}".`);
   if (settings2.releasedDateKey !== "" && settings2.releasedDateKey === settings2.targetDateKey) problems.push(`The released date and the target date share the key "${settings2.releasedDateKey}".`);
   if (settings2.releasedTransition !== "" && settings2.releasedValues.length > 0 && !settings2.releasedValues.some((value2) => sameValue(value2, settings2.releasedTransition))) {
     problems.push(`The released transition value "${settings2.releasedTransition}" is not one of the released status values.`);
@@ -38714,8 +38821,8 @@ function findItem(session, reference, model2 = session.model) {
   if (resolved !== null && model2.byPath.has(resolved)) return model2.byPath.get(resolved);
   const byTitle = [...model2.byPath.values()].filter((item) => item.title.toLowerCase() === text2.toLowerCase());
   const id2 = /^#?(\d+)$/.exec(text2);
-  const byId = id2 ? [...model2.byPath.values()].filter((item) => item.pblId === Number(id2[1])) : [];
-  const matches2 = byTitle.length > 0 ? byTitle : byId;
+  const byId2 = id2 ? [...model2.byPath.values()].filter((item) => item.pblId === Number(id2[1])) : [];
+  const matches2 = byTitle.length > 0 ? byTitle : byId2;
   if (matches2.length === 1) return matches2[0];
   if (matches2.length > 1) throw backlogError("BACKLOG_AMBIGUOUS", `${reference} names ${matches2.length} backlog items; pass a vault path.`, { reference, candidates: matches2.map((item) => item.path) });
   throw backlogError("BACKLOG_NOT_FOUND", `${reference} is not an item of ${session.base.path} › ${session.view.name}.`, { reference, base: session.base.path, view: session.view.name });
@@ -39510,7 +39617,8 @@ function checkBacklog(input) {
   for (const item of results) if (item.order !== null) byOrder.set(item.order, [...byOrder.get(item.order) ?? [], item.path]);
   for (const [order2, paths2] of byOrder) if (paths2.length > 1) problems.push(warning("rank-tie", `${paths2.length} items share rank ${order2}; ties follow result order.`, { value: String(order2), paths: paths2 }));
   const unranked = results.filter((item) => item.order === null && !isReleaseType(item.typeName)).map((item) => item.path);
-  if (unranked.length > 0) problems.push(warning("unranked", `${unranked.length} items have no rank and sort last; run backlog ranks seed.`, { paths: unranked }));
+  const count2 = unranked.length === 1 ? "1 item has no rank and sorts" : `${unranked.length} items have no rank and sort`;
+  if (unranked.length > 0) problems.push(warning("unranked", `${count2} last; run backlog ranks seed.`, { paths: unranked }));
   return problems;
 }
 const date$2 = (reading2) => reading2.invalid ? { invalid: true } : reading2.value === null ? null : formatCivil(reading2.value);
@@ -39621,12 +39729,17 @@ function check$1(session) {
     problems
   };
 }
-const SYNC_FIELDS = ["title", "type", "state", "parent", "iteration", "area", "priority", "effort", "tags", "description"];
+const SYNC_FIELDS = ["title", "type", "state", "parent", "dependencies", "iteration", "area", "priority", "effort", "tags", "description"];
 const sortedTags = (tags2) => [...new Set(tags2.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].sort();
+const sortedIds = (ids) => [...new Set(ids)].sort((a, b) => {
+  const left = /^\d+$/.test(a) ? Number(a) : Infinity, right = /^\d+$/.test(b) ? Number(b) : Infinity;
+  return left !== right ? left - right : a < b ? -1 : a > b ? 1 : 0;
+});
 function canonical(field2, value2) {
   if (value2 === null || value2 === void 0) return "null";
   if (field2 === "title" && typeof value2 === "string") return JSON.stringify(sanitizeTitle(value2));
   if (field2 === "tags" && Array.isArray(value2)) return JSON.stringify(sortedTags(value2));
+  if (field2 === "dependencies" && Array.isArray(value2)) return JSON.stringify(sortedIds(value2));
   if (field2 === "description" && typeof value2 === "string") return JSON.stringify(value2.replace(/\r\n?/g, "\n").trim());
   if (typeof value2 === "string") return JSON.stringify(value2.trim());
   return JSON.stringify(value2);
@@ -39697,6 +39810,7 @@ function synced(context, field2) {
   if (field2 === "priority") return settings2.priorityKey !== "";
   if (field2 === "tags") return settings2.tagsKey !== "";
   if (field2 === "area") return context.connection.areaProperty !== "";
+  if (field2 === "dependencies") return settings2.dependsOnKey !== "";
   return true;
 }
 const basename$1 = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
@@ -39713,6 +39827,10 @@ function localValues(context, item, frontmatter2, body) {
   if (synced(context, "parent")) {
     const parent2 = item.parent === null ? null : context.idOf(item.parent.path);
     if (item.parent === null || parent2 !== null) values2.set("parent", parent2);
+  }
+  if (synced(context, "dependencies")) {
+    const ids = item.dependsOnEntries.map((entry2) => entry2.path === null ? null : context.idOf(entry2.path));
+    if (ids.every((id2) => id2 !== null)) values2.set("dependencies", sortedIds(ids));
   }
   const root = iterationRoot(context);
   if (synced(context, "iteration") && root !== null) {
@@ -39750,6 +39868,7 @@ function remoteValues(context, remote) {
   if (synced(context, "type")) values2.set("type", remote.type);
   if (synced(context, "state")) values2.set("state", remote.state);
   if (synced(context, "parent")) values2.set("parent", remote.parentId ?? null);
+  if (synced(context, "dependencies") && remote.dependencies !== void 0) values2.set("dependencies", sortedIds(remote.dependencies));
   const root = iterationRoot(context);
   if (synced(context, "iteration") && root !== null) values2.set("iteration", iterationName(root, remote.iteration ?? null) === null ? null : remote.iteration ?? null);
   if (synced(context, "area") && remote.area !== void 0) values2.set("area", remote.area);
@@ -39769,6 +39888,7 @@ function remoteChange(context, values2) {
   for (const [key, value2] of values2) {
     if (key.startsWith(PROPERTY)) fields2[context.mapping.properties[key.slice(PROPERTY.length)]] = value2;
     else if (key === "parent") change2.parentId = value2;
+    else if (key === "dependencies") change2.dependencies = value2;
     else change2[key] = value2;
   }
   return Object.keys(fields2).length > 0 ? { ...change2, fields: fields2 } : change2;
@@ -39789,6 +39909,11 @@ function pulledNote(context, item, pulls, pathOfRemote2, body) {
       const parent2 = value2 === null ? null : pathOfRemote2(String(value2));
       if (value2 !== null && parent2 === null) note.skipped.push({ field: field2, code: "unsynced-parent", reason: `remote parent ${String(value2)} is not synced on this connection` });
       else note.write.parent = parent2;
+    } else if (field2 === "dependencies" && Array.isArray(value2)) {
+      const paths2 = value2.map((id2) => pathOfRemote2(id2));
+      const missing2 = value2.filter((_id, index2) => paths2[index2] === null);
+      if (missing2.length > 0) note.skipped.push({ field: field2, code: "unsynced-dependency", reason: `remote predecessor ${missing2.join(", ")} is not synced on this connection` });
+      else note.dependsOn = paths2;
     } else if (field2 === "iteration") {
       const name2 = iterationName(iterationRoot(context), value2 === null ? null : String(value2));
       const target = name2 === null ? null : iterationNote(session, name2);
@@ -39956,6 +40081,124 @@ function nextBase(plan, pushed, pulled, hash) {
   for (const field2 of pulled) settle2(field2, plan.remoteValues.get(field2));
   return fields2;
 }
+const PLACEHOLDER = "new:";
+const DEPENDENCIES = "dependencies";
+const codeOf = (error2) => isRecord$1(error2) && typeof error2.code === "string" ? error2.code : "OPERATION_FAILED";
+const isStale = (error2) => isRecord$1(error2) && isRecord$1(error2.details) && error2.details.reason === "stale-revision";
+const sameValues = (a, b) => a.size === b.size && [...a].every(([field2, value2]) => b.has(field2) && canonical(field2, value2) === canonical(field2, b.get(field2)));
+async function pushAll(context, bound2, plans, ids, report, options2, live, store, hash) {
+  const run2 = { context, bound: bound2, report, options: options2, store, hash };
+  const outcome = { pushed: /* @__PURE__ */ new Map(), linkFailed: /* @__PURE__ */ new Set() };
+  const resolve2 = (value2) => {
+    if (!value2.startsWith(PLACEHOLDER)) return value2;
+    const id2 = ids.get(value2.slice(PLACEHOLDER.length));
+    return id2 === void 0 || id2.startsWith(PLACEHOLDER) ? void 0 : id2;
+  };
+  const links2 = [];
+  for (const plan of plans) {
+    if (plan.create && options2.direction === "pull") {
+      report.skipped.push({ path: plan.path, code: "not-created", reason: "not synced yet; a push creates it" });
+      continue;
+    }
+    const values2 = plan.create ? new Map([...plan.local].filter(([, value2]) => value2 !== null && !(Array.isArray(value2) && value2.length === 0))) : plan.push;
+    if (values2.size === 0) continue;
+    if (!live) {
+      (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: [...values2.keys()] });
+      continue;
+    }
+    options2.checkpoint?.();
+    const wanted = values2.get(DEPENDENCIES);
+    const first = new Map([...values2].filter(([field2]) => field2 !== DEPENDENCIES));
+    const change2 = remoteChange(context, first);
+    if (typeof change2.parentId === "string") {
+      const parent2 = resolve2(change2.parentId);
+      if (parent2 === void 0) delete change2.parentId;
+      else change2.parentId = parent2;
+    }
+    let result = plan.remote;
+    if (plan.create || first.size > 0) {
+      try {
+        result = plan.create ? await bound2.connector.create(bound2.connection, { ...change2, type: String(plan.local.get("type")), title: String(plan.local.get("title") ?? plan.item.title) }) : await guardedUpdate(run2, plan, change2);
+      } catch (error2) {
+        fail(run2, plan, error2);
+        continue;
+      }
+      if (plan.create) ids.set(plan.path, result.id);
+      const held = plan.push.get(DEPENDENCIES);
+      plan.push.delete(DEPENDENCIES);
+      settlePush(context, plan, result, options2.direction, plan.create ? resolvedLocal(context, plan) : plan.local);
+      if (held !== void 0) plan.push.set(DEPENDENCIES, held);
+      (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: result.id, url: result.url, fields: [...first.keys()] });
+    }
+    outcome.pushed.set(plan.path, new Set(first.keys()));
+    if (plan.create) await record$2(run2, plan);
+    if (wanted !== void 0) links2.push({ plan, wanted });
+  }
+  for (const { plan, wanted } of links2) {
+    const resolved = wanted.map(resolve2);
+    if (resolved.some((id2) => id2 === void 0)) {
+      plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "unsynced-dependency", reason: "a predecessor was not created in this run; the links follow on the next sync" });
+      continue;
+    }
+    options2.checkpoint?.();
+    let result;
+    try {
+      result = await guardedUpdate(run2, plan, { dependencies: resolved });
+    } catch (error2) {
+      fail(run2, plan, error2);
+      outcome.linkFailed.add(plan.path);
+      continue;
+    }
+    settleLinks(context, plan, result, resolved);
+    outcome.pushed.get(plan.path).add(DEPENDENCIES);
+    const entry2 = [...report.created, ...report.updated].find((operation2) => operation2.path === plan.path);
+    if (entry2) entry2.fields.push(DEPENDENCIES);
+    else report.updated.push({ path: plan.path, remoteId: result.id, url: result.url, fields: [DEPENDENCIES] });
+    if (plan.create) await record$2(run2, plan);
+  }
+  return outcome;
+}
+async function guardedUpdate({ context, bound: { connection, connector } }, plan, change2) {
+  try {
+    return await connector.update(connection, plan.id, change2, plan.remote.rev);
+  } catch (error2) {
+    if (!isStale(error2)) throw error2;
+    const [fresh] = await connector.query(connection, [plan.id]);
+    if (fresh === void 0 || !sameValues(plan.remoteValues, remoteValues(context, fresh))) throw error2;
+    return connector.update(connection, plan.id, change2, fresh.rev);
+  }
+}
+function fail({ report, options: options2 }, plan, error2) {
+  if (codeOf(error2) === "CONNECTOR_AUTH_FAILED") throw error2;
+  const stale = isStale(error2);
+  if (stale && options2.resolution) throw backlogError("SYNC_CONFLICT", `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
+  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? "SYNC_CONFLICT" : codeOf(error2), message: stale ? "The remote item changed during the sync; run the sync again." : String(error2.message) });
+}
+async function record$2({ store, hash }, plan) {
+  store.set(plan.path, { id: plan.id, url: plan.url, rev: plan.remoteChanged.length === 0 ? plan.remote.rev : UNSETTLED_REV, fields: nextBase(plan, /* @__PURE__ */ new Set(), /* @__PURE__ */ new Set(), hash) });
+  await store.save();
+}
+function resolvedLocal(context, plan) {
+  const values2 = localValues(context, plan.item, plan.frontmatter, plan.body);
+  const parent2 = values2.get("parent");
+  if (typeof parent2 === "string" && parent2.startsWith(PLACEHOLDER)) values2.delete("parent");
+  const links2 = values2.get(DEPENDENCIES);
+  if (Array.isArray(links2) && links2.length > 0) values2.delete(DEPENDENCIES);
+  return values2;
+}
+function settleLinks(context, plan, result, resolved) {
+  const before = plan.remoteValues;
+  Object.assign(plan, { remote: result, remoteValues: remoteValues(context, result) });
+  for (const [field2, value2] of plan.remoteValues) {
+    if (field2 !== DEPENDENCIES && before.has(field2) && canonical(field2, before.get(field2)) !== canonical(field2, value2)) plan.remoteChanged.push(field2);
+  }
+  plan.local.set(DEPENDENCIES, sortedIds(resolved));
+  const stored = plan.remoteValues.get(DEPENDENCIES);
+  if (stored !== void 0 && canonical(DEPENDENCIES, stored) !== canonical(DEPENDENCIES, resolved)) {
+    plan.baseFrom.set(DEPENDENCIES, "remote");
+    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "server-kept", reason: `the platform stored ${canonical(DEPENDENCIES, stored)} instead of ${canonical(DEPENDENCIES, resolved)}; the next sync pushes the note's value again` });
+  }
+}
 const basename = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
 function landings(session, context, plans, pathOfRemote2) {
   const landed = plans.map((plan) => {
@@ -39976,6 +40219,11 @@ function landings(session, context, plans, pathOfRemote2) {
   const renamed = new Map(landed.flatMap((landing) => landing.renameTo === null ? [] : [[landing.plan.path, landing.renameTo]]));
   for (const { note } of landed) if (typeof note.write.parent === "string") note.write.parent = renamed.get(note.write.parent) ?? note.write.parent;
   return landed;
+}
+function dependsOnList(plan, wanted, link2) {
+  const targets2 = new Set(wanted), kept = /* @__PURE__ */ new Set();
+  const list2 = plan.item.dependsOnEntries.filter((entry2) => entry2.path !== null && targets2.has(entry2.path) && !kept.has(entry2.path) && kept.add(entry2.path)).map((entry2) => entry2.raw);
+  return [...list2, ...wanted.filter((path2) => !kept.has(path2)).map(link2)];
 }
 async function commitVault(session, context, items2, store, pushed, hash, live) {
   const { connection } = context;
@@ -40002,16 +40250,20 @@ async function commitVault(session, context, items2, store, pushed, hash, live) 
     }
     const extra = { ...note.extra };
     if (plan.url !== null && (plan.relink || plan.create)) setOwn(extra, connection.linkProperty, plan.url);
-    if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== void 0) {
+    if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== void 0 || note.dependsOn !== void 0) {
       const write = itemEdit(session, { ...note.write, path: path2 }, links2);
+      const dependsOn = note.dependsOn === void 0 ? void 0 : dependsOnList(plan, note.dependsOn, (target) => links2(target, path2));
       edits.push({
         path: path2,
         ...note.body === void 0 ? {} : { body: note.body },
         edit: (frontmatter2) => {
           const failure2 = write.edit(frontmatter2);
           if (failure2) return failure2;
-          for (const [key, value2] of Object.entries(extra)) setOwn(frontmatter2, key, value2);
-          for (const key of note.removed) delete frontmatter2[key];
+          for (const [key2, value2] of Object.entries(extra)) setOwn(frontmatter2, key2, value2);
+          for (const key2 of note.removed) delete frontmatter2[key2];
+          const key = session.settings.dependsOnKey;
+          if (dependsOn !== void 0 && dependsOn.length > 0) setOwn(frontmatter2, key, dependsOn);
+          else if (dependsOn !== void 0) delete frontmatter2[key];
           return null;
         }
       });
@@ -40035,9 +40287,6 @@ async function commitVault(session, context, items2, store, pushed, hash, live) 
     }
   }
 }
-const PLACEHOLDER = "new:";
-const codeOf = (error2) => isRecord$1(error2) && typeof error2.code === "string" ? error2.code : "OPERATION_FAILED";
-const keys = (values2) => [...values2.keys()];
 const shown = (field2, value2) => JSON.parse(canonical(field2, value2));
 async function syncView(session, bound2, store, hash, options2) {
   const { connection, connector } = bound2;
@@ -40085,8 +40334,8 @@ async function syncView(session, bound2, store, hash, options2) {
     else plans.push(plan);
   }
   if (options2.resolution) ensureResolvable(plans, options2.resolution);
-  const pushed = await pushAll(context, bound2, plans, ids, report, options2, live, store, hash);
-  const failed = new Set(report.failed.map((failure2) => failure2.path));
+  const { pushed, linkFailed } = await pushAll(context, bound2, plans, ids, report, options2, live, store, hash);
+  const failed = new Set(report.failed.map((failure2) => failure2.path).filter((path2) => !linkFailed.has(path2)));
   const settled = plans.filter((plan) => !failed.has(plan.path) && !(plan.create && (options2.direction === "pull" || plan.id === null)));
   for (const plan of plans) {
     report.skipped.push(...plan.skipped);
@@ -40102,60 +40351,9 @@ async function syncView(session, bound2, store, hash, options2) {
   }
   const result = { report, members: new Set(members2.map((member2) => member2.item.path)) };
   if (options2.mode === "status") return result;
+  options2.checkpoint?.();
   report.changes = await commitVault(session, context, landed, store, pushed, hash, live);
   return result;
-}
-async function pushAll(context, { connection, connector }, plans, ids, report, options2, live, store, hash) {
-  const pushed = /* @__PURE__ */ new Map();
-  const parentId = (value2) => {
-    if (typeof value2 !== "string" || !value2.startsWith(PLACEHOLDER)) return value2;
-    const id2 = ids.get(value2.slice(PLACEHOLDER.length));
-    return id2 === void 0 || id2.startsWith(PLACEHOLDER) ? void 0 : id2;
-  };
-  for (const plan of plans) {
-    if (plan.create && options2.direction === "pull") {
-      report.skipped.push({ path: plan.path, code: "not-created", reason: "not synced yet; a push creates it" });
-      continue;
-    }
-    const values2 = plan.create ? new Map([...plan.local].filter(([, value2]) => value2 !== null && !(Array.isArray(value2) && value2.length === 0))) : plan.push;
-    const fields2 = keys(values2);
-    if (fields2.length === 0) continue;
-    if (!live) {
-      (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields: fields2 });
-      continue;
-    }
-    const change2 = remoteChange(context, values2);
-    if (change2.parentId !== void 0) {
-      const parent2 = parentId(change2.parentId);
-      if (parent2 === void 0) delete change2.parentId;
-      else change2.parentId = parent2;
-    }
-    let result;
-    try {
-      result = plan.create ? await connector.create(connection, { ...change2, type: String(plan.local.get("type")), title: String(plan.local.get("title") ?? plan.item.title) }) : await connector.update(connection, plan.id, change2, plan.remote.rev);
-    } catch (error2) {
-      if (codeOf(error2) === "CONNECTOR_AUTH_FAILED") throw error2;
-      const stale = isRecord$1(error2) && isRecord$1(error2.details) && error2.details.reason === "stale-revision";
-      if (stale && options2.resolution) throw backlogError("SYNC_CONFLICT", `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
-      report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? "SYNC_CONFLICT" : codeOf(error2), message: stale ? "The remote item changed during the sync; run the sync again." : String(error2.message) });
-      continue;
-    }
-    if (plan.create) ids.set(plan.path, result.id);
-    settlePush(context, plan, result, options2.direction, plan.create ? resolvedLocal(context, plan) : plan.local);
-    pushed.set(plan.path, new Set(fields2));
-    (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: result.id, url: result.url, fields: fields2 });
-    if (plan.create) {
-      store.set(plan.path, { id: result.id, url: result.url, rev: plan.remoteChanged.length === 0 ? result.rev : UNSETTLED_REV, fields: nextBase(plan, new Set(fields2), /* @__PURE__ */ new Set(), hash) });
-      await store.save();
-    }
-  }
-  return pushed;
-}
-function resolvedLocal(context, plan) {
-  const values2 = localValues(context, plan.item, plan.frontmatter, plan.body);
-  const parent2 = values2.get("parent");
-  if (typeof parent2 === "string" && parent2.startsWith(PLACEHOLDER)) values2.delete("parent");
-  return values2;
 }
 function ensureResolvable(plans, resolution) {
   const settled = plans.flatMap((plan) => plan.resolved);
@@ -40237,6 +40435,10 @@ async function runSync(context, services2, request) {
   const reports = [];
   let left = [];
   services2.activity.syncing = true;
+  const interruption = live ? services2.interrupts() : null;
+  const checkpoint = () => {
+    if (interruption?.signal) throw interrupted(interruption.signal);
+  };
   try {
     if (live) for (const id2 of [...connections].sort()) releases.push(await services2.lock(lockPath(id2), "backlog sync"));
     const stores = /* @__PURE__ */ new Map();
@@ -40245,15 +40447,17 @@ async function runSync(context, services2, request) {
     const held = resolution ? null : await heldPaths(all2, connections, open2);
     const leftOf = (connection) => held === null ? [] : leftEntries(connection, stores.get(connection), held.get(connection));
     for (const view of targets2) {
+      checkpoint();
       const session = await open2(view);
       const connection = bound2.get(view.connection);
-      const { report } = await syncView(session, connection, stores.get(view.connection), services2.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, ...resolution ? { resolution } : {} });
+      const { report } = await syncView(session, connection, stores.get(view.connection), services2.ports.hash, { mode: request.mode, direction: resolution ? "both" : request.direction, checkpoint, ...resolution ? { resolution } : {} });
       for (const entry2 of report.pulled) if (entry2.renamedTo) held?.get(view.connection).add(entry2.renamedTo);
       reports.push(report);
       if (live) await publish(session, services2.hub, connection, report, leftOf(view.connection).length);
     }
     left = connections.flatMap(leftOf);
   } finally {
+    interruption?.dispose();
     services2.activity.syncing = false;
     for (const release2 of releases.reverse()) if (!await release2()) context.events.warn("A backlog sync lock no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs.");
   }
@@ -40266,6 +40470,9 @@ async function runSync(context, services2, request) {
     left,
     changes: reports.flatMap((report) => report.changes)
   };
+}
+function interrupted(signal) {
+  return Object.assign(backlogError("SYNC_INTERRUPTED", `backlog sync stopped after ${signal} before its next remote or vault write; every remote item it created is recorded in the sync state. Run backlog sync again to finish.`, { signal }), signal === "SIGTERM" ? { exitCode: 143 } : {});
 }
 async function heldPaths(all2, connections, open2) {
   const held = new Map(connections.map((id2) => [id2, /* @__PURE__ */ new Set()]));
@@ -40468,8 +40675,8 @@ function backlogCommand(ports2) {
     }
   };
 }
-function only(flags, sub, keys2) {
-  for (const key of Object.keys(flags)) ensure(!Object.hasOwn(options$1, key) || [...selection, ...keys2].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by ${sub}.`);
+function only(flags, sub, keys) {
+  for (const key of Object.keys(flags)) ensure(!Object.hasOwn(options$1, key) || [...selection, ...keys].includes(key), "INVALID_ARGUMENT", `--${key} is not supported by ${sub}.`);
 }
 function iteration(session, rest, flags, ifMatch2) {
   const [sub, ...args] = rest;
@@ -40510,7 +40717,7 @@ function release(session, bases, rest, flags, ifMatch2) {
       return listReleases(session, bases);
   }
 }
-const payload$1 = (keys2) => (value2) => isRecord$1(value2) && keys2.every((key) => typeof value2[key] === "string");
+const payload$1 = (keys) => (value2) => isRecord$1(value2) && keys.every((key) => typeof value2[key] === "string");
 const events$1 = [
   { id: "backlog.item-created", description: "A backlog item, iteration or release note was created: {path, title, type, id, parent?, order?}.", validate: payload$1(["path", "title", "type"]) },
   { id: "backlog.item-moved", description: "An item was reparented or reordered: {path, parent, order, previousParent, previousOrder}.", validate: payload$1(["path"]) },
@@ -40554,7 +40761,8 @@ const de$2 = {
     BACKLOG_CONFIG_PROBLEM: { summary: "Die Backlog-Konfiguration in der .base-Datei verhindert diesen Vorgang.", hint: "Beheben Sie das in der Meldung genannte Problem in den Ansichtsoptionen der .base-Datei und wiederholen Sie den Befehl." },
     BACKLOG_WRITE_REFUSED: { summary: "Das Backlog-Plugin verweigert diesen Schreibvorgang.", hint: "error.details.reason nennt die Regel; wählen Sie einen passenden Eintrag, Typ oder Wert oder binden Sie die fehlende Eigenschaft." },
     BACKLOG_NO_GAP: { summary: "Zwischen den Nachbarn ist kein Rang mehr frei.", hint: "Führen Sie backlog ranks respace (oder backlog ranks seed bei fehlenden Rängen) aus und wiederholen Sie die Verschiebung." },
-    SYNC_CONFLICT: { summary: "Das entfernte Work Item hat sich während des Abgleichs geändert.", hint: "Prüfen Sie den Stand mit backlog sync status und wiederholen Sie den Abgleich oder die Konfliktlösung." }
+    SYNC_CONFLICT: { summary: "Das entfernte Work Item hat sich während des Abgleichs geändert.", hint: "Prüfen Sie den Stand mit backlog sync status und wiederholen Sie den Abgleich oder die Konfliktlösung." },
+    SYNC_INTERRUPTED: { summary: "Der Abgleich wurde durch ein Signal an einer sicheren Stelle angehalten (Exit 130 bei SIGINT, 143 bei SIGTERM); seine Sperren sind freigegeben.", hint: "Jedes bereits angelegte entfernte Work Item steht im Abgleichsstand; führen Sie backlog sync erneut aus, um den Abgleich abzuschließen." }
   }
 };
 const backlogPlugin = {
@@ -40575,7 +40783,7 @@ const backlogPlugin = {
       commands: [backlogCommand((context) => {
         const { services: services2 } = context;
         const ports2 = { stringifyYaml, editFrontmatter, today, hash: hashText };
-        return { bases: services2.get("bases.query"), ports: ports2, sync: () => ({ bases: services2.get("bases.query"), ports: ports2, hub: services2.get("connector.hub"), activity, lock: host.locks(context.root) }) };
+        return { bases: services2.get("bases.query"), ports: ports2, sync: () => ({ bases: services2.get("bases.query"), ports: ports2, hub: services2.get("connector.hub"), activity, lock: host.locks(context.workspaceRoot), interrupts: watchSignals }) };
       })],
       // Sync state files stay keyed by note path when notes or folders are renamed through Forge.
       onload(context) {
@@ -40601,7 +40809,8 @@ const backlogPlugin = {
         { code: "BACKLOG_CONFIG_PROBLEM", category: "input", summary: "The backlog configuration in the .base file blocks this operation.", hint: "Fix the problem named in the message in the .base view options, then rerun the command." },
         { code: "BACKLOG_WRITE_REFUSED", category: "conflict", summary: "The backlog refuses this write.", hint: "error.details.reason names the rule; choose a fitting item, type or value, or bind the missing property." },
         { code: "BACKLOG_NO_GAP", category: "conflict", summary: "No rank is free between the neighbours.", hint: "Run backlog ranks respace (or backlog ranks seed when ranks are missing), then repeat the move." },
-        { code: "SYNC_CONFLICT", category: "conflict", summary: "The remote work item changed while it was being synced.", hint: "Check the state with backlog sync status, then repeat the sync or the resolution.", retryable: true }
+        { code: "SYNC_CONFLICT", category: "conflict", summary: "The remote work item changed while it was being synced.", hint: "Check the state with backlog sync status, then repeat the sync or the resolution.", retryable: true },
+        { code: "SYNC_INTERRUPTED", category: "interrupted", summary: "A signal stopped the sync at a safe point (exit 130 for SIGINT, 143 for SIGTERM); its locks are released.", hint: "Every remote item created so far is recorded in the sync state; run backlog sync again to finish." }
       ],
       strings: { de: de$2 }
     };
@@ -41863,11 +42072,11 @@ function validateAttachment(definition2, node2, interaction) {
 }
 function validateUiInteractions(definitions2, interactions) {
   validateInteractionLibrary(interactions);
-  const byId = new Map(interactions.map((interaction) => [interaction.id, interaction]));
+  const byId2 = new Map(interactions.map((interaction) => [interaction.id, interaction]));
   for (const definition2 of definitions2) {
     const walk = (node2) => {
       if ("tag" in node2) for (const id2 of node2.interactions ?? []) {
-        const interaction = byId.get(id2);
+        const interaction = byId2.get(id2);
         ensure(interaction, "UNKNOWN_INTERACTION", `${definition2.id} references missing interaction ${id2}. Inspect the interactions library or import its definition.`);
         validateAttachment(definition2, node2, interaction);
       }
@@ -41889,10 +42098,10 @@ function checkValue(value2, type2, label2) {
   ensure(typeof value2 === type2, "INVALID_UI", `${label2} must be ${type2}.`);
 }
 function validateUiLibrary(definitions2, interactions = []) {
-  const byId = /* @__PURE__ */ new Map();
+  const byId2 = /* @__PURE__ */ new Map();
   for (const definition2 of definitions2) {
-    ensure(!byId.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
-    byId.set(definition2.id, definition2);
+    ensure(!byId2.has(definition2.id), "DUPLICATE_UI_COMPONENT", `Duplicate component ${definition2.id}.`);
+    byId2.set(definition2.id, definition2);
   }
   const edges = /* @__PURE__ */ new Map();
   for (const definition2 of definitions2) {
@@ -41910,7 +42119,7 @@ function validateUiLibrary(definitions2, interactions = []) {
         if (node2.text !== void 0) checkBinding(node2.text);
         for (const value2 of Object.values(node2.attrs ?? {})) checkBinding(value2);
       } else {
-        const target = byId.get(node2.component);
+        const target = byId2.get(node2.component);
         ensure(target, "UNKNOWN_UI_COMPONENT", `${definition2.id} references missing component ${node2.component}.`);
         references.add(node2.component);
         for (const [name2, value2] of Object.entries(node2.props ?? {})) {
@@ -41946,7 +42155,7 @@ function validateUiLibrary(definitions2, interactions = []) {
     active.delete(id2);
     visited.add(id2);
   };
-  for (const id2 of byId.keys()) visit2(id2);
+  for (const id2 of byId2.keys()) visit2(id2);
   validateUiInteractions(definitions2, interactions);
 }
 function componentDependencies(root) {
@@ -41959,11 +42168,11 @@ function componentDependencies(root) {
   return [...dependencies2].sort();
 }
 function selectUiComponents(definitions2, id2) {
-  const byId = new Map(definitions2.map((definition2) => [definition2.id, definition2]));
+  const byId2 = new Map(definitions2.map((definition2) => [definition2.id, definition2]));
   const selected2 = /* @__PURE__ */ new Set();
   const select = (component) => {
     if (selected2.has(component)) return;
-    const definition2 = byId.get(component);
+    const definition2 = byId2.get(component);
     ensure(definition2, "UNKNOWN_UI_COMPONENT", `Missing component ${component}.`);
     selected2.add(component);
     for (const dependency of componentDependencies(definition2.root)) select(dependency);
@@ -42347,9 +42556,9 @@ function putProp(target, key, value2) {
   else
     target[key] = value2;
 }
-function mirrorShape(target, source2, keys2, wrap2) {
+function mirrorShape(target, source2, keys, wrap2) {
   const raw = sourceShape(source2);
-  for (const key of keys2) {
+  for (const key of keys) {
     const desc = Object.getOwnPropertyDescriptor(raw, key);
     if (!desc.enumerable)
       continue;
@@ -42496,15 +42705,15 @@ function pick(schema2, mask) {
 }
 function maskedKeys(schema2, mask) {
   const raw = sourceShape(schema2);
-  const keys2 = [];
+  const keys = [];
   for (const key of Reflect.ownKeys(mask)) {
     if (!Object.getOwnPropertyDescriptor(raw, key)?.enumerable) {
       throw new Error(`Unrecognized key: "${String(key)}"`);
     }
     if (mask[key])
-      keys2.push(key);
+      keys.push(key);
   }
-  return keys2;
+  return keys;
 }
 function omit(schema2, mask) {
   const currDef = schema2._zod.def;
@@ -44250,10 +44459,10 @@ function handlePropertyResult(result, final, key, input, optin, optout) {
 }
 const NO_SYMBOL_KEYS = [];
 function normalizeDef(def) {
-  const keys2 = Object.keys(def.shape);
+  const keys = Object.keys(def.shape);
   const ownSymbols = Object.getOwnPropertySymbols(def.shape);
   const symbolKeys = ownSymbols.length ? ownSymbols : NO_SYMBOL_KEYS;
-  const allKeys = symbolKeys.length ? [...keys2, ...symbolKeys] : keys2;
+  const allKeys = symbolKeys.length ? [...keys, ...symbolKeys] : keys;
   for (const k of allKeys) {
     if (!def.shape?.[k]?._zod?.traits?.has("$ZodType")) {
       throw new Error(`Invalid element at key "${String(k)}": expected a Zod schema`);
@@ -44265,8 +44474,8 @@ function normalizeDef(def) {
     allKeys,
     symbolKeys,
     // string-only: handleCatchall matches it against `for...in`, which never yields a symbol
-    keySet: new Set(keys2),
-    numKeys: keys2.length,
+    keySet: new Set(keys),
+    numKeys: keys.length,
     optionalKeys: new Set(okeys)
   };
 }
@@ -44656,19 +44865,19 @@ function handleIntersectionResults(result, left, right) {
   let unrecIssue;
   const keyIssues = /* @__PURE__ */ new Map();
   const collect = (iss, side) => {
-    let keys2;
+    let keys;
     if (iss.code === "unrecognized_keys" && !iss.path?.length) {
       unrecIssue ?? (unrecIssue = iss);
-      keys2 = iss.keys;
+      keys = iss.keys;
     } else if (iss.code === "invalid_key" && iss.origin === "record" && iss.path?.length === 1) {
       const k = String(iss.path[0]);
       if (!keyIssues.has(k))
         keyIssues.set(k, iss);
-      keys2 = [k];
+      keys = [k];
     } else {
       return false;
     }
-    for (const k of keys2) {
+    for (const k of keys) {
       if (!unrecKeys.has(k))
         unrecKeys.set(k, {});
       unrecKeys.get(k)[side] = true;
@@ -46333,8 +46542,8 @@ function compactTypeUnion(schema2) {
     if (!option2 || typeof option2 !== "object")
       return;
     compactTypeUnion(option2);
-    const keys2 = Object.keys(option2);
-    if (keys2.length !== 1 || keys2[0] !== "type")
+    const keys = Object.keys(option2);
+    if (keys.length !== 1 || keys[0] !== "type")
       return;
     const type2 = option2.type;
     for (const member2 of Array.isArray(type2) ? type2 : [type2]) {
@@ -47927,11 +48136,11 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   inst._zod.processJSONSchema = (ctx, json2, params) => enumProcessor(inst, ctx, json2);
   inst.enum = def.entries;
   inst.options = [...inst._zod.values];
-  const keys2 = new Set(Object.keys(def.entries));
+  const keys = new Set(Object.keys(def.entries));
   inst.extract = (values2, params) => {
     const newEntries = {};
     for (const value2 of values2) {
-      if (keys2.has(value2)) {
+      if (keys.has(value2)) {
         newEntries[value2] = def.entries[value2];
       } else
         throw new Error(`Key ${value2} not found in enum`);
@@ -47946,7 +48155,7 @@ const ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
   inst.exclude = (values2, params) => {
     const newEntries = { ...def.entries };
     for (const value2 of values2) {
-      if (keys2.has(value2)) {
+      if (keys.has(value2)) {
         delete newEntries[value2];
       } else
         throw new Error(`Key ${value2} not found in enum`);
@@ -49957,7 +50166,7 @@ const claudeTarget = (openFiles) => async (context, flags) => {
     let root = directory;
     while (true) {
       try {
-        ensure((await promises$1.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
+        ensure((await promises.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
         break;
       } catch (error2) {
         if (error2.code !== "ENOENT") throw error2;
@@ -50019,7 +50228,7 @@ class NodeClaudeRuntime {
     );
     let directory;
     try {
-      directory = (await promises$1.stat(options2.cwd)).isDirectory();
+      directory = (await promises.stat(options2.cwd)).isDirectory();
     } catch (error2) {
       throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options2.cwd}`, { cause: errorMessage(error2) });
     }
@@ -50050,7 +50259,7 @@ class NodeClaudeRuntime {
         process.removeListener("SIGTERM", terminate);
         process.removeListener("exit", exit2);
       };
-      const fail = (code2, message2, details = {}, exitCode) => {
+      const fail2 = (code2, message2, details = {}, exitCode) => {
         if (settled) return;
         settled = true;
         cleanup();
@@ -50074,8 +50283,8 @@ class NodeClaudeRuntime {
           ...output2()
         }, exitCode));
       };
-      const interrupt = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" });
-      const terminate = () => fail("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGTERM while running Claude.", { signal: "SIGTERM" }, 143);
+      const interrupt = () => fail2("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGINT while running Claude.", { signal: "SIGINT" });
+      const terminate = () => fail2("CLAUDE_COMMAND_INTERRUPTED", "Forge received SIGTERM while running Claude.", { signal: "SIGTERM" }, 143);
       const exit2 = () => {
         try {
           stop();
@@ -50085,7 +50294,7 @@ class NodeClaudeRuntime {
       process.once("SIGINT", interrupt);
       process.once("SIGTERM", terminate);
       process.once("exit", exit2);
-      timer = setTimeout(() => fail(
+      timer = setTimeout(() => fail2(
         "CLAUDE_COMMAND_TIMEOUT",
         `Claude command exceeded ${timeoutMs} milliseconds.`,
         { timeoutMs }
@@ -50095,7 +50304,7 @@ class NodeClaudeRuntime {
         const remaining = this.maxOutputBytes - outputBytes;
         chunks.push(chunk.subarray(0, remaining));
         outputBytes += Math.min(chunk.length, remaining);
-        if (chunk.length > remaining) fail(
+        if (chunk.length > remaining) fail2(
           "CLAUDE_OUTPUT_LIMIT",
           `Claude command exceeded ${this.maxOutputBytes} bytes of output.`,
           { maxOutputBytes: this.maxOutputBytes }
@@ -50105,17 +50314,17 @@ class NodeClaudeRuntime {
       child.stderr.on("data", (chunk) => collect(stderr, chunk));
       child.on("error", (error2) => {
         if ("code" in error2 && error2.code === "ENOENT") {
-          fail("CLAUDE_NOT_INSTALLED", `Claude executable was not found: ${this.executable}. Install Claude Code and make claude available on PATH, or provide its executable path.`);
-        } else fail("CLAUDE_COMMAND_FAILED", `Cannot execute Claude: ${error2.message}`);
+          fail2("CLAUDE_NOT_INSTALLED", `Claude executable was not found: ${this.executable}. Install Claude Code and make claude available on PATH, or provide its executable path.`);
+        } else fail2("CLAUDE_COMMAND_FAILED", `Cannot execute Claude: ${error2.message}`);
       });
       child.on("close", (exitCode, signal) => {
         if (settled) return;
         if (exitCode === null) {
-          fail("CLAUDE_COMMAND_FAILED", `Claude command stopped unexpectedly${signal ? ` (${signal})` : ""}.`, { signal });
+          fail2("CLAUDE_COMMAND_FAILED", `Claude command stopped unexpectedly${signal ? ` (${signal})` : ""}.`, { signal });
           return;
         }
         if (exitCode === 0 && inputError) {
-          fail("CLAUDE_COMMAND_FAILED", "Claude closed its input before the configuration was fully sent. Inspect its state before retrying.", { cause: inputError.message });
+          fail2("CLAUDE_COMMAND_FAILED", "Claude closed its input before the configuration was fully sent. Inspect its state before retrying.", { cause: inputError.message });
           return;
         }
         settled = true;
@@ -50124,7 +50333,7 @@ class NodeClaudeRuntime {
       });
       child.stdin?.on("error", (error2) => {
         inputError = error2;
-        if (!closedInputCodes.has(error2.code ?? "")) fail("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
+        if (!closedInputCodes.has(error2.code ?? "")) fail2("CLAUDE_COMMAND_FAILED", `Cannot send input to Claude: ${error2.message}`);
       });
       child.stdin?.end(options2.stdin);
     });
@@ -51507,6 +51716,7 @@ function fields(process2) {
     type: "System.WorkItemType",
     state: "System.State",
     parent: PARENT_LINK,
+    dependencies: PREDECESSOR_LINK,
     iteration: "System.IterationPath",
     area: "System.AreaPath",
     priority: "Microsoft.VSTS.Common.Priority",
@@ -51616,23 +51826,39 @@ function fieldOperations(change2, context) {
   for (const [reference, value2] of Object.entries(change2.fields ?? {})) operations2.push(field(reference, value2));
   return operations2;
 }
+const addRelation = (rel, context, id2) => ({ op: "add", path: "/relations/-", value: { rel, url: workItemApiUrl(context.organization, id2) } });
+const uniqueIds = (ids) => [...new Set(ids)];
 function createOperations(draft, context) {
   const { type: _type, ...rest } = draft;
   const set2 = Object.fromEntries(Object.entries(rest).filter(([, value2]) => value2 !== null && value2 !== void 0 && !(Array.isArray(value2) && value2.length === 0)));
   const operations2 = fieldOperations({ ...set2, ...rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value2]) => value2 !== null)) } : {} }, context);
   if (draft.area && context.mapping.fields.area === null) operations2.push(field(AREA_PATH, draft.area));
-  if (draft.parentId && context.mapping.fields.parent !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
+  const { parent: parent2, dependencies: dependencies2 } = context.mapping.fields;
+  if (draft.parentId && parent2 !== null) operations2.push(addRelation(parent2, context, draft.parentId));
+  if (dependencies2 !== null) for (const id2 of uniqueIds(draft.dependencies ?? [])) operations2.push(addRelation(dependencies2, context, id2));
   return operations2;
 }
 function updateOperations(patch, expectedRev, context, relations = []) {
   const operations2 = [{ op: "test", path: "/rev", value: Number(expectedRev) }, ...fieldOperations(patch, context)];
-  if (patch.parentId !== void 0 && context.mapping.fields.parent !== null) {
-    const index2 = relations.findIndex((relation) => isRecord$1(relation) && relation.rel === PARENT_LINK);
-    if (index2 >= 0) operations2.push({ op: "remove", path: `/relations/${index2}` });
-    if (patch.parentId !== null) operations2.push({ op: "add", path: "/relations/-", value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, patch.parentId) } });
+  const { parent: parent2, dependencies: dependencies2 } = context.mapping.fields;
+  const removals = [], additions = [];
+  const indexed2 = relations.map((relation, index2) => ({ index: index2, rel: isRecord$1(relation) ? relation.rel : void 0, id: isRecord$1(relation) ? lastSegment(relation.url) : null }));
+  if (patch.parentId !== void 0 && parent2 !== null) {
+    const current = indexed2.find((relation) => relation.rel === parent2);
+    if (current) removals.push(current.index);
+    if (patch.parentId !== null) additions.push(addRelation(parent2, context, patch.parentId));
   }
-  return operations2;
+  if (patch.dependencies !== void 0 && dependencies2 !== null) {
+    const wanted = new Set(patch.dependencies);
+    const linked = indexed2.filter((relation) => relation.rel === dependencies2);
+    removals.push(...linked.filter((relation) => relation.id === null || !wanted.has(relation.id)).map((relation) => relation.index));
+    const kept = new Set(linked.map((relation) => relation.id));
+    additions.push(...uniqueIds(patch.dependencies).filter((id2) => !kept.has(id2)).map((id2) => addRelation(dependencies2, context, id2)));
+  }
+  for (const index2 of removals.sort((a, b) => b - a)) operations2.push({ op: "remove", path: `/relations/${index2}` });
+  return [...operations2, ...additions];
 }
+const byId = (a, b) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
 const text$4 = (value2) => typeof value2 === "string" && value2.trim() !== "" ? value2 : null;
 const number = (value2) => typeof value2 === "number" && Number.isFinite(value2) ? value2 : typeof value2 === "string" && value2.trim() !== "" && Number.isFinite(Number(value2)) ? Number(value2) : null;
 function remoteItem(json2, context, url2) {
@@ -51653,14 +51879,14 @@ function remoteItem(json2, context, url2) {
     type: String(values2["System.WorkItemType"] ?? ""),
     title: String(read2(fields2.title) ?? ""),
     state: text$4(read2(fields2.state)),
-    parentId: lastSegment(relations.find((relation) => relation.rel === PARENT_LINK)?.url),
+    parentId: fields2.parent === null ? void 0 : lastSegment(relations.find((relation) => relation.rel === fields2.parent)?.url),
     iteration: text$4(read2(fields2.iteration)),
     area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
     priority: number(read2(fields2.priority)),
     effort: number(read2(fields2.effort)),
     tags: (text$4(read2(fields2.tags)) ?? "").split(";").map((tag) => tag.trim()).filter(Boolean),
     ...description2 === void 0 ? {} : { description: description2, descriptionMarkdown: markdown },
-    links: { predecessors: relations.filter((relation) => relation.rel === PREDECESSOR_LINK).map((relation) => lastSegment(relation.url)).filter((value2) => value2 !== null) },
+    ...fields2.dependencies === null ? {} : { dependencies: [...new Set(relations.filter((relation) => relation.rel === fields2.dependencies).map((relation) => lastSegment(relation.url)).filter((value2) => value2 !== null))].sort(byId) },
     fields: Object.fromEntries(Object.values(context.mapping.properties).map((reference) => [reference, values2[reference] ?? null]))
   };
 }
@@ -51788,7 +52014,7 @@ class AzureDevOpsConnector {
   async update(connection, id2, patch, expectedRev) {
     const context = this.context(connection);
     const url2 = this.projectUrl(connection, `workitems/${encodeURIComponent(id2)}`);
-    const relations = patch.parentId === void 0 ? [] : (await this.call(connection, "GET", `${url2}?$expand=relations&api-version=${API_VERSION}`)).relations;
+    const relations = patch.parentId === void 0 && patch.dependencies === void 0 ? [] : (await this.call(connection, "GET", `${url2}?$expand=relations&api-version=${API_VERSION}`)).relations;
     const operations2 = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
     const json2 = await this.call(connection, "PATCH", `${url2}?$expand=relations&api-version=${API_VERSION}`, operations2, { contentType: "application/json-patch+json", retry: true });
     return remoteItem(json2, context, (item) => this.link(connection, item));
@@ -51853,11 +52079,11 @@ const azureDevOpsPlugin = {
     };
   }
 };
-function nodeLockFiles(root) {
+function nodeLockFiles(root, recovered) {
   return async (path2, command2) => {
     const target = await (await NodeFiles.at(root)).resolvePath(path2);
-    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
-    const token = await acquireLock(target, () => ({ command: command2 }), `Lock ${path2}`);
+    await promises.mkdir(minpath.dirname(target), { recursive: true });
+    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => recovered(lock, recoveredLockMessage(lock)));
     return async () => await releaseLock(target, token) === "released";
   };
 }
@@ -51943,7 +52169,7 @@ async function loadConfig(options2) {
   let content2;
   let exists2 = true;
   try {
-    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
+    content2 = JSON.parse(await promises.readFile(path2, "utf8"));
   } catch (error2) {
     if (error2.code === "ENOENT") {
       content2 = {};
@@ -51965,7 +52191,7 @@ const distributionPolicy = {
 };
 const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
-  const root = await promises$1.lstat(bundleDir);
+  const root = await promises.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
   const readAsset = async (path2) => {
     vaultPath(path2);
@@ -51974,10 +52200,10 @@ async function readSetupArtifacts(bundleDir) {
     let current = bundleDir;
     for (const [index2, segment2] of segments2.entries()) {
       current = minpath.join(current, segment2);
-      const entry2 = await promises$1.lstat(current);
+      const entry2 = await promises.lstat(current);
       ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
     }
-    return promises$1.readFile(current);
+    return promises.readFile(current);
   };
   const manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
   ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
@@ -65722,6 +65948,11 @@ const germanGuidance = {
     "node bin/forge.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
   }
 };
+const germanRecoveredLock = {
+  message: "Die verwaiste Sperre {path} von PID {pid} auf {host} (seit {since}{command}) wurde entfernt: {reason}. Prüfen Sie, was dieser Lauf unvollendet hinterlassen hat (zum Beispiel mit git status oder backlog sync status).",
+  command: ", Befehl {command}",
+  reasons: { "dead-process": "ihr Prozess läuft nicht mehr", "reused-pid": "ihre Prozess-ID gehört inzwischen einem anderen Prozess", rebooted: "sie wurde vor dem letzten Neustart dieses Rechners geschrieben" }
+};
 const germanEvents = {
   "command.started": "Ein weitergeleiteter Befehl aktiviert gleich Plugins und läuft an.",
   "command.succeeded": "Ein weitergeleiteter Befehl wurde erfolgreich beendet.",
@@ -65780,7 +66011,7 @@ const germanErrors = {
   SECTION_NOT_FOUND: { summary: "Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.", hint: 'Lesen Sie die Notiz und übernehmen Sie einen Überschriftenpfad aus error.details.headings (Abschnitte mit " > " verbunden) oder eine Block-ID aus error.details.blocks.' },
   AMBIGUOUS_SECTION: { summary: "Der --section-Pfad passt zu mehreren Überschriften, oder die --block-ID kommt mehrfach vor.", hint: "Ergänzen Sie übergeordnete Überschriften im Pfad (Eltern > Überschrift), bis nur einer der Kandidaten in error.details.candidates bleibt, oder übergeben Sie die Zeile eines Kandidaten als --section-line (sectionLine in einem apply-Plan); geben Sie jedem Block eine eindeutige ID." },
   INVALID_PLAN: { summary: "Der apply-Plan oder Schreibstapel ist ungültig: Er entspricht nicht dem Planschema, oder seine Schritte enthalten doppelte oder überlappende Pfade.", hint: "Korrigieren Sie den in error.details.operation genannten Vorgang (siehe error.details.issues und das Planschema in help apply); schreiben Sie jeden Pfad nur einmal und verwenden Sie keinen Pfad erneut, den derselbe Plan verschiebt oder löscht." },
-  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock; Forge entfernt sie nie automatisch.", hint: 'Warten Sie und versuchen Sie es erneut. Meldet error.details.stale "likely" (gleicher Rechner, PID-Namensraum und Systemstart; die Prozess-ID läuft nicht mehr), prüfen Sie die Änderungen des Halters, stellen Sie sicher, dass kein Forge-Schreibvorgang läuft, und löschen Sie dann die Sperrdatei. Bei "unknown" prüfen Sie den Halter in error.details.lock zuerst selbst.' },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.", hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl.' },
   DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
   PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
   INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
@@ -65956,6 +66187,13 @@ class Localizer {
     };
     return data;
   }
+  /** The warning for a stale lock an acquisition removed: `english` as the adapter wrote it, or the German text. */
+  recoveredLock({ path: path2, holder, reason }, english) {
+    if (this.language !== "de") return english;
+    const fill2 = (template, values2) => template.replace(/\{(\w+)\}/g, (_match, key) => String(values2[key]));
+    const command2 = holder.command === void 0 ? "" : fill2(germanRecoveredLock.command, { command: holder.command });
+    return fill2(germanRecoveredLock.message, { path: path2, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command: command2, reason: germanRecoveredLock.reasons[reason] });
+  }
   /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
   error(error2) {
     const code2 = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
@@ -65971,9 +66209,10 @@ class Localizer {
     const builtIn = errorDefinition(code2), contributed = builtIn ? void 0 : this.plugins?.error(code2);
     const definition2 = builtIn ?? contributed;
     if (!definition2) return { code: code2, message: diagnostic2, ...details ? { details } : {} };
+    const retryable2 = error2 instanceof AppError && error2.retryable !== void 0 ? error2.retryable : definition2.retryable;
     const german = this.language !== "de" ? void 0 : builtIn ? germanErrors[code2] : this.plugins?.localizedError(code2, "de");
-    if (!german) return { code: code2, message: diagnostic2, hint: definition2.hint, retryable: definition2.retryable, ...details ? { details } : {} };
-    return { code: code2, message: german.summary, hint: german.hint, retryable: definition2.retryable, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
+    if (!german) return { code: code2, message: diagnostic2, hint: definition2.hint, retryable: retryable2, ...details ? { details } : {} };
+    return { code: code2, message: german.summary, hint: german.hint, retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
   }
 }
 const corePlugins = [
@@ -66021,7 +66260,8 @@ async function run() {
       else eventLevel = config2.settings.events;
       compact = config2.settings.json;
       let lockOwner = {};
-      const files = await NodeFiles.at(loaded.root, (message2) => events2.warn(message2), () => lockOwner);
+      const recovered = (lock, message2) => events2.warn(localizer.recoveredLock(lock, message2));
+      const files = await NodeFiles.at(loaded.root, (message2) => events2.warn(message2), () => lockOwner, recovered);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events2);
       events2.on("command.started", ({ command: command22, operationId }) => {
@@ -66053,7 +66293,7 @@ async function run() {
         fileDates: nodeFileDates,
         openFiles: (root, warn) => NodeFiles.at(root, warn),
         operationId: () => events2.nextOperationId(),
-        locks: nodeLockFiles,
+        locks: (root) => nodeLockFiles(root, recovered),
         http: new FetchHttpClient(),
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);

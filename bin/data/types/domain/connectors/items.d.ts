@@ -3,7 +3,7 @@
  * per-connection mappings. The connector port (`application/connectors/contract.ts`) exchanges these values.
  */
 /** The neutral fields the sync engine compares per item. */
-export declare const SYNC_FIELDS: readonly ["title", "type", "state", "parent", "iteration", "area", "priority", "effort", "tags", "description"];
+export declare const SYNC_FIELDS: readonly ["title", "type", "state", "parent", "dependencies", "iteration", "area", "priority", "effort", "tags", "description"];
 export type SyncField = typeof SYNC_FIELDS[number];
 /** One remote work item in neutral form. Values use the remote vocabulary (type and state names, iteration paths). */
 export interface RemoteItem {
@@ -29,10 +29,8 @@ export interface RemoteItem {
     description?: string | null;
     /** True only when the platform declared the description's format as Markdown on this read. */
     descriptionMarkdown?: boolean;
-    /** Remote ids of predecessors (dependencies), when the platform links them. */
-    links?: {
-        predecessors: string[];
-    };
+    /** Remote ids of the item's predecessors (the items it depends on); undefined when dependencies are not mapped. */
+    dependencies?: string[];
     /** Further mapped remote fields by remote field reference. */
     fields: Record<string, unknown>;
 }
@@ -49,6 +47,8 @@ export interface RemoteDraft {
     tags?: string[];
     description?: string | null;
     fields?: Record<string, unknown>;
+    /** Remote ids of the predecessors; in a patch, the complete new set (links to other ids are removed). */
+    dependencies?: string[];
 }
 /** Changed fields of an existing remote item; `null` clears a field (an area or iteration falls back to the connection's default). */
 export type RemotePatch = Partial<RemoteDraft>;

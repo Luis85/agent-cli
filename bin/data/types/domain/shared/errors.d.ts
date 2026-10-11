@@ -1,13 +1,20 @@
 import { type ErrorCode } from './error-catalog.ts';
-/** Carries a stable code. Built-in failures use `forgeError` or `ensure`; other codes are plugin-defined. */
+/**
+ * Carries a stable code. Built-in failures use `forgeError` or `ensure`; other codes are plugin-defined. `retryable`
+ * overrides the catalog's retryability when this occurrence knows better (a lock whose holder cannot be verified).
+ */
 export declare class AppError extends Error {
     readonly code: string;
     readonly exitCode: number;
     readonly details?: Record<string, unknown> | undefined;
-    constructor(code: string, message: string, exitCode?: number, details?: Record<string, unknown> | undefined);
+    readonly retryable?: boolean | undefined;
+    constructor(code: string, message: string, exitCode?: number, details?: Record<string, unknown> | undefined, retryable?: boolean | undefined);
 }
-/** Create a built-in failure whose exit status comes from the error catalog. Only signal interruptions override it. */
-export declare function forgeError(code: ErrorCode, message: string, details?: Record<string, unknown>, exitCode?: number): AppError;
+/**
+ * Create a built-in failure whose exit status comes from the error catalog. Only signal interruptions override it;
+ * `retryable` overrides the catalog's retryability for this occurrence.
+ */
+export declare function forgeError(code: ErrorCode, message: string, details?: Record<string, unknown>, exitCode?: number, retryable?: boolean): AppError;
 /** A failure with a plugin-registered code; its exit status comes from the plugin's error catalog entry. */
 export declare function codedError(code: string, message: string, exitCode: number, details?: Record<string, unknown>): AppError;
 /** The same failure located inside a larger request: its message gains `prefix` and its details gain `details`. */
