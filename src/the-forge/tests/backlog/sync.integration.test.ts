@@ -32,7 +32,9 @@ describe('pushing a new backlog', () => {
     const created = fake.list('contoso').slice(before);
     expect(created.map(item => [item.fields['System.WorkItemType'], item.fields['System.Title']])).toEqual([['Epic', 'Trip planning'], ['Feature', 'Itinerary builder'], ['User Story', 'Draft a trip']]);
     const [epic, feature, story] = created;
-    expect(feature!.relations).toEqual([{ rel: 'System.LinkTypes.Hierarchy-Reverse', url: `${fake.organization('contoso')}/_apis/wit/workItems/${epic!.id}` }]);
+    expect(feature!.relations.filter(relation => relation.rel === 'System.LinkTypes.Hierarchy-Reverse')).toEqual([{ rel: 'System.LinkTypes.Hierarchy-Reverse', url: `${fake.organization('contoso')}/_apis/wit/workItems/${epic!.id}` }]);
+    // The service records the reverse link on the parent.
+    expect(epic!.relations).toEqual([{ rel: 'System.LinkTypes.Hierarchy-Forward', url: `${fake.organization('contoso')}/_apis/wit/workItems/${feature!.id}` }]);
     expect(story!.relations[0]!.url).toMatch(new RegExp(`/workItems/${feature!.id}$`));
     expect(story!.fields).toMatchObject({ 'System.State': 'New', 'Microsoft.VSTS.Common.Priority': 1, 'System.Description': 'Plan the **stops**.' });
     expect(story!.multilineFieldsFormat).toEqual({ 'System.Description': 'markdown' });

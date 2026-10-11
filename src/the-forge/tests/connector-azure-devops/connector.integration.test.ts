@@ -26,6 +26,22 @@ describe('the Azure DevOps connector against the recorded API', () => {
     await expect(connector().test(connection({}, 'bad-token-value'))).rejects.toMatchObject({ code: 'CONNECTOR_AUTH_FAILED', details: { status: 401, tokenEnv: 'PAT' } });
   });
 
+  it('creates and replaces predecessor links; the service refuses a dependency cycle and keeps both ends unchanged', async () => {
+    const azure = connector();
+    const first = await azure.create(connection(), { type: 'Task', title: 'Pick dates' });
+    const second = await azure.create(connection(), { type: 'Task', title: 'Book flights', dependencies: [first.id] });
+    expect(second.dependencies).toEqual([first.id]);
+    expect(fake.item('contoso', Number(first.id)).relations).toEqual([{ rel: 'System.LinkTypes.Dependency-Forward', url: `${fake.organization('contoso')}/_apis/wit/workItems/${second.id}` }]);
+    const [current] = await azure.query(connection(), [first.id]);
+    await expect(azure.update(connection(), first.id, { dependencies: [second.id] }, current!.rev)).rejects.toMatchObject({ code: 'CONNECTOR_REQUEST_FAILED', details: { status: 400 } });
+    expect(fake.predecessors('contoso', Number(first.id))).toEqual([]);
+    expect(fake.item('contoso', Number(first.id)).relations).toHaveLength(1);
+    const third = await azure.create(connection(), { type: 'Task', title: 'Pack' });
+    const replaced = await azure.update(connection(), second.id, { dependencies: [third.id] }, second.rev);
+    expect(replaced.dependencies).toEqual([third.id]);
+    expect(fake.item('contoso', Number(first.id)).relations).toEqual([]);
+  });
+
   it('creates, reads by id and links items to their web URL, with the default area for items without one', async () => {
     const azure = connector();
     const parent = await azure.create(connection(), { type: 'Epic', title: 'Plan', tags: ['x'] });

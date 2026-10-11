@@ -21,7 +21,7 @@ Unknown fields are `CONNECTION_INVALID`.
 
 ## Authentication
 
-The connector authenticates with a personal access token (PAT) read from the variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`, the variable the Azure CLI DevOps extension uses). It sends `Authorization: Basic base64(":" + token)` on every request. The PAT needs **Work Items (Read & write)**; `connectors test` needs project read access. A missing variable, a 401 or 403, the 203 sign-in page Azure DevOps returns for an invalid PAT, or a redirect is `CONNECTOR_AUTH_FAILED`. The token never appears in results, events or errors. Entra ID and `az` CLI tokens are not supported yet.
+The connector authenticates with a personal access token (PAT) read from the variable named by `tokenEnv` (default `AZURE_DEVOPS_EXT_PAT`, the variable the Azure CLI DevOps extension uses). It sends `Authorization: Basic base64(":" + token)` on every request. The PAT needs **Work Items (Read & write)**; `connectors test` needs project read access. A missing variable, a 401 or 403, the 203 sign-in page Azure DevOps returns for an invalid PAT, or a redirect is `CONNECTOR_AUTH_FAILED`. The token never appears in results, events or errors. Microsoft Entra ID and `az` CLI tokens are not supported.
 
 ## Requests
 
@@ -29,8 +29,8 @@ The connector authenticates with a personal access token (PAT) read from the var
 | --- | --- |
 | `connectors test` | `GET {organization}/_apis/projects/{project}?includeCapabilities=true`: project id, state and process name (`processMatches` compares it with `process`) |
 | Linked items | `POST {organization}/{project}/_apis/wit/workitemsbatch` with `$expand: relations` and `errorPolicy: omit`, 200 ids per request |
-| Create | `POST …/_apis/wit/workitems/${type}` with a JSON Patch document (`application/json-patch+json`): fields except the state, area path, `multilineFieldsFormat` and the parent relation. Processes start work items in their initial state, so a drafted state other than the one the item was created in follows as an update; if that update fails, the item stays in its initial state and the next sync pushes the state again |
-| Update | `PATCH …/_apis/wit/workitems/{id}`: first `{"op": "test", "path": "/rev", "value": <expected>}`, then the field operations. A parent change reads the item's relations and replaces the parent relation by index. A failed revision test (HTTP 412, `TF26071`) is reported as `stale-revision` |
+| Create | `POST …/_apis/wit/workitems/${type}` with a JSON Patch document (`application/json-patch+json`): fields except the state, area path, `multilineFieldsFormat`, the parent relation and predecessor relations. Processes start work items in their initial state, so a drafted state other than the one the item was created in follows as an update; if that update fails, the item stays in its initial state and the next sync pushes the state again |
+| Update | `PATCH …/_apis/wit/workitems/{id}`: first `{"op": "test", "path": "/rev", "value": <expected>}`, then the field operations. A parent or dependency change first reads the item with `$expand=relations`, then removes relations by index with `{"op": "remove", "path": "/relations/<index>"}` in descending index order (so every index still names the relation it was read as) and adds new ones with `{"op": "add", "path": "/relations/-", "value": {"rel": …, "url": "{organization}/_apis/wit/workItems/{id}"}}`. A failed revision test (HTTP 412, `TF26071`) is reported as `stale-revision` |
 
 Throttled reads and revision-guarded updates (429, 503) are retried with `Retry-After`; creates are never retried. See [transport](connectors.md#the-connector-contract). Failed requests carry the service's error message (`details.status`, the message in the error).
 
@@ -67,6 +67,7 @@ Fields:
 | `type` | `System.WorkItemType` |
 | `state` | `System.State` |
 | `parent` | the `System.LinkTypes.Hierarchy-Reverse` relation |
+| `dependencies` | the `System.LinkTypes.Dependency-Reverse` relations: the item's predecessors (Azure DevOps records the reverse `Dependency-Forward` successor link on each predecessor) |
 | `iteration` | `System.IterationPath`; an item without an iteration is set to the project root |
 | `area` | `System.AreaPath`; an item without an area is set to `areaPath` (else the project), and an item there reads as having none |
 | `priority` | `Microsoft.VSTS.Common.Priority` (1–4) |
@@ -74,7 +75,7 @@ Fields:
 | `tags` | `System.Tags` (`a; b`) |
 | `description` | `System.Description` |
 
-Predecessor links (`System.LinkTypes.Dependency-Reverse`) are read into `links.predecessors`; `dependsOn` lists do not sync yet. Override any default per connection:
+A field reference of `""` stops that field from syncing, such as `"dependencies": ""` to keep predecessor links out of the sync. Override any default per connection:
 
 ```json
 { "mappings": { "types": { "PBI": "Requirement" }, "states": { "Review": "Resolved", "Task:Review": "Active" }, "fields": { "effort": "Microsoft.VSTS.Scheduling.Size", "description": "" }, "properties": { "risk": "Microsoft.VSTS.Common.Risk" } } }
@@ -89,9 +90,18 @@ Azure DevOps stores large text fields as HTML, and since 2025 Azure DevOps Servi
 
 The whole note body is pushed, including embeds and wikilinks, which Azure DevOps shows as plain text. Obsidian `%%comments%%` are removed before the push and kept in the note when a description is pulled.
 
+## Dependencies
+
+A note's `dependsOn` list (the view's `dependsOnProperty`) syncs with the item's predecessor links, compared as a sorted set of remote ids with the same three-way rules as every other field; see [dependencies](backlog.md#dependencies). Links are written in a second phase of each view's sync, after every create of the run, so a note may depend on a note that the same run creates. Azure DevOps refuses a link that already exists and a dependency that would close a cycle (HTTP 400, reported in `failed`).
+
+Adding or removing a link also records the reverse link on the other item. The REST reference's update history example shows such link-only changes recorded on the other item without a new revision, but that is not verified against a live organization. The sync does not depend on it: when a guarded update fails because the revision moved, the connector reads the item again, and if none of its synced values changed (only links seen from the other end) it repeats the update once at the fresh revision; any real remote change stays `SYNC_CONFLICT`.
+
 ## Limitations
 
-- Only items that a bound view returns sync; remote items without a note are not imported.
-- Dependencies (`dependsOn` ↔ predecessor links), assignees, dates, comments and attachments do not sync yet.
+- Only items that a bound view returns sync; remote items without a note are **not imported**. An import would have to select remote items by a separate remote query (WIQL `POST {organization}/{project}/_apis/wit/wiql`, then `workitemsbatch`), because a view's selection is a local Bases filter (formulas, `file.*` properties, links) with no WIQL equivalent. Each imported note would then have to satisfy the view's filter before it is written, or the next sync reports it under `left` and a rerun imports it again. The `bases.query` service evaluates the scope's existing files (and their filesystem dates), so it cannot check a note that is only planned, and writing a note to test it would break dry runs, which must show exactly what a sync writes. Imported bodies would also stay empty while reads do not declare Markdown (see below). Create the notes with `backlog add` and set their link property instead; the next sync links them.
+- Authentication is by personal access token only; Microsoft Entra ID tokens (for example from `az account get-access-token`) are not supported.
+- Assignees, start and target dates, comments and attachments do not sync.
+- Whether reads (`GET` and `workitemsbatch`) return `multilineFieldsFormat` is not verified against a live organization, so remote description edits are pulled only when a read declares Markdown (see [descriptions](#descriptions)).
+- The connector is tested against an in-process fake of the REST API that follows the documented behavior (`tests/support/azure-devops.ts`), not against a live organization.
 - An iteration syncs only when an Iteration note with the iteration path's last segment exists locally.
 - Changing a work item's type follows Azure DevOps' rules for the process; a rejected change fails that note only. A remote type without a local mapping is reported (`unmapped-remote-type`) and not written into the note.

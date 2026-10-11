@@ -42,6 +42,16 @@ export function landings(session: BacklogSession, context: ValueContext, plans: 
 }
 
 /**
+ * A pulled dependsOn list in backlog-view's form: the note's entries that still name a wanted note keep their text
+ * (and order), and each further wanted note is appended as a `"[[link]]"`; an empty list deletes the key.
+ */
+function dependsOnList(plan: ItemPlan, wanted: readonly string[], link: (target: string) => string): string[] {
+  const targets = new Set(wanted), kept = new Set<string>();
+  const list = plan.item.dependsOnEntries.filter(entry => entry.path !== null && targets.has(entry.path) && !kept.has(entry.path) && kept.add(entry.path)).map(entry => entry.raw);
+  return [...list, ...wanted.filter(path => !kept.has(path)).map(link)];
+}
+
+/**
  * The vault side of a sync: notes whose remote title changed are renamed first (rewriting links), then pulled
  * fields, link properties and the state file are written in one guarded batch. Dry runs plan the same writes and
  * return diffs. When only the state file changed meanwhile (another process moved a note), the batch is planned
@@ -70,8 +80,9 @@ export async function commitVault(session: BacklogSession, context: ValueContext
     }
     const extra: Frontmatter = { ...note.extra };
     if (plan.url !== null && (plan.relink || plan.create)) setOwn(extra, connection.linkProperty, plan.url);
-    if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== undefined) {
+    if (Object.keys(note.write).length > 1 || Object.keys(extra).length > 0 || note.removed.length > 0 || note.body !== undefined || note.dependsOn !== undefined) {
       const write = itemEdit(session, { ...note.write, path }, links);
+      const dependsOn = note.dependsOn === undefined ? undefined : dependsOnList(plan, note.dependsOn, target => links(target, path));
       edits.push({
         path, ...(note.body === undefined ? {} : { body: note.body }),
         edit: frontmatter => {
@@ -79,6 +90,9 @@ export async function commitVault(session: BacklogSession, context: ValueContext
           if (failure) return failure;
           for (const [key, value] of Object.entries(extra)) setOwn(frontmatter, key, value);
           for (const key of note.removed) delete frontmatter[key];
+          const key = session.settings.dependsOnKey;
+          if (dependsOn !== undefined && dependsOn.length > 0) setOwn(frontmatter, key, dependsOn);
+          else if (dependsOn !== undefined) delete frontmatter[key];
           return null;
         },
       });
