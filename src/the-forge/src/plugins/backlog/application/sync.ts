@@ -1,19 +1,19 @@
 import type { BoundConnection, ConnectorHub } from '../../../application/connectors/contract.ts';
-import type { RemoteDraft, RemoteItem, RemotePatch } from '../../../domain/connectors/items.ts';
-import { forgeError, isRecord } from '../../../domain/shared/errors.ts';
-import { backlogError } from '../domain/errors.ts';
+import { forgeError } from '../../../domain/shared/errors.ts';
 import { noteBody } from '../domain/notes.ts';
 import { canonical, type FieldKey, type FieldValue } from '../domain/sync-fields.ts';
-import { pathOfRemote, UNSETTLED_REV } from '../domain/sync-state.ts';
+import { pathOfRemote } from '../domain/sync-state.ts';
 import type { BacklogSession } from './session.ts';
 import type { SyncStore } from './sync-store.ts';
-import { identify, nextBase, planItem, settlePush, type Direction, type ItemPlan, type Resolution, type Skip } from './sync-plan.ts';
-import { localValues, remoteChange, type ValueContext, type Values } from './sync-values.ts';
+import { identify, planItem, type Direction, type ItemPlan, type Resolution, type Skip } from './sync-plan.ts';
+import { PLACEHOLDER, pushAll } from './sync-push.ts';
+import type { ValueContext } from './sync-values.ts';
 import { commitVault, landings, type SyncChange } from './sync-vault.ts';
 import { ensureWritable } from './writer.ts';
 
 export type SyncMode = 'sync' | 'status';
-export interface ViewSyncOptions { mode: SyncMode; direction: Direction; resolution?: Resolution }
+/** `checkpoint` throws when the run must stop (a signal); it is called before every remote write and the vault commit. */
+export interface ViewSyncOptions { mode: SyncMode; direction: Direction; resolution?: Resolution; checkpoint?: () => void }
 interface Operation { path: string; remoteId: string | null; url: string | null; fields: FieldKey[] }
 interface Failure { path: string; remoteId: string | null; code: string; message: string }
 
@@ -29,9 +29,6 @@ export interface ViewReport {
 /** A view's report with the note paths it holds, which decide what left the sync set of its connection. */
 export interface ViewSync { report: ViewReport; members: Set<string> }
 
-const PLACEHOLDER = 'new:';
-const codeOf = (error: unknown) => (isRecord(error) && typeof error.code === 'string' ? error.code : 'OPERATION_FAILED');
-const keys = (values: Values) => [...values.keys()];
 /** A field value as reported JSON: its canonical form. */
 const shown = (field: FieldKey, value: FieldValue) => JSON.parse(canonical(field, value)) as unknown;
 
@@ -69,8 +66,9 @@ export async function syncView(session: BacklogSession, bound: BoundConnection, 
     if ('reason' in plan) report.skipped.push(plan); else plans.push(plan);
   }
   if (options.resolution) ensureResolvable(plans, options.resolution);
-  const pushed = await pushAll(context, bound, plans, ids, report, options, live, store, hash);
-  const failed = new Set(report.failed.map(failure => failure.path));
+  const { pushed, linkFailed } = await pushAll(context, bound, plans, ids, report, options, live, store, hash);
+  // A note whose fields were written but whose link update failed still lands its pulls and its new base.
+  const failed = new Set(report.failed.map(failure => failure.path).filter(path => !linkFailed.has(path)));
   const settled = plans.filter(plan => !failed.has(plan.path) && !(plan.create && (options.direction === 'pull' || plan.id === null)));
   for (const plan of plans) {
     report.skipped.push(...plan.skipped);
@@ -86,62 +84,9 @@ export async function syncView(session: BacklogSession, bound: BoundConnection, 
   }
   const result = { report, members: new Set(members.map(member => member.item.path)) };
   if (options.mode === 'status') return result;
+  options.checkpoint?.();
   report.changes = await commitVault(session, context, landed, store, pushed, hash, live);
   return result;
-}
-
-/**
- * Remote writes, planned first: creates in tree preorder so parents exist before their children (a child's parent
- * placeholder resolves to the id just created), then updates guarded by the remote revision. Dry runs and status
- * only report them. Each created item is recorded in the state file right after its create, so no later failure
- * can lose its id and make a retry create it twice. A refused token stops all further requests and aborts the
- * sync after that record; any other failure is reported per note.
- */
-async function pushAll(context: ValueContext, { connection, connector }: BoundConnection, plans: ItemPlan[], ids: Map<string, string>, report: ViewReport, options: ViewSyncOptions, live: boolean, store: SyncStore, hash: (text: string) => string) {
-  const pushed = new Map<string, Set<FieldKey>>();
-  const parentId = (value: unknown): string | null | undefined => {
-    if (typeof value !== 'string' || !value.startsWith(PLACEHOLDER)) return value as string | null;
-    const id = ids.get(value.slice(PLACEHOLDER.length));
-    return id === undefined || id.startsWith(PLACEHOLDER) ? undefined : id;
-  };
-  for (const plan of plans) {
-    if (plan.create && options.direction === 'pull') { report.skipped.push({ path: plan.path, code: 'not-created', reason: 'not synced yet; a push creates it' }); continue; }
-    const values = plan.create ? new Map([...plan.local].filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0))) : plan.push;
-    const fields = keys(values);
-    if (fields.length === 0) continue;
-    if (!live) { (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields }); continue; }
-    const change = remoteChange(context, values) as RemotePatch;
-    if (change.parentId !== undefined) { const parent = parentId(change.parentId); if (parent === undefined) delete change.parentId; else change.parentId = parent; }
-    let result: RemoteItem;
-    try {
-      result = plan.create
-        ? await connector.create(connection, { ...change, type: String(plan.local.get('type')), title: String(plan.local.get('title') ?? plan.item.title) } as RemoteDraft)
-        : await connector.update(connection, plan.id!, change, plan.remote!.rev);
-    } catch (error) {
-      if (codeOf(error) === 'CONNECTOR_AUTH_FAILED') throw error;
-      const stale = isRecord(error) && isRecord(error.details) && error.details.reason === 'stale-revision';
-      if (stale && options.resolution) throw backlogError('SYNC_CONFLICT', `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
-      report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? 'SYNC_CONFLICT' : codeOf(error), message: stale ? 'The remote item changed during the sync; run the sync again.' : String((error as Error).message) });
-      continue;
-    }
-    if (plan.create) ids.set(plan.path, result.id);
-    settlePush(context, plan, result, options.direction, plan.create ? resolvedLocal(context, plan) : plan.local);
-    pushed.set(plan.path, new Set(fields));
-    (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: result.id, url: result.url, fields });
-    if (plan.create) {
-      store.set(plan.path, { id: result.id, url: result.url, rev: plan.remoteChanged.length === 0 ? result.rev : UNSETTLED_REV, fields: nextBase(plan, new Set(fields), new Set(), hash) });
-      await store.save();
-    }
-  }
-  return pushed;
-}
-
-/** A created note's values once its parent's id is known; a parent that could not be created is left out. */
-function resolvedLocal(context: ValueContext, plan: ItemPlan): Values {
-  const values = localValues(context, plan.item, plan.frontmatter, plan.body);
-  const parent = values.get('parent');
-  if (typeof parent === 'string' && parent.startsWith(PLACEHOLDER)) values.delete('parent');
-  return values;
 }
 
 /** A resolution must settle at least one conflict of its note, and every field it names, before anything is written. */

@@ -4,8 +4,8 @@ export type Process = 'agile' | 'scrum' | 'basic' | 'custom';
 export const PROCESSES: readonly Process[] = ['agile', 'scrum', 'basic', 'custom'];
 
 /** The Azure DevOps link type of a parent link (seen from the child) and of a predecessor (dependency). */
-export const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse';
-export const PREDECESSOR_LINK = 'System.LinkTypes.Dependency-Reverse';
+const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse';
+const PREDECESSOR_LINK = 'System.LinkTypes.Dependency-Reverse';
 
 /**
  * Local backlog types → work item types per process. Basic has only Epic, Issue and Task; a Feature files as an
@@ -39,7 +39,7 @@ const effort: Record<Process, string> = {
 
 function fields(process: Process): Record<SyncField, string | null> {
   return {
-    title: 'System.Title', type: 'System.WorkItemType', state: 'System.State', parent: PARENT_LINK, iteration: 'System.IterationPath', area: 'System.AreaPath',
+    title: 'System.Title', type: 'System.WorkItemType', state: 'System.State', parent: PARENT_LINK, dependencies: PREDECESSOR_LINK, iteration: 'System.IterationPath', area: 'System.AreaPath',
     priority: 'Microsoft.VSTS.Common.Priority', effort: effort[process], tags: 'System.Tags', description: 'System.Description',
   };
 }

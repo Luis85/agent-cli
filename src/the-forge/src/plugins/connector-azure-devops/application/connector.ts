@@ -126,7 +126,7 @@ export class AzureDevOpsConnector implements BacklogConnector {
   async update(connection: Connection, id: string, patch: RemotePatch, expectedRev: string): Promise<RemoteItem> {
     const context = this.context(connection);
     const url = this.projectUrl(connection, `workitems/${encodeURIComponent(id)}`);
-    const relations = patch.parentId === undefined ? [] : (await this.call(connection, 'GET', `${url}?$expand=relations&api-version=${API_VERSION}`)).relations;
+    const relations = patch.parentId === undefined && patch.dependencies === undefined ? [] : (await this.call(connection, 'GET', `${url}?$expand=relations&api-version=${API_VERSION}`)).relations;
     const operations = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
     // The update starts with a test of the revision, so repeating it after throttling can never apply it twice.
     const json = await this.call(connection, 'PATCH', `${url}?$expand=relations&api-version=${API_VERSION}`, operations, { contentType: 'application/json-patch+json', retry: true });

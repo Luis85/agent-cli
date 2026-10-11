@@ -17,7 +17,7 @@ import { ProjectService, projectScaffolderService, type ProjectScaffolder, type 
 import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
-import { NodeFiles } from './infrastructure/workspace/files.ts';
+import { NodeFiles, type RecoveredLockReport } from './infrastructure/workspace/files.ts';
 import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
@@ -89,7 +89,9 @@ async function run(): Promise<void> {
       if (requestedEvents !== undefined) config.settings.events = eventLevel; else eventLevel = config.settings.events;
       compact = config.settings.json;
       let lockOwner: LockOwner = {};
-      const files = await NodeFiles.at(loaded.root, message => events.warn(message), () => lockOwner);
+      // A stale lock an acquisition removed is reported in the invocation's language.
+      const recovered: RecoveredLockReport = (lock, message) => events.warn(localizer.recoveredLock(lock, message));
+      const files = await NodeFiles.at(loaded.root, message => events.warn(message), () => lockOwner, recovered);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events);
       // The writer lock names the routed command so WORKSPACE_BUSY can identify its holder.
@@ -116,7 +118,7 @@ async function run(): Promise<void> {
       registerCorePlugins(registry, events, corePlugins, {
         skills: registrySkills(registry), fileDates: nodeFileDates,
         openFiles: (root, warn) => NodeFiles.at(root, warn), operationId: () => events.nextOperationId(),
-        locks: nodeLockFiles, http: new FetchHttpClient(), environment: name => process.env[name],
+        locks: root => nodeLockFiles(root, recovered), http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));

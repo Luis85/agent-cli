@@ -49,6 +49,27 @@ describe('JSON Patch documents', () => {
     ]);
     expect(updateOperations({ parentId: null }, '2', context(), [])).toEqual([{ op: 'test', path: '/rev', value: 2 }]);
   });
+
+  it('makes the predecessor relations exactly the given set, removing by index in descending order before adding', () => {
+    const link = (rel: string, id: number) => ({ rel, url: `${organization}/_apis/wit/workItems/${id}` });
+    const relations = [link('System.LinkTypes.Dependency-Reverse', 4), link('System.LinkTypes.Hierarchy-Reverse', 1), link('System.LinkTypes.Dependency-Forward', 6), link('System.LinkTypes.Dependency-Reverse', 5), link('System.LinkTypes.Dependency-Reverse', 7)];
+    expect(updateOperations({ dependencies: ['5', '8', '8'], parentId: '2' }, '3', context(), relations)).toEqual([
+      { op: 'test', path: '/rev', value: 3 },
+      { op: 'remove', path: '/relations/4' },
+      { op: 'remove', path: '/relations/1' },
+      { op: 'remove', path: '/relations/0' },
+      { op: 'add', path: '/relations/-', value: link('System.LinkTypes.Hierarchy-Reverse', 2) },
+      { op: 'add', path: '/relations/-', value: link('System.LinkTypes.Dependency-Reverse', 8) },
+    ]);
+    expect(createOperations({ type: 'Task', title: 'Pack', dependencies: ['4', '9'] }, context())).toEqual([
+      { op: 'add', path: '/fields/System.Title', value: 'Pack' },
+      { op: 'add', path: '/relations/-', value: link('System.LinkTypes.Dependency-Reverse', 4) },
+      { op: 'add', path: '/relations/-', value: link('System.LinkTypes.Dependency-Reverse', 9) },
+    ]);
+    const unmapped = { ...context(), mapping: processMapping('agile', { fields: { dependencies: '' } }) };
+    expect(updateOperations({ dependencies: [] }, '3', unmapped, relations)).toEqual([{ op: 'test', path: '/rev', value: 3 }]);
+    expect(remoteItem({ id: 1, rev: 1, fields: {}, relations }, unmapped, id => id)).not.toHaveProperty('dependencies');
+  });
 });
 
 describe('reading work items', () => {
@@ -63,7 +84,7 @@ describe('reading work items', () => {
     const item = remoteItem(json(), context(), id => `link/${id}`);
     expect(item).toEqual({
       id: '12', rev: '5', url: 'link/12', type: 'User Story', title: 'Draft', state: 'Active', parentId: '3', iteration: 'Trailhead\\Sprint 1', area: 'Trailhead',
-      priority: 2, effort: 5, tags: ['web', 'ux'], description: '<p>Html</p>', descriptionMarkdown: false, links: { predecessors: ['8'] }, fields: {},
+      priority: 2, effort: 5, tags: ['web', 'ux'], description: '<p>Html</p>', descriptionMarkdown: false, dependencies: ['8'], fields: {},
     });
     expect(remoteItem(json({ 'System.Description': 'Markdown' }), context(), id => id)).toMatchObject({ description: '<p>Html</p>', descriptionMarkdown: true });
     const unmapped = { ...context(), mapping: processMapping('agile', { fields: { description: '' } }) };

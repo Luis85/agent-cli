@@ -49,6 +49,13 @@ export const germanGuidance = {
   },
 };
 
+/** The German warning for a stale lock that an acquisition removed (`{path}`, `{pid}`, `{host}`, `{since}`, `{command}`, `{reason}`). */
+export const germanRecoveredLock = {
+  message: 'Die verwaiste Sperre {path} von PID {pid} auf {host} (seit {since}{command}) wurde entfernt: {reason}. Prüfen Sie, was dieser Lauf unvollendet hinterlassen hat (zum Beispiel mit git status oder backlog sync status).',
+  command: ', Befehl {command}',
+  reasons: { 'dead-process': 'ihr Prozess läuft nicht mehr', 'reused-pid': 'ihre Prozess-ID gehört inzwischen einem anderen Prozess', rebooted: 'sie wurde vor dem letzten Neustart dieses Rechners geschrieben' },
+};
+
 /** German descriptions of host event contracts; plugin-defined events keep their own descriptions. */
 export const germanEvents = {
   'command.started': 'Ein weitergeleiteter Befehl aktiviert gleich Plugins und läuft an.',

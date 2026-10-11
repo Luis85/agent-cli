@@ -17,9 +17,10 @@ export type FileDatesReader = (root: string) => (path: string) => Promise<FileDa
 /** Releases a held lock file; false when the file no longer carried this holder's token (it is then left alone). */
 export type ReleaseLock = () => Promise<boolean>;
 /**
- * Exclusive lock files below an absolute command root (`context.root`), by root-relative path: the file records its
- * holder (pid, host, start time and `command`) like the workspace writer lock. Acquiring a held lock fails at once
- * with WORKSPACE_BUSY naming the holder; a lock is never removed automatically. Missing parent folders are created.
+ * Exclusive lock files below an absolute root, by root-relative path: the file records its holder (pid, host, start
+ * time and `command`) like the workspace writer lock. Acquiring a held lock fails at once with WORKSPACE_BUSY naming
+ * the holder, unless its holder provably no longer runs: then the stale lock is removed and reported as a warning.
+ * Missing parent folders are created.
  */
 export type LockFiles = (root: string) => (path: string, command: string) => Promise<ReleaseLock>;
 

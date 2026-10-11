@@ -136,7 +136,7 @@ describe('failures part-way through a sync', () => {
       concurrent = await sync().catch(error => error);
     };
     expect((await sync()).data.counts.created).toBe(3);
-    expect(concurrent).toMatchObject({ code: 'WORKSPACE_BUSY', message: expect.stringContaining('Lock .forge/sync/contoso.lock exists'), details: { lock: expect.objectContaining({ command: 'backlog sync' }) } });
+    expect(concurrent).toMatchObject({ code: 'WORKSPACE_BUSY', message: expect.stringContaining('Lock .forge/sync/contoso.lock is held'), details: { lock: expect.objectContaining({ command: 'backlog sync' }) } });
     expect(existsSync(join(vault.root, '.forge/sync/contoso.lock'))).toBe(false);
   });
 });

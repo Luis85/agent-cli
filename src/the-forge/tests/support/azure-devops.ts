@@ -8,6 +8,16 @@ export interface FakeWorkItem {
   multilineFieldsFormat: Record<string, string>;
 }
 export interface FakeRequest { method: string; path: string; body: unknown }
+type Relation = FakeWorkItem['relations'][number];
+
+/** Work item link types and the reverse type the service records on the other end. */
+const RECIPROCAL: Record<string, string> = {
+  'System.LinkTypes.Hierarchy-Reverse': 'System.LinkTypes.Hierarchy-Forward', 'System.LinkTypes.Hierarchy-Forward': 'System.LinkTypes.Hierarchy-Reverse',
+  'System.LinkTypes.Dependency-Reverse': 'System.LinkTypes.Dependency-Forward', 'System.LinkTypes.Dependency-Forward': 'System.LinkTypes.Dependency-Reverse',
+  'System.LinkTypes.Related': 'System.LinkTypes.Related',
+};
+const PREDECESSOR = 'System.LinkTypes.Dependency-Reverse';
+const targetId = (url: string) => Number(/\/workItems\/(\d+)$/i.exec(url)?.[1] ?? NaN);
 
 const json = (response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
   response.writeHead(status, { 'content-type': 'application/json', ...headers });
@@ -30,6 +40,12 @@ const read = (request: IncomingMessage) => new Promise<string>((resolve, reject)
  * and a failed `test /rev` answers 412, like the service. Each organization (`/<org>/`) holds its own items; every
  * request needs `Authorization: Basic base64(":" + pat)`. Reads leave out `multilineFieldsFormat` (the API reference
  * does not document it on reads) unless `returnsFormats` is set.
+ *
+ * Work item links are stored on both ends: a relation added or removed on one item adds or removes the reverse
+ * relation on its target (`Dependency-Reverse` on the successor is `Dependency-Forward` on the predecessor). Adding a
+ * relation that already exists, or a dependency that closes a cycle, is refused with 400. The REST reference's update
+ * history example records such link-only changes on the other item without a new revision, so by default the target
+ * keeps its `rev`; `linksReviseTarget` makes them revise the target too, to prove the sync tolerates either.
  */
 export class FakeAzureDevOps {
   readonly requests: FakeRequest[] = [];
@@ -39,6 +55,8 @@ export class FakeAzureDevOps {
   initialStateOnly = false;
   /** Fields a create applies when the request leaves them out, like process defaults and rules (for example a priority). */
   createDefaults: Record<string, unknown> = {};
+  /** A link change also revises the item at the other end. */
+  linksReviseTarget = false;
   /** Runs after each committed create or update, before the response is sent (to simulate concurrent changes). */
   afterWrite: ((item: FakeWorkItem, operation: 'create' | 'update') => void | Promise<void>) | null = null;
   private readonly items = new Map<string, Map<number, FakeWorkItem>>();
@@ -75,13 +93,73 @@ export class FakeAzureDevOps {
     Object.assign(item.multilineFieldsFormat, formats);
     return this.touch(item);
   }
+  /** A work item someone created in Azure DevOps, with these fields. */
+  add(organization: string, fields: Record<string, unknown>): FakeWorkItem {
+    const store = this.items.get(organization) ?? new Map<number, FakeWorkItem>();
+    this.items.set(organization, store);
+    const id = this.nextId.get(organization) ?? 1;
+    this.nextId.set(organization, id + 1);
+    const project = this.projects[organization] ?? organization;
+    const item: FakeWorkItem = { id, rev: 0, fields: { 'System.State': 'New', 'System.AreaPath': project, 'System.IterationPath': project, 'System.TeamProject': project, ...fields }, relations: [], multilineFieldsFormat: {} };
+    store.set(id, item);
+    return this.touch(item);
+  }
   /** Re-parents an item remotely. */
   reparent(organization: string, id: number, parent: number | null): FakeWorkItem {
     const item = this.item(organization, id);
-    item.relations = item.relations.filter(relation => relation.rel !== 'System.LinkTypes.Hierarchy-Reverse');
-    if (parent !== null) item.relations.push({ rel: 'System.LinkTypes.Hierarchy-Reverse', url: `${this.organization(organization)}/_apis/wit/workItems/${parent}` });
+    const index = item.relations.findIndex(relation => relation.rel === 'System.LinkTypes.Hierarchy-Reverse');
+    if (index >= 0) this.unrelate(organization, item, index);
+    if (parent !== null) this.relate(organization, item, { rel: 'System.LinkTypes.Hierarchy-Reverse', url: this.itemUrl(organization, parent) });
     return this.touch(item);
   }
+  /** Someone links two items remotely (`rel` as seen from `id`, for example `System.LinkTypes.Dependency-Reverse` to a predecessor). */
+  link(organization: string, id: number, rel: string, target: number): FakeWorkItem {
+    const item = this.item(organization, id);
+    const failure = this.relate(organization, item, { rel, url: this.itemUrl(organization, target) });
+    if (failure) throw new Error(failure.message);
+    return this.touch(item);
+  }
+  /** Someone removes a link remotely. */
+  unlink(organization: string, id: number, rel: string, target: number): FakeWorkItem {
+    const item = this.item(organization, id);
+    this.unrelate(organization, item, item.relations.findIndex(relation => relation.rel === rel && targetId(relation.url) === target));
+    return this.touch(item);
+  }
+  /** Ids of an item's predecessors. */
+  predecessors(organization: string, id: number): number[] {
+    return this.item(organization, id).relations.filter(relation => relation.rel === PREDECESSOR).map(relation => targetId(relation.url)).sort((a, b) => a - b);
+  }
+
+  private itemUrl(organization: string, id: number): string { return `${this.organization(organization)}/_apis/wit/workItems/${id}`; }
+
+  /** Adds a relation and its reverse on the target; the service's error body when it is a duplicate or closes a dependency cycle. */
+  private relate(organization: string, item: FakeWorkItem, relation: Relation): ReturnType<typeof serviceError> | null {
+    if (item.relations.some(existing => existing.rel === relation.rel && existing.url.toLowerCase() === relation.url.toLowerCase())) return serviceError(`Relation already exists: ${relation.rel} to ${relation.url}.`, 'WorkItemLinkAlreadyExistsException');
+    const reverse = RECIPROCAL[relation.rel];
+    const target = reverse === undefined ? undefined : this.items.get(organization)?.get(targetId(relation.url));
+    if (relation.rel === PREDECESSOR && target && (target.id === item.id || this.dependsOn(organization, target.id, item.id))) return serviceError(`The dependency on ${target.id} would create a cycle.`, 'WorkItemLinkCycleException');
+    item.relations.push(relation);
+    if (target && reverse) { target.relations.push({ rel: reverse, url: this.itemUrl(organization, item.id) }); this.linkChanged(target); }
+    return null;
+  }
+
+  private unrelate(organization: string, item: FakeWorkItem, index: number): void {
+    const [relation] = item.relations.splice(index, 1);
+    const reverse = relation ? RECIPROCAL[relation.rel] : undefined;
+    const target = relation && reverse ? this.items.get(organization)?.get(targetId(relation.url)) : undefined;
+    if (!target) return;
+    const back = target.relations.findIndex(entry => entry.rel === reverse && targetId(entry.url) === item.id);
+    if (back >= 0) { target.relations.splice(back, 1); this.linkChanged(target); }
+  }
+
+  /** Whether `id` depends on `other`, directly or transitively. */
+  private dependsOn(organization: string, id: number, other: number, seen = new Set<number>()): boolean {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return this.predecessors(organization, id).some(predecessor => predecessor === other || this.dependsOn(organization, predecessor, other, seen));
+  }
+
+  private linkChanged(target: FakeWorkItem): void { if (this.linksReviseTarget) this.touch(target); }
 
   private touch(item: FakeWorkItem): FakeWorkItem {
     item.rev += 1;
@@ -132,10 +210,11 @@ export class FakeAzureDevOps {
     const id = this.nextId.get(organization) ?? 1;
     this.nextId.set(organization, id + 1);
     const item: FakeWorkItem = { id, rev: 0, fields: { 'System.WorkItemType': type, 'System.State': 'New', 'System.AreaPath': project, 'System.IterationPath': project, 'System.TeamProject': project, ...this.createDefaults }, relations: [], multilineFieldsFormat: {} };
-    const failure = this.apply(item, operations);
-    if (failure) return json(response, 400, failure);
-    if (this.initialStateOnly && item.fields['System.State'] !== 'New') return json(response, 400, serviceError(`TF401320: Rule Error for field State. Error code: Required, HasValues, LimitedToValues, AllowsOldValue, InvalidEmpty.`, 'RuleValidationException'));
+    const saved = structuredClone(store);
     store.set(id, item);
+    const rejected = this.apply(organization, item, operations)
+      ?? (this.initialStateOnly && item.fields['System.State'] !== 'New' ? serviceError(`TF401320: Rule Error for field State. Error code: Required, HasValues, LimitedToValues, AllowsOldValue, InvalidEmpty.`, 'RuleValidationException') : null);
+    if (rejected) { this.restore(store, saved); return json(response, 400, rejected); }
     this.touch(item);
     await this.afterWrite?.(item, 'create');
     json(response, 200, this.wire(organization, item));
@@ -144,17 +223,23 @@ export class FakeAzureDevOps {
   private async update(response: ServerResponse, organization: string, item: FakeWorkItem, operations: Operation[]): Promise<void> {
     const test = operations.find(operation => operation.op === 'test' && operation.path === '/rev');
     if (test && test.value !== item.rev) return json(response, 412, serviceError(`TF26071: This work item has been changed by someone else since you opened it. You will need to refresh it and discard your changes.`, 'WorkItemRevisionMismatchException'));
-    const copy = structuredClone(item);
-    const failure = this.apply(copy, operations.filter(operation => operation.op !== 'test'));
-    if (failure) return json(response, 400, failure);
-    Object.assign(item, copy);
+    // Validate on a copy of the organization's items, so a refused patch changes neither end of any link.
+    const store = this.items.get(organization)!, saved = structuredClone(store);
+    const failure = this.apply(organization, item, operations.filter(operation => operation.op !== 'test'));
+    if (failure) { this.restore(store, saved); return json(response, 400, failure); }
     this.touch(item);
     await this.afterWrite?.(item, 'update');
     json(response, 200, this.wire(organization, item));
   }
 
+  /** Puts back every item as it was before a refused request (both ends of every link), keeping object identity. */
+  private restore(store: Map<number, FakeWorkItem>, saved: Map<number, FakeWorkItem>): void {
+    for (const id of store.keys()) if (!saved.has(id)) store.delete(id);
+    for (const [id, item] of saved) Object.assign(store.get(id)!, item);
+  }
+
   /** Applies JSON Patch operations; the service's error body when one is invalid. */
-  private apply(item: FakeWorkItem, operations: Operation[]): ReturnType<typeof serviceError> | null {
+  private apply(organization: string, item: FakeWorkItem, operations: Operation[]): ReturnType<typeof serviceError> | null {
     for (const operation of operations) {
       const field = /^\/fields\/(.+)$/.exec(operation.path)?.[1];
       const format = /^\/multilineFieldsFormat\/(.+)$/.exec(operation.path)?.[1];
@@ -163,8 +248,11 @@ export class FakeAzureDevOps {
       if (field && operation.op === 'remove') delete item.fields[field];
       else if (field && (operation.op === 'add' || operation.op === 'replace')) item.fields[field] = operation.value;
       else if (format && operation.op === 'add') item.multilineFieldsFormat[format] = String(operation.value).toLowerCase();
-      else if (relation === '-' && operation.op === 'add') item.relations.push(operation.value as FakeWorkItem['relations'][number]);
-      else if (relation !== undefined && relation !== '-' && operation.op === 'remove') item.relations.splice(Number(relation), 1);
+      else if (relation === '-' && operation.op === 'add') { const refused = this.relate(organization, item, operation.value as Relation); if (refused) return refused; }
+      else if (relation !== undefined && relation !== '-' && operation.op === 'remove') {
+        if (Number(relation) >= item.relations.length) return serviceError(`The remove operation for path /relations/${relation} failed: no relation at that index.`, 'WorkItemPatchException');
+        this.unrelate(organization, item, Number(relation));
+      }
       else return serviceError(`Unsupported operation ${operation.op} ${operation.path}.`, 'WorkItemPatchException');
     }
     return null;

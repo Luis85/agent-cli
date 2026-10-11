@@ -75,6 +75,7 @@ export function checkBacklog(input: CheckInput): CheckProblem[] {
   for (const [order, paths] of byOrder) if (paths.length > 1) problems.push(warning('rank-tie', `${paths.length} items share rank ${order}; ties follow result order.`, { value: String(order), paths }));
   // Releases are created without a rank (`createRelease`), so only other unranked results are reported.
   const unranked = results.filter(item => item.order === null && !isReleaseType(item.typeName)).map(item => item.path);
-  if (unranked.length > 0) problems.push(warning('unranked', `${unranked.length} items have no rank and sort last; run backlog ranks seed.`, { paths: unranked }));
+  const count = unranked.length === 1 ? '1 item has no rank and sorts' : `${unranked.length} items have no rank and sort`;
+  if (unranked.length > 0) problems.push(warning('unranked', `${count} last; run backlog ranks seed.`, { paths: unranked }));
   return problems;
 }

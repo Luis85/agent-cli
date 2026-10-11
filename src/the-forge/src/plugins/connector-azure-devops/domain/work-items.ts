@@ -1,7 +1,6 @@
 import type { ConnectorMapping, RemoteDraft, RemoteItem, RemotePatch } from '../../../domain/connectors/items.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 import { markdownToHtml } from './markdown-html.ts';
-import { PARENT_LINK, PREDECESSOR_LINK } from './processes.ts';
 
 /** One JSON Patch operation of the Work Items API. */
 export interface PatchOperation { op: 'add' | 'remove' | 'replace' | 'test'; path: string; value?: unknown }
@@ -38,31 +37,54 @@ function fieldOperations(change: RemotePatch, context: PatchContext): PatchOpera
   return operations;
 }
 
-/** The JSON Patch document that creates a work item, including its area (even when area does not sync) and its parent link. */
+const addRelation = (rel: string, context: PatchContext, id: string): PatchOperation => ({ op: 'add', path: '/relations/-', value: { rel, url: workItemApiUrl(context.organization, id) } });
+const uniqueIds = (ids: readonly string[]) => [...new Set(ids)];
+
+/**
+ * The JSON Patch document that creates a work item, including its area (even when area does not sync), its parent
+ * link and its predecessor links.
+ */
 export function createOperations(draft: RemoteDraft, context: PatchContext): PatchOperation[] {
   const { type: _type, ...rest } = draft;
   // A new item has no value to clear: null and empty values are left out.
   const set = Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0)));
   const operations = fieldOperations({ ...set, ...(rest.fields ? { fields: Object.fromEntries(Object.entries(rest.fields).filter(([, value]) => value !== null)) } : {}) }, context);
   if (draft.area && context.mapping.fields.area === null) operations.push(field(AREA_PATH, draft.area));
-  if (draft.parentId && context.mapping.fields.parent !== null) operations.push({ op: 'add', path: '/relations/-', value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, draft.parentId) } });
+  const { parent, dependencies } = context.mapping.fields;
+  if (draft.parentId && parent !== null) operations.push(addRelation(parent, context, draft.parentId));
+  if (dependencies !== null) for (const id of uniqueIds(draft.dependencies ?? [])) operations.push(addRelation(dependencies, context, id));
   return operations;
 }
 
 /**
- * The JSON Patch document of an update: a `test` of the expected revision first, then the field operations, then
- * the parent link change (removing the current parent relation by index, adding the new one).
+ * The JSON Patch document of an update: a `test` of the expected revision first, then the field operations, then the
+ * link changes against the item's current `relations`: the parent relation is replaced, and the predecessor relations
+ * become exactly `patch.dependencies`. Relations are removed by index in descending order, so each index still names
+ * the relation it was read as; additions follow.
  */
 export function updateOperations(patch: RemotePatch, expectedRev: string, context: PatchContext, relations: readonly unknown[] = []): PatchOperation[] {
   const operations: PatchOperation[] = [{ op: 'test', path: '/rev', value: Number(expectedRev) }, ...fieldOperations(patch, context)];
-  if (patch.parentId !== undefined && context.mapping.fields.parent !== null) {
-    const index = relations.findIndex(relation => isRecord(relation) && relation.rel === PARENT_LINK);
-    if (index >= 0) operations.push({ op: 'remove', path: `/relations/${index}` });
-    if (patch.parentId !== null) operations.push({ op: 'add', path: '/relations/-', value: { rel: PARENT_LINK, url: workItemApiUrl(context.organization, patch.parentId) } });
+  const { parent, dependencies } = context.mapping.fields;
+  const removals: number[] = [], additions: PatchOperation[] = [];
+  const indexed = relations.map((relation, index) => ({ index, rel: isRecord(relation) ? relation.rel : undefined, id: isRecord(relation) ? lastSegment(relation.url) : null }));
+  if (patch.parentId !== undefined && parent !== null) {
+    const current = indexed.find(relation => relation.rel === parent);
+    if (current) removals.push(current.index);
+    if (patch.parentId !== null) additions.push(addRelation(parent, context, patch.parentId));
   }
-  return operations;
+  if (patch.dependencies !== undefined && dependencies !== null) {
+    const wanted = new Set(patch.dependencies);
+    const linked = indexed.filter(relation => relation.rel === dependencies);
+    removals.push(...linked.filter(relation => relation.id === null || !wanted.has(relation.id)).map(relation => relation.index));
+    const kept = new Set(linked.map(relation => relation.id));
+    additions.push(...uniqueIds(patch.dependencies).filter(id => !kept.has(id)).map(id => addRelation(dependencies, context, id)));
+  }
+  for (const index of removals.sort((a, b) => b - a)) operations.push({ op: 'remove', path: `/relations/${index}` });
+  return [...operations, ...additions];
 }
 
+/** Numeric ids in numeric order. */
+const byId = (a: string, b: string) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
 const text = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null);
 const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null);
 
@@ -82,12 +104,12 @@ export function remoteItem(json: unknown, context: PatchContext, url: (id: strin
   return {
     id, rev: String(item.rev), url: url(id),
     type: String(values['System.WorkItemType'] ?? ''), title: String(read(fields.title) ?? ''), state: text(read(fields.state)),
-    parentId: lastSegment(relations.find(relation => relation.rel === PARENT_LINK)?.url),
+    parentId: fields.parent === null ? undefined : lastSegment(relations.find(relation => relation.rel === fields.parent)?.url),
     iteration: text(read(fields.iteration)), area: area !== null && area.toLowerCase() === context.defaultArea.toLowerCase() ? null : area,
     priority: number(read(fields.priority)), effort: number(read(fields.effort)),
     tags: (text(read(fields.tags)) ?? '').split(';').map(tag => tag.trim()).filter(Boolean),
     ...(description === undefined ? {} : { description, descriptionMarkdown: markdown }),
-    links: { predecessors: relations.filter(relation => relation.rel === PREDECESSOR_LINK).map(relation => lastSegment(relation.url)).filter((value): value is string => value !== null) },
+    ...(fields.dependencies === null ? {} : { dependencies: [...new Set(relations.filter(relation => relation.rel === fields.dependencies).map(relation => lastSegment(relation.url)).filter((value): value is string => value !== null))].sort(byId) }),
     fields: Object.fromEntries(Object.values(context.mapping.properties).map(reference => [reference, values[reference] ?? null])),
   };
 }

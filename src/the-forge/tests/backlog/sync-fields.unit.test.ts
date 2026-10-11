@@ -44,6 +44,7 @@ describe('the three-way field decision', () => {
     expect(canonical('title', 'A/B: plan')).toBe(canonical('title', 'A-B- plan'));
     expect(canonical('tags', ['Beta', 'alpha', 'beta'])).toBe(canonical('tags', ['ALPHA', 'beta']));
     expect(canonical('description', 'Line\r\nTwo\n')).toBe(canonical('description', 'Line\nTwo'));
+    expect(canonical('dependencies', ['10', '9', '9', 'new:a.md'])).toBe('["9","10","new:a.md"]');
     expect(canonical('state', ' Active ')).toBe(canonical('state', 'Active'));
     expect(canonical('priority', null)).toBe('null');
     expect(canonical('priority', 2)).not.toBe(canonical('priority', '2'));

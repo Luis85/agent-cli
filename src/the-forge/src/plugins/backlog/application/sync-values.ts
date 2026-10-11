@@ -6,7 +6,7 @@ import { comments, sanitizeTitle, withoutComments } from '../domain/notes.ts';
 import { workflowOf } from '../domain/settings.ts';
 import { isIterationType } from '../domain/vocabulary.ts';
 import {
-  iterationName, iterationPath, localState, localType, priorityLabel, priorityNumber, remoteState, remoteType, type FieldKey, type FieldValue,
+  iterationName, iterationPath, localState, localType, priorityLabel, priorityNumber, remoteState, remoteType, sortedIds, type FieldKey, type FieldValue,
 } from '../domain/sync-fields.ts';
 import type { ItemWrite } from '../domain/writes.ts';
 import { stateWrite } from './editing.ts';
@@ -37,6 +37,7 @@ function synced(context: ValueContext, field: SyncField): boolean {
   if (field === 'priority') return settings.priorityKey !== '';
   if (field === 'tags') return settings.tagsKey !== '';
   if (field === 'area') return context.connection.areaProperty !== '';
+  if (field === 'dependencies') return settings.dependsOnKey !== '';
   return true;
 }
 const basename = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/i, '');
@@ -62,6 +63,11 @@ export function localValues(context: ValueContext, item: BacklogItem, frontmatte
   if (synced(context, 'parent')) {
     const parent = item.parent === null ? null : context.idOf(item.parent.path);
     if (item.parent === null || parent !== null) values.set('parent', parent);
+  }
+  if (synced(context, 'dependencies')) {
+    // Only a list whose every entry is a note synced on this connection can be expressed remotely.
+    const ids = item.dependsOnEntries.map(entry => (entry.path === null ? null : context.idOf(entry.path)));
+    if (ids.every(id => id !== null)) values.set('dependencies', sortedIds(ids));
   }
   const root = iterationRoot(context);
   if (synced(context, 'iteration') && root !== null) {
@@ -98,6 +104,7 @@ export function remoteValues(context: ValueContext, remote: RemoteItem): Values 
   if (synced(context, 'type')) values.set('type', remote.type);
   if (synced(context, 'state')) values.set('state', remote.state);
   if (synced(context, 'parent')) values.set('parent', remote.parentId ?? null);
+  if (synced(context, 'dependencies') && remote.dependencies !== undefined) values.set('dependencies', sortedIds(remote.dependencies));
   const root = iterationRoot(context);
   if (synced(context, 'iteration') && root !== null) values.set('iteration', iterationName(root, remote.iteration ?? null) === null ? null : remote.iteration ?? null);
   if (synced(context, 'area') && remote.area !== undefined) values.set('area', remote.area);
@@ -119,13 +126,17 @@ export function remoteChange(context: ValueContext, values: Values): Record<stri
   for (const [key, value] of values) {
     if (key.startsWith(PROPERTY)) fields[context.mapping.properties[key.slice(PROPERTY.length)]!] = value;
     else if (key === 'parent') change.parentId = value;
+    else if (key === 'dependencies') change.dependencies = value;
     else change[key] = value;
   }
   return Object.keys(fields).length > 0 ? { ...change, fields } : change;
 }
 
-/** How pulled values land in a note: a backlog item write, extra frontmatter, a new body and a new title. */
-export interface PulledNote { write: ItemWrite; extra: Frontmatter; removed: string[]; body?: string; title?: string; skipped: Array<{ field: FieldKey; code: string; reason: string }> }
+/**
+ * How pulled values land in a note: a backlog item write, extra frontmatter, a new body, a new title and the paths the
+ * note's dependsOn list holds afterwards.
+ */
+export interface PulledNote { write: ItemWrite; extra: Frontmatter; removed: string[]; body?: string; title?: string; dependsOn?: string[]; skipped: Array<{ field: FieldKey; code: string; reason: string }> }
 
 /**
  * Converts pulled remote values into note changes with the backlog's write rules; unmappable values are skipped.
@@ -149,6 +160,11 @@ export function pulledNote(context: ValueContext, item: BacklogItem, pulls: Valu
       const parent = value === null ? null : pathOfRemote(String(value));
       if (value !== null && parent === null) note.skipped.push({ field, code: 'unsynced-parent', reason: `remote parent ${String(value)} is not synced on this connection` });
       else note.write.parent = parent;
+    } else if (field === 'dependencies' && Array.isArray(value)) {
+      const paths = value.map(id => pathOfRemote(id));
+      const missing = value.filter((_id, index) => paths[index] === null);
+      if (missing.length > 0) note.skipped.push({ field, code: 'unsynced-dependency', reason: `remote predecessor ${missing.join(', ')} is not synced on this connection` });
+      else note.dependsOn = paths as string[];
     } else if (field === 'iteration') {
       const name = iterationName(iterationRoot(context)!, value === null ? null : String(value));
       const target = name === null ? null : iterationNote(session, name);

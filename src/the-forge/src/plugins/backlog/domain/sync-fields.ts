@@ -13,12 +13,18 @@ export type Decision = 'unchanged' | 'push' | 'pull' | 'conflict' | 'converged' 
 export interface NameMappings { types: Record<string, string>; states: Record<string, string> }
 
 const sortedTags = (tags: readonly string[]) => [...new Set(tags.map(tag => tag.trim().toLowerCase()).filter(Boolean))].sort();
+/** Remote ids in numeric order (other ids, such as placeholders of notes still to be created, after them by text). */
+export const sortedIds = (ids: readonly string[]) => [...new Set(ids)].sort((a, b) => {
+  const left = /^\d+$/.test(a) ? Number(a) : Infinity, right = /^\d+$/.test(b) ? Number(b) : Infinity;
+  return left !== right ? left - right : a < b ? -1 : a > b ? 1 : 0;
+});
 
-/** The canonical text of a field value: trimmed text, sanitized titles, case-insensitive sorted tags, normalized newlines. */
+/** The canonical text of a field value: trimmed text, sanitized titles, case-insensitive sorted tags, sorted dependency ids, normalized newlines. */
 export function canonical(field: FieldKey, value: FieldValue): string {
   if (value === null || value === undefined) return 'null';
   if (field === 'title' && typeof value === 'string') return JSON.stringify(sanitizeTitle(value));
   if (field === 'tags' && Array.isArray(value)) return JSON.stringify(sortedTags(value));
+  if (field === 'dependencies' && Array.isArray(value)) return JSON.stringify(sortedIds(value));
   if (field === 'description' && typeof value === 'string') return JSON.stringify(value.replace(/\r\n?/g, '\n').trim());
   if (typeof value === 'string') return JSON.stringify(value.trim());
   return JSON.stringify(value);
