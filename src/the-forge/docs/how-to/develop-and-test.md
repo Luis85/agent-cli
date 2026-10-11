@@ -46,6 +46,19 @@ The project's documentation is an Obsidian-compatible vault. The checkout's trac
 
 `evals/tasks/*.yaml` are agent tasks with fixtures and deterministic checks. `npm run eval` replays their reference commands, and `tests/evals/reference.e2e.test.ts` does the same inside `npm run check`, so a change that breaks a task's reference sequence or makes a check vacuous fails the gate. When a command's behavior or output changes, update the affected tasks; measure agents with the opt-in `claude` driver as described in [evaluate agents](evaluate-agents.md).
 
+## Metadata benchmark
+
+`npm run bench` measures the commands that load the metadata index on a deterministic synthetic vault, through the built `bin/forge.js`; run `npm run build` first. It is not part of `npm run check`. `scripts/bench/vault.mjs` writes 2,000 notes in 20 folders, 100 images and one Base into a temporary workspace. Every note has frontmatter with aliases, tags and a link property, wikilinks, heading and alias links, a URL-encoded relative Markdown link (unresolved unless it shares the folder), a missing link, inline tags, a block id, tasks and an embed. `scripts/bench/metadata.mjs` then runs `vault check`, `links unresolved`, `search details --tag t3` and `bases query bases/Notes.base --view Active`, each once cold (the workspace's `.forge/cache` removed) and `--runs` times warm (default 3, after an unmeasured `links unresolved` stored the cache), and prints one JSON report with the wall times in milliseconds:
+
+```sh
+npm run bench
+npm run bench -- --large                       # 4,000 notes and 500 images
+npm run bench -- --notes 500 --attachments 20 --runs 5 --keep
+npm run bench -- --forge /path/to/other/bin/forge.js
+```
+
+`--keep` leaves the generated workspace in place and reports its `root`, for profiling with `node --cpu-prof bin/forge.js --root <root> vault check`. Wall times depend on machine load, so compare two builds on the same machine, one after the other.
+
 ## Agent feedback loop
 
 Read `AGENTS.md`, establish acceptance examples and inspect the affected boundary. After a focused edit, run the relevant behavioral test and `npm run check:fast`. This gate runs structure validation first, then Oxlint, fallow and the TypeScript compiler without rebuilding the distribution. Static analysis complements tests; a clean report does not prove business behavior or filesystem integrity. Analysis includes test entry points, so code referenced only by tests counts as used; this is not proof of production reachability.

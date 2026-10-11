@@ -85,3 +85,11 @@ export const germanEvents = {
   'plugin.unloaded': 'Die Bereinigung eines Plugins wurde erfolgreich abgeschlossen.',
   'plugin.unload-failed': 'Die Bereinigung eines Plugins ist fehlgeschlagen; die übrige Bereinigung läuft weiter.',
 } satisfies Record<string, string>;
+
+/** Kernel warnings that composition code emits, in English and German; `{name}` placeholders are filled in. */
+export const kernelWarnings = {
+  metadataCacheUnsaved: {
+    en: 'The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {detail}',
+    de: 'Der Metadaten-Cache konnte nicht unter {file} gespeichert werden; der nächste Befehl liest und analysiert den Vault daher erneut: {detail}',
+  },
+} as const;

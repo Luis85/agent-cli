@@ -1,5 +1,5 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
-import { germanActions, germanCommands, germanEvents, germanGuidance, germanRecoveredLock } from './catalog.ts';
+import { germanActions, germanCommands, germanEvents, germanGuidance, germanRecoveredLock, kernelWarnings } from './catalog.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -88,6 +88,11 @@ export class Localizer {
     const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key]));
     const command = holder.command === undefined ? '' : fill(germanRecoveredLock.command, { command: holder.command });
     return fill(germanRecoveredLock.message, { path, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command, reason: germanRecoveredLock.reasons[reason] });
+  }
+
+  /** A kernel warning in the response language with its `{name}` placeholders filled in. */
+  warning(id: keyof typeof kernelWarnings, values: Readonly<Record<string, string>>): string {
+    return kernelWarnings[id][this.language].replace(/\{(\w+)\}/g, (placeholder, name: string) => values[name] ?? placeholder);
   }
 
   /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */

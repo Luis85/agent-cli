@@ -79,6 +79,12 @@ function canvasMetadata(data: Record<string, unknown>): CachedMetadata {
   return nonEmpty('canvasLinks', links);
 }
 
+/**
+ * The version of what `ObsidianMetadataParser` produces. Stored metadata snapshots name it, so bump it whenever the
+ * parser, the document codec's frontmatter handling or their libraries change the metadata of any content.
+ */
+export const metadataParserVersion = 1;
+
 /** Parses Markdown and Canvas files through the document codec, which validates frontmatter and Canvas JSON. */
 export class ObsidianMetadataParser implements MetadataParser {
   constructor(private readonly codec: DocumentCodec) {}

@@ -49,14 +49,6 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.l
   if (!path.startsWith('node_modules/') || entry.dev) continue;
   const dependency = JSON.parse(await readFile(`${path}/package.json`, 'utf8'));
   const files = (await readdir(path, { withFileTypes: true })).filter(file => file.isFile() && /^(licen[sc]e|copying|notice)(?:[._-]|$)/i.test(file.name));
-  // format 0.2.2 publishes its copyright and MIT declaration only in Readme.md.
-  // Preserve that source notice together with the referenced MIT terms.
-  if (dependency.name === 'format' && dependency.version === '0.2.2' && !files.length) {
-    await copyFile(`${path}/Readme.md`, join(bin, 'data/licenses/format-Readme.md'));
-    await copyFile('scripts/licenses/format-LICENSE', join(bin, 'data/licenses/format-LICENSE'));
-    notices.push('## format 0.2.2', '', 'License: MIT. [Original notice](licenses/format-Readme.md); [license terms](licenses/format-LICENSE).', '');
-    continue;
-  }
   if (!files.length) throw new Error(`Missing license notice for runtime dependency ${dependency.name}`);
   notices.push(`## ${dependency.name} ${dependency.version}`, '', `License: ${dependency.license ?? entry.license ?? 'see notice'}.`, '');
   for (const file of files.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {

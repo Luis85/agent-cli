@@ -113,7 +113,9 @@ describe('moving and deleting through the portable CLI', () => {
     const folder = (await run('delete', 'scratch', '--recursive', '--permanent', '--dry-run')).body.data;
     expect(folder).toMatchObject({ kind: 'folder', deleted: [{ path: 'scratch', kind: 'folder' }] });
     expect((await run('delete', 'scratch', '--recursive', '--permanent', '--if-match', folder.revision)).status).toBe(0);
-    expect((await readdir(root)).sort()).toEqual(['.trash', 'Board.canvas', 'bin', 'docs', 'notes']);
+    // Deleting loaded the metadata index, which keeps its derived cache in .forge/cache.
+    expect((await readdir(root)).sort()).toEqual(['.forge', '.trash', 'Board.canvas', 'bin', 'docs', 'notes']);
+    expect(await readdir(join(root, '.forge'))).toEqual(['cache']);
     expect((await run('delete', 'bin/config.json', '--if-match', 'x')).body.error.code).toBe('PROTECTED_PATH');
   });
 });

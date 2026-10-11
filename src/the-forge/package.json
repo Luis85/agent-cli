@@ -23,6 +23,7 @@
     "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
     "check:structure": "node scripts/quality/structure.mjs --source-layout forge",
     "eval": "node scripts/eval/run.mjs",
+    "bench": "node scripts/bench/metadata.mjs",
     "showcase": "node scripts/showcase.mjs",
     "showcase:check": "node scripts/showcase.mjs --check",
     "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs"
@@ -33,7 +34,6 @@
     "dayjs": "^1.11.23",
     "obsidian-bases-expression": "0.2.0",
     "parse5": "7.3.0",
-    "remark-frontmatter": "^5.0.0",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
     "yaml": "^2.8.1",
@@ -54,6 +54,7 @@
     "oxlint": "1.86.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "remark-frontmatter": "^5.0.0",
     "svelte": "5.57.2",
     "typescript": "~5.9.3",
     "vite": "^7.1.9",

@@ -1,7 +1,4 @@
 import { parseDocument, isMap, isScalar, isAlias, visit, type Document } from 'yaml';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import remarkFrontmatter from 'remark-frontmatter';
 import { forgeError, ensure, isRecord } from '../../domain/shared/errors.ts';
 import type { ErrorCode } from '../../domain/shared/error-catalog.ts';
 import { fileKind } from '../../domain/documents/file.ts';
@@ -47,21 +44,41 @@ function styledText(text: string, original: string): Uint8Array {
   const { prefix, newline } = textStyle(original);
   return encode(prefix + text.replace(/^\uFEFF/, '').replace(/\r?\n/g, newline));
 }
-const markdownParser = unified().use(remarkParse).use(remarkFrontmatter, ['yaml']);
+const openingFence = /^---[ \t]*(?:\r\n|\n|\r)/;
+const closingFence = /---[ \t]*(?=\r\n|\n|\r|$)/y;
+const lineEnding = /\r\n|\n|\r/g;
+/**
+ * The offset after YAML frontmatter's closing fence (and the spaces or tabs that may follow it), or -1 without
+ * frontmatter. This is CommonMark frontmatter as remark-frontmatter reads it: the text's first line is exactly `---`
+ * followed only by spaces or tabs, and the block ends at the first later line that is the same; a line ending is
+ * `\r\n`, `\n` or `\r`. Content lines are not interpreted, so a `---` inside a code fence closes the block too.
+ */
+function frontmatterEnd(text: string): number {
+  const opening = openingFence.exec(text);
+  if (opening === null) return -1;
+  for (let start = opening[0].length; ;) {
+    closingFence.lastIndex = start;
+    const closing = closingFence.exec(text);
+    if (closing !== null) return start + closing[0].length;
+    lineEnding.lastIndex = start;
+    const next = lineEnding.exec(text);
+    if (next === null) return -1;
+    start = next.index + next[0].length;
+  }
+}
 export function parseMarkdownParts(text: string): MarkdownParts {
   const prefix = text.startsWith('\uFEFF') ? '\uFEFF' : '';
   text = text.slice(prefix.length);
-  const firstNode = markdownParser.parse(text).children[0];
+  const end = frontmatterEnd(text);
   const firstNewline = /\r\n|\n|\r/.exec(text);
   const opensFrontmatter = firstNewline !== null && text.slice(0, firstNewline.index).trimEnd() === '---';
   const newline = textStyle(text).newline;
-  if (firstNode?.type !== 'yaml') {
+  if (end < 0) {
     ensure(!opensFrontmatter, 'INVALID_FRONTMATTER', 'Unclosed YAML frontmatter.');
     return { yaml: '', body: text, newline, exists: false, prefix };
   }
-  const end = firstNode.position?.end.offset;
-  ensure(end !== undefined && firstNewline !== null, 'INVALID_FRONTMATTER', 'Missing frontmatter source position.');
-  // Slice the original source using parser offsets; serializing Markdown would
+  ensure(firstNewline !== null, 'INVALID_FRONTMATTER', 'Missing frontmatter source position.');
+  // Slice the original source at the fences; serializing Markdown would
   // rewrite wikilinks, line endings, whitespace and other Obsidian body syntax.
   const closingLineStart = Math.max(text.lastIndexOf('\n', end - 1), text.lastIndexOf('\r', end - 1)) + 1;
   const separatorLength = text.startsWith('\r\n', end) ? 2 : text.startsWith('\n', end) || text.startsWith('\r', end) ? 1 : 0;

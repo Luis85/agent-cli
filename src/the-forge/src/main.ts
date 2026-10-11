@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import metadata from '../package.json';
-import { forgeError, AppError, ensure } from './domain/shared/errors.ts';
+import { forgeError, AppError, ensure, errorMessage } from './domain/shared/errors.ts';
 import { EventBus } from './application/plugins/events.ts';
 import { registerHostEvents, type HostEventMap } from './application/plugins/host-events.ts';
 import { announceLayoutReady, invokeCommand, quitInvocation } from './application/plugins/invocation.ts';
@@ -17,7 +17,7 @@ import { ProjectService, projectScaffolderService, type ProjectScaffolder, type 
 import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
-import { NodeFiles, type RecoveredLockReport } from './infrastructure/workspace/files.ts';
+import { NodeFiles, stampedFiles, type RecoveredLockReport } from './infrastructure/workspace/files.ts';
 import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
@@ -46,7 +46,8 @@ import { loadConfig } from './infrastructure/workspace/config.ts';
 import { readSetupArtifacts } from './infrastructure/workspace/setup-artifacts.ts';
 import { VaultMetadata } from './application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
-import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
+import { ObsidianMetadataParser, metadataParserVersion } from './infrastructure/metadata/parser.ts';
+import { NodeMetadataSnapshotStore, snapshotFile } from './infrastructure/metadata/snapshot-store.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
 import { ensureDeclaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
@@ -68,6 +69,8 @@ async function run(): Promise<void> {
   let compact = tokens.includes('--json');
   // Response event output only; listeners and replay always observe the full invocation history.
   let eventLevel: EventOutput = 'changes';
+  // Stores the scope index's parse results once the command finished, if it loaded the index.
+  let persistMetadata: (() => Promise<void>) | undefined;
   try {
     const bootstrap = parseBootstrap(tokens);
     // The requested language applies first, so every later bootstrap failure is reported in it.
@@ -157,7 +160,17 @@ async function run(): Promise<void> {
       const projects = new ProjectService(files, environment, config.paths.projects, scaffolder, events);
       const project = policy.scope === 'workspace' ? null : policy.requestedProject !== undefined ? await projects.inspect(policy.requestedProject) : await projects.current();
       const scopedFiles = project ? new ScopedFiles(files, project.directory) : files;
-      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), { workspaceRoot: project === null });
+      // Parse results persist in the workspace's .forge/cache between invocations; a dry run reads them but never writes.
+      const cacheFile = snapshotFile(project?.directory ?? null);
+      const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), {
+        workspaceRoot: project === null,
+        snapshots: {
+          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, () => stampedFiles(files, project?.directory)),
+          key: `forge ${metadata.version}; parser ${metadataParserVersion}; scope ${project?.directory ?? '.'}`,
+          save: !config.settings.dryRun,
+        },
+      });
+      persistMetadata = () => vaultMetadata.persist().catch(error => events.warn(localizer.warning('metadataCacheUnsaved', { file: cacheFile, detail: errorMessage(error) })));
       // Commits keep a loaded cache current and publish metadataCache.* events; workspace-scope commits while a
       // project is selected reach the project's index only inside its directory, with project-relative paths.
       const metadataEvents = new MetadataCacheEvents(events, vaultMetadata);
@@ -197,6 +210,7 @@ async function run(): Promise<void> {
     process.exitCode = error instanceof AppError ? error.exitCode : 1;
     result = { ok: false, error: localizer.error(error) };
   } finally {
+    await persistMetadata?.();
     await quitInvocation(events);
     await registry.dispose(events);
   }

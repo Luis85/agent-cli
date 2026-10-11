@@ -14,11 +14,11 @@ Tests live under the concern they verify. Every executable test file declares it
 | [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
 | [distribution](distribution/) | Packaging, release archives, checksums, standalone execution, the launcher's compile cache and the non-blocking portable CLI harness |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |
-| [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |
+| [documents](documents/) | Markdown (including frontmatter detection pinned against remark-frontmatter), Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
 | [generation](generation/) | The shared generation service: review plans, revision manifests, and guarded writes |
 | [scaffolds](scaffolds/) | The `scaffolds` core plugin: code, form and plugin-folder generators, their compiled output, and disabling it (project create and component then fail with `PLUGIN_UNAVAILABLE`) |
-| [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds and post-commit metadataCache events |
+| [metadata](metadata/) | Kernel metadata cache parsing, link resolution, shortest link text, backlinks, incremental updates against full rebuilds, post-commit metadataCache events, and persisted parse results: stamp and racy-window reuse, reuse by content revision, external edits, renames and deletions, damaged or foreign snapshots, dry runs and the `.forge/cache` store through the CLI |
 | [plugins](plugins/) | Plugin lifecycle, contract v2 (services, config sections, strings, error codes, core plugin registration), generators and events |
 | [search](search/) | The `search` core plugin: literal and regular-expression matching, scopes, metadata filters, paging, the matching time budget and its CLI contract |
 | [links](links/) | The `links` core plugin: link reports over the metadata cache (out, back, unresolved, orphans with roots, dead ends) and its CLI contract |

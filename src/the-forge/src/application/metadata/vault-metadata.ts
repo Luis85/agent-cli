@@ -1,7 +1,10 @@
 import { AppError, errorMessage } from '../../domain/shared/errors.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
 import { closestDestination, fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
+import type { FileSnapshot } from '../../domain/documents/file.ts';
+import type { FileStamp, ParseOutcome } from '../../domain/metadata/snapshot.ts';
 import type { FileRepository } from '../workspace/ports.ts';
+import { ParseResults, type SnapshotOptions } from './parse-results.ts';
 import type {
   Backlink, LinkCounts, MetadataCache, MetadataChange, MetadataIndex, MetadataIssue, MetadataParser, MetadataUpdate, SourceReference,
 } from './ports.ts';
@@ -45,8 +48,16 @@ function orderedReferences(cache: CachedMetadata): Array<Omit<SourceReference, '
 }
 
 /**
+ * `workspaceRoot` marks an index of the workspace root, which leaves out the workspace's `bin/` distribution;
+ * `snapshots` persists parse results between invocations.
+ */
+export interface VaultMetadataOptions { workspaceRoot?: boolean; snapshots?: SnapshotOptions }
+
+/**
  * A per-invocation metadata index over a file repository. It reads and parses Markdown and Canvas files once,
  * on first load, and resolves every reference through hash lookups, so building is linear in vault size.
+ * With a snapshot store, the load reuses the parse results of unchanged files and of known content revisions
+ * instead of reading or parsing them, and `persist()` stores the current results; resolution is always recomputed.
  * Updates re-parse only changed files; they re-resolve every source only when the set of paths or aliases changes.
  */
 export class VaultMetadata implements MetadataIndex, MetadataCache {
@@ -63,12 +74,13 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
 
   private readonly member: (path: string) => boolean;
   private readonly workspaceRoot: boolean;
+  private readonly results: ParseResults;
 
-  /** `workspaceRoot` marks an index of the workspace root, which leaves out the workspace's `bin/` distribution. */
-  constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser, options: { workspaceRoot?: boolean } = {}) {
+  constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser, options: VaultMetadataOptions = {}) {
     const workspaceRoot = options.workspaceRoot ?? false;
     this.workspaceRoot = workspaceRoot;
     this.member = path => vaultMember(path, workspaceRoot);
+    this.results = new ParseResults(options.snapshots);
   }
 
   load(): Promise<MetadataCache> {
@@ -81,10 +93,29 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     return (await this.repository.list()).filter(this.member);
   }
 
-  parseFile(path: string, bytes: Uint8Array): CachedMetadata | null {
-    if (!this.member(path) || !this.parser.indexes(path)) return null;
-    try { return this.parser.parse(path, bytes); }
-    catch { return null; }
+  async parseFile(file: FileSnapshot): Promise<CachedMetadata | null> {
+    if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
+    if (this.loading) {
+      await this.load();
+      if (this.results.revision(file.path) === file.revision) return this.caches.get(file.path) ?? null;
+    }
+    const outcome = await this.results.reusable(file) ?? this.outcome(file.path, file.bytes);
+    return 'metadata' in outcome ? outcome.metadata : null;
+  }
+
+  /**
+   * Stores the parse results of a loaded index when anything was read or changed since the stored snapshot; does
+   * nothing without a store, during a dry run, before the first load or after a failed load (the command reports
+   * that failure). A failed save throws and stores nothing.
+   */
+  async persist(): Promise<void> {
+    if (!this.loading) return;
+    try { await this.loading; } catch { return; }
+    await this.pending;
+    await this.results.persist(path => {
+      const metadata = this.caches.get(path), issue = this.problems.get(path);
+      return metadata ? { metadata } : issue ? { issue: { code: issue.code, message: issue.message } } : undefined;
+    });
   }
 
   parseContent(path: string, bytes: Uint8Array): CachedMetadata | null {
@@ -144,22 +175,40 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
       .map(item => ({ ...item, source })));
   }
 
+  /**
+   * Lists the vault, then takes each indexed file's parse result from the stored snapshot when its stamp is
+   * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
+   */
   private async build(): Promise<void> {
-    this.paths = (await this.repository.list()).filter(this.member);
+    const listing = await this.results.listing(() => this.repository.list());
+    const stamps = new Map<string, FileStamp>();
+    for (const file of listing.files) if ('stamp' in file) stamps.set(file.path, file);
+    this.paths = listing.files.map(file => file.path).filter(this.member);
     await eachConcurrently(this.paths.filter(path => this.parser.indexes(path)), pendingFileReads, async path => {
-      this.parse(path, (await this.repository.read(path)).bytes);
+      const stamp = stamps.get(path);
+      const unchanged = await this.results.unchanged(path, stamp);
+      if (unchanged !== undefined) { this.adopt(path, unchanged); return; }
+      const file = await this.repository.read(path);
+      this.adopt(path, await this.results.reusable(file) ?? this.outcome(path, file.bytes));
+      this.results.read(path, file.revision, stamp ?? null);
     });
+    await this.results.built();
     this.reindex();
     for (const source of this.sources()) this.resolve(source);
   }
 
-  private parse(path: string, bytes: Uint8Array): void {
-    try {
-      this.caches.set(path, this.parser.parse(path, bytes));
+  private outcome(path: string, bytes: Uint8Array): ParseOutcome {
+    try { return { metadata: this.parser.parse(path, bytes) }; }
+    catch (error) { return { issue: { code: error instanceof AppError ? error.code : 'INVALID_FILE', message: errorMessage(error) } }; }
+  }
+
+  private adopt(path: string, outcome: ParseOutcome): void {
+    if ('metadata' in outcome) {
+      this.caches.set(path, outcome.metadata);
       this.problems.delete(path);
-    } catch (error) {
+    } else {
       this.caches.delete(path);
-      this.problems.set(path, { path, code: error instanceof AppError ? error.code : 'INVALID_FILE', message: errorMessage(error) });
+      this.problems.set(path, { path, ...outcome.issue });
     }
   }
 
@@ -172,9 +221,9 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     }
     for (const path of touched) removed.delete(path);
     const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map(path => [path, this.aliasKey(path)]));
-    const contents = new Map<string, Uint8Array>();
+    const contents = new Map<string, FileSnapshot>();
     await eachConcurrently([...touched].filter(this.member), pendingFileReads, async path => {
-      try { contents.set(path, (await this.repository.read(path)).bytes); }
+      try { contents.set(path, await this.repository.read(path)); }
       catch (error) { if (!missing(error)) throw error; removed.add(path); }
     });
     const changed: string[] = [], deleted: string[] = [];
@@ -184,11 +233,14 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
       prevCaches[path] = this.caches.get(path) ?? null;
       this.caches.delete(path); this.problems.delete(path);
       this.forget(path);
+      this.results.forget(path);
       deleted.push(path);
     }
-    for (const [path, bytes] of contents) {
+    for (const [path, file] of contents) {
       if (!this.parser.indexes(path)) continue;
-      this.parse(path, bytes);
+      this.adopt(path, this.outcome(path, file.bytes));
+      // Read after the commit without a stamp: the next load reads it again and reuses this result by revision.
+      this.results.read(path, file.revision, null);
       changed.push(path);
     }
     const paths = vaultOrder(new Set([...this.paths.filter(path => !removed.has(path)), ...contents.keys()]));
