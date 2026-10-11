@@ -2,6 +2,7 @@ import { diagnostic, pointer, type AgentDiagnostic } from './config.ts';
 import { toolName } from './claude-tools.ts';
 import type { ClaudeAgentDraft } from './claude-agent.ts';
 import type { McpServer } from './claude-mcp.ts';
+import { say } from './messages.ts';
 
 /** Where generated MCP servers go: nowhere (the default), inline in agent frontmatter, or the project's `.mcp.json`. */
 export type McpMode = 'none' | 'inline' | 'project';
@@ -18,13 +19,13 @@ const serverTarget = (server: McpServer) => server.commandLine ?? String(server.
 function servers(draft: ClaudeAgentDraft, mode: McpMode, diagnostics: AgentDiagnostic[]): McpServer[] {
   if (mode === 'none') {
     for (const server of draft.servers) {
-      diagnostics.push(diagnostic('info', 'mcp-not-generated', server.at, `MCP server ${server.declared} (${serverTarget(server)}) is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it.`, 'U'));
+      diagnostics.push(diagnostic('info', 'mcp-not-generated', server.at, say('mcpNotGenerated', { server: server.declared, target: serverTarget(server) }), 'U'));
     }
     return [];
   }
   const target = mode === 'inline' ? `.claude/agents/${draft.name}.md` : '.mcp.json';
   for (const server of draft.servers) if (server.commandLine !== undefined) {
-    diagnostics.push(diagnostic('warning', 'executes-command', server.at, `MCP server ${server.name} in ${target} runs the command: ${server.commandLine}`));
+    diagnostics.push(diagnostic('warning', 'executes-command', server.at, say('mcpExecutes', { server: server.name, file: target, command: server.commandLine })));
   }
   return draft.servers;
 }
@@ -34,11 +35,11 @@ function hooks(draft: ClaudeAgentDraft, enabled: boolean, diagnostics: AgentDiag
   if (!draft.hooks) return undefined;
   if (!enabled) {
     const skipped = draft.hookCommands.map(entry => `${entry.event}: ${entry.command}`).join('; ');
-    diagnostics.push(diagnostic('info', 'hooks-not-generated', pointer('agents', draft.agent, 'hooks'), `Hooks run commands and are generated only with --hooks; skipped ${skipped}.`, 'U'));
+    diagnostics.push(diagnostic('info', 'hooks-not-generated', pointer('agents', draft.agent, 'hooks'), say('hooksNotGenerated', { hooks: skipped }), 'U'));
     return undefined;
   }
   for (const entry of draft.hookCommands) {
-    diagnostics.push(diagnostic('warning', 'executes-command', entry.at, `The ${entry.event} hook of ${draft.name} runs the command: ${entry.command}`));
+    diagnostics.push(diagnostic('warning', 'executes-command', entry.at, say('hookExecutes', { event: entry.event, agent: draft.name, command: entry.command })));
   }
   return draft.hooks;
 }
@@ -54,7 +55,7 @@ export function completeAgent(draft: ClaudeAgentDraft, options: { mcp: McpMode; 
   const disallowed = [...draft.disallowed];
   if (tools.length === 0) {
     disallowed.push(...noToolsDisallowed.filter(tool => !disallowed.includes(tool)));
-    diagnostics.push(diagnostic('info', 'tools-none', pointer('agents', draft.agent), `No toolset grants a Claude tool, so ${draft.name} gets tools: [] and disallows ${noToolsDisallowed.join(', ')} instead of inheriting every tool.`, 'E'));
+    diagnostics.push(diagnostic('info', 'tools-none', pointer('agents', draft.agent), say('toolsNone', { agent: draft.name, tools: noToolsDisallowed.join(', ') }), 'E'));
   }
   return {
     ...draft.metadata, tools: tools.length > 0 ? tools.join(', ') : [],

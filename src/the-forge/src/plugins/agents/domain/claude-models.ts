@@ -1,6 +1,7 @@
 import { diagnostic, isObject, pointer, record, text, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
 import { effectiveProvider, expandModelReference, firstAvailable, parseModelReference } from './references.ts';
 import { modelAlias } from './claude-vocabulary.ts';
+import { say } from './messages.ts';
 
 export type ModelStyle = 'id' | 'alias';
 export interface ClaudeModel { model: string; effort?: string; diagnostics: AgentDiagnostic[] }
@@ -28,8 +29,8 @@ function styled(id: string, style: ModelStyle, at: string): { model: string; dia
   if (style === 'id') return { model: id, diagnostics: [] };
   const alias = modelAlias(id);
   return alias
-    ? { model: alias, diagnostics: [diagnostic('warning', 'model-alias', at, `Model ${id} is emitted as the alias ${alias}, which Claude Code resolves to the newest model of that family.`, 'A')] }
-    : { model: id, diagnostics: [diagnostic('info', 'model-alias', at, `Model ${id} has no Claude alias; its id is emitted.`, 'A')] };
+    ? { model: alias, diagnostics: [diagnostic('warning', 'model-alias', at, say('modelAlias', { id, alias }), 'A')] }
+    : { model: id, diagnostics: [diagnostic('info', 'model-alias', at, say('modelNoAlias', { id }), 'A')] };
 }
 
 /** Claude `effort` for a docker-agent `thinking_budget` level or token budget. */
@@ -37,30 +38,30 @@ function effort(budget: unknown, at: string): { effort?: string; diagnostics: Ag
   if (budget === undefined) return { diagnostics: [] };
   const level = typeof budget === 'string' ? (budget === 'adaptive' ? 'high' : budget.replace(/^adaptive\//, '')) : undefined;
   if (level !== undefined && efforts.includes(level)) {
-    return { effort: level, diagnostics: [diagnostic('warning', 'effort-approximated', at, `thinking_budget ${JSON.stringify(budget)} is emitted as effort: ${level}.`, 'A')] };
+    return { effort: level, diagnostics: [diagnostic('warning', 'effort-approximated', at, say('effortLevel', { budget: JSON.stringify(budget), effort: level }), 'A')] };
   }
   if (typeof budget === 'number' && budget > 0) {
     const bucket = budget <= 4096 ? 'low' : budget <= 16384 ? 'medium' : 'high';
-    return { effort: bucket, diagnostics: [diagnostic('warning', 'effort-approximated', at, `A thinking budget of ${budget} tokens is approximated as effort: ${bucket}.`, 'A')] };
+    return { effort: bucket, diagnostics: [diagnostic('warning', 'effort-approximated', at, say('effortBudget', { budget, effort: bucket }), 'A')] };
   }
-  return { diagnostics: [diagnostic('info', 'effort-approximated', at, `thinking_budget ${JSON.stringify(budget)} disables or minimizes thinking; no effort is emitted.`, 'A')] };
+  return { diagnostics: [diagnostic('info', 'effort-approximated', at, say('effortNone', { budget: String(JSON.stringify(budget)) }), 'A')] };
 }
 
 function unsupportedSettings(config: AgentConfigDocument, named: string): AgentDiagnostic[] {
   const model = record(record(config.models)[named]);
   return Object.keys(model).filter(key => !mappedModelKeys.includes(key)).map(key => diagnostic('info', 'model-setting-unsupported', pointer('models', named, key),
-    `Model setting ${key} has no Claude agent equivalent and is not emitted.`, 'U'));
+    say('modelSettingUnsupported', { key }), 'U'));
 }
 
 function harnessModel(agent: Record<string, unknown>, at: string, style: ModelStyle): ClaudeModel {
   const harness = record(agent.harness);
   if (harness.type !== 'claude-code') {
-    return { model: 'inherit', diagnostics: [diagnostic('warning', 'harness-unsupported', `${at}/harness`, `The ${String(harness.type)} harness has no Claude agent equivalent; the agent inherits the session model.`, 'U')] };
+    return { model: 'inherit', diagnostics: [diagnostic('warning', 'harness-unsupported', `${at}/harness`, say('harnessUnsupported', { type: String(harness.type) }), 'U')] };
   }
   const chosen = text(harness.model) ? styled(harness.model.replace(/^anthropic\//, ''), style, `${at}/harness/model`) : { model: 'inherit', diagnostics: [] };
   return {
     model: chosen.model, ...(typeof harness.effort === 'string' ? { effort: harness.effort } : {}),
-    diagnostics: [diagnostic('warning', 'harness-approximated', `${at}/harness`, 'The claude-code harness runs the agent in Claude Code; its model and effort are emitted on the generated agent.', 'A'), ...chosen.diagnostics],
+    diagnostics: [diagnostic('warning', 'harness-approximated', `${at}/harness`, say('harnessApproximated'), 'A'), ...chosen.diagnostics],
   };
 }
 
@@ -73,11 +74,11 @@ export function claudeModel(config: AgentConfigDocument, name: string, agent: Re
   const at = pointer('agents', name);
   if (isObject(agent.harness)) return harnessModel(agent, at, style);
   const reference = typeof agent.model === 'string' ? agent.model.trim() : '';
-  if (reference === '') return { model: 'inherit', diagnostics: [diagnostic('warning', 'model-approximated', `${at}/model`, 'The agent names no model; the Claude agent inherits the session model.', 'A')] };
+  if (reference === '') return { model: 'inherit', diagnostics: [diagnostic('warning', 'model-approximated', `${at}/model`, say('modelMissing'), 'A')] };
   const options = candidates(config, reference);
   const anthropic = options.find(candidate => candidate.provider === 'anthropic' && text(candidate.id));
   if (!anthropic) {
-    return { model: 'inherit', diagnostics: [diagnostic('warning', 'model-approximated', `${at}/model`, `Model ${reference} has no Anthropic candidate; the Claude agent inherits the session model.`, 'A')] };
+    return { model: 'inherit', diagnostics: [diagnostic('warning', 'model-approximated', `${at}/model`, say('modelNoAnthropic', { reference }), 'A')] };
   }
   const exact = options.length === 1 && expandModelReference(config, reference).length === 1 && !firstAvailable(record(config.models)[reference]);
   const chosen = styled(anthropic.id!, style, `${at}/model`);
@@ -85,7 +86,7 @@ export function claudeModel(config: AgentConfigDocument, name: string, agent: Re
   return {
     model: chosen.model, ...(thinking.effort ? { effort: thinking.effort } : {}),
     diagnostics: [
-      ...(exact ? [] : [diagnostic('warning', 'model-approximated', `${at}/model`, `Model ${reference} selects among several models; the first Anthropic candidate ${anthropic.reference} is emitted.`, 'A')]),
+      ...(exact ? [] : [diagnostic('warning', 'model-approximated', `${at}/model`, say('modelSelected', { reference, candidate: anthropic.reference }), 'A')]),
       ...chosen.diagnostics, ...thinking.diagnostics, ...(anthropic.named ? unsupportedSettings(config, anthropic.named) : []),
     ],
   };

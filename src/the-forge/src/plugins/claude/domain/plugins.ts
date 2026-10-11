@@ -1,12 +1,13 @@
 import { AppError, ensure, forgeError, isRecord } from '../../../domain/shared/errors.ts';
 import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
+import { claudeMessages } from './messages.ts';
 
 /** Discovery metadata describes Claude's loading behavior, not features executed by Forge. */
 export const claudePluginCapabilities = {
   manifest: '.claude-plugin/plugin.json',
   manifestRequired: false,
   reference: 'https://code.claude.com/docs/en/plugins-reference',
-  validation: 'Known manifest shapes and contained relative paths; unknown fields are preserved. Referenced files, installed versions and runtime behavior require Claude Code validation.',
+  validation: claudeMessages.pluginValidation,
   components: [
     { field: 'skills', defaultPath: 'skills/', forms: ['path', 'paths'], loading: 'add' },
     { field: 'commands', defaultPath: 'commands/', forms: ['path', 'paths', 'command-map'], loading: 'replace' },

@@ -10,9 +10,11 @@ import { arity, parseJson, value } from '../../../application/plugins/command-in
 import { option } from '../../../application/plugins/command-metadata.ts';
 import { claudeInput, claudeOptions } from './input.ts';
 import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from './runtime-commands.ts';
+import { claudeMessages } from '../domain/messages.ts';
+import { withLocalizedResults } from './messages.ts';
 
 export function claudeCommand(adapters: ClaudeCommandServices): Command {
-  return {
+  return withLocalizedResults({
     id: 'claude', description: 'Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.',
     usage: 'claude capabilities | agents list|inspect|create|update|remove|enable|disable|export [id] | hooks inspect|check|set|add|remove|configure|enable|disable [event] | plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory> [path] | plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval [id] | marketplaces add|list|remove|update [source] | runtime version|doctor|install|update',
     scope: 'project', discovery: false, mutating: true, defaultAction: 'capabilities',
@@ -54,10 +56,10 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
       if (!section || section === 'capabilities') {
         arity(args, 0, 1); claudeOptions(flags, []);
         return { provider: 'Claude Code', nativeFormats: true, documentation: 'https://code.claude.com/docs/en/sub-agents',
-          agents: { scopes: ['project', 'user', 'plugin'], format: 'Markdown with YAML frontmatter', operations: ['list', 'inspect', 'create', 'update', 'remove', 'enable', 'disable', 'export'], pluginIgnoredFields: ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'] },
-          hooks: { scopes: ['project', 'local', 'user', 'plugin'], events: claudeHookEvents, operations: ['inspect', 'check', 'set', 'add', 'remove', 'configure', 'enable', 'disable'], execution: 'Claude Code owns execution; Forge never runs hook handlers.' },
+          agents: { scopes: ['project', 'user', 'plugin'], format: claudeMessages.agentFormat, operations: ['list', 'inspect', 'create', 'update', 'remove', 'enable', 'disable', 'export'], pluginIgnoredFields: ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'] },
+          hooks: { scopes: ['project', 'local', 'user', 'plugin'], events: claudeHookEvents, operations: ['inspect', 'check', 'set', 'add', 'remove', 'configure', 'enable', 'disable'], execution: claudeMessages.hookExecution },
           plugins: claudePluginCapabilities,
-          lifecycle: { executable: 'claude', commands: ['plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval', 'marketplaces add|list|remove|update', 'runtime version|doctor|install|update'], mutationDefaultScope: 'project where the native command supports a scope', dryRun: 'Returns command arguments without starting Claude Code.' } };
+          lifecycle: { executable: 'claude', commands: ['plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval', 'marketplaces add|list|remove|update', 'runtime version|doctor|install|update'], mutationDefaultScope: claudeMessages.mutationScope, dryRun: claudeMessages.lifecycleDryRun } };
       }
       const services: ClaudeServices = { agentCodec: adapters.agentCodec(context.workspace.codec), target: adapters.target };
       if (section === 'agents') return agentCommands(args.slice(1), flags, context, services);
@@ -78,5 +80,5 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
       }
       return adapters.lifecycle.execute({ args: command, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section, args.slice(1), flags) });
     },
-  };
+  });
 }

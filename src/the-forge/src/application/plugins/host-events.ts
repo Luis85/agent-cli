@@ -1,6 +1,7 @@
 import { isRecord, errorMessage } from '../../domain/shared/errors.ts';
 import type { FileChange } from '../../domain/documents/file.ts';
 import type { EventBus, EventDefinition } from './events.ts';
+import { kernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 interface HostError { code: string; exitCode: number }
 interface CommandOperation { operationId: number; command: string; root: string; workspaceRoot: string; dryRun: boolean }
@@ -111,7 +112,7 @@ export async function publishHostEvent<Id extends HostEventId>(events: EventBus,
     if (!events.ids().includes(id)) return;
     await events.emit(id, payload);
   } catch (error) {
-    try { events.warn(`Host notification ${id}: ${errorMessage(error)}`); }
+    try { events.warn(kernelMessage('HOST_NOTIFICATION_FAILED', { event: id, diagnostic: errorMessage(error) })); }
     catch { /* A diagnostic sink cannot replace the host operation's result. */ }
   }
 }

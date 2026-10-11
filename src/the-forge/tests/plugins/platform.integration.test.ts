@@ -10,6 +10,7 @@ import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
 import { reviewOptions } from '../../src/application/generation/controls.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { englishWarning } from '../support/events.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Platform test', author: 'Test' });
 const setup = () => {
@@ -112,7 +113,7 @@ describe('plugin config sections', () => {
     let received: unknown;
     registry.register({ manifest: manifest('quality'), settings, onload(context) { received = context.settings; } }, events);
     registry.register({ manifest: manifest('plain') }, events);
-    const effective = await registry.configure({ quality: { label: 'Docs' }, removed: { kept: true } }, async () => ['removed'], message => { throw new Error(message); });
+    const effective = await registry.configure({ quality: { label: 'Docs' }, removed: { kept: true } }, async () => ['removed'], message => { throw new Error(englishWarning(message)); });
     expect(effective).toEqual({ quality: { threshold: 3, label: 'Docs' }, removed: { kept: true } });
     expect(registry.settings.sections()).toEqual([{ plugin: 'quality', path: 'plugins.settings.quality', schema: settings }]);
     expect(registry.settings.canonical('quality')).toBe('{"label":"Docs","threshold":3}');
@@ -126,7 +127,7 @@ describe('plugin config sections', () => {
     registry.register({ manifest: manifest('quality'), settings, commands: [{ id: 'quality.run', description: 'Run', usage: 'quality.run', run: () => 'ran' }] }, events);
     registry.register({ manifest: manifest('plain') }, events);
     const warnings: string[] = [];
-    expect(await registry.configure({ quality: { threshold: 0, extra: true }, plain: {} }, async () => [], message => warnings.push(message))).toEqual({ quality: { threshold: 0, extra: true }, plain: {} });
+    expect(await registry.configure({ quality: { threshold: 0, extra: true }, plain: {} }, async () => [], message => warnings.push(englishWarning(message)))).toEqual({ quality: { threshold: 0, extra: true }, plain: {} });
     expect(warnings).toEqual([
       expect.stringContaining('Plugin quality is unavailable in this invocation: plugins.settings.quality is invalid'),
       'plugins.settings has sections for plugins that declare no settings: plain; they are ignored.',

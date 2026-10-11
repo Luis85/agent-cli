@@ -2,6 +2,7 @@ import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { projectScaffolderService, type ProjectScaffolder } from '../../application/projects/projects.ts';
 import { scaffoldGenerators } from './infrastructure/generators.ts';
 import { componentScaffold, projectScaffold } from './infrastructure/projects.ts';
+import { scaffoldsStrings } from './presentation/strings.ts';
 
 const projects: ProjectScaffolder = { project: projectScaffold, component: componentScaffold };
 
@@ -16,6 +17,7 @@ export const scaffoldsPlugin: CorePlugin = {
     id: 'scaffolds', name: 'Scaffolds', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Generate tested TypeScript projects, components, domain and application code, typed forms and plugin folders.',
   },
+  strings: scaffoldsStrings,
   create: () => ({
     // Every scaffold is a new file the host writes create-only: a generator never replaces existing content.
     generators: scaffoldGenerators.map(generator => ({ ...generator, destructive: false })),

@@ -11,6 +11,7 @@ import { openBacklog, type BacklogPorts, type BasesQueryService, type Selection 
 import { board, check, itemTree, listItems, showItem } from '../application/views.ts';
 import type { SyncServices } from '../application/sync-run.ts';
 import { syncAccepted, syncAction, syncOptions } from './sync-command.ts';
+import { localizedCheck } from './messages.ts';
 
 const selection = ['base', 'view', 'today'];
 /** Options each action accepts besides the backlog selection (`--base`, `--view`, `--today`). */
@@ -128,7 +129,7 @@ export function backlogCommand(ports: (context: CommandContext) => { bases: Base
         case 'tree': arity(rest, 0); return itemTree(session);
         case 'board': arity(rest, 0); return board(session);
         case 'show': arity(rest, 1); return showItem(session, rest[0]!);
-        case 'check': arity(rest, 0); return check(session);
+        case 'check': arity(rest, 0); return localizedCheck(check(session), context.language);
         case 'add': {
           arity(rest, 2);
           const tags = value(flags, 'tags');

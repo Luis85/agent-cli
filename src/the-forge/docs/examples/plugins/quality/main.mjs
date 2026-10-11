@@ -12,6 +12,12 @@ export default {
   strings: {
     en: { messages: { moved: 'Quality noticed {from} moved to {to}; review notes that describe it.', settings: 'Quality settings changed; owner property is now {property}.' } },
     de: {
+      manifest: { name: 'Qualitätsprüfungen', description: 'Checklisten für technische Prüfungen und Berichte über Markdown-Notizen.' },
+      // Option, argument and settings descriptions translate by their English text.
+      descriptions: {
+        'Frontmatter property that names a note\'s owner.': 'Frontmatter-Eigenschaft, die die Verantwortlichen einer Notiz nennt.',
+        'Markdown note to mark as reviewed.': 'Markdown-Notiz, die als geprüft markiert wird.',
+      },
       commands: {
         'quality.check': 'Die Anzahl der Markdown-Notizen melden',
         'quality.mark-reviewed': 'Eine Notiz in ihrem Frontmatter als geprüft markieren',

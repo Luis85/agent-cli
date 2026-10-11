@@ -1,6 +1,7 @@
 import { diagnostic, isObject, pointer, record, stringList, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
 import { claudeName } from './claude-vocabulary.ts';
 import { bangToolCalls, commandArguments } from './templating.ts';
+import { say } from './messages.ts';
 
 /** A Claude skill generated from one docker-agent slash command. */
 export interface CommandSkill { name: string; agent: string; command: string; metadata: Record<string, unknown>; body: string }
@@ -27,22 +28,22 @@ export function commandSkills(config: AgentConfigDocument, name: string, agent: 
   for (const [command, value, at] of commandEntries(config, name, agent)) {
     const definition = isObject(value) ? value : { instruction: value };
     if (typeof definition.url === 'string') {
-      diagnostics.push(diagnostic('warning', 'command-unsupported', at, `The /${command} command opens a URL, which a Claude skill cannot do; it is not emitted.`, 'U'));
+      diagnostics.push(diagnostic('warning', 'command-unsupported', at, say('commandUrl', { command }), 'U'));
       continue;
     }
     const target = typeof definition.agent === 'string' ? definition.agent : undefined;
     const instruction = typeof definition.instruction === 'string' ? definition.instruction : '';
     const converted = commandArguments(instruction);
-    for (const kept of converted.kept) diagnostics.push(diagnostic('warning', 'template-literal', `${at}${isObject(value) ? '/instruction' : ''}`, `The template expression ${kept} is kept literally; Claude skills do not evaluate docker-agent expressions.`, 'U'));
-    for (const call of bangToolCalls(instruction)) diagnostics.push(diagnostic('warning', 'template-literal', `${at}${isObject(value) ? '/instruction' : ''}`, `The bang tool call ${call} is kept literally.`, 'U'));
+    for (const kept of converted.kept) diagnostics.push(diagnostic('warning', 'template-literal', `${at}${isObject(value) ? '/instruction' : ''}`, say('commandTemplateLiteral', { expression: kept }), 'U'));
+    for (const call of bangToolCalls(instruction)) diagnostics.push(diagnostic('warning', 'template-literal', `${at}${isObject(value) ? '/instruction' : ''}`, say('bangToolCall', { call }), 'U'));
     const body = converted.text.trim() === '' ? '$ARGUMENTS' : converted.text;
     const description = typeof definition.description === 'string' && definition.description.trim() !== '' ? definition.description : `Run the /${command} command of the ${name} agent.`;
-    if (description !== definition.description) diagnostics.push(diagnostic('warning', 'description-synthesized', at, `The /${command} command has no description; "${description}" is emitted.`, 'A'));
+    if (description !== definition.description) diagnostics.push(diagnostic('warning', 'description-synthesized', at, say('commandDescription', { command, description }), 'A'));
     const metadata: Record<string, unknown> = { name: claudeName(command), description, 'disable-model-invocation': true };
     if (target !== undefined) {
       metadata.context = 'fork';
       metadata.agent = agentNames.get(target) ?? claudeName(target);
-      diagnostics.push(diagnostic('warning', 'command-approximated', `${at}/agent`, `docker-agent switches the conversation to ${target}; the Claude skill runs in a forked ${metadata.agent as string} subagent instead.`, 'A'));
+      diagnostics.push(diagnostic('warning', 'command-approximated', `${at}/agent`, say('commandForked', { target, agent: metadata.agent as string }), 'A'));
     }
     skills.push({ name: claudeName(command), agent: name, command, metadata, body: body.endsWith('\n') ? body : `${body}\n` });
   }

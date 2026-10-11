@@ -1,4 +1,5 @@
 import { forgeError, ensure, isRecord, errorMessage } from '../../domain/shared/errors.ts';
+import { kernelMessage, renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 export interface EventDefinition<T = unknown> { id: string; description?: string; validate: (payload: unknown) => payload is T }
 export interface EventRecord { id: string; payload: unknown }
@@ -54,7 +55,10 @@ export class EventBus implements EventChannel {
   private readonly quitTasks: Callback[] = [];
   private readonly settling = new Set<Promise<void>>();
   readonly history: EventRecord[] = [];
-  readonly warnings: string[] = [];
+  /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
+  readonly warningRecords: Array<string | KernelMessage> = [];
+  /** The warnings in English. */
+  get warnings(): string[] { return this.warningRecords.map(warning => typeof warning === 'string' ? warning : renderKernelMessage(warning)); }
 
   constructor(private readonly delivery: EventDeliveryScope) {}
 
@@ -99,7 +103,7 @@ export class EventBus implements EventChannel {
       for (const record of records) {
         if (this.disposed) break;
         try { await listener(record); }
-        catch (error) { this.warn(`Replay ${record.id}: ${errorMessage(error)}`); }
+        catch (error) { this.warn(kernelMessage('EVENT_REPLAY_FAILED', { event: record.id, diagnostic: errorMessage(error) })); }
       }
     });
   }
@@ -130,21 +134,21 @@ export class EventBus implements EventChannel {
     if (this.history.length < 1000) this.history.push({ id, payload: structuredClone(snapshot) });
     else if (!this.historyTruncated) {
       this.historyTruncated = true;
-      this.warn('Event history reached 1000 records; later notifications are delivered but omitted from history and replay.');
+      this.warn(kernelMessage('EVENT_HISTORY_FULL'));
     }
     await this.delivery.run(async () => {
       for (const entry of Array.from(this.listeners).filter(listener => listener.id === undefined || listener.id === id)) {
         if (!entry.active || this.disposed) continue;
         try { await entry.invoke(structuredClone(entry.id === undefined ? { id, payload: snapshot } : snapshot)); }
-        catch (error) { this.warn(`Listener ${id}: ${errorMessage(error)}`); }
+        catch (error) { this.warn(kernelMessage('EVENT_LISTENER_FAILED', { event: id, diagnostic: errorMessage(error) })); }
       }
     });
   }
-  warn(message: string): void { if (this.warnings.length < 1000) this.warnings.push(message); }
+  warn(message: string | KernelMessage): void { if (this.warningRecords.length < 1000) this.warningRecords.push(message); }
   onLayoutReady(callback: Callback): void {
     this.ensureCallback(callback);
     if (!this.layoutReady) { this.layoutCallbacks.push(callback); return; }
-    const running = this.settle('Layout ready', callback);
+    const running = this.settle('LAYOUT_CALLBACK_FAILED', callback);
     this.settling.add(running);
     void running.then(() => this.settling.delete(running));
   }
@@ -156,21 +160,21 @@ export class EventBus implements EventChannel {
   async markLayoutReady(): Promise<void> {
     if (this.layoutReady) return;
     this.layoutReady = true;
-    for (const callback of this.layoutCallbacks.splice(0)) await this.settle('Layout ready', callback);
+    for (const callback of this.layoutCallbacks.splice(0)) await this.settle('LAYOUT_CALLBACK_FAILED', callback);
   }
   /** Host: settle immediate layout callbacks, then run quit tasks in order, including tasks added meanwhile. */
   async runQuitTasks(): Promise<void> {
     await Promise.allSettled(this.settling);
-    for (let task = this.quitTasks.shift(); task; task = this.quitTasks.shift()) await this.settle('Quit task', task);
+    for (let task = this.quitTasks.shift(); task; task = this.quitTasks.shift()) await this.settle('QUIT_TASK_FAILED', task);
   }
   private ensureCallback(callback: unknown): void {
     ensure(!this.disposed, 'INVALID_EVENT', 'Cannot schedule callbacks after disposal.');
     ensure(typeof callback === 'function', 'INVALID_EVENT_LISTENER', 'Lifecycle callbacks must be functions.');
   }
-  private async settle(label: string, callback: Callback): Promise<void> {
+  private async settle(failure: 'LAYOUT_CALLBACK_FAILED' | 'QUIT_TASK_FAILED', callback: Callback): Promise<void> {
     try { await this.delivery.run(async () => { await callback(); }); }
     catch (error) {
-      try { this.warn(`${label}: ${errorMessage(error)}`); }
+      try { this.warn(kernelMessage(failure, { diagnostic: errorMessage(error) })); }
       catch { /* A failed diagnostic sink cannot stop the remaining lifecycle callbacks. */ }
     }
   }

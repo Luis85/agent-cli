@@ -44,6 +44,8 @@ Sync parses each source with the YAML 1.2 core schema, so `on` stays a key rathe
 
 Authored paths that start with `/` are workspace-relative. Use them for files outside the project, for example `paths: ['**', '/bin/**']` to run a check when the project or the shipped distribution changes, or `paths: ['/**']` to run on every pull request. Patterns starting with `!` keep their negation.
 
+Path filters interact with required status checks: GitHub never starts a workflow whose `paths` do not match a pull request, so a branch protection rule that requires one of its jobs leaves that pull request waiting for a check that never reports. Require only checks of workflows that run on every pull request (`paths: ['/**']`), or let a small always-running job aggregate the path-filtered results; Forge does not generate such a job.
+
 A source that is not valid UTF-8 or YAML, is not a mapping, lacks `on` or `jobs`, or uses an unsupported trigger, path filter or working-directory shape fails with `INVALID_WORKFLOW` and nothing is written.
 
 ## Ownership and safety

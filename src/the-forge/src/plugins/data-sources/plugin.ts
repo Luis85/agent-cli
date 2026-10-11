@@ -5,6 +5,7 @@ import { dataSourceSettings, dataSourcePathSettings, dataSourceSettingsSchema } 
 import { MarkdownDataSourceDefinitions } from './infrastructure/definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/generator.ts';
 import { dataSourceGenerator, dataSourcesCommand, type DataSourceServicesFactory } from './presentation/commands.ts';
+import { dataSourcesStrings } from './presentation/strings.ts';
 
 /** The definition library lives at workspace scope (`context.environment`), even while a project is selected. */
 const services: DataSourceServicesFactory = context => {
@@ -36,6 +37,7 @@ export const dataSourcesPlugin: CorePlugin = {
     id: 'data-sources', name: 'Data sources', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Markdown REST and local-JSON data-source definitions with typed adapters and deterministic test data.',
   },
+  strings: dataSourcesStrings,
   create: () => ({
     commands: [dataSourcesCommand(services)],
     generators: [dataSourceGenerator(services)],

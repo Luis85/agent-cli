@@ -5,6 +5,7 @@ import { unifiedDiff } from '../../domain/documents/diff.ts';
 import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type HostEventMap } from '../plugins/host-events.ts';
+import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 type Operation = HostEventMap['operation.started']['operation'];
 const vaultEvents = { created: 'vault.create', updated: 'vault.modify', deleted: 'vault.delete' } as const;
@@ -129,14 +130,14 @@ export class Workspace {
     const moved = renames.filter((rename): rename is FileRename & { kind: 'file' } => rename.kind === 'file');
     if (this.observer && moved.length + changes.length > 0) {
       try { await this.observer.committed({ renames: moved, changes }); }
-      catch (error) { this.warn(`Committed ${moved.length + changes.length} file(s); post-commit update failed: ${errorMessage(error)}`); }
+      catch (error) { this.warn(kernelMessage('POST_COMMIT_FAILED', { count: moved.length + changes.length, diagnostic: errorMessage(error) })); }
     }
   }
   private async notify(path: string, id: string, payload: unknown): Promise<void> {
     try { await this.events.emit(id, payload); }
-    catch (error) { this.warn(`Committed ${path}; vault notification failed: ${errorMessage(error)}`); }
+    catch (error) { this.warn(kernelMessage('VAULT_NOTIFICATION_FAILED', { path, diagnostic: errorMessage(error) })); }
   }
-  private warn(message: string): void {
+  private warn(message: KernelMessage): void {
     try { this.events.warn(message); }
     catch { /* A failed diagnostic sink cannot turn committed persistence into failure. */ }
   }

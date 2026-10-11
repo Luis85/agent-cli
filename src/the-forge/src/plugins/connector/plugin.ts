@@ -4,6 +4,7 @@ import { isRecord } from '../../domain/shared/errors.ts';
 import { Hub } from './application/hub.ts';
 import { connectorSettings } from './domain/profiles.ts';
 import { connectorsCommand } from './presentation/command.ts';
+import { connectorStrings } from './presentation/strings.ts';
 
 const payload = (value: unknown): value is Record<string, unknown> => isRecord(value)
   && ['connection', 'platform', 'path', 'remoteId', 'url'].every(key => typeof value[key] === 'string') && Array.isArray(value.fields);
@@ -44,6 +45,7 @@ export const connectorPlugin: CorePlugin = {
     id: 'connector', name: 'Connectors', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Connection profiles and the shared hub for backlog connectors to external work trackers.',
   },
+  strings: connectorStrings,
   create: host => {
     const hub = new Hub(host.environment);
     return {

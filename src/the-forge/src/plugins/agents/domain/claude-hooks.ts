@@ -1,5 +1,6 @@
 import { diagnostic, isObject, pointer, record, type AgentDiagnostic } from './config.ts';
 import { hookEvents, toolMatcherEvents, translateMatcher } from './claude-vocabulary.ts';
+import { say } from './messages.ts';
 
 type Handler = Record<string, unknown>;
 /** docker-agent handler fields without a Claude equivalent; `args` only parameterize builtin hooks. */
@@ -10,11 +11,11 @@ export interface HookCommand { at: string; event: string; command: string }
 /** A docker-agent command hook as a Claude command hook; other hook types have no Claude equivalent. */
 function handler(definition: Handler, at: string, diagnostics: AgentDiagnostic[]): Handler | undefined {
   if (definition.type !== 'command' || typeof definition.command !== 'string') {
-    diagnostics.push(diagnostic('warning', 'hook-unsupported', at, `A ${String(definition.type)} hook has no Claude equivalent and is not emitted.`, 'U'));
+    diagnostics.push(diagnostic('warning', 'hook-unsupported', at, say('hookTypeUnsupported', { type: String(definition.type) }), 'U'));
     return undefined;
   }
   for (const field of ignoredHandlerFields) if (definition[field] !== undefined) {
-    diagnostics.push(diagnostic('info', 'hook-field-unsupported', `${at}/${field}`, `Hook ${field} is not emitted.`, 'U'));
+    diagnostics.push(diagnostic('info', 'hook-field-unsupported', `${at}/${field}`, say('hookFieldUnsupported', { field }), 'U'));
   }
   return { type: 'command', command: definition.command, ...(typeof definition.timeout === 'number' ? { timeout: definition.timeout } : {}) };
 }
@@ -29,7 +30,7 @@ export function claudeHooks(name: string, hooks: unknown): { hooks?: Record<stri
   for (const [event, entries] of Object.entries(record(hooks))) {
     const at = pointer('agents', name, 'hooks', event), target = hookEvents[event];
     if (!target) {
-      diagnostics.push(diagnostic('warning', 'hook-unsupported', at, `The ${event} hook event has no Claude equivalent and is not emitted.`, 'U'));
+      diagnostics.push(diagnostic('warning', 'hook-unsupported', at, say('hookEventUnsupported', { event }), 'U'));
       continue;
     }
     const groups: unknown[] = [];
@@ -49,14 +50,14 @@ export function claudeHooks(name: string, hooks: unknown): { hooks?: Record<stri
       if (grouped && toolMatcherEvents.includes(target)) {
         const translated = translateMatcher(typeof entry.matcher === 'string' ? entry.matcher : '*');
         matcher = translated.matcher;
-        if (translated.unknown.length > 0) diagnostics.push(diagnostic('warning', 'hook-matcher-approximated', `${where}/matcher`, `Matcher alternatives ${translated.unknown.join(', ')} have no known Claude tool and are kept literally.`, 'A'));
+        if (translated.unknown.length > 0) diagnostics.push(diagnostic('warning', 'hook-matcher-approximated', `${where}/matcher`, say('hookMatcherApproximated', { matchers: translated.unknown.join(', ') }), 'A'));
       }
-      if (entry.preempt_yolo !== undefined) diagnostics.push(diagnostic('info', 'hook-field-unsupported', `${where}/preempt_yolo`, 'preempt_yolo is not emitted.', 'U'));
+      if (entry.preempt_yolo !== undefined) diagnostics.push(diagnostic('info', 'hook-field-unsupported', `${where}/preempt_yolo`, say('preemptYolo'), 'U'));
       groups.push({ ...(matcher === undefined ? {} : { matcher }), hooks: handlers });
     });
     if (groups.length === 0) continue;
     result[target] = [...(result[target] ?? []), ...groups];
-    diagnostics.push(diagnostic('warning', 'hook-approximated', at, `${event} hooks run on Claude's ${target} event, which sends Claude Code's hook input; check each command's input and decision format.`, 'A'));
+    diagnostics.push(diagnostic('warning', 'hook-approximated', at, say('hookApproximated', { event, target }), 'A'));
   }
   return { ...(Object.keys(result).length > 0 ? { hooks: result } : {}), commands, diagnostics };
 }

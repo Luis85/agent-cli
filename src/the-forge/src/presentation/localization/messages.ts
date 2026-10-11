@@ -1,0 +1,30 @@
+import type { KernelMessageCode } from '../../domain/shared/kernel-messages.ts';
+
+/** German host warnings and plugin state reasons; `{diagnostic}` keeps the original failure message. */
+export const germanKernelMessages: Record<KernelMessageCode, string> = {
+  PLUGIN_LISTED_DISABLED: 'In plugins.disabled aufgeführt.',
+  PLUGIN_NOT_ENABLED: 'Nicht in plugins.enabled aufgeführt.',
+  PLUGIN_SKIPPED: 'Durch --no-plugins übersprungen.',
+  PLUGIN_ID_RESERVED: 'Die Plugin-ID {plugin} ist für das mitgelieferte Kern-Plugin reserviert; benennen Sie das Benutzer-Plugin um.',
+  PLUGIN_SETTINGS_INVALID: 'plugins.settings.{plugin} ist ungültig: {issues}.',
+  PLUGIN_PROVIDER_UNAVAILABLE: 'Benötigt den Dienst {service}; sein Anbieter {provider} ist nicht verfügbar.',
+  PLUGIN_PROVIDER_DISABLED: 'Benötigt den Dienst {service}; sein Anbieter {provider} ist deaktiviert.',
+  PLUGIN_UNAVAILABLE: 'Das Plugin {plugin} ist in diesem Aufruf nicht verfügbar: {reason} Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.',
+  SETTINGS_UNDECLARED: 'plugins.settings enthält Abschnitte für Plugins, die keine Einstellungen deklarieren: {plugins}; sie werden ignoriert.',
+  SETTINGS_UNKNOWN_PLUGIN: 'plugins.settings nennt kein installiertes Plugin: {plugins}; die Abschnitte bleiben unverändert. Prüfen Sie mit plugins, ob Plugin-IDs falsch geschrieben sind.',
+  DISABLED_UNKNOWN_PLUGIN: 'plugins.disabled nennt nur mitgelieferte Kern-Plugins ({core}); ignoriert: {plugins}. Deaktivieren Sie ein Benutzer-Plugin, indem Sie es aus plugins.enabled entfernen.',
+  PLUGIN_DIRECTORY_IGNORED: 'Plugin-Verzeichnis {directory} ignoriert: {diagnostic}',
+  PLUGIN_STATE_IGNORED: 'Ungültige Datei {path} ignoriert; Plugins mit Aktivierungs-Hooks gelten als neu aktiviert.',
+  PLUGIN_STATE_UNSAVED: 'Der Aktivierungszustand der Plugins konnte nicht in {path} gespeichert werden: {diagnostic}',
+  SETUP_TEMPLATES_UNAVAILABLE: 'Das Kern-Plugin templates ist deaktiviert oder nicht verfügbar; setup hat keine Vorlagen in bin/templates installiert.',
+  METADATA_CACHE_UNSAVED: 'Der Metadaten-Cache konnte nicht unter {file} gespeichert werden; der nächste Befehl liest und analysiert den Vault daher erneut: {diagnostic}',
+  POST_COMMIT_FAILED: '{count} Datei(en) geschrieben; die Aktualisierung nach dem Schreiben ist fehlgeschlagen: {diagnostic}',
+  VAULT_NOTIFICATION_FAILED: '{path} geschrieben; die Vault-Benachrichtigung ist fehlgeschlagen: {diagnostic}',
+  EVENT_HISTORY_FULL: 'Der Ereignisverlauf hat 1000 Einträge erreicht; spätere Benachrichtigungen werden zugestellt, aber nicht in Verlauf und replay aufgenommen.',
+  EVENT_LISTENER_FAILED: 'Der Listener für {event} ist fehlgeschlagen: {diagnostic}',
+  EVENT_REPLAY_FAILED: 'replay ist bei {event} fehlgeschlagen: {diagnostic}',
+  HOST_NOTIFICATION_FAILED: 'Host-Benachrichtigung {event}: {diagnostic}',
+  LAYOUT_CALLBACK_FAILED: 'Layout bereit: {diagnostic}',
+  QUIT_TASK_FAILED: 'Beendigungsaufgabe: {diagnostic}',
+  PLUGIN_CLEANUP_FAILED: 'Plugin-Bereinigung: {diagnostic}',
+};

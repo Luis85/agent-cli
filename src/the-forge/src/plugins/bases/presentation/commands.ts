@@ -3,6 +3,7 @@ import type { Command, CommandContext } from '../../../application/plugins/regis
 import { ensure } from '../../../domain/shared/errors.ts';
 import { arity, value } from '../../../application/plugins/command-input.ts';
 import { option } from '../../../application/plugins/command-metadata.ts';
+import { localizedQuery } from './messages.ts';
 
 const queryOptions = ['view', 'context', 'limit'];
 
@@ -46,7 +47,7 @@ export function basesCommand(service: (context: CommandContext) => Bases): Comma
         return { path, revision: file.revision, definition: document.data, views: document.data.views ?? [], repository: { path, viewSelection: 'name; first view when omitted' } };
       }
       const limit = value(flags, 'limit');
-      const result = await service(context).query(path, { view: value(flags, 'view'), context: value(flags, 'context'), ...(limit === undefined ? {} : { limit: Number(limit) }) });
+      const result = localizedQuery(await service(context).query(path, { view: value(flags, 'view'), context: value(flags, 'context'), ...(limit === undefined ? {} : { limit: Number(limit) }) }), context.language);
       return { ...result, repository: { path: result.path, view: result.view }, scope: context.root };
     },
   };

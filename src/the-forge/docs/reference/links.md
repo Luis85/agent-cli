@@ -60,3 +60,8 @@ A note is a Markdown or Canvas file. It is an orphan when no other file links to
 Roots default to `[]`; an empty string or a malformed glob, such as the reversed class `[z-a]`, makes the `links` plugin unavailable when the configuration loads: every response warns, and `links` fails with `PLUGIN_UNAVAILABLE`, naming the root in `error.details.issues`. Roots affect only `orphans`.
 
 A dead end is a parsed note without any reference to another file. Unresolved and ambiguous links count as references, because they are links the author wrote; `links unresolved` reports them. External URLs and links to the note itself (`[[#Heading]]`) do not count. Unparseable notes are never dead ends; they appear in `issues`.
+
+## Limits
+
+- No paging: every report returns all its results in one response, unlike `list` and `search`. Narrow `unresolved`, `orphans` and `deadends` with `--path`.
+- Obsidian's link preferences in `.obsidian/app.json` (new link format, relative or absolute paths, wikilinks or Markdown links) are not read. Reports resolve links by the [metadata index rules](formats.md#metadata-index), and [moves](cli.md#moving-and-deleting) write links in Obsidian's default "shortest path when possible" format.

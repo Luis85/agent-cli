@@ -7,6 +7,7 @@ import type { ModelStyle } from './claude-models.ts';
 import { completeAgent, type McpMode } from './claude-execution.ts';
 import { reviewedRules, serverNames, topLevelRules, type PermissionRule } from './claude-permissions.ts';
 import type { ForeignEntries } from './claude-merge.ts';
+import { say } from './messages.ts';
 
 export interface ClaudeGenerationOptions {
   /** `none` (the default) writes no MCP servers; `inline` puts them in agent frontmatter; `project` merges them into `.mcp.json`. */
@@ -67,8 +68,8 @@ function projectServers(drafts: ClaudeAgentDraft[], servers: Record<string, Reco
     for (let index = 2; taken(server.name, base, server.config); index++) server.name = `${base}-${index}`;
     if (foreign[base] !== undefined && !same(foreign[base], server.config) && (server.name === base || options.renameConflicts === true)) {
       diagnostics.push(server.name === base
-        ? diagnostic('error', 'mcp-server-conflict', server.at, `.mcp.json already defines the server ${base}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.`)
-        : diagnostic('warning', 'mcp-server-renamed', server.at, `.mcp.json already defines a different server ${base}; this one is generated as ${server.name}.`, 'A'));
+        ? diagnostic('error', 'mcp-server-conflict', server.at, say('mcpServerConflict', { server: base }))
+        : diagnostic('warning', 'mcp-server-renamed', server.at, say('mcpServerRenamed', { server: base, name: server.name }), 'A'));
     }
     servers[server.name] = server.config;
   }
@@ -83,10 +84,10 @@ function generateSource(source: DefinitionSource, names: ReadonlyMap<string, str
     drafts.push(result.draft);
     const commands = commandSkills(source.config, name, agent, names);
     if (options.commands) { skills.push(...commands.skills); diagnostics.push(...commands.diagnostics); }
-    else if (commands.skills.length > 0) diagnostics.push(diagnostic('info', 'commands-not-generated', pointer('agents', name, 'commands'), 'Commands become Claude skills with --commands.', 'U'));
+    else if (commands.skills.length > 0) diagnostics.push(diagnostic('info', 'commands-not-generated', pointer('agents', name, 'commands'), say('commandsNotGenerated'), 'U'));
   }
-  for (const key of unsupportedTopLevel) if (source.config[key] !== undefined) diagnostics.push(diagnostic('info', 'setting-unsupported', pointer(key), `The top-level ${key} section has no Claude equivalent and is not emitted.`, 'U'));
-  if (!options.settings && source.config.permissions !== undefined) diagnostics.push(diagnostic('info', 'permissions-not-generated', '/permissions', 'Permissions become project settings rules with --settings.', 'U'));
+  for (const key of unsupportedTopLevel) if (source.config[key] !== undefined) diagnostics.push(diagnostic('info', 'setting-unsupported', pointer(key), say('topLevelUnsupported', { key }), 'U'));
+  if (!options.settings && source.config.permissions !== undefined) diagnostics.push(diagnostic('info', 'permissions-not-generated', '/permissions', say('permissionsNotGenerated'), 'U'));
   return { drafts, skills, diagnostics };
 }
 
@@ -109,13 +110,13 @@ function uniqueSkills(skills: Array<CommandSkill & { source: DefinitionSource }>
     const identical = group.every(skill => same(skill.metadata, group[0]!.metadata) && skill.body === group[0]!.body);
     return (identical ? [group[0]!] : group).flatMap(skill => {
       const name = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`), at = pointer('agents', skill.agent, 'commands', skill.command);
-      const owner = owners.get(name), label = `/${skill.command} of ${skill.agent}`;
+      const owner = owners.get(name), label = say('commandLabel', { command: skill.command, agent: skill.agent });
       if (owner !== undefined) {
-        diagnostics.push({ ...diagnostic('error', 'command-name-collision', at, `The ${label} would generate .claude/skills/${name}/SKILL.md, which the ${owner} already generates; rename one of the commands.`), path: skill.source.path });
+        diagnostics.push({ ...diagnostic('error', 'command-name-collision', at, say('commandCollision', { label, name, owner })), path: skill.source.path });
         return [];
       }
       owners.set(name, label);
-      if (!identical) diagnostics.push({ ...diagnostic('warning', 'command-renamed', at, `Several agents define a different /${skill.command}; this one becomes the skill ${name}.`, 'A'), path: skill.source.path });
+      if (!identical) diagnostics.push({ ...diagnostic('warning', 'command-renamed', at, say('commandRenamed', { command: skill.command, name }), 'A'), path: skill.source.path });
       const metadata = { ...skill.metadata, name, 'x-forge-source': { path: skill.source.path, agent: skill.agent, command: skill.command, sourceHash: skill.source.sourceHash } };
       return [{ path: `.claude/skills/${name}/SKILL.md`, metadata, body: skill.body }];
     });
@@ -132,7 +133,7 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
   const names = new Map<string, string>(), owners = new Map<string, string>(), diagnostics: GenerationDiagnostic[] = [];
   for (const source of sources) for (const [name] of agentEntries(source.config)) {
     const claude = claudeName(name), owner = owners.get(claude);
-    if (owner !== undefined) diagnostics.push({ ...diagnostic('error', 'agent-name-collision', pointer('agents', name), `Agent ${name} would generate .claude/agents/${claude}.md, which ${owner} already generates.`), path: source.path });
+    if (owner !== undefined) diagnostics.push({ ...diagnostic('error', 'agent-name-collision', pointer('agents', name), say('agentCollision', { name, claude, owner })), path: source.path });
     owners.set(claude, `${source.path}#${name}`);
     names.set(name, claude);
   }
@@ -155,10 +156,10 @@ export function generateClaude(sources: readonly DefinitionSource[], options: Cl
   if (options.settings) {
     const main = sources.length === 1 ? defaultAgent(sources[0]!.config) : undefined;
     const agent = main !== undefined && output.agents.some(entry => entry.agent === main && entry.source === sources[0]!.path) ? names.get(main) : undefined;
-    if (agent !== undefined) diagnostics.push({ ...diagnostic('warning', 'main-agent-approximated', pointer('agents', main!), `The default agent ${main} becomes the project's main agent ("agent": "${agent}").`, 'A'), path: sources[0]!.path });
+    if (agent !== undefined) diagnostics.push({ ...diagnostic('warning', 'main-agent-approximated', pointer('agents', main!), say('mainAgent', { agent: main!, claude: agent }), 'A'), path: sources[0]!.path });
     const foreignAgent = options.foreign?.agent;
     if (agent !== undefined && foreignAgent !== undefined && foreignAgent !== agent) {
-      diagnostics.push({ ...diagnostic('error', 'settings-agent-conflict', pointer('agents', main!), `.claude/settings.json already sets agent to ${foreignAgent}, which Forge did not generate; remove it to let Forge set ${agent}.`), path: sources[0]!.path });
+      diagnostics.push({ ...diagnostic('error', 'settings-agent-conflict', pointer('agents', main!), say('settingsAgentConflict', { agent: foreignAgent, claude: agent })), path: sources[0]!.path });
     }
     output.settings = { permissions: Object.fromEntries(Object.entries(permissions).map(([list, rules]) => [list, [...new Set(rules)]])) as typeof permissions, ...(agent ? { agent } : {}) };
   }

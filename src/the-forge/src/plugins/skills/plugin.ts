@@ -1,6 +1,7 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import { bundledSkills } from './infrastructure/bundled-skills.ts';
 import { skillsCommand } from './presentation/commands.ts';
+import { skillsStrings } from './presentation/strings.ts';
 
 /**
  * The `skills` core plugin: the bundled agent skills and the `skills` command that lists, shows and installs every
@@ -11,6 +12,7 @@ export const skillsPlugin: CorePlugin = {
     id: 'skills', name: 'Agent skills', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Bundled agent skills and the skills command to list, read and install them.',
   },
+  strings: skillsStrings,
   create: host => ({
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],

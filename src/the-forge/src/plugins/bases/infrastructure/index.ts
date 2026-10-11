@@ -6,6 +6,8 @@ import { allTags } from '../../../domain/metadata/cache.ts';
 import { closestDestination } from '../../../domain/metadata/link-resolution.ts';
 import { forgeError, AppError, ensure, isRecord } from '../../../domain/shared/errors.ts';
 import type { BaseIndexWarning } from '../application/query.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { indexMessages } from '../application/messages.ts';
 
 const pendingFileReads = 16;
 const isMarkdown = (path: string) => path.toLowerCase().endsWith('.md');
@@ -31,7 +33,7 @@ function baseLink({ reference, resolution }: SourceReference, source: string, wa
   if (resolution.status === 'unresolved' && resolution.reason === 'ambiguous' && resolvedPath !== null) {
     warnings.push({
       code: 'ambiguous-link', path: source, link: resolution.linkpath, candidates: resolution.candidates, resolvedPath,
-      message: `Link ${resolution.linkpath} in ${source} matches ${resolution.candidates.join(', ')}; it resolves to the closest, ${resolvedPath}.`,
+      message: fill(indexMessages.ambiguousLink, { link: resolution.linkpath, source, candidates: resolution.candidates.join(', '), resolved: resolvedPath }),
     });
   }
   return { path: reference.link, resolvedPath };
@@ -64,7 +66,7 @@ function baseFile(path: string, cache: MetadataCache, problems: ReadonlyMap<stri
   if (!isMarkdown(path)) return bare;
   const problem = problems.get(path);
   if (problem !== undefined) {
-    warnings.push({ code: 'unparseable-note', path, message: `${path} cannot be parsed and is indexed without properties, links or tags: ${problem}` });
+    warnings.push({ code: 'unparseable-note', path, message: fill(indexMessages.unparseableNote, { path, problem }) });
     return bare;
   }
   const references = cache.references(path), metadata = cache.getFileCache(path);

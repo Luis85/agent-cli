@@ -11,6 +11,7 @@ import { markdownFrontmatter } from './infrastructure/frontmatter.ts';
 import { sha256Digest } from './infrastructure/digest.ts';
 import { agentsSkill } from './infrastructure/skill.ts';
 import { agentsCommand } from './presentation/command.ts';
+import { agentsStrings } from './presentation/strings.ts';
 
 const defaults = { directory: 'agents', defaultModel: 'anthropic/claude-sonnet-5' };
 const ports: AgentPorts = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
@@ -26,6 +27,7 @@ export const agentsPlugin: CorePlugin = {
     id: 'agents', name: 'Agents', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Manage docker-agent agent definitions and generate Claude Code agents from them.',
   },
+  strings: agentsStrings,
   create: () => ({
     commands: [agentsCommand(context => {
       const settings = (context as PluginContext).settings ?? {};

@@ -2,6 +2,8 @@ import { reversedSpan } from './fields.ts';
 import type { BacklogItem, BacklogModel } from './model.ts';
 import { configProblems, type BacklogSettings } from './settings.ts';
 import { isIterationType, isReleaseType, isResourceType, mayHoldField, placementEnds, type HeldField } from './vocabulary.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { checkMessages } from './messages.ts';
 
 /** One finding of `backlog check`. `path` names the note; `value` the raw text or key at fault. */
 export interface CheckProblem { code: string; severity: 'error' | 'warning'; path?: string; key?: string; value?: string; paths?: string[]; message: string }
@@ -16,23 +18,28 @@ export interface CheckInput {
 const error = (code: string, message: string, extra: Partial<CheckProblem> = {}): CheckProblem => ({ code, severity: 'error', message, ...extra });
 const warning = (code: string, message: string, extra: Partial<CheckProblem> = {}): CheckProblem => ({ code, severity: 'warning', message, ...extra });
 
+/** A type may not hold a field; an item without a known type reads as "This type". */
+const notHeld = (item: BacklogItem, key: string) => item.typeName === null
+  ? fill(checkMessages.fieldNotHeldUntyped, { title: item.title, key })
+  : fill(checkMessages.fieldNotHeld, { type: item.typeName, title: item.title, key });
+
 function linkProblems(item: BacklogItem, input: CheckInput): CheckProblem[] {
   const problems: CheckProblem[] = [];
   const { settings } = input;
-  if (item.cycleCut) problems.push(error('parent-cycle', `${item.title} closes a parent loop; the loop is cut here and the note shows as a root.`, { path: item.path, key: settings.parentKey }));
-  else if (item.orphan) problems.push(error('unresolved-parent', `The parent of ${item.title} does not resolve to a loaded note.`, { path: item.path, key: settings.parentKey }));
+  if (item.cycleCut) problems.push(error('parent-cycle', fill(checkMessages.parentCycle, { title: item.title }), { path: item.path, key: settings.parentKey }));
+  else if (item.orphan) problems.push(error('unresolved-parent', fill(checkMessages.unresolvedParent, { title: item.title }), { path: item.path, key: settings.parentKey }));
   for (const broken of item.brokenPrerequisites) {
     problems.push(error(broken.reason === 'cycle' ? 'dependency-cycle' : 'unresolved-dependency',
-      broken.reason === 'cycle' ? `${item.title} depends on ${broken.raw}, which closes a dependency loop.` : `${item.title} depends on ${broken.raw}, which does not resolve to a loaded item.`,
+      fill(broken.reason === 'cycle' ? checkMessages.dependencyCycle : checkMessages.unresolvedDependency, { title: item.title, target: broken.raw }),
       { path: item.path, key: settings.dependsOnKey, value: broken.raw }));
   }
   const iteration = item.iterationEntry;
   if (iteration && (iteration.path === null || !isIterationType(input.typeOf(iteration.path)))) {
-    problems.push(error('broken-iteration', `The iteration of ${item.title} (${iteration.raw}) is not an Iteration note.`, { path: item.path, key: settings.iterationKey, value: iteration.raw }));
+    problems.push(error('broken-iteration', fill(checkMessages.brokenIteration, { title: item.title, iteration: iteration.raw }), { path: item.path, key: settings.iterationKey, value: iteration.raw }));
   }
   const assignee = item.assigneeEntry;
   if (assignee && (assignee.path === null || !isResourceType(input.typeOf(assignee.path)))) {
-    problems.push(warning('broken-assignee', `The assignee of ${item.title} (${assignee.raw}) is not a Resource note.`, { path: item.path, key: settings.assigneeKey, value: assignee.raw }));
+    problems.push(warning('broken-assignee', fill(checkMessages.brokenAssignee, { title: item.title, assignee: assignee.raw }), { path: item.path, key: settings.assigneeKey, value: assignee.raw }));
   }
   return problems;
 }
@@ -44,16 +51,16 @@ function fieldProblems(item: BacklogItem, settings: BacklogSettings): CheckProbl
     ['iteration', item.ownKeys.iteration && item.iterationEntry !== null, settings.iterationKey], ['iterationGoal', item.iterationGoalValue !== null, settings.iterationGoalKey],
   ];
   for (const [field, present, key] of held) {
-    if (present && !mayHoldField(item.typeName, field, settings.iterationBars)) problems.push(error('field-not-held', `${item.typeName ?? 'This type'} ${item.title} may not hold ${key}.`, { path: item.path, key }));
+    if (present && !mayHoldField(item.typeName, field, settings.iterationBars)) problems.push(error('field-not-held', notHeld(item, key), { path: item.path, key }));
   }
   // The dates a type may store (`schemaEnds`): an iteration keeps its start even while it draws as a point.
   const ends = placementEnds(item.typeName, true);
   for (const [end, reading, key] of [['start', item.plannedStart, settings.startKey], ['target', item.plannedTarget, settings.targetKey]] as const) {
-    if (reading.value !== null && !ends.includes(end)) problems.push(error('field-not-held', `${item.typeName ?? 'This type'} ${item.title} may not hold ${key}.`, { path: item.path, key }));
-    if (reading.invalid) problems.push(warning('unreadable-date', `${item.title} has an unreadable ${key}; the plugin shelves it.`, { path: item.path, key }));
+    if (reading.value !== null && !ends.includes(end)) problems.push(error('field-not-held', notHeld(item, key), { path: item.path, key }));
+    if (reading.invalid) problems.push(warning('unreadable-date', fill(checkMessages.unreadableValue, { title: item.title, key }), { path: item.path, key }));
   }
-  if (item.horizon.invalid) problems.push(warning('unreadable-horizon', `${item.title} has an unreadable ${settings.horizonKey}; the plugin shelves it.`, { path: item.path, key: settings.horizonKey }));
-  if (reversedSpan(item.plannedStart.value, item.plannedTarget.value)) problems.push(warning('reversed-span', `${item.title} starts after its target date.`, { path: item.path }));
+  if (item.horizon.invalid) problems.push(warning('unreadable-horizon', fill(checkMessages.unreadableValue, { title: item.title, key: settings.horizonKey }), { path: item.path, key: settings.horizonKey }));
+  if (reversedSpan(item.plannedStart.value, item.plannedTarget.value)) problems.push(warning('reversed-span', fill(checkMessages.reversedSpan, { title: item.title }), { path: item.path }));
   return problems;
 }
 
@@ -69,13 +76,12 @@ export function checkBacklog(input: CheckInput): CheckProblem[] {
   ];
   const results = model.items.filter(item => !item.outsideFilter);
   for (const item of results) problems.push(...linkProblems(item, input), ...fieldProblems(item, settings));
-  for (const path of input.unresolvedMemberships) problems.push(error('unresolved-membership', `The release membership of ${path} does not resolve to exactly one Release note of this base.`, { path }));
+  for (const path of input.unresolvedMemberships) problems.push(error('unresolved-membership', fill(checkMessages.unresolvedMembership, { path }), { path }));
   const byOrder = new Map<number, string[]>();
   for (const item of results) if (item.order !== null) byOrder.set(item.order, [...(byOrder.get(item.order) ?? []), item.path]);
-  for (const [order, paths] of byOrder) if (paths.length > 1) problems.push(warning('rank-tie', `${paths.length} items share rank ${order}; ties follow result order.`, { value: String(order), paths }));
+  for (const [order, paths] of byOrder) if (paths.length > 1) problems.push(warning('rank-tie', fill(checkMessages.rankTie, { count: paths.length, rank: order }), { value: String(order), paths }));
   // Releases are created without a rank (`createRelease`), so only other unranked results are reported.
   const unranked = results.filter(item => item.order === null && !isReleaseType(item.typeName)).map(item => item.path);
-  const count = unranked.length === 1 ? '1 item has no rank and sorts' : `${unranked.length} items have no rank and sort`;
-  if (unranked.length > 0) problems.push(warning('unranked', `${count} last; run backlog ranks seed.`, { paths: unranked }));
+  if (unranked.length > 0) problems.push(warning('unranked', fill(unranked.length === 1 ? checkMessages.unrankedOne : checkMessages.unranked, { count: unranked.length }), { paths: unranked }));
   return problems;
 }

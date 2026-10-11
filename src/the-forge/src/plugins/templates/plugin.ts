@@ -5,6 +5,7 @@ import { MarkdownTemplates } from './infrastructure/markdown.ts';
 import { setupTemplates, workflowTemplates } from './infrastructure/pack.ts';
 import { templatesCommand } from './presentation/command.ts';
 import { documentGenerator } from './presentation/document.ts';
+import { templatesStrings } from './presentation/strings.ts';
 
 const installer: TemplateInstallerService = { setupTemplates: () => setupTemplates };
 
@@ -19,6 +20,7 @@ export const templatesPlugin: CorePlugin = {
     id: 'templates', name: 'Templates', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Render Obsidian Markdown templates into documents and install the planning workflow pack.',
   },
+  strings: templatesStrings,
   create: () => {
     // Templates split Markdown at its frontmatter with the invocation's document codec.
     const templates = (context: CommandContext) => new MarkdownTemplates(text => context.workspace.codec.markdownParts(text));

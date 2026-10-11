@@ -12,7 +12,7 @@ import { MarkdownInteractionDefinitions } from './infrastructure/interactions/de
 import { componentsCommand, type UiServicesFactory } from './presentation/components.ts';
 import { interactionsCommand } from './presentation/interactions.ts';
 import { uiGenerators } from './presentation/generators.ts';
-import { de } from './presentation/strings.ts';
+import { de, uiStrings } from './presentation/strings.ts';
 
 /** Framework components and Storybook stories for the seven UI targets. */
 const renderer: UiRenderer = {
@@ -42,6 +42,7 @@ export const uiPlugin: CorePlugin = {
     id: 'ui', name: 'UI', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Markdown component and interaction libraries with deterministic UI and Storybook generation for seven targets.',
   },
+  strings: uiStrings,
   create: () => ({
     commands: [componentsCommand(services), interactionsCommand(services)],
     generators: uiGenerators(services),

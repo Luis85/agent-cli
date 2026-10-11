@@ -7,6 +7,7 @@ import type { NodeFiles } from '../workspace/files.ts';
 import { validatePluginManifest, type Registry, type Plugin, type PluginManifest } from '../../application/plugins/registry.ts';
 import type { EventBus } from '../../application/plugins/events.ts';
 import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts';
+import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 async function readManifest(path: string, files: NodeFiles): Promise<PluginManifest> {
   const text = new TextDecoder('utf-8', { fatal: true }).decode((await files.read(path)).bytes);
@@ -41,7 +42,7 @@ async function loadModule(directory: string, files: NodeFiles): Promise<unknown>
  * User plugin directories with a valid manifest, without executing any plugin code. `skipped` marks enabled
  * plugins that `--no-plugins` left unloaded; an unreadable or invalid manifest is reported through `warn`.
  */
-export async function installedPlugins(directory: string, enabled: readonly string[], skipped: boolean, files: NodeFiles, warn: (message: string) => void): Promise<InstalledPlugin[]> {
+export async function installedPlugins(directory: string, enabled: readonly string[], skipped: boolean, files: NodeFiles, warn: (message: KernelMessage) => void): Promise<InstalledPlugin[]> {
   let folder;
   try { folder = await files.stat(directory); }
   catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') return []; throw error; }
@@ -53,7 +54,7 @@ export async function installedPlugins(directory: string, enabled: readonly stri
       const manifest = await readManifest(`${directory}/${id}/manifest.json`, files);
       ensure(manifest.id === id, 'INVALID_PLUGIN', `Manifest id must match plugin directory ${id}.`);
       installed.push({ manifest, skipped: skipped && enabled.includes(id) });
-    } catch (error) { warn(`Ignored plugin directory ${directory}/${id}: ${error instanceof Error ? error.message : String(error)}`); }
+    } catch (error) { warn(kernelMessage('PLUGIN_DIRECTORY_IGNORED', { directory: `${directory}/${id}`, diagnostic: error instanceof Error ? error.message : String(error) })); }
   }
   return installed;
 }

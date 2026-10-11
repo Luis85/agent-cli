@@ -1,5 +1,6 @@
 import { diagnostic, isObject, record, stringList, text, type AgentDiagnostic } from './config.ts';
 import { mcpVariables } from './templating.ts';
+import { say } from './messages.ts';
 
 /**
  * One MCP server as Claude Code configures it inline on an agent or in the project's `.mcp.json`. `declared` is the
@@ -38,7 +39,7 @@ function derivedName(toolset: Record<string, unknown>): string {
 /** Converts template variables in MCP strings; expressions without a Claude form stay literal with a warning. */
 function variables(value: string, at: string, diagnostics: AgentDiagnostic[]): string {
   const converted = mcpVariables(value);
-  for (const kept of converted.kept) diagnostics.push(diagnostic('warning', 'template-literal', at, `The template expression ${kept} has no Claude MCP equivalent and is kept literally.`, 'U'));
+  for (const kept of converted.kept) diagnostics.push(diagnostic('warning', 'template-literal', at, say('mcpTemplateLiteral', { expression: kept }), 'U'));
   return converted.text;
 }
 function variableMap(value: unknown, at: string, diagnostics: AgentDiagnostic[]): Record<string, string> | undefined {
@@ -53,7 +54,7 @@ function remoteServer(remote: Record<string, unknown>, at: string, diagnostics: 
   if (text(oauth.clientId)) mapped.clientId = oauth.clientId;
   if (typeof oauth.callbackPort === 'number') mapped.callbackPort = oauth.callbackPort;
   for (const field of ['clientSecret', 'scopes', 'callbackRedirectURL']) if (oauth[field] !== undefined) {
-    diagnostics.push(diagnostic('warning', 'mcp-oauth-unsupported', `${at}/remote/oauth/${field}`, `OAuth ${field} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.`, 'U'));
+    diagnostics.push(diagnostic('warning', 'mcp-oauth-unsupported', `${at}/remote/oauth/${field}`, say('oauthUnsupported', { field }), 'U'));
   }
   return { type, url: variables(String(remote.url), `${at}/remote/url`, diagnostics), ...(headers ? { headers } : {}), ...(Object.keys(mapped).length > 0 ? { oauth: mapped } : {}) };
 }
@@ -67,7 +68,7 @@ export function mcpServer(toolset: Record<string, unknown>, at: string, taken: r
   let name = serverName(declared);
   for (let index = 2; taken.includes(name); index++) name = `${serverName(declared)}-${index}`;
   for (const [field, label] of Object.entries(unsupported)) if (toolset[field] !== undefined) {
-    diagnostics.push(diagnostic('info', 'toolset-field-unsupported', `${at}/${field}`, `MCP ${label} (${field}) have no Claude equivalent and are not emitted.`, 'U'));
+    diagnostics.push(diagnostic('info', 'toolset-field-unsupported', `${at}/${field}`, say('toolsetFieldUnsupported', { label: `MCP ${label}`, field }), 'U'));
   }
   const env = variableMap(toolset.env, `${at}/env`, diagnostics);
   const args = stringList(toolset.args).map((arg, index) => variables(arg, `${at}/args/${index}`, diagnostics));
@@ -75,10 +76,10 @@ export function mcpServer(toolset: Record<string, unknown>, at: string, taken: r
   if (text(remote.url)) return { server: { name, declared, at, config: remoteServer(remote, at, diagnostics) }, diagnostics };
   if (typeof toolset.ref === 'string' && toolset.ref.startsWith('docker:')) {
     const gateway = ['mcp', 'gateway', 'run', '--servers', toolset.ref.slice('docker:'.length)];
-    diagnostics.push(diagnostic('warning', 'mcp-docker-gateway', `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: ${commandLine('docker', gateway)}.`, 'A'));
+    diagnostics.push(diagnostic('warning', 'mcp-docker-gateway', `${at}/ref`, say('dockerGateway', { ref: toolset.ref, command: commandLine('docker', gateway) }), 'A'));
     return { server: { name, declared, at: `${at}/ref`, config: { type: 'stdio', command: 'docker', args: gateway, ...(env ? { env } : {}) }, commandLine: commandLine('docker', gateway) }, diagnostics };
   }
-  if (!text(toolset.command)) return { diagnostics: [...diagnostics, diagnostic('warning', 'toolset-unsupported', at, 'The MCP toolset has no command, remote URL or Docker ref and is not emitted.', 'U')] };
+  if (!text(toolset.command)) return { diagnostics: [...diagnostics, diagnostic('warning', 'toolset-unsupported', at, say('mcpToolsetUnsupported'), 'U')] };
   const command = variables(toolset.command, `${at}/command`, diagnostics);
   return { server: { name, declared, at, config: { type: 'stdio', command, ...(args.length > 0 ? { args } : {}), ...(env ? { env } : {}) }, commandLine: commandLine(command, args) }, diagnostics };
 }

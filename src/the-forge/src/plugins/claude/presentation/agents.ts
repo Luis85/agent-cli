@@ -5,6 +5,7 @@ import type { CommandContext } from '../../../application/plugins/registry.ts';
 import type { ClaudeServices } from './services.ts';
 import { arity, parseJson, value } from '../../../application/plugins/command-input.ts';
 import { claudeInput, claudeInputOptions, claudeOptions, claudeScopeOptions } from './input.ts';
+import { claudeMessages } from '../domain/messages.ts';
 
 type Flags = Record<string, string | boolean>;
 type AgentInspection = Awaited<ReturnType<ClaudeAgents['inspect']>>;
@@ -60,5 +61,5 @@ export async function agentCommands(args: string[], flags: Flags, context: Comma
     }
   }
   return { target: { scope: target.scope, directory: target.directory }, ...result,
-    ...(target.scope === 'plugin' ? { limitations: 'Claude Code ignores hooks, mcpServers, permissionMode and initialPrompt in plugin agents.' } : {}) };
+    ...(target.scope === 'plugin' ? { limitations: claudeMessages.pluginAgentLimitations } : {}) };
 }

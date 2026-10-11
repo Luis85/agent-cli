@@ -2,6 +2,7 @@ import { forgeError, AppError, ensure, isRecord } from '../../../domain/shared/e
 import { validateClaudeHooks } from '../../../domain/claude/hooks.ts';
 import { revisionConflict } from '../../../domain/documents/write-plan.ts';
 import type { Workspace } from '../../../application/workspace/workspace.ts';
+import { claudeMessages } from '../domain/messages.ts';
 
 const policyBooleans = ['disableAllHooks', 'allowManagedHooksOnly'];
 const policyLists = ['allowedHttpHookUrls', 'httpHookAllowedEnvVars'];
@@ -37,7 +38,7 @@ export class ClaudeSettings {
     const result = await this.inspect();
     validateClaudeHooks(result.hooks);
     validateHookPolicy(result.settings);
-    return { ...result, hooks: result.hooks, valid: true, validation: 'configuration; hook code is not executed' };
+    return { ...result, hooks: result.hooks, valid: true, validation: claudeMessages.hookValidation };
   }
 
   async set(hooks: unknown, revision?: string) {
@@ -95,7 +96,7 @@ export class ClaudeSettings {
     const rule = `Agent(${name})`;
     const next = enabled ? deny.filter(item => item !== rule) : deny.includes(rule) ? deny : [...deny, rule];
     const result = await this.save({ ...current.settings, permissions: { ...permissions, deny: next } }, current.revision, revision);
-    return { ...result, rule, enabled, note: 'Other permission rules and managed settings may still restrict this agent.' };
+    return { ...result, rule, enabled, note: claudeMessages.agentRestrictions };
   }
 
   private async save(settings: Record<string, unknown>, actual: string | null, expected?: string) {

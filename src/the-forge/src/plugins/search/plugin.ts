@@ -3,6 +3,7 @@ import type { PluginContext } from '../../application/plugins/registry.ts';
 import { searchFiles } from './application/search.ts';
 import { vmSearchBudget } from './infrastructure/budget.ts';
 import { searchCommand } from './presentation/command.ts';
+import { searchStrings } from './presentation/strings.ts';
 
 const defaultTimeoutMs = 10_000;
 
@@ -16,6 +17,7 @@ export const searchPlugin: CorePlugin = {
     id: 'search', name: 'Search', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Search text files for literal or regular-expression patterns with metadata filters and paging.',
   },
+  strings: searchStrings,
   create: () => ({
     commands: [searchCommand(context => (query, page) => searchFiles({
       files: context.workspace.files,

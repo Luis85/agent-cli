@@ -7,6 +7,7 @@ import { claudeAgentCodec } from './infrastructure/agents.ts';
 import { claudeTarget } from './infrastructure/target.ts';
 import { NodeClaudeRuntime } from './infrastructure/runtime.ts';
 import { claudeCommand } from './presentation/commands.ts';
+import { claudeStrings } from './presentation/strings.ts';
 
 /** The service id of the Claude lifecycle client that trusted plugins require. */
 const claudeLifecycleService = 'claude.lifecycle';
@@ -22,6 +23,7 @@ export const claudePlugin: CorePlugin = {
     id: 'claude', name: 'Claude Code', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Manage native Claude Code agents, hooks and plugins, and run the installed Claude Code CLI lifecycle.',
   },
+  strings: claudeStrings,
   create: host => {
     let lifecycle: ClaudeLifecycle | undefined;
     const client: ClaudeLifecycleClient = {

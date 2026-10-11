@@ -6,6 +6,9 @@ import { isRecord } from '../../../domain/shared/errors.ts';
 import { redact } from '../../../domain/connectors/secrets.ts';
 import { PROCESSES, processMapping, unknownFields, type MappingOverrides, type Process } from '../domain/processes.ts';
 import { createOperations, remoteItem, updateOperations, type DescriptionFormat, type PatchContext } from '../domain/work-items.ts';
+import type { Language } from '../../../application/plugins/plugin-catalog.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { connectorMessages, type ConnectorMessages } from './messages.ts';
 
 const API_VERSION = '7.1';
 const BATCH_SIZE = 200;
@@ -42,11 +45,13 @@ const knownHost = (host: string) => host === 'dev.azure.com' || host.endsWith('.
 /** Azure DevOps Boards over the Work Items REST API (api-version 7.1) with a personal access token. */
 export class AzureDevOpsConnector implements BacklogConnector {
   readonly id = 'azure-devops';
-  constructor(private readonly http: HttpClient) {}
+  /** `translations` render the self-description in other languages than English. */
+  constructor(private readonly http: HttpClient, private readonly translations: Partial<Record<Language, ConnectorMessages>> = {}) {}
 
-  describe(): ConnectorDescription {
+  describe(language: Language = 'en'): ConnectorDescription {
+    const text = this.translations[language] ?? connectorMessages;
     return {
-      platform: this.id, name: 'Azure DevOps Boards', description: 'Work items of one Azure DevOps project through the Work Items REST API 7.1.',
+      platform: this.id, name: 'Azure DevOps Boards', description: text.description,
       defaults: { tokenEnv: 'AZURE_DEVOPS_EXT_PAT', linkProperty: 'azure-devops' }, connectionSchema,
       summary: connection => ({
         organization: organizationOf(connection), project: setting(connection, 'project'), process: setting(connection, 'process'),
@@ -57,7 +62,7 @@ export class AzureDevOpsConnector implements BacklogConnector {
       warnings: connection => {
         let host: string;
         try { host = new URL(organizationOf(connection)).hostname.toLowerCase(); } catch { return []; }
-        return knownHost(host) ? [] : [`organization host ${host} is neither dev.azure.com nor *.visualstudio.com; the token in ${connection.tokenEnv} is sent there (expected only for Azure DevOps Server).`];
+        return knownHost(host) ? [] : [fill(text.unknownHost, { host, tokenEnv: connection.tokenEnv })];
       },
     };
   }

@@ -5,6 +5,8 @@ import { NodeBasesQueryEngine } from './infrastructure/engine.ts';
 import { basesCommand } from './presentation/commands.ts';
 import { validateBaseFile } from './application/validation.ts';
 import { baseDefinitionIssues } from './infrastructure/validation.ts';
+import { basesStrings } from './presentation/strings.ts';
+import { localizedQuery } from './presentation/messages.ts';
 
 /**
  * The `bases` core plugin: native Obsidian `.base` views evaluated as file repositories over the command scope's
@@ -17,6 +19,7 @@ export const basesPlugin: CorePlugin = {
     id: 'bases', name: 'Bases', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Query native Obsidian Bases views as file repositories without running Obsidian.',
   },
+  strings: basesStrings,
   create: host => {
     const bases = (context: CommandContext) => new Bases(new NodeBasesQueryEngine(
       context.workspace.files, context.workspace.codec, () => context.metadata.load(), host.fileDates(context.root),
@@ -26,7 +29,7 @@ export const basesPlugin: CorePlugin = {
       // `bases.query` evaluates a saved view in the caller's command scope: its result files in result order.
       // `bases.validation` reports what `bases query` would reject in a `.base` file before evaluating it, without throwing.
       provides: {
-        'bases.query': { query: (context: CommandContext, path: string, options: { view?: string }) => bases(context).query(path, options) },
+        'bases.query': { query: async (context: CommandContext, path: string, options: { view?: string }) => localizedQuery(await bases(context).query(path, options), context.language) },
         'bases.validation': { validate: (context: CommandContext, path: string) => validateBaseFile(context.workspace.files, context.workspace.codec, baseDefinitionIssues, path) },
       },
       strings: {

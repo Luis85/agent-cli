@@ -3,6 +3,7 @@ import type { PluginContext } from '../../application/plugins/registry.ts';
 import { errorMessage } from '../../domain/shared/errors.ts';
 import { pathGlob } from '../../domain/documents/path-glob.ts';
 import { linksCommand } from './presentation/command.ts';
+import { linksStrings } from './presentation/strings.ts';
 
 /** Each root must compile as a path glob, so a malformed glob is a configuration error rather than a command failure. */
 function rootIssues(settings: Readonly<Record<string, unknown>>): string[] {
@@ -23,6 +24,7 @@ export const linksPlugin: CorePlugin = {
     id: 'links', name: 'Links', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Report outgoing links, backlinks, unresolved links, orphans and dead ends from the metadata cache.',
   },
+  strings: linksStrings,
   create: () => ({
     commands: [linksCommand(context => ({
       cache: () => context.metadata.load(),

@@ -11,6 +11,7 @@ import { editFrontmatter } from './infrastructure/frontmatter.ts';
 import { backlogSkill } from './infrastructure/skill.ts';
 import { watchSignals } from './infrastructure/signals.ts';
 import { backlogCommand } from './presentation/command.ts';
+import { backlogStrings } from './presentation/strings.ts';
 
 const payload = (keys: readonly string[]) => (value: unknown): value is Record<string, unknown> => isRecord(value) && keys.every(key => typeof value[key] === 'string');
 const events: EventDefinition[] = [
@@ -71,6 +72,7 @@ export const backlogPlugin: CorePlugin = {
     id: 'backlog', name: 'Backlog', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Plan a product backlog compatible with the Obsidian Product Backlog view: hierarchy, ranks, states, iterations, releases and dependencies.',
   },
+  strings: backlogStrings,
   create: host => {
     const activity: SyncActivity = { syncing: false };
     return {

@@ -5,6 +5,8 @@ import { Registry, type CommandContext, type PluginManifest } from '../../src/ap
 import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
 import type { JsonSchema } from '../../src/domain/schema/json-schema.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { englishWarning } from '../support/events.ts';
+import { renderKernelMessage } from '../../src/domain/shared/kernel-messages.ts';
 
 const manifest = (id: string): PluginManifest => ({ id, name: id, version: '1.0.0', minAppVersion: '0.1.0', description: 'Availability test', author: 'Test' });
 const setup = () => {
@@ -22,7 +24,7 @@ describe('plugins with invalid settings', () => {
     registry.register({ manifest: manifest('board'), requires: ['catalog.items'], onload() { activated.push('board'); }, commands: [{ id: 'board.show', description: 'Show', usage: 'board.show', run: () => 'board' }] }, events);
     registry.register({ manifest: manifest('notes'), onload() { activated.push('notes'); }, commands: [{ id: 'notes.count', description: 'Count', usage: 'notes.count', run: () => 1 }] }, events);
     const warnings: string[] = [];
-    await registry.configure({ catalog: { limit: 0 } }, async () => [], message => warnings.push(message));
+    await registry.configure({ catalog: { limit: 0 } }, async () => [], message => warnings.push(englishWarning(message)));
     expect([...registry.unavailable.keys()]).toEqual(['catalog', 'board']);
     expect(warnings).toEqual([
       expect.stringContaining('Plugin catalog is unavailable in this invocation: plugins.settings.catalog is invalid: plugins.settings.catalog.limit: must be at least 1'),
@@ -32,7 +34,7 @@ describe('plugins with invalid settings', () => {
     expect(activated).toEqual(['notes']);
     expect(await registry.commands.get('notes.count')!.run([], {}, context)).toBe(1);
     for (const [id, plugin] of [['catalog.list', 'catalog'], ['board.show', 'board']] as const) {
-      await expect(registry.commands.get(id)!.run([], {}, context)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: id, plugin, reason: registry.unavailable.get(plugin)!.reason, issues: ['plugins.settings.catalog.limit: must be at least 1'] } });
+      await expect(registry.commands.get(id)!.run([], {}, context)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: id, plugin, reason: renderKernelMessage(registry.unavailable.get(plugin)!.reason), issues: ['plugins.settings.catalog.limit: must be at least 1'] } });
     }
     await registry.dispose(events);
   });
@@ -54,7 +56,7 @@ describe('plugins with invalid settings', () => {
   it('warns about sections that name no registered, disabled or installed plugin and keeps them unchanged', async () => {
     const { registry, events } = setup(), warnings: string[] = [];
     registry.register({ manifest: manifest('search'), settings: limit }, events);
-    const effective = await registry.configure({ serach: { limit: 3 }, installed: { x: 1 }, search: { limit: 2 } }, async () => ['installed'], message => warnings.push(message));
+    const effective = await registry.configure({ serach: { limit: 3 }, installed: { x: 1 }, search: { limit: 2 } }, async () => ['installed'], message => warnings.push(englishWarning(message)));
     expect(effective).toEqual({ installed: { x: 1 }, search: { limit: 2, tags: ['a'] }, serach: { limit: 3 } });
     expect(warnings).toEqual(['plugins.settings names no installed plugin: serach; the sections are kept unchanged. Check for misspelled plugin ids with plugins.']);
   });
