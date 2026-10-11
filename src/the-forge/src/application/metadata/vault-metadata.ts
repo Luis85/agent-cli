@@ -283,6 +283,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     for (const path of changed) if (!this.caches.has(path)) this.forget(path);
     let resolved: string[];
     if (pathsChanged || aliasesChanged) {
+      this.results.outdated();
       this.reindex();
       const previous = new Map(this.sources().map(source => [source, this.resolutionKey(source)]));
       for (const source of this.sources()) this.resolve(source);
