@@ -1,7 +1,6 @@
 import type { CachedMetadata, CanvasLinkCache, FrontmatterLinkCache, LinkCache } from '../../domain/metadata/cache.ts';
 import type { LinkResolution } from '../../domain/metadata/link-resolution.ts';
 import type { FileStamp, MetadataSnapshot } from '../../domain/metadata/snapshot.ts';
-import type { FileSnapshot } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 /** Source path → destination path (resolved) or link text (unresolved) → number of references. */
 export type LinkCounts = Record<string, Record<string, number>>;
@@ -92,9 +91,14 @@ export interface MetadataIndex {
     /**
      * One file's metadata from content the caller already read, without building or changing the index: what
      * `getFileCache` would hold for these bytes, or null for files the index does not parse or that fail to parse.
-     * A stored snapshot's result for the same content revision is reused instead of parsing again.
+     * The index computes the content revision of `bytes` itself and reuses the loaded index's or a stored snapshot's
+     * result only for that revision, so any bytes, such as planned content, get their own metadata. A `FileSnapshot`
+     * can be passed as is; its `revision` is not consulted.
      */
-    parseFile(file: FileSnapshot): Promise<CachedMetadata | null>;
+    parseFile(file: {
+        path: string;
+        bytes: Uint8Array;
+    }): Promise<CachedMetadata | null>;
     /**
      * The metadata of content at any path the parser handles, inside or outside the vault rule, such as the headings
      * and blocks a section edit addresses. Invalid content throws its parse error; other files return null.
@@ -121,12 +125,17 @@ export interface MetadataParser {
     /** Throws when the content is invalid for its format. */
     parse(path: string, bytes: Uint8Array): CachedMetadata;
 }
-/** The scope's files with stamps of their filesystem state, taken after `checkedAtMs` and before any content read. */
+/**
+ * The scope's files, those the index asked for with stamps of their filesystem state, taken after `checkedAtMs` and
+ * before any content read.
+ */
 export interface StampedListing {
     checkedAtMs: number;
     files: ReadonlyArray<{
         path: string;
-    } & FileStamp>;
+    } | ({
+        path: string;
+    } & FileStamp)>;
 }
 /**
  * Persists the metadata index's parse results between invocations as derived data outside the vault: no events, no
@@ -135,9 +144,15 @@ export interface StampedListing {
  * never needs to be current. The repository it serves must report SHA-256 content revisions.
  */
 export interface MetadataSnapshotStore {
-    /** Every file that the scope repository's `list()` returns, in the same order, each with its current stamp. */
-    listing(): Promise<StampedListing>;
-    /** The stored snapshot as written, or null when there is none or it cannot be read intact; never throws. */
+    /**
+     * Every file that the scope repository's `list()` returns, in the same order; each file that `stamped` accepts
+     * (the files the index parses) carries its current stamp, the others only their path.
+     */
+    listing(stamped: (path: string) => boolean): Promise<StampedListing>;
+    /**
+     * The stored snapshot as written, or null when there is none or it cannot be read intact; never throws. Each call
+     * returns a new value, which the index decodes in place.
+     */
     load(): Promise<unknown>;
     /** Replaces the stored snapshot atomically; a failure leaves the previous snapshot or none. */
     save(snapshot: MetadataSnapshot): Promise<void>;

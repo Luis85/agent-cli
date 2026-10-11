@@ -10853,25 +10853,27 @@ class NodeFiles {
     }
   }
 }
-async function stampedFiles(files, directory) {
+async function stampedFiles(files, directory, stamped = () => true) {
   const checkedAtMs = Date.now();
-  const stamped = [];
+  const listed = [];
   const scope2 = directory === void 0 ? "" : `${vaultPath(directory)}/`;
-  const walk = async (folder, prefix) => {
-    const entries2 = (await promises.readdir(folder, { withFileTypes: true })).filter((entry2) => !unlisted(entry2.name, scope2 + prefix + entry2.name));
-    await Promise.all(entries2.filter((entry2) => entry2.isFile()).map(async (entry2) => {
-      try {
-        const info = await promises.lstat(minpath.join(folder, entry2.name), { bigint: true });
+  const walk = (folder, prefix) => {
+    for (const entry2 of fs.readdirSync(folder, { withFileTypes: true })) {
+      const path2 = prefix + entry2.name;
+      if (unlisted(entry2.name, scope2 + path2)) continue;
+      if (entry2.isDirectory()) walk(minpath.join(folder, entry2.name), `${path2}/`);
+      else if (!entry2.isFile()) continue;
+      else if (!stamped(path2)) listed.push({ path: path2 });
+      else {
+        const info = fs.lstatSync(minpath.join(folder, entry2.name), { bigint: true, throwIfNoEntry: false });
+        if (info === void 0) continue;
         const changed = info.mtimeNs > info.ctimeNs ? info.mtimeNs : info.ctimeNs;
-        stamped.push({ path: prefix + entry2.name, stamp: `${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.ino}`, changedMs: Number(changed / 1000000n) });
-      } catch (error2) {
-        if (!missing$1(error2)) throw error2;
+        listed.push({ path: path2, stamp: `${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.ino}`, changedMs: Number(changed / 1000000n) });
       }
-    }));
-    for (const entry2 of entries2) if (entry2.isDirectory()) await walk(minpath.join(folder, entry2.name), `${prefix}${entry2.name}/`);
+    }
   };
-  await walk(directory === void 0 ? files.root : await files.resolvePath(directory, true), "");
-  return { checkedAtMs, files: stamped.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0) };
+  walk(directory === void 0 ? files.root : await files.resolvePath(directory, true), "");
+  return { checkedAtMs, files: listed.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0) };
 }
 function nodeFileDates(root) {
   let files;
@@ -10892,7 +10894,7 @@ function nodeFileDates(root) {
   };
   return async (path2) => {
     const name2 = vaultPath(path2).slice(path2.lastIndexOf("/") + 1);
-    const info = await promises.lstat(minpath.join(await folder(path2.slice(0, Math.max(0, path2.lastIndexOf("/")))), name2));
+    const info = fs.lstatSync(minpath.join(await folder(path2.slice(0, Math.max(0, path2.lastIndexOf("/")))), name2));
     ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path2}`);
     ensure(info.isFile(), "INVALID_PATH", `Not a regular file path: ${path2}`);
     return { size: info.size, ctime: info.birthtime, mtime: info.mtime };
@@ -17494,7 +17496,12 @@ function folderOf$1(path2) {
   const slash = path2.lastIndexOf("/");
   return slash < 0 ? "." : slash === 0 ? "/" : path2.slice(0, slash);
 }
+const unnormalized = /(?:^|\/)\.{1,2}(?:\/|$)|\/\/|^\//;
 function joinPath(folder, target) {
+  if (target !== "" && !unnormalized.test(target)) {
+    if (folder === ".") return target;
+    if (!unnormalized.test(folder)) return `${folder}/${target}`;
+  }
   const parts = [];
   for (const part of `${folder}/${target}`.split("/")) {
     if (part === "" || part === ".") continue;
@@ -17504,9 +17511,19 @@ function joinPath(folder, target) {
   const joined = parts.join("/") || ".";
   return target.endsWith("/") ? `${joined}/` : joined;
 }
+function union$1(first, second) {
+  const merged = [];
+  let a = 0, b = 0;
+  while (a < first.length || b < second.length) {
+    const next = b >= second.length || a < first.length && first[a] <= second[b] ? first[a++] : second[b++];
+    if (merged.at(-1) !== next) merged.push(next);
+  }
+  return merged;
+}
 function lookup(index2, keys, spelling) {
-  const positions2 = /* @__PURE__ */ new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
-  return [...positions2].sort((a, b) => a - b).map((position2) => index2.paths[position2]);
+  const plain = keys.get(spelling.toLowerCase()), markdown = keys.get(`${spelling}.md`.toLowerCase());
+  const positions2 = plain === void 0 ? markdown ?? [] : markdown === void 0 || markdown === plain ? plain : union$1(plain, markdown);
+  return positions2.map((position2) => index2.paths[position2]);
 }
 function matched(found, linkpath, via) {
   if (found.length === 1) return { status: "resolved", path: found[0], via };
@@ -18951,7 +18968,7 @@ function typeRegistry(text2) {
   for (const [name2, type2] of Object.entries(data.types)) if (typeof type2 === "string") types2[name2] = type2;
   return { status: "loaded", types: types2 };
 }
-function scopeSources(files, metadata2, bases) {
+function scopeSources(files, metadata2, bases, size) {
   return {
     cache: () => metadata2.load(),
     async text(path2) {
@@ -18962,10 +18979,7 @@ function scopeSources(files, metadata2, bases) {
         throw error2;
       }
     },
-    async size(path2) {
-      const stat = await files.stat(path2);
-      return stat.kind === "file" ? stat.bytes : 0;
-    },
+    size,
     bases
   };
 }
@@ -19081,8 +19095,14 @@ function decoded$2(text2) {
   }
 }
 const comparable = (text2) => decoded$2(text2).normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const headingSets = /* @__PURE__ */ new WeakMap();
+function headingsOf(cache) {
+  let headings = headingSets.get(cache);
+  if (headings === void 0) headingSets.set(cache, headings = new Set((cache.headings ?? []).map((item) => comparable(item.heading))));
+  return headings;
+}
 function hasHeading(cache, segment2) {
-  const headings = new Set((cache.headings ?? []).map((item) => comparable(item.heading)));
+  const headings = headingsOf(cache);
   const wanted = comparable(segment2);
   if (headings.has(wanted)) return true;
   const repeated = / \d+$/.exec(wanted);
@@ -19178,35 +19198,35 @@ class ClosestFiles {
   }
 }
 const embeds = (item) => item.kind === "embed" || item.kind === "canvas" || item.kind === "frontmatter" && item.reference.embed === true;
-async function locate(item, path2, cache, locator) {
-  if (item.kind === "link" || item.kind === "embed") return { line: item.reference.position.start.line + 1, column: item.reference.position.start.col + 1 };
-  if (item.kind === "frontmatter") return locator.locate(path2, cache, item.reference.key, item.reference.original);
-  return { line: null, column: null };
-}
 const where = (item) => item.kind === "frontmatter" ? item.reference.key : item.kind === "canvas" ? item.reference.node : "";
-async function referenceDetections(cache, path2, runs, locator, suggest) {
+function referenceDetections(cache, path2, runs, locator, suggest) {
   const source2 = cache.getFileCache(path2);
   if (!source2) return [];
-  const detections = [];
+  const detections = [], located2 = [];
   for (const item of cache.references(path2)) {
     const { resolution, reference } = item;
     const variant = item.kind === "frontmatter" ? ".frontmatter" : item.kind === "canvas" ? ".canvas" : "";
     const params = { original: reference.original, link: reference.link, at: where(item) };
-    const report = async (rule2, message2, extra = {}, suggestion) => {
-      detections.push({ rule: rule2, path: path2, ...await locate(item, path2, source2, locator), message: message2, params: { ...params, ...extra }, ...suggestion === void 0 ? {} : { suggestion } });
+    const report = (rule2, message2, extra = {}, suggestion) => {
+      const detection = { rule: rule2, path: path2, line: null, column: null, message: message2, params: { ...params, ...extra }, ...suggestion === void 0 ? {} : { suggestion } };
+      detections.push(detection);
+      if (item.kind === "link" || item.kind === "embed") Object.assign(detection, { line: item.reference.position.start.line + 1, column: item.reference.position.start.col + 1 });
+      else if (item.kind === "frontmatter") located2.push(locator.locate(path2, source2, item.reference.key, item.reference.original).then((location2) => {
+        Object.assign(detection, location2);
+      }));
     };
     if (resolution.status === "unresolved" && resolution.reason === "missing") {
       const rule2 = embeds(item) ? "unresolved-embed" : "unresolved-link";
-      if (runs(rule2)) await report(rule2, rule2 + variant, {}, suggest(resolution.linkpath));
+      if (runs(rule2)) report(rule2, rule2 + variant, {}, suggest(resolution.linkpath));
     } else if (resolution.status === "unresolved") {
-      if (runs("ambiguous-link")) await report("ambiguous-link", "ambiguous-link" + variant, { candidates: resolution.candidates.join(", ") });
+      if (runs("ambiguous-link")) report("ambiguous-link", "ambiguous-link" + variant, { candidates: resolution.candidates.join(", ") });
     } else if (resolution.status === "resolved" && reference.subpath && runs("unresolved-anchor")) {
       const target = cache.getFileCache(resolution.path);
       const missing2 = target && resolution.path.toLowerCase().endsWith(".md") ? missingAnchor(reference.subpath, target) : null;
-      if (missing2 !== null) await report("unresolved-anchor", "unresolved-anchor" + variant, { anchor: missing2, target: resolution.path });
+      if (missing2 !== null) report("unresolved-anchor", "unresolved-anchor" + variant, { anchor: missing2, target: resolution.path });
     }
   }
-  return detections;
+  return located2.length === 0 ? detections : Promise.all(located2).then(() => detections);
 }
 function suggestions(paths2) {
   const known2 = /* @__PURE__ */ new Map();
@@ -19320,7 +19340,8 @@ async function checkVault(sources, request) {
     if (runs(detection.rule)) detections.push(detection);
   };
   for (const path2 of checked) {
-    (await referenceDetections(cache, path2, runs, locator, suggest)).forEach(add);
+    const references = referenceDetections(cache, path2, runs, locator, suggest);
+    (Array.isArray(references) ? references : await references).forEach(add);
     const parsed2 = cache.getFileCache(path2);
     if (parsed2 && runs("duplicate-block-id")) duplicateBlockIds(path2, parsed2).forEach(add);
     if (runs("empty-file") && await isEmpty(path2, cache, sources.size)) add({ rule: "empty-file", path: path2, line: null, column: null, message: "empty-file", params: {} });
@@ -19650,13 +19671,14 @@ const vaultCheckPlugin = {
     description: "Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties."
   },
   strings: vaultCheckStrings,
-  create: () => ({
+  create: (host) => ({
     optional: [basesValidation],
     commands: [vaultCommand((context) => {
       const plugin2 = context;
       const bases = plugin2.services.has(basesValidation) ? plugin2.services.get(basesValidation) : null;
+      const dates = host.fileDates(context.root);
       return {
-        sources: scopeSources(context.workspace.files, context.metadata, bases && { validate: (path2) => bases.validate(plugin2, path2) }),
+        sources: scopeSources(context.workspace.files, context.metadata, bases && { validate: (path2) => bases.validate(plugin2, path2) }, async (path2) => (await dates(path2)).size),
         rules: plugin2.settings?.rules ?? {},
         ignore: plugin2.settings?.ignore ?? [],
         t: (key) => plugin2.t(key)
@@ -21948,7 +21970,7 @@ const yamlDefinitions = {
   parse(text2) {
     const lineCounter2 = new distExports.LineCounter();
     const document2 = distExports.parseDocument(text2, { ...parseOptions, lineCounter: lineCounter2 });
-    const locate2 = (path2) => {
+    const locate = (path2) => {
       const node2 = locateNode(document2, path2);
       if (!node2?.range) return void 0;
       const position2 = lineCounter2.linePos(node2.range[0]);
@@ -21956,7 +21978,7 @@ const yamlDefinitions = {
     };
     if (document2.errors.length > 0) {
       return {
-        locate: locate2,
+        locate,
         diagnostics: document2.errors.map((error2) => ({
           ...diagnostic("error", "yaml-syntax", "", error2.message.split("\n")[0]),
           ...error2.linePos ? { line: error2.linePos[0].line, column: error2.linePos[0].col } : {}
@@ -21964,9 +21986,9 @@ const yamlDefinitions = {
       };
     }
     try {
-      return { value: document2.toJS({ maxAliasCount }), diagnostics: [], locate: locate2 };
+      return { value: document2.toJS({ maxAliasCount }), diagnostics: [], locate };
     } catch (error2) {
-      return { locate: locate2, diagnostics: [diagnostic("error", "yaml-syntax", "", `The YAML cannot be expanded: ${error2 instanceof Error ? error2.message : String(error2)}`)] };
+      return { locate, diagnostics: [diagnostic("error", "yaml-syntax", "", `The YAML cannot be expanded: ${error2 instanceof Error ? error2.message : String(error2)}`)] };
     }
   },
   addAgent(text2, name2, agent) {
@@ -44507,27 +44529,95 @@ async function readSetupArtifacts(bundleDir) {
   for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset(path2) });
   return artifacts;
 }
-const snapshotFormat = 1;
+const snapshotFormat = 2;
 const racyWindowMs = 2e3;
+const aliasesKey = (aliases) => JSON.stringify([...aliases]);
 const outcomeKey = (path2, revision2) => `${fileKind(path2)}:${revision2}`;
 function unchangedFile(stored, current, checkedAtMs) {
   return stored !== void 0 && current !== void 0 && stored.stamp !== null && stored.stamp === current.stamp && current.changedMs < checkedAtMs - racyWindowMs;
 }
 const text$6 = (value2) => typeof value2 === "string";
+function storedLinks(value2) {
+  return isRecord$1(value2) && Array.isArray(value2.paths) && value2.paths.every(text$6) && text$6(value2.aliases) && isRecord$1(value2.sources) && Object.values(value2.sources).every(Array.isArray);
+}
 function snapshotFile$1(value2) {
   return isRecord$1(value2) && (value2.stamp === null || text$6(value2.stamp)) && text$6(value2.revision);
 }
-function parseOutcome(value2) {
+function storedOutcome(value2) {
   if (!isRecord$1(value2)) return false;
-  if (isRecord$1(value2.metadata)) return Object.keys(value2).length === 1;
+  if (isRecord$1(value2.metadata)) return Array.isArray(value2.positions) && Object.keys(value2).length === 2;
   return isRecord$1(value2.issue) && text$6(value2.issue.code) && text$6(value2.issue.message) && Object.keys(value2).length === 1;
 }
 function readSnapshot(value2, key) {
   if (!isRecord$1(value2) || value2.format !== snapshotFormat || value2.key !== key) return null;
   if (typeof value2.checkedAtMs !== "number" || !Number.isFinite(value2.checkedAtMs)) return null;
   if (!isRecord$1(value2.files) || !Object.values(value2.files).every(snapshotFile$1)) return null;
-  if (!isRecord$1(value2.outcomes) || !Object.values(value2.outcomes).every(parseOutcome)) return null;
+  if (!isRecord$1(value2.outcomes) || !Object.values(value2.outcomes).every(storedOutcome)) return null;
+  if (value2.links !== null && !storedLinks(value2.links)) return null;
   return value2;
+}
+const positioned = ["links", "embeds", "referenceLinks", "tags", "headings", "sections", "listItems"];
+function encodeOutcome(outcome) {
+  if (!("metadata" in outcome)) return outcome;
+  const positions2 = [];
+  const index2 = ({ start: start2, end: end2 }) => positions2.push(start2.line, start2.col, start2.offset, end2.line, end2.col, end2.offset) / 6 - 1;
+  const source2 = outcome.metadata, metadata2 = { ...source2 };
+  for (const key of positioned) {
+    const items2 = source2[key];
+    if (items2) metadata2[key] = items2.map((item) => ({ ...item, position: index2(item.position) }));
+  }
+  if (source2.blocks) metadata2.blocks = Object.fromEntries(Object.entries(source2.blocks).map(([id2, block]) => [id2, { ...block, position: index2(block.position) }]));
+  if (source2.frontmatterPosition) metadata2.frontmatterPosition = index2(source2.frontmatterPosition);
+  return { metadata: metadata2, positions: positions2 };
+}
+function decodeOutcome(stored) {
+  if (!("metadata" in stored)) return stored;
+  const { metadata: metadata2, positions: positions2 } = stored;
+  if (!Array.isArray(positions2) || positions2.length % 6 !== 0) return void 0;
+  const count2 = positions2.length / 6;
+  const position2 = (value2) => {
+    if (typeof value2 !== "number" || !Number.isInteger(value2) || value2 < 0 || value2 >= count2) return void 0;
+    const at = value2 * 6;
+    return { start: { line: positions2[at], col: positions2[at + 1], offset: positions2[at + 2] }, end: { line: positions2[at + 3], col: positions2[at + 4], offset: positions2[at + 5] } };
+  };
+  const decode2 = (item) => {
+    const value2 = position2(item.position);
+    if (value2 === void 0) return false;
+    item.position = value2;
+    return true;
+  };
+  for (const key of positioned) {
+    const items2 = metadata2[key];
+    if (items2 !== void 0 && !(Array.isArray(items2) && items2.every(decode2))) return void 0;
+  }
+  const blocks = metadata2.blocks;
+  if (blocks !== void 0 && !Object.values(blocks).every(decode2)) return void 0;
+  if (metadata2.frontmatterPosition !== void 0) {
+    const value2 = position2(metadata2.frontmatterPosition);
+    if (value2 === void 0) return void 0;
+    metadata2.frontmatterPosition = value2;
+  }
+  return { metadata: metadata2 };
+}
+function encodeResolution(resolution, index2) {
+  if (resolution.status === "external") return null;
+  if (resolution.status === "resolved") return resolution.via === "path" ? index2(resolution.path) : -1 - index2(resolution.path);
+  if (resolution.reason === "missing") return ["missing", resolution.linkpath];
+  return [resolution.via, resolution.linkpath, ...resolution.candidates.map(index2)];
+}
+function decodeResolution(stored, paths2) {
+  const path2 = (value2) => typeof value2 === "number" && Number.isInteger(value2) && value2 >= 0 && value2 < paths2.length ? paths2[value2] : void 0;
+  if (stored === null) return { status: "external" };
+  if (typeof stored === "number") {
+    const resolved = path2(stored < 0 ? -1 - stored : stored);
+    return resolved === void 0 ? void 0 : { status: "resolved", path: resolved, via: stored < 0 ? "alias" : "path" };
+  }
+  if (!Array.isArray(stored) || typeof stored[1] !== "string") return void 0;
+  const [reason, linkpath, ...indexes2] = stored;
+  if (reason === "missing") return stored.length === 2 ? { status: "unresolved", linkpath, reason } : void 0;
+  if (reason !== "path" && reason !== "alias") return void 0;
+  const candidates2 = indexes2.map(path2);
+  return candidates2.length > 1 && candidates2.every((item) => item !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
 }
 class ParseResults {
   constructor(options2) {
@@ -44535,41 +44625,60 @@ class ParseResults {
   }
   options;
   previous;
+  /** The previous snapshot once `previous` settled; undefined before. */
+  loaded;
   records = /* @__PURE__ */ new Map();
+  /** Stored outcomes decoded so far, by outcome key; undefined for one that could not be decoded. */
+  decoded = /* @__PURE__ */ new Map();
   checkedAtMs = 0;
   changed = false;
-  /** The scope's files with stamps from the store, or the repository listing without stamps. */
-  async listing(list2) {
+  /** The scope's files with stamps from the store for those `stamped` accepts, or the repository listing without stamps. */
+  async listing(list2, stamped) {
     if (this.options === void 0) return { checkedAtMs: null, files: (await list2()).map((path2) => ({ path: path2 })) };
-    const listing = await this.options.store.listing();
+    const listing = await this.options.store.listing(stamped);
     this.checkedAtMs = listing.checkedAtMs;
     return listing;
   }
   /** The previous snapshot, loaded once; null without a store or when it is missing, unreadable or for another key. */
   stored() {
     const options2 = this.options;
-    this.previous ??= options2 === void 0 ? Promise.resolve(null) : options2.store.load().then((value2) => readSnapshot(value2, options2.key), () => null);
+    this.previous ??= (options2 === void 0 ? Promise.resolve(null) : options2.store.load().then((value2) => readSnapshot(value2, options2.key), () => null)).then((snapshot) => {
+      this.loaded = snapshot;
+      return snapshot;
+    });
     return this.previous;
   }
-  /** The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. */
-  async unchanged(path2, stamp) {
-    const previous2 = await this.stored();
+  /**
+   * The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. Answers
+   * from the loaded snapshot without waiting, so call it once `stored()` has settled; before that it reuses nothing.
+   */
+  unchanged(path2, stamp) {
+    const previous2 = this.loaded;
     const stored = previous2 && Object.hasOwn(previous2.files, path2) ? previous2.files[path2] : void 0;
     if (!previous2 || !unchangedFile(stored, stamp, previous2.checkedAtMs)) return void 0;
     const outcome = this.outcome(previous2, outcomeKey(path2, stored.revision));
     if (outcome !== void 0) this.records.set(path2, { stamp: stamp.stamp, revision: stored.revision });
     return outcome;
   }
-  /** The stored outcome for read content with the same revision, or undefined when it must be parsed. */
-  async reusable(file) {
+  /** The stored outcome for content of `revision` at `path`, or undefined when it must be parsed. */
+  async reusable(path2, revision2) {
     const previous2 = await this.stored();
-    return previous2 ? this.outcome(previous2, outcomeKey(file.path, file.revision)) : void 0;
+    return previous2 ? this.outcome(previous2, outcomeKey(path2, revision2)) : void 0;
   }
-  /** Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). */
+  /**
+   * Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). The snapshot
+   * becomes outdated when the record differs from the stored one, or when storing it would let the next load trust
+   * the stamp. A file that stays inside the racy window, such as one with a future timestamp, is read again on every
+   * load but does not rewrite an otherwise unchanged snapshot.
+   */
   read(path2, revision2, stamp) {
     if (this.options === void 0) return;
-    this.records.set(path2, { stamp: stamp?.stamp ?? null, revision: revision2 });
-    this.changed = true;
+    const record2 = { stamp: stamp?.stamp ?? null, revision: revision2 };
+    this.records.set(path2, record2);
+    const before = this.loaded && Object.hasOwn(this.loaded.files, path2) ? this.loaded.files[path2] : void 0;
+    const same2 = before !== void 0 && before.stamp === record2.stamp && before.revision === revision2;
+    const undecodable = this.decoded.has(outcomeKey(path2, revision2)) && this.decoded.get(outcomeKey(path2, revision2)) === void 0;
+    if (!same2 || undecodable || stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs) this.changed = true;
   }
   /** The recorded revision of an indexed path, if any. */
   revision(path2) {
@@ -44578,32 +44687,49 @@ class ParseResults {
   forget(path2) {
     if (this.records.delete(path2)) this.changed = true;
   }
+  /**
+   * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
+   * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
+   * outdated and nothing is reused.
+   */
+  async links(paths2, aliases) {
+    const previous2 = await this.stored(), links2 = previous2?.links;
+    if (!previous2 || !links2 || links2.aliases !== aliases || links2.paths.length !== paths2.length || links2.paths.some((path2, position2) => path2 !== paths2[position2])) {
+      this.changed = true;
+      return () => void 0;
+    }
+    return (source2) => Object.hasOwn(links2.sources, source2) && Object.hasOwn(previous2.files, source2) && previous2.files[source2].revision === this.revision(source2) ? links2.sources[source2] : void 0;
+  }
   /** After a build: a missing previous snapshot or a file that left the vault makes the snapshot outdated. */
   async built() {
     const previous2 = await this.stored();
     if (previous2 === null || Object.keys(previous2.files).some((path2) => !this.records.has(path2))) this.changed = true;
   }
   /**
-   * Stores the index's current outcomes unless nothing may or needs to be written: no store, a dry run, or no file
-   * read, changed, added or removed since the previous snapshot. A failed save throws and leaves the state outdated.
+   * Stores the index's current outcomes and `links` unless nothing may or needs to be written: no store, a dry run,
+   * or nothing that differs from the previous snapshot. A failed save throws and leaves the state outdated.
    */
-  async persist(outcomeOf) {
+  async persist(outcomeOf, links2) {
     if (this.options === void 0 || !this.options.save || !this.changed) return;
-    await this.options.store.save(this.next(this.options.key, outcomeOf));
+    await this.options.store.save(this.next(this.options.key, outcomeOf, links2()));
     this.changed = false;
   }
-  next(key, outcomeOf) {
+  next(key, outcomeOf, links2) {
     const files = [], outcomes = /* @__PURE__ */ new Map();
     for (const [path2, record2] of this.records) {
       const outcome = outcomeOf(path2);
       if (outcome === void 0) continue;
       files.push([path2, record2]);
-      outcomes.set(outcomeKey(path2, record2.revision), outcome);
+      const stored = outcomeKey(path2, record2.revision);
+      if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
     }
-    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes) };
+    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links: links2 };
   }
+  /** A stored outcome, decoded once per key: files with the same content share it. */
   outcome(previous2, key) {
-    return Object.hasOwn(previous2.outcomes, key) ? previous2.outcomes[key] : void 0;
+    if (!Object.hasOwn(previous2.outcomes, key)) return void 0;
+    if (!this.decoded.has(key)) this.decoded.set(key, decodeOutcome(previous2.outcomes[key]));
+    return this.decoded.get(key);
   }
 }
 const pendingFileReads = 16;
@@ -44638,6 +44764,7 @@ class VaultMetadata {
     this.parser = parser2;
     const workspaceRoot = options2.workspaceRoot ?? false;
     this.workspaceRoot = workspaceRoot;
+    this.revisionOf = options2.revisionOf;
     this.member = (path2) => vaultMember(path2, workspaceRoot);
     this.results = new ParseResults(options2.snapshots);
   }
@@ -44650,12 +44777,17 @@ class VaultMetadata {
   problems = /* @__PURE__ */ new Map();
   outgoing = /* @__PURE__ */ new Map();
   incoming = /* @__PURE__ */ new Map();
-  index = linkIndex([]);
+  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
+  builtIndex;
+  aliasMap = /* @__PURE__ */ new Map();
+  /** `aliasesKey` of `aliasMap`. */
+  aliases = aliasesKey(/* @__PURE__ */ new Map());
   loading;
   pending = Promise.resolve();
   member;
   workspaceRoot;
   results;
+  revisionOf;
   load() {
     this.loading ??= this.build();
     return this.loading.then(() => this);
@@ -44666,11 +44798,12 @@ class VaultMetadata {
   }
   async parseFile(file) {
     if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
-    if (this.loading) {
+    const revision2 = this.revisionOf?.(file.bytes);
+    if (revision2 !== void 0 && this.loading) {
       await this.load();
-      if (this.results.revision(file.path) === file.revision) return this.caches.get(file.path) ?? null;
+      if (this.results.revision(file.path) === revision2) return this.caches.get(file.path) ?? null;
     }
-    const outcome = await this.results.reusable(file) ?? this.outcome(file.path, file.bytes);
+    const outcome = (revision2 === void 0 ? void 0 : await this.results.reusable(file.path, revision2)) ?? this.outcome(file.path, file.bytes);
     return "metadata" in outcome ? outcome.metadata : null;
   }
   /**
@@ -44689,13 +44822,23 @@ class VaultMetadata {
     await this.results.persist((path2) => {
       const metadata2 = this.caches.get(path2), issue2 = this.problems.get(path2);
       return metadata2 ? { metadata: metadata2 } : issue2 ? { issue: { code: issue2.code, message: issue2.message } } : void 0;
+    }, () => this.storedLinks());
+  }
+  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
+  storedLinks() {
+    const positions2 = new Map(this.paths.map((path2, position2) => [path2, position2]));
+    const sources = this.sources().map((source2) => {
+      const references = this.outgoing.get(source2) ?? [];
+      let next = 0;
+      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references[next]?.reference === item.reference ? encodeResolution(references[next++].resolution, (path2) => positions2.get(path2)) : null)];
     });
+    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
   }
   parseContent(path2, bytes) {
     return this.parser.indexes(path2) ? this.parser.parse(path2, bytes) : null;
   }
   async fork(repository) {
-    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot });
+    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...this.revisionOf ? { revisionOf: this.revisionOf } : {} });
     if (!this.loading) return fork;
     await this.load();
     await this.pending;
@@ -44706,7 +44849,9 @@ class VaultMetadata {
     for (const [path2, sources] of this.incoming) fork.incoming.set(path2, new Set(sources));
     Object.assign(fork.resolvedLinks, this.resolvedLinks);
     Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
-    fork.index = this.index;
+    fork.builtIndex = this.builtIndex;
+    fork.aliasMap = this.aliasMap;
+    fork.aliases = this.aliases;
     fork.loading = Promise.resolve();
     return fork;
   }
@@ -44749,24 +44894,27 @@ class VaultMetadata {
    * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
    */
   async build() {
-    const listing = await this.results.listing(() => this.repository.list());
+    const listing = await this.results.listing(() => this.repository.list(), (path2) => this.member(path2) && this.parser.indexes(path2));
     const stamps = /* @__PURE__ */ new Map();
     for (const file of listing.files) if ("stamp" in file) stamps.set(file.path, file);
     this.paths = listing.files.map((file) => file.path).filter(this.member);
-    await eachConcurrently(this.paths.filter((path2) => this.parser.indexes(path2)), pendingFileReads, async (path2) => {
+    await this.results.stored();
+    const changed = this.paths.filter((path2) => {
+      if (!this.parser.indexes(path2)) return false;
+      const unchanged = this.results.unchanged(path2, stamps.get(path2));
+      if (unchanged !== void 0) this.adopt(path2, unchanged);
+      return unchanged === void 0;
+    });
+    await eachConcurrently(changed, pendingFileReads, async (path2) => {
       const stamp = stamps.get(path2);
-      const unchanged = await this.results.unchanged(path2, stamp);
-      if (unchanged !== void 0) {
-        this.adopt(path2, unchanged);
-        return;
-      }
       const file = await this.repository.read(path2);
-      this.adopt(path2, await this.results.reusable(file) ?? this.outcome(path2, file.bytes));
+      this.adopt(path2, await this.results.reusable(path2, file.revision) ?? this.outcome(path2, file.bytes));
       this.results.read(path2, file.revision, stamp ?? null);
     });
     await this.results.built();
     this.reindex();
-    for (const source2 of this.sources()) this.resolve(source2);
+    const stored = await this.results.links(this.paths, this.aliases);
+    for (const source2 of this.sources()) this.resolve(source2, stored(source2));
   }
   outcome(path2, bytes) {
     try {
@@ -44849,21 +44997,33 @@ class VaultMetadata {
   sources() {
     return this.paths.filter((path2) => this.caches.has(path2));
   }
+  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
   reindex() {
-    const aliases = new Map(this.sources().flatMap((path2) => {
+    this.aliasMap = new Map(this.sources().flatMap((path2) => {
       const names2 = this.caches.get(path2).aliases;
       return names2?.length ? [[path2, names2]] : [];
     }));
-    this.index = linkIndex(this.paths, aliases);
+    this.aliases = aliasesKey(this.aliasMap);
+    this.builtIndex = void 0;
   }
-  /** Re-resolves one parsed source and replaces its link counts and backlink entries. */
-  resolve(source2) {
+  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
+  get index() {
+    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
+    return this.builtIndex;
+  }
+  /**
+   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
+   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
+   */
+  resolve(source2, stored) {
     this.unlink(source2);
-    const references = orderedReferences(this.caches.get(source2)).flatMap((item) => {
-      const relative = !["wikilink", "canvas"].includes(item.reference.syntax);
-      const resolution = resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
-      return resolution.status === "external" ? [] : [{ ...item, resolution }];
-    });
+    const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
+    const references = [];
+    for (const [place, item] of ordered2.entries()) {
+      const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
+      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
+      if (resolution.status !== "external") references.push({ ...item, resolution });
+    }
     const resolved = counts(), unresolved = counts();
     for (const { resolution } of references) {
       if (resolution.status === "resolved") {
@@ -61456,7 +61616,7 @@ function snapshotFile(projectDirectory) {
   const scope2 = projectDirectory === null ? "workspace" : `project.${encodeURIComponent(projectDirectory)}`;
   return `${cacheFolder}/metadata.v${snapshotFormat}.${scope2}.json`;
 }
-const sha256 = (text2) => node_crypto.createHash("sha256").update(text2).digest("hex");
+const sha256 = (bytes) => node_crypto.createHash("sha256").update(bytes).digest("hex");
 class NodeMetadataSnapshotStore {
   /**
    * `file` is relative to the workspace `root` (see `snapshotFile`); `program` is the running bundle, whose size and
@@ -61473,24 +61633,24 @@ class NodeMetadataSnapshotStore {
   program;
   list;
   build;
-  listing() {
-    return this.list();
+  listing(stamped) {
+    return this.list(stamped);
   }
   async load() {
     try {
-      const text2 = await promises.readFile(await this.folder(false).then((folder) => minpath.join(folder, this.name)), "utf8");
-      const end2 = text2.indexOf("\n");
+      const bytes = await promises.readFile(await this.folder(false).then((folder) => minpath.join(folder, this.name)));
+      const end2 = bytes.indexOf(10);
       if (end2 < 0) return null;
-      const header2 = JSON.parse(text2.slice(0, end2));
-      const body = text2.slice(end2 + 1);
+      const header2 = JSON.parse(bytes.toString("utf8", 0, end2));
+      const body = bytes.subarray(end2 + 1);
       if (!isRecord$1(header2) || header2.type !== documentType || header2.build !== await this.identity() || header2.digest !== sha256(body)) return null;
-      return JSON.parse(body);
+      return JSON.parse(body.toString("utf8"));
     } catch {
       return null;
     }
   }
   async save(snapshot) {
-    const body = JSON.stringify(snapshot);
+    const body = Buffer.from(JSON.stringify(snapshot));
     const header2 = JSON.stringify({ type: documentType, build: await this.identity(), digest: sha256(body) });
     const folder = await this.folder(true);
     await promises.writeFile(minpath.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
@@ -61498,8 +61658,8 @@ class NodeMetadataSnapshotStore {
     });
     const temp = minpath.join(folder, `.${this.name}.${node_crypto.randomUUID()}.tmp`);
     try {
-      await promises.writeFile(temp, `${header2}
-${body}`);
+      await promises.writeFile(temp, Buffer.concat([Buffer.from(`${header2}
+`), body]));
       await retryTransient(() => promises.rename(temp, minpath.join(folder, this.name)));
     } catch (error2) {
       await promises.rm(temp, { force: true }).catch(() => {
@@ -67454,8 +67614,9 @@ async function run() {
       const cacheFile = snapshotFile(project2?.directory ?? null);
       const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), {
         workspaceRoot: project2 === null,
+        revisionOf,
         snapshots: {
-          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, () => stampedFiles(files, project2?.directory)),
+          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, (stamped) => stampedFiles(files, project2?.directory, stamped)),
           key: `forge ${metadata$2.version}; parser ${metadataParserVersion}; scope ${project2?.directory ?? "."}`,
           save: !config2.settings.dryRun
         }
