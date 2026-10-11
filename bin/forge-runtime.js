@@ -21899,7 +21899,7 @@ class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes = markdown.map((file) => ({ path: file.path, bytes: encode$2(this.render(file)) }));
-    const merged = project2 ? this.projectWrites(project2, generated, await this.coverage(request, sources)) : { writes: [], revoked: [] };
+    const merged = project2 ? this.projectWrites(project2, generated, await this.coverage(request, sources, project2.manifest)) : { writes: [], revoked: [] };
     writes.push(...merged.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === "plan" ? request.manifestPath : void 0);
@@ -21950,12 +21950,24 @@ class AgentGeneration {
   }
   /**
    * A run over some definitions re-derives only their permission origins, so the rules of the others stay. Every
-   * run re-derives the origins of definition files that no longer exist.
+   * run re-derives the origins of definition files that no longer exist: each recorded origin file is looked up in
+   * the scope itself, wherever it lies, so a definition outside the definitions directory keeps its rules.
    */
-  async coverage(request, sources) {
+  async coverage(request, sources, manifest) {
     if (request.file === void 0 && request.agent === void 0) return { files: null };
     const files = sources.map((source2) => source2.path);
-    return { files, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...await this.definitions.paths(), ...files])] };
+    const recorded = new Set(Object.values(manifest.settings.permissions ?? {}).flatMap((rules2) => rules2.flatMap((rule2) => rule2.origins.map((origin) => origin.file))));
+    const present2 = await Promise.all([...recorded].map(async (file) => await this.isFile(file) ? [file] : []));
+    return { files, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...files, ...present2.flat()])] };
+  }
+  /** Whether a recorded scope path names an existing file; an invalid or missing path does not. */
+  async isFile(path2) {
+    try {
+      return (await this.workspace.files.stat(vaultPath(path2))).kind === "file";
+    } catch (error2) {
+      if (error2 instanceof AppError && (error2.code === "NOT_FOUND" || error2.code === "INVALID_PATH")) return false;
+      throw error2;
+    }
   }
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */
   async sources(request) {
@@ -44313,7 +44325,12 @@ function updateOperations(patch, expectedRev, context, relations = []) {
   for (const index2 of removals.sort((a, b) => b - a)) operations2.push({ op: "remove", path: `/relations/${index2}` });
   return [...operations2, ...additions];
 }
-const relationKey = (relation) => isRecord$1(relation) ? `${String(relation.rel)} ${lastSegment(relation.url) ?? String(relation.url).toLowerCase()}` : "";
+const WORK_ITEM_URL = /\/_apis\/wit\/workitems\/(\d+)$/i;
+const relationKey = (relation) => {
+  if (!isRecord$1(relation)) return "";
+  const url2 = String(relation.url), item = WORK_ITEM_URL.exec(url2)?.[1];
+  return `${String(relation.rel)} ${item === void 0 ? `url ${url2}` : `item ${item}`}`;
+};
 const RELATION_INDEX = /^\/relations\/(\d+)$/;
 const tally = (keys) => keys.reduce((counts2, key) => counts2.set(key, (counts2.get(key) ?? 0) + 1), /* @__PURE__ */ new Map());
 function relationsLanded(read2, operations2, result) {
@@ -44321,8 +44338,10 @@ function relationsLanded(read2, operations2, result) {
   if (removed.size === 0) return true;
   const reach = Math.max(...removed) + removed.size;
   const added = operations2.filter((operation2) => operation2.op === "add" && operation2.path === "/relations/-").map((operation2) => relationKey(operation2.value));
-  const expected = tally([...read2.filter((_relation, index2) => index2 <= reach && !removed.has(index2)).map(relationKey), ...added]);
-  const optional2 = tally(read2.filter((_relation, index2) => index2 > reach).map(relationKey));
+  const within2 = new Set(read2.filter((_relation, index2) => index2 <= reach).map(relationKey));
+  const required2 = (relation, index2) => index2 <= reach ? !removed.has(index2) : within2.has(relationKey(relation));
+  const expected = tally([...read2.filter(required2).map(relationKey), ...added]);
+  const optional2 = tally(read2.filter((relation, index2) => index2 > reach && !within2.has(relationKey(relation))).map(relationKey));
   const actual = tally(result.map(relationKey));
   if ([...expected].some(([key, count2]) => (actual.get(key) ?? 0) < count2)) return false;
   return [...removed].every((index2) => {
@@ -65690,19 +65709,23 @@ function parseBootstrap(tokens) {
   const parsed2 = parseArguments(tokens.slice(0, end2), globalOptions);
   return { flags: parsed2.flags, args: tokens.slice(end2 + (tokens[end2] === "--" ? 1 : 0)) };
 }
-function ensureDeclaredValues(options2, flags) {
+function declaredValues(options2, flags) {
+  const values2 = Object.assign(/* @__PURE__ */ Object.create(null), flags);
   for (const [key, schema2] of Object.entries(options2)) {
     const given = Object.hasOwn(flags, key) ? flags[key] : void 0;
     if (given === void 0) {
       if (schema2.required) throw forgeError("MISSING_ARGUMENT", `--${key} is required.`, { option: key });
       continue;
     }
-    if (schema2.enum === void 0 || typeof given !== "string") continue;
-    if (!(schema2.list ? listOptionItems(given) : [given]).every((item) => schema2.enum.includes(item))) {
+    if (typeof given !== "string") continue;
+    const items2 = schema2.list ? listOptionItems(given) : [given];
+    if (schema2.enum !== void 0 && !items2.every((item) => schema2.enum.includes(item))) {
       const expected = schema2.list ? "a comma-separated list of" : "one of";
       throw forgeError("INVALID_OPTION_VALUE", `--${key} must be ${expected}: ${schema2.enum.join(", ")}.`, { option: key, value: given, allowed: [...schema2.enum] });
     }
+    if (schema2.list) values2[key] = items2.join(",");
   }
+  return values2;
 }
 function parseArguments(tokens, options2, allowUnknown = false) {
   const command2 = new Command("forge").helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true).exitOverride().configureOutput({ writeOut: () => {
@@ -67824,7 +67847,7 @@ async function run() {
       if (parsedEvents !== void 0 && (!parsed2.flags.help || validLevel(parsedEvents))) eventLevel = config2.settings.events = eventOutput(parsedEvents);
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed2.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
-      if (!parsed2.flags.help) ensureDeclaredValues(commandOptions(command2, parsed2.args.slice(1)), parsed2.flags);
+      const flags = parsed2.flags.help ? parsed2.flags : declaredValues(commandOptions(command2, parsed2.args.slice(1)), parsed2.flags);
       for (const option2 of ["root", "no-plugins"]) ensure(parsed2.flags[option2] === bootstrap.flags[option2], "INVALID_ARGUMENT", `--${option2} must precede the command.`);
       config2.settings.json = parsed2.flags["no-json"] ? false : parsed2.flags.json ? true : config2.settings.json;
       config2.settings.dryRun = parsed2.flags["no-dry-run"] ? false : parsed2.flags["dry-run"] ? true : config2.settings.dryRun;
@@ -67874,7 +67897,7 @@ async function run() {
         await registry2.activate(events2, context, skipUserPlugins ? void 0 : new WorkspacePluginState(environment, (message2) => events2.warn(message2), settingsRevision));
         await announceLayoutReady(events2);
       }, async () => {
-        const output2 = parsed2.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed2.args.slice(1), parsed2.flags, context);
+        const output2 = parsed2.flags.help ? await registry2.commands.get("help").run(id2 === "help" ? [] : [id2], {}, context) : await command2.run(parsed2.args.slice(1), flags, context);
         return localizer.result(commandId, output2);
       });
       result = { ok: true, data };
@@ -67894,10 +67917,10 @@ async function run() {
     process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n");
   }
 }
-for (const stream of [process.stdout, process.stderr]) {
-  stream.on("error", (error2) => {
-    if (error2.code !== "EPIPE" && error2.code !== "EOF") throw error2;
-    process.exit(process.exitCode ?? 0);
-  });
-}
+process.stdout.on("error", (error2) => {
+  if (error2.code !== "EPIPE" && error2.code !== "EOF") throw error2;
+  process.exit(process.exitCode ?? 0);
+});
+process.stderr.on("error", () => {
+});
 void run();
