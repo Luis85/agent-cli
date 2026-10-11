@@ -27,4 +27,23 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     expect(german.body.warnings).toEqual(expect.arrayContaining([expect.stringContaining('plugins.enabled nennt nope, aber bin/plugins/nope/manifest.json existiert nicht')]));
     expect(german.body.data.plugins.find((plugin: { id: string }) => plugin.id === 'nope').reason).toContain('entfernen Sie es aus plugins.enabled');
   });
+
+  it('makes a plugin that requires its services unavailable, and every other command keeps working', async () => {
+    await mkdir(join(fixture.project, 'bin/plugins/needy'), { recursive: true });
+    await writeFile(join(fixture.project, 'bin/plugins/needy/manifest.json'), JSON.stringify({ id: 'needy', name: 'Needy', version: '1.0.0', minAppVersion: '0.1.0', description: 'Needs nope', author: 'Test' }));
+    await writeFile(join(fixture.project, 'bin/plugins/needy/main.mjs'), "export default { requires: ['nope.greeter'], commands: [{ id: 'needy.run', description: 'Greet', usage: 'needy.run', mutating: false, run: () => ({ needy: true }) }] };\n");
+    await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['nope', 'needy', 'hello'] } }));
+    for (const args of [['list'], ['hello.run'], ['config']]) expect((await cli(args)).status, args.join(' ')).toBe(0);
+    const reason = 'Requires service nope.greeter; its provider nope is missing.';
+    expect((await cli(['needy.run'])).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'needy', reason } });
+    const listed = (await cli(['plugins'])).body.data.plugins as Array<{ id: string; state: string; reason: string | null }>;
+    expect(listed.find(plugin => plugin.id === 'needy')).toMatchObject({ state: 'unavailable', reason });
+  });
+
+  it('is still listed as missing when --no-plugins skips the user plugins', async () => {
+    const result = await cli(['--no-plugins', 'plugins']);
+    const users = (result.body.data.plugins as Array<{ id: string; core: boolean; state: string }>).filter(plugin => !plugin.core);
+    expect(users.map(plugin => [plugin.id, plugin.state]).sort()).toEqual([['hello', 'skipped'], ['needy', 'skipped'], ['nope', 'missing']]);
+    expect(result.body.warnings).toEqual(expect.arrayContaining([expect.stringContaining(warning)]));
+  });
 });

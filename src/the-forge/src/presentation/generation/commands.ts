@@ -14,12 +14,6 @@ function generatorOptions(generator: Generator): Record<string, CommandOption> {
   return { ...(generator.fixedDirectory ? {} : out), ...generator.options, ...(generator.review ? reviewOptions : {}) };
 }
 
-/**
- * The idempotent hint of a generator's mode. The host writes a `generate` plan through revision guards: an existing
- * output needs its revision (`--revisions-from`, or an `expectedRevision` the plan names), so the identical repeat
- * fails with CONFLICT or rewrites the same bytes. A `run` generator writes itself and declares its own hint.
- */
-const generatorIdempotent = (generator: Generator) => generator.idempotent ?? generator.run === undefined;
 
 /**
  * `make` routes to registered generators by id: kernel, core plugin and user plugin generators alike. Each
@@ -42,7 +36,7 @@ export function generationCommand(registry: Registry): Command {
       return Object.fromEntries([...registry.generators.values()].map((generator): [string, CommandAction] => [generator.id, {
         description: generator.description, usage: generator.usage ?? `make ${generator.id} <Name>`,
         scope: generator.scope ?? 'project', discovery: false, mutating: generator.mutating ?? true,
-        ...(generator.destructive === undefined ? {} : { destructive: generator.destructive }), idempotent: generatorIdempotent(generator),
+        ...(generator.destructive === undefined ? {} : { destructive: generator.destructive }), idempotent: generator.idempotent ?? false,
         ...(generator.projectOption ? { projectOption: generator.projectOption } : {}),
         options: generatorOptions(generator),
       }]));

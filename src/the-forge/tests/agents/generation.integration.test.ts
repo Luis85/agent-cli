@@ -3,6 +3,11 @@ import { agentsWorkspace, example, type AgentsWorkspace } from './agents-workspa
 
 let scope: AgentsWorkspace;
 const generate = (flags: Record<string, string | boolean> = {}, options: { dryRun?: boolean } = {}) => scope.run(['generate'], { target: 'claude', ...flags }, options);
+/** Once the settings file exists, every generation is reviewed: plan, then write the planned revisions. */
+async function reviewed(flags: Record<string, string | boolean>) {
+  await scope.put('review.json', JSON.stringify((await generate({ ...flags, plan: true })).data.revisions));
+  return generate({ ...flags, 'revisions-from': 'review.json' });
+}
 const failure = (promise: Promise<unknown>) => promise.then(() => { throw new Error('expected a failure'); }, (error: unknown) => error as { code: string; message: string; details?: Record<string, unknown> });
 
 beforeEach(async () => {
@@ -88,19 +93,40 @@ describe('generating Claude agents in a workspace', () => {
     const team = (deny: string) => `agents:\n  root:\n    model: anthropic/claude-sonnet-5\n    description: Lead.\n    instruction: Lead.\npermissions:\n  allow:\n    - "shell:cmd=git *"\n  deny:\n${deny}`;
     await scope.put('agents/guarded.yaml', team('    - "shell:cmd=*sudo*"\n    - "shell:cmd=*rm -rf*"\n'));
     await scope.put('.claude/settings.json', '{\n  "permissions": {"allow": ["Bash(git *)"], "deny": ["Read(.env)"]}\n}\n');
-    // The settings file exists, so every generation is reviewed: plan, then write the planned revisions.
-    const reviewed = async () => {
-      await scope.put('review.json', JSON.stringify((await generate({ file: 'guarded.yaml', settings: true, plan: true })).data.revisions));
-      await generate({ file: 'guarded.yaml', settings: true, 'revisions-from': 'review.json' });
-    };
-    await reviewed();
+    const guarded = { file: 'guarded.yaml', settings: true }, origins = [{ file: 'agents/guarded.yaml' }];
+    await reviewed(guarded);
     expect(JSON.parse(await scope.read('.claude/settings.json')).permissions).toEqual({ allow: ['Bash(git *)'], deny: ['Read(.env)', 'Bash(*sudo*)', 'Bash(*rm -rf*)'] });
-    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings).toEqual({ agent: 'root', permissions: { deny: ['Bash(*sudo*)', 'Bash(*rm -rf*)'] } });
+    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings).toEqual({ agent: 'root', permissions: { deny: [{ rule: 'Bash(*sudo*)', origins }, { rule: 'Bash(*rm -rf*)', origins }] } });
 
     await scope.put('agents/guarded.yaml', team('    - "shell:cmd=*sudo*"\n'));
-    await reviewed();
+    expect((await reviewed(guarded)).data.diagnostics).toEqual(expect.arrayContaining([{ severity: 'warning', code: 'revokes-permission', pointer: '/permissions/deny', path: 'agents/guarded.yaml',
+      message: '.claude/settings.json permissions.deny loses the rule Bash(*rm -rf*), which Forge wrote and no definition grants any more.' }]));
     expect(JSON.parse(await scope.read('.claude/settings.json')).permissions).toEqual({ allow: ['Bash(git *)'], deny: ['Read(.env)', 'Bash(*sudo*)'] });
-    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings).toEqual({ agent: 'root', permissions: { deny: ['Bash(*sudo*)'] } });
+    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings).toEqual({ agent: 'root', permissions: { deny: [{ rule: 'Bash(*sudo*)', origins }] } });
+  });
+
+  it('removes only the rules whose every origin a --file or --agent generation covers', async () => {
+    const agent = (name: string, denied?: string) => `  ${name}:\n    model: anthropic/claude-sonnet-5\n    description: ${name}.\n    instruction: ${name}.\n${denied ? `    toolsets:\n      - type: filesystem\n        deny_list: [${denied}]\n` : ''}`;
+    const team = (agents: string, deny: string) => `agents:\n${agents}permissions:\n  deny:\n    - "${deny}"\n`;
+    await scope.remove('agents/team.yaml');
+    await scope.put('agents/a.yaml', team(agent('alpha', 'secrets') + agent('gamma'), 'shell:cmd=*sudo*'));
+    await scope.put('agents/b.yaml', team(agent('beta'), 'shell:cmd=*rm -rf*'));
+    await generate({ settings: true });
+    const deny = async () => JSON.parse(await scope.read('.claude/settings.json')).permissions.deny as string[];
+    const all = await deny();
+    expect(all).toEqual(expect.arrayContaining(['Bash(*sudo*)', 'Bash(*rm -rf*)']));
+    expect(all.filter(rule => rule.includes('secrets'))).not.toEqual([]);
+    const revoked = (result: { data: Record<string, unknown> }) => (result.data.diagnostics as Array<{ code: string; pointer: string; path: string }>)
+      .filter(entry => entry.code === 'revokes-permission').map(entry => `${entry.path}${entry.pointer}`);
+    // One file, then one agent of it: the rules other definitions grant keep their origins and stay.
+    for (const flags of [{ file: 'a.yaml' }, { agent: 'gamma' }] as Array<Record<string, string>>) {
+      expect(revoked(await reviewed({ settings: true, ...flags })), JSON.stringify(flags)).toEqual([]);
+      expect(await deny()).toEqual(all);
+    }
+    await scope.put('agents/a.yaml', team(agent('alpha') + agent('gamma'), 'shell:cmd=*sudo*'));
+    const narrowed = await reviewed({ settings: true, agent: 'alpha' });
+    expect(new Set(revoked(narrowed))).toEqual(new Set(['agents/a.yaml/agents/alpha']));
+    expect(await deny()).toEqual(['Bash(*sudo*)', 'Bash(*rm -rf*)']);
   });
 
   it('merges MCP servers into .mcp.json, updating only servers Forge owns', async () => {

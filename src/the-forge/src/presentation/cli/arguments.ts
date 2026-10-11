@@ -37,8 +37,9 @@ export function parseBootstrap(tokens: string[]): ParsedArguments {
 
 /**
  * Enforces the option constraints that `help` and `schema` publish, after parsing and before the command runs: a
- * missing `required` option fails with MISSING_ARGUMENT and a value outside a string option's `enum` with
- * INVALID_OPTION_VALUE, each naming the option in `details`. Commands never repeat these checks.
+ * missing `required` option fails with MISSING_ARGUMENT and a value outside a string option's `enum` (for a `list`
+ * option, any comma-separated item outside it) with INVALID_OPTION_VALUE, each naming the option in `details`.
+ * Commands never repeat these checks.
  */
 export function ensureDeclaredValues(options: Readonly<Record<string, CommandOption>>, flags: Readonly<Record<string, string | boolean>>): void {
   for (const [key, schema] of Object.entries(options)) {
@@ -47,8 +48,10 @@ export function ensureDeclaredValues(options: Readonly<Record<string, CommandOpt
       if (schema.required) throw forgeError('MISSING_ARGUMENT', `--${key} is required.`, { option: key });
       continue;
     }
-    if (schema.enum !== undefined && typeof given === 'string' && !schema.enum.includes(given)) {
-      throw forgeError('INVALID_OPTION_VALUE', `--${key} must be one of: ${schema.enum.join(', ')}.`, { option: key, value: given, allowed: [...schema.enum] });
+    if (schema.enum === undefined || typeof given !== 'string') continue;
+    if (!(schema.list ? given.split(',') : [given]).every(item => schema.enum!.includes(item))) {
+      const expected = schema.list ? 'a comma-separated list of' : 'one of';
+      throw forgeError('INVALID_OPTION_VALUE', `--${key} must be ${expected}: ${schema.enum.join(', ')}.`, { option: key, value: given, allowed: [...schema.enum] });
     }
   }
 }

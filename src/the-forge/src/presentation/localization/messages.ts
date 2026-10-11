@@ -9,6 +9,7 @@ export const germanKernelMessages: Record<KernelMessageCode, string> = {
   PLUGIN_SETTINGS_INVALID: 'plugins.settings.{plugin} ist ungültig: {issues}.',
   PLUGIN_PROVIDER_UNAVAILABLE: 'Benötigt den Dienst {service}; sein Anbieter {provider} ist nicht verfügbar.',
   PLUGIN_PROVIDER_DISABLED: 'Benötigt den Dienst {service}; sein Anbieter {provider} ist deaktiviert.',
+  PLUGIN_PROVIDER_MISSING: 'Benötigt den Dienst {service}; sein Anbieter {provider} fehlt.',
   PLUGIN_MISSING: 'plugins.enabled nennt {plugin}, aber {path} existiert nicht; installieren Sie das Plugin dort oder entfernen Sie es aus plugins.enabled.',
   PLUGIN_UNAVAILABLE: 'Das Plugin {plugin} ist in diesem Aufruf nicht verfügbar: {reason} Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.',
   SETTINGS_UNDECLARED: 'plugins.settings enthält Abschnitte für Plugins, die keine Einstellungen deklarieren: {plugins}; sie werden ignoriert.',

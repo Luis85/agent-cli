@@ -22,7 +22,7 @@ node bin/forge.js search -- --dry-run
 | `--case-sensitive` | Match case exactly |
 | `--in body / frontmatter / all` | Markdown lines to read: `body` is everything after the frontmatter, `frontmatter` the lines between its `---` delimiters, `all` (default) the whole file. Other kinds have no frontmatter: `frontmatter` finds nothing in them |
 | `--skip-code` | Skip fenced and indented Markdown code blocks, as the [metadata cache](formats.md#metadata-index) records them |
-| `--kind markdown / canvas / base / text` | Only files of this kind; attachment kinds are rejected with `INVALID_ARGUMENT` |
+| `--kind markdown / canvas / base / text` | Only files of this kind; attachment kinds are rejected with `INVALID_OPTION_VALUE` |
 | `--path <glob>` | Only files whose root-relative path matches the [path glob](cli.md#path-globs-and-paging) |
 | `--tag <tag>` | Only notes with the tag or a nested tag below it (`project` matches `#project/alpha`), case-insensitively, with or without `#`; inline and frontmatter tags count |
 | `--property <key>` / `--property <key>=<value>` | Only notes whose top-level frontmatter has `key` with a non-null value, or whose value (or any scalar list element) has exactly the text `value` |
@@ -72,6 +72,7 @@ To recover from a timeout, avoid nested quantifiers and ambiguous alternations, 
 | --- | --- | --- |
 | `INVALID_SEARCH_PATTERN` | 2 | Empty or overlong pattern, or an invalid regular expression (the message names the syntax error) |
 | `SEARCH_TIMEOUT` | 2 | Matching exceeded `plugins.settings.search.timeoutMs` |
-| `INVALID_ARGUMENT` | 2 | Unknown `--in` or `--kind`, `--context` outside 0–50, a `--limit` below 1, a malformed `--property` or `--tag`, a malformed glob, or a cursor of another query |
+| `INVALID_OPTION_VALUE` | 2 | Unknown `--in` or `--kind` (`details` `{option, value, allowed}`) |
+| `INVALID_ARGUMENT` | 2 | `--context` outside 0–50, a `--limit` below 1, a malformed `--property` or `--tag`, a malformed glob, or a cursor of another query |
 
 Both search codes are registered by the plugin, so `schema` lists them with `plugin: "search"` and `--lang de` localizes their summary and hint. See the [error catalog](errors.md#core-plugin-codes).

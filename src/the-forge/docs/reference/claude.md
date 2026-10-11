@@ -18,7 +18,7 @@ Native agent and hook operations use these targets:
 | `--scope` | Agents | Hooks/settings |
 | --- | --- | --- |
 | `project` (default) | `.claude/agents/` | `.claude/settings.json` |
-| `local` | Unsupported | `.claude/settings.local.json` |
+| `local` | Unsupported (`INVALID_OPTION_VALUE`) | `.claude/settings.local.json` |
 | `user` | `<claude-dir>/agents/` | `<claude-dir>/settings.json` |
 | `plugin` | `<directory>/agents/` | `<directory>/hooks/hooks.json` |
 
@@ -146,7 +146,7 @@ These commands launch the executable named `claude`, or `--claude-bin <executabl
 | `claude runtime install [version\|stable\|latest]` | `claude install [version\|stable\|latest]` | Requires an already callable Claude executable |
 | `claude runtime update` | `claude update` | — |
 
-Commands supporting `--scope` default to `project` and pass it explicitly, including marketplace removal. The exceptions are `plugins disable --all` and `marketplaces add --claudeai`, which reject scope and use native behavior. Other commands reject that option. Native `plugins init` creates a plugin under `~/.claude/skills/<name>`; it has no project destination or scope option. Use Forge's `plugins create <directory>` to author a manifest in a selected project. Runtime operations inherit the process environment, including `CLAUDE_CONFIG_DIR`; the native-file `--claude-dir` option does not apply to them.
+Each section declares the scopes it accepts, and `schema claude` publishes them under `annotations.actions.<section>.options.scope`: `agents` takes `project`, `user` and `plugin`; `hooks` adds `local`; `plugins` takes `project`, `local`, `user` and `managed`; `marketplaces` takes `project`, `local` and `user`; `capabilities` and `runtime` take none. A value outside the section's set fails with `INVALID_OPTION_VALUE` before the section runs, and an installed-CLI command that does not support a declared scope, such as `plugins install --scope managed`, fails with `INVALID_CLAUDE_SCOPE`. Commands supporting `--scope` default to `project` and pass it explicitly, including marketplace removal. The exceptions are `plugins disable --all` and `marketplaces add --claudeai`, which reject scope and use native behavior. Other commands reject that option. Native `plugins init` creates a plugin under `~/.claude/skills/<name>`; it has no project destination or scope option. Use Forge's `plugins create <directory>` to author a manifest in a selected project. Runtime operations inherit the process environment, including `CLAUDE_CONFIG_DIR`; the native-file `--claude-dir` option does not apply to them.
 
 Pass each list option as one argument: for example, `--with '["agents","hooks"]'`, `--sparse '["plugins/a","plugins/b"]'`, `--allow-tools '["Read","Grep"]'` or `--config '["host=localhost","port=8080"]'`. Allowed `--with` components are `skills`, `agents`, `hooks`, `mcp`, `lsp`, `output-style` and `channel`. `--config` expands into repeated native options; use configuration stdin for sensitive values because process arguments and dry-run plans contain option values.
 

@@ -7,6 +7,8 @@ const options: ClaudeGenerationOptions = { mcp: 'none', hooks: false, settings: 
 const agent = (extra: Record<string, unknown> = {}) => ({ model: 'anthropic/claude-sonnet-5', description: 'Helps.', instruction: 'Help.', ...extra });
 const generate = (config: Record<string, unknown>, extra: Partial<ClaudeGenerationOptions> = {}) =>
   generateClaude([{ path: 'agents/team.yaml', sourceHash: 'a'.repeat(64), config, instructions: {} }], { ...options, ...extra });
+/** The generated rules by list, without their origins. */
+const ruleLists = (output: ReturnType<typeof generate>) => Object.fromEntries(Object.entries(output.settings!.permissions).map(([list, entries]) => [list, entries.map(entry => entry.rule)]));
 const findings = (output: ReturnType<typeof generate>, code: string) => output.diagnostics.filter(entry => entry.code === code).map(entry => `${entry.severity} ${entry.pointer} ${entry.message}`);
 
 describe('toolset restrictions', () => {
@@ -15,7 +17,7 @@ describe('toolset restrictions', () => {
       { type: 'filesystem', allow_list: ['docs', '/tmp/x'], deny_list: ['secrets', '/etc', '~/.ssh'] },
       { type: 'fetch', blocked_domains: ['evil.example', '*.ads.example', '10.0.0.0/8'] },
     ] }), b: agent({ toolsets: [{ type: 'fetch', allowed_domains: ['docs.docker.com'] }] }) } });
-    expect(output.settings!.permissions).toEqual({
+    expect(ruleLists(output)).toEqual({
       allow: [], ask: [],
       deny: ['Read(./secrets/**)', 'Edit(./secrets/**)', 'Read(//etc/**)', 'Edit(//etc/**)', 'Read(~/.ssh/**)', 'Edit(~/.ssh/**)', 'WebFetch(domain:evil.example)', 'WebFetch(domain:*.evil.example)', 'WebFetch(domain:*.ads.example)'],
     });
@@ -23,6 +25,7 @@ describe('toolset restrictions', () => {
       ['warning', '/agents/a/toolsets/0/allow_list', 'U'], ['warning', '/agents/b/toolsets/0/allowed_domains', 'U'],
     ]);
     expect(findings(output, 'grants-permission')).toContain('warning /agents/a/toolsets/0/deny_list .claude/settings.json permissions.deny gets the rule Read(./secrets/**).');
+    expect(output.settings!.permissions.deny[0]).toEqual({ rule: 'Read(./secrets/**)', origins: [{ file: 'agents/team.yaml', agent: 'a' }] });
   });
 });
 
@@ -36,7 +39,7 @@ describe('top-level permissions', () => {
 
   it('maps narrow patterns to narrow rules and never widens unmappable ones', () => {
     const output = generate(team, { mcp: 'inline', allowBroadPermissions: true });
-    expect(output.settings!.permissions).toEqual({
+    expect(ruleLists(output)).toEqual({
       allow: ['Bash(git status*)', 'Read', 'Glob', 'TaskList', 'mcp__github__get_issue', 'mcp__github-2__get_issue', 'mcp__github', 'mcp__github-2'],
       ask: ['WebFetch'],
       deny: ['Bash(rm -rf*)'],
@@ -54,11 +57,12 @@ describe('top-level permissions', () => {
       'warning /permissions/deny/0 .claude/settings.json permissions.deny gets the rule Bash(rm -rf*).',
     ]));
     expect(findings(output, 'grants-permission')).toHaveLength(10);
+    expect(output.settings!.permissions.ask).toEqual([{ rule: 'WebFetch', origins: [{ file: 'agents/team.yaml' }] }]);
   });
 
   it('refuses broad allow rules without --allow-broad-permissions and does not write them', () => {
     const output = generate({ permissions: { allow: ['*', 'shell:cmd=*', 'write_file', 'shell:cmd=ls'] }, agents: { root: agent() } });
-    expect(output.settings!.permissions.allow).toEqual(['Read', 'Glob', 'Grep', 'AskUserQuestion', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'Bash(ls)']);
+    expect(ruleLists(output).allow).toEqual(['Read', 'Glob', 'Grep', 'AskUserQuestion', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'Bash(ls)']);
     expect(output.diagnostics.filter(entry => entry.severity === 'error').map(entry => `${entry.code} ${entry.pointer} ${entry.message.split(' would')[0]}`)).toEqual([
       'broad-permission /permissions/allow/0 The rule Write', 'broad-permission /permissions/allow/0 The rule Edit', 'broad-permission /permissions/allow/0 The rule Bash',
       'broad-permission /permissions/allow/0 The rule WebFetch', 'broad-permission /permissions/allow/1 The rule Bash(*)', 'broad-permission /permissions/allow/2 The rule Write',
@@ -67,7 +71,7 @@ describe('top-level permissions', () => {
 
   it('omits MCP rules when no MCP server is generated and reports the reason', () => {
     const output = generate(team);
-    expect(output.settings!.permissions.allow).not.toContain('mcp__github');
+    expect(ruleLists(output).allow).not.toContain('mcp__github');
     expect(findings(output, 'permission-unsupported')).toContain('info /permissions/allow/6 The allow pattern mcp:github:get_issue names an MCP server, and no MCP server is generated without --mcp inline or --mcp project; it is not emitted.');
   });
 

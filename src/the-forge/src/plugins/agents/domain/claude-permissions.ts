@@ -89,7 +89,7 @@ export function topLevelRules(config: AgentConfigDocument, servers: ReadonlyMap<
  * The rules written to settings: broad allow rules need `allowBroad` (otherwise an error diagnostic and the rule is
  * dropped), and every written rule is listed as `grants-permission`.
  */
-export function reviewedRules(rules: readonly PermissionRule[], allowBroad: boolean, diagnostics: AgentDiagnostic[]): PermissionRule[] {
+export function reviewedRules<Rule extends PermissionRule>(rules: readonly Rule[], allowBroad: boolean, diagnostics: AgentDiagnostic[]): Rule[] {
   return rules.filter(entry => {
     if (entry.list === 'allow' && isBroadRule(entry.rule) && !allowBroad) {
       diagnostics.push(diagnostic('error', 'broad-permission', entry.at, say('broadPermission', { rule: entry.rule })));

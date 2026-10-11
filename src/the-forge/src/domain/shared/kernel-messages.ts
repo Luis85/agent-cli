@@ -14,6 +14,7 @@ export const kernelMessages = {
   PLUGIN_SETTINGS_INVALID: 'plugins.settings.{plugin} is invalid: {issues}.',
   PLUGIN_PROVIDER_UNAVAILABLE: 'Requires service {service}; its provider {provider} is unavailable.',
   PLUGIN_PROVIDER_DISABLED: 'Requires service {service}; its provider {provider} is disabled.',
+  PLUGIN_PROVIDER_MISSING: 'Requires service {service}; its provider {provider} is missing.',
   PLUGIN_MISSING: 'plugins.enabled names {plugin}, but {path} does not exist; install the plugin there, or remove it from plugins.enabled.',
   // Configuration and setup warnings.
   PLUGIN_UNAVAILABLE: 'Plugin {plugin} is unavailable in this invocation: {reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.',

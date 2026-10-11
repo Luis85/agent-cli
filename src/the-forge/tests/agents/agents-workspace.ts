@@ -37,6 +37,7 @@ export async function agentsWorkspace() {
     const data = await registry.commands.get('agents')!.run(args, flags, context) as Record<string, unknown>;
     return { data, events: events.history as EventRecord[] };
   }
-  return { root, put, read, run, dispose: () => rm(root, { recursive: true, force: true }) };
+  const remove = (path: string) => rm(join(root, path));
+  return { root, put, read, remove, run, dispose: () => rm(root, { recursive: true, force: true }) };
 }
 export type AgentsWorkspace = Awaited<ReturnType<typeof agentsWorkspace>>;
