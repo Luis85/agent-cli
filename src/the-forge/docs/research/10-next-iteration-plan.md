@@ -107,7 +107,8 @@ Still open after #18:
 - On macOS and Windows a lock records no process start time, so a lock whose pid was reused by a live process stays `active`.
 - No real-agent evaluation run has been executed, and no baseline is recorded.
 - `links` has no paging, `.obsidian/app.json` link preferences are not read, and `trace check` is not started.
-- The UI renderers' output fails a generated project's lint when it is placed under `src/` instead of the default `ui/`.
+- Generated UI placed under a project's `src/` instead of the default `ui/` passes the project's lint and typecheck, but not its library analysis: nothing imports it, and the frameworks are not dependencies of the generated library.
+- Notes with thousands of separate lists parse slowly (micromark copies its event list per list; about 3.3 s for 4,000). Each content version is parsed once and then served from the metadata cache.
 
 ### Decisions
 
