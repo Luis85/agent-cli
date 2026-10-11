@@ -4,7 +4,7 @@ import { pathGlob } from '../../domain/documents/path-glob.ts';
 import { Pager } from '../../domain/shared/paging.ts';
 import type { Command, CommandContext } from '../../application/plugins/registry.ts';
 import { arity, integer, parseJson, readInputBytes, value } from '../../application/plugins/command-input.ts';
-import { option } from '../../application/plugins/command-metadata.ts';
+import { listItems, option } from '../../application/plugins/command-metadata.ts';
 import { encodeText } from '../cli/input.ts';
 import { applyCommand, editCommand } from './edit-commands.ts';
 import { listOutput, readOutput, validateOutput } from './output.ts';
@@ -36,7 +36,7 @@ function selectedParts(flags: Record<string, string | boolean>, kind: string): S
   const requested = value(flags, 'parts');
   if (requested === undefined) return new Set();
   // The host checked every item against readParts.
-  const parts = requested.split(',');
+  const parts = listItems(requested);
   ensure(kind === 'markdown', 'INVALID_ARGUMENT', '--parts body requires a Markdown file.');
   return new Set(parts);
 }

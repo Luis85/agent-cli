@@ -6,7 +6,7 @@ import { EventBus } from './application/plugins/events.ts';
 import { registerHostEvents, type HostEventMap } from './application/plugins/host-events.ts';
 import { announceLayoutReady, invokeCommand, quitInvocation } from './application/plugins/invocation.ts';
 import { WorkspacePluginState } from './application/plugins/plugin-state.ts';
-import { eventOutput, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
+import { eventOutput, eventOutputLevels, selectEventOutput, type EventOutput } from './application/plugins/event-output.ts';
 import { NodeEventScope } from './infrastructure/plugins/event-scope.ts';
 import { Workspace } from './application/workspace/workspace.ts';
 import { ScopedFiles, scopedCommitObserver } from './application/workspace/scoped-files.ts';
@@ -78,8 +78,11 @@ async function run(): Promise<void> {
     const requestedLanguage = value(bootstrap.flags, 'lang');
     if (requestedLanguage !== undefined) localizer = new Localizer(language(requestedLanguage));
     const requestedEvents = value(bootstrap.flags, 'events');
-    if (requestedEvents !== undefined) eventLevel = eventOutput(requestedEvents);
+    // An invalid --events fails once the command is parsed, unless --help describes the command instead.
+    const validLevel = (level: string): level is EventOutput => (eventOutputLevels as readonly string[]).includes(level);
+    if (requestedEvents !== undefined && validLevel(requestedEvents)) eventLevel = requestedEvents;
     if (bootstrap.flags.version) {
+      if (requestedEvents !== undefined) eventOutput(requestedEvents);
       const parsed = parseArguments(tokens, globalOptions);
       ensure(parsed.args.length === 0, 'INVALID_ARGUMENT', '--version does not accept a command.');
       result = { ok: true, data: { name: 'The Forge', version: metadata.version, apiVersion: 1 } };
@@ -146,7 +149,8 @@ async function run(): Promise<void> {
       localizer = new Localizer(parsedLanguage !== undefined ? language(parsedLanguage) : localizer.language, registry.catalog);
       config.settings.language = localizer.language;
       const parsedEvents = value(parsed.flags, 'events');
-      if (parsedEvents !== undefined) eventLevel = config.settings.events = eventOutput(parsedEvents);
+      // help describes a command without running it, so no declared value applies to it, the global --events included.
+      if (parsedEvents !== undefined && (!parsed.flags.help || validLevel(parsedEvents))) eventLevel = config.settings.events = eventOutput(parsedEvents);
       for (const [commandId, registered] of registry.commands) registry.commands.set(commandId, localizer.command(registered));
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
       // help describes a command without running it, so its declared constraints do not apply.

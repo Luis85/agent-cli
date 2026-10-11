@@ -121,7 +121,7 @@ export const germanErrors = {
   INVALID_CLAUDE_AGENT: { summary: 'Die Claude-Agentendefinition ist ungültig.', hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: 'Die Claude-Hook-Konfiguration ist ungültig.', hint: claudeDefinitionHint },
   INVALID_CLAUDE_PLUGIN: { summary: 'Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.', hint: claudeDefinitionHint },
-  INVALID_CLAUDE_SETTINGS: { summary: 'Die Claude-Einstellungsdatei ist ungültig.', hint: 'Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei.' },
+  INVALID_CLAUDE_SETTINGS: { summary: 'Die Claude-Einstellungsdatei ist ungültig.', hint: 'Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei. Nennt sie das Generierungsmanifest .claude/forge-generated.json, stammt es von einer älteren Forge-Version: Löschen Sie .claude/forge-generated.json und führen Sie agents generate erneut aus; die darin aufgeführten Regeln bleiben in .claude/settings.json, bis Sie sie entfernen.' },
   INVALID_CLAUDE_COMMAND: { summary: 'Dieser Claude-Befehl wird nicht unterstützt.', hint: 'Unterstützte Befehle zeigt claude capabilities.' },
   INVALID_CLAUDE_ARGUMENT: { summary: 'Ein Argument des Claude-Befehls ist ungültig.', hint: argumentsHint },
   INVALID_CLAUDE_OPTION: { summary: 'Diese Option ist für den Claude-Befehl nicht zulässig.', hint: 'Prüfen Sie help claude und entfernen Sie die Option.' },
