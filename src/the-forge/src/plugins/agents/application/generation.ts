@@ -3,7 +3,7 @@ import type { EventChannel } from '../../../application/plugins/events.ts';
 import { GenerationService } from '../../../application/generation/plans.ts';
 import type { GenerationMode } from '../../../application/generation/controls.ts';
 import { AppError, forgeError } from '../../../domain/shared/errors.ts';
-import type { WriteRequest } from '../../../domain/documents/file.ts';
+import { vaultPath, type WriteRequest } from '../../../domain/documents/file.ts';
 import { diagnostic, hasErrors, isObject, pointer, record } from '../domain/config.ts';
 import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource, type GenerationDiagnostic } from '../domain/claude-generation.ts';
 import type { GenerationCoverage, RevokedRule } from '../domain/claude-rule-ownership.ts';
@@ -77,7 +77,7 @@ export class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes: WriteRequest[] = markdown.map(file => ({ path: file.path, bytes: encode(this.render(file)) }));
-    const merged = project ? this.projectWrites(project, generated, await this.coverage(request, sources)) : { writes: [], revoked: [] };
+    const merged = project ? this.projectWrites(project, generated, await this.coverage(request, sources, project.manifest)) : { writes: [], revoked: [] };
     writes.push(...merged.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === 'plan' ? request.manifestPath : undefined);
@@ -130,12 +130,24 @@ export class AgentGeneration {
 
   /**
    * A run over some definitions re-derives only their permission origins, so the rules of the others stay. Every
-   * run re-derives the origins of definition files that no longer exist.
+   * run re-derives the origins of definition files that no longer exist: each recorded origin file is looked up in
+   * the scope itself, wherever it lies, so a definition outside the definitions directory keeps its rules.
    */
-  private async coverage(request: GenerateRequest, sources: readonly DefinitionSource[]): Promise<GenerationCoverage> {
+  private async coverage(request: GenerateRequest, sources: readonly DefinitionSource[], manifest: ForgeManifest): Promise<GenerationCoverage> {
     if (request.file === undefined && request.agent === undefined) return { files: null };
     const files = sources.map(source => source.path);
-    return { files, ...(request.agent ? { agent: request.agent } : {}), existing: [...new Set([...await this.definitions.paths(), ...files])] };
+    const recorded = new Set(Object.values(manifest.settings.permissions ?? {}).flatMap(rules => rules.flatMap(rule => rule.origins.map(origin => origin.file))));
+    const present = await Promise.all([...recorded].map(async file => await this.isFile(file) ? [file] : []));
+    return { files, ...(request.agent ? { agent: request.agent } : {}), existing: [...new Set([...files, ...present.flat()])] };
+  }
+
+  /** Whether a recorded scope path names an existing file; an invalid or missing path does not. */
+  private async isFile(path: string): Promise<boolean> {
+    try { return (await this.workspace.files.stat(vaultPath(path))).kind === 'file'; }
+    catch (error) {
+      if (error instanceof AppError && (error.code === 'NOT_FOUND' || error.code === 'INVALID_PATH')) return false;
+      throw error;
+    }
   }
 
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */

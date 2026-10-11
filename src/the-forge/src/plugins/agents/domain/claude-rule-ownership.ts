@@ -17,7 +17,7 @@ export type OwnedRules = Partial<Record<PermissionList, GrantedRule[]>>;
 /**
  * The definitions one generation re-derives: every definition (`files` null), the named files, or with `agent` only
  * that agent's own rules in them. A file's top-level permissions depend on every agent's servers, so an `agent` run
- * never covers them. `existing` lists the definition files that still exist: every run covers an origin that names
+ * never covers them. `existing` lists the definition files that still exist in the scope, in or outside the definitions directory: every run covers an origin that names
  * another file (a renamed or deleted definition), so its rules are revoked instead of kept forever.
  */
 export interface GenerationCoverage { files: readonly string[] | null; agent?: string; existing?: readonly string[] }
