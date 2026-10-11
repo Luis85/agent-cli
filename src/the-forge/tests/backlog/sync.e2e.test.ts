@@ -23,7 +23,7 @@ describe('syncing a backlog with Azure DevOps through the portable CLI', () => {
   it('tests the connection, previews, pushes, pulls and keeps the state through renames without exposing the token', async () => {
     const outputs: string[] = [];
     const cli = async (args: string[], token: string | null = PAT, status = 0) => {
-      const result = await fixture.cliAsync(args, token === null ? {} : { FORGE_E2E_PAT: token });
+      const result = await fixture.cli(args, undefined, { env: token === null ? {} : { FORGE_E2E_PAT: token } });
       outputs.push(result.stdout);
       expect(result.status, result.stdout).toBe(status);
       return result.body;

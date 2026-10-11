@@ -66,37 +66,37 @@ describe('committed showcase project', () => {
     expect(broken).toEqual([]);
   });
 
-  it('validates its canvas and answers Bases queries through the CLI', () => {
-    expect(cli(['project', 'open', 'forge-showcase']).status).toBe(0);
-    expect(cli(['validate', 'docs/maps/Trailhead map.canvas']).body.data).toMatchObject({ valid: true, kind: 'canvas' });
+  it('validates its canvas and answers Bases queries through the CLI', async () => {
+    expect((await cli(['project', 'open', 'forge-showcase'])).status).toBe(0);
+    expect((await cli(['validate', 'docs/maps/Trailhead map.canvas'])).body.data).toMatchObject({ valid: true, kind: 'canvas' });
     // The generated Claude agents match the committed docker-agent team.
-    expect(cli(['agents', 'validate']).body.data).toMatchObject({ valid: true });
-    expect(cli([...agentTeam.generate, '--check']).body.data).toMatchObject({ check: true, matches: true });
-    const query = cli(['bases', 'query', 'docs/bases/Requirements.base', '--view', 'REQ-004']);
+    expect((await cli(['agents', 'validate'])).body.data).toMatchObject({ valid: true });
+    expect((await cli([...agentTeam.generate, '--check'])).body.data).toMatchObject({ check: true, matches: true });
+    const query = await cli(['bases', 'query', 'docs/bases/Requirements.base', '--view', 'REQ-004']);
     expect(query.status).toBe(0);
     expect(query.body.data.files).toEqual(expect.arrayContaining(['docs/product/Trailhead PRD.md', 'docs/use-cases/UC-002 Share an itinerary.md']));
   });
 
-  it('answers search and link reports through the CLI with no unresolved links or orphaned documents', () => {
-    expect(cli(['project', 'open', 'forge-showcase']).status).toBe(0);
-    const search = cli(['search', 'REQ-004', '--kind', 'markdown', '--path', 'docs/**', '--in', 'body']).body.data;
+  it('answers search and link reports through the CLI with no unresolved links or orphaned documents', async () => {
+    expect((await cli(['project', 'open', 'forge-showcase'])).status).toBe(0);
+    const search = (await cli(['search', 'REQ-004', '--kind', 'markdown', '--path', 'docs/**', '--in', 'body'])).body.data;
     expect(search.hits).toContainEqual(expect.objectContaining({ path: 'docs/product/Trailhead PRD.md', match: 'REQ-004' }));
-    expect(cli(['links', 'back', 'docs/product/Trailhead PRD.md']).body.data.backlinks).toContainEqual(expect.objectContaining({ source: 'docs/maps/Trailhead map.canvas', kind: 'canvas' }));
-    expect(cli(['links', 'unresolved']).body.data).toEqual({ links: [], issues: [] });
-    expect(cli(['links', 'orphans', '--path', 'docs/**']).body.data.files).toEqual([]);
+    expect((await cli(['links', 'back', 'docs/product/Trailhead PRD.md'])).body.data.backlinks).toContainEqual(expect.objectContaining({ source: 'docs/maps/Trailhead map.canvas', kind: 'canvas' }));
+    expect((await cli(['links', 'unresolved'])).body.data).toEqual({ links: [], issues: [] });
+    expect((await cli(['links', 'orphans', '--path', 'docs/**'])).body.data.files).toEqual([]);
   });
 
-  it('generates UI and stories for every target and adapters with fixtures, all free of drift', () => {
+  it('generates UI and stories for every target and adapters with fixtures, all free of drift', async () => {
     for (const target of targets) {
       expect(tree.some(path => path.startsWith(`ui/${target}/components/trip-planner.`))).toBe(true);
       expect(tree).toContain(`ui/${target}/stories/trip-planner.stories.ts`);
       const output = ['--out', `ui/${target}/components`, '--stories', '--stories-out', `ui/${target}/stories`];
-      const check = cli(['make', 'ui', 'trip-planner', '--framework', target, '--project', 'forge-showcase', ...libraries, ...output, '--check']);
+      const check = await cli(['make', 'ui', 'trip-planner', '--framework', target, '--project', 'forge-showcase', ...libraries, ...output, '--check']);
       expect(check.status, target).toBe(0);
     }
     for (const source of ['trips-api', 'trail-guides']) {
       expect(tree).toEqual(expect.arrayContaining([`src/infrastructure/data-sources/${source}.ts`, `test-data/${source}.fixtures.json`]));
-      const check = cli(['make', 'data-source', source, '--library', 'src/forge-showcase/library/data-sources', '--out', 'src/infrastructure/data-sources', '--test-data-out', 'test-data', '--check']);
+      const check = await cli(['make', 'data-source', source, '--library', 'src/forge-showcase/library/data-sources', '--out', 'src/infrastructure/data-sources', '--test-data-out', 'test-data', '--check']);
       expect(check.status, source).toBe(0);
     }
   });

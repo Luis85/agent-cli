@@ -35,7 +35,7 @@ beforeAll(async () => {
   await writeFile(join(project, 'src/latin1.ts'), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
   await mkdir(join(project, 'projects/demo/.forge'), { recursive: true });
   await writeFile(join(project, 'projects/demo/.forge/project.json'), JSON.stringify({ schemaVersion: 1, name: 'demo', type: 'library' }));
-  const schema = cli(['schema']);
+  const schema = await cli(['schema']);
   expect(schema.status).toBe(0);
   document = schema.body.data;
   validator = responseValidator(document);
@@ -90,8 +90,8 @@ describe('the published schema contract', () => {
     for (const id of ['backlog', 'claude', 'agents']) expect(hints(id), id).toEqual([true, false]);
   });
 
-  it('describes one command with its contract and the error codes it can report', () => {
-    const one = cli(['schema', 'read']);
+  it('describes one command with its contract and the error codes it can report', async () => {
+    const one = await cli(['schema', 'read']);
     expect(one.status).toBe(0);
     expect(validator.output(['schema', 'read'], one.body.data)).toEqual([]);
     expect(one.body.data.commands.map((command: { id: string }) => command.id)).toEqual(['read']);
@@ -99,7 +99,7 @@ describe('the published schema contract', () => {
     const codes = one.body.data.errors.map((entry: { code: string }) => entry.code);
     expect(codes).toEqual(expect.arrayContaining(['NOT_FOUND', 'INVALID_FRONTMATTER', 'UNKNOWN_OPTION', 'WORKSPACE_BUSY']));
     expect(codes).not.toContain('CLAUDE_NOT_INSTALLED');
-    const unknown = cli(['schema', 'nonsense']);
+    const unknown = await cli(['schema', 'nonsense']);
     expect(unknown.body.error.code).toBe('UNKNOWN_COMMAND');
     expect(validator.envelope(unknown.body)).toEqual([]);
   });
@@ -113,36 +113,36 @@ describe('the published schema contract', () => {
     ['project', 'current'], ['project', 'list'], ['project'], ['config'], ['schema'], ['schema', 'links'],
     ['vault'], ['vault', 'check', '--rule', 'unresolved-link'], ['vault', 'tags', '--sort', 'count'], ['vault', 'properties'], ['vault', 'properties', '--name', 'status'],
     ['apply', 'plan.json', '--dry-run'],
-  ])('validates the real output of %s against its declared output schema', (...args) => {
-    const result = cli(args);
+  ])('validates the real output of %s against its declared output schema', async (...args) => {
+    const result = await cli(args);
     expect(result.status, result.stdout).toBe(0);
     expect(validator.envelope(result.body)).toEqual([]);
     expect(validator.output(args, result.body.data)).toEqual([]);
   });
 
-  it('validates the dry-run output of a precise edit against its declared output schema', () => {
-    const revision = cli(['read', 'Home.md']).body.data.revision;
+  it('validates the dry-run output of a precise edit against its declared output schema', async () => {
+    const revision = (await cli(['read', 'Home.md'])).body.data.revision;
     for (const args of [['edit', 'Home.md', '--section', 'Home', '--append', '--content', 'More.'], ['edit', 'Home.md', '--edits', '[{"find":"See","replace":"Visit"}]']]) {
-      const result = cli([...args, '--if-match', revision, '--dry-run']);
+      const result = await cli([...args, '--if-match', revision, '--dry-run']);
       expect(result.status, result.stdout).toBe(0);
       expect(result.body.data.changes[0].diff).toContain('+');
       expect(validator.output(args, result.body.data)).toEqual([]);
     }
-    expect(cli(['read', 'Home.md']).body.data.revision).toBe(revision);
+    expect((await cli(['read', 'Home.md'])).body.data.revision).toBe(revision);
   });
 
-  it('validates the selected project, failures and version output against the envelope schema', () => {
-    expect(cli(['project', 'open', 'demo']).status).toBe(0);
+  it('validates the selected project, failures and version output against the envelope schema', async () => {
+    expect((await cli(['project', 'open', 'demo'])).status).toBe(0);
     try {
-      const current = cli(['project', 'current']);
+      const current = await cli(['project', 'current']);
       expect(current.body.data.project).toMatchObject({ name: 'demo', directory: 'projects/demo' });
       expect(validator.output(['project', 'current'], current.body.data)).toEqual([]);
-      const scoped = cli(['list']);
+      const scoped = await cli(['list']);
       expect(scoped.body.context.project).toMatchObject({ name: 'demo' });
       expect(validator.envelope(scoped.body)).toEqual([]);
-    } finally { expect(cli(['project', 'close']).status).toBe(0); }
+    } finally { expect((await cli(['project', 'close'])).status).toBe(0); }
     for (const args of [['read', 'missing.md'], ['nonsense'], ['read', 'Home.md', '--typo'], ['--version'], ['--events', 'all', 'read', 'Home.md']]) {
-      const result = cli(args);
+      const result = await cli(args);
       expect(validator.envelope(result.body), args.join(' ')).toEqual([]);
     }
   });

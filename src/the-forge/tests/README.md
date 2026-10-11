@@ -12,7 +12,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [cli](cli/) | Argument parsing, command metadata and its JSON Schema, the published schema contract (meta-schema validation, derived annotations, real outputs against output schemas), metadata-driven invocation policy, discovery, errors, and input routing |
 | [claude](claude/) | The `claude` core plugin: native agents, hooks, plugin assets, guarded removal, installed CLI invocation, its `claude.*` events and the `claude.lifecycle` service for trusted plugins, and disabling it |
 | [data-sources](data-sources/) | The `data-sources` core plugin: definition validation, generated adapters, CRUD behavior, settings, disabling, and portable workflows |
-| [distribution](distribution/) | Packaging, release archives, checksums, and standalone execution |
+| [distribution](distribution/) | Packaging, release archives, checksums, standalone execution, the launcher's compile cache and the non-blocking portable CLI harness |
 | [documentation](documentation/) | Source and packaged navigation, and executable worked examples |
 | [documents](documents/) | Markdown, Canvas, Bases, guarded edits, and attachment integrity |
 | [forms](forms/) | Form validation and browser rendering |
@@ -27,7 +27,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [skills](skills/) | The `skills` core plugin: Agent Skills frontmatter of the authored `skills/<id>/SKILL.md` folders, listing, installation into `.claude/skills` and `.agents/skills`, and disabling it through `plugins.disabled` |
 | [evals](evals/) | The agent evaluation harness: the task format, every task in `evals/tasks` replayed by the reference driver with discriminating checks, and the claude driver's transcript summary |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
-| [quality](quality/) | Lint, analysis, classification, discovery, and TypeScript gate behavior |
+| [quality](quality/) | Lint, analysis, classification, discovery, per-level test budgets, and TypeScript gate behavior |
 | [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
 | [templates](templates/) | The `templates` core plugin: template rendering, required inputs, planning-pack installation, its settings section, and disabling it (setup then skips templates) |
 | [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, and CLI workflows |
