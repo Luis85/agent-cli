@@ -28,7 +28,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [evals](evals/) | The agent evaluation harness: the task format, every task in `evals/tasks` replayed by the reference driver with discriminating checks, and the claude driver's transcript summary |
 | [projects](projects/) | Project creation, generated project toolchains, and persistent selection |
 | [quality](quality/) | Lint, analysis, classification, discovery, per-level test budgets, and TypeScript gate behavior |
-| [showcase](showcase/) | Committed showcase regeneration without drift, vault links, Canvas/Bases queries and generated UI/adapters |
+| [showcase](showcase/) | The committed showcase's vault links, Canvas/Bases queries and generated UI/adapters, and that `npm run check` ends with its drift check (`npm run showcase:check`) |
 | [templates](templates/) | The `templates` core plugin: template rendering, required inputs, planning-pack installation, its settings section, and disabling it (setup then skips templates) |
 | [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, and CLI workflows |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |

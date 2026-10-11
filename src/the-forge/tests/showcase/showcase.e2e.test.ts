@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { execFile } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
@@ -32,24 +31,19 @@ beforeAll(async () => {
   await cp(showcase, join(portable.project, 'src/forge-showcase'), { recursive: true, filter: source => !source.includes('node_modules') });
 });
 
+// Regeneration without drift is the gate's last stage, npm run showcase:check, which runs alone after this suite.
 describe('committed showcase project', () => {
-  it('regenerates without drift from the bundled CLI', async () => {
-    // Asynchronous so the long regeneration does not block the test worker's event loop.
-    const result = await new Promise<{ status: number | null; stdout: string; stderr: string }>(done => {
-      const child = execFile(process.execPath, ['scripts/showcase.mjs', '--check'], { encoding: 'utf8', timeout: 240_000, maxBuffer: 16 * 1024 * 1024 },
-        (_error, stdout, stderr) => done({ status: child.exitCode, stdout, stderr }));
-    });
-    expect(result.stderr).toBe('');
-    const report = JSON.parse(result.stdout);
-    expect(report).toMatchObject({ ok: true, differences: [], lockfile: [] });
-    expect(result.status).toBe(0);
-    expect(report.files).toBe(tree.filter(path => path !== 'package-lock.json').length);
-  }, 300_000);
+  it('keeps the drift check in the full gate', async () => {
+    const manifest = JSON.parse(await readFile(join(workspaceRoot, 'src/the-forge/package.json'), 'utf8'));
+    expect(manifest.scripts['showcase:check']).toBe('node scripts/showcase.mjs --check');
+    expect(manifest.scripts.check.split(' && ').at(-1)).toBe('npm run showcase:check');
+  });
 
   it('contains an independent project toolchain, CI workflow, agent and skills', () => {
     for (const path of ['.forge/project.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'configs/quality/fallow.json',
       'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md', '.claude/skills/forge-workflow/SKILL.md',
-      'agents/trailhead-team.yaml', '.claude/agents/trailhead-lead.md', '.claude/agents/spec-writer.md', '.claude/agents/ui-builder.md', '.claude/skills/trace/SKILL.md']) {
+      'agents/trailhead-team.yaml', '.claude/agents/trailhead-lead.md', '.claude/agents/spec-writer.md', '.claude/agents/ui-builder.md', '.claude/skills/trace/SKILL.md',
+      '.claude/settings.json', 'claude-plugins/trailhead-tools/.claude-plugin/plugin.json', '.exchange/data-sources/trips-api.md']) {
       expect(tree).toContain(path);
     }
     expect(tree.filter(path => path.startsWith('tests/') && /\.(?:unit|integration)\.test\.ts$/.test(path)).length).toBeGreaterThanOrEqual(8);
@@ -61,6 +55,9 @@ describe('committed showcase project', () => {
     // The showcase renamed the test plan and trashed a scratch note; nothing still names the old paths.
     expect(tree).not.toContain('docs/delivery/Trip planner test plan.md');
     expect(tree).toContain('.trash/docs/scratch/Packing ideas.md');
+    // UC-003 moved out of the release scope with its links rewritten.
+    expect(tree).toContain('docs/use-cases/deferred/UC-003 Browse trail guides.md');
+    expect(tree).not.toContain('docs/use-cases/UC-003 Browse trail guides.md');
     const visible = tree.filter(path => !path.startsWith('.'));
     const broken = (await Promise.all(notes.map(async path => unresolvedLinks(visible, path, await readFile(join(showcase, path), 'utf8'))))).flat();
     expect(broken).toEqual([]);
