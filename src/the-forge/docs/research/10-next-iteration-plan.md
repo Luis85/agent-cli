@@ -1,8 +1,102 @@
 # Next iteration plan
 
-[Research index](README.md) · Drafted 2026-10-10 · Status: proposal for review
+[Research index](README.md) · Drafted 2026-10-10 · Status: shipped, see [Status](#status)
 
 This plan turns the [research synthesis](README.md) and the maintainer's direction into sequenced, reviewable milestones. Work proceeds one milestone per pull request, in the order M1, M1b, M2, M3, M3b, M4, M4b, M5, M6. Each milestone defines its acceptance examples first and ends with `npm run check`.
+
+## Status
+
+Updated 2026-10-11. Every milestone shipped as its own stacked pull request, in the planned order. All of them, with this research (#8), are consolidated into the single next-iteration pull request from `claude/next-iteration`. The table records where each milestone landed. The notes below it record where the result differs from the plan.
+
+| Milestone | Pull request | Result |
+| --- | --- | --- |
+| Research and this plan | #8 | Shipped; moved to `src/the-forge/docs/research/` during consolidation, because the root keeps no docs since M1b, and excluded from the packaged docs |
+| M1 Agent-ready responses and a durable core | #9 | Shipped, with the showcase |
+| M1b Self-contained projects and project-owned workflows | #10 | Shipped |
+| M2 Vault kernel, MetadataCache and events | #11 | Shipped |
+| M3 Plugin platform v2 and the first core plugins | #12 | Shipped; `skills` migrated as well |
+| M3b Agent definitions with docker-agent compatibility | #13 | Shipped with stricter safety defaults |
+| M4 The `backlog` core plugin | #14 | Shipped; the deferred items remain deferred |
+| M4b Backlog connectors, Azure DevOps first | #15 | Shipped without dependency sync |
+| M5 Remaining features as core plugins | #16 | Shipped as one pull request, not one per plugin |
+| M6 Agent experience continued | #17 | Shipped; real-agent evaluations are opt-in only |
+| Showcase in every milestone | #9–#17 | Maintained; partial coverage of M3, M5 and M6 |
+
+### Deviations by milestone
+
+**M1 (#9)**
+- The Bases budget test uses 1,000 notes and 2,000 attachments with a 30 s budget, not 5,000 notes. 5,000 notes went from 710 s to 13 s in an offline measurement, not in the committed test.
+- The error catalog grew beyond the plan: each code has a category, hint and retryable flag. The exit code follows from the category, and responses carry `error.hint` and `error.retryable`.
+- The lock is owned by a random token and diagnoses staleness per PID namespace and boot id. It is never removed automatically.
+- The showcase landed here rather than as a separate item. Its generated UI lives in `ui/`, not `src/ui`, and its toolchain is patched (fallow ignore and re-exports of generated adapters) to pass the generated project's own gate. The generators and scaffolds were not changed.
+
+**M1b (#10)**
+- The executable was renamed from `bin/app.js` to `bin/forge.js`, although naming was out of scope.
+- The workflow drift guard became its own generated workflow, `the-forge--guard--workflows.yml`. Generated files are named `<project>--<concern>[--<file>].yml`.
+
+**M2 (#11)**
+- `delete` adds `--recursive` and protects `.obsidian`, `.forge` and `bin`. Its flags follow the plan: `--permanent` and `--allow-broken-links`.
+- `metadataCache.*` events fire only when a command has loaded the cache during the invocation, not after every commit.
+- A move that would make a bare `[[Name]]` ambiguous rewrites it to a full path, because Forge treats ambiguous links as unresolved. `.obsidian/app.json` link preferences are not read.
+
+**M3 (#12)**
+- Core plugins live in `src/the-forge/src/plugins/<id>/`, not `src/the-forge/plugins/<id>/`, because M1b gave The Forge a `src/` folder. The plugin SDK is the kernel's `src/application/plugins/`.
+- `skills` was also migrated as a core plugin.
+- Config sections live under `plugins.settings.<id>`, and `plugins.disabled` turns off a core plugin. `--no-plugins` now skips user plugins only.
+- `schema` publishes option `enum` and `required`, but the host does not enforce them; each command validates its own values. Option descriptions stay English. `links` has no paging.
+
+**M3b (#13)**
+- Generation is safe by default. `--mcp none` is the default, and hooks need `--hooks`. Permissions need `--settings`, and broad rules are refused without `--allow-broad-permissions`. Merges touch only entries recorded in `.claude/forge-generated.json`.
+- Unsupported versions are errors, not diagnostics. HCL definitions, flavors and template expansion are not supported.
+- Permission rules written with `--settings` are appended and not tracked for later removal. The generated output is not verified against a live Claude Code.
+
+**M4 (#14)**
+- Commands go beyond the plan: `move --top|--first|--last`, `set` for horizon, priority, risk, dates, assignee and type, and `release list`.
+- These platform changes were made in this milestone:
+  - Bases degrades per note: a bad note becomes a warning instead of a failure, and `AMBIGUOUS_BASE_LINK` and `BASE_INDEX_ERROR` are removed.
+  - Ambiguous links in Bases resolve to the closest file.
+  - One plugin-state model applies (`enabled`, `unavailable`, `disabled`, `skipped`, `rejected`), with `PLUGIN_UNAVAILABLE`.
+- Still deferred: estimation writes, My Work, absences and backfill stubs. Release actions use the first `product-release` view. Obsidian's exact YAML folding is not pinned.
+
+**M4b (#15)**
+- The design changed: connection profiles live in `plugins.settings.connector.connections.<id>`, not a top-level `connectors` section. A generic `connector` core plugin owns them, provides `connector.hub` and the `connectors` command, and `connector-azure-devops` provides the platform service.
+- Sync state lives in `.forge/sync/<connection>.json`, guarded by a per-connection lock file that a crash leaves behind.
+- Not synced: `dependsOn` ↔ predecessor links (the plan allowed them to follow), assignee, dates and comments. Remote items without a note are not imported. Only personal access tokens are supported. The connector is tested against an in-process fake, not a live organization.
+- New host ports were added for `http`, `environment` and `locks`, along with optional services and namespaced service ids.
+
+**M5 (#16)**
+- All five migrations shipped in one pull request instead of one each. Generated output was byte-identical across 118 recorded CLI calls.
+- The design changed:
+  - Kernel `paths` holds only `projects`. UI, data-source and template settings moved to `plugins.settings.<id>`.
+  - `CommandContext.claude` was replaced by the `claude.lifecycle` service, whose types the SDK exports.
+  - `claude` is no longer a host event namespace.
+  - The Claude agent and hook validators stay in the kernel domain, so `agents` works without `claude`.
+- The showcase gained no new demonstration.
+
+**M6 (#17)**
+- `vault check` ships as the core plugin `vault-check`, because `vault` is the host's event namespace. It adds `vault tags` and `vault properties`. The Forge checkout passes `vault check --strict`.
+- Skills became `skills/<id>/SKILL.md` folders installed into `.claude/skills` and `.agents/skills`. User-plugin skill ids became `<plugin>-<name>`.
+- The evaluation harness has 33 tasks, above the planned 20–30. In `npm run check` it runs only the reference driver. The real-agent `claude` driver is opt-in and refused in CI, and no baseline results are recorded.
+- Follow-ups: `vault check` takes about 5.5 s on 2,000 notes because the metadata index is rebuilt on every call. `backlog set`, `move` and `depend` stay `idempotentHint: false`. `trace check` remains future work.
+
+**Showcase**
+- Each milestone regenerated the showcase, and `npm run showcase:check` and its e2e test guard against drift. The script is `scripts/showcase.mjs` with modules in `scripts/showcase/`.
+- It does not yet demonstrate `plugins`, `schema`, `--events`, `vault tags` or `vault properties`, `edit --block` or `--edits`, a committed `apply`, `connectors test`, or `backlog sync status|resolve`. Its plan and sync runs are dry runs.
+
+### Decisions
+
+| Decision | Outcome |
+| --- | --- |
+| Event naming | Adopted in M2: `vault.*` and `metadataCache.*`, with `workspace.*` phase records renamed to `operation.*` and no aliases |
+| Default event output | Adopted in M1/M2: `changes`, settable as `settings.events` |
+| Delete semantics | Adopted in M2: `.trash/` by default, `--permanent` to remove |
+| Core plugin source layout | Changed: `src/the-forge/src/plugins/<id>/<layer>/`, following M1b |
+| Backlog first cut | Adopted in M4, plus horizon, priority, risk, dates and assignee edits |
+| Milestone order | Kept: M1 → M1b → M2 → M3 → M3b → M4 → M4b → M5 → M6 |
+| Agent definitions | Adopted in M3b: docker-agent YAML is the source; Claude agents are generated with opt-in risky output |
+| Connectors | Adopted in M4b for Azure DevOps; the profiles moved under `plugins.settings.connector`; GitHub and Jira not started |
+| Project independence | Adopted in M1b |
+| Workflow wiring | Adopted in M1b, with a separate guard workflow |
 
 ## Product direction
 
