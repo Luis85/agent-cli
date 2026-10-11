@@ -2,7 +2,8 @@ import { AppError, errorMessage } from '../../domain/shared/errors.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
 import { closestDestination, fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
 import type { FileSnapshot } from '../../domain/documents/file.ts';
-import type { FileStamp, ParseOutcome } from '../../domain/metadata/snapshot.ts';
+import { aliasesKey, type FileStamp, type StoredLinks } from '../../domain/metadata/snapshot.ts';
+import { decodeResolution, encodeResolution, type ParseOutcome, type StoredResolution } from '../../domain/metadata/snapshot-encoding.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import { ParseResults, type SnapshotOptions } from './parse-results.ts';
 import type {
@@ -70,7 +71,11 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   private readonly problems = new Map<string, MetadataIssue>();
   private readonly outgoing = new Map<string, SourceReference[]>();
   private readonly incoming = new Map<string, Set<string>>();
-  private index: LinkIndex = linkIndex([]);
+  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
+  private builtIndex: LinkIndex | undefined;
+  private aliasMap: ReadonlyMap<string, readonly string[]> = new Map();
+  /** `aliasesKey` of `aliasMap`. */
+  private aliases = aliasesKey(new Map());
   private loading: Promise<void> | undefined;
   private pending: Promise<unknown> = Promise.resolve();
 
@@ -121,7 +126,19 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     await this.results.persist(path => {
       const metadata = this.caches.get(path), issue = this.problems.get(path);
       return metadata ? { metadata } : issue ? { issue: { code: issue.code, message: issue.message } } : undefined;
+    }, () => this.storedLinks());
+  }
+
+  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
+  private storedLinks(): StoredLinks {
+    const positions = new Map(this.paths.map((path, position) => [path, position]));
+    const sources = this.sources().map(source => {
+      const references = this.outgoing.get(source) ?? [];
+      let next = 0;
+      return [source, orderedReferences(this.caches.get(source)!).map(item => references[next]?.reference === item.reference
+        ? encodeResolution(references[next++]!.resolution, path => positions.get(path)!) : null)] as const;
     });
+    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
   }
 
   parseContent(path: string, bytes: Uint8Array): CachedMetadata | null {
@@ -141,7 +158,9 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     for (const [path, sources] of this.incoming) fork.incoming.set(path, new Set(sources));
     Object.assign(fork.resolvedLinks, this.resolvedLinks);
     Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
-    fork.index = this.index;
+    fork.builtIndex = this.builtIndex;
+    fork.aliasMap = this.aliasMap;
+    fork.aliases = this.aliases;
     fork.loading = Promise.resolve();
     return fork;
   }
@@ -190,17 +209,24 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     const stamps = new Map<string, FileStamp>();
     for (const file of listing.files) if ('stamp' in file) stamps.set(file.path, file);
     this.paths = listing.files.map(file => file.path).filter(this.member);
-    await eachConcurrently(this.paths.filter(path => this.parser.indexes(path)), pendingFileReads, async path => {
+    await this.results.stored();
+    // Unchanged files come from the loaded snapshot without any asynchronous step; only the rest are read.
+    const changed = this.paths.filter(path => {
+      if (!this.parser.indexes(path)) return false;
+      const unchanged = this.results.unchanged(path, stamps.get(path));
+      if (unchanged !== undefined) this.adopt(path, unchanged);
+      return unchanged === undefined;
+    });
+    await eachConcurrently(changed, pendingFileReads, async path => {
       const stamp = stamps.get(path);
-      const unchanged = await this.results.unchanged(path, stamp);
-      if (unchanged !== undefined) { this.adopt(path, unchanged); return; }
       const file = await this.repository.read(path);
       this.adopt(path, await this.results.reusable(path, file.revision) ?? this.outcome(path, file.bytes));
       this.results.read(path, file.revision, stamp ?? null);
     });
     await this.results.built();
     this.reindex();
-    for (const source of this.sources()) this.resolve(source);
+    const stored = await this.results.links(this.paths, this.aliases);
+    for (const source of this.sources()) this.resolve(source, stored(source));
   }
 
   private outcome(path: string, bytes: Uint8Array): ParseOutcome {
@@ -275,21 +301,33 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   }
   private sources(): string[] { return this.paths.filter(path => this.caches.has(path)); }
 
+  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
   private reindex(): void {
-    const aliases = new Map(this.sources().flatMap(path => {
+    this.aliasMap = new Map(this.sources().flatMap(path => {
       const names = this.caches.get(path)!.aliases;
       return names?.length ? [[path, names] as const] : [];
     }));
-    this.index = linkIndex(this.paths, aliases);
+    this.aliases = aliasesKey(this.aliasMap);
+    this.builtIndex = undefined;
   }
 
-  /** Re-resolves one parsed source and replaces its link counts and backlink entries. */
-  private resolve(source: string): void {
+  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
+  private get index(): LinkIndex {
+    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
+    return this.builtIndex;
+  }
+
+  /**
+   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
+   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
+   */
+  private resolve(source: string, stored?: readonly StoredResolution[]): void {
     this.unlink(source);
+    const ordered = orderedReferences(this.caches.get(source)!), known = stored?.length === ordered.length ? stored : undefined;
     const references: SourceReference[] = [];
-    for (const item of orderedReferences(this.caches.get(source)!)) {
+    for (const [place, item] of ordered.entries()) {
       const syntax = item.reference.syntax, relative = syntax !== 'wikilink' && syntax !== 'canvas';
-      const resolution = resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
+      const resolution = (known && decodeResolution(known[place]!, this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
       if (resolution.status !== 'external') references.push({ ...item, resolution } as SourceReference);
     }
     const resolved = counts(), unresolved = counts();

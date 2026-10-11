@@ -1,9 +1,9 @@
 import { isRecord } from '../shared/errors.ts';
 import { fileKind } from '../documents/file.ts';
-import type { CachedMetadata } from './cache.ts';
+import type { StoredOutcome, StoredResolution } from './snapshot-encoding.ts';
 
 /** The layout version of a stored metadata snapshot; a snapshot of another layout is ignored. */
-export const snapshotFormat = 1;
+export const snapshotFormat = 2;
 
 /**
  * How long after a listing a file's timestamps stay too recent to trust (git's "racy clean" rule). A file changed
@@ -12,9 +12,6 @@ export const snapshotFormat = 1;
  */
 export const racyWindowMs = 2000;
 
-/** What parsing produced for one content revision: the file's metadata, or why the content could not be parsed. */
-export type ParseOutcome = { metadata: CachedMetadata } | { issue: { code: string; message: string } };
-
 /**
  * One indexed file as last seen. `stamp` describes the file's filesystem state taken before its content was read,
  * or is null when the content was read without one (after a commit), so the next load re-reads it.
@@ -22,17 +19,28 @@ export type ParseOutcome = { metadata: CachedMetadata } | { issue: { code: strin
 export interface SnapshotFile { stamp: string | null; revision: string }
 
 /**
+ * The link resolution of a stored index: its vault paths in index order, `aliases`, a key of every note's aliases
+ * (`aliasesKey`), and each parsed source's resolutions in the order of its references. Resolution depends only on
+ * the paths, the aliases and the source's own content, so it is reused only while all three are unchanged.
+ */
+export interface StoredLinks { paths: string[]; aliases: string; sources: Record<string, StoredResolution[]> }
+
+/**
  * The parse results of one scope's vault, stored between invocations. `key` names the Forge build, parser and scope
- * the results belong to; `checkedAtMs` is when the stamps were taken; `outcomes` are keyed by `outcomeKey`.
- * Only parse results are stored: link resolution, backlinks and link counts are always recomputed.
+ * the results belong to; `checkedAtMs` is when the stamps were taken; `outcomes` are keyed by `outcomeKey`; `links`
+ * is the link resolution of the stored index. Backlinks and link counts are always recomputed from it.
  */
 export interface MetadataSnapshot {
   format: typeof snapshotFormat;
   key: string;
   checkedAtMs: number;
   files: Record<string, SnapshotFile>;
-  outcomes: Record<string, ParseOutcome>;
+  outcomes: Record<string, StoredOutcome>;
+  links: StoredLinks | null;
 }
+
+/** The key of every note's aliases for `StoredLinks`, from the alias map the link index is built with. */
+export const aliasesKey = (aliases: ReadonlyMap<string, readonly string[]>) => JSON.stringify([...aliases]);
 
 /** A file's current filesystem stamp and the later of its modification and status-change times. */
 export interface FileStamp { stamp: string; changedMs: number }
@@ -54,13 +62,18 @@ export function unchangedFile(stored: SnapshotFile | undefined, current: FileSta
 
 const text = (value: unknown): value is string => typeof value === 'string';
 
+function storedLinks(value: unknown): value is StoredLinks {
+  return isRecord(value) && Array.isArray(value.paths) && value.paths.every(text) && text(value.aliases)
+    && isRecord(value.sources) && Object.values(value.sources).every(Array.isArray);
+}
+
 function snapshotFile(value: unknown): value is SnapshotFile {
   return isRecord(value) && (value.stamp === null || text(value.stamp)) && text(value.revision);
 }
 
-function parseOutcome(value: unknown): value is ParseOutcome {
+function storedOutcome(value: unknown): value is StoredOutcome {
   if (!isRecord(value)) return false;
-  if (isRecord(value.metadata)) return Object.keys(value).length === 1;
+  if (isRecord(value.metadata)) return Array.isArray(value.positions) && Object.keys(value).length === 2;
   return isRecord(value.issue) && text(value.issue.code) && text(value.issue.message) && Object.keys(value).length === 1;
 }
 
@@ -72,6 +85,7 @@ export function readSnapshot(value: unknown, key: string): MetadataSnapshot | nu
   if (!isRecord(value) || value.format !== snapshotFormat || value.key !== key) return null;
   if (typeof value.checkedAtMs !== 'number' || !Number.isFinite(value.checkedAtMs)) return null;
   if (!isRecord(value.files) || !Object.values(value.files).every(snapshotFile)) return null;
-  if (!isRecord(value.outcomes) || !Object.values(value.outcomes).every(parseOutcome)) return null;
+  if (!isRecord(value.outcomes) || !Object.values(value.outcomes).every(storedOutcome)) return null;
+  if (value.links !== null && !storedLinks(value.links)) return null;
   return value as unknown as MetadataSnapshot;
 }

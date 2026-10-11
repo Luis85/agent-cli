@@ -18,7 +18,7 @@ export function snapshotFile(projectDirectory: string | null): string {
   return `${cacheFolder}/metadata.v${snapshotFormat}.${scope}.json`;
 }
 
-const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 /**
  * Stores metadata snapshots as one file: a header line naming the document type, the build of the running program
@@ -40,24 +40,25 @@ export class NodeMetadataSnapshotStore implements MetadataSnapshotStore {
 
   async load(): Promise<unknown> {
     try {
-      const text = await readFile(await this.folder(false).then(folder => join(folder, this.name)), 'utf8');
-      const end = text.indexOf('\n');
+      // The digest covers the body's bytes as read, so they are decoded only once and only when intact.
+      const bytes = await readFile(await this.folder(false).then(folder => join(folder, this.name)));
+      const end = bytes.indexOf(0x0a);
       if (end < 0) return null;
-      const header: unknown = JSON.parse(text.slice(0, end));
-      const body = text.slice(end + 1);
+      const header: unknown = JSON.parse(bytes.toString('utf8', 0, end));
+      const body = bytes.subarray(end + 1);
       if (!isRecord(header) || header.type !== documentType || header.build !== await this.identity() || header.digest !== sha256(body)) return null;
-      return JSON.parse(body) as unknown;
+      return JSON.parse(body.toString('utf8')) as unknown;
     } catch { return null; }
   }
 
   async save(snapshot: MetadataSnapshot): Promise<void> {
-    const body = JSON.stringify(snapshot);
+    const body = Buffer.from(JSON.stringify(snapshot));
     const header = JSON.stringify({ type: documentType, build: await this.identity(), digest: sha256(body) });
     const folder = await this.folder(true);
     await writeFile(join(folder, '.gitignore'), '*\n', { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; });
     const temp = join(folder, `.${this.name}.${randomUUID()}.tmp`);
     try {
-      await writeFile(temp, `${header}\n${body}`);
+      await writeFile(temp, Buffer.concat([Buffer.from(`${header}\n`), body]));
       await retryTransient(() => rename(temp, join(folder, this.name)));
     } catch (error) {
       await rm(temp, { force: true }).catch(() => {});

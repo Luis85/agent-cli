@@ -1,6 +1,7 @@
 import {
-  outcomeKey, racyWindowMs, readSnapshot, snapshotFormat, unchangedFile, type FileStamp, type MetadataSnapshot, type ParseOutcome, type SnapshotFile,
+  outcomeKey, racyWindowMs, readSnapshot, snapshotFormat, unchangedFile, type FileStamp, type MetadataSnapshot, type SnapshotFile, type StoredLinks,
 } from '../../domain/metadata/snapshot.ts';
+import { decodeOutcome, encodeOutcome, type ParseOutcome, type StoredOutcome, type StoredResolution } from '../../domain/metadata/snapshot-encoding.ts';
 import type { MetadataSnapshotStore, StampedListing } from './ports.ts';
 
 /**
@@ -19,6 +20,8 @@ export class ParseResults {
   /** The previous snapshot once `previous` settled; undefined before. */
   private loaded: MetadataSnapshot | null | undefined;
   private readonly records = new Map<string, SnapshotFile>();
+  /** Stored outcomes decoded so far, by outcome key; undefined for one that could not be decoded. */
+  private readonly decoded = new Map<string, ParseOutcome | undefined>();
   private checkedAtMs = 0;
   private changed = false;
 
@@ -40,9 +43,12 @@ export class ParseResults {
     return this.previous;
   }
 
-  /** The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. */
-  async unchanged(path: string, stamp: FileStamp | undefined): Promise<ParseOutcome | undefined> {
-    const previous = await this.stored();
+  /**
+   * The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. Answers
+   * from the loaded snapshot without waiting, so call it once `stored()` has settled; before that it reuses nothing.
+   */
+  unchanged(path: string, stamp: FileStamp | undefined): ParseOutcome | undefined {
+    const previous = this.loaded;
     const stored = previous && Object.hasOwn(previous.files, path) ? previous.files[path] : undefined;
     if (!previous || !unchangedFile(stored, stamp, previous.checkedAtMs)) return undefined;
     const outcome = this.outcome(previous, outcomeKey(path, stored!.revision));
@@ -68,7 +74,8 @@ export class ParseResults {
     this.records.set(path, record);
     const before = this.loaded && Object.hasOwn(this.loaded.files, path) ? this.loaded.files[path] : undefined;
     const same = before !== undefined && before.stamp === record.stamp && before.revision === revision;
-    if (!same || (stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs)) this.changed = true;
+    const undecodable = this.decoded.has(outcomeKey(path, revision)) && this.decoded.get(outcomeKey(path, revision)) === undefined;
+    if (!same || undecodable || (stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs)) this.changed = true;
   }
 
   /** The recorded revision of an indexed path, if any. */
@@ -76,6 +83,21 @@ export class ParseResults {
 
   forget(path: string): void {
     if (this.records.delete(path)) this.changed = true;
+  }
+
+  /**
+   * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
+   * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
+   * outdated and nothing is reused.
+   */
+  async links(paths: readonly string[], aliases: string): Promise<(source: string) => readonly StoredResolution[] | undefined> {
+    const previous = await this.stored(), links = previous?.links;
+    if (!previous || !links || links.aliases !== aliases || links.paths.length !== paths.length || links.paths.some((path, position) => path !== paths[position])) {
+      this.changed = true;
+      return () => undefined;
+    }
+    return source => Object.hasOwn(links.sources, source) && Object.hasOwn(previous.files, source) && previous.files[source]!.revision === this.revision(source)
+      ? links.sources[source] : undefined;
   }
 
   /** After a build: a missing previous snapshot or a file that left the vault makes the snapshot outdated. */
@@ -88,24 +110,28 @@ export class ParseResults {
    * Stores the index's current outcomes unless nothing may or needs to be written: no store, a dry run, or no file
    * read, changed, added or removed since the previous snapshot. A failed save throws and leaves the state outdated.
    */
-  async persist(outcomeOf: (path: string) => ParseOutcome | undefined): Promise<void> {
+  async persist(outcomeOf: (path: string) => ParseOutcome | undefined, links: () => StoredLinks): Promise<void> {
     if (this.options === undefined || !this.options.save || !this.changed) return;
-    await this.options.store.save(this.next(this.options.key, outcomeOf));
+    await this.options.store.save(this.next(this.options.key, outcomeOf, links()));
     this.changed = false;
   }
 
-  private next(key: string, outcomeOf: (path: string) => ParseOutcome | undefined): MetadataSnapshot {
-    const files: Array<[string, SnapshotFile]> = [], outcomes = new Map<string, ParseOutcome>();
+  private next(key: string, outcomeOf: (path: string) => ParseOutcome | undefined, links: StoredLinks): MetadataSnapshot {
+    const files: Array<[string, SnapshotFile]> = [], outcomes = new Map<string, StoredOutcome>();
     for (const [path, record] of this.records) {
       const outcome = outcomeOf(path);
       if (outcome === undefined) continue;
       files.push([path, record]);
-      outcomes.set(outcomeKey(path, record.revision), outcome);
+      const stored = outcomeKey(path, record.revision);
+      if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
     }
-    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes) };
+    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links };
   }
 
+  /** A stored outcome, decoded once per key: files with the same content share it. */
   private outcome(previous: MetadataSnapshot, key: string): ParseOutcome | undefined {
-    return Object.hasOwn(previous.outcomes, key) ? previous.outcomes[key] : undefined;
+    if (!Object.hasOwn(previous.outcomes, key)) return undefined;
+    if (!this.decoded.has(key)) this.decoded.set(key, decodeOutcome(previous.outcomes[key]!));
+    return this.decoded.get(key);
   }
 }

@@ -40,7 +40,8 @@ export async function checkVault(sources: VaultSources, request: CheckRequest): 
   const detections: Detection[] = [];
   const add = (detection: Detection) => { if (runs(detection.rule)) detections.push(detection); };
   for (const path of checked) {
-    (await referenceDetections(cache, path, runs, locator, suggest)).forEach(add);
+    const references = referenceDetections(cache, path, runs, locator, suggest);
+    (Array.isArray(references) ? references : await references).forEach(add);
     const parsed = cache.getFileCache(path);
     if (parsed && runs('duplicate-block-id')) duplicateBlockIds(path, parsed).forEach(add);
     if (runs('empty-file') && await isEmpty(path, cache, sources.size)) add({ rule: 'empty-file', path, line: null, column: null, message: 'empty-file', params: {} });

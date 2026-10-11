@@ -124,7 +124,10 @@ export interface MetadataSnapshotStore {
    * (the files the index parses) carries its current stamp, the others only their path.
    */
   listing(stamped: (path: string) => boolean): Promise<StampedListing>;
-  /** The stored snapshot as written, or null when there is none or it cannot be read intact; never throws. */
+  /**
+   * The stored snapshot as written, or null when there is none or it cannot be read intact; never throws. Each call
+   * returns a new value, which the index decodes in place.
+   */
   load(): Promise<unknown>;
   /** Replaces the stored snapshot atomically; a failure leaves the previous snapshot or none. */
   save(snapshot: MetadataSnapshot): Promise<void>;

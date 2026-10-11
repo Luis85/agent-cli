@@ -41,7 +41,8 @@ class MemoryStore implements MetadataSnapshotStore {
     const listing = this.files.listing();
     return { ...listing, files: listing.files.map(file => stamped(file.path) ? file : { path: file.path }) };
   }
-  async load() { return this.stored; }
+  /** A new value per load, as reading the file gives: the index decodes it in place. */
+  async load() { return structuredClone(this.stored); }
   async save(snapshot: MetadataSnapshot) { this.saves++; this.stored = JSON.parse(JSON.stringify(snapshot)); }
 }
 
@@ -219,5 +220,64 @@ describe('persisted metadata snapshots', () => {
     // A plugin previews planned content and keeps the read snapshot's revision by spreading it.
     const planned = { ...read, bytes: new TextEncoder().encode('# Plan\nPlanned. #planned\n') };
     for (const index of [unloaded, loaded]) expect((await index.parseFile(planned))?.tags?.map(tag => tag.tag)).toEqual(['#planned']);
+  });
+});
+
+describe('persisted link resolution', () => {
+  /** Replaces Plan.md's stored resolution of `[[Missing]]` with image.png, so only a reused resolution reports it. */
+  const plant = (store: MemoryStore) => {
+    const links = (store.stored as MetadataSnapshot).links!;
+    links.sources['Notes/Plan.md']![1] = links.paths.indexOf('image.png');
+  };
+  const planted = { 'Notes/Ideas.md': 1, 'image.png': 1 };
+
+  it('reuses stored resolutions while the vault paths, the aliases and the source are unchanged', async () => {
+    const { store, invocation } = setup();
+    await invocation();
+    const links = (store.stored as MetadataSnapshot).links!;
+    expect(links.paths).toEqual(['Bad.md', 'Board.canvas', 'Notes/Ideas.md', 'Notes/Plan.md', 'image.png']);
+    expect(links.aliases).toBe('[["Notes/Ideas.md",["Brainstorm"]]]');
+    expect(links.sources).toEqual({ 'Board.canvas': [3], 'Notes/Ideas.md': [3], 'Notes/Plan.md': [2, ['missing', 'Missing']] });
+    plant(store);
+    expect((await invocation()).cache.resolvedLinks['Notes/Plan.md']).toEqual(planted);
+    expect(store.saves).toBe(1);
+  });
+
+  it('keeps the resolutions of unchanged sources when another note changes without changing paths or aliases', async () => {
+    const { files, store, invocation, fresh } = setup();
+    await invocation();
+    plant(store);
+    files.put('Notes/Ideas.md', '---\naliases: [Brainstorm]\n---\nBack to [[Plan]] and [[Board.canvas]].\n');
+    const next = await invocation();
+    expect(next.cache.resolvedLinks['Notes/Plan.md']).toEqual(planted);
+    expect(next.cache.resolvedLinks['Notes/Ideas.md']).toEqual((await fresh() as { resolvedLinks: Record<string, unknown> }).resolvedLinks['Notes/Ideas.md']);
+  });
+
+  it('resolves every source again when a path or an alias changes, and a source again when its content changes', async () => {
+    const changes: Array<(files: StampedFiles) => void> = [
+      files => files.put('Other.png', 'new attachment'),
+      files => { files.files.delete('Bad.md'); files.stamps.delete('Bad.md'); },
+      files => files.put('Notes/Ideas.md', '---\naliases: [Missing]\n---\nBack to [[Plan]].\n'),
+      files => files.put('Notes/Plan.md', '# Plan\nSee [[Ideas]] and [[Missing]] again. #plan\n'),
+      files => { files.put('Archive/Plan.md', files.files.get('Notes/Plan.md')!); files.files.delete('Notes/Plan.md'); files.stamps.delete('Notes/Plan.md'); },
+    ];
+    for (const change of changes) {
+      const { files, store, invocation, fresh } = setup();
+      await invocation();
+      plant(store);
+      change(files);
+      expect(metadataState((await invocation()).cache), change.toString()).toEqual(await fresh());
+      // The new snapshot stores the recomputed resolutions, so the following load reuses correct ones.
+      expect(metadataState((await invocation()).cache), change.toString()).toEqual(await fresh());
+    }
+  });
+
+  it('recomputes stored resolutions that do not fit the source', async () => {
+    const { store, invocation, fresh } = setup();
+    await invocation();
+    const links = (store.stored as MetadataSnapshot).links!;
+    links.sources['Notes/Plan.md'] = [99, ['missing', 'Missing']];
+    links.sources['Notes/Ideas.md'] = [3, 3];
+    expect(metadataState((await invocation()).cache)).toEqual(await fresh());
   });
 });

@@ -8,6 +8,7 @@ import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import type { FileRepository } from '../../src/application/workspace/ports.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser.ts';
+import { snapshotFormat } from '../../src/domain/metadata/snapshot.ts';
 import { NodeMetadataSnapshotStore, snapshotFile } from '../../src/infrastructure/metadata/snapshot-store.ts';
 import { NodeFiles, stampedFiles } from '../../src/infrastructure/workspace/files.ts';
 import { metadataIndex, metadataState } from '../support/metadata.ts';
@@ -83,7 +84,7 @@ describe('metadata snapshots in the workspace cache folder', () => {
     // Only the files the index parses need a stamp; attachments and the workspace distribution are listed by name.
     expect(first.stamped).toEqual(['Notes/Ideas.md', 'Notes/Plan.md']);
     expect(first.state).toEqual(first.fresh);
-    expect(first.file).toBe(join(root, '.forge/cache/metadata.v1.workspace.json'));
+    expect(first.file).toBe(join(root, `.forge/cache/metadata.v${snapshotFormat}.workspace.json`));
     expect(await readFile(join(root, '.forge/cache/.gitignore'), 'utf8')).toBe('*\n');
     expect(first.cache.files()).toEqual(['Notes/Ideas.md', 'Notes/Plan.md', 'image.png']);
     const listed = await (await NodeFiles.at(root)).list();
@@ -169,7 +170,7 @@ describe('metadata snapshots in the workspace cache folder', () => {
     await put('projects/app/Readme.md', '# Readme\n');
     await put('projects/app/.forge/cache/kept.json', 'project content');
     const project = await invocation({ directory: 'projects/app', later: 10_000 });
-    expect(project.file).toBe(join(root, '.forge/cache/metadata.v1.project.projects%2Fapp.json'));
+    expect(project.file).toBe(join(root, `.forge/cache/metadata.v${snapshotFormat}.project.projects%2Fapp.json`));
     expect(project.cache.files()).toEqual(['Docs/Guide.md', 'Readme.md']);
     expect(project.cache.resolvedLinks['Docs/Guide.md']).toEqual({ 'Readme.md': 1 });
     const listing = await stampedFiles(await NodeFiles.at(root), 'projects/app', path => path.endsWith('.md'));

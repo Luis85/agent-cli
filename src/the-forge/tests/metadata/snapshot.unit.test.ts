@@ -5,12 +5,14 @@ import { snapshotFile } from '../../src/infrastructure/metadata/snapshot-store.t
 const valid = (): MetadataSnapshot => ({
   format: snapshotFormat, key: 'forge 1; parser 1; scope .', checkedAtMs: 1_000_000,
   files: { 'Note.md': { stamp: 's1', revision: 'r1' }, 'Bad.md': { stamp: null, revision: 'r2' } },
-  outcomes: { 'markdown:r1': { metadata: { tags: [] } }, 'markdown:r2': { issue: { code: 'INVALID_YAML', message: 'broken' } } },
+  outcomes: { 'markdown:r1': { metadata: { tags: [] }, positions: [] }, 'markdown:r2': { issue: { code: 'INVALID_YAML', message: 'broken' } } },
+  links: { paths: ['Bad.md', 'Note.md'], aliases: '[]', sources: { 'Note.md': [0, null, ['missing', 'Gone']] } },
 });
 
 describe('stored metadata snapshots', () => {
   it('reads a snapshot of the expected format and key and nothing else', () => {
     expect(readSnapshot(JSON.parse(JSON.stringify(valid())), valid().key)).toEqual(valid());
+    expect(readSnapshot({ ...valid(), links: null }, valid().key)).toEqual({ ...valid(), links: null });
     expect(readSnapshot(valid(), 'forge 2; parser 1; scope .')).toBeNull();
     expect(readSnapshot({ ...valid(), format: snapshotFormat + 1 }, valid().key)).toBeNull();
     for (const value of [null, [], 'text', 42]) expect(readSnapshot(value, valid().key)).toBeNull();
@@ -20,8 +22,11 @@ describe('stored metadata snapshots', () => {
     const broken: Array<Partial<Record<keyof MetadataSnapshot, unknown>>> = [
       { checkedAtMs: Number.NaN }, { checkedAtMs: '1' }, { files: [] }, { outcomes: null },
       { files: { 'Note.md': { stamp: 1, revision: 'r1' } } }, { files: { 'Note.md': { stamp: 's1' } } },
-      { outcomes: { 'markdown:r1': { metadata: [] } } }, { outcomes: { 'markdown:r1': { issue: { code: 'X' } } } },
-      { outcomes: { 'markdown:r1': { metadata: {}, issue: { code: 'X', message: 'y' } } } }, { outcomes: { 'markdown:r1': {} } },
+      { outcomes: { 'markdown:r1': { metadata: [], positions: [] } } }, { outcomes: { 'markdown:r1': { metadata: {} } } },
+      { outcomes: { 'markdown:r1': { issue: { code: 'X' } } } }, { outcomes: { 'markdown:r1': {} } },
+      { outcomes: { 'markdown:r1': { metadata: {}, positions: [], issue: { code: 'X', message: 'y' } } } },
+      { links: undefined }, { links: { paths: [1], aliases: '[]', sources: {} } }, { links: { paths: [], aliases: [], sources: {} } },
+      { links: { paths: [], aliases: '[]', sources: { 'Note.md': 0 } } },
     ];
     for (const change of broken) expect(readSnapshot({ ...valid(), ...change }, valid().key), JSON.stringify(change)).toBeNull();
   });
