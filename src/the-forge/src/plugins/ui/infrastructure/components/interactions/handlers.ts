@@ -3,6 +3,7 @@ import type { UiDefinition, UiNode, UiValue } from '../../../domain/components/d
 import { componentInteractionIds, interactionUsesState } from '../../../domain/components/interactions.ts';
 import { expression, json, ordered } from '../rendering.ts';
 import { formActionHelper } from './form-actions.ts';
+import { typedAs, typedParameters, unsafeCharacters } from './typed-source.ts';
 
 /** Internal Angular members must never shadow a caller-defined input. */
 export function interactionPrefix(definition: UiDefinition): string {
@@ -61,7 +62,8 @@ export function renderInteractionHandlers(definition: UiDefinition, interactions
   const functions = selected.map(interaction => {
     const asynchronous = interaction.actions.some(action => ['save-form', 'upload-form', 'download-form'].includes(action.type));
     const currentTarget = asynchronous ? `${prefix}Target` : `${event}.currentTarget`;
-    const lines = [`${asynchronous ? 'async ' : ''}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ''}) {`];
+    const parameters = typedParameters([[event, eventType]], typescript);
+    const lines = [`${parameters.jsdoc}${asynchronous ? 'async ' : ''}function ${handlerName(interaction.id, prefix)}(${parameters.list}) {`];
     if (interaction.keys) lines.push(`  if (!${json(interaction.keys)}.includes(${event}.key ?? '')) return;`);
     if (interaction.preventDefault) lines.push(`  ${event}.preventDefault();`);
     if (interaction.stopPropagation) lines.push(`  ${event}.stopPropagation();`);
@@ -72,7 +74,7 @@ export function renderInteractionHandlers(definition: UiDefinition, interactions
         let assigned = action.type === 'toggle-state' ? `!${next}[${json(action.state)}]` : 'value' in action ? value(action.value) : '';
         if (action.type === 'set-state' && 'fromEvent' in action) {
           const field = `${prefix}Value${index}`;
-          lines.push(`  const ${field} = (${currentTarget}${typescript ? ` as { ${action.fromEvent}?: unknown } | null` : ''})?.${action.fromEvent};`);
+          lines.push(`  const ${field} = (${typedAs(currentTarget, `{ ${action.fromEvent}?: unknown } | null`, typescript)})?.${action.fromEvent};`);
           lines.push(`  if (typeof ${field} !== ${json(action.fromEvent === 'checked' ? 'boolean' : 'string')}) throw new globalThis.TypeError(${json(`Interaction ${interaction.id} requires event.currentTarget.${action.fromEvent}.`)});`);
           assigned = field;
         }
@@ -93,18 +95,19 @@ export function renderInteractionHandlers(definition: UiDefinition, interactions
   const needsForms = selected.some(interaction => interaction.actions.some(action => ['save-form', 'upload-form', 'download-form'].includes(action.type)));
   const needsEmit = needsForms || selected.some(interaction => interaction.actions.some(action => action.type === 'emit'));
   const needsNavigate = selected.some(interaction => interaction.actions.some(action => action.type === 'navigate'));
-  const target = `target${typescript ? ': EventTarget | null' : ''}`;
-  const element = `target${typescript ? ' as Element | null' : ''}`;
+  const element = typedAs('target', 'Element | null', typescript);
+  const emit = typedParameters([['target', 'EventTarget | null'], ['name', 'string'], ['detail', 'Record<string, unknown>']], typescript);
+  const navigate = typedParameters([['target', 'EventTarget | null'], ['value', 'unknown']], typescript);
   const helpers: string[] = [];
   if (needsForms) helpers.push(formActionHelper(prefix, typescript, !!options.classMembers));
-  if (needsEmit) helpers.push(`function ${prefix}Emit(${target}, name${typescript ? ': string' : ''}, detail${typescript ? ': Record<string, unknown>' : ''}) {
+  if (needsEmit) helpers.push(`${emit.jsdoc}function ${prefix}Emit(${emit.list}) {
   const element = ${element};
   const EventConstructor = element?.ownerDocument.defaultView?.CustomEvent ?? globalThis.CustomEvent;
   element?.dispatchEvent(new EventConstructor(name, { detail, bubbles: true, composed: true }));
 }`);
-  if (needsNavigate) helpers.push(`function ${prefix}Navigate(${target}, value${typescript ? ': unknown' : ''}) {
+  if (needsNavigate) helpers.push(`${navigate.jsdoc}function ${prefix}Navigate(${navigate.list}) {
   const element = ${element};
-  if (typeof value !== 'string' || !value || value !== value.trim() || /[\\u0000-\\u001f\\\\]/.test(value) || value.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\\/\\//i.test(value))) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
+  if (typeof value !== 'string' || !value || value !== value.trim() || ${unsafeCharacters('value', ['\\'])} || value.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\\/\\//i.test(value))) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
   const url = new globalThis.URL(value, element?.ownerDocument.baseURI);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
   element?.ownerDocument.defaultView?.location.assign(url.href);

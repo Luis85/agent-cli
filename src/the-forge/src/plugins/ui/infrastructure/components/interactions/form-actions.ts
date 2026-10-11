@@ -1,10 +1,14 @@
+import { typedAs, typedParameters, unsafeCharacters } from './typed-source.ts';
+
 /** Browser-only effects are invoked by generated listeners, never while rendering on a server. */
 export function formActionHelper(prefix: string, typescript: boolean, classMembers: boolean): string {
   const member = classMembers ? 'this.' : '';
-  return `async function ${prefix}FormAction(target${typescript ? ': EventTarget | null' : ''}, action${typescript ? ': string' : ''}, option${typescript ? ': unknown' : ''}) {
+  const parameters = typedParameters([['target', 'EventTarget | null'], ['action', 'string'], ['option', 'unknown']], typescript);
+  const data = typescript ? 'const data: Record<string, unknown> = Object.create(null);' : `/** @type {Record<string, unknown>} */\n    const data = Object.create(null);`;
+  return `${parameters.jsdoc}async function ${prefix}FormAction(${parameters.list}) {
   try {
-    const element = target${typescript ? ' as HTMLElement | null' : ''};
-    const form = element?.closest('form') ?? (${typescript ? 'element as HTMLButtonElement | null' : 'element'})?.form;
+    const element = ${typedAs('target', 'HTMLElement | null', typescript)};
+    const form = element?.closest('form') ?? (${typedAs('element', 'HTMLButtonElement | null', typescript)})?.form;
     if (!form || form.tagName !== 'FORM') throw new globalThis.TypeError('Form interaction requires an associated form.');
     const view = form.ownerDocument.defaultView;
     if (!view) throw new globalThis.TypeError('Form interaction requires a browser window.');
@@ -12,7 +16,7 @@ export function formActionHelper(prefix: string, typescript: boolean, classMembe
     if (!form.reportValidity()) throw new globalThis.TypeError('Form validation failed.');
     const fields = new view.FormData(form);
     if (action === 'upload-form') {
-      if (option !== option.trim() || /[\\u0000-\\u001f\\\\]/.test(option) || option.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(option) && !/^https?:\\/\\//i.test(option))) throw new globalThis.TypeError('Unsafe interaction upload URL.');
+      if (option !== option.trim() || ${unsafeCharacters('option', ['\\'])} || option.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(option) && !/^https?:\\/\\//i.test(option))) throw new globalThis.TypeError('Unsafe interaction upload URL.');
       const url = new view.URL(option, form.ownerDocument.baseURI);
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction upload URL.');
       const response = await view.fetch(url.href, { method: 'POST', body: fields, credentials: 'same-origin' });
@@ -20,7 +24,7 @@ export function formActionHelper(prefix: string, typescript: boolean, classMembe
       ${member}${prefix}Emit(target, 'forge:upload', { url: url.href, status: response.status, ok: true });
       return true;
     }
-    const data${typescript ? ': Record<string, unknown>' : ''} = Object.create(null);
+    ${data}
     for (const [name, field] of fields.entries()) {
       const value = typeof field === 'string' ? field : { name: field.name, size: field.size, type: field.type, lastModified: field.lastModified };
       if (!Object.hasOwn(data, name)) data[name] = value;
@@ -30,7 +34,7 @@ export function formActionHelper(prefix: string, typescript: boolean, classMembe
       view.localStorage.setItem(option, JSON.stringify(data));
       ${member}${prefix}Emit(target, 'forge:save', { key: option, data });
     } else {
-      if (/[\\u0000-\\u001f/\\\\]/.test(option)) throw new globalThis.TypeError('Download filename must not contain path separators or control characters.');
+      if (${unsafeCharacters('option', ['/', '\\'])}) throw new globalThis.TypeError('Download filename must not contain path separators or control characters.');
       const blob = new view.Blob([JSON.stringify(data, null, 2) + '\\n'], { type: 'application/json' });
       const url = view.URL.createObjectURL(blob);
       const link = form.ownerDocument.createElement('a');

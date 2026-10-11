@@ -3,7 +3,7 @@ import { libraries, project } from './project.mjs';
 /** Every UI target the CLI supports, in documentation order. */
 export const uiTargets = ['html', 'htmx', 'vanilla', 'vue', 'svelte', 'react', 'angular'];
 
-const interactions = {
+export const interactions = {
   'toggle-favorite': `---
 schemaVersion: 1
 id: toggle-favorite
@@ -50,7 +50,7 @@ Stores the trip request form in this browser under \`trailhead-trip-draft\` and 
 `,
 };
 
-const components = {
+export const components = {
   'trip-card': `---
 schemaVersion: 1
 id: trip-card

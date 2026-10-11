@@ -35,6 +35,11 @@ export function textExpression(value: string, scope = 'props', stateScope = '_ui
   return parts.length === 1 && 'prop' in parts[0]! ? `(${result} ?? '')` : result;
 }
 
+/** An object literal of the default props overridden by `input`, without spreading a literal into a literal. */
+export function propsWithDefaults(definition: UiDefinition, input = 'input'): string {
+  return `{ ${[...ordered(defaults(definition)).map(([key, value]) => `${json(key)}: ${json(value)}`), `...${input}`].join(', ')} }`;
+}
+
 export function defaultAssignments(definition: UiDefinition): string {
   return ordered(definition.props).filter(([, prop]) => prop.default !== undefined).map(([key, prop]) => `  if (props[${json(key)}] === undefined) props[${json(key)}] = ${json(prop.default)};`).join('\n');
 }
