@@ -1,5 +1,6 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
 import type { Workspace } from '../workspace/workspace.ts';
+import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 /** What the host remembers about an enabled plugin between invocations. */
 export interface PluginStateEntry { settings: string | null }
@@ -31,7 +32,7 @@ export class WorkspacePluginState implements PluginStateStore {
   private stored = '';
   constructor(
     private readonly workspace: Workspace,
-    private readonly warn: (message: string) => void,
+    private readonly warn: (message: string | KernelMessage) => void,
     private readonly settings: (pluginId: string) => Promise<string | null> = async () => null,
   ) {}
   settingsRevision(pluginId: string): Promise<string | null> { return this.settings(pluginId); }
@@ -56,7 +57,7 @@ export class WorkspacePluginState implements PluginStateStore {
       this.stored = serialize(states);
       return states;
     } catch {
-      this.warn(`Ignored invalid ${pluginStatePath}; plugins with activation hooks are treated as newly enabled.`);
+      this.warn(kernelMessage('PLUGIN_STATE_IGNORED', { path: pluginStatePath }));
       return {};
     }
   }
@@ -96,7 +97,7 @@ export class ActivationTracker {
    * state since it was loaded, the save rereads it, keeps that invocation's entries for enabled plugins this one
    * did not activate, and retries once. A failed save is a warning.
    */
-  async save(plugins: ReadonlyArray<TrackedPlugin<unknown>>, warn: (message: string) => void): Promise<void> {
+  async save(plugins: ReadonlyArray<TrackedPlugin<unknown>>, warn: (message: string | KernelMessage) => void): Promise<void> {
     const states = (current: PluginStates) => {
       const result: PluginStates = {};
       for (const plugin of plugins.filter(tracked)) {
@@ -112,7 +113,7 @@ export class ActivationTracker {
         await this.store.save(states(await this.store.load()));
       }
     } catch (error) {
-      try { warn(`Could not record plugin activation state in ${pluginStatePath}: ${errorMessage(error)}`); }
+      try { warn(kernelMessage('PLUGIN_STATE_UNSAVED', { path: pluginStatePath, diagnostic: errorMessage(error) })); }
       catch { /* Diagnostics cannot replace the command result. */ }
     }
   }

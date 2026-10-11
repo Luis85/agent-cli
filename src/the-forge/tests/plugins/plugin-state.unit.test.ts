@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ActivationTracker, type PluginStateStore, type PluginStates } from '../../src/application/plugins/plugin-state.ts';
 import { forgeError } from '../../src/domain/shared/errors.ts';
+import { englishWarning } from '../support/events.ts';
 
 /** A state store whose saves fail with CONFLICT `conflicts` times while another writer holds `current`. */
 function racingStore(conflicts: number, current: PluginStates) {
@@ -24,7 +25,7 @@ describe('plugin activation state', () => {
     const tracker = await ActivationTracker.load(store);
     await tracker.activated(plugin('alpha'), {});
     const warnings: string[] = [];
-    await tracker.save([plugin('alpha'), plugin('beta')], message => warnings.push(message));
+    await tracker.save([plugin('alpha'), plugin('beta')], message => warnings.push(englishWarning(message)));
     expect(loads()).toBe(2);
     expect(saved).toEqual([{ alpha: { settings: null } }, { alpha: { settings: null }, beta: { settings: 'other' } }]);
     expect(warnings).toEqual([]);
@@ -35,7 +36,7 @@ describe('plugin activation state', () => {
     const tracker = await ActivationTracker.load(store);
     await tracker.activated(plugin('alpha'), {});
     const warnings: string[] = [];
-    await tracker.save([plugin('alpha')], message => warnings.push(message));
+    await tracker.save([plugin('alpha')], message => warnings.push(englishWarning(message)));
     expect(saved).toHaveLength(2);
     expect(warnings).toEqual([expect.stringMatching(/^Could not record plugin activation state in bin\/data\/plugins-state.json: File changed/)]);
   });

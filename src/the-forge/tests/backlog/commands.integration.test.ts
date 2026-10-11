@@ -12,6 +12,8 @@ import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
 import { backlogVault, runBacklog } from '../support/backlog.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import { kernelMessage } from '../../src/domain/shared/kernel-messages.ts';
+import { englishWarning } from '../support/events.ts';
 
 const base = (folder: string, extra = '') => `filters:\n  and:\n    - file.inFolder("${folder}")\nviews:\n  - type: product-backlog\n    name: Backlog\n    homeFolder: ${folder}\n    stateProperty: note.status\n    dependsOnProperty: note.dependsOn\n${extra}`;
 const note = (fields: Record<string, unknown>) => `---\n${Object.entries(fields).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}\n---\n`;
@@ -36,10 +38,10 @@ describe('choosing the backlog', () => {
     registerHostEvents(events);
     registerCorePlugins(registry, events, [basesPlugin, backlogPlugin], testHost({ skills: registrySkills(registry), fileDates: nodeFileDates, ...offlineHost }), ['bases']);
     const warnings: string[] = [];
-    await registry.configure({}, async () => [], message => warnings.push(message));
+    await registry.configure({}, async () => [], message => warnings.push(englishWarning(message)));
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['bases']);
     const reason = 'Requires service bases.query; its provider bases is disabled.';
-    expect(registry.unavailable.get('backlog')).toEqual({ reason, issues: [] });
+    expect(registry.unavailable.get('backlog')).toEqual({ reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'bases.query', provider: 'bases' }), issues: [] });
     // plugins.disabled asked for the cascade, so it is reported by plugins and the command, not as a warning.
     expect(warnings).toEqual([]);
     await expect(registry.resolveCommand('backlog').run(['list'], {}, {} as CommandContext)).rejects.toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'backlog', plugin: 'backlog', reason, issues: [] } });
@@ -53,7 +55,7 @@ describe('choosing the backlog', () => {
     await registry.configure({}, async () => [], () => undefined);
     expect(registry.disabled.map(manifest => manifest.id)).toEqual(['connector']);
     // The Azure DevOps connector requires the hub and becomes unavailable; backlog only optionally uses it.
-    expect([...registry.unavailable]).toEqual([['connector-azure-devops', { reason: 'Requires service connector.hub; its provider connector is disabled.', issues: [] }]]);
+    expect([...registry.unavailable]).toEqual([['connector-azure-devops', { reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service: 'connector.hub', provider: 'connector' }), issues: [] }]]);
     expect(registry.resolveCommand('backlog')).toBeDefined();
     vault = await backlogVault({ 'a/Backlog.base': base('a', '    connection: contoso\n'), 'a/Epic.md': note({ type: 'Epic', order: 1 }) });
     expect((await runBacklog(vault.root, ['list'])).data.total).toBe(1);

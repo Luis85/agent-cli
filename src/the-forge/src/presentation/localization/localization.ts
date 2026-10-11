@@ -1,5 +1,9 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
 import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
+import { germanDescriptions } from './descriptions.ts';
+import { germanKernelMessages } from './messages.ts';
+import { renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import type { CommandArgument, CommandOption } from '../../application/plugins/command-metadata.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
@@ -12,6 +16,8 @@ export function language(value: string): Language {
 function translated(catalog: Record<string, string>, id: string): string | undefined {
   return Object.hasOwn(catalog, id) ? catalog[id] : undefined;
 }
+type Described = { description: string };
+type Options = Readonly<Record<string, CommandOption>>;
 
 /**
  * Localize declared presentation metadata only; never traverse user documents or plugin results. Kernel
@@ -30,21 +36,58 @@ export class Localizer {
    * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
    * `<command> <action>` in the kernel and plugin catalogs; `make` actions are generators.
    */
-  command<T extends { id: string; description: string; actions?: Readonly<Record<string, { description: string }>> }>(command: T): T {
+  command<T extends { id: string; description: string; options?: Options; args?: readonly CommandArgument[]; actions?: Readonly<Record<string, Described & { options?: Options }>> }>(command: T): T {
     if (this.language !== 'de') return command;
     const description = this.german('commands', command.id);
+    const options = this.options(command.options), args = command.args && this.described(command.args);
     let translatedActions = false;
     const actions = command.actions && Object.fromEntries(Object.entries(command.actions).map(([id, action]) => {
       const key = `${command.id} ${id}`;
       const german = translated(germanActions, key) ?? this.plugins?.text('de', 'actions', key) ?? (command.id === 'make' ? this.german('generators', id) : undefined);
-      if (german) translatedActions = true;
-      return [id, german ? { ...action, description: german } : action];
+      const actionOptions = this.options(action.options);
+      if (german || actionOptions !== action.options) translatedActions = true;
+      return [id, { ...action, ...(german ? { description: german } : {}), ...(actionOptions ? { options: actionOptions } : {}) }];
     }));
-    if (!description && !translatedActions) return command;
-    return { ...command, ...(description ? { description } : {}), ...(translatedActions ? { actions } : {}) };
+    if (!description && !translatedActions && options === command.options && args === command.args) return command;
+    return { ...command, ...(description ? { description } : {}), ...(options ? { options } : {}), ...(args ? { args } : {}), ...(translatedActions ? { actions } : {}) };
   }
 
-  private described(kind: 'generators' | 'events', items: unknown): unknown {
+  /** An option, argument or settings description in the response language, by its English text. */
+  description(english: string): string {
+    if (this.language !== 'de') return english;
+    return translated(germanDescriptions, english) ?? this.plugins?.description('de', english) ?? english;
+  }
+
+  private described<T extends Described>(items: readonly T[]): readonly T[] {
+    const localized = items.map(item => ({ ...item, description: this.description(item.description) }));
+    return localized.every((item, index) => item.description === items[index]!.description) ? items : localized;
+  }
+
+  private options<T extends Options | undefined>(options: T): T {
+    if (!options) return options;
+    const entries = Object.entries(options), values = entries.map(([, option]) => option), localized = this.described(values);
+    return (localized === values ? options : Object.fromEntries(entries.map(([name], index) => [name, localized[index]]))) as T;
+  }
+
+  /** `description` texts inside a plugin settings schema, as `config` reports it. */
+  private schema(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(item => this.schema(item));
+    if (!isRecord(value)) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === 'description' && typeof item === 'string' ? this.description(item) : this.schema(item)]));
+  }
+
+  /** A host warning or plugin state reason in the response language; plugin warnings keep their own text. */
+  warning(warning: string | KernelMessage): string {
+    return typeof warning === 'string' ? warning : renderKernelMessage(warning, this.language === 'de' ? germanKernelMessages : undefined);
+  }
+
+  /** A plugin's manifest `name` and `description` in the response language. */
+  manifest<T extends { id: string; name: string; description: string }>(manifest: T): T {
+    const localized = this.language === 'de' ? this.plugins?.manifest(manifest.id, 'de') : undefined;
+    return localized ? { ...manifest, ...localized } : manifest;
+  }
+
+  private catalogued(kind: 'generators' | 'events', items: unknown): unknown {
     if (!Array.isArray(items)) return items;
     return items.map((item: unknown) => {
       if (!isRecord(item) || typeof item.id !== 'string') return item;
@@ -61,16 +104,22 @@ export class Localizer {
     });
   }
 
+  private globalOptions(data: Record<string, unknown>): { globalOptions?: Options } {
+    return isRecord(data.globalOptions) ? { globalOptions: this.options(data.globalOptions as Options) } : {};
+  }
+
   private eventOutput(value: unknown): unknown {
     return isRecord(value) && typeof value.changes === 'string' ? { ...value, changes: germanGuidance.eventChanges } : value;
   }
 
   result(command: string, data: unknown): unknown {
     if (this.language === 'en' || !isRecord(data)) return data;
-    if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.described('generators', data.generators), errors: this.errors(data.errors) };
-    if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), generators: this.described('generators', data.generators) };
+    if (command === 'schema' && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators), errors: this.errors(data.errors) };
+    if (['help', 'schema', 'make'].includes(command) && Array.isArray(data.generators)) return { ...data, ...(data.eventOutput === undefined ? {} : { eventOutput: this.eventOutput(data.eventOutput) }), ...this.globalOptions(data), generators: this.catalogued('generators', data.generators) };
+    if (command === 'help' && isRecord(data.globalOptions)) return { ...data, ...this.globalOptions(data) };
+    if (command === 'config' && Array.isArray(data.sections)) return { ...data, sections: data.sections.map((section: unknown) => isRecord(section) ? { ...section, schema: this.schema(section.schema) } : section) };
     if (command === 'formats') return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command === 'events') return { ...data, contracts: this.described('events', data.contracts), delivery: germanGuidance.delivery };
+    if (command === 'events') return { ...data, contracts: this.catalogued('events', data.contracts), delivery: germanGuidance.delivery };
     if (command === 'setup' && Array.isArray(data.nextSteps)) return {
       ...data, nextSteps: data.nextSteps.map((step: unknown) => {
         if (!isRecord(step) || typeof step.command !== 'string') return step;

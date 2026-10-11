@@ -5,6 +5,7 @@ import { NodeBasesQueryEngine } from './infrastructure/engine.ts';
 import { basesCommand } from './presentation/commands.ts';
 import { validateBaseFile } from './application/validation.ts';
 import { baseDefinitionIssues } from './infrastructure/validation.ts';
+import { basesStrings } from './presentation/strings.ts';
 
 /**
  * The `bases` core plugin: native Obsidian `.base` views evaluated as file repositories over the command scope's
@@ -17,6 +18,7 @@ export const basesPlugin: CorePlugin = {
     id: 'bases', name: 'Bases', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Query native Obsidian Bases views as file repositories without running Obsidian.',
   },
+  strings: basesStrings,
   create: host => {
     const bases = (context: CommandContext) => new Bases(new NodeBasesQueryEngine(
       context.workspace.files, context.workspace.codec, () => context.metadata.load(), host.fileDates(context.root),

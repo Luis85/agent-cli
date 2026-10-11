@@ -52,6 +52,7 @@ import { commands } from './presentation/cli/commands.ts';
 import { parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
+import { kernelMessage } from './domain/shared/kernel-messages.ts';
 
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
 const corePlugins = [
@@ -105,7 +106,7 @@ async function run(): Promise<void> {
         setup: async () => {
           // The templates core plugin provides the starter templates; without it, setup installs none and says so.
           const templates = registry.service<TemplateInstallerService>(templateInstallerService);
-          if (templates === undefined) events.warn('The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.');
+          if (templates === undefined) events.warn(kernelMessage('SETUP_TEMPLATES_UNAVAILABLE'));
           return new SetupService(environment, config, await readSetupArtifacts(__dirname), [...registry.skills.values()], templates?.setupTemplates() ?? null).run();
         },
         configSections: () => registry.settings.sections(),
@@ -196,11 +197,11 @@ async function run(): Promise<void> {
     await quitInvocation(events);
     await registry.dispose(events);
   }
-  try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }, null, compact ? undefined : 2) + '\n'); }
+  try { process.stdout.write(JSON.stringify({ ...result, ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }, null, compact ? undefined : 2) + '\n'); }
   catch {
     process.exitCode = 1;
     // Keep committed change evidence even if a plugin command returns invalid data.
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warnings }) + '\n');
+    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError('INVALID_RESULT', 'Command returned non-serializable data. Inspect committed events before retrying.')), ...(activeContext ? { context: activeContext } : {}), events: selectEventOutput(events.history, eventLevel), warnings: events.warningRecords.map(warning => localizer.warning(warning)) }) + '\n');
   }
 }
 void run();

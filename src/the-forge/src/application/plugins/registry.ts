@@ -16,6 +16,7 @@ import { activationOrder, pluginServices, serviceProviders, serviceView, type Pl
 import { errorPrefix, PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
 import { reviewOptions } from '../generation/controls.ts';
+import { kernelMessage, renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 
 /**
  * `workspace` is the command's scope (the selected project, or the workspace) and `environment` the workspace-root
@@ -109,16 +110,16 @@ export class Registry {
   readonly origins = new Map<string, PluginOrigin>();
   /** Bundled core plugins listed in `plugins.disabled`: they contribute nothing, and their commands are unknown. */
   readonly disabled: PluginManifest[] = [];
-  private readonly disabledReasons = new Map<string, string>();
+  private readonly disabledReasons = new Map<string, KernelMessage>();
   readonly catalog = new PluginCatalog();
   readonly settings = new PluginSettings();
   /**
-   * Registered plugins that cannot run in this invocation, with a `reason` sentence: an invalid settings section
+   * Registered plugins that cannot run in this invocation, with a `reason` message: an invalid settings section
    * (`issues` lists its problems), or a required service whose provider is disabled or itself unavailable (`issues`
    * are the provider's). They stay listed with their contributions but never activate; their commands and
    * generators fail with PLUGIN_UNAVAILABLE.
    */
-  readonly unavailable = new Map<string, { reason: string; issues: string[] }>();
+  readonly unavailable = new Map<string, { reason: KernelMessage; issues: string[] }>();
   private cleanups: Array<{ pluginId: string; run: () => void | Promise<void> }> = [];
   private published = new Set<string>();
   private state: 'registering' | 'activating' | 'active' | 'failed' | 'disposed' = 'registering';
@@ -158,14 +159,14 @@ export class Registry {
     this.origins.set(pluginId, origin);
   }
   /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
-  disable(manifest: PluginManifest, reason: string): void {
+  disable(manifest: PluginManifest, reason: KernelMessage): void {
     validatePluginManifest(manifest, 'core');
     ensure(!this.origins.has(manifest.id) && !this.disabled.some(entry => entry.id === manifest.id), 'DUPLICATE_PLUGIN', manifest.id);
     this.disabled.push(manifest);
     this.disabledReasons.set(manifest.id, reason);
   }
   /** Why a disabled core plugin contributes nothing. */
-  disabledReason(pluginId: string): string | undefined { return this.disabledReasons.get(pluginId); }
+  disabledReason(pluginId: string): KernelMessage | undefined { return this.disabledReasons.get(pluginId); }
   /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
   resolveCommand(commandId: string): Command {
     const command = this.commands.get(commandId);
@@ -181,18 +182,18 @@ export class Registry {
    * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
    * ids), are kept unchanged with a warning.
    */
-  async configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>> {
+  async configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string | KernelMessage) => void): Promise<Record<string, unknown>> {
     const report = this.settings.configure(sections, new Set(this.origins.keys()));
-    for (const [pluginId, issues] of report.invalid) this.unavailable.set(pluginId, { reason: `plugins.settings.${pluginId} is invalid: ${issues.join('; ')}.`, issues });
+    for (const [pluginId, issues] of report.invalid) this.unavailable.set(pluginId, { reason: kernelMessage('PLUGIN_SETTINGS_INVALID', { plugin: pluginId, issues: issues.join('; ') }), issues });
     this.cascadeUnavailable();
     for (const [pluginId, { reason, issues }] of this.unavailable) {
-      if (issues.length > 0) warn(`Plugin ${pluginId} is unavailable in this invocation: ${reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.`);
+      if (issues.length > 0) warn(kernelMessage('PLUGIN_UNAVAILABLE', { plugin: pluginId, reason }));
     }
-    if (report.undeclared.length > 0) warn(`plugins.settings has sections for plugins that declare no settings: ${report.undeclared.join(', ')}; they are ignored.`);
+    if (report.undeclared.length > 0) warn(kernelMessage('SETTINGS_UNDECLARED', { plugins: report.undeclared.join(', ') }));
     const foreign = Object.keys(sections).filter(id => !this.origins.has(id) && !this.disabled.some(manifest => manifest.id === id));
     const present = foreign.length > 0 ? new Set(await installed()) : new Set<string>();
     const unknown = foreign.filter(id => !present.has(id)).sort();
-    if (unknown.length > 0) warn(`plugins.settings names no installed plugin: ${unknown.join(', ')}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.`);
+    if (unknown.length > 0) warn(kernelMessage('SETTINGS_UNKNOWN_PLUGIN', { plugins: unknown.join(', ') }));
     return report.effective;
   }
   /**
@@ -212,19 +213,19 @@ export class Registry {
     if (service !== undefined) return service;
     const pluginId = id.split('.')[0]!;
     const unavailable = this.unavailable.get(pluginId);
-    const reason = unavailable?.reason ?? (this.disabled.some(manifest => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id}.`);
+    const reason = unavailable ? renderKernelMessage(unavailable.reason) : this.disabled.some(manifest => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id}.`;
     throw forgeError('PLUGIN_UNAVAILABLE', `Command ${command} is unavailable because it needs service ${id} of plugin ${pluginId}: ${reason}`, { command, plugin: pluginId, service: id, reason, issues: unavailable?.issues ?? [] });
   }
   /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
   private cascadeUnavailable(): void {
     const providers = serviceProviders(this.plugins);
     // Service ids start with their provider's plugin id (`bases.query`), which names a disabled provider.
-    const blocked = (service: string): { reason: string; issues: string[] } | undefined => {
+    const blocked = (service: string): { reason: KernelMessage; issues: string[] } | undefined => {
       const provider = providers.get(service)?.manifest.id;
       const unavailable = provider === undefined ? undefined : this.unavailable.get(provider);
-      if (unavailable) return { reason: `Requires service ${service}; its provider ${provider} is unavailable.`, issues: unavailable.issues };
+      if (unavailable) return { reason: kernelMessage('PLUGIN_PROVIDER_UNAVAILABLE', { service, provider: provider! }), issues: unavailable.issues };
       const disabled = provider === undefined ? this.disabled.find(manifest => service.startsWith(`${manifest.id}.`)) : undefined;
-      return disabled && { reason: `Requires service ${service}; its provider ${disabled.id} is disabled.`, issues: [] };
+      return disabled && { reason: kernelMessage('PLUGIN_PROVIDER_DISABLED', { service, provider: disabled.id }), issues: [] };
     };
     for (let changed = true; changed;) {
       changed = false;
@@ -299,7 +300,7 @@ export class Registry {
         await publishHostEvent(events, 'plugin.unloaded', { pluginId: cleanup.pluginId });
       } catch (error) {
         await publishHostEvent(events, 'plugin.unload-failed', { pluginId: cleanup.pluginId, error: summarizeError(error) });
-        try { events.warn(`Plugin cleanup: ${errorMessage(error)}`); }
+        try { events.warn(kernelMessage('PLUGIN_CLEANUP_FAILED', { diagnostic: errorMessage(error) })); }
         catch { /* Diagnostics must not replace the primary result or stop remaining cleanup. */ }
       }
     }
@@ -318,7 +319,8 @@ export class Registry {
     const unavailable = this.unavailable.get(plugin.manifest.id);
     if (!unavailable) return;
     const label = 'command' in contribution ? `Command ${contribution.command}` : `Generator ${contribution.generator}`;
-    throw forgeError('PLUGIN_UNAVAILABLE', `${label} is unavailable because plugin ${plugin.manifest.id} is unavailable: ${unavailable.reason}`, { ...contribution, plugin: plugin.manifest.id, reason: unavailable.reason, issues: unavailable.issues });
+    const reason = renderKernelMessage(unavailable.reason);
+    throw forgeError('PLUGIN_UNAVAILABLE', `${label} is unavailable because plugin ${plugin.manifest.id} is unavailable: ${reason}`, { ...contribution, plugin: plugin.manifest.id, reason, issues: unavailable.issues });
   }
   /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
   private ownedCommand(plugin: Plugin, command: Command, events: EventBus): Command {

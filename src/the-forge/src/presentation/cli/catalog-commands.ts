@@ -11,6 +11,7 @@ import { globalOptionMetadata } from './arguments.ts';
 import type { WorkflowServices } from './services.ts';
 import { generatorCatalog } from '../generation/commands.ts';
 import { pluginCatalog } from './plugin-catalog.ts';
+import { Localizer } from '../localization/localization.ts';
 import { envelopeSchema } from './envelope.ts';
 import { schemaOutput } from './catalog-output.ts';
 
@@ -76,9 +77,9 @@ export function extensionCommands(registry: Registry, services: Pick<WorkflowSer
       arity(args, 0);
       return { events: events.ids(), contracts: events.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
-    { id: 'plugins', description: 'List core and user plugins with their state and contributions.', usage: 'plugins', ...discovery, async run(args) {
+    { id: 'plugins', description: 'List core and user plugins with their state and contributions.', usage: 'plugins', ...discovery, async run(args, _, { language }) {
       arity(args, 0);
-      return { plugins: pluginCatalog(registry, await services.installedPlugins()) };
+      return { plugins: pluginCatalog(registry, await services.installedPlugins(), new Localizer(language, registry.catalog)) };
     } },
   ];
 }

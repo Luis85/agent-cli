@@ -2,6 +2,8 @@ import type { EventBus } from './events.ts';
 import type { HttpClient } from '../connectors/http.ts';
 import type { PluginContributions, PluginManifest, Registry, Skill } from './registry.ts';
 import type { FileRepository } from '../workspace/ports.ts';
+import { kernelMessage } from '../../domain/shared/kernel-messages.ts';
+import type { Language, PluginStrings, PluginStringTable } from './plugin-catalog.ts';
 
 /** Read access to every registered skill: the kernel's, core plugins' and user plugins'. */
 export interface SkillCatalog { list(): Skill[]; get(id: string): Skill | undefined }
@@ -53,7 +55,25 @@ export interface CorePluginHost {
  */
 export interface CorePlugin {
   manifest: PluginManifest & { core: true };
+  /**
+   * Strings available without creating the plugin, merged over the `strings` that `create` contributes: its localized
+   * manifest, which `plugins` lists even while the plugin is disabled, and the descriptions of its options, arguments
+   * and settings. They are validated like contributed strings.
+   */
+  strings?: PluginStrings;
   create(host: CorePluginHost): PluginContributions;
+}
+
+/** Contributed strings with the static `extra` strings merged in, table by table. */
+function mergeStrings(created: PluginStrings | undefined, extra: PluginStrings | undefined): PluginStrings | undefined {
+  if (!extra) return created;
+  const merged: PluginStrings = { ...created };
+  for (const language of Object.keys(extra) as Language[]) {
+    const table: PluginStringTable = { ...merged[language] };
+    for (const [kind, entries] of Object.entries(extra[language] ?? {})) Object.assign(table, { [kind]: { ...table[kind as keyof PluginStringTable], ...entries } });
+    merged[language] = table;
+  }
+  return merged;
 }
 
 /**
@@ -65,10 +85,15 @@ export interface CorePlugin {
 export function registerCorePlugins(registry: Registry, events: EventBus, plugins: readonly CorePlugin[], host: CorePluginHost, disabled: readonly string[]): void {
   const ids = plugins.map(plugin => plugin.manifest.id);
   const unknown = disabled.filter(id => !ids.includes(id));
-  if (unknown.length > 0) events.warn(`plugins.disabled names only bundled core plugins (${ids.join(', ')}); ignored ${unknown.join(', ')}. Disable a user plugin by removing it from plugins.enabled.`);
+  if (unknown.length > 0) events.warn(kernelMessage('DISABLED_UNKNOWN_PLUGIN', { core: ids.join(', '), plugins: unknown.join(', ') }));
   for (const plugin of plugins) {
-    if (disabled.includes(plugin.manifest.id)) registry.disable(plugin.manifest, 'Listed in plugins.disabled.');
-    else registry.register({ ...plugin.create(host), manifest: plugin.manifest }, events, 'core');
+    if (disabled.includes(plugin.manifest.id)) {
+      registry.disable(plugin.manifest, kernelMessage('PLUGIN_LISTED_DISABLED'));
+      if (plugin.strings) registry.catalog.addDisabled(plugin.manifest.id, plugin.strings);
+    } else {
+      const created = plugin.create(host);
+      registry.register({ ...created, manifest: plugin.manifest, strings: mergeStrings(created.strings, plugin.strings) }, events, 'core');
+    }
   }
 }
 

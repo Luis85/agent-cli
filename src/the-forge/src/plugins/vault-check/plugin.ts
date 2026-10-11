@@ -6,6 +6,7 @@ import { scopeSources, type BaseIssue } from './application/sources.ts';
 import { ruleDefaults, ruleIds, ruleSettings, type RuleSetting } from './domain/rules.ts';
 import { vaultCommand } from './presentation/command.ts';
 import { englishMessages, germanMessages } from './presentation/messages.ts';
+import { vaultCheckStrings } from './presentation/strings.ts';
 
 /** The `bases` core plugin's service, used only when it is enabled: an optional dependency, never an import. */
 const basesValidation = 'bases.validation';
@@ -32,6 +33,7 @@ export const vaultCheckPlugin: CorePlugin = {
     id: 'vault-check', name: 'Vault check', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
     description: 'Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties.',
   },
+  strings: vaultCheckStrings,
   create: () => ({
     optional: [basesValidation],
     commands: [vaultCommand(context => {

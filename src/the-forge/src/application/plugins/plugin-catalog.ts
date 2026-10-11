@@ -13,6 +13,13 @@ export interface PluginStringTable {
   errors?: Record<string, { summary: string; hint: string }>;
   /** Free-form guidance a plugin reads back through `context.t(key)`. */
   messages?: Record<string, string>;
+  /**
+   * Translations of the plugin's option, argument and settings descriptions, keyed by their English text: `help`,
+   * `schema` and `config` show them in this language wherever the plugin declares that text.
+   */
+  descriptions?: Record<string, string>;
+  /** The plugin's manifest `name` and `description` as `plugins` lists them. */
+  manifest?: { name?: string; description?: string };
 }
 export type PluginStrings = Partial<Record<Language, PluginStringTable>>;
 /** A plugin-defined failure code with the same fields as a built-in catalog entry. */
@@ -50,9 +57,9 @@ export class PluginCatalog {
     for (const [language, table] of Object.entries((strings ?? {}) as Record<string, unknown>)) {
       ensure((languages as readonly string[]).includes(language) && isRecord(table), 'INVALID_PLUGIN', `strings.${language} is not a supported language table (en, de).`);
       for (const [kind, entries] of Object.entries(table)) {
-        ensure(['commands', 'actions', 'generators', 'events', 'errors', 'messages'].includes(kind) && isRecord(entries), 'INVALID_PLUGIN', `strings.${language}.${kind} is not a string table.`);
+        ensure(['commands', 'actions', 'generators', 'events', 'errors', 'messages', 'descriptions', 'manifest'].includes(kind) && isRecord(entries), 'INVALID_PLUGIN', `strings.${language}.${kind} is not a string table.`);
         for (const [id, entry] of Object.entries(entries)) {
-          const known = kind === 'messages' || (kind === 'errors' ? codes.has(id) : owned[kind as TextKind].includes(id));
+          const known = kind === 'messages' || kind === 'descriptions' || (kind === 'manifest' ? ['name', 'description'].includes(id) : kind === 'errors' ? codes.has(id) : owned[kind as TextKind].includes(id));
           ensure(known, 'PLUGIN_NAMESPACE', `strings.${language}.${kind}.${id} does not name a contribution of plugin ${pluginId}.`);
           ensure(kind === 'errors' ? isRecord(entry) && text(entry.summary) && text(entry.hint) : text(entry), 'INVALID_PLUGIN', `strings.${language}.${kind}.${id} must be ${kind === 'errors' ? 'a summary and hint' : 'nonempty text'}.`);
         }
@@ -97,6 +104,35 @@ export class PluginCatalog {
       if (entries && Object.hasOwn(entries, id)) return entries[id];
     }
     return undefined;
+  }
+
+  /**
+   * The translation of an option, argument or settings description in `language`, by its English text. Plugins
+   * translate the texts they declare; a text several plugins declare reads the same in each.
+   */
+  description(language: Language, english: string): string | undefined {
+    for (const table of this.tables.values()) {
+      const entries = table[language]?.descriptions;
+      if (entries && Object.hasOwn(entries, english)) return entries[english];
+    }
+    return undefined;
+  }
+
+  /** A plugin's localized manifest fields, also for a bundled core plugin that `plugins.disabled` lists. */
+  manifest(pluginId: string, language: Language): { name?: string; description?: string } | undefined {
+    return this.tables.get(pluginId)?.[language]?.manifest;
+  }
+
+  /**
+   * Records the manifest strings of a bundled core plugin that `plugins.disabled` lists: it contributes nothing,
+   * but `plugins` still lists its name and description in the response language.
+   */
+  addDisabled(pluginId: string, strings: PluginStrings): void {
+    const table = (language: Language): PluginStringTable => {
+      const manifest = strings[language]?.manifest;
+      return manifest ? { manifest } : {};
+    };
+    this.tables.set(pluginId, { en: table('en'), de: table('de') });
   }
 
   /** A plugin message in `language`, falling back to English and then to the key itself. */
