@@ -194,7 +194,8 @@ export class Registry {
    * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
    * section becomes unavailable with a warning instead of failing the invocation, and so does every plugin that
    * requires its services; a plugin that requires a service of a disabled core plugin (`backlog` without `bases`)
-   * becomes unavailable without a warning, since `plugins.disabled` asked for it. Discovery and recovery commands
+   * becomes unavailable without a warning, since `plugins.disabled` asked for it, and so does one that requires a
+   * service of a missing user plugin, which warns on its own. Discovery and recovery commands
    * keep working; only the unavailable plugins' commands and generators fail with PLUGIN_UNAVAILABLE. Sections of
    * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
    * ids), are kept unchanged with a warning.
@@ -233,7 +234,7 @@ export class Registry {
     const reason = unavailable?.reason ?? (this.disabled.some(manifest => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id}.`);
     throw forgeError('PLUGIN_UNAVAILABLE', `Command ${command} is unavailable because it needs service ${id} of plugin ${pluginId}: ${reason}`, { command, plugin: pluginId, service: id, reason, issues: unavailable?.issues ?? [] });
   }
-  /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
+  /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */
   private cascadeUnavailable(): void {
     const providers = serviceProviders(this.plugins);
     // Service ids start with their provider's plugin id (`bases.query`), which names a disabled provider.
@@ -241,8 +242,11 @@ export class Registry {
       const provider = providers.get(service)?.manifest.id;
       const unavailable = provider === undefined ? undefined : this.unavailable.get(provider);
       if (unavailable) return { reason: `Requires service ${service}; its provider ${provider} is unavailable.`, issues: unavailable.issues };
-      const disabled = provider === undefined ? this.disabled.find(manifest => service.startsWith(`${manifest.id}.`)) : undefined;
-      return disabled && { reason: `Requires service ${service}; its provider ${disabled.id} is disabled.`, issues: [] };
+      if (provider !== undefined) return undefined;
+      const disabled = this.disabled.find(manifest => service.startsWith(`${manifest.id}.`));
+      if (disabled) return { reason: `Requires service ${service}; its provider ${disabled.id} is disabled.`, issues: [] };
+      const missing = [...this.missing.keys()].find(id => service.startsWith(`${id}.`));
+      return missing === undefined ? undefined : { reason: `Requires service ${service}; its provider ${missing} is missing.`, issues: [] };
     };
     for (let changed = true; changed;) {
       changed = false;

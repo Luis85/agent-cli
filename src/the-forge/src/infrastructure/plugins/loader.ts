@@ -85,3 +85,15 @@ export async function loadEnabledPlugins(directory: string, ids: readonly string
     registry.register(Object.assign(instance, { manifest }) as unknown as Plugin, events);
   }
 }
+
+/**
+ * With --no-plugins no user plugin loads, yet an enabled id without a manifest is still recorded as missing: that is
+ * a fact of the configuration, not of loading. Any other manifest problem surfaces only when the plugins load.
+ */
+export async function recordMissingPlugins(directory: string, ids: readonly string[], files: NodeFiles, registry: Registry, events: EventBus): Promise<void> {
+  for (const id of ids.filter(entry => /^[a-z][a-z0-9-]*$/.test(entry))) {
+    const path = `${directory}/${id}/manifest.json`;
+    try { await files.stat(path); }
+    catch (error) { if (error instanceof AppError && error.code === 'NOT_FOUND') registry.recordMissing(id, path, events); }
+  }
+}

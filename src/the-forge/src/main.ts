@@ -21,7 +21,7 @@ import { NodeFiles, stampedFiles, type RecoveredLockReport } from './infrastruct
 import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
-import { installedPlugins, loadEnabledPlugins } from './infrastructure/plugins/loader.ts';
+import { installedPlugins, loadEnabledPlugins, recordMissingPlugins } from './infrastructure/plugins/loader.ts';
 import { registerCorePlugins, registrySkills } from './application/plugins/core-plugins.ts';
 import { commandOptions, ensureKnownAction, hasActionOptions, optionTypes } from './application/plugins/command-metadata.ts';
 import { globalOptions, value } from './application/plugins/command-input.ts';
@@ -124,6 +124,7 @@ async function run(): Promise<void> {
         locks: root => nodeLockFiles(root, recovered), http: new FetchHttpClient(), environment: name => process.env[name],
       }, config.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
+      else await recordMissingPlugins('bin/plugins', config.plugins.enabled, files, registry, events);
       config.plugins.settings = await registry.configure(config.plugins.settings, async () => (await services.installedPlugins()).map(entry => entry.manifest.id), message => events.warn(message));
       await registry.publishRegistered(events);
       const id = bootstrap.args[0] ?? 'help';

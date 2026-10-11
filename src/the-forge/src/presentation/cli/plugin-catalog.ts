@@ -5,10 +5,12 @@ import type { InstalledPlugin } from '../../application/plugins/core-plugins.ts'
  * The `plugins` catalog: bundled core plugins first, then user plugins, each with `state`, `reason` and its
  * contributions. `state` is one of:
  * - `enabled`: registered and runnable; `reason` is null.
- * - `unavailable`: registered, but its settings section is invalid or a service it requires has a disabled or
- *   unavailable provider; it lists its contributions, and they fail with PLUGIN_UNAVAILABLE.
+ * - `unavailable`: registered, but its settings section is invalid or a service it requires has a disabled, missing
+ *   or unavailable provider; it lists its contributions, and they fail with PLUGIN_UNAVAILABLE.
  * - `disabled`: a core plugin in `plugins.disabled`, or an installed user plugin that `plugins.enabled` omits.
- * - `skipped`: an enabled user plugin that `--no-plugins` left unloaded.
+ * - `skipped`: an installed, enabled user plugin that `--no-plugins` left unloaded.
+ * - `missing`: a user plugin that `plugins.enabled` names without a manifest in bin/plugins, with or without
+ *   `--no-plugins`; it lists only `id`, `core`, `state`, `reason` and `contributions`.
  * - `rejected`: an installed user plugin whose id a bundled core plugin owns, enabled or disabled; it never loads
  *   and is listed separately from the core entry.
  * Every state but `enabled` carries a `reason` sentence. Plugins whose code never ran list `contributions: null`.
