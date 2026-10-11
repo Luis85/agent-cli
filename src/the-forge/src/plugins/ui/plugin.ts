@@ -3,7 +3,7 @@ import type { PluginContext } from '../../application/plugins/registry.ts';
 import type { UiRenderer } from './application/components/library.ts';
 import { UiLibrary } from './application/components/library.ts';
 import { InteractionLibrary } from './application/interactions/library.ts';
-import { uiSettings, uiSettingsIssues, uiSettingsSchema } from './application/settings.ts';
+import { uiSettings, uiPathSettings, uiSettingsSchema } from './application/settings.ts';
 import { MarkdownUiDefinitions } from './infrastructure/components/definitions.ts';
 import { standardUiCatalog } from './infrastructure/components/catalog.ts';
 import { componentArtifact, renderUiComponents } from './infrastructure/components/renderers.ts';
@@ -46,7 +46,7 @@ export const uiPlugin: CorePlugin = {
     commands: [componentsCommand(services), interactionsCommand(services)],
     generators: uiGenerators(services),
     settings: uiSettingsSchema,
-    validateSettings: uiSettingsIssues,
+    pathSettings: uiPathSettings,
     strings: { de },
   }),
 };

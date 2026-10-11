@@ -1,5 +1,4 @@
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
-import { relativePathIssues, relativePathSetting } from '../../../application/plugins/plugin-settings.ts';
 
 /**
  * `plugins.settings.data-sources`: the workspace-relative definition library and its import and export folders, and
@@ -17,18 +16,15 @@ const descriptions: Record<keyof DataSourceSettings, string> = {
   output: 'Generated adapter folder, relative to the output project (or the workspace without one).',
   fixtures: 'Generated test-data folder, relative to the output project (or the workspace without one).',
 };
-const paths = Object.keys(descriptions) as Array<keyof DataSourceSettings>;
+/** Every setting is a contained relative folder the host normalizes (`pathSettings`). */
+export const dataSourcePathSettings = Object.keys(descriptions) as Array<keyof DataSourceSettings>;
 
 export const dataSourceSettingsSchema: JsonSchema = {
   type: 'object', additionalProperties: false,
-  properties: Object.fromEntries(paths.map(key => [key, { type: 'string', minLength: 1, default: defaults[key], description: descriptions[key] }])),
+  properties: Object.fromEntries(dataSourcePathSettings.map(key => [key, { type: 'string', minLength: 1, default: defaults[key], description: descriptions[key] }])),
 };
 
-/** Every folder setting must be a contained workspace-relative path. */
-export const dataSourceSettingsIssues = (settings: Readonly<Record<string, unknown>>) => relativePathIssues('data-sources', settings, paths);
-
-/** The effective settings: the validated section with defaults, and folders without trailing slashes. */
+/** The effective settings: the host's validated and normalized section, or the defaults without one. */
 export function dataSourceSettings(section: Readonly<Record<string, unknown>> | null): DataSourceSettings {
-  const value = { ...defaults, ...section } as Record<string, unknown>;
-  return Object.fromEntries(paths.map(key => [key, relativePathSetting(value[key])])) as unknown as DataSourceSettings;
+  return { ...defaults, ...section } as DataSourceSettings;
 }

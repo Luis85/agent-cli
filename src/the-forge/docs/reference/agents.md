@@ -22,7 +22,7 @@ A `<file>` argument is a file name in the definitions folder (`team.yaml`), or, 
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `plugins.settings.agents.directory` | `agents` | Scope-relative folder of definition files |
+| `plugins.settings.agents.directory` | `agents` | Scope-relative folder of definition files; a trailing slash is dropped, and an absolute or traversing folder makes the plugin unavailable with a warning |
 | `plugins.settings.agents.defaultModel` | `anthropic/claude-sonnet-5` | Model of `agents create` without `--model`, and of imported agents whose Claude model cannot be mapped |
 
 ### Validation

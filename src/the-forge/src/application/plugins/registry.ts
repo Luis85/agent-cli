@@ -77,6 +77,12 @@ export interface PluginContributions {
    * returned issue `<path>: <problem>` makes the section invalid like a schema violation. Runs without I/O.
    */
   validateSettings?(settings: Readonly<Record<string, unknown>>): readonly string[];
+  /**
+   * Top-level string settings that hold folders relative to the workspace or the output project. The host drops
+   * their trailing slashes before `validateSettings` and rejects absolute, empty or traversing paths, so `config`,
+   * the settings revision and `context.settings` all show the one effective value.
+   */
+  pathSettings?: readonly string[];
   strings?: PluginStrings;
   errors?: PluginErrorDefinition[];
   onload?(context: PluginContext): void | Promise<void>;
@@ -150,7 +156,7 @@ export class Registry {
     this.catalog.ensureRegistrable(pluginId, plugin.errors, prefix);
     events.defineAll(plugin.events ?? []);
     this.catalog.add(pluginId, plugin.strings, plugin.errors, prefix);
-    if (plugin.settings) this.settings.declare(pluginId, plugin.settings, plugin.validateSettings?.bind(plugin));
+    if (plugin.settings) this.settings.declare(pluginId, plugin.settings, { paths: plugin.pathSettings, check: plugin.validateSettings?.bind(plugin) });
     for (const command of plugin.commands ?? []) this.commands.set(command.id, this.ownedCommand(plugin, command, events));
     for (const generator of plugin.generators ?? []) this.generators.set(generator.id, this.ownedGenerator(plugin, generator, events));
     for (const skill of plugin.skills ?? []) this.skills.set(skill.id, skill);
