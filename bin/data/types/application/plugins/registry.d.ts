@@ -52,6 +52,7 @@ export interface GeneratorRequest {
 /**
  * `make <id> <Name>`. A `generate` generator returns a write plan the host previews or writes (with `review`, the
  * host also offers --plan, --plan-out, --check and --revisions-from); a `run` generator returns its own result.
+ * `idempotent` defaults to false for both: a plan whose `expectedRevision` is the current revision applies again.
  */
 export interface Generator extends CommandMode {
     id: string;
@@ -171,7 +172,8 @@ export declare class Registry {
      * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
      * section becomes unavailable with a warning instead of failing the invocation, and so does every plugin that
      * requires its services; a plugin that requires a service of a disabled core plugin (`backlog` without `bases`)
-     * becomes unavailable without a warning, since `plugins.disabled` asked for it. Discovery and recovery commands
+     * becomes unavailable without a warning, since `plugins.disabled` asked for it, and so does one that requires a
+     * service of a missing user plugin, which warns on its own. Discovery and recovery commands
      * keep working; only the unavailable plugins' commands and generators fail with PLUGIN_UNAVAILABLE. Sections of
      * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
      * ids), are kept unchanged with a warning.
@@ -187,7 +189,7 @@ export declare class Registry {
      * `details` `{command, plugin, service, reason, issues}`. The provider is the plugin the service id names.
      */
     requireService<T>(id: string, command: string): T;
-    /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
+    /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */
     private cascadeUnavailable;
     /**
      * The context a plugin's hooks, commands and generators run with. Unavailable plugins provide no services, so an

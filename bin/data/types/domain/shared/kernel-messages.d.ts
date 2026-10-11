@@ -11,6 +11,7 @@ export declare const kernelMessages: {
     readonly PLUGIN_SETTINGS_INVALID: "plugins.settings.{plugin} is invalid: {issues}.";
     readonly PLUGIN_PROVIDER_UNAVAILABLE: "Requires service {service}; its provider {provider} is unavailable.";
     readonly PLUGIN_PROVIDER_DISABLED: "Requires service {service}; its provider {provider} is disabled.";
+    readonly PLUGIN_PROVIDER_MISSING: "Requires service {service}; its provider {provider} is missing.";
     readonly PLUGIN_MISSING: "plugins.enabled names {plugin}, but {path} does not exist; install the plugin there, or remove it from plugins.enabled.";
     readonly PLUGIN_UNAVAILABLE: "Plugin {plugin} is unavailable in this invocation: {reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.";
     readonly SETTINGS_UNDECLARED: "plugins.settings has sections for plugins that declare no settings: {plugins}; they are ignored.";

@@ -27,12 +27,14 @@ export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
 /**
  * `schema` describes the JSON document a string option or argument holds or names, such as `apply`'s plan; `help`
- * and `schema` publish it with the option or argument.
+ * and `schema` publish it with the option or argument. `list` makes a string option with an `enum` a comma-separated
+ * list of its values (`read --parts body`); its input schema is a `pattern` instead of the `enum`.
  */
 export interface CommandOption {
     type: 'string' | 'boolean';
     description: string;
     enum?: readonly string[];
+    list?: boolean;
     default?: string | boolean;
     required?: boolean;
     schema?: JsonSchema;

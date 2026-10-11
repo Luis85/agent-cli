@@ -59,7 +59,7 @@ const errorCatalog = {
   UNKNOWN_OPTION: entry("input", "The option is not accepted by this command.", "Run help <command> to list its options."),
   MISSING_ARGUMENT: entry("input", "A required argument or option value is missing.", argumentsHint$1),
   INVALID_ARGUMENT: entry("input", "The arguments or option values are invalid for this command.", argumentsHint$1),
-  INVALID_OPTION_VALUE: entry("input", "The option value is not one of the values the command declares.", "Use one of error.details.allowed; help <command> lists each option's values."),
+  INVALID_OPTION_VALUE: entry("input", "The option value, or an item of a comma-separated list option, is not one of the values the command declares.", "Use one of error.details.allowed, or for a list option several of them separated by commas; help <command> lists each option's values."),
   DUPLICATE_OPTION: entry("input", "An option was repeated or combined with its negation.", "Pass each option once."),
   INVALID_INPUT: entry("input", "The input options are invalid or contradictory.", "Use exactly one input source and the option combination named in the message."),
   INPUT_REQUIRED: entry("input", "--stdin was requested without piped input.", "Pipe the content into the command, or use --content or --from instead."),
@@ -152,7 +152,7 @@ const errorCatalog = {
   DUPLICATE_PLUGIN: entry("input", "The plugin is registered twice.", "Enable each plugin once."),
   PLUGIN_NAMESPACE: entry("input", "A plugin id or contribution is outside its namespace.", "Prefix user plugin command, generator, skill and event ids, and the service ids of every plugin, with the plugin id and a dot and error codes with its id in UPPER_SNAKE_CASE; do not use a host event namespace (command, operation, vault, metadataCache, workspace, plugin) as the plugin id or claim core: true outside the bundle, and do not declare the options make owns (out, plan, plan-out, check, revisions-from) on a generator."),
   PLUGIN_SERVICE_MISSING: entry("input", "A plugin needs a required or optional service that no enabled, available plugin provides, or uses one it did not declare.", "Enable the plugin that provides the service named in error.details.service and make it available (plugins lists providers and states), or declare the service in the plugin's requires or optional."),
-  PLUGIN_UNAVAILABLE: entry("input", "The command or generator belongs to, or needs a service of, a plugin that is disabled or unavailable.", "error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, or enable the disabled provider it names (remove it from plugins.disabled), then rerun. Run plugins to see each plugin's state and reason."),
+  PLUGIN_UNAVAILABLE: entry("input", "The command or generator belongs to, or needs a service of, a plugin that is disabled, missing or unavailable.", "error.details.reason says why: fix the plugins.settings problems listed in error.details.issues in bin/config.json, enable the disabled provider it names (remove it from plugins.disabled), or install the missing provider in bin/plugins, then rerun. Run plugins to see each plugin's state and reason."),
   PLUGIN_SERVICE_CYCLE: entry("input", "Plugin service requirements form a cycle.", "Break the cycle named in error.details.plugins so that one plugin no longer requires a service of another."),
   PLUGIN_LIFECYCLE: entry("input", "A plugin used the host outside its lifecycle.", "Register contributions before activation and stop using the host after disposal."),
   DUPLICATE_OR_INVALID_ID: entry("input", "A contribution id is invalid or already registered.", "Use a unique lowercase dotted id."),
@@ -272,6 +272,7 @@ const kernelMessages = {
   PLUGIN_SETTINGS_INVALID: "plugins.settings.{plugin} is invalid: {issues}.",
   PLUGIN_PROVIDER_UNAVAILABLE: "Requires service {service}; its provider {provider} is unavailable.",
   PLUGIN_PROVIDER_DISABLED: "Requires service {service}; its provider {provider} is disabled.",
+  PLUGIN_PROVIDER_MISSING: "Requires service {service}; its provider {provider} is missing.",
   PLUGIN_MISSING: "plugins.enabled names {plugin}, but {path} does not exist; install the plugin there, or remove it from plugins.enabled.",
   // Configuration and setup warnings.
   PLUGIN_UNAVAILABLE: "Plugin {plugin} is unavailable in this invocation: {reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.",
@@ -687,7 +688,7 @@ class ActivationTracker {
 }
 const eventOutputLevels = ["none", "changes", "all"];
 function eventOutput(value2) {
-  ensure(eventOutputLevels.includes(value2), "INVALID_ARGUMENT", `--events must be one of: ${eventOutputLevels.join(", ")}.`);
+  ensure(eventOutputLevels.includes(value2), "INVALID_OPTION_VALUE", `--events must be one of: ${eventOutputLevels.join(", ")}.`, { option: "events", value: value2, allowed: [...eventOutputLevels] });
   return value2;
 }
 function isChangeRecord(record2) {
@@ -1300,11 +1301,16 @@ function documentContent(schema2) {
   const { $schema: _dialect, ...document2 } = schema2;
   return { contentMediaType: "application/json", contentSchema: document2 };
 }
+function listPattern(values2) {
+  const value2 = `(?:${values2.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`;
+  return `^${value2}(?:,${value2})*$`;
+}
 function optionSchema$1(schema2) {
+  const values2 = schema2.enum === void 0 ? {} : schema2.list ? { pattern: listPattern(schema2.enum) } : { enum: [...schema2.enum] };
   return {
     type: schema2.type,
     description: schema2.description,
-    ...schema2.enum ? { enum: [...schema2.enum] } : {},
+    ...values2,
     ...schema2.default === void 0 ? {} : { default: schema2.default },
     ...documentContent(schema2.schema)
   };
@@ -1407,6 +1413,7 @@ function validateOptions(options2, shared = {}) {
     ensure(flag$1.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
     ensure(isRecord$1(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$k(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
+    ensure(schema2.list === void 0 || typeof schema2.list === "boolean" && (!schema2.list || schema2.type === "string" && schema2.enum !== void 0 && schema2.enum.every((item) => item.length > 0 && !item.includes(","))), "INVALID_PLUGIN", `Command option ${key} list must be a boolean, and a list option needs an enum of values without commas.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
     ensure(schema2.required === void 0 || typeof schema2.required === "boolean", "INVALID_PLUGIN", `Command option ${key} required must be a boolean.`);
     ensure(documentSchema(schema2.schema) && (schema2.schema === void 0 || schema2.type === "string"), "INVALID_PLUGIN", `Command option ${key} schema must be a supported JSON Schema on a string option.`);
@@ -1763,20 +1770,20 @@ class PluginSettings {
    * normalized here, the one place every consumer reads from: `config`, the settings revision and `context.settings`.
    */
   configure(sections2, loaded) {
-    const invalid = /* @__PURE__ */ new Map();
+    const invalid2 = /* @__PURE__ */ new Map();
     const effective = { ...sections2 };
     const undeclared = Object.keys(sections2).filter((pluginId) => loaded.has(pluginId) && !this.schemas.has(pluginId)).sort();
     for (const [pluginId, schema2] of this.schemas) {
       const result = this.complete(pluginId, schema2, Object.hasOwn(sections2, pluginId) ? sections2[pluginId] : {});
       if (result.value === void 0) {
-        invalid.set(pluginId, result.issues);
+        invalid2.set(pluginId, result.issues);
         continue;
       }
       this.values.set(pluginId, result.value);
       this.frozen.set(pluginId, frozenCopy(result.value));
       effective[pluginId] = result.value;
     }
-    return { effective: Object.fromEntries(Object.keys(effective).sort().map((id2) => [id2, effective[id2]])), invalid, undeclared };
+    return { effective: Object.fromEntries(Object.keys(effective).sort().map((id2) => [id2, effective[id2]])), invalid: invalid2, undeclared };
   }
   /** One section through the schema (filling defaults), path normalization and the plugin's own check. */
   complete(pluginId, schema2, section2) {
@@ -1997,7 +2004,8 @@ class Registry {
    * Validates `plugins.settings` after registration and returns the effective sections. A plugin with an invalid
    * section becomes unavailable with a warning instead of failing the invocation, and so does every plugin that
    * requires its services; a plugin that requires a service of a disabled core plugin (`backlog` without `bases`)
-   * becomes unavailable without a warning, since `plugins.disabled` asked for it. Discovery and recovery commands
+   * becomes unavailable without a warning, since `plugins.disabled` asked for it, and so does one that requires a
+   * service of a missing user plugin, which warns on its own. Discovery and recovery commands
    * keep working; only the unavailable plugins' commands and generators fail with PLUGIN_UNAVAILABLE. Sections of
    * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
    * ids), are kept unchanged with a warning.
@@ -2036,15 +2044,18 @@ class Registry {
     const reason = unavailable ? renderKernelMessage(unavailable.reason) : this.disabled.some((manifest) => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id2}.`;
     throw forgeError("PLUGIN_UNAVAILABLE", `Command ${command2} is unavailable because it needs service ${id2} of plugin ${pluginId}: ${reason}`, { command: command2, plugin: pluginId, service: id2, reason, issues: unavailable?.issues ?? [] });
   }
-  /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
+  /** Marks every plugin unavailable whose required service has a disabled, missing or unavailable provider, transitively. */
   cascadeUnavailable() {
     const providers = serviceProviders(this.plugins);
     const blocked = (service) => {
       const provider = providers.get(service)?.manifest.id;
       const unavailable = provider === void 0 ? void 0 : this.unavailable.get(provider);
       if (unavailable) return { reason: kernelMessage("PLUGIN_PROVIDER_UNAVAILABLE", { service, provider }), issues: unavailable.issues };
-      const disabled = provider === void 0 ? this.disabled.find((manifest) => service.startsWith(`${manifest.id}.`)) : void 0;
-      return disabled && { reason: kernelMessage("PLUGIN_PROVIDER_DISABLED", { service, provider: disabled.id }), issues: [] };
+      if (provider !== void 0) return void 0;
+      const disabled = this.disabled.find((manifest) => service.startsWith(`${manifest.id}.`));
+      if (disabled) return { reason: kernelMessage("PLUGIN_PROVIDER_DISABLED", { service, provider: disabled.id }), issues: [] };
+      const missing2 = [...this.missing.keys()].find((id2) => service.startsWith(`${id2}.`));
+      return missing2 === void 0 ? void 0 : { reason: kernelMessage("PLUGIN_PROVIDER_MISSING", { service, provider: missing2 }), issues: [] };
     };
     for (let changed = true; changed; ) {
       changed = false;
@@ -11259,6 +11270,16 @@ async function loadEnabledPlugins(directory, ids, files, registry2, events2) {
     registry2.register(Object.assign(instance, { manifest }), events2);
   }
 }
+async function recordMissingPlugins(directory, ids, files, registry2, events2) {
+  for (const id2 of ids.filter((entry2) => /^[a-z][a-z0-9-]*$/.test(entry2))) {
+    const path2 = `${directory}/${id2}/manifest.json`;
+    try {
+      await files.stat(path2);
+    } catch (error2) {
+      if (error2 instanceof AppError && error2.code === "NOT_FOUND") registry2.recordMissing(id2, path2, events2);
+    }
+  }
+}
 function mergeStrings(created, extra) {
   if (!extra) return created;
   const merged = { ...created };
@@ -20146,6 +20167,7 @@ const agentMessages = {
   broadPermission: "The rule {rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.",
   grantsPermissionBroad: ".claude/settings.json permissions.{list} gets the rule {rule} (broad, allowed by --allow-broad-permissions).",
   grantsPermission: ".claude/settings.json permissions.{list} gets the rule {rule}.",
+  revokesPermission: ".claude/settings.json permissions.{list} loses the rule {rule}, which Forge wrote and no definition grants any more.",
   // Agents (claude-agent).
   envTemplateLiteral: "{expression} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.",
   templateLiteral: "{expression} is kept literally; Claude Code cannot evaluate docker-agent template expressions.",
@@ -20332,9 +20354,9 @@ class AgentDefinitions {
       const loaded = await this.load(path2);
       return { path: path2, revision: loaded.revision, valid: !hasErrors(loaded.diagnostics), diagnostics: loaded.diagnostics };
     }));
-    const invalid = files.filter((entry2) => !entry2.valid);
-    if (invalid.length > 0) {
-      throw agentError("INVALID_AGENT_DEFINITION", `${invalid.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item) => item.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid });
+    const invalid2 = files.filter((entry2) => !entry2.valid);
+    if (invalid2.length > 0) {
+      throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((entry2) => `${entry2.path} (${entry2.diagnostics.filter((item) => item.severity === "error").length} errors)`).join(", ")} failed validation; see details.files[].diagnostics.`, { files: invalid2 });
     }
     return { directory: this.directory, valid: true, files };
   }
@@ -21493,6 +21515,50 @@ function reviewedRules(rules2, allowBroad, diagnostics2) {
     return true;
   });
 }
+const permissionLists = ["allow", "ask", "deny"];
+const originKey = (origin) => `${origin.file}\0${origin.agent ?? ""}`;
+function origins(...lists2) {
+  const unique = /* @__PURE__ */ new Map();
+  for (const origin of lists2.flat()) unique.set(originKey(origin), origin);
+  return [...unique.entries()].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, origin]) => origin);
+}
+function covers(coverage, origin) {
+  return (coverage.files === null || coverage.files.includes(origin.file)) && (coverage.agent === void 0 || origin.agent === coverage.agent);
+}
+const nonEmpty$1 = (rules2) => Object.fromEntries(Object.entries(rules2).filter(([, entries2]) => entries2.length > 0));
+const invalid = (path2, detail) => forgeError("INVALID_CLAUDE_SETTINGS", `${path2} ${detail}`);
+const originOf = (path2, value2) => {
+  if (!isRecord$1(value2) || typeof value2.file !== "string" || value2.agent !== void 0 && typeof value2.agent !== "string") throw invalid(path2, "origins must be {file, agent?} objects.");
+  return { file: value2.file, ...value2.agent === void 0 ? {} : { agent: value2.agent } };
+};
+function recordedRules(path2, value2) {
+  if (value2 === void 0) return {};
+  if (!isRecord$1(value2)) throw invalid(path2, "permissions must be an object.");
+  const rules2 = {};
+  for (const list2 of permissionLists) {
+    const entries2 = value2[list2];
+    if (entries2 === void 0) continue;
+    if (!Array.isArray(entries2)) throw invalid(path2, `permissions.${list2} must be an array of {rule, origins}.`);
+    rules2[list2] = entries2.map((entry2) => {
+      if (!isRecord$1(entry2) || typeof entry2.rule !== "string" || !Array.isArray(entry2.origins) || entry2.origins.length === 0) throw invalid(path2, `permissions.${list2} must be an array of {rule, origins}.`);
+      return { rule: entry2.rule, origins: origins(entry2.origins.map((origin) => originOf(`${path2} permissions.${list2}`, origin))) };
+    });
+  }
+  return nonEmpty$1(rules2);
+}
+function reconcileRules(list2, before, recorded, granted, coverage) {
+  const remaining = new Map(recorded.map((entry2) => [entry2.rule, entry2.origins.filter((origin) => !covers(coverage, origin))]));
+  const grants = new Map(granted.map((entry2) => [entry2.rule, entry2.origins]));
+  const revoked = recorded.filter((entry2) => remaining.get(entry2.rule).length === 0 && !grants.has(entry2.rule) && before.includes(entry2.rule)).map((entry2) => ({ list: list2, rule: entry2.rule, origins: entry2.origins }));
+  const kept = before.filter((rule2) => !revoked.some((entry2) => entry2.rule === rule2));
+  const rules2 = [...kept, ...granted.map((entry2) => entry2.rule).filter((rule2) => !kept.includes(rule2))];
+  const owned = rules2.flatMap((rule2) => {
+    const left = remaining.get(rule2), given = grants.get(rule2);
+    if (given !== void 0 && (left !== void 0 || !before.includes(rule2))) return [{ rule: rule2, origins: origins(left ?? [], given) }];
+    return left !== void 0 && left.length > 0 ? [{ rule: rule2, origins: left }] : [];
+  });
+  return { rules: rules2, owned, revoked };
+}
 const frontmatterOrder = ["name", "description", "tools", "disallowedTools", "model", "effort", "maxTurns", "skills", "memory", "mcpServers", "hooks", "x-forge-source"];
 const ordered$1 = (metadata2) => Object.fromEntries(frontmatterOrder.filter((key) => metadata2[key] !== void 0).map((key) => [key, metadata2[key]]));
 const unsupportedTopLevel = ["metadata", "runtime", "budget", "budgets", "flavors", "evaluators", "providers"];
@@ -21529,7 +21595,11 @@ function generateSource(source2, names2, options2) {
 function settingsRules(source2, drafts, options2, diagnostics2) {
   const top = topLevelRules(source2.config, serverNames(drafts), options2.mcp);
   diagnostics2.push(...top.diagnostics);
-  return reviewedRules([...drafts.flatMap((draft) => draft.permissions), ...top.rules], options2.allowBroadPermissions === true, diagnostics2);
+  const rules2 = [
+    ...drafts.flatMap((draft) => draft.permissions.map((rule2) => ({ ...rule2, origin: { file: source2.path, agent: draft.agent } }))),
+    ...top.rules.map((rule2) => ({ ...rule2, origin: { file: source2.path } }))
+  ];
+  return reviewedRules(rules2, options2.allowBroadPermissions === true, diagnostics2);
 }
 function uniqueSkills(skills2, diagnostics2) {
   const byName2 = /* @__PURE__ */ new Map();
@@ -21571,7 +21641,13 @@ function generateClaude(sources, options2) {
       output2.agents.push({ path: `.claude/agents/${draft.name}.md`, name: draft.name, agent: draft.agent, source: source2.path, metadata: metadata2, body: draft.prompt });
     }
     skills2.push(...generated.skills.map((skill) => ({ ...skill, source: source2 })));
-    if (options2.settings) for (const rule2 of settingsRules(source2, generated.drafts, options2, generated.diagnostics)) permissions[rule2.list].push(rule2.rule);
+    if (options2.settings) {
+      for (const { list: list2, rule: rule2, origin } of settingsRules(source2, generated.drafts, options2, generated.diagnostics)) {
+        const granted = permissions[list2].find((entry2) => entry2.rule === rule2);
+        if (granted) granted.origins = origins(granted.origins, [origin]);
+        else permissions[list2].push({ rule: rule2, origins: [origin] });
+      }
+    }
     diagnostics2.push(...generated.diagnostics.map((entry2) => ({ ...entry2, path: source2.path })));
   }
   output2.skills = uniqueSkills(skills2, diagnostics2);
@@ -21583,7 +21659,7 @@ function generateClaude(sources, options2) {
     if (agent !== void 0 && foreignAgent !== void 0 && foreignAgent !== agent) {
       diagnostics2.push({ ...diagnostic("error", "settings-agent-conflict", pointer("agents", main), say("settingsAgentConflict", { agent: foreignAgent, claude: agent })), path: sources[0].path });
     }
-    output2.settings = { permissions: Object.fromEntries(Object.entries(permissions).map(([list2, rules2]) => [list2, [...new Set(rules2)]])), ...agent ? { agent } : {} };
+    output2.settings = { permissions, ...agent ? { agent } : {} };
   }
   output2.diagnostics = dedupe(diagnostics2);
   return output2;
@@ -21598,7 +21674,6 @@ function dedupe(diagnostics2) {
   });
 }
 const manifestPath$1 = ".claude/forge-generated.json";
-const permissionLists = ["allow", "ask", "deny"];
 const same$2 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 function parsed(path2, text2) {
   if (text2 === void 0) return {};
@@ -21633,11 +21708,10 @@ function ruleLists(path2, value2) {
   }
   return rules2;
 }
-const nonEmpty$1 = (rules2) => Object.fromEntries(Object.entries(rules2).filter(([, entries2]) => entries2.length > 0));
 function parseManifest(text2) {
   const value2 = parsed(manifestPath$1, text2);
   const settings2 = section(manifestPath$1, value2.settings, "settings");
-  const permissions = nonEmpty$1(ruleLists(`${manifestPath$1} settings`, settings2.permissions));
+  const permissions = recordedRules(`${manifestPath$1} settings`, settings2.permissions);
   return {
     mcpServers: section(manifestPath$1, value2.mcpServers, "mcpServers"),
     settings: { ...typeof settings2.agent === "string" ? { agent: settings2.agent } : {}, ...Object.keys(permissions).length > 0 ? { permissions } : {} }
@@ -21658,26 +21732,23 @@ function mergeMcpServers(text2, servers2, manifest) {
   if (foreign.length > 0) throw conflict(`.mcp.json already defines ${foreign.join(", ")}, which Forge did not generate; rename the MCP toolsets or pass --rename-conflicts.`, { path: ".mcp.json", servers: foreign });
   return json$6({ ...current, mcpServers: { ...existing, ...servers2 } }, text2);
 }
-function mergeSettings(text2, settings2, manifest) {
+function mergeSettings(text2, settings2, manifest, coverage = { files: null }) {
   const path2 = ".claude/settings.json", current = parsed(path2, text2), permissions = section(path2, current.permissions, "permissions");
   if (settings2.agent !== void 0 && current.agent !== void 0 && current.agent !== settings2.agent && current.agent !== manifest.settings.agent) {
     throw conflict(`${path2} already sets agent to ${JSON.stringify(current.agent)}, which Forge did not generate; remove it to let Forge set ${settings2.agent}.`, { path: path2, agent: current.agent });
   }
   const existing = ruleLists(path2, permissions), previous2 = manifest.settings.permissions ?? {};
-  const merged = { ...permissions }, owned = {};
-  let removed = false;
+  const merged = { ...permissions }, owned = {}, revoked = [];
   for (const list2 of permissionLists) {
-    const granted = settings2.permissions[list2], before = existing[list2] ?? [], mine = previous2[list2] ?? [];
-    const kept = before.filter((rule2) => granted.includes(rule2) || !mine.includes(rule2));
-    removed ||= kept.length < before.length;
-    const rules2 = [...kept, ...granted.filter((rule2) => !kept.includes(rule2))];
-    owned[list2] = granted.filter((rule2) => mine.includes(rule2) || !before.includes(rule2));
-    if (rules2.length > 0) merged[list2] = rules2;
+    const result = reconcileRules(list2, existing[list2] ?? [], previous2[list2] ?? [], settings2.permissions[list2], coverage);
+    owned[list2] = result.owned;
+    revoked.push(...result.revoked);
+    if (result.rules.length > 0) merged[list2] = result.rules;
     else delete merged[list2];
   }
   const next = { ...current, permissions: merged, ...settings2.agent === void 0 ? {} : { agent: settings2.agent } };
-  if (Object.keys(merged).length === 0 && (current.permissions === void 0 || removed)) delete next.permissions;
-  return { text: json$6(next, text2), owned: nonEmpty$1(owned) };
+  if (Object.keys(merged).length === 0 && (current.permissions === void 0 || revoked.length > 0)) delete next.permissions;
+  return { text: json$6(next, text2), owned: nonEmpty$1(owned), revoked };
 }
 function nextManifest(previous2, text2, files, written) {
   const current = section(".mcp.json", parsed(".mcp.json", files.mcp).mcpServers, "mcpServers");
@@ -21685,9 +21756,9 @@ function nextManifest(previous2, text2, files, written) {
   const settings2 = parsed(".claude/settings.json", files.settings);
   const agent = written.agent ?? (settings2.agent === previous2.settings.agent ? previous2.settings.agent : void 0);
   const present2 = ruleLists(".claude/settings.json", settings2.permissions);
-  const permissions = written.permissions ?? nonEmpty$1(Object.fromEntries(Object.entries(previous2.settings.permissions ?? {}).map(([list2, rules2]) => [list2, rules2.filter((rule2) => present2[list2]?.includes(rule2))])));
+  const permissions = written.permissions ?? nonEmpty$1(Object.fromEntries(Object.entries(previous2.settings.permissions ?? {}).map(([list2, rules2]) => [list2, rules2.filter((entry2) => present2[list2]?.includes(entry2.rule))])));
   return json$6({
-    description: "Entries The Forge wrote with agents generate. Forge replaces an entry of .mcp.json or .claude/settings.json only while it still has the content recorded here, and removes a recorded permission rule once no definition grants it.",
+    description: "Entries The Forge wrote with agents generate. Forge replaces an entry of .mcp.json or .claude/settings.json only while it still has the content recorded here, and removes a recorded permission rule once none of the definitions in its origins grants it.",
     mcpServers: { ...kept, ...written.servers },
     settings: { ...agent === void 0 ? {} : { agent }, ...Object.keys(permissions).length > 0 ? { permissions } : {} }
   }, text2);
@@ -21696,6 +21767,10 @@ const mcpPath$1 = ".mcp.json", settingsPath = ".claude/settings.json";
 const conflictCodes = ["mcp-server-conflict", "settings-agent-conflict"];
 const decoder$2 = new TextDecoder("utf-8", { fatal: true });
 const encode$2 = (text2) => new TextEncoder().encode(text2);
+function revocation({ list: list2, rule: rule2, origins: [origin] }) {
+  const at = origin.agent === void 0 ? pointer("permissions", list2) : pointer("agents", origin.agent);
+  return { ...diagnostic("warning", "revokes-permission", at, say("revokesPermission", { list: list2, rule: rule2 })), path: origin.file };
+}
 class AgentGeneration {
   constructor(workspace2, definitions2, ports2, events2) {
     this.workspace = workspace2;
@@ -21739,7 +21814,9 @@ class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes = markdown.map((file) => ({ path: file.path, bytes: encode$2(this.render(file)) }));
-    if (project2) writes.push(...this.projectWrites(project2, generated));
+    const coverage = request.file === void 0 && request.agent === void 0 ? { files: null } : { files: sources.map((source2) => source2.path), ...request.agent ? { agent: request.agent } : {} };
+    const merged = project2 ? this.projectWrites(project2, generated, coverage) : { writes: [], revoked: [] };
+    writes.push(...merged.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === "plan" ? request.manifestPath : void 0);
     const generatedMarkdown = new Set(markdown.map((file) => file.path));
@@ -21751,7 +21828,7 @@ class AgentGeneration {
       skills: generated.skills.map((skill) => skill.path),
       files: outputs.map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 })),
       stale,
-      diagnostics: generated.diagnostics
+      diagnostics: [...generated.diagnostics, ...merged.revoked.map(revocation)]
     };
     if (request.mode === "check") {
       const drift = outputs.filter((output2) => output2.status !== "unchanged").map(({ path: path2, status: status2 }) => ({ path: path2, status: status2 }));
@@ -21776,24 +21853,24 @@ class AgentGeneration {
     const [mcp, settings2, manifestText] = await Promise.all([this.text(mcpPath$1), this.text(settingsPath), this.text(manifestPath$1)]);
     return { ...mcp === void 0 ? {} : { mcp }, ...settings2 === void 0 ? {} : { settings: settings2 }, ...manifestText === void 0 ? {} : { manifestText }, manifest: parseManifest(manifestText) };
   }
-  /** Merged `.mcp.json` and settings, and the manifest recording what Forge now owns in them. */
-  projectWrites(project2, generated) {
+  /** Merged `.mcp.json` and settings, the manifest recording what Forge now owns in them, and the revoked rules. */
+  projectWrites(project2, generated, coverage) {
     const servers2 = generated.mcpServers, writes = [];
     if (Object.keys(servers2).length > 0) writes.push({ path: mcpPath$1, bytes: encode$2(mergeMcpServers(project2.mcp, servers2, project2.manifest)) });
-    const settings2 = generated.settings ? mergeSettings(project2.settings, generated.settings, project2.manifest) : void 0;
+    const settings2 = generated.settings ? mergeSettings(project2.settings, generated.settings, project2.manifest, coverage) : void 0;
     if (settings2) writes.push({ path: settingsPath, bytes: encode$2(settings2.text) });
-    if (writes.length === 0) return [];
+    if (writes.length === 0) return { writes, revoked: [] };
     const written = { servers: servers2, ...generated.settings?.agent ? { agent: generated.settings.agent } : {}, ...settings2 ? { permissions: settings2.owned } : {} };
     const files = { ...project2, ...settings2 ? { settings: settings2.text } : {} };
-    return [...writes, { path: manifestPath$1, bytes: encode$2(nextManifest(project2.manifest, project2.manifestText, files, written)) }];
+    return { writes: [...writes, { path: manifestPath$1, bytes: encode$2(nextManifest(project2.manifest, project2.manifestText, files, written)) }], revoked: settings2?.revoked ?? [] };
   }
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */
   async sources(request) {
     const paths2 = request.file === void 0 ? await this.definitions.paths() : [this.definitions.resolve(request.file)];
     const loaded = await Promise.all(paths2.map((path2) => this.definitions.load(path2)));
-    const invalid = loaded.filter((file) => hasErrors(file.diagnostics));
-    if (invalid.length > 0) {
-      throw agentError("INVALID_AGENT_DEFINITION", `${invalid.map((file) => file.path).join(", ")} failed validation; run agents validate.`, { files: invalid.map(({ path: path2, diagnostics: diagnostics2 }) => ({ path: path2, diagnostics: diagnostics2 })) });
+    const invalid2 = loaded.filter((file) => hasErrors(file.diagnostics));
+    if (invalid2.length > 0) {
+      throw agentError("INVALID_AGENT_DEFINITION", `${invalid2.map((file) => file.path).join(", ")} failed validation; run agents validate.`, { files: invalid2.map(({ path: path2, diagnostics: diagnostics2 }) => ({ path: path2, diagnostics: diagnostics2 })) });
     }
     const sources = loaded.map((file) => ({ path: file.path, sourceHash: this.ports.digest(JSON.stringify([file.revision, file.instructions])), config: file.config, instructions: file.instructions }));
     if (request.agent === void 0) return sources;
@@ -22087,10 +22164,10 @@ function requireCode$1() {
   })(code$1);
   return code$1;
 }
-var scope$1 = {};
+var scope$2 = {};
 var hasRequiredScope;
 function requireScope() {
-  if (hasRequiredScope) return scope$1;
+  if (hasRequiredScope) return scope$2;
   hasRequiredScope = 1;
   (function(exports) {
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -22231,8 +22308,8 @@ function requireScope() {
       }
     }
     exports.ValueScope = ValueScope;
-  })(scope$1);
-  return scope$1;
+  })(scope$2);
+  return scope$2;
 }
 var hasRequiredCodegen;
 function requireCodegen() {
@@ -26954,8 +27031,8 @@ function requireMultipleOf() {
       const { gen, data, schemaCode, it } = cxt;
       const prec = it.opts.multipleOfPrecision;
       const res = gen.let("res");
-      const invalid = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
-      cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid}))`);
+      const invalid2 = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
+      cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid2}))`);
     }
   };
   multipleOf.default = def;
@@ -28724,7 +28801,7 @@ ${body}`;
   }
 };
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
-const content$3 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too and removed once no definition grants them; rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
+const content$3 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too, with the definitions that grant them, and removed once none of them grants the rule (a `revokes-permission` warning; a `--file` or `--agent` run never removes a rule another definition grants); rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
 const agentsSkill = { id: "forge-agents", content: content$3 };
 const germanAgentMessages = {
   toolFilterNone: "Der Werkzeugfilter {filter} wird durch keine Claude-Werkzeuge angenähert.",
@@ -28786,6 +28863,7 @@ const germanAgentMessages = {
   broadPermission: "Die Regel {rule} würde jede Verwendung ihres Werkzeugs automatisch freigeben; übergeben Sie --allow-broad-permissions, um sie in permissions.allow zu schreiben, oder grenzen Sie das docker-agent-Muster ein.",
   grantsPermissionBroad: ".claude/settings.json permissions.{list} erhält die Regel {rule} (weitreichend, durch --allow-broad-permissions erlaubt).",
   grantsPermission: ".claude/settings.json permissions.{list} erhält die Regel {rule}.",
+  revokesPermission: ".claude/settings.json permissions.{list} verliert die Regel {rule}, die Forge geschrieben hat und die keine Definition mehr gewährt.",
   envTemplateLiteral: "{expression} bleibt wörtlich erhalten; Claude Code expandiert keine docker-agent-Umgebungsausdrücke in Agenten.",
   templateLiteral: "{expression} bleibt wörtlich erhalten; Claude Code kann keine docker-agent-Vorlagenausdrücke auswerten.",
   addDate: "Claude Code fügt das aktuelle Datum selbst in seinen System-Prompt ein.",
@@ -28879,7 +28957,7 @@ const options$2 = {
   agent: option$1.string("generate: only this docker-agent agent."),
   mcp: option$1.string("generate: MCP servers start processes or reach remote services, so none are written by default; inline writes them in agent frontmatter, project merges them into the project .mcp.json.", { enum: ["none", "inline", "project"], default: "none" }),
   hooks: option$1.boolean("generate: write agent hooks, which run commands; without it hooks are reported and skipped."),
-  settings: option$1.boolean("generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic."),
+  settings: option$1.boolean("generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic and every rule it removes as revokes-permission."),
   "rename-conflicts": option$1.boolean("generate --mcp project: give a generated MCP server whose name .mcp.json already uses for a server Forge did not generate a numbered name, instead of failing with AGENT_MERGE_CONFLICT."),
   "allow-broad-permissions": option$1.boolean("generate --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors."),
   commands: option$1.boolean("generate: generate commands as .claude/skills/<name>/SKILL.md."),
@@ -29004,7 +29082,7 @@ const agentsStrings = {
       "generate: only this docker-agent agent.": "generate: nur diesen docker-agent-Agenten.",
       "generate: MCP servers start processes or reach remote services, so none are written by default; inline writes them in agent frontmatter, project merges them into the project .mcp.json.": "generate: MCP-Server starten Prozesse oder erreichen entfernte Dienste, daher werden standardmäßig keine geschrieben; inline schreibt sie ins Frontmatter des Agenten, project führt sie in die .mcp.json des Projekts zusammen.",
       "generate: write agent hooks, which run commands; without it hooks are reported and skipped.": "generate: Agenten-Hooks schreiben, die Befehle ausführen; ohne diese Option werden Hooks gemeldet und übersprungen.",
-      "generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic.": "generate: Berechtigungsregeln und den Hauptagenten in .claude/settings.json zusammenführen; jede Regel wird als Diagnose grants-permission aufgeführt.",
+      "generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic and every rule it removes as revokes-permission.": "generate: Berechtigungsregeln und den Hauptagenten in .claude/settings.json zusammenführen; jede Regel wird als Diagnose grants-permission aufgeführt und jede entfernte Regel als revokes-permission.",
       "generate --mcp project: give a generated MCP server whose name .mcp.json already uses for a server Forge did not generate a numbered name, instead of failing with AGENT_MERGE_CONFLICT.": "generate --mcp project: einem generierten MCP-Server, dessen Namen .mcp.json bereits für einen nicht von Forge generierten Server verwendet, einen nummerierten Namen geben, statt mit AGENT_MERGE_CONFLICT fehlzuschlagen.",
       "generate --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors.": "generate --settings: auch allow-Regeln schreiben, die ein ganzes Werkzeug freigeben (Bash, Bash(*), Edit, Write, WebFetch ohne Domain, jedes Werkzeug eines MCP-Servers); ohne diese Option schlagen sie als broad-permission-Fehler fehl.",
       "generate: generate commands as .claude/skills/<name>/SKILL.md.": "generate: Befehle als .claude/skills/<name>/SKILL.md generieren.",
@@ -29118,11 +29196,11 @@ function parseState(source2, connection) {
   } catch {
     json2 = null;
   }
-  const invalid = () => backlogError("BACKLOG_CONFIG_PROBLEM", `${statePath(connection)} is not a readable sync state; restore it from version control, or delete it to relink notes by their link property (a relink reports differing fields as conflicts and never overwrites either side).`, { path: statePath(connection) });
-  if (!isRecord$1(json2) || json2.version !== 1 || !isRecord$1(json2.items)) throw invalid();
+  const invalid2 = () => backlogError("BACKLOG_CONFIG_PROBLEM", `${statePath(connection)} is not a readable sync state; restore it from version control, or delete it to relink notes by their link property (a relink reports differing fields as conflicts and never overwrites either side).`, { path: statePath(connection) });
+  if (!isRecord$1(json2) || json2.version !== 1 || !isRecord$1(json2.items)) throw invalid2();
   const items2 = {};
   for (const [path2, entry2] of Object.entries(json2.items)) {
-    if (!isRecord$1(entry2) || !text$b(entry2.id) || !text$b(entry2.url) || !text$b(entry2.rev) || !isRecord$1(entry2.fields)) throw invalid();
+    if (!isRecord$1(entry2) || !text$b(entry2.id) || !text$b(entry2.url) || !text$b(entry2.rev) || !isRecord$1(entry2.fields)) throw invalid2();
     items2[path2] = { id: entry2.id, url: entry2.url, rev: entry2.rev, fields: Object.fromEntries(Object.entries(entry2.fields).filter((field2) => typeof field2[1] === "string")) };
   }
   return { version: 1, connection, items: items2 };
@@ -33992,7 +34070,8 @@ const scaffoldsPlugin = {
   strings: scaffoldsStrings,
   create: () => ({
     // Every scaffold is a new file the host writes create-only: a generator never replaces existing content.
-    generators: scaffoldGenerators.map((generator) => ({ ...generator, destructive: false })),
+    // Each plan only creates files, so the identical repeat fails with CONFLICT on the existing output.
+    generators: scaffoldGenerators.map((generator) => ({ ...generator, destructive: false, idempotent: true })),
     provides: { [projectScaffolderService]: projects },
     strings: {
       de: {
@@ -42634,7 +42713,6 @@ async function agentCommands(args, flags, context, services2) {
   const inputs = ["create", "update"].includes(action2) ? [...claudeInputOptions, "metadata", "prompt"] : [];
   claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...mutating ? ["if-match"] : [], ...action2 === "export" ? ["out", "if-match"] : []]);
   const target = await services2.target(context, flags);
-  ensure(target.scope !== "local", "INVALID_ARGUMENT", "Claude agents have project, user, or plugin scope; local applies only to settings.");
   const agents = new ClaudeAgents(target.workspace, services2.agentCodec, target.agentsDirectory);
   const settings2 = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === "plugin");
   let result;
@@ -43404,6 +43482,7 @@ function withLocalizedResults(command2) {
     }
   };
 }
+const scope$1 = (description2, scopes) => option$1.string(`Claude configuration scope (default project). ${description2}`, { enum: scopes });
 function claudeCommand(adapters) {
   return withLocalizedResults({
     id: "claude",
@@ -43417,10 +43496,10 @@ function claudeCommand(adapters) {
       capabilities: { description: "Describe supported formats, scopes and operations.", scope: "workspace", discovery: true, mutating: false },
       // Agent files and settings need --if-match once they exist, so a repeated write fails with CONFLICT. The
       // plugins, marketplaces and runtime sections run the installed CLI, whose repeats Forge cannot guarantee.
-      agents: { description: "List, inspect, create, update, remove, enable, disable or export native agents.", idempotent: true },
-      hooks: { description: "Inspect, check and edit native hook configuration.", idempotent: true },
-      plugins: { description: "Author Claude plugin assets, or run the installed CLI's plugin lifecycle." },
-      marketplaces: { description: "Add, list, remove or update plugin marketplaces through the installed CLI." },
+      agents: { description: "List, inspect, create, update, remove, enable, disable or export native agents.", idempotent: true, options: { scope: scope$1("Agent files of the project, the user or a plugin.", ["project", "user", "plugin"]) } },
+      hooks: { description: "Inspect, check and edit native hook configuration.", idempotent: true, options: { scope: scope$1("Hook settings of the project, local settings, the user or a plugin.", ["project", "local", "user", "plugin"]) } },
+      plugins: { description: "Author Claude plugin assets, or run the installed CLI's plugin lifecycle.", options: { scope: scope$1("Installed-CLI plugin commands: the native scope; managed only with plugins update.", ["project", "local", "user", "managed"]) } },
+      marketplaces: { description: "Add, list, remove or update plugin marketplaces through the installed CLI.", options: { scope: scope$1("Marketplace add and remove: the native scope.", ["project", "local", "user"]) } },
       runtime: { description: "Report, diagnose, install or update the installed Claude Code CLI." }
     },
     args: [
@@ -43430,7 +43509,6 @@ function claudeCommand(adapters) {
     errors: ["INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_HOOKS", "INVALID_CLAUDE_PLUGIN", "INVALID_CLAUDE_SETTINGS", "INVALID_CLAUDE_COMMAND", "INVALID_CLAUDE_ARGUMENT", "INVALID_CLAUDE_OPTION", "INVALID_CLAUDE_SCOPE", "INVALID_CLAUDE_INPUT", "CLAUDE_NOT_INSTALLED", "CLAUDE_COMMAND_FAILED", "CLAUDE_COMMAND_TIMEOUT", "CLAUDE_RUNTIME_FAILED", "CLAUDE_INVALID_OUTPUT", "CONFLICT"],
     options: {
       ...claudeRuntimeOptions,
-      scope: option$1.string("Claude configuration scope of the action.", { enum: ["project", "local", "user", "plugin"] }),
       directory: option$1.string("Plugin directory for plugin-scoped agents and hooks."),
       "claude-dir": option$1.string("Claude user configuration directory for user scope."),
       from: option$1.string("Read native input from a file."),
@@ -43495,7 +43573,10 @@ const claudeStrings = {
     manifest: { name: "Claude-Code-Verwaltung", description: "Native Claude-Code-Agenten, -Hooks und -Plugins verwalten und den Lebenszyklus der installierten Claude-Code-CLI ausführen." },
     descriptions: {
       ...Object.fromEntries(Object.values(claudeRuntimeOptions).map(({ description: description2 }) => [description2, retranslate(description2, passthrough, germanPassthrough)])),
-      "Claude configuration scope of the action.": "Claude-Konfigurationsbereich der Aktion.",
+      "Claude configuration scope (default project). Agent files of the project, the user or a plugin.": "Claude-Konfigurationsbereich (Standard project). Agentendateien des Projekts, des Benutzers oder eines Plugins.",
+      "Claude configuration scope (default project). Hook settings of the project, local settings, the user or a plugin.": "Claude-Konfigurationsbereich (Standard project). Hook-Einstellungen des Projekts, der lokalen Einstellungen, des Benutzers oder eines Plugins.",
+      "Claude configuration scope (default project). Installed-CLI plugin commands: the native scope; managed only with plugins update.": "Claude-Konfigurationsbereich (Standard project). Plugin-Befehle der installierten CLI: der native Bereich; managed nur mit plugins update.",
+      "Claude configuration scope (default project). Marketplace add and remove: the native scope.": "Claude-Konfigurationsbereich (Standard project). Marketplace add und remove: der native Bereich.",
       "Plugin directory for plugin-scoped agents and hooks.": "Plugin-Verzeichnis für Agenten und Hooks im Plugin-Bereich.",
       "Claude user configuration directory for user scope.": "Claude-Benutzerkonfigurationsverzeichnis für den Benutzerbereich.",
       "Read native input from a file.": "Native Eingabe aus einer Datei lesen.",
@@ -65262,8 +65343,10 @@ function ensureDeclaredValues(options2, flags) {
       if (schema2.required) throw forgeError("MISSING_ARGUMENT", `--${key} is required.`, { option: key });
       continue;
     }
-    if (schema2.enum !== void 0 && typeof given === "string" && !schema2.enum.includes(given)) {
-      throw forgeError("INVALID_OPTION_VALUE", `--${key} must be one of: ${schema2.enum.join(", ")}.`, { option: key, value: given, allowed: [...schema2.enum] });
+    if (schema2.enum === void 0 || typeof given !== "string") continue;
+    if (!(schema2.list ? given.split(",") : [given]).every((item) => schema2.enum.includes(item))) {
+      const expected = schema2.list ? "a comma-separated list of" : "one of";
+      throw forgeError("INVALID_OPTION_VALUE", `--${key} must be ${expected}: ${schema2.enum.join(", ")}.`, { option: key, value: given, allowed: [...schema2.enum] });
     }
   }
 }
@@ -65307,7 +65390,6 @@ const out = { out: option$1.string("Output directory; each generator documents i
 function generatorOptions(generator) {
   return { ...generator.fixedDirectory ? {} : out, ...generator.options, ...generator.review ? reviewOptions : {} };
 }
-const generatorIdempotent = (generator) => generator.idempotent ?? generator.run === void 0;
 function generationCommand(registry2) {
   return {
     id: "make",
@@ -65330,7 +65412,7 @@ function generationCommand(registry2) {
         discovery: false,
         mutating: generator.mutating ?? true,
         ...generator.destructive === void 0 ? {} : { destructive: generator.destructive },
-        idempotent: generatorIdempotent(generator),
+        idempotent: generator.idempotent ?? false,
         ...generator.projectOption ? { projectOption: generator.projectOption } : {},
         options: generatorOptions(generator)
       }]));
@@ -65519,6 +65601,7 @@ const germanKernelMessages = {
   PLUGIN_SETTINGS_INVALID: "plugins.settings.{plugin} ist ungültig: {issues}.",
   PLUGIN_PROVIDER_UNAVAILABLE: "Benötigt den Dienst {service}; sein Anbieter {provider} ist nicht verfügbar.",
   PLUGIN_PROVIDER_DISABLED: "Benötigt den Dienst {service}; sein Anbieter {provider} ist deaktiviert.",
+  PLUGIN_PROVIDER_MISSING: "Benötigt den Dienst {service}; sein Anbieter {provider} fehlt.",
   PLUGIN_MISSING: "plugins.enabled nennt {plugin}, aber {path} existiert nicht; installieren Sie das Plugin dort oder entfernen Sie es aus plugins.enabled.",
   PLUGIN_UNAVAILABLE: "Das Plugin {plugin} ist in diesem Aufruf nicht verfügbar: {reason} Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.",
   SETTINGS_UNDECLARED: "plugins.settings enthält Abschnitte für Plugins, die keine Einstellungen deklarieren: {plugins}; sie werden ignoriert.",
@@ -65559,7 +65642,7 @@ const germanErrors = {
   UNKNOWN_OPTION: { summary: "Dieser Befehl akzeptiert die Option nicht.", hint: "Die Optionen des Befehls zeigt help <command>." },
   MISSING_ARGUMENT: { summary: "Ein erforderliches Argument oder ein Optionswert fehlt.", hint: argumentsHint },
   INVALID_ARGUMENT: { summary: "Die Argumente oder Optionswerte sind für diesen Befehl ungültig.", hint: argumentsHint },
-  INVALID_OPTION_VALUE: { summary: "Der Optionswert gehört nicht zu den Werten, die der Befehl angibt.", hint: "Verwenden Sie einen Wert aus error.details.allowed; die Werte jeder Option zeigt help <command>." },
+  INVALID_OPTION_VALUE: { summary: "Der Optionswert oder ein Element einer kommagetrennten Listenoption gehört nicht zu den Werten, die der Befehl angibt.", hint: "Verwenden Sie einen Wert aus error.details.allowed oder bei einer Listenoption mehrere, durch Kommas getrennt; die Werte jeder Option zeigt help <command>." },
   DUPLICATE_OPTION: { summary: "Eine Option wurde wiederholt oder mit ihrer Verneinung kombiniert.", hint: "Geben Sie jede Option nur einmal an." },
   INVALID_INPUT: { summary: "Die Eingabeoptionen sind ungültig oder widersprüchlich.", hint: "Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination." },
   INPUT_REQUIRED: { summary: "--stdin wurde ohne weitergeleitete Eingabe angegeben.", hint: "Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from." },
@@ -65652,7 +65735,7 @@ const germanErrors = {
   DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
   PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs eines Benutzer-Plugins sowie den Dienst-IDs jedes Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from)." },
   PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen erforderlichen oder optionalen Dienst, den kein aktiviertes, verfügbares Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt, und machen Sie es verfügbar (plugins zeigt Anbieter und Zustände), oder deklarieren Sie den Dienst in requires oder optional des Plugins." },
-  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
+  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert, nicht installiert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json, aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) oder installieren Sie den fehlenden Anbieter in bin/plugins, und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
   PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
   PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
   DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
@@ -65918,7 +66001,7 @@ const scope = { type: "string", enum: ["workspace", "project"] };
 const optionSchema = {
   type: "object",
   required: ["type", "description"],
-  properties: { type: { type: "string", enum: ["string", "boolean"] }, description: text$2, enum: texts, default: {}, required: flag }
+  properties: { type: { type: "string", enum: ["string", "boolean"] }, description: text$2, enum: texts, list: flag, default: {}, required: flag }
 };
 const options = { type: "object", additionalProperties: optionSchema };
 const argumentSchema = {
@@ -67046,8 +67129,7 @@ const readParts = ["body"];
 function selectedParts(flags, kind2) {
   const requested = value$2(flags, "parts");
   if (requested === void 0) return /* @__PURE__ */ new Set();
-  const parts = requested.split(",").map((part) => part.trim());
-  ensure(parts.every((part) => readParts.includes(part)), "INVALID_ARGUMENT", `--parts accepts a comma-separated list of: ${readParts.join(", ")}.`);
+  const parts = requested.split(",");
   ensure(kind2 === "markdown", "INVALID_ARGUMENT", "--parts body requires a Markdown file.");
   return new Set(parts);
 }
@@ -67088,7 +67170,7 @@ function documentCommands() {
       ...reading,
       args: [pathArgument()],
       errors: ["NOT_FOUND", "INVALID_FRONTMATTER"],
-      options: { parts: option$1.string("Comma-separated optional parts of a Markdown read.", { enum: readParts }) },
+      options: { parts: option$1.string("Comma-separated optional parts of a Markdown read.", { enum: readParts, list: true }) },
       output: readOutput,
       async run(args, flags, { workspace: workspace2 }) {
         arity(args, 1);
@@ -67335,6 +67417,7 @@ async function run() {
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);
       if (!skipUserPlugins) await loadEnabledPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events2);
+      else await recordMissingPlugins("bin/plugins", config2.plugins.enabled, files, registry2, events2);
       config2.plugins.settings = await registry2.configure(config2.plugins.settings, async () => (await services2.installedPlugins()).map((entry2) => entry2.manifest.id), (message2) => events2.warn(message2));
       await registry2.publishRegistered(events2);
       const id2 = bootstrap.args[0] ?? "help";
