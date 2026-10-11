@@ -111,5 +111,6 @@ describe('dependencies, board and check', () => {
       ['field-not-held', 'm.md'], ['field-not-held', 'r.md'], ['reversed-span', 'u.md'], ['unresolved-membership', 'm.md'],
       ['rank-tie', 'b.md,c.md'], ['unranked', 'u.md'],
     ]);
+    expect(problems.find(problem => problem.code === 'unranked')?.message).toBe('1 item has no rank and sorts last; run backlog ranks seed.');
   });
 });
