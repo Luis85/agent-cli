@@ -70,6 +70,7 @@ export const agentMessages = {
   broadPermission: 'The rule {rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.',
   grantsPermissionBroad: '.claude/settings.json permissions.{list} gets the rule {rule} (broad, allowed by --allow-broad-permissions).',
   grantsPermission: '.claude/settings.json permissions.{list} gets the rule {rule}.',
+  revokesPermission: '.claude/settings.json permissions.{list} loses the rule {rule}, which Forge wrote and no definition grants any more.',
   // Agents (claude-agent).
   envTemplateLiteral: '{expression} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.',
   templateLiteral: '{expression} is kept literally; Claude Code cannot evaluate docker-agent template expressions.',

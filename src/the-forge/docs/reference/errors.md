@@ -79,7 +79,7 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 | `UNKNOWN_OPTION` | 2 | input | no | The option is not accepted by this command. | Run `help <command>` to list its options. |
 | `MISSING_ARGUMENT` | 2 | input | no | A required argument or option value is missing. | Correct the arguments named in the message; run `help <command>` for usage. |
 | `INVALID_ARGUMENT` | 2 | input | no | The arguments or option values are invalid for this command. | Correct the arguments named in the message; run `help <command>` for usage. |
-| `INVALID_OPTION_VALUE` | 2 | input | no | The option value is not one of the values the command declares. | Use one of `error.details.allowed`; `help <command>` lists each option's values. |
+| `INVALID_OPTION_VALUE` | 2 | input | no | The option value, or an item of a comma-separated list option, is not one of the values the command declares. | Use one of `error.details.allowed`, or for a list option several of them separated by commas; `help <command>` lists each option's values. |
 | `DUPLICATE_OPTION` | 2 | input | no | An option was repeated or combined with its negation. | Pass each option once. |
 | `INVALID_INPUT` | 2 | input | no | The input options are invalid or contradictory. | Use exactly one input source and the option combination named in the message. |
 | `INPUT_REQUIRED` | 2 | input | no | `--stdin` was requested without piped input. | Pipe the content into the command, or use `--content` or `--from` instead. |

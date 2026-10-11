@@ -18,7 +18,10 @@ export const claudeStrings: PluginStrings = {
     manifest: { name: 'Claude-Code-Verwaltung', description: 'Native Claude-Code-Agenten, -Hooks und -Plugins verwalten und den Lebenszyklus der installierten Claude-Code-CLI ausführen.' },
     descriptions: {
       ...Object.fromEntries(Object.values(claudeRuntimeOptions).map(({ description }) => [description, retranslate(description, passthrough, germanPassthrough)])),
-      'Claude configuration scope of the action.': 'Claude-Konfigurationsbereich der Aktion.',
+      'Claude configuration scope (default project). Agent files of the project, the user or a plugin.': 'Claude-Konfigurationsbereich (Standard project). Agentendateien des Projekts, des Benutzers oder eines Plugins.',
+      'Claude configuration scope (default project). Hook settings of the project, local settings, the user or a plugin.': 'Claude-Konfigurationsbereich (Standard project). Hook-Einstellungen des Projekts, der lokalen Einstellungen, des Benutzers oder eines Plugins.',
+      'Claude configuration scope (default project). Installed-CLI plugin commands: the native scope; managed only with plugins update.': 'Claude-Konfigurationsbereich (Standard project). Plugin-Befehle der installierten CLI: der native Bereich; managed nur mit plugins update.',
+      'Claude configuration scope (default project). Marketplace add and remove: the native scope.': 'Claude-Konfigurationsbereich (Standard project). Marketplace add und remove: der native Bereich.',
       'Plugin directory for plugin-scoped agents and hooks.': 'Plugin-Verzeichnis für Agenten und Hooks im Plugin-Bereich.',
       'Claude user configuration directory for user scope.': 'Claude-Benutzerkonfigurationsverzeichnis für den Benutzerbereich.',
       'Read native input from a file.': 'Native Eingabe aus einer Datei lesen.',

@@ -65,6 +65,7 @@ export const germanAgentMessages: Record<AgentMessage, string> = {
   broadPermission: 'Die Regel {rule} würde jede Verwendung ihres Werkzeugs automatisch freigeben; übergeben Sie --allow-broad-permissions, um sie in permissions.allow zu schreiben, oder grenzen Sie das docker-agent-Muster ein.',
   grantsPermissionBroad: '.claude/settings.json permissions.{list} erhält die Regel {rule} (weitreichend, durch --allow-broad-permissions erlaubt).',
   grantsPermission: '.claude/settings.json permissions.{list} erhält die Regel {rule}.',
+  revokesPermission: '.claude/settings.json permissions.{list} verliert die Regel {rule}, die Forge geschrieben hat und die keine Definition mehr gewährt.',
   envTemplateLiteral: '{expression} bleibt wörtlich erhalten; Claude Code expandiert keine docker-agent-Umgebungsausdrücke in Agenten.',
   templateLiteral: '{expression} bleibt wörtlich erhalten; Claude Code kann keine docker-agent-Vorlagenausdrücke auswerten.',
   addDate: 'Claude Code fügt das aktuelle Datum selbst in seinen System-Prompt ein.',

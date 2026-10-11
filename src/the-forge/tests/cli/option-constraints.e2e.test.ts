@@ -57,6 +57,9 @@ describe('declared option constraints', () => {
     expect(read.body.data.document.body).toBeDefined();
     expect((await cli(['read', 'notes/parts.md', '--parts', 'body,nope'])).body.error)
       .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['body'] } });
+    const german = (await cli(['--lang', 'de', 'read', 'notes/parts.md', '--parts', 'body,nope'])).body.error;
+    expect(german.message).toContain('kommagetrennten Listenoption');
+    expect(german.details.localization.originalMessage).toBe('--parts must be a comma-separated list of: body.');
     const contract = (await cli(['schema', 'read'])).body.data.commands[0];
     expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['body'], list: true });
     const published = contract.inputSchema.properties.options.properties.parts as { enum?: string[]; pattern: string };

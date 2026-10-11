@@ -28,7 +28,7 @@ export const errorCatalog = {
   UNKNOWN_OPTION: entry('input', 'The option is not accepted by this command.', 'Run help <command> to list its options.'),
   MISSING_ARGUMENT: entry('input', 'A required argument or option value is missing.', argumentsHint),
   INVALID_ARGUMENT: entry('input', 'The arguments or option values are invalid for this command.', argumentsHint),
-  INVALID_OPTION_VALUE: entry('input', 'The option value is not one of the values the command declares.', 'Use one of error.details.allowed; help <command> lists each option\'s values.'),
+  INVALID_OPTION_VALUE: entry('input', 'The option value, or an item of a comma-separated list option, is not one of the values the command declares.', 'Use one of error.details.allowed, or for a list option several of them separated by commas; help <command> lists each option\'s values.'),
   DUPLICATE_OPTION: entry('input', 'An option was repeated or combined with its negation.', 'Pass each option once.'),
   INVALID_INPUT: entry('input', 'The input options are invalid or contradictory.', 'Use exactly one input source and the option combination named in the message.'),
   INPUT_REQUIRED: entry('input', '--stdin was requested without piped input.', 'Pipe the content into the command, or use --content or --from instead.'),

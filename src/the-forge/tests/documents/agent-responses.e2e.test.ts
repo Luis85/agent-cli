@@ -39,7 +39,7 @@ describe('lean agent responses', () => {
     // An invalid event level is reported in the requested language wherever both options appear.
     const german = await cli(['--events', 'verbose', '--lang', 'de', 'read', 'note.md']);
     expect(german.status).toBe(2);
-    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: 'Der Optionswert gehört nicht zu den Werten, die der Befehl angibt.' });
+    expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: 'Der Optionswert oder ein Element einer kommagetrennten Listenoption gehört nicht zu den Werten, die der Befehl angibt.' });
     const workspace = await mkdtemp(join(tmpdir(), 'forge-event-settings-'));
     try {
       await mkdir(join(workspace, 'bin'));

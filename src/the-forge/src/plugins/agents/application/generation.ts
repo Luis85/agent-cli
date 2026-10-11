@@ -9,6 +9,7 @@ import { generateClaude, type ClaudeGenerationOptions, type DefinitionSource, ty
 import type { GenerationCoverage, RevokedRule } from '../domain/claude-rule-ownership.ts';
 import { foreignEntries, manifestPath, mergeMcpServers, mergeSettings, nextManifest, parseManifest, type ForgeManifest } from '../domain/claude-merge.ts';
 import { agentError } from '../domain/errors.ts';
+import { say } from '../domain/messages.ts';
 import type { AgentDefinitions } from './definitions.ts';
 import type { AgentPorts } from './ports.ts';
 
@@ -34,7 +35,7 @@ const encode = (text: string) => new TextEncoder().encode(text);
 /** A rule this generation removes from the settings, reported at the definition that granted it. */
 function revocation({ list, rule, origins: [origin] }: RevokedRule): GenerationDiagnostic {
   const at = origin!.agent === undefined ? pointer('permissions', list) : pointer('agents', origin!.agent);
-  return { ...diagnostic('warning', 'revokes-permission', at, `.claude/settings.json permissions.${list} loses the rule ${rule}, which Forge wrote and no definition grants any more.`), path: origin!.file };
+  return { ...diagnostic('warning', 'revokes-permission', at, say('revokesPermission', { list, rule })), path: origin!.file };
 }
 
 /**

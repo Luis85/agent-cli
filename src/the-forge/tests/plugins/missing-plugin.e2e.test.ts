@@ -38,6 +38,8 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     expect((await cli(['needy.run'])).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'needy', reason } });
     const listed = (await cli(['plugins'])).body.data.plugins as Array<{ id: string; state: string; reason: string | null }>;
     expect(listed.find(plugin => plugin.id === 'needy')).toMatchObject({ state: 'unavailable', reason });
+    const german = (await cli(['--lang', 'de', 'plugins'])).body.data.plugins as Array<{ id: string; reason: string | null }>;
+    expect(german.find(plugin => plugin.id === 'needy')).toMatchObject({ reason: 'Benötigt den Dienst nope.greeter; sein Anbieter nope fehlt.' });
   });
 
   it('is still listed as missing when --no-plugins skips the user plugins', async () => {
