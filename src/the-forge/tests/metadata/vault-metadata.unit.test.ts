@@ -148,7 +148,7 @@ describe('incremental metadata updates', () => {
   it('parses content at any path and reports its parse errors', async () => {
     const index = metadataIndex(vault());
     expect(index.parseContent('.trash/Note.md', new TextEncoder().encode('# Kept\n'))?.headings?.map(item => item.heading)).toEqual(['Kept']);
-    expect(await index.parseFile({ path: '.trash/Note.md', bytes: new TextEncoder().encode('# Kept\n'), revision: 'r' })).toBeNull();
+    expect(await index.parseFile({ path: '.trash/Note.md', bytes: new TextEncoder().encode('# Kept\n') })).toBeNull();
     expect(index.parseContent('image.png', new Uint8Array())).toBeNull();
     expect(() => index.parseContent('Bad.md', new TextEncoder().encode('---\nx: [\n---\n'))).toThrow(expect.objectContaining({ code: 'INVALID_YAML' }));
   });

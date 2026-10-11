@@ -1,4 +1,3 @@
-import type { FileSnapshot } from '../../domain/documents/file.ts';
 import {
   outcomeKey, racyWindowMs, readSnapshot, snapshotFormat, unchangedFile, type FileStamp, type MetadataSnapshot, type ParseOutcome, type SnapshotFile,
 } from '../../domain/metadata/snapshot.ts';
@@ -51,10 +50,10 @@ export class ParseResults {
     return outcome;
   }
 
-  /** The stored outcome for read content with the same revision, or undefined when it must be parsed. */
-  async reusable(file: FileSnapshot): Promise<ParseOutcome | undefined> {
+  /** The stored outcome for content of `revision` at `path`, or undefined when it must be parsed. */
+  async reusable(path: string, revision: string): Promise<ParseOutcome | undefined> {
     const previous = await this.stored();
-    return previous ? this.outcome(previous, outcomeKey(file.path, file.revision)) : undefined;
+    return previous ? this.outcome(previous, outcomeKey(path, revision)) : undefined;
   }
 
   /**

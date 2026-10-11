@@ -1,7 +1,6 @@
 import type { CachedMetadata, CanvasLinkCache, FrontmatterLinkCache, LinkCache } from '../../domain/metadata/cache.ts';
 import type { LinkResolution } from '../../domain/metadata/link-resolution.ts';
 import type { FileStamp, MetadataSnapshot } from '../../domain/metadata/snapshot.ts';
-import type { FileSnapshot } from '../../domain/documents/file.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 
 /** Source path → destination path (resolved) or link text (unresolved) → number of references. */
@@ -74,9 +73,11 @@ export interface MetadataIndex {
   /**
    * One file's metadata from content the caller already read, without building or changing the index: what
    * `getFileCache` would hold for these bytes, or null for files the index does not parse or that fail to parse.
-   * A stored snapshot's result for the same content revision is reused instead of parsing again.
+   * The index computes the content revision of `bytes` itself and reuses the loaded index's or a stored snapshot's
+   * result only for that revision, so any bytes, such as planned content, get their own metadata. A `FileSnapshot`
+   * can be passed as is; its `revision` is not consulted.
    */
-  parseFile(file: FileSnapshot): Promise<CachedMetadata | null>;
+  parseFile(file: { path: string; bytes: Uint8Array }): Promise<CachedMetadata | null>;
   /**
    * The metadata of content at any path the parser handles, inside or outside the vault rule, such as the headings
    * and blocks a section edit addresses. Invalid content throws its parse error; other files return null.

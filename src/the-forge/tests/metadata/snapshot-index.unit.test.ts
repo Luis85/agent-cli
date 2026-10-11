@@ -7,6 +7,8 @@ import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser
 import { MemoryFiles, metadataIndex, metadataState } from '../support/metadata.ts';
 
 const key = 'forge test; parser 1; scope .';
+/** The content revision `StampedFiles` reports: the content itself. */
+const revisionOf = (bytes: Uint8Array) => `sha:${new TextDecoder().decode(bytes)}`;
 /** Far in the past relative to every listing, so stamps are outside the racy window unless a test says otherwise. */
 const settled = 0;
 
@@ -18,7 +20,7 @@ class StampedFiles extends MemoryFiles {
   override async read(path: string) {
     this.reads.push(path);
     const snapshot = await super.read(path);
-    return { ...snapshot, revision: `sha:${new TextDecoder().decode(snapshot.bytes)}` };
+    return { ...snapshot, revision: revisionOf(snapshot.bytes) };
   }
   /** Writes a file with a new stamp, as an external editor would. */
   put(path: string, content: string, stamp = `${path}@${content}`, changedMs = settled): void {
@@ -54,7 +56,7 @@ function setup() {
   files.put('Board.canvas', JSON.stringify({ nodes: [{ id: 'n', type: 'file', file: 'Notes/Plan.md', x: 0, y: 0, width: 1, height: 1 }] }));
   files.put('image.png', 'bytes');
   const store = new MemoryStore(files), parsed: string[] = [];
-  const index = (save = true) => new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save } });
+  const index = (save = true) => new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save }, revisionOf });
   /** Loads a fresh index the way the next invocation does and persists it; returns what it read and parsed. */
   const invocation = async (save = true) => {
     files.reads.length = 0; parsed.length = 0;
@@ -194,15 +196,25 @@ describe('persisted metadata snapshots', () => {
     const { files, store, invocation } = setup();
     await invocation();
     const parsed: string[] = [];
-    const metadata = new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save: true } });
+    const metadata = new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save: true }, revisionOf });
     files.reads.length = 0;
     const plan = await files.read('Notes/Plan.md');
     expect((await metadata.parseFile(plan))?.tags?.map(tag => tag.tag)).toEqual(['#plan']);
     expect(await metadata.parseFile(await files.read('Bad.md'))).toBeNull();
     expect(parsed).toEqual([]);
     // Other content at the same path is parsed, and nothing beyond the files passed in is read.
-    expect((await metadata.parseFile({ path: 'Notes/Plan.md', bytes: new TextEncoder().encode('# New #fresh\n'), revision: 'sha:new' }))?.tags?.map(tag => tag.tag)).toEqual(['#fresh']);
+    expect((await metadata.parseFile({ path: 'Notes/Plan.md', bytes: new TextEncoder().encode('# New #fresh\n') }))?.tags?.map(tag => tag.tag)).toEqual(['#fresh']);
     expect(parsed).toEqual(['Notes/Plan.md']);
     expect(files.reads).toEqual(['Notes/Plan.md', 'Bad.md']);
+  });
+
+  it('derives the parseFile revision from the bytes, so planned content never gets the stored metadata', async () => {
+    const { files, store, invocation } = setup();
+    const { metadata: loaded } = await invocation();
+    const unloaded = new VaultMetadata(files, countingParser([]), { workspaceRoot: true, snapshots: { store, key, save: true }, revisionOf });
+    const read = await files.read('Notes/Plan.md');
+    // A plugin previews planned content and keeps the read snapshot's revision by spreading it.
+    const planned = { ...read, bytes: new TextEncoder().encode('# Plan\nPlanned. #planned\n') };
+    for (const index of [unloaded, loaded]) expect((await index.parseFile(planned))?.tags?.map(tag => tag.tag)).toEqual(['#planned']);
   });
 });

@@ -49,9 +49,11 @@ function orderedReferences(cache: CachedMetadata): Array<Omit<SourceReference, '
 
 /**
  * `workspaceRoot` marks an index of the workspace root, which leaves out the workspace's `bin/` distribution;
- * `snapshots` persists parse results between invocations.
+ * `snapshots` persists parse results between invocations. `revisionOf` computes the repository's content revision
+ * of bytes (SHA-256 for the workspace files); `parseFile` reuses a known result only for the revision it computes
+ * itself, and without it always parses.
  */
-export interface VaultMetadataOptions { workspaceRoot?: boolean; snapshots?: SnapshotOptions }
+export interface VaultMetadataOptions { workspaceRoot?: boolean; snapshots?: SnapshotOptions; revisionOf?: (bytes: Uint8Array) => string }
 
 /**
  * A per-invocation metadata index over a file repository. It reads and parses Markdown and Canvas files once,
@@ -75,10 +77,12 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   private readonly member: (path: string) => boolean;
   private readonly workspaceRoot: boolean;
   private readonly results: ParseResults;
+  private readonly revisionOf: ((bytes: Uint8Array) => string) | undefined;
 
   constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser, options: VaultMetadataOptions = {}) {
     const workspaceRoot = options.workspaceRoot ?? false;
     this.workspaceRoot = workspaceRoot;
+    this.revisionOf = options.revisionOf;
     this.member = path => vaultMember(path, workspaceRoot);
     this.results = new ParseResults(options.snapshots);
   }
@@ -93,13 +97,15 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     return (await this.repository.list()).filter(this.member);
   }
 
-  async parseFile(file: FileSnapshot): Promise<CachedMetadata | null> {
+  async parseFile(file: { path: string; bytes: Uint8Array }): Promise<CachedMetadata | null> {
     if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
-    if (this.loading) {
+    // Reuse is keyed by the revision of these very bytes, never by a revision the caller carries along.
+    const revision = this.revisionOf?.(file.bytes);
+    if (revision !== undefined && this.loading) {
       await this.load();
-      if (this.results.revision(file.path) === file.revision) return this.caches.get(file.path) ?? null;
+      if (this.results.revision(file.path) === revision) return this.caches.get(file.path) ?? null;
     }
-    const outcome = await this.results.reusable(file) ?? this.outcome(file.path, file.bytes);
+    const outcome = (revision === undefined ? undefined : await this.results.reusable(file.path, revision)) ?? this.outcome(file.path, file.bytes);
     return 'metadata' in outcome ? outcome.metadata : null;
   }
 
@@ -123,7 +129,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   }
 
   async fork(repository: FileRepository): Promise<VaultMetadata> {
-    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot });
+    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...(this.revisionOf ? { revisionOf: this.revisionOf } : {}) });
     if (!this.loading) return fork;
     await this.load();
     await this.pending;
@@ -189,7 +195,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
       const unchanged = await this.results.unchanged(path, stamp);
       if (unchanged !== undefined) { this.adopt(path, unchanged); return; }
       const file = await this.repository.read(path);
-      this.adopt(path, await this.results.reusable(file) ?? this.outcome(path, file.bytes));
+      this.adopt(path, await this.results.reusable(path, file.revision) ?? this.outcome(path, file.bytes));
       this.results.read(path, file.revision, stamp ?? null);
     });
     await this.results.built();
