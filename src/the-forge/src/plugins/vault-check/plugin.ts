@@ -34,13 +34,15 @@ export const vaultCheckPlugin: CorePlugin = {
     description: 'Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties.',
   },
   strings: vaultCheckStrings,
-  create: () => ({
+  create: host => ({
     optional: [basesValidation],
     commands: [vaultCommand(context => {
       const plugin = context as PluginContext;
       const bases = plugin.services.has(basesValidation) ? plugin.services.get<BasesValidationService>(basesValidation) : null;
+      // Sizes come from one status call per file: the repository's `stat` would read and hash every attachment.
+      const dates = host.fileDates(context.root);
       return {
-        sources: scopeSources(context.workspace.files, context.metadata, bases && { validate: path => bases.validate(plugin, path) }),
+        sources: scopeSources(context.workspace.files, context.metadata, bases && { validate: path => bases.validate(plugin, path) }, async path => (await dates(path)).size),
         rules: (plugin.settings?.rules ?? {}) as Record<string, RuleSetting>,
         ignore: (plugin.settings?.ignore ?? []) as string[],
         t: key => plugin.t(key),

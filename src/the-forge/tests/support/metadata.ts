@@ -9,12 +9,12 @@ import { forgeError } from '../../src/domain/shared/errors.ts';
 import { NodeBasesQueryEngine } from '../../src/plugins/bases/infrastructure/engine.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser.ts';
-import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
+import { NodeFiles, revisionOf } from '../../src/infrastructure/workspace/files.ts';
 import { nodeFileDates } from '../../src/infrastructure/workspace/file-dates.ts';
 
 /** The composed kernel metadata index over a repository, as `main.ts` binds it; `workspaceRoot` leaves out `bin/`. */
 export function metadataIndex(files: FileRepository, options: { workspaceRoot?: boolean } = {}): VaultMetadata {
-  return new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()), options);
+  return new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()), { ...options, revisionOf });
 }
 
 /** The scope services of a command context, as `main.ts` binds them: the metadata index and the `app` facade over the workspace. */

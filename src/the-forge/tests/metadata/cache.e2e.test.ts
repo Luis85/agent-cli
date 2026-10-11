@@ -2,21 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { racyWindowMs } from '../../src/domain/metadata/snapshot.ts';
+import { racyWindowMs, snapshotFormat } from '../../src/domain/metadata/snapshot.ts';
 import { portableCli } from '../support/portable-cli.ts';
 
 const fixture = portableCli();
 const cli = fixture.cli;
-const cacheFile = () => join(fixture.project, '.forge/cache/metadata.v1.workspace.json');
+const cacheFile = () => join(fixture.project, `.forge/cache/metadata.v${snapshotFormat}.workspace.json`);
 const tags = (body: { data: { tags: Array<{ tag: string; files: string[] }> } }) => Object.fromEntries(body.data.tags.map(item => [item.tag, item.files]));
 
 /** Rewrites one stored note's tags with a valid digest, so only a reused snapshot can report them. */
 async function plantTag(path: string, tag: string) {
   const text = await readFile(cacheFile(), 'utf8');
   const header = JSON.parse(text.slice(0, text.indexOf('\n'))) as { digest: string };
-  const snapshot = JSON.parse(text.slice(text.indexOf('\n') + 1)) as { files: Record<string, { revision: string }>; outcomes: Record<string, { metadata: { tags?: unknown[] } }> };
-  const metadata = snapshot.outcomes[`markdown:${snapshot.files[path]!.revision}`]!.metadata;
-  metadata.tags = [{ tag, position: { start: { line: 0, col: 0, offset: 0 }, end: { line: 0, col: tag.length, offset: tag.length } } }];
+  const snapshot = JSON.parse(text.slice(text.indexOf('\n') + 1)) as { files: Record<string, { revision: string }>; outcomes: Record<string, { metadata: { tags?: unknown[] }; positions: number[] }> };
+  // Stored positions are indexes into the outcome's list of six numbers per position.
+  const { metadata, positions } = snapshot.outcomes[`markdown:${snapshot.files[path]!.revision}`]!;
+  metadata.tags = [{ tag, position: positions.push(0, 0, 0, 0, tag.length, tag.length) / 6 - 1 }];
   const body = JSON.stringify(snapshot);
   await writeFile(cacheFile(), `${JSON.stringify({ ...header, digest: createHash('sha256').update(body).digest('hex') })}\n${body}`);
 }
@@ -86,9 +87,9 @@ describe('the persisted metadata cache through the portable CLI', () => {
     try {
       const english = await cli(['vault', 'tags']);
       expect(english.status).toBe(0);
-      expect(english.body.warnings).toEqual([expect.stringMatching(/^The metadata cache could not be saved to \.forge\/cache\/metadata\.v1\.workspace\.json/)]);
+      expect(english.body.warnings).toEqual([expect.stringMatching(new RegExp(`^The metadata cache could not be saved to \\.forge/cache/metadata\\.v${snapshotFormat}\\.workspace\\.json`))]);
       const german = await cli(['vault', 'tags', '--lang', 'de']);
-      expect(german.body.warnings).toEqual([expect.stringMatching(/^Der Metadaten-Cache konnte nicht unter \.forge\/cache\/metadata\.v1\.workspace\.json gespeichert werden/)]);
+      expect(german.body.warnings).toEqual([expect.stringMatching(new RegExp(`^Der Metadaten-Cache konnte nicht unter \\.forge/cache/metadata\\.v${snapshotFormat}\\.workspace\\.json gespeichert werden`))]);
     } finally { await rm(join(fixture.project, '.forge'), { force: true }); }
   });
 });

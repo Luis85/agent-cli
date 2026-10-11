@@ -17,7 +17,7 @@ import { ProjectService, projectScaffolderService, type ProjectScaffolder, type 
 import { SetupService, templateInstallerService, type TemplateInstallerService } from './application/workspace/setup.ts';
 import { WorkflowSync } from './application/workflows/workflows.ts';
 import { yamlWorkflowRenderer } from './infrastructure/workflows/renderer.ts';
-import { NodeFiles, stampedFiles } from './infrastructure/workspace/files.ts';
+import { NodeFiles, revisionOf, stampedFiles } from './infrastructure/workspace/files.ts';
 import { nodeFileDates } from './infrastructure/workspace/file-dates.ts';
 import type { LockOwner } from './infrastructure/workspace/lock.ts';
 import { ObsidianDocuments } from './infrastructure/documents/codec.ts';
@@ -166,8 +166,9 @@ async function run(): Promise<void> {
       const cacheFile = snapshotFile(project?.directory ?? null);
       const vaultMetadata = new VaultMetadata(scopedFiles, new ObsidianMetadataParser(environment.codec), {
         workspaceRoot: project === null,
+        revisionOf,
         snapshots: {
-          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, () => stampedFiles(files, project?.directory)),
+          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, stamped => stampedFiles(files, project?.directory, stamped)),
           key: `forge ${metadata.version}; parser ${metadataParserVersion}; scope ${project?.directory ?? '.'}`,
           save: !config.settings.dryRun,
         },

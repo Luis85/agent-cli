@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { vaultCheckPlugin } from '../../src/plugins/vault-check/plugin.ts';
 import type { CorePlugin } from '../../src/application/plugins/core-plugins.ts';
+import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { vaultCommand, type VaultFinding as Finding } from '../support/vault-check.ts';
 
 let root: string;
@@ -35,6 +36,19 @@ beforeEach(async () => {
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 describe('vault check', () => {
+  it('finds empty attachments from their size without reading any attachment', async () => {
+    await put('assets/blank.png', '');
+    await put('assets/large.pdf', 'x'.repeat(100_000));
+    const reads = vi.spyOn(NodeFiles.prototype, 'read'), stats = vi.spyOn(NodeFiles.prototype, 'stat');
+    try {
+      const { check } = await vault();
+      const empty = (await check({ rule: 'empty-file' })).findings.map(finding => finding.path);
+      expect(empty).toEqual(['assets/blank.png', 'notes/empty.md']);
+      const touched = [...reads.mock.calls, ...stats.mock.calls].map(([path]) => path);
+      expect(touched.filter(path => /\.(png|pdf)$/.test(path))).toEqual([]);
+    } finally { reads.mockRestore(); stats.mockRestore(); }
+  });
+
   it('reports every rule with severity, location, message and hint in deterministic order', async () => {
     const { check } = await vault();
     const result = await check();

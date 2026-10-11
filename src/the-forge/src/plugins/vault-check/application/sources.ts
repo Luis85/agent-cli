@@ -14,14 +14,14 @@ export interface VaultSources {
   cache(): Promise<MetadataCache>;
   /** A file's UTF-8 text, or null when it does not exist. Dot-prefixed paths such as `.obsidian/types.json` are readable. */
   text(path: string): Promise<string | null>;
-  /** A file's size in bytes. */
+  /** A regular file's size in bytes, without reading it. */
   size(path: string): Promise<number>;
   /** Null when no enabled plugin provides `bases.validation`. */
   bases: BaseValidator | null;
 }
 
-/** The sources of one command scope over its repository and metadata index. */
-export function scopeSources(files: FileRepository, metadata: MetadataIndex, bases: BaseValidator | null): VaultSources {
+/** The sources of one command scope over its repository and metadata index, with file sizes from `size`. */
+export function scopeSources(files: FileRepository, metadata: MetadataIndex, bases: BaseValidator | null, size: (path: string) => Promise<number>): VaultSources {
   return {
     cache: () => metadata.load(),
     async text(path) {
@@ -31,10 +31,7 @@ export function scopeSources(files: FileRepository, metadata: MetadataIndex, bas
         throw error;
       }
     },
-    async size(path) {
-      const stat = await files.stat(path);
-      return stat.kind === 'file' ? stat.bytes : 0;
-    },
+    size,
     bases,
   };
 }

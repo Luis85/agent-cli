@@ -33,7 +33,10 @@ export type LockFiles = (root: string) => (path: string, command: string) => Pro
  */
 export interface CorePluginHost {
   skills: SkillCatalog;
-  /** Filesystem dates, which the repository port does not carry (Bases `file.ctime`/`file.mtime`). */
+  /**
+   * Filesystem dates, which the repository port does not carry (Bases `file.ctime`/`file.mtime`), and sizes without
+   * reading the file (`vault check`'s `empty-file` rule).
+   */
   fileDates: FileDatesReader;
   /**
    * Opens the guarded file repository at an existing absolute directory outside the workspace, such as Claude Code's

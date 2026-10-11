@@ -2,7 +2,8 @@ import { AppError, errorMessage } from '../../domain/shared/errors.ts';
 import type { CachedMetadata } from '../../domain/metadata/cache.ts';
 import { closestDestination, fileToLinktext, linkIndex, resolveLinkpath, type LinkIndex } from '../../domain/metadata/link-resolution.ts';
 import type { FileSnapshot } from '../../domain/documents/file.ts';
-import type { FileStamp, ParseOutcome } from '../../domain/metadata/snapshot.ts';
+import { aliasesKey, type FileStamp, type StoredLinks } from '../../domain/metadata/snapshot.ts';
+import { decodeResolution, encodeResolution, type ParseOutcome, type StoredResolution } from '../../domain/metadata/snapshot-encoding.ts';
 import type { FileRepository } from '../workspace/ports.ts';
 import { ParseResults, type SnapshotOptions } from './parse-results.ts';
 import type {
@@ -49,15 +50,18 @@ function orderedReferences(cache: CachedMetadata): Array<Omit<SourceReference, '
 
 /**
  * `workspaceRoot` marks an index of the workspace root, which leaves out the workspace's `bin/` distribution;
- * `snapshots` persists parse results between invocations.
+ * `snapshots` persists parse results between invocations. `revisionOf` computes the repository's content revision
+ * of bytes (SHA-256 for the workspace files); `parseFile` reuses a known result only for the revision it computes
+ * itself, and without it always parses.
  */
-export interface VaultMetadataOptions { workspaceRoot?: boolean; snapshots?: SnapshotOptions }
+export interface VaultMetadataOptions { workspaceRoot?: boolean; snapshots?: SnapshotOptions; revisionOf?: (bytes: Uint8Array) => string }
 
 /**
  * A per-invocation metadata index over a file repository. It reads and parses Markdown and Canvas files once,
  * on first load, and resolves every reference through hash lookups, so building is linear in vault size.
  * With a snapshot store, the load reuses the parse results of unchanged files and of known content revisions
- * instead of reading or parsing them, and `persist()` stores the current results; resolution is always recomputed.
+ * instead of reading or parsing them, and the stored resolutions of unchanged sources while the vault's paths and
+ * aliases are unchanged; `persist()` stores the current results and resolutions.
  * Updates re-parse only changed files; they re-resolve every source only when the set of paths or aliases changes.
  */
 export class VaultMetadata implements MetadataIndex, MetadataCache {
@@ -68,17 +72,23 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   private readonly problems = new Map<string, MetadataIssue>();
   private readonly outgoing = new Map<string, SourceReference[]>();
   private readonly incoming = new Map<string, Set<string>>();
-  private index: LinkIndex = linkIndex([]);
+  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
+  private builtIndex: LinkIndex | undefined;
+  private aliasMap: ReadonlyMap<string, readonly string[]> = new Map();
+  /** `aliasesKey` of `aliasMap`. */
+  private aliases = aliasesKey(new Map());
   private loading: Promise<void> | undefined;
   private pending: Promise<unknown> = Promise.resolve();
 
   private readonly member: (path: string) => boolean;
   private readonly workspaceRoot: boolean;
   private readonly results: ParseResults;
+  private readonly revisionOf: ((bytes: Uint8Array) => string) | undefined;
 
   constructor(private readonly repository: FileRepository, private readonly parser: MetadataParser, options: VaultMetadataOptions = {}) {
     const workspaceRoot = options.workspaceRoot ?? false;
     this.workspaceRoot = workspaceRoot;
+    this.revisionOf = options.revisionOf;
     this.member = path => vaultMember(path, workspaceRoot);
     this.results = new ParseResults(options.snapshots);
   }
@@ -93,13 +103,15 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     return (await this.repository.list()).filter(this.member);
   }
 
-  async parseFile(file: FileSnapshot): Promise<CachedMetadata | null> {
+  async parseFile(file: { path: string; bytes: Uint8Array }): Promise<CachedMetadata | null> {
     if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
-    if (this.loading) {
+    // Reuse is keyed by the revision of these very bytes, never by a revision the caller carries along.
+    const revision = this.revisionOf?.(file.bytes);
+    if (revision !== undefined && this.loading) {
       await this.load();
-      if (this.results.revision(file.path) === file.revision) return this.caches.get(file.path) ?? null;
+      if (this.results.revision(file.path) === revision) return this.caches.get(file.path) ?? null;
     }
-    const outcome = await this.results.reusable(file) ?? this.outcome(file.path, file.bytes);
+    const outcome = (revision === undefined ? undefined : await this.results.reusable(file.path, revision)) ?? this.outcome(file.path, file.bytes);
     return 'metadata' in outcome ? outcome.metadata : null;
   }
 
@@ -115,7 +127,19 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     await this.results.persist(path => {
       const metadata = this.caches.get(path), issue = this.problems.get(path);
       return metadata ? { metadata } : issue ? { issue: { code: issue.code, message: issue.message } } : undefined;
+    }, () => this.storedLinks());
+  }
+
+  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
+  private storedLinks(): StoredLinks {
+    const positions = new Map(this.paths.map((path, position) => [path, position]));
+    const sources = this.sources().map(source => {
+      const references = this.outgoing.get(source) ?? [];
+      let next = 0;
+      return [source, orderedReferences(this.caches.get(source)!).map(item => references[next]?.reference === item.reference
+        ? encodeResolution(references[next++]!.resolution, path => positions.get(path)!) : null)] as const;
     });
+    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
   }
 
   parseContent(path: string, bytes: Uint8Array): CachedMetadata | null {
@@ -123,7 +147,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   }
 
   async fork(repository: FileRepository): Promise<VaultMetadata> {
-    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot });
+    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...(this.revisionOf ? { revisionOf: this.revisionOf } : {}) });
     if (!this.loading) return fork;
     await this.load();
     await this.pending;
@@ -135,7 +159,9 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
     for (const [path, sources] of this.incoming) fork.incoming.set(path, new Set(sources));
     Object.assign(fork.resolvedLinks, this.resolvedLinks);
     Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
-    fork.index = this.index;
+    fork.builtIndex = this.builtIndex;
+    fork.aliasMap = this.aliasMap;
+    fork.aliases = this.aliases;
     fork.loading = Promise.resolve();
     return fork;
   }
@@ -180,21 +206,28 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
    * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
    */
   private async build(): Promise<void> {
-    const listing = await this.results.listing(() => this.repository.list());
+    const listing = await this.results.listing(() => this.repository.list(), path => this.member(path) && this.parser.indexes(path));
     const stamps = new Map<string, FileStamp>();
     for (const file of listing.files) if ('stamp' in file) stamps.set(file.path, file);
     this.paths = listing.files.map(file => file.path).filter(this.member);
-    await eachConcurrently(this.paths.filter(path => this.parser.indexes(path)), pendingFileReads, async path => {
+    await this.results.stored();
+    // Unchanged files come from the loaded snapshot without any asynchronous step; only the rest are read.
+    const changed = this.paths.filter(path => {
+      if (!this.parser.indexes(path)) return false;
+      const unchanged = this.results.unchanged(path, stamps.get(path));
+      if (unchanged !== undefined) this.adopt(path, unchanged);
+      return unchanged === undefined;
+    });
+    await eachConcurrently(changed, pendingFileReads, async path => {
       const stamp = stamps.get(path);
-      const unchanged = await this.results.unchanged(path, stamp);
-      if (unchanged !== undefined) { this.adopt(path, unchanged); return; }
       const file = await this.repository.read(path);
-      this.adopt(path, await this.results.reusable(file) ?? this.outcome(path, file.bytes));
+      this.adopt(path, await this.results.reusable(path, file.revision) ?? this.outcome(path, file.bytes));
       this.results.read(path, file.revision, stamp ?? null);
     });
     await this.results.built();
     this.reindex();
-    for (const source of this.sources()) this.resolve(source);
+    const stored = await this.results.links(this.paths, this.aliases);
+    for (const source of this.sources()) this.resolve(source, stored(source));
   }
 
   private outcome(path: string, bytes: Uint8Array): ParseOutcome {
@@ -269,22 +302,35 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   }
   private sources(): string[] { return this.paths.filter(path => this.caches.has(path)); }
 
+  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
   private reindex(): void {
-    const aliases = new Map(this.sources().flatMap(path => {
+    this.aliasMap = new Map(this.sources().flatMap(path => {
       const names = this.caches.get(path)!.aliases;
       return names?.length ? [[path, names] as const] : [];
     }));
-    this.index = linkIndex(this.paths, aliases);
+    this.aliases = aliasesKey(this.aliasMap);
+    this.builtIndex = undefined;
   }
 
-  /** Re-resolves one parsed source and replaces its link counts and backlink entries. */
-  private resolve(source: string): void {
+  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
+  private get index(): LinkIndex {
+    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
+    return this.builtIndex;
+  }
+
+  /**
+   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
+   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
+   */
+  private resolve(source: string, stored?: readonly StoredResolution[]): void {
     this.unlink(source);
-    const references = orderedReferences(this.caches.get(source)!).flatMap(item => {
-      const relative = !['wikilink', 'canvas'].includes(item.reference.syntax);
-      const resolution = resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
-      return resolution.status === 'external' ? [] : [{ ...item, resolution } as SourceReference];
-    });
+    const ordered = orderedReferences(this.caches.get(source)!), known = stored?.length === ordered.length ? stored : undefined;
+    const references: SourceReference[] = [];
+    for (const [place, item] of ordered.entries()) {
+      const syntax = item.reference.syntax, relative = syntax !== 'wikilink' && syntax !== 'canvas';
+      const resolution = (known && decodeResolution(known[place]!, this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
+      if (resolution.status !== 'external') references.push({ ...item, resolution } as SourceReference);
+    }
     const resolved = counts(), unresolved = counts();
     for (const { resolution } of references) {
       if (resolution.status === 'resolved') {

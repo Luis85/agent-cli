@@ -24,9 +24,9 @@ export interface SearchSources {
   paths(): Promise<readonly string[]>;
   /**
    * The metadata of one read file (`MetadataIndex.parseFile`), used only by tag, property and code filters; a stored
-   * parse result of the same revision is reused.
+   * parse result of the same content is reused.
    */
-  parse(file: FileSnapshot): Promise<CachedMetadata | null>;
+  parse(file: { path: string; bytes: Uint8Array }): Promise<CachedMetadata | null>;
   budget: SearchBudget;
 }
 /** A hit before its snippet and context lines are built, which happens only for hits on the returned page. */

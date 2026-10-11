@@ -47,8 +47,16 @@ function folderOf(path: string): string {
   return slash < 0 ? '.' : slash === 0 ? '/' : path.slice(0, slash);
 }
 
+/** A target with a `.` or `..` segment, an empty segment or a leading `/`, which joining must normalize. */
+const unnormalized = /(?:^|\/)\.{1,2}(?:\/|$)|\/\/|^\//;
+
 /** `posix.normalize(posix.join(folder, target))` for relative vault paths. */
 export function joinPath(folder: string, target: string): string {
+  // Vault folders are normalized already, so a plain target only needs the separator.
+  if (target !== '' && !unnormalized.test(target)) {
+    if (folder === '.') return target;
+    if (!unnormalized.test(folder)) return `${folder}/${target}`;
+  }
   const parts: string[] = [];
   for (const part of `${folder}/${target}`.split('/')) {
     if (part === '' || part === '.') continue;
@@ -59,10 +67,23 @@ export function joinPath(folder: string, target: string): string {
   return target.endsWith('/') ? `${joined}/` : joined;
 }
 
-// Paths whose key equals the lowercase spelling with or without `.md`, in vault path order.
+/** The union of two ascending position lists, ascending and without repeats. */
+function union(first: readonly number[], second: readonly number[]): number[] {
+  const merged: number[] = [];
+  let a = 0, b = 0;
+  while (a < first.length || b < second.length) {
+    const next = b >= second.length || (a < first.length && first[a]! <= second[b]!) ? first[a++]! : second[b++]!;
+    if (merged.at(-1) !== next) merged.push(next);
+  }
+  return merged;
+}
+
+// Paths whose key equals the lowercase spelling with or without `.md`, in vault path order. Every key's position
+// list is ascending without repeats (see `linkIndex`).
 function lookup(index: LinkIndex, keys: ReadonlyMap<string, number[]>, spelling: string): string[] {
-  const positions = new Set([...keys.get(spelling.toLowerCase()) ?? [], ...keys.get(`${spelling}.md`.toLowerCase()) ?? []]);
-  return [...positions].sort((a, b) => a - b).map(position => index.paths[position]!);
+  const plain = keys.get(spelling.toLowerCase()), markdown = keys.get(`${spelling}.md`.toLowerCase());
+  const positions = plain === undefined ? markdown ?? [] : markdown === undefined || markdown === plain ? plain : union(plain, markdown);
+  return positions.map(position => index.paths[position]!);
 }
 
 function matched(found: string[], linkpath: string, via: 'path' | 'alias'): LinkResolution | undefined {

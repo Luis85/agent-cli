@@ -7,6 +7,8 @@ import { ObsidianMetadataParser } from '../../src/infrastructure/metadata/parser
 import { MemoryFiles, metadataIndex, metadataState } from '../support/metadata.ts';
 
 const key = 'forge test; parser 1; scope .';
+/** The content revision `StampedFiles` reports: the content itself. */
+const revisionOf = (bytes: Uint8Array) => `sha:${new TextDecoder().decode(bytes)}`;
 /** Far in the past relative to every listing, so stamps are outside the racy window unless a test says otherwise. */
 const settled = 0;
 
@@ -18,7 +20,7 @@ class StampedFiles extends MemoryFiles {
   override async read(path: string) {
     this.reads.push(path);
     const snapshot = await super.read(path);
-    return { ...snapshot, revision: `sha:${new TextDecoder().decode(snapshot.bytes)}` };
+    return { ...snapshot, revision: revisionOf(snapshot.bytes) };
   }
   /** Writes a file with a new stamp, as an external editor would. */
   put(path: string, content: string, stamp = `${path}@${content}`, changedMs = settled): void {
@@ -35,8 +37,12 @@ class MemoryStore implements MetadataSnapshotStore {
   stored: unknown = null;
   saves = 0;
   constructor(private readonly files: StampedFiles) {}
-  async listing() { return this.files.listing(); }
-  async load() { return this.stored; }
+  async listing(stamped: (path: string) => boolean) {
+    const listing = this.files.listing();
+    return { ...listing, files: listing.files.map(file => stamped(file.path) ? file : { path: file.path }) };
+  }
+  /** A new value per load, as reading the file gives: the index decodes it in place. */
+  async load() { return structuredClone(this.stored); }
   async save(snapshot: MetadataSnapshot) { this.saves++; this.stored = JSON.parse(JSON.stringify(snapshot)); }
 }
 
@@ -54,7 +60,7 @@ function setup() {
   files.put('Board.canvas', JSON.stringify({ nodes: [{ id: 'n', type: 'file', file: 'Notes/Plan.md', x: 0, y: 0, width: 1, height: 1 }] }));
   files.put('image.png', 'bytes');
   const store = new MemoryStore(files), parsed: string[] = [];
-  const index = (save = true) => new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save } });
+  const index = (save = true) => new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save }, revisionOf });
   /** Loads a fresh index the way the next invocation does and persists it; returns what it read and parsed. */
   const invocation = async (save = true) => {
     files.reads.length = 0; parsed.length = 0;
@@ -109,6 +115,25 @@ describe('persisted metadata snapshots', () => {
     files.checkedAtMs += 60_000;
     await invocation();
     expect((await invocation()).reads).toEqual([]);
+  });
+
+  it('re-reads a file with a future timestamp on every load without rewriting an unchanged snapshot', async () => {
+    const { files, store, invocation } = setup();
+    // A synced note from a device whose clock runs ahead is never trusted by stamp.
+    files.put('Notes/Plan.md', files.files.get('Notes/Plan.md')!, 'future', files.checkedAtMs + 365 * 86_400_000);
+    await invocation();
+    expect(store.saves).toBe(1);
+    for (let run = 0; run < 3; run++) {
+      files.checkedAtMs += 60_000;
+      const next = await invocation();
+      expect(next.reads).toEqual(['Notes/Plan.md']);
+      expect(next.parsed).toEqual([]);
+    }
+    expect(store.saves).toBe(1);
+    // Its content still counts: an edit is read, parsed and stored.
+    files.put('Notes/Plan.md', '# Plan\nEdited ahead of time. #ahead\n', 'future 2', files.checkedAtMs + 365 * 86_400_000);
+    expect((await invocation()).cache.getFileCache('Notes/Plan.md')?.tags?.map(tag => tag.tag)).toEqual(['#ahead']);
+    expect(store.saves).toBe(2);
   });
 
   it('reuses parse results across renames, drops deleted files and parses new ones', async () => {
@@ -175,15 +200,84 @@ describe('persisted metadata snapshots', () => {
     const { files, store, invocation } = setup();
     await invocation();
     const parsed: string[] = [];
-    const metadata = new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save: true } });
+    const metadata = new VaultMetadata(files, countingParser(parsed), { workspaceRoot: true, snapshots: { store, key, save: true }, revisionOf });
     files.reads.length = 0;
     const plan = await files.read('Notes/Plan.md');
     expect((await metadata.parseFile(plan))?.tags?.map(tag => tag.tag)).toEqual(['#plan']);
     expect(await metadata.parseFile(await files.read('Bad.md'))).toBeNull();
     expect(parsed).toEqual([]);
     // Other content at the same path is parsed, and nothing beyond the files passed in is read.
-    expect((await metadata.parseFile({ path: 'Notes/Plan.md', bytes: new TextEncoder().encode('# New #fresh\n'), revision: 'sha:new' }))?.tags?.map(tag => tag.tag)).toEqual(['#fresh']);
+    expect((await metadata.parseFile({ path: 'Notes/Plan.md', bytes: new TextEncoder().encode('# New #fresh\n') }))?.tags?.map(tag => tag.tag)).toEqual(['#fresh']);
     expect(parsed).toEqual(['Notes/Plan.md']);
     expect(files.reads).toEqual(['Notes/Plan.md', 'Bad.md']);
+  });
+
+  it('derives the parseFile revision from the bytes, so planned content never gets the stored metadata', async () => {
+    const { files, store, invocation } = setup();
+    const { metadata: loaded } = await invocation();
+    const unloaded = new VaultMetadata(files, countingParser([]), { workspaceRoot: true, snapshots: { store, key, save: true }, revisionOf });
+    const read = await files.read('Notes/Plan.md');
+    // A plugin previews planned content and keeps the read snapshot's revision by spreading it.
+    const planned = { ...read, bytes: new TextEncoder().encode('# Plan\nPlanned. #planned\n') };
+    for (const index of [unloaded, loaded]) expect((await index.parseFile(planned))?.tags?.map(tag => tag.tag)).toEqual(['#planned']);
+  });
+});
+
+describe('persisted link resolution', () => {
+  /** Replaces Plan.md's stored resolution of `[[Missing]]` with image.png, so only a reused resolution reports it. */
+  const plant = (store: MemoryStore) => {
+    const links = (store.stored as MetadataSnapshot).links!;
+    links.sources['Notes/Plan.md']![1] = links.paths.indexOf('image.png');
+  };
+  const planted = { 'Notes/Ideas.md': 1, 'image.png': 1 };
+
+  it('reuses stored resolutions while the vault paths, the aliases and the source are unchanged', async () => {
+    const { store, invocation } = setup();
+    await invocation();
+    const links = (store.stored as MetadataSnapshot).links!;
+    expect(links.paths).toEqual(['Bad.md', 'Board.canvas', 'Notes/Ideas.md', 'Notes/Plan.md', 'image.png']);
+    expect(links.aliases).toBe('[["Notes/Ideas.md",["Brainstorm"]]]');
+    expect(links.sources).toEqual({ 'Board.canvas': [3], 'Notes/Ideas.md': [3], 'Notes/Plan.md': [2, ['missing', 'Missing']] });
+    plant(store);
+    expect((await invocation()).cache.resolvedLinks['Notes/Plan.md']).toEqual(planted);
+    expect(store.saves).toBe(1);
+  });
+
+  it('keeps the resolutions of unchanged sources when another note changes without changing paths or aliases', async () => {
+    const { files, store, invocation, fresh } = setup();
+    await invocation();
+    plant(store);
+    files.put('Notes/Ideas.md', '---\naliases: [Brainstorm]\n---\nBack to [[Plan]] and [[Board.canvas]].\n');
+    const next = await invocation();
+    expect(next.cache.resolvedLinks['Notes/Plan.md']).toEqual(planted);
+    expect(next.cache.resolvedLinks['Notes/Ideas.md']).toEqual((await fresh() as { resolvedLinks: Record<string, unknown> }).resolvedLinks['Notes/Ideas.md']);
+  });
+
+  it('resolves every source again when a path or an alias changes, and a source again when its content changes', async () => {
+    const changes: Array<(files: StampedFiles) => void> = [
+      files => files.put('Other.png', 'new attachment'),
+      files => { files.files.delete('Bad.md'); files.stamps.delete('Bad.md'); },
+      files => files.put('Notes/Ideas.md', '---\naliases: [Missing]\n---\nBack to [[Plan]].\n'),
+      files => files.put('Notes/Plan.md', '# Plan\nSee [[Ideas]] and [[Missing]] again. #plan\n'),
+      files => { files.put('Archive/Plan.md', files.files.get('Notes/Plan.md')!); files.files.delete('Notes/Plan.md'); files.stamps.delete('Notes/Plan.md'); },
+    ];
+    for (const change of changes) {
+      const { files, store, invocation, fresh } = setup();
+      await invocation();
+      plant(store);
+      change(files);
+      expect(metadataState((await invocation()).cache), change.toString()).toEqual(await fresh());
+      // The new snapshot stores the recomputed resolutions, so the following load reuses correct ones.
+      expect(metadataState((await invocation()).cache), change.toString()).toEqual(await fresh());
+    }
+  });
+
+  it('recomputes stored resolutions that do not fit the source', async () => {
+    const { store, invocation, fresh } = setup();
+    await invocation();
+    const links = (store.stored as MetadataSnapshot).links!;
+    links.sources['Notes/Plan.md'] = [99, ['missing', 'Missing']];
+    links.sources['Notes/Ideas.md'] = [3, 3];
+    expect(metadataState((await invocation()).cache)).toEqual(await fresh());
   });
 });

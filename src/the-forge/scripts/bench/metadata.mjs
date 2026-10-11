@@ -8,11 +8,12 @@
 //
 // Every command runs once cold (the workspace's .forge/cache removed first) and then `--runs` times warm, after an
 // unmeasured `links unresolved` has stored the metadata cache (search reuses it but never stores it). The vault is
-// generated in a temporary directory, used as the workspace root with a minimal bin/config.json, and removed
-// afterwards unless --keep is given. Wall times depend on machine load; the CPU times (user plus system time of the
+// generated in a temporary directory and left to settle past the cache's racy window, so warm runs trust every stored
+// stamp; a warm run that rewrites the cache anyway fails the report (exit code 1). The vault is the workspace root,
+// with a minimal bin/config.json, and is removed afterwards unless --keep is given. Wall times depend on machine load; the CPU times (user plus system time of the
 // CLI process, reported by a preloaded probe) much less so. Compare builds on the same machine.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +52,17 @@ function options() {
   };
 }
 
+/**
+ * The metadata cache's racy window (`racyWindowMs` in src/domain/metadata/snapshot.ts) plus a margin: a stored stamp
+ * is trusted only for files last changed this long before the listing that stored it.
+ */
+const settleMs = 2000 + 250;
+
+/** Waits out the racy window of freshly generated files, so the run that stores the cache trusts every stamp. */
+function settle() {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, settleMs);
+}
+
 /** Preloaded into every run: reports the process's own CPU time on exit, which machine load does not inflate. */
 const cpuProbe = `process.on('exit', () => { const { user, system } = process.cpuUsage(); process.stderr.write('\\nforge-bench-cpu ' + Math.round((user + system) / 1000) + '\\n'); });\n`;
 
@@ -71,6 +83,27 @@ function run(forge, root, args) {
   return { ms: Math.round(ms), cpuMs, ...outcome };
 }
 
+/**
+ * The workspace's metadata cache files with their inode, size and nanosecond modification time. A save writes a
+ * temporary file and renames it over the snapshot, so any rewrite changes this signature.
+ * @param {string} root
+ */
+function cacheSignature(root) {
+  const folder = join(root, '.forge', 'cache');
+  if (!existsSync(folder)) return '';
+  return readdirSync(folder).sort().map(name => {
+    const info = statSync(join(folder, name), { bigint: true });
+    return `${name}:${info.ino}:${info.size}:${info.mtimeNs}`;
+  }).join('|');
+}
+
+/** A warm run with whether it rewrote the metadata cache, which a warm run must not do. @param {string} forge @param {string} root @param {string[]} args */
+function warmRun(forge, root, args) {
+  const before = cacheSignature(root);
+  const result = run(forge, root, args);
+  return { ...result, rewroteCache: cacheSignature(root) !== before };
+}
+
 const median = (/** @type {number[]} */ values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
 function main() {
@@ -81,19 +114,24 @@ function main() {
     writeFileSync(join(root, 'bin', 'config.json'), `${JSON.stringify({ schemaVersion: 1, settings: { language: 'en' } }, null, 2)}\n`);
     writeFileSync(join(root, 'bin', 'cpu-probe.cjs'), cpuProbe);
     const files = generateVault(root, settings);
+    settle();
     const results = commands.map(args => {
       rmSync(join(root, '.forge', 'cache'), { recursive: true, force: true });
       const cold = run(settings.forge, root, args);
       run(settings.forge, root, ['links', 'unresolved']);
-      const warm = Array.from({ length: settings.runs }, () => run(settings.forge, root, args));
+      const warm = Array.from({ length: settings.runs }, () => warmRun(settings.forge, root, args));
+      const rewrites = warm.filter(item => item.rewroteCache).length;
       return {
         command: args.join(' '), coldMs: cold.ms, coldCpuMs: cold.cpuMs, warmMs: warm.map(item => item.ms), warmMedianMs: median(warm.map(item => item.ms)),
         warmCpuMs: warm.map(item => item.cpuMs), warmMedianCpuMs: median(warm.map(item => item.cpuMs)),
-        ok: cold.ok && warm.every(item => item.ok), ...(cold.ok ? { warnings: cold.warnings } : { error: cold.error }),
+        warmCacheRewrites: rewrites, ok: cold.ok && warm.every(item => item.ok) && rewrites === 0,
+        ...(cold.ok ? { warnings: cold.warnings } : { error: cold.error }),
+        ...(rewrites > 0 ? { error: `${rewrites} warm run(s) rewrote the metadata cache, so they were not warm.` } : {}),
       };
     });
     const report = { forge: settings.forge, node: process.version, vault: { notes: settings.notes, attachments: settings.attachments, files }, runs: settings.runs, results, ...(settings.keep ? { root } : {}) };
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    if (!results.every(result => result.ok)) process.exitCode = 1;
   } finally {
     if (!settings.keep) rmSync(root, { recursive: true, force: true, maxRetries: 3 });
   }
