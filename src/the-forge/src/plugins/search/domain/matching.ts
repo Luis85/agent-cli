@@ -18,7 +18,11 @@ export function searchExpression(query: Pick<SearchQuery, 'pattern' | 'regex' | 
   }
   const source = query.regex ? query.pattern : query.pattern.replace(syntax, '\\$&');
   try { return new RegExp(source, `gu${query.caseSensitive ? '' : 'i'}`); }
-  catch (error) { throw searchError('INVALID_SEARCH_PATTERN', `Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`); }
+  catch (error) {
+    // The engine's SyntaxError already starts with "Invalid regular expression: /<source>/<flags>: <problem>".
+    const message = error instanceof Error ? error.message : String(error);
+    throw searchError('INVALID_SEARCH_PATTERN', message.startsWith('Invalid regular expression') ? message : `Invalid regular expression: ${message}`);
+  }
 }
 
 /** Lines split at `\r\n`, `\n` and `\r`, like the metadata cache's line numbers. */

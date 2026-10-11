@@ -26,6 +26,11 @@ describe('search expressions', () => {
   it.each([['', false], ['(', true], ['x'.repeat(1001), false], ['\\-', true]])('rejects the pattern %j with INVALID_SEARCH_PATTERN', (pattern, regex) => {
     expect(() => expression(pattern as string, regex as boolean)).toThrow(expect.objectContaining({ code: 'INVALID_SEARCH_PATTERN' }));
   });
+
+  it('names a regular expression syntax error once', () => {
+    expect(() => expression('[', true)).toThrow(expect.objectContaining({ message: expect.stringMatching(/^Invalid regular expression: \/\[\/[a-z]*: /) }));
+    expect(() => expression('[', true)).toThrow(expect.objectContaining({ message: expect.not.stringMatching(/Invalid regular expression.*Invalid regular expression/) }));
+  });
 });
 
 describe('searched lines', () => {

@@ -101,6 +101,20 @@ it('rejects a distribution asset replaced by a symlink before planning installat
   await expect(readSetupArtifacts(bundle)).rejects.toThrow();
   expect(await readdir(root)).toEqual(['private.txt']);
 });
+it.each([
+  ['the distribution manifest', 'data/distribution.json', 'bin/data/distribution.json is missing'],
+  ['a listed asset', 'data/docs/reference/cli.md', 'bin/data/docs/reference/cli.md is missing'],
+  ['the whole data folder', 'data', 'bin/data/distribution.json is missing'],
+])('names the missing file of an incomplete bin folder: %s', async (_case, removed, message) => {
+  const { bundle } = await fixture();
+  await rm(join(bundle, removed), { recursive: true });
+  await expect(readSetupArtifacts(bundle)).rejects.toMatchObject({ code: 'INVALID_SETUP', message: expect.stringContaining(message), details: { path: `bin/${removed === 'data' ? 'data/distribution.json' : removed}` } });
+});
+it('rejects a distribution manifest that is not JSON with INVALID_SETUP', async () => {
+  const { bundle } = await fixture();
+  await writeFile(join(bundle, 'data/distribution.json'), '{');
+  await expect(readSetupArtifacts(bundle)).rejects.toMatchObject({ code: 'INVALID_SETUP', message: expect.stringContaining('bin/data/distribution.json') });
+});
 it.each(['missing-defaults', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
   const { bundle } = await fixture();
   const path = join(bundle, 'data/distribution.json');

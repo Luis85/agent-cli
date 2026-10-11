@@ -1,6 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensure } from '../../domain/shared/errors.ts';
+import { ensure, forgeError } from '../../domain/shared/errors.ts';
 import { vaultPath } from '../../domain/documents/file.ts';
 import type { SetupArtifact } from '../../application/workspace/setup.ts';
 import distributionPolicy from '../../../configs/distribution-policy.json';
@@ -18,12 +18,20 @@ export async function readSetupArtifacts(bundleDir: string): Promise<SetupArtifa
     let current = bundleDir;
     for (const [index, segment] of segments.entries()) {
       current = join(current, segment);
-      const entry = await lstat(current);
+      const entry = await lstat(current).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+        throw forgeError('INVALID_SETUP', `The distribution is incomplete: bin/${path} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path}` });
+      });
       ensure(!entry.isSymbolicLink() && (index === segments.length - 1 ? entry.isFile() : entry.isDirectory()), 'INVALID_SETUP', `Distribution paths must contain only regular files and directories: ${path}`);
     }
     return readFile(current);
   };
-  const manifest: unknown = JSON.parse(new TextDecoder().decode(await readAsset('data/distribution.json')));
+  let manifest: unknown;
+  try { manifest = JSON.parse(new TextDecoder().decode(await readAsset('data/distribution.json'))); }
+  catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw forgeError('INVALID_SETUP', 'bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.', { path: 'bin/data/distribution.json' });
+  }
   ensure(typeof manifest === 'object' && manifest !== null && 'schemaVersion' in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && 'files' in manifest && Array.isArray(manifest.files), 'INVALID_SETUP', 'The distribution manifest is invalid. Rebuild or download the complete bin folder.');
   const files: unknown[] = manifest.files;
   ensure(files.every((path): path is string => typeof path === 'string') && new Set(files).size === files.length, 'INVALID_SETUP', 'The distribution manifest must contain unique paths.');
