@@ -1,8 +1,9 @@
 import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/errors.ts';
-import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
+import { germanActions, germanCommands, germanEvents, germanGuidance, germanRecoveredLock } from './catalog.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
 import type { Language, PluginCatalog } from '../../application/plugins/plugin-catalog.ts';
+import type { RecoveredLock } from '../../application/workspace/ports.ts';
 
 export interface LocalizedError { code: string; message: string; hint?: string; retryable?: boolean; details?: Record<string, unknown> }
 export function language(value: string): Language {
@@ -81,6 +82,14 @@ export class Localizer {
     return data;
   }
 
+  /** The warning for a stale lock an acquisition removed: `english` as the adapter wrote it, or the German text. */
+  recoveredLock({ path, holder, reason }: RecoveredLock, english: string): string {
+    if (this.language !== 'de') return english;
+    const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key]));
+    const command = holder.command === undefined ? '' : fill(germanRecoveredLock.command, { command: holder.command });
+    return fill(germanRecoveredLock.message, { path, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command, reason: germanRecoveredLock.reasons[reason] });
+  }
+
   /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
   error(error: unknown): LocalizedError {
     const code = error instanceof AppError ? error.code : 'OPERATION_FAILED';
@@ -94,9 +103,10 @@ export class Localizer {
     const builtIn = errorDefinition(code), contributed = builtIn ? undefined : this.plugins?.error(code);
     const definition = builtIn ?? contributed;
     if (!definition) return { code, message: diagnostic, ...(details ? { details } : {}) };
+    const retryable = error instanceof AppError && error.retryable !== undefined ? error.retryable : definition.retryable;
     const german = this.language !== 'de' ? undefined : builtIn ? germanErrors[code as ErrorCode] : this.plugins?.localizedError(code, 'de');
-    if (!german) return { code, message: diagnostic, hint: definition.hint, retryable: definition.retryable, ...(details ? { details } : {}) };
+    if (!german) return { code, message: diagnostic, hint: definition.hint, retryable, ...(details ? { details } : {}) };
     // A namespaced diagnostic preserves plugin/application details, including their own diagnostic key.
-    return { code, message: german.summary, hint: german.hint, retryable: definition.retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
+    return { code, message: german.summary, hint: german.hint, retryable, details: { ...details, localization: { originalMessage: diagnostic, ...(details?.localization !== undefined ? { originalDetails: details.localization } : {}) } } };
   }
 }

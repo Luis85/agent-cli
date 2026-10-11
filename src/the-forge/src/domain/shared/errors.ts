@@ -1,14 +1,20 @@
 import { errorCatalog, type ErrorCode } from './error-catalog.ts';
 
-/** Carries a stable code. Built-in failures use `forgeError` or `ensure`; other codes are plugin-defined. */
+/**
+ * Carries a stable code. Built-in failures use `forgeError` or `ensure`; other codes are plugin-defined. `retryable`
+ * overrides the catalog's retryability when this occurrence knows better (a lock whose holder cannot be verified).
+ */
 export class AppError extends Error {
-  constructor(public readonly code: string, message: string, public readonly exitCode = 1, public readonly details?: Record<string, unknown>) {
+  constructor(public readonly code: string, message: string, public readonly exitCode = 1, public readonly details?: Record<string, unknown>, public readonly retryable?: boolean) {
     super(message);
   }
 }
-/** Create a built-in failure whose exit status comes from the error catalog. Only signal interruptions override it. */
-export function forgeError(code: ErrorCode, message: string, details?: Record<string, unknown>, exitCode: number = errorCatalog[code].exitCode): AppError {
-  return new AppError(code, message, exitCode, details);
+/**
+ * Create a built-in failure whose exit status comes from the error catalog. Only signal interruptions override it;
+ * `retryable` overrides the catalog's retryability for this occurrence.
+ */
+export function forgeError(code: ErrorCode, message: string, details?: Record<string, unknown>, exitCode: number = errorCatalog[code].exitCode, retryable?: boolean): AppError {
+  return new AppError(code, message, exitCode, details, retryable);
 }
 /** A failure with a plugin-registered code; its exit status comes from the plugin's error catalog entry. */
 export function codedError(code: string, message: string, exitCode: number, details?: Record<string, unknown>): AppError {
@@ -16,7 +22,7 @@ export function codedError(code: string, message: string, exitCode: number, deta
 }
 /** The same failure located inside a larger request: its message gains `prefix` and its details gain `details`. */
 export function locatedError(error: AppError, prefix: string, details: Record<string, unknown>): AppError {
-  return new AppError(error.code, `${prefix}${error.message}`, error.exitCode, { ...error.details, ...details });
+  return new AppError(error.code, `${prefix}${error.message}`, error.exitCode, { ...error.details, ...details }, error.retryable);
 }
 /** Event diagnostics deliberately omit messages, input and arbitrary error details. */
 export function summarizeError(error: unknown): { code: string; exitCode: number } {

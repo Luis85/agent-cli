@@ -1,81 +1,123 @@
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import { link, lstat, open, readFile, readlink, rm, unlink } from 'node:fs/promises';
-import { hostname } from 'node:os';
-import { dirname, join } from 'node:path';
+import { link, open, readFile, rm, unlink } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import metadata from '../../../package.json';
-import { forgeError, AppError, isRecord } from '../../domain/shared/errors.ts';
+import type { RecoveredLock, StaleReason } from '../../application/workspace/ports.ts';
+import { forgeError, type AppError } from '../../domain/shared/errors.ts';
+import { errorCode, heldTokens, inspectLock, ownHolder, text, tokenOf, type LockInspection } from './lock-holder.ts';
 import { retryTransient } from './retry.ts';
 
+export { hostIdentity, inspectLock } from './lock-holder.ts';
 export const lockName = '.agent-cli.lock';
 /** Invocation details supplied by composition code; the filesystem adapter cannot know them. */
 export interface LockOwner { command?: string; operationId?: number }
-/** Where a pid is meaningful: Linux pid namespace and boot, when the host exposes them. */
-interface HostIdentity { pidNamespace?: string; bootId?: string }
-interface LockMetadata extends HostIdentity { pid: number; hostname: string; startedAt: string; command?: string; operationId?: number; forgeVersion?: string }
-/**
- * `active`: the pid runs in this pid namespace, or the lock is still being written.
- * `likely`: the lock was written in this host's pid namespace and boot, and its pid no longer runs (or is this process).
- * `unknown`: another host, namespace or boot, or unreadable metadata.
- */
-type LockDiagnosis = 'active' | 'likely' | 'unknown';
 export type LockRelease = 'released' | 'missing' | 'foreign';
+/** A held lock: the token that releases it and the stale lock this acquisition removed first, if any. */
+export interface AcquiredLock { token: string; recovered: RecoveredLock | null }
 
-/** An empty or partial lock this young may still be receiving its holder record. */
-const writingWindowMs = 5000;
+const staleReasons: Record<StaleReason, string> = {
+  'dead-process': 'its process no longer runs', 'reused-pid': 'its pid was reused by another process', rebooted: 'it was written before this host restarted',
+};
+/** The English warning for a stale lock an acquisition removed; German comes from the presentation catalog. */
+export function recoveredLockMessage({ path, holder, reason }: RecoveredLock): string {
+  return `Removed the stale lock ${path} of pid ${holder.pid} on ${holder.hostname} (since ${holder.startedAt}${holder.command ? `, command ${holder.command}` : ''}): ${staleReasons[reason]}. Inspect what that run left unfinished (for example git status or backlog sync status).`;
+}
+
 /** Hard links are unavailable on some filesystems (FAT, exFAT, some network shares). */
 export const linkUnsupported: ReadonlySet<string> = new Set(['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EPERM', 'EACCES', 'EMLINK']);
 /** Persistent denials while creating the lock: Windows reports a lock that is pending deletion this way. */
 const deniedCodes = new Set(['EPERM', 'EACCES']);
-/** Tokens of locks this process holds right now, to tell a concurrent writer from a reused pid. */
-const heldTokens = new Set<string>();
-
-const positiveInteger = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
-const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 256;
-const errorCode = (error: unknown) => (error as NodeJS.ErrnoException).code ?? '';
+/** Creation attempts of one acquisition: the first, and retries after the lock disappeared or a stale one was broken. */
+const acquireAttempts = 3;
+/** Temporary names next to the lock: skipped by folder listings and revisions like the lock itself. */
+const temporaryName = (path: string, kind: string) => join(dirname(path), `.agent-cli-tmp-${kind}-${randomUUID()}`);
 
 function ownerDetails(owner: () => LockOwner): LockOwner {
   try {
     const { command, operationId } = owner();
-    return { ...(text(command) ? { command } : {}), ...(positiveInteger(operationId) ? { operationId } : {}) };
+    return { ...(text(command) ? { command } : {}), ...(Number.isSafeInteger(operationId) && operationId! > 0 ? { operationId } : {}) };
   } catch { return {}; }
 }
 
-let identity: Promise<HostIdentity> | undefined;
-/** Linux pid namespace and boot id. Other platforms have neither, so their absence matches. */
-export function hostIdentity(): Promise<HostIdentity> {
-  identity ??= (async () => {
-    const pidNamespace = await readlink('/proc/self/ns/pid').catch(() => undefined);
-    const bootId = (await readFile('/proc/sys/kernel/random/boot_id', 'utf8').catch(() => undefined))?.trim();
-    return { ...(text(pidNamespace) ? { pidNamespace } : {}), ...(text(bootId) ? { bootId } : {}) };
-  })();
-  return identity;
+/**
+ * Create the lock with its holder record already in place, returning the token that releases it. `display` names the
+ * lock relative to its root in messages and details. When the lock exists and its holder provably no longer runs
+ * (see `inspectLock`), the stale lock is broken atomically and the acquisition retried once; the removed holder is
+ * returned in `recovered`. Any other existing lock fails with WORKSPACE_BUSY.
+ */
+export async function acquireLock(path: string, owner: () => LockOwner, display = lockName): Promise<AcquiredLock> {
+  const token = randomUUID();
+  const record = { ...(await ownHolder()), ...ownerDetails(owner), forgeVersion: metadata.version, token };
+  const content = JSON.stringify(record) + '\n';
+  let recovered: RecoveredLock | null = null;
+  // A lock that disappears or is broken between attempts is taken on the next one; a few attempts bound the races.
+  for (let attempt = 1; ; attempt++) {
+    if (await createHeld(path, content, token)) return { token, recovered };
+    const found = await inspectLock(path);
+    if (attempt === acquireAttempts) throw busy(display, found);
+    if (found.missing) continue;
+    if (found.stale !== 'stale') throw busy(display, found);
+    try { if (await breakStale(path, found.content!)) recovered = { path: display, holder: found.lock!, reason: found.reason! }; }
+    catch (error) { throw busy(display, found, `Forge could not remove it (${errorCode(error) || String(error)})`); }
+  }
 }
 
 /**
- * Create the lock with its holder record already in place, returning the token that releases it.
- * The record is written and fsynced to a reserved temporary file, then hard-linked to the lock
- * name, which fails with EEXIST when another writer holds it. Filesystems without hard links fall
- * back to an exclusive create followed by the write.
+ * Creates a lock that records this process under `token`. The token counts as held before the lock appears, so a
+ * concurrent diagnosis in this process never mistakes the new lock for one left by an earlier process with its pid.
  */
-export async function acquireLock(path: string, owner: () => LockOwner, label = `Workspace lock ${lockName}`): Promise<string> {
-  const token = randomUUID();
-  const record = { pid: process.pid, hostname: hostname(), startedAt: new Date().toISOString(), ...ownerDetails(owner),
-    forgeVersion: metadata.version, ...(await hostIdentity()), token };
-  const content = JSON.stringify(record) + '\n';
-  const temporary = join(dirname(path), `.agent-cli-tmp-lock-${token}`);
-  let linked = false;
+async function createHeld(path: string, content: string, token: string): Promise<boolean> {
+  heldTokens.add(token);
+  let created = false;
+  try { created = await create(path, content); return created; }
+  finally { if (!created) heldTokens.delete(token); }
+}
+
+/**
+ * Creates the lock unless it exists. The record is written and fsynced to a reserved temporary file, then hard-linked
+ * to the lock name, which fails with EEXIST when another writer holds it. Filesystems without hard links fall back to
+ * an exclusive create followed by the write.
+ */
+async function create(path: string, content: string): Promise<boolean> {
+  const temporary = temporaryName(path, 'lock');
   try {
     await writeDurably(temporary, content);
     await retryTransient(() => link(temporary, path), { codes: ['EBUSY'] });
-    linked = true;
+    return true;
   } catch (error) {
-    if (errorCode(error) === 'EEXIST') throw await busy(path, label);
+    if (errorCode(error) === 'EEXIST') return false;
     if (!linkUnsupported.has(errorCode(error))) throw error;
   } finally { await retryTransient(() => rm(temporary, { force: true })).catch(() => {}); }
-  if (!linked) await createExclusively(path, content, label);
-  heldTokens.add(token);
-  return token;
+  return createExclusively(path, content);
+}
+
+/** The guard a contender holds while it breaks the stale lock at `path`; skipped by listings like the lock itself. */
+const guardPath = (path: string) => join(dirname(path), `.agent-cli-tmp-break-${basename(path)}`);
+
+/** Removes `path` only while it still holds `expected` (nobody but a breaker removes a lock whose holder is gone). */
+async function removeUnchanged(path: string, expected: string): Promise<boolean> {
+  const current = await readFile(path, 'utf8').catch(() => null);
+  if (current !== expected) return false;
+  try { await retryTransient(() => unlink(path)); return true; }
+  catch (error) { if (errorCode(error) === 'ENOENT') return false; throw error; }
+}
+
+/**
+ * Breaks a lock diagnosed as stale, safe against concurrent contenders: only the contender holding the break guard
+ * may remove it, and only while it is still the diagnosed lock. Without the guard nothing but the (gone) holder or a
+ * person removes a lock, so a lock another contender took meanwhile is never removed. A guard left by a contender
+ * that was killed while breaking is itself broken when its holder provably no longer runs. Returns whether this
+ * call removed the stale lock (false when another contender is or was first).
+ */
+export async function breakStale(path: string, diagnosed: string): Promise<boolean> {
+  const guard = guardPath(path), token = randomUUID();
+  const content = JSON.stringify({ ...(await ownHolder()), command: 'break stale lock', forgeVersion: metadata.version, token }) + '\n';
+  if (!(await createHeld(guard, content, token))) {
+    const left = await inspectLock(guard);
+    if (left.stale !== 'stale' || !(await removeUnchanged(guard, left.content!)) || !(await createHeld(guard, content, token))) return false;
+  }
+  try { return await removeUnchanged(path, diagnosed); }
+  finally { await releaseLock(guard, token).catch(() => {}); }
 }
 
 type Handle = Awaited<ReturnType<typeof open>>;
@@ -93,11 +135,11 @@ async function writeDurably(path: string, content: string): Promise<void> {
 }
 
 /** Fallback without hard links: the lock is briefly empty, which diagnosis reports as active. */
-async function createExclusively(path: string, content: string, label: string): Promise<void> {
+async function createExclusively(path: string, content: string): Promise<boolean> {
   let handle: Handle;
   try { handle = await retryTransient(() => open(path, 'wx')); }
   catch (error) {
-    if (errorCode(error) === 'EEXIST' || deniedCodes.has(errorCode(error))) throw await busy(path, label);
+    if (errorCode(error) === 'EEXIST' || deniedCodes.has(errorCode(error))) return false;
     throw error;
   }
   try { await record(handle, content); }
@@ -105,6 +147,7 @@ async function createExclusively(path: string, content: string, label: string): 
     await retryTransient(() => rm(path, { force: true })).catch(() => {});
     throw error;
   }
+  return true;
 }
 
 /** Remove the lock only while it still carries this writer's token; never delete a foreign lock. */
@@ -113,66 +156,23 @@ export async function releaseLock(path: string, token: string): Promise<LockRele
   let content: string;
   try { content = await retryTransient(() => readFile(path, 'utf8')); }
   catch (error) { if (errorCode(error) === 'ENOENT') return 'missing'; throw error; }
-  let recorded: unknown;
-  try { recorded = (JSON.parse(content) as { token?: unknown }).token; } catch { return 'foreign'; }
-  if (recorded !== token) return 'foreign';
+  if (tokenOf(content) !== token) return 'foreign';
   await retryTransient(() => unlink(path));
   return 'released';
 }
 
-function parseMetadata(content: string): LockMetadata | null {
-  let value: unknown;
-  try { value = JSON.parse(content); } catch { return null; }
-  if (!isRecord(value) || !positiveInteger(value.pid) || !text(value.hostname) || !text(value.startedAt)) return null;
-  const { pid, hostname: host, startedAt, command, operationId, forgeVersion, pidNamespace, bootId } = value;
-  // Copy recognized fields only; error details must not echo arbitrary lock content or the release token.
-  return { pid, hostname: host, startedAt, ...(text(command) ? { command } : {}), ...(positiveInteger(operationId) ? { operationId } : {}),
-    ...(text(forgeVersion) ? { forgeVersion } : {}), ...(text(pidNamespace) ? { pidNamespace } : {}), ...(text(bootId) ? { bootId } : {}) };
-}
-
-async function readLock(path: string): Promise<{ lock: LockMetadata | null; token?: unknown; young: boolean }> {
-  try {
-    const entry = await lstat(path);
-    if (!entry.isFile()) return { lock: null, young: false };
-    const young = Date.now() - entry.mtimeMs < writingWindowMs;
-    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-    try {
-      const buffer = Buffer.alloc(4096);
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      const content = buffer.subarray(0, bytesRead).toString('utf8');
-      let token: unknown;
-      try { token = (JSON.parse(content) as { token?: unknown } | null)?.token; } catch { /* Unreadable metadata has no token. */ }
-      return { lock: parseMetadata(content), token, young };
-    } finally { await handle.close(); }
-  } catch { return { lock: null, young: false }; }
-}
-
-function processAlive(pid: number): boolean | undefined {
-  try { process.kill(pid, 0); return true; }
-  catch (error) {
-    // EPERM: the process exists but belongs to another user.
-    return errorCode(error) === 'ESRCH' ? false : errorCode(error) === 'EPERM' ? true : undefined;
-  }
-}
-
-/** Read-only diagnosis. The lock is never removed automatically: pids can be reused. */
-export async function inspectLock(path: string): Promise<{ lock: LockMetadata | null; stale: LockDiagnosis }> {
-  const { lock, token, young } = await readLock(path);
-  if (lock === null) return { lock, stale: young ? 'active' : 'unknown' };
-  const current = await hostIdentity();
-  // A pid only identifies a process within one pid namespace and boot of one host.
-  if (lock.hostname !== hostname() || lock.pidNamespace !== current.pidNamespace || lock.bootId !== current.bootId) return { lock, stale: 'unknown' };
-  // This process is not writing under that token, so a lock naming its pid is left over (for example a fixed-pid container restart).
-  if (lock.pid === process.pid) return { lock, stale: typeof token === 'string' && heldTokens.has(token) ? 'active' : 'likely' };
-  const alive = processAlive(lock.pid);
-  return { lock, stale: alive === undefined ? 'unknown' : alive ? 'active' : 'likely' };
-}
-
-async function busy(path: string, label: string): Promise<AppError> {
-  const details = await inspectLock(path);
-  const { lock, stale } = details;
+/**
+ * WORKSPACE_BUSY for a lock that stays. Only an active holder (or a stale lock another contender just broke) makes
+ * a retry worthwhile; a lock whose holder Forge cannot verify needs someone to check it and delete the file.
+ */
+function busy(display: string, inspection: LockInspection, failure?: string): AppError {
+  const { lock, stale, reason } = inspection;
   const holder = lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ''})` : '';
-  return forgeError('WORKSPACE_BUSY', `${label} exists${holder}; error.details.stale is "${stale}". Forge never removes the lock automatically. `
-    + 'Wait for an active writer and retry. If stale is "likely", the recorded process no longer runs in this host\'s pid namespace: inspect its changes (for example git status), confirm no Forge writer is running, then delete the lock and retry. '
-    + 'If stale is "unknown" (another host, container or boot, or an unreadable lock), verify the recorded holder in error.details.lock yourself before deleting it.', details);
+  const details = { lock, stale, path: display, ...(reason ? { reason } : {}) };
+  const message = stale === 'active'
+    ? `Lock ${display} is held${holder} by a running Forge process or one still writing it. Wait for it to finish and retry.`
+    : stale === 'stale'
+      ? `Lock ${display}${holder} is stale (${reason}), but ${failure ?? 'it could not be removed'}. Confirm no Forge process uses it, delete ${display} and retry.`
+      : `Lock ${display} exists${holder}; Forge cannot tell whether its holder still runs (another host, pid namespace or boot, or an unreadable lock), so it never removes it. Verify the holder in error.details.lock; once it no longer runs, inspect its unfinished changes (for example git status), delete ${display} and retry.`;
+  return forgeError('WORKSPACE_BUSY', message, details, undefined, stale === 'active');
 }

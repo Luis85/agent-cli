@@ -28,6 +28,22 @@ export interface FileRepository {
    */
   commit(batch: FileBatch, dryRun: boolean): Promise<BatchResult>;
 }
+/** The recorded holder of a lock file (never its release token). */
+export interface LockHolder {
+  pid: number; hostname: string; startedAt: string; command?: string; operationId?: number; forgeVersion?: string;
+  pidNamespace?: string; bootId?: string;
+  /** The holder process's start time as the host reports it (Linux: clock ticks after boot), to detect a reused pid. */
+  processStart?: string;
+}
+/**
+ * Why a lock's holder provably no longer runs: its pid runs no process on this host, the pid now belongs to another
+ * process (a different start time, or this very process without holding the lock), or the lock was written before
+ * this host's last restart.
+ */
+export type StaleReason = 'dead-process' | 'reused-pid' | 'rebooted';
+/** A lock an acquisition found stale and removed before taking it; `path` is relative to the lock's root. */
+export interface RecoveredLock { path: string; holder: LockHolder; reason: StaleReason }
+
 /** The committed batch handed to observers: file renames (folder records omitted) and file changes, in batch order. */
 export interface CommittedBatch { renames: readonly (FileRename & { kind: 'file' })[]; changes: readonly FileChange[] }
 /**

@@ -9,6 +9,7 @@ import { hashText } from './infrastructure/hash.ts';
 import { followRename, type SyncActivity } from './application/sync-store.ts';
 import { editFrontmatter } from './infrastructure/frontmatter.ts';
 import { backlogSkill } from './infrastructure/skill.ts';
+import { watchSignals } from './infrastructure/signals.ts';
 import { backlogCommand } from './presentation/command.ts';
 
 const payload = (keys: readonly string[]) => (value: unknown): value is Record<string, unknown> => isRecord(value) && keys.every(key => typeof value[key] === 'string');
@@ -55,6 +56,7 @@ const de = {
     BACKLOG_WRITE_REFUSED: { summary: 'Das Backlog-Plugin verweigert diesen Schreibvorgang.', hint: 'error.details.reason nennt die Regel; wählen Sie einen passenden Eintrag, Typ oder Wert oder binden Sie die fehlende Eigenschaft.' },
     BACKLOG_NO_GAP: { summary: 'Zwischen den Nachbarn ist kein Rang mehr frei.', hint: 'Führen Sie backlog ranks respace (oder backlog ranks seed bei fehlenden Rängen) aus und wiederholen Sie die Verschiebung.' },
     SYNC_CONFLICT: { summary: 'Das entfernte Work Item hat sich während des Abgleichs geändert.', hint: 'Prüfen Sie den Stand mit backlog sync status und wiederholen Sie den Abgleich oder die Konfliktlösung.' },
+    SYNC_INTERRUPTED: { summary: 'Der Abgleich wurde durch ein Signal an einer sicheren Stelle angehalten (Exit 130 bei SIGINT, 143 bei SIGTERM); seine Sperren sind freigegeben.', hint: 'Jedes bereits angelegte entfernte Work Item steht im Abgleichsstand; führen Sie backlog sync erneut aus, um den Abgleich abzuschließen.' },
   },
 };
 
@@ -77,7 +79,7 @@ export const backlogPlugin: CorePlugin = {
       commands: [backlogCommand(context => {
         const { services } = context as PluginContext;
         const ports = { stringifyYaml, editFrontmatter, today, hash: hashText };
-        return { bases: services.get<BasesQueryService>('bases.query'), ports, sync: () => ({ bases: services.get<BasesQueryService>('bases.query'), ports, hub: services.get<ConnectorHub>('connector.hub'), activity, lock: host.locks(context.root) }) };
+        return { bases: services.get<BasesQueryService>('bases.query'), ports, sync: () => ({ bases: services.get<BasesQueryService>('bases.query'), ports, hub: services.get<ConnectorHub>('connector.hub'), activity, lock: host.locks(context.workspaceRoot), interrupts: watchSignals }) };
       })],
       // Sync state files stay keyed by note path when notes or folders are renamed through Forge.
       onload(context) {
@@ -101,6 +103,7 @@ export const backlogPlugin: CorePlugin = {
         { code: 'BACKLOG_WRITE_REFUSED', category: 'conflict', summary: 'The backlog refuses this write.', hint: 'error.details.reason names the rule; choose a fitting item, type or value, or bind the missing property.' },
         { code: 'BACKLOG_NO_GAP', category: 'conflict', summary: 'No rank is free between the neighbours.', hint: 'Run backlog ranks respace (or backlog ranks seed when ranks are missing), then repeat the move.' },
         { code: 'SYNC_CONFLICT', category: 'conflict', summary: 'The remote work item changed while it was being synced.', hint: 'Check the state with backlog sync status, then repeat the sync or the resolution.', retryable: true },
+        { code: 'SYNC_INTERRUPTED', category: 'interrupted', summary: 'A signal stopped the sync at a safe point (exit 130 for SIGINT, 143 for SIGTERM); its locks are released.', hint: 'Every remote item created so far is recorded in the sync state; run backlog sync again to finish.' },
       ],
       strings: { de },
     };

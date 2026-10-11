@@ -122,7 +122,8 @@ export class PluginCatalog {
    * turns a code that `pluginId` registered itself, or a built-in catalog code, into a coded failure with its
    * category's exit status. A code of one of `providers`, the plugins providing services that `pluginId` declared,
    * maps too, since their failures surface through their consumer's calls. Any other plugin's code stays an uncoded
-   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged.
+   * error: a plugin cannot borrow a code it does not own. Anything else is unchanged. An `interrupted` code thrown
+   * with `exitCode: 143` (SIGTERM) keeps it.
    */
   normalize(error: unknown, pluginId: string, providers: readonly string[] = []): unknown {
     if (error instanceof AppError || !(error instanceof Error) || !('code' in error) || typeof error.code !== 'string') return error;
@@ -131,6 +132,8 @@ export class PluginCatalog {
     if (builtIn) return codedError(error.code, error.message, builtIn.exitCode, details);
     const entry = this.codes.get(error.code);
     if (!entry || (entry.pluginId !== pluginId && !providers.includes(entry.pluginId))) return error;
-    return codedError(entry.code, error.message, entry.exitCode, details);
+    // Like built-in interruptions, a plugin's SIGTERM interruption exits 143 instead of the category's 130.
+    const exitCode = entry.category === 'interrupted' && 'exitCode' in error && error.exitCode === 143 ? 143 : entry.exitCode;
+    return codedError(entry.code, error.message, exitCode, details);
   }
 }

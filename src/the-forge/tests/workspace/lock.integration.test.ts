@@ -6,9 +6,13 @@ import { basename, join } from 'node:path';
 import metadata from '../../package.json';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { acquireLock, hostIdentity, inspectLock, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
+import { processStart } from '../../src/infrastructure/workspace/lock-holder.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 
 let root: string, lock: string, files: NodeFiles, identity: Awaited<ReturnType<typeof hostIdentity>>;
+/** The process start time a lock records where the host reports one (Linux). */
+const ownStart = await processStart(process.pid);
+const ownStartField = ownStart === undefined ? {} : { processStart: ownStart };
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), 'forge-lock-'))); lock = join(root, '.agent-cli.lock'); files = await NodeFiles.at(root);
   identity = await hostIdentity();
@@ -27,33 +31,17 @@ type Adapter = { replace(target: string, bytes: Uint8Array, mode?: number, verif
 const walk = async (directory: string, prefix = ''): Promise<string[]> => (await Promise.all((await readdir(directory, { withFileTypes: true })).map(entry =>
   entry.isDirectory() ? walk(join(directory, entry.name), `${prefix}${entry.name}/`) : [prefix + entry.name]))).flat().sort();
 
-describe('workspace writer lock diagnosis', () => {
-  it('reports a likely stale lock when the recorded process no longer runs on this host', async () => {
-    const pid = exitedPid();
-    await writeFile(lock, holder({ pid }));
-    const failure = files.writeBatch([write('note.md')], false);
-    await expect(failure).rejects.toMatchObject({
-      code: 'WORKSPACE_BUSY', exitCode: 4,
-      details: { stale: 'likely', lock: { pid, hostname: hostname(), startedAt: '2026-10-10T08:00:00.000Z', command: 'write', operationId: 3, forgeVersion: '0.1.0' } },
-    });
-    await expect(failure).rejects.toThrow(/stale.*likely/s);
-    expect(await readdir(root)).toEqual(['.agent-cli.lock']);
-    expect(await readFile(lock, 'utf8')).toBe(holder({ pid }));
-  });
+describe('workspace writer lock diagnosis of holders that may still run', () => {
   it('reports an active holder when the recorded process is alive on this host', async () => {
     // The parent of this test worker is alive and is not this process.
     await writeFile(lock, holder({ pid: process.ppid }));
     await expect(files.writeBatch([write('note.md')], false)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', exitCode: 4, details: { stale: 'active', lock: { pid: process.ppid } } });
     expect(await readdir(root)).toEqual(['.agent-cli.lock']);
   });
-  it('reports a lock naming this process but not held by it as likely stale, as after a fixed-pid container restart', async () => {
-    await writeFile(lock, holder({ pid: process.pid, token: 'left-by-a-previous-run' }));
-    await expect(files.writeBatch([write('note.md')], false)).rejects.toMatchObject({ details: { stale: 'likely', lock: { pid: process.pid } } });
-  });
   it.each([
     ['pid namespace', { pidNamespace: 'pid:[1]' }],
-    ['boot', { bootId: '00000000-0000-0000-0000-000000000000' }],
-  ])('cannot call a lock from another %s likely stale, because its pid means another process', async (_label, other) => {
+    ['boot that started after this boot', { bootId: '00000000-0000-0000-0000-000000000000', startedAt: new Date().toISOString() }],
+  ])('cannot call a lock from another %s stale, because its pid means another process', async (_label, other) => {
     await writeFile(lock, holder({ pid: exitedPid(), ...other }));
     await expect(files.writeBatch([write('note.md')], false)).rejects.toMatchObject({ details: { stale: 'unknown', lock: other } });
   });
@@ -93,8 +81,8 @@ describe('workspace writer lock diagnosis', () => {
   it('diagnoses removal against a held lock as well', async () => {
     await writeFile(join(root, 'note.md'), 'Hello');
     const before = await files.read('note.md');
-    await writeFile(lock, holder({ pid: exitedPid() }));
-    await expect(files.remove('note.md', before.revision, false)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', exitCode: 4, details: { stale: 'likely' } });
+    await writeFile(lock, holder({ pid: exitedPid(), hostname: `${hostname()}-elsewhere` }));
+    await expect(files.remove('note.md', before.revision, false)).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', exitCode: 4, details: { stale: 'unknown' } });
     expect(await readFile(join(root, 'note.md'), 'utf8')).toBe('Hello');
   });
 });
@@ -111,20 +99,20 @@ describe('owned writer lock', () => {
     });
     const started = Date.now();
     await files.writeBatch([write('note.md')], false);
-    expect(observed).toEqual([{ pid: process.pid, hostname: hostname(), startedAt: expect.any(String), command: 'create', operationId: 7, forgeVersion: metadata.version, ...identity, token: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+    expect(observed).toEqual([{ pid: process.pid, hostname: hostname(), startedAt: expect.any(String), command: 'create', operationId: 7, forgeVersion: metadata.version, ...identity, ...ownStartField, token: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
     const startedAt = Date.parse((observed[0] as { startedAt: string }).startedAt);
     expect(new Date(startedAt).toISOString()).toBe((observed[0] as { startedAt: string }).startedAt);
     expect(startedAt).toBeGreaterThanOrEqual(started - 1000);
   });
   it('omits invalid or failing owner details instead of failing the write', async () => {
     files = await NodeFiles.at(root, () => {}, () => { throw new Error('owner unavailable'); });
-    const token = await acquireLock(lock, () => ({ command: '', operationId: -1 }));
-    expect(JSON.parse(await readFile(lock, 'utf8'))).toEqual({ pid: process.pid, hostname: hostname(), startedAt: expect.any(String), forgeVersion: metadata.version, ...identity, token });
+    const { token } = await acquireLock(lock, () => ({ command: '', operationId: -1 }));
+    expect(JSON.parse(await readFile(lock, 'utf8'))).toEqual({ pid: process.pid, hostname: hostname(), startedAt: expect.any(String), forgeVersion: metadata.version, ...identity, ...ownStartField, token });
     expect(await releaseLock(lock, token)).toBe('released');
     await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject({ changes: [{ operation: 'created' }] });
   });
   it('acquires atomically and reports the existing holder', async () => {
-    const token = await acquireLock(lock, () => ({ command: 'write' }));
+    const { token } = await acquireLock(lock, () => ({ command: 'write' }));
     await expect(acquireLock(lock, () => ({ command: 'edit' }))).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', details: { stale: 'active', lock: { pid: process.pid, command: 'write' } } });
     expect(await releaseLock(lock, token)).toBe('released');
     expect(await releaseLock(lock, token)).toBe('missing');

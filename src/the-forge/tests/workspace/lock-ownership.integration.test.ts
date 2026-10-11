@@ -43,13 +43,13 @@ describe('writer lock ownership', () => {
   });
 
   it('reports a release of a missing lock without failing', async () => {
-    const token = await acquireLock(lock, () => ({}));
+    const { token } = await acquireLock(lock, () => ({}));
     await fs.rm(lock);
     expect(await releaseLock(lock, token)).toBe('missing');
   });
 
   it('publishes the complete holder record at once and leaves no temporary file', async () => {
-    const token = await acquireLock(lock, () => ({ command: 'write' }));
+    const { token } = await acquireLock(lock, () => ({ command: 'write' }));
     expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toMatchObject({ pid: process.pid, command: 'write', token });
     expect(await fs.readdir(root)).toEqual(['.agent-cli.lock']);
     await expect(acquireLock(lock, () => ({}))).rejects.toMatchObject({ code: 'WORKSPACE_BUSY' });
@@ -62,7 +62,7 @@ describe('writer lock ownership', () => {
     const files = await NodeFiles.at(root);
     await expect(files.writeBatch([write('note.md')], false)).resolves.toMatchObject({ changes: [{ operation: 'created' }] });
     expect(await fs.readdir(root)).toEqual(['note.md']);
-    const token = await acquireLock(lock, () => ({}));
+    const { token } = await acquireLock(lock, () => ({}));
     await expect(acquireLock(lock, () => ({}))).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', details: { stale: 'active' } });
     expect(await releaseLock(lock, token)).toBe('released');
   });

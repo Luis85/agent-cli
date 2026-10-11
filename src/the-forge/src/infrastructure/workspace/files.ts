@@ -4,10 +4,10 @@ import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
-import type { BatchResult, FileBatch, FileRepository, WriteBatchResult } from '../../application/workspace/ports.ts';
+import type { BatchResult, FileBatch, FileRepository, RecoveredLock, WriteBatchResult } from '../../application/workspace/ports.ts';
 import { Transaction, type BatchHost, type FilePlan, type FolderSnapshot, type SpecialEntry, type StoredFile } from './batch.ts';
 import { syncDirectory } from './durable.ts';
-import { acquireLock, lockName, releaseLock, type LockOwner, type LockRelease } from './lock.ts';
+import { acquireLock, lockName, recoveredLockMessage, releaseLock, type LockOwner, type LockRelease } from './lock.ts';
 import { retryTransient } from './retry.ts';
 
 export const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -15,11 +15,17 @@ const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'E
 /** Concurrent staging lets the filesystem group fsyncs while bounding open handles. */
 const stagingConcurrency = 8;
 
+/** Reports a stale writer lock a commit removed; `message` is its English description. */
+export type RecoveredLockReport = (lock: RecoveredLock, message: string) => void;
+
 export class NodeFiles implements FileRepository, BatchHost {
-  private constructor(readonly root: string, private readonly warning: (message: string) => void, private readonly owner: () => LockOwner) {}
-  /** `owner` names the invocation recorded in the writer lock; composition code supplies it. */
-  static async at(root: string, warn: (message: string) => void = () => {}, owner: () => LockOwner = () => ({})): Promise<NodeFiles> {
-    return new NodeFiles(await realpath(resolve(root)), warn, owner);
+  private constructor(readonly root: string, private readonly warning: (message: string) => void, private readonly owner: () => LockOwner, private readonly recovered: RecoveredLockReport) {}
+  /**
+   * `owner` names the invocation recorded in the writer lock; composition code supplies it. `recovered` reports a
+   * stale writer lock a commit removed (by default as an English warning).
+   */
+  static async at(root: string, warn: (message: string) => void = () => {}, owner: () => LockOwner = () => ({}), recovered?: RecoveredLockReport): Promise<NodeFiles> {
+    return new NodeFiles(await realpath(resolve(root)), warn, owner, recovered ?? ((_lock, message) => warn(message)));
   }
   /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
   async resolvePath(path: string, allowFolder = false): Promise<string> {
@@ -88,7 +94,11 @@ export class NodeFiles implements FileRepository, BatchHost {
     const lock = join(this.root, lockName);
     let token: string | undefined;
     try {
-      if (!dryRun) token = await acquireLock(lock, this.owner);
+      if (!dryRun) {
+        const acquired = await acquireLock(lock, this.owner);
+        token = acquired.token;
+        if (acquired.recovered) this.report(acquired.recovered);
+      }
       return await transaction.run(dryRun);
     } finally { if (token !== undefined) await this.cleanupLock(lock, token); }
   }
@@ -142,6 +152,10 @@ export class NodeFiles implements FileRepository, BatchHost {
   /** @internal */
   warn(message: string): void {
     try { this.warning(message); }
+    catch { /* Diagnostics must not change the write outcome. */ }
+  }
+  private report(lock: RecoveredLock): void {
+    try { this.recovered(lock, recoveredLockMessage(lock)); }
     catch { /* Diagnostics must not change the write outcome. */ }
   }
   private async cleanupLock(lock: string, token: string): Promise<void> {

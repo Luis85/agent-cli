@@ -15,10 +15,17 @@ export interface SyncRequest {
   /** `backlog sync resolve <item> --take local|remote [--field a,b]`. */
   resolve?: { item: string; take: 'local' | 'remote'; fields: string[] | null };
 }
+/** Signals received while a live sync runs; `signal` is the first one, or null. */
+export interface Interruption { readonly signal: 'SIGINT' | 'SIGTERM' | null; dispose(): void }
 export interface SyncServices {
   bases: BasesQueryService; ports: BacklogPorts; hub: ConnectorHub; activity: SyncActivity;
-  /** Lock files in the command scope (`.forge/sync/<connection>.lock`). */
+  /**
+   * Lock files at the workspace root (`.forge/sync/<connection>.lock`): one lock per connection, whichever scope
+   * syncs it, because connection profiles are workspace settings and every scope writes to the same remote project.
+   */
   lock(path: string, command: string): Promise<ReleaseLock>;
+  /** Starts watching for SIGINT and SIGTERM during a live sync. */
+  interrupts(): Interruption;
 }
 interface BoundView { base: string; view: string; connection: string }
 /** A note that left the sync set of its connection: its state entry is kept, the remote item is never deleted. */
@@ -81,6 +88,8 @@ export async function runSync(context: CommandContext, services: SyncServices, r
   const reports: ViewReport[] = [];
   let left: Left[] = [];
   services.activity.syncing = true;
+  const interruption = live ? services.interrupts() : null;
+  const checkpoint = () => { if (interruption?.signal) throw interrupted(interruption.signal); };
   try {
     if (live) for (const id of [...connections].sort()) releases.push(await services.lock(lockPath(id), 'backlog sync'));
     const stores = new Map<string, SyncStore>();
@@ -89,15 +98,17 @@ export async function runSync(context: CommandContext, services: SyncServices, r
     const held = resolution ? null : await heldPaths(all, connections, open);
     const leftOf = (connection: string) => (held === null ? [] : leftEntries(connection, stores.get(connection)!, held.get(connection)!));
     for (const view of targets) {
+      checkpoint();
       const session = await open(view);
       const connection = bound.get(view.connection)!;
-      const { report } = await syncView(session, connection, stores.get(view.connection)!, services.ports.hash, { mode: request.mode, direction: resolution ? 'both' : request.direction, ...(resolution ? { resolution } : {}) });
+      const { report } = await syncView(session, connection, stores.get(view.connection)!, services.ports.hash, { mode: request.mode, direction: resolution ? 'both' : request.direction, checkpoint, ...(resolution ? { resolution } : {}) });
       for (const entry of report.pulled) if (entry.renamedTo) held?.get(view.connection)!.add(entry.renamedTo);
       reports.push(report);
       if (live) await publish(session, services.hub, connection, report, leftOf(view.connection).length);
     }
     left = connections.flatMap(leftOf);
   } finally {
+    interruption?.dispose();
     services.activity.syncing = false;
     for (const release of releases.reverse()) if (!(await release())) context.events.warn('A backlog sync lock no longer carried this run\'s token and was left in place; inspect .forge/sync for concurrent syncs.');
   }
@@ -105,6 +116,11 @@ export async function runSync(context: CommandContext, services: SyncServices, r
     dryRun: request.mode === 'status' || context.workspace.dryRun, mode: request.resolve ? 'resolve' : request.mode, direction: request.resolve ? 'both' : request.direction,
     counts: totals(reports, left), views: reports, left, changes: reports.flatMap(report => report.changes),
   };
+}
+
+/** A run stopped by a signal at a safe point: every remote item created so far is recorded in the state file. */
+function interrupted(signal: 'SIGINT' | 'SIGTERM'): Error {
+  return Object.assign(backlogError('SYNC_INTERRUPTED', `backlog sync stopped after ${signal} before its next remote or vault write; every remote item it created is recorded in the sync state. Run backlog sync again to finish.`, { signal }), signal === 'SIGTERM' ? { exitCode: 143 } : {});
 }
 
 /** The note paths each connection's bound views hold, across all bound views of the scope (not only the ones this run syncs). */

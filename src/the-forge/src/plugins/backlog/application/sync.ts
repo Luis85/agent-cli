@@ -13,7 +13,8 @@ import { commitVault, landings, type SyncChange } from './sync-vault.ts';
 import { ensureWritable } from './writer.ts';
 
 export type SyncMode = 'sync' | 'status';
-export interface ViewSyncOptions { mode: SyncMode; direction: Direction; resolution?: Resolution }
+/** `checkpoint` throws when the run must stop (a signal); it is called before every remote write and the vault commit. */
+export interface ViewSyncOptions { mode: SyncMode; direction: Direction; resolution?: Resolution; checkpoint?: () => void }
 interface Operation { path: string; remoteId: string | null; url: string | null; fields: FieldKey[] }
 interface Failure { path: string; remoteId: string | null; code: string; message: string }
 
@@ -86,6 +87,7 @@ export async function syncView(session: BacklogSession, bound: BoundConnection, 
   }
   const result = { report, members: new Set(members.map(member => member.item.path)) };
   if (options.mode === 'status') return result;
+  options.checkpoint?.();
   report.changes = await commitVault(session, context, landed, store, pushed, hash, live);
   return result;
 }
@@ -110,6 +112,7 @@ async function pushAll(context: ValueContext, { connection, connector }: BoundCo
     const fields = keys(values);
     if (fields.length === 0) continue;
     if (!live) { (plan.create ? report.created : report.updated).push({ path: plan.path, remoteId: plan.id, url: plan.url, fields }); continue; }
+    options.checkpoint?.();
     const change = remoteChange(context, values) as RemotePatch;
     if (change.parentId !== undefined) { const parent = parentId(change.parentId); if (parent === undefined) delete change.parentId; else change.parentId = parent; }
     let result: RemoteItem;
