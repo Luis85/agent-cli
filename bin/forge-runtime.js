@@ -21960,12 +21960,12 @@ class AgentGeneration {
     const present2 = await Promise.all([...recorded].map(async (file) => await this.isFile(file) ? [file] : []));
     return { files, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...files, ...present2.flat()])] };
   }
-  /** Whether a recorded scope path names an existing file; an invalid or missing path does not. */
+  /** Whether a recorded scope path names an existing file; an invalid, missing or symlinked path does not. */
   async isFile(path2) {
     try {
       return (await this.workspace.files.stat(vaultPath(path2))).kind === "file";
     } catch (error2) {
-      if (error2 instanceof AppError && (error2.code === "NOT_FOUND" || error2.code === "INVALID_PATH")) return false;
+      if (error2 instanceof AppError && ["NOT_FOUND", "INVALID_PATH", "UNSAFE_PATH"].includes(error2.code)) return false;
       throw error2;
     }
   }
