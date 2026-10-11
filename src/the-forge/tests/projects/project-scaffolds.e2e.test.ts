@@ -37,6 +37,6 @@ it('creates discoverable library projects and tested components in the configure
     expect(cli([...args, 'project', 'create', 'task-lib']).body.error.code).toBe('PROJECT_EXISTS');
     expect(cli([...args, 'project', 'inspect', 'absent']).body.error.code).toBe('PROJECT_NOT_FOUND');
     expect(cli([...args, 'project', 'create', '../escape']).body.error.code).toBe('INVALID_PROJECT_NAME');
-    expect(cli([...args, 'project', 'component', 'task-lib', 'Other', '--kind', 'infrastructure']).body.error.code).toBe('INVALID_ARGUMENT');
+    expect(cli([...args, 'project', 'component', 'task-lib', 'Other', '--kind', 'infrastructure']).body.error.code).toBe('INVALID_OPTION_VALUE');
     await rm(config);
   });

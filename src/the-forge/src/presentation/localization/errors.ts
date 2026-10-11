@@ -12,6 +12,7 @@ export const germanErrors = {
   UNKNOWN_OPTION: { summary: 'Dieser Befehl akzeptiert die Option nicht.', hint: 'Die Optionen des Befehls zeigt help <command>.' },
   MISSING_ARGUMENT: { summary: 'Ein erforderliches Argument oder ein Optionswert fehlt.', hint: argumentsHint },
   INVALID_ARGUMENT: { summary: 'Die Argumente oder Optionswerte sind für diesen Befehl ungültig.', hint: argumentsHint },
+  INVALID_OPTION_VALUE: { summary: 'Der Optionswert gehört nicht zu den Werten, die der Befehl angibt.', hint: 'Verwenden Sie einen Wert aus error.details.allowed; die Werte jeder Option zeigt help <command>.' },
   DUPLICATE_OPTION: { summary: 'Eine Option wurde wiederholt oder mit ihrer Verneinung kombiniert.', hint: 'Geben Sie jede Option nur einmal an.' },
   INVALID_INPUT: { summary: 'Die Eingabeoptionen sind ungültig oder widersprüchlich.', hint: 'Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination.' },
   INPUT_REQUIRED: { summary: '--stdin wurde ohne weitergeleitete Eingabe angegeben.', hint: 'Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from.' },

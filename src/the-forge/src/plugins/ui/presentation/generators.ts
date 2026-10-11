@@ -17,7 +17,6 @@ const uiGenerationOptions = {
 async function makeUi(kind: 'ui' | 'stories', id: string, flags: CommandFlags, context: CommandContext, services: UiServicesFactory) {
   const ui = services(context), settings = ui.settings;
   const framework = value(flags, 'framework') ?? settings.framework;
-  ensure(uiFrameworks.includes(framework as UiFramework), 'INVALID_UI_FRAMEWORK', `--framework must be one of: ${uiFrameworks.join(', ')}.`);
   const storybook = kind === 'stories' || flags.stories === true;
   ensure(storybook || flags['stories-out'] === undefined, 'INVALID_ARGUMENT', '--stories-out requires --stories or make stories.');
   ensure(kind !== 'stories' || flags.stories === undefined, 'INVALID_ARGUMENT', 'make stories already generates stories; omit --stories.');

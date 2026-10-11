@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { globalOptions } from '../../src/application/plugins/command-input.ts';
-import { parseArguments } from '../../src/presentation/cli/arguments.ts';
+import { ensureDeclaredValues, parseArguments } from '../../src/presentation/cli/arguments.ts';
+import { option } from '../../src/application/plugins/command-metadata.ts';
 describe('Commander integration', () => {
   it('parses aliases, global flags and command values without altering literal values', () => {
     expect(parseArguments(['--root', 'my project', 'write', 'note.md', '--content=--literal', '--json'], { ...globalOptions, content: 'string' })).toEqual({ args: ['write', 'note.md'], flags: { root: 'my project', content: '--literal', json: true } });
@@ -28,5 +29,13 @@ describe('Commander integration', () => {
     });
     expect(() => parseArguments(['--no-label', 'first', '--no-label', 'second'], options)).toThrow(/Repeated/);
     expect(() => parseArguments(['--no-label'], options)).toThrow(/argument missing/);
+  });
+  it('enforces declared enum and required options with their own codes and details', () => {
+    const options = { kind: option.string('Kind.', { enum: ['rest', 'json'] }), template: option.string('Template.', { required: true }), quiet: option.boolean('Quiet.') };
+    expect(() => ensureDeclaredValues(options, { template: 'a.md', kind: 'json', quiet: true })).not.toThrow();
+    expect(() => ensureDeclaredValues(options, { kind: 'rest' })).toThrowError(expect.objectContaining({ code: 'MISSING_ARGUMENT', message: '--template is required.', details: { option: 'template' } }));
+    expect(() => ensureDeclaredValues(options, { template: 'a.md', kind: 'xml' })).toThrowError(expect.objectContaining({
+      code: 'INVALID_OPTION_VALUE', message: '--kind must be one of: rest, json.', details: { option: 'kind', value: 'xml', allowed: ['rest', 'json'] },
+    }));
   });
 });

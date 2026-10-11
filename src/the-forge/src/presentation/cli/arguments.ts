@@ -35,6 +35,24 @@ export function parseBootstrap(tokens: string[]): ParsedArguments {
   return { flags: parsed.flags, args: tokens.slice(end + (tokens[end] === '--' ? 1 : 0)) };
 }
 
+/**
+ * Enforces the option constraints that `help` and `schema` publish, after parsing and before the command runs: a
+ * missing `required` option fails with MISSING_ARGUMENT and a value outside a string option's `enum` with
+ * INVALID_OPTION_VALUE, each naming the option in `details`. Commands never repeat these checks.
+ */
+export function ensureDeclaredValues(options: Readonly<Record<string, CommandOption>>, flags: Readonly<Record<string, string | boolean>>): void {
+  for (const [key, schema] of Object.entries(options)) {
+    const given = Object.hasOwn(flags, key) ? flags[key] : undefined;
+    if (given === undefined) {
+      if (schema.required) throw forgeError('MISSING_ARGUMENT', `--${key} is required.`, { option: key });
+      continue;
+    }
+    if (schema.enum !== undefined && typeof given === 'string' && !schema.enum.includes(given)) {
+      throw forgeError('INVALID_OPTION_VALUE', `--${key} must be one of: ${schema.enum.join(', ')}.`, { option: key, value: given, allowed: [...schema.enum] });
+    }
+  }
+}
+
 /** Commander owns tokenization; normalize its options and errors into the agent protocol. */
 export function parseArguments(tokens: string[], options: Record<string, 'string' | 'boolean'>, allowUnknown = false): ParsedArguments {
   const command = new Command('forge').helpOption(false).allowUnknownOption(allowUnknown).allowExcessArguments(true)

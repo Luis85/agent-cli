@@ -31,7 +31,7 @@ describe('the skills core plugin', () => {
     const custom = cli(['skills', 'install', '--out', 'tools/skills', '--dry-run']);
     expect(custom.body.data.changes.map((change: { path: string }) => change.path)).toContain('tools/skills/forge-backlog/SKILL.md');
     expect(cli(['skills', 'install', '--out', 'x', '--target', 'claude']).body.error.code).toBe('INVALID_ARGUMENT');
-    expect(cli(['skills', 'install', '--target', 'cursor']).body.error.code).toBe('INVALID_ARGUMENT');
+    expect(cli(['skills', 'install', '--target', 'cursor']).body.error.code).toBe('INVALID_OPTION_VALUE');
     for (const root of ['.agents', '.claude']) await rm(join(fixture.project, root), { recursive: true, force: true });
   });
 

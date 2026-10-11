@@ -47,10 +47,9 @@ const accepted: Record<Action, readonly string[]> = {
   generate: ['target', 'file', 'agent', 'mcp', 'hooks', 'settings', 'allow-broad-permissions', 'rename-conflicts', 'commands', 'model-style', ...Object.keys(reviewOptions)],
 };
 
-function choice<T extends string>(flags: CommandFlags, key: string, allowed: readonly T[], fallback: T): T {
-  const selected = value(flags, key) ?? fallback;
-  ensure((allowed as readonly string[]).includes(selected), 'INVALID_ARGUMENT', `--${key} must be one of: ${allowed.join(', ')}.`);
-  return selected as T;
+/** An option value, or the fallback; `_declared` is the option's `enum`, which types it and which the host enforces. */
+function choice<T extends string>(flags: CommandFlags, key: string, _declared: readonly T[], fallback: T): T {
+  return (value(flags, key) ?? fallback) as T;
 }
 
 function toolsets(flags: CommandFlags): string[] | undefined {

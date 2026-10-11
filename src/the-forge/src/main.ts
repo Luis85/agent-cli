@@ -49,7 +49,7 @@ import { MetadataCacheEvents } from './application/metadata/cache-events.ts';
 import { ObsidianMetadataParser } from './infrastructure/metadata/parser.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
+import { ensureDeclaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 
@@ -142,6 +142,8 @@ async function run(): Promise<void> {
       if (parsedEvents !== undefined) eventLevel = config.settings.events = eventOutput(parsedEvents);
       for (const [commandId, registered] of registry.commands) registry.commands.set(commandId, localizer.command(registered));
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
+      // help describes a command without running it, so its declared constraints do not apply.
+      if (!parsed.flags.help) ensureDeclaredValues(commandOptions(command, parsed.args.slice(1)), parsed.flags);
       for (const option of ['root', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;

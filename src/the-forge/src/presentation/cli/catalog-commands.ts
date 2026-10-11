@@ -18,7 +18,7 @@ const discovery = { scope: 'workspace', discovery: true, mutating: false } as co
 const commandArgument = [{ name: 'command', description: 'A command id from the catalog.' }];
 /** Input, routing and runtime codes any command can report besides its declared `errors`. */
 const commonErrors = [
-  'UNKNOWN_COMMAND', 'UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'DUPLICATE_OPTION', 'INVALID_LANGUAGE', 'INVALID_CONFIG',
+  'UNKNOWN_COMMAND', 'UNKNOWN_OPTION', 'MISSING_ARGUMENT', 'INVALID_ARGUMENT', 'INVALID_OPTION_VALUE', 'DUPLICATE_OPTION', 'INVALID_LANGUAGE', 'INVALID_CONFIG',
   'INVALID_PATH', 'UNSAFE_PATH', 'STALE_PROJECT_CONTEXT', 'WORKSPACE_BUSY', 'INVALID_RESULT', 'OPERATION_FAILED',
 ];
 
