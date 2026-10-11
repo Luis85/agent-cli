@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 import { fill } from '../../src/domain/shared/messages.ts';
 import { claudeMessages, type ClaudeMessage } from '../../src/plugins/claude/domain/messages.ts';
-import { germanClaudeMessages, withLocalizedResults } from '../../src/plugins/claude/presentation/messages.ts';
+import { germanClaudeMessages, localizedText, withLocalizedResults } from '../../src/plugins/claude/presentation/messages.ts';
+import { notifyClaude } from '../../src/plugins/claude/application/events.ts';
+import type { EventChannel } from '../../src/application/plugins/events.ts';
 
 const result = {
   valid: true, validation: 'structure',
@@ -29,5 +31,14 @@ describe('claude result texts', () => {
       expect(germanClaudeMessages[key], key).not.toBe(claudeMessages[key]);
       expect(placeholders(germanClaudeMessages[key]), key).toEqual(placeholders(claudeMessages[key]));
     }
+  });
+
+  it('render the warning for a lifecycle notification that cannot be emitted in the response language', async () => {
+    const warnings: string[] = [];
+    const events = { ids: () => ['claude.executed'], emit: async () => { throw new Error('emit failed'); }, warn: (message: string) => warnings.push(message) } as unknown as EventChannel;
+    const payload = { executable: 'claude', cwd: '/vault', exitCode: 0 };
+    await notifyClaude(events, 'claude.executed', payload);
+    await notifyClaude(events, 'claude.executed', payload, text => localizedText(text, 'de'));
+    expect(warnings).toEqual(['Claude notification claude.executed: emit failed', 'Die Claude-Benachrichtigung claude.executed ist fehlgeschlagen: emit failed']);
   });
 });

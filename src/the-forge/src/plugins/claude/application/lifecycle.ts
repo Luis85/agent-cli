@@ -21,9 +21,11 @@ export class ClaudeLifecycle implements ClaudeLifecycleClient {
     private readonly scope: { cwd: string; dryRun: boolean },
     private readonly events: EventChannel,
     private readonly operationId: () => number,
+    /** Renders the plugin's own warnings in the response language. */
+    private readonly localize: (text: string) => string = text => text,
   ) {}
 
-  private notify<Id extends keyof ClaudeEventMap>(id: Id, payload: ClaudeEventMap[Id]): Promise<void> { return notifyClaude(this.events, id, payload); }
+  private notify<Id extends keyof ClaudeEventMap>(id: Id, payload: ClaudeEventMap[Id]): Promise<void> { return notifyClaude(this.events, id, payload, this.localize); }
 
   async execute(request: ClaudeLifecycleRequest): Promise<ClaudeLifecycleResult> {
     let detached = request;

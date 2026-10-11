@@ -1,4 +1,6 @@
 import { errorMessage, isRecord } from '../../../domain/shared/errors.ts';
+import { fill } from '../../../domain/shared/messages.ts';
+import { claudeMessages } from '../domain/messages.ts';
 import type { EventChannel, EventDefinition } from '../../../application/plugins/events.ts';
 
 interface ClaudeOperation { operationId: number; executable: string; cwd: string; dryRun: boolean }
@@ -30,13 +32,16 @@ export const claudeEvents: readonly EventDefinition[] = [
   definition('claude.executed', 'The Claude process returned an exit status, including nonzero status.', value => text(value.executable) && text(value.cwd) && status(value.exitCode)),
 ];
 
-/** Lifecycle notifications never veto a Claude invocation: emission failures become warnings. */
-export async function notifyClaude<Id extends keyof ClaudeEventMap>(events: EventChannel, id: Id, payload: ClaudeEventMap[Id]): Promise<void> {
+/**
+ * Lifecycle notifications never veto a Claude invocation: emission failures become warnings, which `localize` renders
+ * in the response language.
+ */
+export async function notifyClaude<Id extends keyof ClaudeEventMap>(events: EventChannel, id: Id, payload: ClaudeEventMap[Id], localize: (text: string) => string = text => text): Promise<void> {
   try {
     if (!events.ids().includes(id)) return;
     await events.emit(id, payload);
   } catch (failure) {
-    try { events.warn(`Claude notification ${id}: ${errorMessage(failure)}`); }
+    try { events.warn(localize(fill(claudeMessages.notificationFailed, { event: id, diagnostic: errorMessage(failure) }))); }
     catch { /* A diagnostic sink cannot replace the Claude result. */ }
   }
 }

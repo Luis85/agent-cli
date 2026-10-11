@@ -1,4 +1,5 @@
 import type { Command } from '../../../application/plugins/registry.ts';
+import type { Language } from '../../../application/plugins/plugin-catalog.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 import { retranslate } from '../../../domain/shared/messages.ts';
 import { claudeMessages, type ClaudeMessage } from '../domain/messages.ts';
@@ -18,7 +19,13 @@ export const germanClaudeMessages: Record<ClaudeMessage, string> = {
   hookExecution: 'Claude Code führt Hooks aus; Forge führt nie Hook-Handler aus.',
   mutationScope: 'project, wo der native Befehl einen Bereich unterstützt',
   lifecycleDryRun: 'Gibt die Befehlsargumente zurück, ohne Claude Code zu starten.',
+  notificationFailed: 'Die Claude-Benachrichtigung {event} ist fehlgeschlagen: {diagnostic}',
 };
+
+/** A text from the claude message catalog in `language`, such as a warning the plugin sends itself. */
+export function localizedText(text: string, language: Language): string {
+  return language === 'en' ? text : retranslate(text, claudeMessages, germanClaudeMessages);
+}
 
 /** `value` with every text from the claude message catalog in the response language. */
 function localized(value: unknown): unknown {
