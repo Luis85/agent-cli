@@ -58,9 +58,10 @@ export class Localizer {
     return translated(germanDescriptions, english) ?? this.plugins?.description('de', english) ?? english;
   }
 
-  private described<T extends Described>(items: readonly T[]): readonly T[] {
-    const localized = items.map(item => ({ ...item, description: this.description(item.description) }));
-    return localized.every((item, index) => item.description === items[index]!.description) ? items : localized;
+  /** Option and argument descriptions, including the descriptions inside the JSON document schema one declares. */
+  private described<T extends Described & { schema?: unknown }>(items: readonly T[]): readonly T[] {
+    if (this.language !== 'de') return items;
+    return items.map(item => ({ ...item, description: this.description(item.description), ...(item.schema === undefined ? {} : { schema: this.schema(item.schema) }) }));
   }
 
   private options<T extends Options | undefined>(options: T): T {
@@ -69,7 +70,7 @@ export class Localizer {
     return (localized === values ? options : Object.fromEntries(entries.map(([name], index) => [name, localized[index]]))) as T;
   }
 
-  /** `description` texts inside a plugin settings schema, as `config` reports it. */
+  /** `description` texts inside a JSON Schema: a plugin settings schema, as `config` reports it, or an option's document. */
   private schema(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(item => this.schema(item));
     if (!isRecord(value)) return value;

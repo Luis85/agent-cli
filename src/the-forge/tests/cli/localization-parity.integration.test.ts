@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { germanKernelMessages } from '../../src/presentation/localization/messages.ts';
+import { germanDescriptions } from '../../src/presentation/localization/descriptions.ts';
+import { germanActions, germanCommands } from '../../src/presentation/localization/catalog.ts';
 import { kernelMessages, type KernelMessageCode } from '../../src/domain/shared/kernel-messages.ts';
 import { globalOptionMetadata } from '../../src/presentation/cli/arguments.ts';
 import type { Command, Registry } from '../../src/application/plugins/registry.ts';
@@ -18,16 +20,6 @@ beforeAll(async () => {
   registry = await fullRegistry();
 });
 
-/** Every option and argument description of a command and its actions, keyed by where it is declared. */
-function described(command: Pick<Command, 'id' | 'options' | 'args' | 'actions'>): Map<string, string> {
-  const texts = new Map<string, string>();
-  for (const [name, option] of Object.entries(command.options ?? {})) texts.set(`${command.id} --${name}`, option.description);
-  for (const argument of command.args ?? []) texts.set(`${command.id} <${argument.name}>`, argument.description);
-  for (const [action, definition] of Object.entries(command.actions ?? {})) {
-    for (const [name, option] of Object.entries(definition.options ?? {})) texts.set(`${command.id} ${action} --${name}`, option.description);
-  }
-  return texts;
-}
 /** Every `description` inside a JSON Schema, keyed by its JSON path. */
 function schemaDescriptions(value: unknown, path: string, texts = new Map<string, string>()): Map<string, string> {
   if (Array.isArray(value)) value.forEach((item, index) => schemaDescriptions(item, `${path}/${index}`, texts));
@@ -36,6 +28,23 @@ function schemaDescriptions(value: unknown, path: string, texts = new Map<string
       if (key === 'description' && typeof item === 'string') texts.set(path, item);
       else schemaDescriptions(item, `${path}/${key}`, texts);
     }
+  }
+  return texts;
+}
+/**
+ * Every option and argument description of a command and its actions, keyed by where it is declared, including the
+ * descriptions inside the JSON document schema an option or argument declares (`edit --edits`, the `apply` plan).
+ */
+function described(command: Pick<Command, 'id' | 'options' | 'args' | 'actions'>): Map<string, string> {
+  const texts = new Map<string, string>();
+  const add = (key: string, item: { description: string; schema?: unknown }) => {
+    texts.set(key, item.description);
+    schemaDescriptions(item.schema, `${key} schema`, texts);
+  };
+  for (const [name, option] of Object.entries(command.options ?? {})) add(`${command.id} --${name}`, option);
+  for (const argument of command.args ?? []) add(`${command.id} <${argument.name}>`, argument);
+  for (const [action, definition] of Object.entries(command.actions ?? {})) {
+    for (const [name, option] of Object.entries(definition.options ?? {})) add(`${command.id} ${action} --${name}`, option);
   }
   return texts;
 }
@@ -80,6 +89,22 @@ describe('German localization parity', () => {
       const english = Object.keys(plugin.strings?.en?.messages ?? {}), german = plugin.strings?.de?.messages ?? {};
       expect(english.filter(key => !Object.hasOwn(german, key)), plugin.manifest.id).toEqual([]);
     }
+  });
+
+  it('keeps no German text whose English source nothing declares any more', () => {
+    const declared = new Set([
+      ...[...registry.commands.values()].flatMap(command => [...described(command).values()]),
+      ...Object.values(globalOptionMetadata).map(option => option.description),
+      ...registry.settings.sections().flatMap(section => [...schemaDescriptions(section.schema, section.path).values()]),
+    ]);
+    const stale = (table: Record<string, string> | undefined) => Object.keys(table ?? {}).filter(text => !declared.has(text));
+    expect(stale(germanDescriptions)).toEqual([]);
+    for (const plugin of registry.plugins) expect(stale(plugin.strings?.de?.descriptions), plugin.manifest.id).toEqual([]);
+    expect(Object.keys(germanCommands).filter(id => !registry.commands.has(id))).toEqual([]);
+    expect(Object.keys(germanActions).filter(key => {
+      const [command, action] = key.split(' ') as [string, string];
+      return registry.commands.get(command)?.actions?.[action] === undefined;
+    })).toEqual([]);
   });
 
   it('gives every kernel warning and plugin state reason a German text with the same placeholders', () => {
