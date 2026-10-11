@@ -165,6 +165,7 @@ describe('portable native Claude management', () => {
     expect((await cli(['agents', 'list', '--scope', 'local'])).body.error.code).toBe('INVALID_ARGUMENT');
   }, 60_000);
 
+  // The fake claude executable runs through its #! line, which Windows does not honor.
   it.skipIf(process.platform === 'win32')('previews installed lifecycle without spawning and executes only the explicitly selected fixture', async () => {
     const { root, cli } = await workspace('runtime-fixture');
     const executable = join(root, 'fake-claude.mjs');

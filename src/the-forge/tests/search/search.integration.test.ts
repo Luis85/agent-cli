@@ -108,11 +108,17 @@ describe('searching vault text files', () => {
   });
 
   it('searches 3,000 notes by tag within a budget, parsing only files with hits and building snippets only for the returned page', async () => {
-    for (let index = 0; index < 3000; index++) {
-      const folder = `scale/${String(index % 30).padStart(2, '0')}`;
-      const body = index % 10 === 0 ? 'Release checklist line. '.repeat(20) : 'Ordinary prose. '.repeat(20);
-      await put(`${folder}/note-${String(index).padStart(4, '0')}.md`, `---\ntags: [${index % 3 === 0 ? 'release' : 'draft'}]\n---\n# Note ${index}\n${body}\n`);
+    // Write the fixture in parallel batches: 3,000 sequential writes alone took most of this test on Windows runners.
+    const folders = Array.from({ length: 30 }, (_, index) => `scale/${String(index).padStart(2, '0')}`);
+    await Promise.all(folders.map(folder => mkdir(join(root, folder), { recursive: true })));
+    for (let start = 0; start < 3000; start += 100) {
+      await Promise.all(Array.from({ length: 100 }, (_, offset) => {
+        const index = start + offset;
+        const body = index % 10 === 0 ? 'Release checklist line. '.repeat(20) : 'Ordinary prose. '.repeat(20);
+        return writeFile(join(root, folders[index % 30]!, `note-${String(index).padStart(4, '0')}.md`), `---\ntags: [${index % 3 === 0 ? 'release' : 'draft'}]\n---\n# Note ${index}\n${body}\n`);
+      }));
     }
+    // The measured search starts cold: a new repository and metadata index that has read nothing.
     const started = performance.now();
     const result = await search('checklist', { tag: 'release', context: 1 }, { limit: 5 });
     expect(performance.now() - started).toBeLessThan(10_000);
