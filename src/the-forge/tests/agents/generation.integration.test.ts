@@ -162,6 +162,32 @@ describe('generating Claude agents in a workspace', () => {
     expect((await permissions()).allow).toEqual(['Bash(npm run lint)']);
   });
 
+  it('keeps the rules of a definition file outside the definitions directory while it exists, and revokes them once it is gone', async () => {
+    const team = (name: string, list: string, rule: string) => `agents:\n  ${name}:\n    model: anthropic/claude-sonnet-5\n    description: Lead.\n    instruction: Lead.\npermissions:\n  ${list}:\n    - "${rule}"\n`;
+    const permissions = async () => JSON.parse(await scope.read('.claude/settings.json')).permissions as Record<string, string[]>;
+    const revoked = (result: { data: Record<string, unknown> }) => (result.data.diagnostics as Array<{ code: string; path: string }>)
+      .filter(entry => entry.code === 'revokes-permission').map(entry => entry.path);
+    await scope.remove('agents/team.yaml');
+    await scope.put('shared/guard.yaml', team('guard', 'deny', 'shell:cmd=*rm -rf*'));
+    await scope.put('agents/a.yaml', team('alpha', 'allow', 'shell:cmd=npm test'));
+    await generate({ settings: true, file: 'shared/guard.yaml' });
+    expect(revoked(await reviewed({ settings: true, file: 'a.yaml' }))).toEqual([]);
+    expect(await permissions()).toEqual({ deny: ['Bash(*rm -rf*)'], allow: ['Bash(npm test)'] });
+
+    // Renamed outside the directory: the old path is gone, so a run over another file revokes its rule.
+    await scope.put('shared/guard2.yaml', await scope.read('shared/guard.yaml'));
+    await scope.remove('shared/guard.yaml');
+    expect(revoked(await reviewed({ settings: true, file: 'a.yaml' }))).toEqual(['shared/guard.yaml']);
+    expect(await permissions()).toEqual({ allow: ['Bash(npm test)'] });
+    await reviewed({ settings: true, file: 'shared/guard2.yaml' });
+    expect(await permissions()).toEqual({ allow: ['Bash(npm test)'], deny: ['Bash(*rm -rf*)'] });
+
+    // Deleted outside the directory: revoked by the next run, as for a file in it.
+    await scope.remove('shared/guard2.yaml');
+    expect(revoked(await reviewed({ settings: true, file: 'a.yaml' }))).toEqual(['shared/guard2.yaml']);
+    expect(await permissions()).toEqual({ allow: ['Bash(npm test)'] });
+  });
+
   it('merges MCP servers into .mcp.json, updating only servers Forge owns', async () => {
     await scope.put('.mcp.json', JSON.stringify({ mcpServers: { local: { command: 'mine' }, context7: { command: 'my-context7' } } }));
     const flags = { file: 'team.yaml', mcp: 'project', agent: 'frontend' };

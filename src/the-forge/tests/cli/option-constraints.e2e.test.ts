@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
 import type { CommandOption } from '../../src/application/plugins/command-metadata.ts';
 
@@ -10,7 +12,19 @@ interface Contract { id: string; options: Record<string, CommandOption>; annotat
 interface Mode { tokens: string[]; options: Record<string, CommandOption> }
 let modes: Mode[];
 
+/** A user plugin with a comma-separated list option that reports the value it receives. */
+const lister = `export default { commands: [{
+  id: 'lister.run', description: 'Report the kinds received', usage: 'lister.run [--kinds red,green]', mutating: false,
+  options: { kinds: { type: 'string', description: 'Kinds.', enum: ['red', 'green'], list: true } },
+  run(args, flags) { return { received: flags.kinds }; },
+}] };
+`;
+
 beforeAll(async () => {
+  await mkdir(join(fixture.project, 'bin/plugins/lister'), { recursive: true });
+  await writeFile(join(fixture.project, 'bin/plugins/lister/manifest.json'), JSON.stringify({ id: 'lister', name: 'Lister', version: '1.0.0', minAppVersion: '0.1.0', description: 'List option fixture', author: 'Tests' }));
+  await writeFile(join(fixture.project, 'bin/plugins/lister/main.mjs'), lister);
+  await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['lister'] } }));
   const commands = (await cli(['schema'])).body.data.commands as Contract[];
   modes = commands.flatMap(command => [
     { tokens: [command.id], options: command.options },
@@ -68,6 +82,13 @@ describe('declared option constraints', () => {
     expect(published.enum).toBeUndefined();
     expect(['body', 'body,body', 'body, body', ' body ,body '].map(value => new RegExp(published.pattern, 'u').test(value))).toEqual([true, true, true, true]);
     expect(['', 'nope', 'body,', 'body, ,body', 'body,nope'].some(value => new RegExp(published.pattern, 'u').test(value))).toBe(false);
+  });
+
+  it('hands a command each list item trimmed, joined by commas, for user plugins as for core commands', async () => {
+    for (const [value, received] of [['red,green', 'red,green'], ['red, green', 'red,green'], [' green ,red ,green', 'green,red,green']] as const) {
+      expect((await cli(['lister.run', '--kinds', value])).body.data, value).toEqual({ received });
+    }
+    expect((await cli(['lister.run', '--kinds', 'red, purple'])).body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'kinds', value: 'red, purple' } });
   });
 
   it('enforces the enum of the global --events option before and after the command', async () => {

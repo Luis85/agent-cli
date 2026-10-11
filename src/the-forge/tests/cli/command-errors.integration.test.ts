@@ -11,7 +11,9 @@ import { fullRegistry } from '../support/full-registry.ts';
 /**
  * Every failure code a command can raise must reach `schema <command>`: its own `errors`, or `commonErrors`. The
  * codes come from the static inventory of `tests/support/error-codes.ts`: `ensure`, `forgeError` and plugin coded
- * failures, by the source file that raises them.
+ * failures, by the source file that raises them. Codes a plugin command reaches only through the kernel ports it
+ * calls (NOT_FOUND from a file read) are not raised in its source; `declared-failures.e2e.test.ts` checks those with
+ * failing invocations.
  */
 
 /**
