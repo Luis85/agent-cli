@@ -50,7 +50,7 @@ User plugins localize the same way through their `strings` (`en`, `de`). Plugin 
 
 These texts are not yet localized and remain English with `--lang de`:
 
-- A finding whose parameter is itself a sentence fragment containing a space-separated value (for example an `agents` permission pattern with spaces) may keep that fragment in English: the presentation recognizes coded findings by matching their English templates.
+- A coded plugin result message whose values contain the very text that separates them in its English template stays English, for example a `backlog check` problem about a note titled `Plan has the iteration Q3`. The presentation recognizes coded findings by matching their English templates; when two readings of the values are possible, it keeps the English message rather than split a title, command or pattern at a guess. The templates keep a distinctive phrase between two free-text values, so ordinary titles, types such as `Test case`, commands and patterns with spaces read in German.
 
 ## Errors during discovery
 

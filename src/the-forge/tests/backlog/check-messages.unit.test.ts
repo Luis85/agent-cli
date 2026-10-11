@@ -7,10 +7,10 @@ import { resolveSettings } from '../../src/plugins/backlog/domain/settings-resol
 import { germanCheckMessages, localizedCheck } from '../../src/plugins/backlog/presentation/messages.ts';
 
 const settings = resolveSettings({ stateProperty: 'note.status' });
-function problems(notes: Record<string, Record<string, unknown>>) {
+function problems(notes: Record<string, Record<string, unknown>>, resolved = settings) {
   const source: NoteSource = { frontmatter: path => notes[path], frontmatterLinks: () => [], resolve: () => null };
-  const model = buildModel(source, Object.keys(notes), settings, path => path in notes);
-  return checkBacklog({ model, settings, releaseProblems: [], unresolvedMemberships: [], typeOf: () => null });
+  const model = buildModel(source, Object.keys(notes), resolved, path => path in notes);
+  return checkBacklog({ model, settings: resolved, releaseProblems: [], unresolvedMemberships: [], typeOf: () => null });
 }
 
 describe('backlog check messages', () => {
@@ -30,6 +30,13 @@ describe('backlog check messages', () => {
       english.problems[1],
     ]);
     expect(localizedCheck(english, 'en')).toBe(english);
+  });
+
+  it('names a multi-word type and title as written in German', () => {
+    const releases = resolveSettings({ stateProperty: 'note.status', releaseProperty: 'note.release' });
+    const english = { problems: problems({ 'Login works.md': { type: 'Test case', release: ['a', 'b'], order: 1 } }, releases) };
+    expect(english.problems.map(problem => problem.message)).toEqual(['The Test case item Login works may not hold release.']);
+    expect(localizedCheck(english, 'de').problems.map(problem => problem.message)).toEqual(['Der Test case-Eintrag Login works darf release nicht enthalten.']);
   });
 
   it('has a distinct German template with the same placeholders for every English one', () => {

@@ -17,7 +17,7 @@ export const claudeMessages = {
   hookExecution: 'Claude Code owns execution; Forge never runs hook handlers.',
   mutationScope: 'project where the native command supports a scope',
   lifecycleDryRun: 'Returns command arguments without starting Claude Code.',
-  notificationFailed: 'Claude notification {event}: {diagnostic}',
+  notificationFailed: 'Claude notification {event} failed: {diagnostic}',
 } as const satisfies Record<string, string>;
 
 export type ClaudeMessage = keyof typeof claudeMessages;

@@ -13,7 +13,7 @@ describe('Bases index warnings', () => {
 
   it('read in German with paths and the parser diagnostic as written', () => {
     expect(localizedQuery(result, 'de').warnings.map(warning => warning.message)).toEqual([
-      'Der Link Plan in a.md passt auf x/Plan.md, y/Plan.md; er wird zur nächstgelegenen Datei x/Plan.md aufgelöst.',
+      'Der Link Plan in der Notiz a.md passt auf x/Plan.md, y/Plan.md; er wird zur nächstgelegenen Datei x/Plan.md aufgelöst.',
       'b.md kann nicht geparst werden und wird ohne Eigenschaften, Links und Tags indexiert: Map keys must be unique',
     ]);
     expect(localizedQuery(result, 'de').warnings[0]).toMatchObject({ code: 'ambiguous-link', resolvedPath: 'x/Plan.md' });

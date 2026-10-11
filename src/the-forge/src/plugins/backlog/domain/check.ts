@@ -18,7 +18,7 @@ export interface CheckInput {
 const error = (code: string, message: string, extra: Partial<CheckProblem> = {}): CheckProblem => ({ code, severity: 'error', message, ...extra });
 const warning = (code: string, message: string, extra: Partial<CheckProblem> = {}): CheckProblem => ({ code, severity: 'warning', message, ...extra });
 
-/** A type may not hold a field; an item without a known type reads as "This type". */
+/** A type may not hold a field; an item without a known type names no type. */
 const notHeld = (item: BacklogItem, key: string) => item.typeName === null
   ? fill(checkMessages.fieldNotHeldUntyped, { title: item.title, key })
   : fill(checkMessages.fieldNotHeld, { type: item.typeName, title: item.title, key });

@@ -1,7 +1,7 @@
 import { forgeError, ensure, isRecord, summarizeError } from '../../../domain/shared/errors.ts';
 import type { ClaudeRuntime } from './runtime.ts';
 import type { EventChannel } from '../../../application/plugins/events.ts';
-import { notifyClaude, type ClaudeEventMap } from './events.ts';
+import { englishClaudeText, notifyClaude, type ClaudeEventMap, type ClaudeText } from './events.ts';
 import type { ClaudeLifecycleClient, ClaudeLifecyclePlan, ClaudeLifecycleRequest, ClaudeLifecycleResult, ClaudeOutput } from '../../../application/plugins/claude-lifecycle.ts';
 
 function nativeResult(stdout: string, output: ClaudeOutput): unknown {
@@ -22,7 +22,7 @@ export class ClaudeLifecycle implements ClaudeLifecycleClient {
     private readonly events: EventChannel,
     private readonly operationId: () => number,
     /** Renders the plugin's own warnings in the response language. */
-    private readonly localize: (text: string) => string = text => text,
+    private readonly localize: ClaudeText = englishClaudeText,
   ) {}
 
   private notify<Id extends keyof ClaudeEventMap>(id: Id, payload: ClaudeEventMap[Id]): Promise<void> { return notifyClaude(this.events, id, payload, this.localize); }

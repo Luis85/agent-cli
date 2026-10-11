@@ -1,7 +1,8 @@
 import type { Command } from '../../../application/plugins/registry.ts';
 import type { Language } from '../../../application/plugins/plugin-catalog.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
-import { retranslate } from '../../../domain/shared/messages.ts';
+import { fill, retranslate } from '../../../domain/shared/messages.ts';
+import type { ClaudeText } from '../application/events.ts';
 import { claudeMessages, type ClaudeMessage } from '../domain/messages.ts';
 
 /** German texts of `claude` results; field names, paths and Claude Code terms stay as written. */
@@ -22,16 +23,14 @@ export const germanClaudeMessages: Record<ClaudeMessage, string> = {
   notificationFailed: 'Die Claude-Benachrichtigung {event} ist fehlgeschlagen: {diagnostic}',
 };
 
-/** A text from the claude message catalog in `language`, such as a warning the plugin sends itself. */
-export function localizedText(text: string, language: Language): string {
-  return language === 'en' ? text : retranslate(text, claudeMessages, germanClaudeMessages);
-}
+/** The plugin's messages in `language`, such as a warning the plugin sends itself. */
+export const claudeText = (language: Language): ClaudeText => (key, params) => fill((language === 'en' ? claudeMessages : germanClaudeMessages)[key], params);
 
-/** `value` with every text from the claude message catalog in the response language. */
-function localized(value: unknown): unknown {
+/** `value` with every text from the claude message catalog in German. */
+export function localizedResult(value: unknown): unknown {
   if (typeof value === 'string') return retranslate(value, claudeMessages, germanClaudeMessages);
-  if (Array.isArray(value)) return value.map(localized);
-  return isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, localized(entry)])) : value;
+  if (Array.isArray(value)) return value.map(localizedResult);
+  return isRecord(value) ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, localizedResult(entry)])) : value;
 }
 
 /** The `claude` command with the texts of its results in the response language. */
@@ -40,7 +39,7 @@ export function withLocalizedResults(command: Command): Command {
     ...command,
     async run(args, flags, context) {
       const result = await command.run(args, flags, context);
-      return context.language === 'en' ? result : localized(result);
+      return context.language === 'en' ? result : localizedResult(result);
     },
   };
 }

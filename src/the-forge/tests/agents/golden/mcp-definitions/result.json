@@ -115,42 +115,42 @@
       "severity": "warning",
       "code": "executes-command",
       "pointer": "/agents/root/toolsets/2/ref",
-      "message": "MCP server context7 in .claude/agents/root.md runs the command: docker mcp gateway run --servers context7",
+      "message": "MCP server context7 (written to .claude/agents/root.md) runs the command: docker mcp gateway run --servers context7",
       "path": "agents/mcp-definitions.yaml"
     },
     {
       "severity": "warning",
       "code": "executes-command",
       "pointer": "/agents/root/toolsets/3/ref",
-      "message": "MCP server github in .claude/agents/root.md runs the command: docker mcp gateway run --servers github-official",
+      "message": "MCP server github (written to .claude/agents/root.md) runs the command: docker mcp gateway run --servers github-official",
       "path": "agents/mcp-definitions.yaml"
     },
     {
       "severity": "warning",
       "code": "executes-command",
       "pointer": "/agents/frontend/toolsets/2/ref",
-      "message": "MCP server context7 in .claude/agents/frontend.md runs the command: docker mcp gateway run --servers context7",
+      "message": "MCP server context7 (written to .claude/agents/frontend.md) runs the command: docker mcp gateway run --servers context7",
       "path": "agents/mcp-definitions.yaml"
     },
     {
       "severity": "warning",
       "code": "executes-command",
       "pointer": "/agents/frontend/toolsets/3/ref",
-      "message": "MCP server github in .claude/agents/frontend.md runs the command: docker mcp gateway run --servers github-official",
+      "message": "MCP server github (written to .claude/agents/frontend.md) runs the command: docker mcp gateway run --servers github-official",
       "path": "agents/mcp-definitions.yaml"
     },
     {
       "severity": "warning",
       "code": "executes-command",
       "pointer": "/agents/backend/toolsets/2/ref",
-      "message": "MCP server context7 in .claude/agents/backend.md runs the command: docker mcp gateway run --servers context7",
+      "message": "MCP server context7 (written to .claude/agents/backend.md) runs the command: docker mcp gateway run --servers context7",
       "path": "agents/mcp-definitions.yaml"
     },
     {
       "severity": "warning",
       "code": "executes-command",
       "pointer": "/agents/backend/toolsets/3/ref",
-      "message": "MCP server github in .claude/agents/backend.md runs the command: docker mcp gateway run --servers github-official",
+      "message": "MCP server github (written to .claude/agents/backend.md) runs the command: docker mcp gateway run --servers github-official",
       "path": "agents/mcp-definitions.yaml"
     },
     {

@@ -149,7 +149,7 @@ describe('commands, skills, hooks, permissions and delegation', () => {
     const output = generate({ agents: { root: agent({ commands: { fix: 'Fix it.', Fix: 'Fix it differently.' } }) } }, { commands: true });
     expect(output.skills.map(skill => skill.path)).toEqual(['.claude/skills/root-fix/SKILL.md']);
     expect(output.diagnostics.filter(entry => entry.severity === 'error')).toEqual([expect.objectContaining({
-      code: 'command-name-collision', pointer: '/agents/root/commands/Fix', path: 'agents/team.yaml', message: expect.stringContaining('which the /fix of root already generates'),
+      code: 'command-name-collision', pointer: '/agents/root/commands/Fix', path: 'agents/team.yaml', message: expect.stringContaining('which the /fix command of agent root already generates'),
     })]);
   });
 

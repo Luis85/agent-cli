@@ -8,7 +8,7 @@ import { claudeTarget } from './infrastructure/target.ts';
 import { NodeClaudeRuntime } from './infrastructure/runtime.ts';
 import { claudeCommand } from './presentation/commands.ts';
 import { claudeStrings } from './presentation/strings.ts';
-import { localizedText } from './presentation/messages.ts';
+import { claudeText } from './presentation/messages.ts';
 
 /** The service id of the Claude lifecycle client that trusted plugins require. */
 const claudeLifecycleService = 'claude.lifecycle';
@@ -38,7 +38,7 @@ export const claudePlugin: CorePlugin = {
       events: [...claudeEvents],
       provides: { [claudeLifecycleService]: client },
       onload(context) {
-        lifecycle = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId(), text => localizedText(text, context.language));
+        lifecycle = new ClaudeLifecycle(executable => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId(), claudeText(context.language));
       },
       onunload() { lifecycle = undefined; },
       strings: {
