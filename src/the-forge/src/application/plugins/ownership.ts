@@ -14,7 +14,7 @@ export function ensurePluginNamespace(pluginId: string): void {
  * reports its message, a plain object its JSON. Only the host emits coded kernel messages, so a plugin value that
  * looks like one stays literal text and is never rendered from the host catalog.
  */
-export function pluginWarningText(value: unknown): string {
+function pluginWarningText(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value instanceof Error || typeof value !== 'object' || value === null) return errorMessage(value);
   try { return JSON.stringify(value) ?? errorMessage(value); }
