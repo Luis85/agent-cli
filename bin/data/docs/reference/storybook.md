@@ -2,14 +2,14 @@
 
 [Documentation](../index.md) · Reference
 
-This reference describes generated CSF modules and their native extension API. `make stories` and `make ui --stories` belong to the bundled `ui` core plugin; the default story folder is `plugins.settings.ui.stories` (`stories`), relative to the output project. It assumes an existing component library and a consuming project configured for its chosen Storybook renderer. See [your first UI](../tutorials/first-ui.md) for the sample dashboard used below.
+This reference describes generated CSF modules and their native extension API. `make stories` and `make ui --stories` belong to the bundled `ui` core plugin; the default story folder is `plugins.settings.ui.stories` (`ui/{framework}/stories`, where `{framework}` is the UI target), relative to the output project. It assumes an existing component library and a consuming project configured for its chosen Storybook renderer. See [your first UI](../tutorials/first-ui.md) for the sample dashboard used below.
 
 
 `make ui <id> --stories` writes UI and stories in the same planned batch. `make stories <id>` writes only stories, using `--out` as the location of previously generated UI and `--stories-out` as the story destination:
 
 ```sh
 node bin/forge.js make ui dashboard --framework react --out src/dashboard
-node bin/forge.js make stories dashboard --framework react --out src/dashboard --stories-out stories/dashboard --dry-run
+node bin/forge.js make stories dashboard --framework react --out ui/react/dashboard --stories-out ui/react/stories/dashboard --dry-run
 ```
 
 Each component gets `<id>.stories.ts` using standard CSF3 default metadata and named story object exports. Props provide default args and controls; the Markdown body provides docs text. Configure your Storybook story glob to include the selected folder. The import uses `@storybook/html` for HTML/HTMX/vanilla, `@storybook/react`, `@storybook/vue3`, `@storybook/svelte` or `@storybook/angular` for the corresponding target. Install and configure the matching Storybook framework, builder and desired addons in the consuming project. The CLI does not run Storybook, install packages or alter its configuration.

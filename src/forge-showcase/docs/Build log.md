@@ -68,21 +68,21 @@ node bin/forge.js components inspect trip-planner --library src/forge-showcase/l
 ## UI for every target
 
 ```sh
-node bin/forge.js make ui trip-planner --framework html --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/html/components --stories-out ui/html/stories --stories --dry-run
-node bin/forge.js make ui trip-planner --framework html --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/html/components --stories-out ui/html/stories --stories
-node bin/forge.js make ui trip-planner --framework htmx --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/htmx/components --stories-out ui/htmx/stories --stories
-node bin/forge.js make ui trip-planner --framework vanilla --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/vanilla/components --stories-out ui/vanilla/stories --stories
-node bin/forge.js make ui trip-planner --framework vue --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/vue/components --stories-out ui/vue/stories --stories
-node bin/forge.js make ui trip-planner --framework svelte --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/svelte/components --stories-out ui/svelte/stories --stories
-node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/react/components --stories-out ui/react/stories --stories
-node bin/forge.js make ui trip-planner --framework angular --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/angular/components --stories-out ui/angular/stories --stories
-node bin/forge.js make ui trip-planner --framework html --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/html/components --stories-out ui/html/stories --stories --check
-node bin/forge.js make ui trip-planner --framework htmx --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/htmx/components --stories-out ui/htmx/stories --stories --check
-node bin/forge.js make ui trip-planner --framework vanilla --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/vanilla/components --stories-out ui/vanilla/stories --stories --check
-node bin/forge.js make ui trip-planner --framework vue --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/vue/components --stories-out ui/vue/stories --stories --check
-node bin/forge.js make ui trip-planner --framework svelte --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/svelte/components --stories-out ui/svelte/stories --stories --check
-node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/react/components --stories-out ui/react/stories --stories --check
-node bin/forge.js make ui trip-planner --framework angular --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/angular/components --stories-out ui/angular/stories --stories --check
+node bin/forge.js make ui trip-planner --framework html --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --dry-run
+node bin/forge.js make ui trip-planner --framework html --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework htmx --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework vanilla --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework vue --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework svelte --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework angular --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories
+node bin/forge.js make ui trip-planner --framework html --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
+node bin/forge.js make ui trip-planner --framework htmx --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
+node bin/forge.js make ui trip-planner --framework vanilla --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
+node bin/forge.js make ui trip-planner --framework vue --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
+node bin/forge.js make ui trip-planner --framework svelte --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
+node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
+node bin/forge.js make ui trip-planner --framework angular --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
 ```
 
 ## Data sources

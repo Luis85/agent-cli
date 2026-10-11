@@ -57,13 +57,13 @@ node bin/forge.js components validate --library docs/examples/idea-to-production
 ```sh
 node bin/forge.js project create purchase-approvals --dry-run
 node bin/forge.js project create purchase-approvals
-node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated --dry-run
-node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --out src/ui/generated --stories --stories-out stories/generated
+node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --stories --dry-run
+node bin/forge.js make ui approval-page --library docs/examples/idea-to-production/components --project purchase-approvals --framework react --stories
 ```
 
-Inspect the preview before the final invocation. In a default workspace, output includes two `.tsx` components under `projects/purchase-approvals/src/ui/generated` and two CSF story files under `projects/purchase-approvals/stories/generated`. Check the actual response for paths and verify its `context.root`. `--project` targets this project for the invocation without changing another saved selection.
+Inspect the preview before the final invocation. In a default workspace, output includes two `.tsx` components under `projects/purchase-approvals/ui/react/components` and two CSF story files under `projects/purchase-approvals/ui/react/stories`, the default folders of the `react` target, which the project's own checks skip. Check the actual response for paths and verify its `context.root`. `--project` targets this project for the invocation without changing another saved selection.
 
-The Forge project begins as a TypeScript library with a Vite form showcase. Add and lock React/React types, JSX-aware build configuration and the matching Storybook framework/builder in the target project before compiling this React output. See [Storybook setup and extensions](../reference/storybook.md). Include `stories/generated` in the actual Storybook glob. The CLI does not install these dependencies or start Storybook. To experiment without a framework runtime, generate `--framework html` into a separate UI and story directory instead.
+The Forge project begins as a TypeScript library with a Vite form showcase. Add and lock React/React types, JSX-aware build configuration and the matching Storybook framework/builder in the target project before compiling this React output. See [Storybook setup and extensions](../reference/storybook.md). Include `ui/react/stories` in the actual Storybook glob. The CLI does not install these dependencies or start Storybook. To experiment without a framework runtime, generate `--framework html` into a separate UI and story directory instead.
 
 The sample's stories vary status and long text. They do not implement decisions or simulate authorization. Declare additional story names in Markdown, then use native extension modules for real interaction tests, decorators and API mocks. Confirm them in your installed Storybook version.
 

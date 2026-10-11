@@ -33,10 +33,10 @@ Frontmatter is a strict schema: unrelated keys are rejected. Use normal HTML att
 | `svelte` | `.svelte` component | Svelte with TypeScript support and legacy component/slot syntax support |
 | `angular` | `.ts` standalone component | Angular with standalone components, required inputs and TypeScript/decorator tooling |
 
-HTML fragments use defaults at generation time; their JS factories accept runtime props and child DOM nodes. Companion declaration files let TypeScript consumers typecheck those factories without enabling unchecked JavaScript imports. For example, after generating the sample dashboard as `html` into `src/ui`, mount it from a browser module:
+HTML fragments use defaults at generation time; their JS factories accept runtime props and child DOM nodes. Companion declaration files let TypeScript consumers typecheck those factories without enabling unchecked JavaScript imports. For example, after generating the sample dashboard as `html` into its default folder `ui/html/components`, mount it from a browser module:
 
 ```js
-import createDashboard from './src/ui/dashboard.js';
+import createDashboard from './ui/html/components/dashboard.js';
 document.querySelector('#app').append(createDashboard({ title: 'Workspace', count: 5 }));
 ```
 

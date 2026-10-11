@@ -233,33 +233,51 @@ function fill$1(template, params = {}) {
   return template.replace(placeholder, (match, name2) => Object.hasOwn(params, name2) ? String(params[name2]) : match);
 }
 const escape$3 = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function source$1(template, english, fragments, greedy, capture) {
+  const free = greedy ? "[\\s\\S]*" : "[\\s\\S]*?", seen = /* @__PURE__ */ new Set();
+  return template.split(placeholder).map((part, index2) => {
+    if (index2 % 2 === 0) return escape$3(part);
+    const keys = fragments[part];
+    const value2 = keys ? `(?:${keys.map((key) => source$1(english[key], english, {}, greedy, false)).join("|")})` : free;
+    if (!capture) return value2;
+    if (seen.has(part)) return `\\k<${part}>`;
+    seen.add(part);
+    return `(?<${part}>${value2})`;
+  }).join("");
+}
 const patterns = /* @__PURE__ */ new Map();
-function pattern$1(template) {
-  let compiled2 = patterns.get(template);
+function pattern$1(key, english, fragments) {
+  const template = english[key], declared = fragments[key] ?? {};
+  const id2 = `${template}\0${JSON.stringify(Object.entries(declared).map(([name2, keys]) => [name2, keys.map((fragment) => english[fragment])]))}`;
+  let compiled2 = patterns.get(id2);
   if (!compiled2) {
-    const names2 = [];
-    const source2 = template.split(placeholder).map((part, index2) => {
-      if (index2 % 2 === 0) return escape$3(part);
-      names2.push(part);
-      return "([\\s\\S]*?)";
-    }).join("");
-    compiled2 = { expression: new RegExp(`^${source2}$`), names: names2 };
-    patterns.set(template, compiled2);
+    const anchored = (greedy) => new RegExp(`^${source$1(template, english, declared, greedy, true)}$`);
+    compiled2 = { lazy: anchored(false), greedy: anchored(true) };
+    patterns.set(id2, compiled2);
   }
   return compiled2;
 }
-function templateParams(template, text2) {
-  const { expression: expression2, names: names2 } = pattern$1(template);
-  const match = expression2.exec(text2);
-  return match ? Object.fromEntries(names2.map((name2, index2) => [name2, match[index2 + 1]])) : void 0;
+function templateParams(key, text2, english, fragments) {
+  const { lazy: lazy2, greedy } = pattern$1(key, english, fragments);
+  const match = lazy2.exec(text2);
+  if (!match) return void 0;
+  const shortest = match.groups ?? {}, longest = greedy.exec(text2).groups ?? {};
+  return Object.keys(shortest).some((name2) => shortest[name2] !== longest[name2]) ? "ambiguous" : { ...shortest };
 }
-function retranslate(text2, english, target, depth2 = 2) {
-  for (const [key, template] of Object.entries(english)) {
-    const params = templateParams(template, text2);
+function retranslate(text2, english, target, fragments = {}) {
+  return render(text2, Object.keys(english), english, target, fragments);
+}
+function render(text2, keys, english, target, fragments) {
+  for (const key of keys) {
+    const params = templateParams(key, text2, english, fragments);
     const translated2 = target[key];
+    if (params === "ambiguous") return text2;
     if (!params || translated2 === void 0) continue;
-    const nested = depth2 > 0 ? Object.fromEntries(Object.entries(params).map(([name2, value2]) => [name2, retranslate(value2, english, target, depth2 - 1)])) : params;
-    return fill$1(translated2, nested);
+    const declared = fragments[key] ?? {};
+    return fill$1(translated2, Object.fromEntries(Object.entries(params).map(([name2, value2]) => {
+      const allowed = declared[name2];
+      return [name2, allowed ? render(value2, allowed, english, target, fragments) : value2];
+    })));
   }
   return text2;
 }
@@ -1118,6 +1136,15 @@ const isHostNamespace = (namespace) => hostEventNamespaces.includes(namespace);
 function ensurePluginNamespace(pluginId) {
   ensure(!isHostNamespace(pluginId), "PLUGIN_NAMESPACE", `Plugin id ${pluginId} is reserved for host events (${hostEventNamespaces.join(", ")}).`);
 }
+function pluginWarningText(value2) {
+  if (typeof value2 === "string") return value2;
+  if (value2 instanceof Error || typeof value2 !== "object" || value2 === null) return errorMessage(value2);
+  try {
+    return JSON.stringify(value2) ?? errorMessage(value2);
+  } catch {
+    return errorMessage(value2);
+  }
+}
 function pluginEvents(bus, pluginId) {
   return {
     ids: () => bus.ids(),
@@ -1126,7 +1153,7 @@ function pluginEvents(bus, pluginId) {
     once: (id2, listener) => bus.once(id2, listener),
     onAny: (listener) => bus.onAny(listener),
     replay: (listener) => bus.replay(listener),
-    warn: (message2) => bus.warn(message2),
+    warn: (message2) => bus.warn(pluginWarningText(message2)),
     onLayoutReady: (callback) => bus.onLayoutReady(callback),
     onQuit: (task2) => bus.onQuit(task2),
     async emit(id2, payload2) {
@@ -17584,7 +17611,7 @@ function fileToLinktext(index2, path2, source2, omitMdExtension = true) {
   return path2;
 }
 const indexMessages = {
-  ambiguousLink: "Link {link} in {source} matches {candidates}; it resolves to the closest, {resolved}.",
+  ambiguousLink: "The link {link} in the note {source} matches {candidates}; it resolves to the closest, {resolved}.",
   unparseableNote: "{path} cannot be parsed and is indexed without properties, links or tags: {problem}"
 };
 const pendingFileReads$1 = 16;
@@ -17915,7 +17942,7 @@ class NodeBasesQueryEngine {
   }
 }
 const germanIndexMessages = {
-  ambiguousLink: "Der Link {link} in {source} passt auf {candidates}; er wird zur nächstgelegenen Datei {resolved} aufgelöst.",
+  ambiguousLink: "Der Link {link} in der Notiz {source} passt auf {candidates}; er wird zur nächstgelegenen Datei {resolved} aufgelöst.",
   unparseableNote: "{path} kann nicht geparst werden und wird ohne Eigenschaften, Links und Tags indexiert: {problem}"
 };
 function localizedQuery(result, language2) {
@@ -19538,7 +19565,7 @@ function selectedRules(text2) {
   ensure(names2.length > 0 && unknown2.length === 0, "INVALID_ARGUMENT", `--rule takes comma-separated rule ids (${ruleIds.join(", ")}); unknown: ${unknown2.join(", ") || "(none given)"}.`);
   return ruleIds.filter((id2) => names2.includes(id2));
 }
-function localized$1(service, severity2) {
+function localized(service, severity2) {
   return (detection) => {
     const hint = fill(service.t(`${detection.rule}.hint`), detection.params);
     const suggestion = detection.suggestion === void 0 ? "" : ` ${fill(service.t("suggestion"), { suggestion: detection.suggestion })}`;
@@ -19556,7 +19583,7 @@ function localized$1(service, severity2) {
 }
 function checkResult(report, service, settings2, strict2) {
   const severity2 = (rule2) => settings2[rule2];
-  const findings = report.detections.map(localized$1(service, severity2)).sort(compareFindings);
+  const findings = report.detections.map(localized(service, severity2)).sort(compareFindings);
   const count2 = (level) => findings.filter((finding2) => finding2.severity === level).length;
   const summary = { files: report.files, findings: findings.length, ...Object.fromEntries(severities.map((level) => [level, count2(level)])) };
   const rules2 = report.rules.map((id2) => ({ id: id2, severity: severity2(id2), findings: findings.filter((finding2) => finding2.rule === id2).length }));
@@ -20129,7 +20156,7 @@ const agentMessages = {
   // Toolsets (claude-tools, claude-mcp).
   toolFilterNone: "The tools filter {filter} is approximated by the Claude tools (none).",
   toolFilter: "The tools filter {filter} is approximated by the Claude tools {tools}.",
-  toolsetFieldUnsupported: "{label} ({field}) have no Claude equivalent and are not emitted.",
+  toolsetFieldUnsupported: "{label} (the field {field}) have no Claude equivalent and are not emitted.",
   filesystemApproximated: "The filesystem toolset is approximated by the Claude tools {tools}.",
   allowListUnsupported: "allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent's file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).",
   denyListApproximated: "deny_list becomes Read and Edit deny rules in project settings with --settings.",
@@ -20171,8 +20198,8 @@ const agentMessages = {
   bangToolCall: "The bang tool call {call} is kept literally.",
   commandDescription: 'The /{command} command has no description; "{description}" is emitted.',
   commandForked: "docker-agent switches the conversation to {target}; the Claude skill runs in a forked {agent} subagent instead.",
-  mcpNotGenerated: "MCP server {server} ({target}) is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it.",
-  mcpExecutes: "MCP server {server} in {file} runs the command: {command}",
+  mcpNotGenerated: "MCP server {server} is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it. Its command or URL: {target}",
+  mcpExecutes: "MCP server {server} (written to {file}) runs the command: {command}",
   hooksNotGenerated: "Hooks run commands and are generated only with --hooks; skipped {hooks}.",
   hookExecutes: "The {event} hook of {agent} runs the command: {command}",
   toolsNone: "No toolset grants a Claude tool, so {agent} gets tools: [] and disallows {tools} instead of inheriting every tool.",
@@ -20239,13 +20266,19 @@ const agentMessages = {
   commandsNotGenerated: "Commands become Claude skills with --commands.",
   topLevelUnsupported: "The top-level {key} section has no Claude equivalent and is not emitted.",
   permissionsNotGenerated: "Permissions become project settings rules with --settings.",
-  commandLabel: "/{command} of {agent}",
+  commandLabel: "/{command} command of agent {agent}",
   commandCollision: "The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.",
   commandRenamed: "Several agents define a different /{command}; this one becomes the skill {name}.",
   agentCollision: "Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.",
   mainAgent: `The default agent {agent} becomes the project's main agent ("agent": "{claude}").`,
   settingsAgentConflict: ".claude/settings.json already sets agent to {agent}, which Forge did not generate; remove it to let Forge set {claude}.",
   encoding: "Definition files must be valid UTF-8."
+};
+const reasons = ["reasonNoBuiltin", "reasonUnmappedOne", "reasonUnmapped", "reasonMcpNone", "reasonMcpUnknown", "reasonArguments"];
+const agentFragments = {
+  permissionPartial: { reason: reasons },
+  permissionDropped: { reason: reasons },
+  commandCollision: { label: ["commandLabel"], owner: ["commandLabel"] }
 };
 const say = (key, params = {}) => fill$1(agentMessages[key], params);
 const definitionFile = /\.ya?ml$/;
@@ -28868,8 +28901,8 @@ const germanAgentMessages = {
   bangToolCall: "Der Bang-Werkzeugaufruf {call} bleibt wörtlich erhalten.",
   commandDescription: 'Der Befehl /{command} hat keine Beschreibung; "{description}" wird ausgegeben.',
   commandForked: "docker-agent übergibt die Unterhaltung an {target}; der Claude-Skill läuft stattdessen in einem abgezweigten Subagenten {agent}.",
-  mcpNotGenerated: "Der MCP-Server {server} ({target}) wird nicht generiert und seine Werkzeuge werden nicht gewährt; übergeben Sie --mcp inline oder --mcp project, um ihn zu schreiben.",
-  mcpExecutes: "Der MCP-Server {server} in {file} führt den Befehl aus: {command}",
+  mcpNotGenerated: "Der MCP-Server {server} wird nicht generiert und seine Werkzeuge werden nicht gewährt; übergeben Sie --mcp inline oder --mcp project, um ihn zu schreiben. Sein Befehl oder seine URL: {target}",
+  mcpExecutes: "Der MCP-Server {server} (geschrieben in {file}) führt den Befehl aus: {command}",
   hooksNotGenerated: "Hooks führen Befehle aus und werden nur mit --hooks generiert; übersprungen: {hooks}.",
   hookExecutes: "Der {event}-Hook von {agent} führt den Befehl aus: {command}",
   toolsNone: "Kein Toolset gewährt ein Claude-Werkzeug, daher erhält {agent} tools: [] und verbietet {tools}, statt jedes Werkzeug zu erben.",
@@ -28932,7 +28965,7 @@ const germanAgentMessages = {
   commandsNotGenerated: "Befehle werden mit --commands zu Claude-Skills.",
   topLevelUnsupported: "Der oberste Abschnitt {key} hat keine Claude-Entsprechung und wird nicht ausgegeben.",
   permissionsNotGenerated: "Berechtigungen werden mit --settings zu Regeln in den Projekteinstellungen.",
-  commandLabel: "/{command} von {agent}",
+  commandLabel: "/{command} des Agenten {agent}",
   commandCollision: "Der Befehl {label} würde .claude/skills/{name}/SKILL.md generieren, die bereits der Befehl {owner} generiert; benennen Sie einen der Befehle um.",
   commandRenamed: "Mehrere Agenten definieren ein abweichendes /{command}; dieses wird zum Skill {name}.",
   agentCollision: "Der Agent {name} würde .claude/agents/{claude}.md generieren, die bereits {owner} generiert.",
@@ -28947,7 +28980,7 @@ function localizedDiagnostics(value2, language2) {
     if (Array.isArray(item)) return item.map(walk);
     if (!isRecord$1(item)) return item;
     const entries2 = Object.fromEntries(Object.entries(item).map(([key, entry2]) => [key, walk(entry2)]));
-    return isDiagnostic(item) ? { ...entries2, message: retranslate(item.message, agentMessages, germanAgentMessages) } : entries2;
+    return isDiagnostic(item) ? { ...entries2, message: retranslate(item.message, agentMessages, germanAgentMessages, agentFragments) } : entries2;
   };
   return walk(value2);
 }
@@ -29607,10 +29640,10 @@ const checkMessages = {
   unresolvedParent: "The parent of {title} does not resolve to a loaded note.",
   dependencyCycle: "{title} depends on {target}, which closes a dependency loop.",
   unresolvedDependency: "{title} depends on {target}, which does not resolve to a loaded item.",
-  brokenIteration: "The iteration of {title} ({iteration}) is not an Iteration note.",
-  brokenAssignee: "The assignee of {title} ({assignee}) is not a Resource note.",
-  fieldNotHeldUntyped: "This type {title} may not hold {key}.",
-  fieldNotHeld: "{type} {title} may not hold {key}.",
+  brokenIteration: "{title} has the iteration {iteration}, which is not an Iteration note.",
+  brokenAssignee: "{title} has the assignee {assignee}, which is not a Resource note.",
+  fieldNotHeldUntyped: "The item {title} may not hold {key} with its type.",
+  fieldNotHeld: "The {type} item {title} may not hold {key}.",
   unreadableValue: "{title} has an unreadable {key}; the plugin shelves it.",
   reversedSpan: "{title} starts after its target date.",
   unresolvedMembership: "The release membership of {path} does not resolve to exactly one Release note of this base.",
@@ -32483,9 +32516,9 @@ const germanCheckMessages = {
   unresolvedParent: "Der übergeordnete Eintrag von {title} verweist auf keine geladene Notiz.",
   dependencyCycle: "{title} hängt von {target} ab, womit sich eine Abhängigkeitsschleife schließt.",
   unresolvedDependency: "{title} hängt von {target} ab, das auf keinen geladenen Eintrag verweist.",
-  brokenIteration: "Die Iteration von {title} ({iteration}) ist keine Iteration-Notiz.",
-  brokenAssignee: "Die Zuweisung von {title} ({assignee}) ist keine Resource-Notiz.",
-  fieldNotHeldUntyped: "Der Eintrag {title} darf mit diesem Typ {key} nicht enthalten.",
+  brokenIteration: "{title} hat die Iteration {iteration}, die keine Iteration-Notiz ist.",
+  brokenAssignee: "{title} hat die Zuweisung {assignee}, die keine Resource-Notiz ist.",
+  fieldNotHeldUntyped: "Der Eintrag {title} darf mit seinem Typ {key} nicht enthalten.",
   fieldNotHeld: "Der {type}-Eintrag {title} darf {key} nicht enthalten.",
   unreadableValue: "{title} hat einen unlesbaren Wert in {key}; das Plugin lässt ihn unberücksichtigt.",
   reversedSpan: "{title} beginnt nach seinem Zieldatum.",
@@ -34050,7 +34083,7 @@ The library exports \`ProjectDetailsForm\`, \`validateForm\` and \`renderForm\`.
 
 Keep source files at most 400 code-bearing lines and tests/test support at most 450; blank lines and comment-only lines do not count. Split by responsibility when approaching the limit. Name tests \`*.unit.test.ts\` for isolated behavior, \`*.integration.test.ts\` for collaborating components, or \`*.e2e.test.ts\` for a complete public workflow. Prefer many focused unit tests, fewer integration tests, and a small set of end-to-end tests. Select a layer with \`npm test -- --project unit\` (or \`integration\` / \`e2e\`); run the full suite before handoff.
 
-Keep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and composition in \`src/presentation\`. Core layers use only relative imports and cannot depend on outer layers; keep platform libraries behind injected ports. These boundaries are enforced by the lint and analysis configurations under \`configs/\`. Export the intended public API from \`src/index.ts\`. New components start internal and are exercised by their generated tests; explicitly export them when they become part of the library contract. Generated data-source adapters (\`make data-source --out src/infrastructure/data-sources\`) have no generated test, so export them from \`src/index.ts\` before \`npm run analyze\`, or it reports them as unused. Generate framework UI and Storybook stories for downstream applications under \`ui/<framework>\` (\`make ui <component> --framework react --out ui/react/components --stories-out ui/react/stories\`): their frameworks are not dependencies of this library, so its checks skip \`ui/\`.
+Keep business invariants in \`src/domain\`, use cases and injected ports in \`src/application\`, adapters in \`src/infrastructure\`, and composition in \`src/presentation\`. Core layers use only relative imports and cannot depend on outer layers; keep platform libraries behind injected ports. These boundaries are enforced by the lint and analysis configurations under \`configs/\`. Export the intended public API from \`src/index.ts\`. New components start internal and are exercised by their generated tests; explicitly export them when they become part of the library contract. Generated data-source adapters (\`make data-source --out src/infrastructure/data-sources\`) have no generated test, so export them from \`src/index.ts\` before \`npm run analyze\`, or it reports them as unused. \`make ui\` and \`make stories\` generate framework UI and Storybook stories for downstream applications under \`ui/<framework>\` by default (\`make ui <component> --framework react --stories\` writes \`ui/react/components\` and \`ui/react/stories\`): their frameworks are not dependencies of this library, so its checks skip \`ui/\`.
 
 The sample \`ProjectIdentity\` demonstrates domain identity validation; \`ProjectDetailsForm\` demonstrates a separate presentation model. Replace examples with the project's business vocabulary and acceptance criteria. Static checks enforce specific rules; focused behavior tests remain necessary.
 `,
@@ -34560,8 +34593,8 @@ const defaults$2 = {
   interactions: "interactions",
   interactionImports: "imports/interactions",
   interactionExports: "exports/interactions",
-  output: "src/ui",
-  stories: "stories"
+  output: "ui/{framework}/components",
+  stories: "ui/{framework}/stories"
 };
 const descriptions$1 = {
   components: "Workspace-relative component library folder.",
@@ -34570,8 +34603,8 @@ const descriptions$1 = {
   interactions: "Workspace-relative interaction library folder.",
   interactionImports: "Workspace-relative folder that interactions import copies definitions from.",
   interactionExports: "Workspace-relative folder that interactions export copies definitions to.",
-  output: "Generated UI folder, relative to the output project (or the workspace without one).",
-  stories: "Generated Storybook story folder, relative to the output project (or the workspace without one)."
+  output: "Generated UI folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.",
+  stories: "Generated Storybook story folder, relative to the output project (or the workspace without one); {framework} stands for the UI target."
 };
 const uiPathSettings = Object.keys(descriptions$1);
 const uiSettingsSchema = {
@@ -41516,14 +41549,15 @@ async function makeUi(kind2, id2, flags, context, services2) {
   ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
   ensure(kind2 !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
   const scoped2 = (path2) => generationOutputPath(path2, context.project);
+  const target = (path2) => scoped2(path2.replaceAll("{framework}", framework));
   const directory = value$2(flags, "library") ?? settings2.components;
   const { mode, manifestPath: manifestPath2, revisions } = await generationControls(flags, context.workspace.files);
   const options2 = {
     component: id2,
     framework,
     interactionDirectory: value$2(flags, "interactions-library") ?? settings2.interactions,
-    outputDirectory: scoped2(value$2(flags, "out") ?? settings2.output),
-    ...storybook2 ? { storiesDirectory: scoped2(value$2(flags, "stories-out") ?? settings2.stories) } : {},
+    outputDirectory: target(value$2(flags, "out") ?? settings2.output),
+    ...storybook2 ? { storiesDirectory: target(value$2(flags, "stories-out") ?? settings2.stories) } : {},
     storybook: storybook2,
     storiesOnly: kind2 === "stories",
     ...revisions ? { revisions } : {}
@@ -41594,8 +41628,8 @@ const uiStrings = {
       "Workspace-relative interaction library folder.": "Ordner der Interaktionsbibliothek, relativ zum Workspace.",
       "Workspace-relative folder that interactions import copies definitions from.": "Ordner relativ zum Workspace, aus dem interactions import Definitionen kopiert.",
       "Workspace-relative folder that interactions export copies definitions to.": "Ordner relativ zum Workspace, in den interactions export Definitionen kopiert.",
-      "Generated UI folder, relative to the output project (or the workspace without one).": "Ordner der generierten UI, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace).",
-      "Generated Storybook story folder, relative to the output project (or the workspace without one).": "Ordner der generierten Storybook-Stories, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace)."
+      "Generated UI folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.": "Ordner der generierten UI, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace); {framework} steht für das UI-Ziel.",
+      "Generated Storybook story folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.": "Ordner der generierten Storybook-Stories, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace); {framework} steht für das UI-Ziel."
     }
   }
 };
@@ -42198,7 +42232,7 @@ const claudeMessages = {
   hookExecution: "Claude Code owns execution; Forge never runs hook handlers.",
   mutationScope: "project where the native command supports a scope",
   lifecycleDryRun: "Returns command arguments without starting Claude Code.",
-  notificationFailed: "Claude notification {event}: {diagnostic}"
+  notificationFailed: "Claude notification {event} failed: {diagnostic}"
 };
 const text$a = (value2) => typeof value2 === "string" && value2.length > 0;
 const status = (value2) => Number.isSafeInteger(value2);
@@ -42214,13 +42248,14 @@ const claudeEvents = [
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => operation$1(value2) && error(value2.error) && optionalStatus(value2)),
   definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$a(value2.executable) && text$a(value2.cwd) && status(value2.exitCode))
 ];
-async function notifyClaude(events2, id2, payload2, localize = (text2) => text2) {
+const englishClaudeText = (key, params) => fill$1(claudeMessages[key], params);
+async function notifyClaude(events2, id2, payload2, localize = englishClaudeText) {
   try {
     if (!events2.ids().includes(id2)) return;
     await events2.emit(id2, payload2);
   } catch (failure2) {
     try {
-      events2.warn(localize(fill$1(claudeMessages.notificationFailed, { event: id2, diagnostic: errorMessage(failure2) })));
+      events2.warn(localize("notificationFailed", { event: id2, diagnostic: errorMessage(failure2) }));
     } catch {
     }
   }
@@ -42231,7 +42266,7 @@ function nativeResult(stdout, output2) {
   return JSON.parse(output2 === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
 }
 class ClaudeLifecycle {
-  constructor(runtime, scope2, events2, operationId, localize = (text2) => text2) {
+  constructor(runtime, scope2, events2, operationId, localize = englishClaudeText) {
     this.runtime = runtime;
     this.scope = scope2;
     this.events = events2;
@@ -43487,20 +43522,18 @@ const germanClaudeMessages = {
   lifecycleDryRun: "Gibt die Befehlsargumente zurück, ohne Claude Code zu starten.",
   notificationFailed: "Die Claude-Benachrichtigung {event} ist fehlgeschlagen: {diagnostic}"
 };
-function localizedText(text2, language2) {
-  return language2 === "en" ? text2 : retranslate(text2, claudeMessages, germanClaudeMessages);
-}
-function localized(value2) {
+const claudeText = (language2) => (key, params) => fill$1((language2 === "en" ? claudeMessages : germanClaudeMessages)[key], params);
+function localizedResult(value2) {
   if (typeof value2 === "string") return retranslate(value2, claudeMessages, germanClaudeMessages);
-  if (Array.isArray(value2)) return value2.map(localized);
-  return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, entry2]) => [key, localized(entry2)])) : value2;
+  if (Array.isArray(value2)) return value2.map(localizedResult);
+  return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, entry2]) => [key, localizedResult(entry2)])) : value2;
 }
 function withLocalizedResults(command2) {
   return {
     ...command2,
     async run(args, flags, context) {
       const result = await command2.run(args, flags, context);
-      return context.language === "en" ? result : localized(result);
+      return context.language === "en" ? result : localizedResult(result);
     }
   };
 }
@@ -43641,7 +43674,7 @@ const claudePlugin = {
       events: [...claudeEvents],
       provides: { [claudeLifecycleService]: client },
       onload(context) {
-        lifecycle = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId(), (text2) => localizedText(text2, context.language));
+        lifecycle = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId(), claudeText(context.language));
       },
       onunload() {
         lifecycle = void 0;
@@ -65751,7 +65784,29 @@ const germanDescriptions = {
   "Import source directory for import.": "Quellverzeichnis für import.",
   "Export destination directory for export.": "Zielverzeichnis für export.",
   "list (default), init, inspect, validate, create, import or export.": "list (Standard), init, inspect, validate, create, import oder export.",
-  "The definition id for inspect and create.": "Die Definitions-ID für inspect und create."
+  "The definition id for inspect and create.": "Die Definitions-ID für inspect und create.",
+  // The JSON documents that `edit --edits` and the `apply` plan hold (the schema `help` and `schema` publish with them).
+  "Literal replacements applied in order, each to the result of the previous one.": "Wörtliche Ersetzungen, der Reihe nach jeweils auf das Ergebnis der vorherigen angewendet.",
+  "Exact text that must occur once, or at least once with all.": "Genauer Text, der einmal vorkommen muss, mit all mindestens einmal.",
+  "Replacement text, inserted literally.": "Ersetzungstext, wörtlich eingefügt.",
+  "Replace every non-overlapping occurrence instead of exactly one.": "Jedes nicht überlappende Vorkommen ersetzen statt genau eines.",
+  "Operations run in order against the planned state of the vault, then commit as one guarded batch.": "Operationen laufen der Reihe nach gegen den geplanten Zustand des Vaults und werden dann als ein geschützter Stapel übernommen.",
+  "Path relative to the command scope.": "Pfad relativ zum Geltungsbereich des Befehls.",
+  "Revision the file (or folder) had before the plan ran, from read; a file keeps it across earlier moves in the plan.": "Revision, die die Datei (oder der Ordner) vor dem Plan hatte, aus read; eine Datei behält sie über frühere Verschiebungen im Plan hinweg.",
+  "Replacement for the content (the heading line, block marker, and a list item's marker and checkbox stay).": "Ersatz für den Inhalt (die Überschriftenzeile, die Blockmarkierung sowie Markierung und Kontrollkästchen eines Listeneintrags bleiben).",
+  "Lines to add after the content; next to a list item block, sibling list items.": "Zeilen, die nach dem Inhalt eingefügt werden; neben einem Listeneintragsblock als gleichrangige Listeneinträge.",
+  "Lines to add before the content; next to a list item block, sibling list items.": "Zeilen, die vor dem Inhalt eingefügt werden; neben einem Listeneintragsblock als gleichrangige Listeneinträge.",
+  'Heading path such as "Plan > Risks"; segments are separated by " > ", and " \\> " is a " > " inside a heading.': 'Überschriftenpfad wie "Plan > Risks"; Segmente werden durch " > " getrennt, und " \\> " ist ein " > " innerhalb einer Überschrift.',
+  "Block id, with or without the leading ^.": "Block-ID, mit oder ohne führendes ^.",
+  "The 1-based line of the heading, from AMBIGUOUS_SECTION details.candidates; picks one of several headings the path matches.": "Die 1-basierte Zeile der Überschrift aus AMBIGUOUS_SECTION details.candidates; wählt eine von mehreren Überschriften, auf die der Pfad passt.",
+  "Text appended to the end of the file.": "Text, der an das Ende der Datei angehängt wird.",
+  "Markdown note.": "Markdown-Notiz.",
+  "File content.": "Dateiinhalt.",
+  "base64 writes binary content.": "base64 schreibt binären Inhalt.",
+  "Properties to set; null stores YAML null.": "Zu setzende Eigenschaften; null speichert YAML null.",
+  "Property names to remove.": "Zu entfernende Eigenschaftsnamen.",
+  "Rewrite links to the moved files.": "Links auf die verschobenen Dateien umschreiben.",
+  "File or folder to move to .trash.": "Datei oder Ordner, die nach .trash verschoben werden."
 };
 const germanKernelMessages = {
   PLUGIN_LISTED_DISABLED: "In plugins.disabled aufgeführt.",
@@ -65973,16 +66028,17 @@ class Localizer {
     if (this.language !== "de") return english;
     return translated(germanDescriptions, english) ?? this.plugins?.description("de", english) ?? english;
   }
+  /** Option and argument descriptions, including the descriptions inside the JSON document schema one declares. */
   described(items2) {
-    const localized2 = items2.map((item) => ({ ...item, description: this.description(item.description) }));
-    return localized2.every((item, index2) => item.description === items2[index2].description) ? items2 : localized2;
+    if (this.language !== "de") return items2;
+    return items2.map((item) => ({ ...item, description: this.description(item.description), ...item.schema === void 0 ? {} : { schema: this.schema(item.schema) } }));
   }
   options(options2) {
     if (!options2) return options2;
     const entries2 = Object.entries(options2), values2 = entries2.map(([, option2]) => option2), localized2 = this.described(values2);
     return localized2 === values2 ? options2 : Object.fromEntries(entries2.map(([name2], index2) => [name2, localized2[index2]]));
   }
-  /** `description` texts inside a plugin settings schema, as `config` reports it. */
+  /** `description` texts inside a JSON Schema: a plugin settings schema, as `config` reports it, or an option's document. */
   schema(value2) {
     if (Array.isArray(value2)) return value2.map((item) => this.schema(item));
     if (!isRecord$1(value2)) return value2;
