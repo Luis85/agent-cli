@@ -1,6 +1,6 @@
 import type { FileSnapshot } from '../../domain/documents/file.ts';
 import {
-  outcomeKey, readSnapshot, snapshotFormat, unchangedFile, type FileStamp, type MetadataSnapshot, type ParseOutcome, type SnapshotFile,
+  outcomeKey, racyWindowMs, readSnapshot, snapshotFormat, unchangedFile, type FileStamp, type MetadataSnapshot, type ParseOutcome, type SnapshotFile,
 } from '../../domain/metadata/snapshot.ts';
 import type { MetadataSnapshotStore, StampedListing } from './ports.ts';
 
@@ -17,6 +17,8 @@ export interface SnapshotOptions { store: MetadataSnapshotStore; key: string; sa
  */
 export class ParseResults {
   private previous: Promise<MetadataSnapshot | null> | undefined;
+  /** The previous snapshot once `previous` settled; undefined before. */
+  private loaded: MetadataSnapshot | null | undefined;
   private readonly records = new Map<string, SnapshotFile>();
   private checkedAtMs = 0;
   private changed = false;
@@ -34,7 +36,8 @@ export class ParseResults {
   /** The previous snapshot, loaded once; null without a store or when it is missing, unreadable or for another key. */
   stored(): Promise<MetadataSnapshot | null> {
     const options = this.options;
-    this.previous ??= options === undefined ? Promise.resolve(null) : options.store.load().then(value => readSnapshot(value, options.key), () => null);
+    this.previous ??= (options === undefined ? Promise.resolve(null) : options.store.load().then(value => readSnapshot(value, options.key), () => null))
+      .then(snapshot => { this.loaded = snapshot; return snapshot; });
     return this.previous;
   }
 
@@ -54,11 +57,19 @@ export class ParseResults {
     return previous ? this.outcome(previous, outcomeKey(file.path, file.revision)) : undefined;
   }
 
-  /** Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). */
+  /**
+   * Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). The snapshot
+   * becomes outdated when the record differs from the stored one, or when storing it would let the next load trust
+   * the stamp. A file that stays inside the racy window, such as one with a future timestamp, is read again on every
+   * load but does not rewrite an otherwise unchanged snapshot.
+   */
   read(path: string, revision: string, stamp: FileStamp | null): void {
     if (this.options === undefined) return;
-    this.records.set(path, { stamp: stamp?.stamp ?? null, revision });
-    this.changed = true;
+    const record = { stamp: stamp?.stamp ?? null, revision };
+    this.records.set(path, record);
+    const before = this.loaded && Object.hasOwn(this.loaded.files, path) ? this.loaded.files[path] : undefined;
+    const same = before !== undefined && before.stamp === record.stamp && before.revision === revision;
+    if (!same || (stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs)) this.changed = true;
   }
 
   /** The recorded revision of an indexed path, if any. */

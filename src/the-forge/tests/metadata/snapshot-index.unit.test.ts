@@ -111,6 +111,25 @@ describe('persisted metadata snapshots', () => {
     expect((await invocation()).reads).toEqual([]);
   });
 
+  it('re-reads a file with a future timestamp on every load without rewriting an unchanged snapshot', async () => {
+    const { files, store, invocation } = setup();
+    // A synced note from a device whose clock runs ahead is never trusted by stamp.
+    files.put('Notes/Plan.md', files.files.get('Notes/Plan.md')!, 'future', files.checkedAtMs + 365 * 86_400_000);
+    await invocation();
+    expect(store.saves).toBe(1);
+    for (let run = 0; run < 3; run++) {
+      files.checkedAtMs += 60_000;
+      const next = await invocation();
+      expect(next.reads).toEqual(['Notes/Plan.md']);
+      expect(next.parsed).toEqual([]);
+    }
+    expect(store.saves).toBe(1);
+    // Its content still counts: an edit is read, parsed and stored.
+    files.put('Notes/Plan.md', '# Plan\nEdited ahead of time. #ahead\n', 'future 2', files.checkedAtMs + 365 * 86_400_000);
+    expect((await invocation()).cache.getFileCache('Notes/Plan.md')?.tags?.map(tag => tag.tag)).toEqual(['#ahead']);
+    expect(store.saves).toBe(2);
+  });
+
   it('reuses parse results across renames, drops deleted files and parses new ones', async () => {
     const { files, store, invocation, fresh } = setup();
     await invocation();
