@@ -17,26 +17,26 @@ describe('localized portable CLI', () => {
   it('uses configured language and invocation overrides without changing saved configuration', async () => {
     await configure({ settings: { language: 'de' } });
     const original = await readFile(join(root, 'bin/config.json'), 'utf8');
-    expect(cli(['help', 'read']).body.data.description).toContain('SHA-256-Revision');
+    expect((await cli(['help', 'read'])).body.data.description).toContain('SHA-256-Revision');
     for (const args of [['--lang', 'en', 'help', 'read'], ['help', 'read', '--lang', 'en']]) {
-      const result = cli(args);
+      const result = await cli(args);
       expect(result.status).toBe(0);
       expect(result.body.data.description).toContain('Read a document');
       expect(result.body.data.id).toBe('read');
     }
-    expect(cli(['config', '--lang', 'en']).body.data.config.settings.language).toBe('en');
+    expect((await cli(['config', '--lang', 'en'])).body.data.config.settings.language).toBe('en');
     expect(await readFile(join(root, 'bin/config.json'), 'utf8')).toBe(original);
   });
 
-  it('keeps capability IDs, options and usage stable while translating built-in descriptions', () => {
-    const english = cli(['schema', '--lang', 'en']), german = cli(['--lang', 'de', 'schema']);
+  it('keeps capability IDs, options and usage stable while translating built-in descriptions', async () => {
+    const english = await cli(['schema', '--lang', 'en']), german = await cli(['--lang', 'de', 'schema']);
     expect(german.status).toBe(0);
     expect(Object.keys(german.body)).toEqual(Object.keys(english.body));
     const contracts = (commands: Array<{ id: string; usage: string; options: unknown }>) => commands.map(({ id, usage, options }) => ({ id, usage, options }));
     expect(contracts(german.body.data.commands)).toEqual(contracts(english.body.data.commands));
     expect(german.body.data.globalOptions).toEqual(english.body.data.globalOptions);
     expect(german.body.data.commands.find((command: { id: string }) => command.id === 'read').description).not.toBe(english.body.data.commands.find((command: { id: string }) => command.id === 'read').description);
-    expect(cli(['make', '--lang', 'de']).body.data.generators.find((generator: { id: string }) => generator.id === 'ui').description).toContain('Markdown');
+    expect((await cli(['make', '--lang', 'de'])).body.data.generators.find((generator: { id: string }) => generator.id === 'ui').description).toContain('Markdown');
     // Every action description is German, including make's generators and core plugin actions; action modes stay.
     const actions = (body: { data: { commands: Array<{ id: string; annotations: { actions?: Record<string, { description: string; mutating: boolean }> } }> } }) =>
       body.data.commands.flatMap(command => Object.entries(command.annotations.actions ?? {}).map(([id, action]) => ({ key: `${command.id} ${id}`, ...action })));
@@ -44,18 +44,18 @@ describe('localized portable CLI', () => {
     expect(germanActions.length).toBeGreaterThanOrEqual(61);
     expect(germanActions.map(({ key, mutating }) => ({ key, mutating }))).toEqual(englishActions.map(({ key, mutating }) => ({ key, mutating })));
     germanActions.forEach((action, index) => expect(action.description, action.key).not.toBe(englishActions[index]!.description));
-    expect(cli(['--lang', 'de', 'help', 'links']).body.data.annotations.actions.orphans.description).toContain('Notizen');
+    expect((await cli(['--lang', 'de', 'help', 'links'])).body.data.annotations.actions.orphans.description).toContain('Notizen');
   });
 
   it('initializes the requested preference and diagnoses invalid configuration without bypassing it', async () => {
-    const setup = cli(['setup', '--lang', 'de']);
+    const setup = await cli(['setup', '--lang', 'de']);
     expect(setup.status).toBe(0);
     expect(JSON.parse(await readFile(join(root, 'bin/config.json'), 'utf8')).settings.language).toBe('de');
     const original = await readFile(join(root, 'bin/config.json'), 'utf8');
-    expect(cli(['setup', '--lang', 'en']).status).toBe(0);
+    expect((await cli(['setup', '--lang', 'en'])).status).toBe(0);
     expect(await readFile(join(root, 'bin/config.json'), 'utf8')).toBe(original);
     await configure({ settings: { language: 'fr' } });
-    const invalid = cli(['--lang', 'de', 'config']);
+    const invalid = await cli(['--lang', 'de', 'config']);
     expect(invalid.status).toBe(2);
     expect(invalid.body.error.code).toBe('INVALID_CONFIG');
     expect(invalid.body.error.message).toContain('Konfiguration');
@@ -64,7 +64,7 @@ describe('localized portable CLI', () => {
 
   it('preserves exit codes and structured diagnostics when localizing failures', async () => {
     await configure({ settings: { language: 'de' } });
-    const german = cli(['read', 'missing.md']), english = cli(['read', 'missing.md', '--lang', 'en']);
+    const german = await cli(['read', 'missing.md']), english = await cli(['read', 'missing.md', '--lang', 'en']);
     expect(german.status).toBe(3); expect(english.status).toBe(3);
     expect(german.body.error.code).toBe(english.body.error.code);
     expect(german.body.error.message).toContain('nicht gefunden');
@@ -72,7 +72,7 @@ describe('localized portable CLI', () => {
     expect(german.body.error.details.localization.originalMessage).toBe(english.body.error.message);
     expect(committedEvents(german.body.events)).toEqual([]);
     for (const args of [['--lang', 'fr', 'help'], ['help', '--lang', 'fr'], ['--lang', 'en', 'help', '--lang', 'de']]) {
-      const result = cli(args);
+      const result = await cli(args);
       expect(result.status).toBe(2);
       expect(result.body.error.code).toBe(args.includes('fr') ? 'INVALID_LANGUAGE' : 'DUPLICATE_OPTION');
       expect(result.body.events).toEqual([]);
@@ -83,15 +83,15 @@ describe('localized portable CLI', () => {
   it('leaves user content and generated bytes unchanged across languages', async () => {
     await configure({ settings: { language: 'de' } });
     const literal = '--lang';
-    expect(cli(['create', 'literal.md', '--content', literal]).status).toBe(0);
+    expect((await cli(['create', 'literal.md', '--content', literal])).status).toBe(0);
     expect(await readFile(join(root, 'literal.md'), 'utf8')).toBe(literal);
     const content = '# Read a document\n\nUnknown command --lang de.\n';
     await writeFile(join(root, 'user.md'), content);
-    const english = cli(['read', 'user.md', '--lang', 'en']), german = cli(['read', 'user.md', '--lang', 'de']);
+    const english = await cli(['read', 'user.md', '--lang', 'en']), german = await cli(['read', 'user.md', '--lang', 'de']);
     expect(german.body.data).toEqual(english.body.data);
     const args = ['make', 'entity', 'Example', '--dry-run'];
-    expect(cli([...args, '--lang', 'de']).body.data).toEqual(cli([...args, '--lang', 'en']).body.data);
-    expect(cli(['config']).body.data.config.settings.language).toBe('de');
+    expect((await cli([...args, '--lang', 'de'])).body.data).toEqual((await cli([...args, '--lang', 'en'])).body.data);
+    expect((await cli(['config'])).body.data.config.settings.language).toBe('de');
   });
 
   it('preserves plugin descriptions, results, events and warnings', async () => {
@@ -105,8 +105,8 @@ describe('localized portable CLI', () => {
         return { message: 'Read a document', generators: [{ id: 'ui', description: 'User content' }] };
       } }]
     };`);
-    const english = cli(['quality.check', '--lang', 'en']), german = cli(['quality.check', '--lang', 'de']);
+    const english = await cli(['quality.check', '--lang', 'en']), german = await cli(['quality.check', '--lang', 'de']);
     expect(german.status).toBe(0); expect(german.body).toEqual(english.body);
-    expect(cli(['help', 'quality.check']).body.data.description).toBe('Read a document');
+    expect((await cli(['help', 'quality.check'])).body.data.description).toBe('Read a document');
   });
 });

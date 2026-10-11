@@ -36,26 +36,26 @@ describe('portable native Bases repositories', () => {
     await put(root, 'Notes/C.md', '---\nstatus: open\nowner: Ada\npriority: 1\n---\n[[Projects/Context]]');
     await put(root, 'Notes/Done.md', '---\nstatus: done\nowner: Ada\npriority: 99\n---\n');
     const before = await readFile(join(root, 'queries/tasks.base'));
-    const listed = cli(['list']);
+    const listed = await cli(['list']);
     expect(listed.status).toBe(0);
     expect(listed.body.data).toEqual({ files: ['queries/tasks.base'], scope: root });
-    expect(cli([]).body.data).toEqual(listed.body.data);
-    const inspected = cli(['inspect', 'queries/tasks.base']);
+    expect((await cli([])).body.data).toEqual(listed.body.data);
+    const inspected = await cli(['inspect', 'queries/tasks.base']);
     expect(inspected.status).toBe(0);
     expect(inspected.body.data).toMatchObject({ path: 'queries/tasks.base', revision: expect.any(String),
       definition: { formulas: { score: 'priority * 2' } }, views: [{ name: 'All open' }, { name: 'For context' }],
       repository: { path: 'queries/tasks.base', viewSelection: 'name; first view when omitted' } });
-    const all = cli(['query', 'queries/tasks.base']);
+    const all = await cli(['query', 'queries/tasks.base']);
     expect(all.status).toBe(0);
     expect(all.body.data).toMatchObject({ path: 'queries/tasks.base', view: 'All open', context: 'queries/tasks.base',
       files: ['Notes/B.md', 'Notes/A.md', 'Notes/C.md'], total: 3, scope: root,
       repository: { path: 'queries/tasks.base', view: 'All open' } });
-    const named = cli(['query', 'queries/tasks.base', '--view', 'For context', '--context', 'Projects/Context.md', '--limit', '1']);
+    const named = await cli(['query', 'queries/tasks.base', '--view', 'For context', '--context', 'Projects/Context.md', '--limit', '1']);
     expect(named.status).toBe(0);
     expect(named.body.data).toMatchObject({ view: 'For context', context: 'Projects/Context.md', files: ['Notes/A.md'], total: 2 });
-    expect(cli(['query', 'queries/tasks.base', '--limit', '0']).body.data).toMatchObject({ files: [], total: 3 });
-    expect(cli(['query', 'queries/tasks.base', '--dry-run']).body.data.files).toEqual(all.body.data.files);
-    const capabilities = cli(['capabilities']);
+    expect((await cli(['query', 'queries/tasks.base', '--limit', '0'])).body.data).toMatchObject({ files: [], total: 3 });
+    expect((await cli(['query', 'queries/tasks.base', '--dry-run'])).body.data.files).toEqual(all.body.data.files);
+    const capabilities = await cli(['capabilities']);
     expect(capabilities.status).toBe(0);
     expect(capabilities.body.data).toMatchObject({ standalone: true, engine: 'obsidian-bases-expression', version: '0.2.0' });
     expect(capabilities.body.data.query).toContain('this-context');
@@ -85,39 +85,39 @@ describe('portable native Bases repositories', () => {
       { args: ['query', 'absent.base'], code: 'NOT_FOUND' },
     ];
     for (const { args, code } of errors) {
-      const result = cli(args);
+      const result = await cli(args);
       expect(result.status).not.toBe(0);
       expect(result.body).toMatchObject({ ok: false, error: { code } });
       expect(committedEvents(result.body.events)).toEqual([]);
       expect(result.body.data).toBeUndefined();
     }
     await put(root, 'broken.base', 'views: invalid\n');
-    expect(cli(['inspect', 'broken.base']).body.error.code).toBe('INVALID_BASE');
+    expect((await cli(['inspect', 'broken.base'])).body.error.code).toBe('INVALID_BASE');
     await put(root, 'tasks.base', stringify({ formulas: { invalid: 'points ==' }, views: [{ type: 'table', name: 'Invalid' }] }));
-    expect(cli(['query', 'tasks.base']).body.error.code).toBe('INVALID_BASE_EXPRESSION');
+    expect((await cli(['query', 'tasks.base'])).body.error.code).toBe('INVALID_BASE_EXPRESSION');
     await put(root, 'tasks.base', stringify({ filters: 'file.unknownFunction()', views: [{ type: 'table', name: 'Invalid' }] }));
-    expect(cli(['query', 'tasks.base']).body.error.code).toBe('BASE_EVALUATION_ERROR');
+    expect((await cli(['query', 'tasks.base'])).body.error.code).toBe('BASE_EVALUATION_ERROR');
   }, 60_000);
 
   it('queries only the explicitly selected vault even when launched from another project directory', async () => {
     const { root } = await vault('selection');
-    for (const name of ['alpha', 'beta']) expect(fixture.cli(['project', 'create', name], undefined, { root }).status).toBe(0);
+    for (const name of ['alpha', 'beta']) expect((await fixture.cli(['project', 'create', name], undefined, { root })).status).toBe(0);
     const alpha = join(root, 'projects/alpha'), beta = join(root, 'projects/beta');
     const base = stringify({ filters: 'kind == "task"', views: [{ type: 'table', name: 'Tasks' }] });
     for (const [directory, name] of [[root, 'Workspace'], [alpha, 'Alpha'], [beta, 'Beta']]) {
       await put(directory!, 'tasks.base', base);
       await put(directory!, `${name}.md`, '---\nkind: task\n---\n');
     }
-    expect(fixture.cli(['project', 'open', 'alpha'], undefined, { root }).status).toBe(0);
-    const result = fixture.cli(['bases', 'query', 'tasks.base'], undefined, { root, cwd: beta });
+    expect((await fixture.cli(['project', 'open', 'alpha'], undefined, { root })).status).toBe(0);
+    const result = await fixture.cli(['bases', 'query', 'tasks.base'], undefined, { root, cwd: beta });
     expect(result.status).toBe(0);
     expect(result.body.context).toMatchObject({ root: alpha, workspaceRoot: root, project: { name: 'alpha' } });
     expect(result.body.data).toMatchObject({ files: ['Alpha.md'], total: 1, scope: alpha });
-    expect(fixture.cli(['bases', 'list'], undefined, { root, cwd: beta }).body.data).toEqual({ files: ['tasks.base'], scope: alpha });
-    expect(fixture.cli(['bases', 'inspect', 'tasks.base'], undefined, { root, cwd: beta }).body.context.root).toBe(alpha);
-    expect(fixture.cli(['bases', 'query', '../beta/tasks.base'], undefined, { root }).body.error.code).toBe('INVALID_PATH');
-    expect(fixture.cli(['project', 'open', 'beta'], undefined, { root }).status).toBe(0);
-    expect(fixture.cli(['bases', 'query', 'tasks.base'], undefined, { root }).body.data.files).toEqual(['Beta.md']);
+    expect((await fixture.cli(['bases', 'list'], undefined, { root, cwd: beta })).body.data).toEqual({ files: ['tasks.base'], scope: alpha });
+    expect((await fixture.cli(['bases', 'inspect', 'tasks.base'], undefined, { root, cwd: beta })).body.context.root).toBe(alpha);
+    expect((await fixture.cli(['bases', 'query', '../beta/tasks.base'], undefined, { root })).body.error.code).toBe('INVALID_PATH');
+    expect((await fixture.cli(['project', 'open', 'beta'], undefined, { root })).status).toBe(0);
+    expect((await fixture.cli(['bases', 'query', 'tasks.base'], undefined, { root })).body.data.files).toEqual(['Beta.md']);
     expect(committedEvents(result.body.events)).toEqual([]);
   }, 60_000);
 });

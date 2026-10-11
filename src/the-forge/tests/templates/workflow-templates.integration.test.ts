@@ -22,7 +22,8 @@ const config: AppConfig = {
 };
 const workspace = (dryRun = false) => new Workspace(files, documents, events, dryRun);
 const setup = (dryRun = false): SetupService => new SetupService(workspace(dryRun), config, [
-  { path: 'forge.js', bytes: encodeText('/* executable fixture */') },
+  { path: 'forge.js', bytes: encodeText('/* launcher fixture */') },
+  { path: 'forge-runtime.js', bytes: encodeText('/* runtime fixture */') },
   { path: 'package.json', bytes: encodeText('{"type":"commonjs"}') },
 ], [], setupTemplates);
 beforeEach(async () => {

@@ -115,8 +115,8 @@ async function snapshot(directory = fixture.project, files: Record<string, strin
 
 interface Annotations { mutating: boolean; idempotentHint: boolean; actions?: Record<string, { mutating: boolean; idempotentHint: boolean }> }
 /** Every mutating mode of the published schema with its declared idempotentHint: `command` or `command action`. */
-function declaredModes(): Map<string, boolean> {
-  const commands = cli(['schema']).body.data.commands as Array<{ id: string; annotations: Annotations }>;
+async function declaredModes(): Promise<Map<string, boolean>> {
+  const commands = (await cli(['schema'])).body.data.commands as Array<{ id: string; annotations: Annotations }>;
   const modes = new Map<string, boolean>();
   for (const { id, annotations } of commands) {
     const actions = Object.entries(annotations.actions ?? {});
@@ -128,7 +128,7 @@ function declaredModes(): Map<string, boolean> {
 
 describe('idempotentHint agrees with a repeated invocation', () => {
   let declared: Map<string, boolean>;
-  beforeAll(() => { declared = declaredModes(); });
+  beforeAll(async () => { declared = await declaredModes(); });
   it('probes every mutating mode the schema publishes', () => {
     expect([...declared.keys()].sort()).toEqual([...probes.map(probe => probe.mode), ...Object.keys(unprobed)].sort());
     for (const mode of Object.keys(unprobed)) expect(declared.get(mode), mode).toBe(false);
@@ -136,12 +136,12 @@ describe('idempotentHint agrees with a repeated invocation', () => {
 
   for (const probe of probes) {
     it(`${probe.mode}: the repeat matches the declared hint`, async () => {
-      for (const [args, input] of probe.prepare ?? []) { const prepared = cli([...args], input); expect(prepared.status, prepared.stdout).toBe(0); }
+      for (const [args, input] of probe.prepare ?? []) { const prepared = await cli([...args], input); expect(prepared.status, prepared.stdout).toBe(0); }
       const args = typeof probe.args === 'function' ? await probe.args() : probe.args;
-      const first = cli([...args], probe.input);
+      const first = await cli([...args], probe.input);
       expect(first.status, first.stdout).toBe(0);
       const before = await snapshot();
-      const repeat = cli([...args], probe.input);
+      const repeat = await cli([...args], probe.input);
       const after = await snapshot();
       if (declared.get(probe.mode)) {
         expect(after, repeat.stdout).toEqual(before);

@@ -36,7 +36,7 @@ describe('Forge project management', () => {
     expect(await projects.inspect('billing')).toEqual({ schemaVersion: 1, name: 'billing', type: 'library', directory: 'src/billing' });
     expect(await service().list()).toEqual([]);
     expect(await readFile(join(root, 'src/billing/AGENTS.md'), 'utf8')).toContain('npm run check');
-    expect(JSON.parse(await readFile(join(root, 'src/billing/package.json'), 'utf8')).devDependencies).toMatchObject({ typescript: '5.9.3', vite: '7.3.7', vitest: '3.2.7' });
+    expect(JSON.parse(await readFile(join(root, 'src/billing/package.json'), 'utf8')).devDependencies).toMatchObject({ typescript: '5.9.3', vite: '7.3.7', vitest: '5.0.3' });
   });
 
   it('dry-runs a complete plan without creating directories or metadata', async () => {
@@ -292,6 +292,10 @@ describe('Forge project management', () => {
     await writeFile(unused, 'export const orphan = true;\n');
     await expect(quality('analyze')).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('src/domain/unused.ts') });
     await rm(unused);
+    await quality('analyze');
+    // Framework UI generated for downstream applications lives under ui/, outside the library and its dependencies.
+    await mkdir(join(project, 'ui/react/components'), { recursive: true });
+    await writeFile(join(project, 'ui/react/components/trip-card.tsx'), "import { createElement } from 'react';\nexport default function TripCard() { return createElement('article'); }\n");
     await quality('analyze');
 
     const adapter = join(project, 'src/infrastructure/runtime.ts');

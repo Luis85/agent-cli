@@ -47,15 +47,17 @@ ${bindings}
  * Adds the sync base, then records the connections and a dry-run sync of both views for the README.
  * @param {import('./cli.mjs').ForgeCli} cli
  */
-export function buildSync(cli) {
+export async function buildSync(cli) {
   cli.begin('Backlog sync');
   cli.create(syncPaths.base, base);
-  const connections = cli.run(['connectors', 'list']).data.connections;
-  const plan = cli.run(['backlog', 'sync', '--base', syncPaths.base, '--dry-run']).data;
-  return { connections, plan };
+  // All three only read: inspecting a connection resolves its mappings from configuration, without a token.
+  const [list, inspected, plan] = (await cli.runConcurrently([
+    ['connectors', 'list'], ['connectors', 'inspect', 'contoso'], ['backlog', 'sync', '--base', syncPaths.base, '--dry-run'],
+  ])).map(envelope => envelope.data);
+  return { connections: list.connections, mapping: inspected.mapping, plan };
 }
 
-/** @typedef {ReturnType<typeof buildSync>} SyncSummary */
+/** @typedef {Awaited<ReturnType<typeof buildSync>>} SyncSummary */
 
 /** The README section on backlog sync. @param {SyncSummary} summary */
 export function syncSection(summary) {
@@ -79,6 +81,13 @@ export function syncSection(summary) {
     '| Connection | Organization | Project | Process | Profile |',
     '| --- | --- | --- | --- | --- |',
     ...connections,
+    '',
+    '`connectors inspect contoso` resolves the Agile process mapping that sync applies, without contacting Azure DevOps. Item types and states map to:',
+    '',
+    '| Backlog | Azure DevOps |',
+    '| --- | --- |',
+    ...Object.entries(summary.mapping.types).map(([from, to]) => `| type \`${from}\` | \`${to}\` |`),
+    ...Object.entries(summary.mapping.states).map(([from, to]) => `| state \`${from}\` | \`${to}\` |`),
     '',
     'Generation never contacts Azure DevOps: no note is linked yet, so `backlog sync --dry-run` plans the creates without a request and writes nothing. With a token in each `tokenEnv` variable, `backlog sync` would create these work items with their parent links and write each note\'s link property. The dry run planned:',
     '',

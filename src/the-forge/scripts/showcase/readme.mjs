@@ -8,6 +8,9 @@ import { maintenance } from './vault-maintenance.mjs';
 import { explorationSection } from './vault-explore.mjs';
 import { backlogPaths, backlogSection } from './backlog.mjs';
 import { syncSection } from './sync.mjs';
+import { native, nativeSection } from './native.mjs';
+import { exchangeSection } from './exchange.mjs';
+import { contractSection } from './contract.mjs';
 
 export const buildLogPath = 'docs/Build log.md';
 
@@ -19,11 +22,12 @@ const folders = [
   [vaultPaths.hub, 'Hub note that links the whole knowledge graph and embeds a Bases view', '`create`'],
   [vaultPaths.canvas, 'JSON Canvas architecture map with file nodes, groups and labelled edges', '`create`, `patch --pointer /nodes` and `/edges` (replace), `/nodes/-` and `/edges/-` (append), `validate`'],
   ['docs/bases', 'Native Bases views: documents by stage, requirement traceability and library backlinks', '`create`, `validate`, `bases list`, `bases inspect`, `bases query`'],
-  ['docs', 'Full-text search and link reports over the finished knowledge graph, recorded below', '`search`, `links back`, `links unresolved`, `links orphans`, `vault check`'],
+  ['docs', 'Full-text search, link reports and tag and property inventories over the finished knowledge graph, recorded below', '`search`, `links back`, `links out`, `links unresolved`, `links orphans`, `links deadends`, `vault tags`, `vault properties`, `vault check`'],
   [backlogPaths.folder, 'Product backlog compatible with the Obsidian Product Backlog view: Epics, Features, PBIs, a Bug and Tasks with ranks, states and stamps, assignees, dependencies, an iteration, two releases with readiness and generated release notes, and a sync base with two views bound to two Azure DevOps connections', '`backlog init`, `write --if-match`, `backlog add`, `backlog move`, `backlog set`, `backlog depend`, `backlog iteration add/assign`, `backlog release add/join/mark-released/readiness/notes`, `backlog check`, `create`, `connectors list`, `backlog sync --dry-run`'],
   [maintenance.renamed.to, 'Generated as "Trip planner test plan", then renamed: every wikilink, frontmatter link and the Canvas file node that named it were rewritten in the same guarded batch', '`rename --dry-run`, `rename --if-match`'],
   [maintenance.trashed, 'A scratch note deleted the Obsidian way: moved to the vault trash, which Obsidian and the metadata cache ignore', '`create`, `delete --if-match`'],
-  [maintenance.decision.path, 'Its "Uncertainties and decisions" section extended with a section edit, after an `apply` plan that would defer UC-003 (a frontmatter change and a move with link rewriting) was previewed as one batch and never committed', '`apply - --dry-run`, `edit --section --append --if-match`'],
+  [maintenance.deferral.to, 'Moved out of the 1.0 scope with every wikilink, frontmatter link and Canvas node rewritten; its status set by the committed `apply` plan and its body changed by two literal edits in one call', '`move --dry-run`, `move --if-match`, `apply -`, `edit --edits`'],
+  [maintenance.decision.path, 'The open UC-003 question recorded as a list item with the block id `^uc-003-scope`, decided by an `apply` plan that changed it and the use case\'s status in one guarded batch (previewed first), then extended through its block id, with a scope note prepended to another section', '`edit --section --append`, `apply - --dry-run`, `apply -`, `edit --block --append`, `edit --section --prepend`'],
   ['library/components', 'Starter component library plus the Trailhead `trip-card` and `trip-planner` definitions', '`components init`, `components create`, `write --if-match`, `components validate`'],
   ['library/interactions', 'Starter interactions plus `toggle-favorite`, `capture-destination` and `save-trip-draft`', '`interactions init`, `interactions create`, `write --if-match`, `interactions validate`'],
   ['library/data-sources', 'REST (`trips-api`) and local JSON (`trail-guides`) data-source definitions', '`data-sources create`, `write --if-match`, `data-sources validate`'],
@@ -37,18 +41,26 @@ const folders = [
   ['.claude/agents', 'Claude Code agents generated from the team with provenance, plus a native reviewer agent', '`agents generate --target claude --commands --mcp inline` (`--plan`, `--check`), `claude agents create`, `claude agents list`'],
   ['.claude/skills', 'The team\'s `/trace` command as a Claude skill, plus the Forge process skills as Agent Skills folders for Claude Code', '`agents generate --commands`, `skills install`'],
   ['.agents/skills', 'The same Forge process skills for other agents that read the cross-agent `.agents/skills` root', '`skills install`'],
+  ['.claude/settings.json', 'A project `PostToolUse` hook that runs the structure check after Claude edits a file', '`claude hooks set`, `claude hooks check`'],
+  [native.plugin, 'A local Claude Code plugin with a `/trace` command, checked structurally', '`claude plugins create`, `claude plugins write-asset`, `claude plugins check`'],
+  ['.exchange', 'Data-source definitions exported for another workspace, in a hidden folder outside the vault', '`data-sources export`, `data-sources import --dry-run`'],
   ['src/index.ts', 'Library public API exporting the Trailhead model, form and adapters', '`write --if-match`'],
-  ['package.json, configs, scripts', 'Independent toolchain: structure, Oxlint, fallow, TypeScript, Vite and Vitest. `configs/quality/fallow.json` also ignores `ui/**`, whose framework sources belong to downstream applications', '`project create`, `write --if-match`'],
+  ['package.json, configs, scripts', 'Independent toolchain from `project create`: structure, Oxlint, fallow, TypeScript, Vite and Vitest. Its checks skip `ui/`, whose framework sources belong to downstream applications', '`project create`'],
 ];
 
 /**
- * @param {{ base: string, view: string, files: string[], total: number }[]} queries
- * @param {import('./vault-explore.mjs').Exploration} exploration
- * @param {import('./backlog.mjs').BacklogSummary} backlog
- * @param {import('./sync.mjs').SyncSummary} sync
- * @param {Parameters<typeof agentsSection>[0]} agents
+ * @param {{
+ *   queries: { base: string, view: string, files: string[], total: number }[],
+ *   exploration: import('./vault-explore.mjs').Exploration,
+ *   backlog: import('./backlog.mjs').BacklogSummary,
+ *   sync: import('./sync.mjs').SyncSummary,
+ *   agents: Parameters<typeof agentsSection>[0],
+ *   native: import('./native.mjs').NativeSummary,
+ *   exchange: import('./exchange.mjs').ExchangeSummary,
+ *   contract: import('./contract.mjs').Contract,
+ * }} results
  */
-export function readme(queries, exploration, backlog, sync, agents) {
+export function readme({ queries, exploration, backlog, sync, agents, native: nativeSummary, exchange, contract }) {
   const results = queries.map(query => [
     `### ${query.view} (\`${query.base}\`)`,
     '',
@@ -97,7 +109,10 @@ ${backlogSection(backlog)}
 ## Backlog sync
 
 ${syncSection(sync)}
-${agentsSection(agents)}`;
+${agentsSection(agents)}
+${nativeSection(nativeSummary)}
+${exchangeSection(exchange)}
+${contractSection(contract)}`;
 }
 
 /** @param {{ section: string, command: string }[]} log */

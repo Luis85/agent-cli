@@ -118,6 +118,7 @@ describe('installed Claude CLI adapter', () => {
     expect(signals.map(signal => process.listenerCount(signal))).toEqual(before);
   });
 
+  // Windows cannot deliver SIGINT or SIGTERM to another process; Node emulates them only for console events.
   it.skipIf(process.platform === 'win32').each(['SIGINT', 'SIGTERM'] as const)('stops native work when the host receives %s', async signal => {
     const adapter = new URL('../../src/plugins/claude/infrastructure/runtime.ts', import.meta.url).href;
     const { script, cwd } = await fixture(`
@@ -179,6 +180,7 @@ describe('installed Claude CLI adapter', () => {
     }).toBe(false);
   });
 
+  // The refused request is a POSIX process-group kill (negative pid); Windows terminates only the direct process.
   it.skipIf(process.platform === 'win32')('reports unsuccessful termination requests without claiming the process stopped', async () => {
     const { runtime, script, cwd } = await fixture(`
       import { writeFileSync } from 'node:fs';
@@ -212,6 +214,7 @@ describe('installed Claude CLI adapter', () => {
     });
   });
 
+  // Windows has no process groups: the runtime reports terminationScope 'direct-process' and cannot stop descendants.
   it.skipIf(process.platform === 'win32')('stops POSIX descendants that would otherwise keep writing after timeout', async () => {
     const { runtime, script, cwd } = await fixture(`
       import { spawn } from 'node:child_process';

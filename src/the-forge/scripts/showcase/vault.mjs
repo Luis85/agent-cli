@@ -128,21 +128,19 @@ export async function buildVault(cli) {
   patch('/nodes/-', nodes.at(-1));
   patch('/edges', edges.slice(0, -1));
   patch('/edges/-', edges.at(-1));
-  cli.run(['validate', vaultPaths.canvas]);
 
   cli.begin('Bases');
-  for (const [path, content] of Object.entries(bases)) {
-    cli.create(path, content);
-    cli.run(['validate', path]);
-  }
+  for (const [path, content] of Object.entries(bases)) cli.create(path, content);
+  // Validation only reads, so the Canvas and Bases checks run concurrently.
+  await cli.runConcurrently([vaultPaths.canvas, ...Object.keys(bases)].map(path => ['validate', path]));
   maintainVault(cli);
 
   cli.begin('Bases queries');
-  cli.run(['bases', 'list']);
+  const [, ...inspected] = await cli.runConcurrently([['bases', 'list'], ...Object.values(vaultPaths.bases).map(path => ['bases', 'inspect', path])]);
   /** @type {{ base: string, view: string }[]} */
   const selected = [];
-  for (const path of Object.values(vaultPaths.bases)) {
-    const views = cli.run(['bases', 'inspect', path]).data?.views;
+  for (const [index, path] of Object.values(vaultPaths.bases).entries()) {
+    const views = inspected[index].data?.views;
     if (!Array.isArray(views)) throw new Error(`bases inspect ${path} returned no views`);
     for (const view of views) selected.push({ base: path, view: String(view.name) });
   }

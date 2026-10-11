@@ -14,13 +14,13 @@ describe('a user plugin that plugins.enabled names but bin/plugins lacks', () =>
     await writeFile(join(fixture.project, 'bin/plugins/hello/main.mjs'), "export default { commands: [{ id: 'hello.run', description: 'Greet', usage: 'hello.run', mutating: false, run: () => ({ hello: true }) }] };\n");
     await writeFile(join(fixture.project, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['nope', 'hello'] } }));
     for (const args of [['help'], ['setup'], ['config'], ['hello.run']]) {
-      const result = cli(args);
+      const result = await cli(args);
       expect(result.status, `${args.join(' ')}: ${result.stdout}`).toBe(0);
       expect(result.body.warnings, args.join(' ')).toEqual(expect.arrayContaining([expect.stringContaining(warning)]));
     }
-    const listed = cli(['plugins']).body.data.plugins as Array<{ id: string; state: string; reason: string | null; contributions: unknown }>;
+    const listed = (await cli(['plugins'])).body.data.plugins as Array<{ id: string; state: string; reason: string | null; contributions: unknown }>;
     expect(listed.find(plugin => plugin.id === 'nope')).toEqual({ id: 'nope', core: false, state: 'missing', reason: expect.stringContaining('remove it from plugins.enabled'), contributions: null });
     expect(listed.find(plugin => plugin.id === 'hello')).toMatchObject({ state: 'enabled' });
-    expect(cli(['nope.run']).body.error.code).toBe('UNKNOWN_COMMAND');
+    expect((await cli(['nope.run'])).body.error.code).toBe('UNKNOWN_COMMAND');
   });
 });

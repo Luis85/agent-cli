@@ -15,25 +15,25 @@ it('loads fixed workspace configuration and allows invocation overrides', async 
     const config = join(configuredRoot, 'bin/config.json');
     await writeFile(config, JSON.stringify({ paths: { projects: 'src' }, settings: { dryRun: true, json: true } }));
     const invocation = { root: configuredRoot, cwd: bundle };
-    const loaded = cli(['config'], undefined, invocation);
+    const loaded = await cli(['config'], undefined, invocation);
     expect(loaded.status).toBe(0);
     expect(loaded.body.data.root).toBe(configuredRoot);
     expect(loaded.body.data.config.paths.projects).toBe('src');
     expect(loaded.body.data.path).toBe(config);
     const make = ['make', 'entity', 'ConfiguredItem', '--out', 'generated/models'];
-    const preview = cli(make, undefined, invocation);
+    const preview = await cli(make, undefined, invocation);
     expect(preview.status).toBe(0); expect(preview.body.data.dryRun).toBe(true); expect(committedEvents(preview.body.events)).toEqual([]);
     expect(await readdir(configuredRoot)).toEqual(['bin']);
-    expect(cli(['--no-dry-run', ...make], undefined, invocation).status).toBe(0);
+    expect((await cli(['--no-dry-run', ...make], undefined, invocation)).status).toBe(0);
     expect(await readFile(join(configuredRoot, 'generated/models/configured-item.ts'), 'utf8')).toContain('class ConfiguredItem');
-    expect(cli(['config']).body.data.root).toBe(project);
+    expect((await cli(['config'])).body.data.root).toBe(project);
     for (const invalid of [{ settings: { dryrun: true } }, { paths: { templates: '../outside' } }, { paths: { root: '..' } }, { plugins: { enabled: ['same', 'same'] } }, { unknown: true }]) {
       await writeFile(config, JSON.stringify(invalid));
-      expect(cli(['config'], undefined, invocation).body.error.code).toBe('INVALID_CONFIG');
+      expect((await cli(['config'], undefined, invocation)).body.error.code).toBe('INVALID_CONFIG');
     }
     await rm(config);
-    expect(cli(['config'], undefined, invocation).body.data.path).toBeNull();
-    expect(cli(['--config', config, 'config']).body.error.code).toBe('UNKNOWN_OPTION');
+    expect((await cli(['config'], undefined, invocation)).body.data.path).toBeNull();
+    expect((await cli(['--config', config, 'config'])).body.error.code).toBe('UNKNOWN_OPTION');
   });
 
 it('reports the effective plugin folder settings and contains every one of them', async () => {
@@ -41,16 +41,16 @@ it('reports the effective plugin folder settings and contains every one of them'
   await mkdir(join(project, 'bin'), { recursive: true });
   await writeFile(config, JSON.stringify({ plugins: { settings: { agents: { directory: 'agents/' }, ui: { components: 'components/' }, 'data-sources': { library: 'data-sources//' } } } }));
   try {
-    const shown = cli(['config']);
+    const shown = await cli(['config']);
     expect(shown.status, shown.stdout).toBe(0);
     expect(shown.body.data.config.plugins.settings).toMatchObject({ agents: { directory: 'agents' }, ui: { components: 'components' }, 'data-sources': { library: 'data-sources' } });
     expect(shown.body.warnings).toEqual([]);
-    const listed = cli(['agents', 'list']);
+    const listed = await cli(['agents', 'list']);
     expect(listed.status, listed.stdout).toBe(0);
 
     await writeFile(config, JSON.stringify({ plugins: { settings: { agents: { directory: '../outside' } } } }));
     const issue = 'plugins.settings.agents.directory: must be a contained workspace-relative path';
-    expect(cli(['config']).body.warnings).toEqual([expect.stringContaining(issue)]);
-    expect(cli(['agents', 'list']).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'agents', issues: [issue] } });
+    expect((await cli(['config'])).body.warnings).toEqual([expect.stringContaining(issue)]);
+    expect((await cli(['agents', 'list'])).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'agents', issues: [issue] } });
   } finally { await rm(config, { force: true }); }
 });

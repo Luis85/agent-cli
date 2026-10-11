@@ -22,22 +22,22 @@ async function workspace(name: string, plugin?: string) {
 describe('Obsidian event parity through the portable CLI', () => {
   it('reports vault.* records by default, quick previews in dry runs and file-open on reads', async () => {
     const { run } = await workspace('vault-events');
-    const created = run(['create', 'notes/plan.md', '--content', '# Plan']);
+    const created = await run(['create', 'notes/plan.md', '--content', '# Plan']);
     expect(created.status, created.stdout).toBe(0);
     const revision = created.body.data.changes[0].revision;
     expect(created.body.events).toEqual([
       { id: 'vault.create', payload: { path: 'notes', kind: 'folder', operation: 'created' } },
       { id: 'vault.create', payload: { path: 'notes/plan.md', kind: 'file', operation: 'created', revision, bytes: 6 } },
     ]);
-    const preview = run(['--events', 'all', 'write', 'notes/plan.md', '--content', '# Plan v2', '--if-match', revision, '--dry-run']);
+    const preview = await run(['--events', 'all', 'write', 'notes/plan.md', '--content', '# Plan v2', '--if-match', revision, '--dry-run']);
     expect(preview.body.events.filter((event: Record) => event.id === 'workspace.quick-preview')).toEqual([
       { id: 'workspace.quick-preview', payload: { path: 'notes/plan.md', operation: 'updated', bytes: 9 } },
     ]);
     expect(ids(preview.body.events).some(id => id.startsWith('vault.'))).toBe(false);
-    const modified = run(['write', 'notes/plan.md', '--content', '# Plan v2', '--if-match', revision]);
+    const modified = await run(['write', 'notes/plan.md', '--content', '# Plan v2', '--if-match', revision]);
     expect(ids(modified.body.events)).toEqual(['vault.modify']);
     expect(modified.body.events[0].payload).toMatchObject({ path: 'notes/plan.md', kind: 'file', operation: 'updated', bytes: 9 });
-    const read = run(['--events', 'all', 'read', 'notes/plan.md']);
+    const read = await run(['--events', 'all', 'read', 'notes/plan.md']);
     // The bundled core plugins register, activate and unload around every activating command.
     const each = (...phases: string[]) => bundledCorePlugins.flatMap(() => phases);
     expect(ids(read.body.events)).toEqual([
@@ -46,18 +46,18 @@ describe('Obsidian event parity through the portable CLI', () => {
     ]);
     expect(read.body.events.slice(0, bundledCorePlugins.length).map((event: Record) => event.payload)).toEqual(bundledCorePlugins.map(pluginId => ({ pluginId })));
     expect(read.body.events.find((event: Record) => event.id === 'workspace.file-open').payload).toEqual({ path: 'notes/plan.md' });
-    expect(run(['read', 'notes/plan.md']).body.events).toEqual([]);
+    expect((await run(['read', 'notes/plan.md'])).body.events).toEqual([]);
   });
 
   it('emits workspace.project-change when project open or close changes the selection', async () => {
     const { run } = await workspace('project-events');
-    for (const name of ['alpha', 'beta']) expect(run(['project', 'create', name]).status).toBe(0);
-    const change = (args: string[]) => run(['--events', 'all', ...args]).body.events.filter((event: Record) => event.id === 'workspace.project-change').map((event: Record) => event.payload);
-    expect(change(['project', 'open', 'alpha'])).toEqual([{ from: null, to: 'alpha' }]);
-    expect(change(['project', 'open', 'alpha'])).toEqual([]);
-    expect(change(['project', 'open', 'beta', '--dry-run'])).toEqual([]);
-    expect(change(['project', 'open', 'beta'])).toEqual([{ from: 'alpha', to: 'beta' }]);
-    expect(change(['project', 'close'])).toEqual([{ from: 'beta', to: null }]);
+    for (const name of ['alpha', 'beta']) expect((await run(['project', 'create', name])).status).toBe(0);
+    const change = async (args: string[]) => (await run(['--events', 'all', ...args])).body.events.filter((event: Record) => event.id === 'workspace.project-change').map((event: Record) => event.payload);
+    expect(await change(['project', 'open', 'alpha'])).toEqual([{ from: null, to: 'alpha' }]);
+    expect(await change(['project', 'open', 'alpha'])).toEqual([]);
+    expect(await change(['project', 'open', 'beta', '--dry-run'])).toEqual([]);
+    expect(await change(['project', 'open', 'beta'])).toEqual([{ from: 'alpha', to: 'beta' }]);
+    expect(await change(['project', 'close'])).toEqual([{ from: 'beta', to: null }]);
   });
 
   it('publishes metadataCache events after vault records once a command loaded the cache', async () => {
@@ -74,10 +74,10 @@ describe('Obsidian event parity through the portable CLI', () => {
         } }],
       };
     `);
-    expect(run(['create', 'notes/plan.md', '--content', '# Plan']).status).toBe(0);
-    const created = run(['--events', 'all', 'create', 'notes/spec.md', '--content', 'Draft']);
+    expect((await run(['create', 'notes/plan.md', '--content', '# Plan'])).status).toBe(0);
+    const created = await run(['--events', 'all', 'create', 'notes/spec.md', '--content', 'Draft']);
     expect(ids(created.body.events).some(id => id.startsWith('metadataCache.'))).toBe(false);
-    const linked = run(['--events', 'all', 'parity.link', 'notes/spec.md', 'plan']);
+    const linked = await run(['--events', 'all', 'parity.link', 'notes/spec.md', 'plan']);
     expect(linked.status, linked.stdout).toBe(0);
     expect(linked.body.data).toEqual({ before: {}, after: { 'notes/plan.md': 1 } });
     const records = linked.body.events.filter((event: Record) => /^(vault|metadataCache)\./.test(event.id));
@@ -86,7 +86,7 @@ describe('Obsidian event parity through the portable CLI', () => {
     ]);
     expect(records[1].payload.cache).toMatchObject({ links: [{ link: 'plan', original: '[[plan]]' }] });
     expect(linked.body.warnings).toEqual(['resolved observed']);
-    const changes = run(['parity.link', 'notes/spec.md', 'missing']);
+    const changes = await run(['parity.link', 'notes/spec.md', 'missing']);
     expect(ids(changes.body.events)).toEqual(['vault.modify']);
   });
 
@@ -105,7 +105,7 @@ describe('Obsidian event parity through the portable CLI', () => {
         } }, { id: 'parity.noop', description: 'Do nothing', usage: 'parity.noop', run() { return { ok: true }; } }],
       };
     `);
-    const first = run(['--events', 'all', 'parity.noop']);
+    const first = await run(['--events', 'all', 'parity.noop']);
     expect(first.status, first.stdout).toBe(0);
     expect(first.body.warnings).toEqual(['enabled once', 'quit task ran']);
     const order = ids(first.body.events);
@@ -114,10 +114,10 @@ describe('Obsidian event parity through the portable CLI', () => {
     expect(order.indexOf('workspace.quit')).toBeLessThan(order.indexOf('plugin.unloading'));
     expect(first.body.events.filter((event: Record) => event.id.startsWith('vault.')).map((event: Record) => event.payload.path)).toEqual(['bin/data', 'bin/data/plugins-state.json']);
     expect(JSON.parse(await readFile(join(root, 'bin/data/plugins-state.json'), 'utf8'))).toEqual({ schemaVersion: 1, plugins: { parity: { settings: null } } });
-    const second = run(['parity.noop']);
+    const second = await run(['parity.noop']);
     expect(second.body.warnings).toEqual(['quit task ran']);
     expect(second.body.events).toEqual([]);
-    const forged = run(['parity.forge']);
+    const forged = await run(['parity.forge']);
     expect(forged.status).toBe(2);
     expect(forged.body.error).toMatchObject({ code: 'EVENT_OWNERSHIP', retryable: false });
     await expect(readFile(join(root, 'fake.md'))).rejects.toMatchObject({ code: 'ENOENT' });

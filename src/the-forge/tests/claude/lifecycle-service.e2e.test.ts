@@ -59,10 +59,10 @@ if (args[0] === 'failure') {
 describe('the claude.lifecycle service for trusted plugins', () => {
   it('discovers configured commands without activation or a native launch', async () => {
     const plugin = await configuredPlugin('lifecycle-discovery');
-    const schema = plugin.cli(['schema']);
+    const schema = await plugin.cli(['schema']);
     expect(schema.status).toBe(0);
     expect(schema.body.data.commands.map((command: { id: string }) => command.id)).toContain('native-audit.run');
-    for (const result of [schema, plugin.cli(['help', 'native-audit.run']), plugin.cli(['native-audit.run', '--help']), plugin.cli(['claude', 'capabilities'])]) {
+    for (const result of [schema, await plugin.cli(['help', 'native-audit.run']), await plugin.cli(['native-audit.run', '--help']), await plugin.cli(['claude', 'capabilities'])]) {
       expect(result.status).toBe(0);
       expect(result.body.warnings).toEqual([]);
       expect(result.body.events.filter((event: { id: string }) => ['plugin.activating', 'plugin.activated', 'claude.started', 'claude.executed'].includes(event.id))).toEqual([]);
@@ -73,7 +73,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
   it('previews through the injected client without launching or exposing input and argument secrets', async () => {
     const plugin = await configuredPlugin('lifecycle-preview');
     const input = JSON.stringify({ token: 'private-stdin-é' }) + '\n';
-    const result = plugin.cli(['--events', 'all', 'native-audit.run', '--dry-run', '--read-input', '--config', 'token=private-config', '--secret', 'private-argument'], input);
+    const result = await plugin.cli(['--events', 'all', 'native-audit.run', '--dry-run', '--read-input', '--config', 'token=private-config', '--secret', 'private-argument'], input);
     expect(result.status).toBe(0);
     expect(result.body.data).toMatchObject({ dryRun: true, executed: false, plan: {
       executable: process.execPath, cwd: plugin.root, inputBytes: Buffer.byteLength(input),
@@ -91,11 +91,11 @@ describe('the claude.lifecycle service for trusted plugins', () => {
 
   it('runs within the selected project and retains successful structured output', async () => {
     const plugin = await configuredPlugin('lifecycle-scope');
-    expect(plugin.cli(['project', 'create', 'alpha']).status).toBe(0);
-    expect(plugin.cli(['project', 'create', 'beta']).status).toBe(0);
-    expect(plugin.cli(['project', 'open', 'alpha']).status).toBe(0);
+    expect((await plugin.cli(['project', 'create', 'alpha'])).status).toBe(0);
+    expect((await plugin.cli(['project', 'create', 'beta'])).status).toBe(0);
+    expect((await plugin.cli(['project', 'open', 'alpha'])).status).toBe(0);
     const selected = join(plugin.root, 'projects/alpha');
-    const result = plugin.cli(['--events', 'all', 'native-audit.run', '--mode', 'diagnostic']);
+    const result = await plugin.cli(['--events', 'all', 'native-audit.run', '--mode', 'diagnostic']);
     expect(result.status).toBe(0);
     expect(result.body.context).toMatchObject({ workspaceRoot: plugin.root, root: selected });
     expect(result.body.data).toMatchObject({ dryRun: false, executed: true, cwd: selected, exitCode: 0,
@@ -107,7 +107,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
   it('passes private values intact to the native process while keeping its returned plan private', async () => {
     const plugin = await configuredPlugin('lifecycle-input');
     const input = 'private-piped-input\n';
-    const result = plugin.cli(['native-audit.run', '--output', 'json', '--read-input', '--config', 'token=private-config', '--secret', 'private-argument'], input);
+    const result = await plugin.cli(['native-audit.run', '--output', 'json', '--read-input', '--config', 'token=private-config', '--secret', 'private-argument'], input);
     expect(result.status).toBe(0);
     expect(result.body.data).toMatchObject({ executed: true, exitCode: 0, result: { outcome: 'complete', receivedInputBytes: Buffer.byteLength(input) } });
     expect(await plugin.launches()).toEqual([{ args: ['success', '--config', 'token=private-config', '--credential', 'private-argument'], stdin: input, cwd: plugin.root }]);
@@ -116,7 +116,7 @@ describe('the claude.lifecycle service for trusted plugins', () => {
 
   it('preserves a failed native structured outcome and acceptance hash for recovery', async () => {
     const plugin = await configuredPlugin('lifecycle-failure');
-    const result = plugin.cli(['--events', 'all', 'native-audit.run', '--mode', 'failure']);
+    const result = await plugin.cli(['--events', 'all', 'native-audit.run', '--mode', 'failure']);
     expect(result.status).not.toBe(0);
     expect(result.body.ok).toBe(false);
     expect(result.body.error).toMatchObject({ code: 'CLAUDE_RUNTIME_FAILED', details: {
@@ -131,11 +131,11 @@ describe('the claude.lifecycle service for trusted plugins', () => {
   it('keeps --no-plugins recovery available when a configured plugin cannot load', async () => {
     const plugin = await configuredPlugin('lifecycle-recovery');
     await writeFile(join(plugin.directory, 'main.mjs'), 'throw new Error("Plugin fixture cannot load");');
-    expect(plugin.cli(['schema']).status).not.toBe(0);
-    const schema = plugin.cli(['--no-plugins', 'schema']);
+    expect((await plugin.cli(['schema'])).status).not.toBe(0);
+    const schema = await plugin.cli(['--no-plugins', 'schema']);
     expect(schema.status).toBe(0);
     expect(schema.body.data.commands.map((command: { id: string }) => command.id)).not.toContain('native-audit.run');
-    const preview = plugin.cli(['--no-plugins', 'claude', 'runtime', 'version', '--claude-bin', process.execPath, '--dry-run']);
+    const preview = await plugin.cli(['--no-plugins', 'claude', 'runtime', 'version', '--claude-bin', process.execPath, '--dry-run']);
     expect(preview.status).toBe(0);
     expect(preview.body.data).toMatchObject({ dryRun: true, executed: false });
     expect(preview.body.warnings).toEqual([]);
@@ -144,10 +144,10 @@ describe('the claude.lifecycle service for trusted plugins', () => {
 
   it('leaves a plugin that requires it unavailable when the claude core plugin is disabled', async () => {
     const plugin = await configuredPlugin('lifecycle-disabled', { disabled: ['claude'] });
-    const result = plugin.cli(['native-audit.run']);
+    const result = await plugin.cli(['native-audit.run']);
     expect(result.body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { command: 'native-audit.run', plugin: 'native-audit', reason: 'Requires service claude.lifecycle; its provider claude is disabled.' } });
-    expect(plugin.cli(['claude', 'capabilities']).body.error.code).toBe('UNKNOWN_COMMAND');
-    const events = plugin.cli(['events']).body.data;
+    expect((await plugin.cli(['claude', 'capabilities'])).body.error.code).toBe('UNKNOWN_COMMAND');
+    const events = (await plugin.cli(['events'])).body.data;
     expect(events.events.filter((id: string) => id.startsWith('claude.'))).toEqual([]);
     expect(events.hostNamespaces).not.toContain('claude');
     await expect(readFile(plugin.log)).rejects.toMatchObject({ code: 'ENOENT' });

@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { execFile } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { portableCli } from '../support/portable-cli.ts';
@@ -32,24 +31,19 @@ beforeAll(async () => {
   await cp(showcase, join(portable.project, 'src/forge-showcase'), { recursive: true, filter: source => !source.includes('node_modules') });
 });
 
+// Regeneration without drift is the gate's last stage, npm run showcase:check, which runs alone after this suite.
 describe('committed showcase project', () => {
-  it('regenerates without drift from the bundled CLI', async () => {
-    // Asynchronous so the long regeneration does not block the test worker's event loop.
-    const result = await new Promise<{ status: number | null; stdout: string; stderr: string }>(done => {
-      const child = execFile(process.execPath, ['scripts/showcase.mjs', '--check'], { encoding: 'utf8', timeout: 240_000, maxBuffer: 16 * 1024 * 1024 },
-        (_error, stdout, stderr) => done({ status: child.exitCode, stdout, stderr }));
-    });
-    expect(result.stderr).toBe('');
-    const report = JSON.parse(result.stdout);
-    expect(report).toMatchObject({ ok: true, differences: [], lockfile: [] });
-    expect(result.status).toBe(0);
-    expect(report.files).toBe(tree.filter(path => path !== 'package-lock.json').length);
-  }, 300_000);
+  it('keeps the drift check in the full gate', async () => {
+    const manifest = JSON.parse(await readFile(join(workspaceRoot, 'src/the-forge/package.json'), 'utf8'));
+    expect(manifest.scripts['showcase:check']).toBe('node scripts/showcase.mjs --check');
+    expect(manifest.scripts.check.split(' && ').at(-1)).toBe('npm run showcase:check');
+  });
 
   it('contains an independent project toolchain, CI workflow, agent and skills', () => {
     for (const path of ['.forge/project.json', 'package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts', 'configs/quality/fallow.json',
       'src/infrastructure/workflows/check/check.yml', '.claude/agents/trailhead-reviewer.md', '.agents/skills/forge-workflow/SKILL.md', '.claude/skills/forge-workflow/SKILL.md',
-      'agents/trailhead-team.yaml', '.claude/agents/trailhead-lead.md', '.claude/agents/spec-writer.md', '.claude/agents/ui-builder.md', '.claude/skills/trace/SKILL.md']) {
+      'agents/trailhead-team.yaml', '.claude/agents/trailhead-lead.md', '.claude/agents/spec-writer.md', '.claude/agents/ui-builder.md', '.claude/skills/trace/SKILL.md',
+      '.claude/settings.json', 'claude-plugins/trailhead-tools/.claude-plugin/plugin.json', '.exchange/data-sources/trips-api.md']) {
       expect(tree).toContain(path);
     }
     expect(tree.filter(path => path.startsWith('tests/') && /\.(?:unit|integration)\.test\.ts$/.test(path)).length).toBeGreaterThanOrEqual(8);
@@ -61,42 +55,45 @@ describe('committed showcase project', () => {
     // The showcase renamed the test plan and trashed a scratch note; nothing still names the old paths.
     expect(tree).not.toContain('docs/delivery/Trip planner test plan.md');
     expect(tree).toContain('.trash/docs/scratch/Packing ideas.md');
+    // UC-003 moved out of the release scope with its links rewritten.
+    expect(tree).toContain('docs/use-cases/deferred/UC-003 Browse trail guides.md');
+    expect(tree).not.toContain('docs/use-cases/UC-003 Browse trail guides.md');
     const visible = tree.filter(path => !path.startsWith('.'));
     const broken = (await Promise.all(notes.map(async path => unresolvedLinks(visible, path, await readFile(join(showcase, path), 'utf8'))))).flat();
     expect(broken).toEqual([]);
   });
 
-  it('validates its canvas and answers Bases queries through the CLI', () => {
-    expect(cli(['project', 'open', 'forge-showcase']).status).toBe(0);
-    expect(cli(['validate', 'docs/maps/Trailhead map.canvas']).body.data).toMatchObject({ valid: true, kind: 'canvas' });
+  it('validates its canvas and answers Bases queries through the CLI', async () => {
+    expect((await cli(['project', 'open', 'forge-showcase'])).status).toBe(0);
+    expect((await cli(['validate', 'docs/maps/Trailhead map.canvas'])).body.data).toMatchObject({ valid: true, kind: 'canvas' });
     // The generated Claude agents match the committed docker-agent team.
-    expect(cli(['agents', 'validate']).body.data).toMatchObject({ valid: true });
-    expect(cli([...agentTeam.generate, '--check']).body.data).toMatchObject({ check: true, matches: true });
-    const query = cli(['bases', 'query', 'docs/bases/Requirements.base', '--view', 'REQ-004']);
+    expect((await cli(['agents', 'validate'])).body.data).toMatchObject({ valid: true });
+    expect((await cli([...agentTeam.generate, '--check'])).body.data).toMatchObject({ check: true, matches: true });
+    const query = await cli(['bases', 'query', 'docs/bases/Requirements.base', '--view', 'REQ-004']);
     expect(query.status).toBe(0);
     expect(query.body.data.files).toEqual(expect.arrayContaining(['docs/product/Trailhead PRD.md', 'docs/use-cases/UC-002 Share an itinerary.md']));
   });
 
-  it('answers search and link reports through the CLI with no unresolved links or orphaned documents', () => {
-    expect(cli(['project', 'open', 'forge-showcase']).status).toBe(0);
-    const search = cli(['search', 'REQ-004', '--kind', 'markdown', '--path', 'docs/**', '--in', 'body']).body.data;
+  it('answers search and link reports through the CLI with no unresolved links or orphaned documents', async () => {
+    expect((await cli(['project', 'open', 'forge-showcase'])).status).toBe(0);
+    const search = (await cli(['search', 'REQ-004', '--kind', 'markdown', '--path', 'docs/**', '--in', 'body'])).body.data;
     expect(search.hits).toContainEqual(expect.objectContaining({ path: 'docs/product/Trailhead PRD.md', match: 'REQ-004' }));
-    expect(cli(['links', 'back', 'docs/product/Trailhead PRD.md']).body.data.backlinks).toContainEqual(expect.objectContaining({ source: 'docs/maps/Trailhead map.canvas', kind: 'canvas' }));
-    expect(cli(['links', 'unresolved']).body.data).toEqual({ links: [], issues: [] });
-    expect(cli(['links', 'orphans', '--path', 'docs/**']).body.data.files).toEqual([]);
+    expect((await cli(['links', 'back', 'docs/product/Trailhead PRD.md'])).body.data.backlinks).toContainEqual(expect.objectContaining({ source: 'docs/maps/Trailhead map.canvas', kind: 'canvas' }));
+    expect((await cli(['links', 'unresolved'])).body.data).toEqual({ links: [], issues: [] });
+    expect((await cli(['links', 'orphans', '--path', 'docs/**'])).body.data.files).toEqual([]);
   });
 
-  it('generates UI and stories for every target and adapters with fixtures, all free of drift', () => {
+  it('generates UI and stories for every target and adapters with fixtures, all free of drift', async () => {
     for (const target of targets) {
       expect(tree.some(path => path.startsWith(`ui/${target}/components/trip-planner.`))).toBe(true);
       expect(tree).toContain(`ui/${target}/stories/trip-planner.stories.ts`);
       const output = ['--out', `ui/${target}/components`, '--stories', '--stories-out', `ui/${target}/stories`];
-      const check = cli(['make', 'ui', 'trip-planner', '--framework', target, '--project', 'forge-showcase', ...libraries, ...output, '--check']);
+      const check = await cli(['make', 'ui', 'trip-planner', '--framework', target, '--project', 'forge-showcase', ...libraries, ...output, '--check']);
       expect(check.status, target).toBe(0);
     }
     for (const source of ['trips-api', 'trail-guides']) {
       expect(tree).toEqual(expect.arrayContaining([`src/infrastructure/data-sources/${source}.ts`, `test-data/${source}.fixtures.json`]));
-      const check = cli(['make', 'data-source', source, '--library', 'src/forge-showcase/library/data-sources', '--out', 'src/infrastructure/data-sources', '--test-data-out', 'test-data', '--check']);
+      const check = await cli(['make', 'data-source', source, '--library', 'src/forge-showcase/library/data-sources', '--out', 'src/infrastructure/data-sources', '--test-data-out', 'test-data', '--check']);
       expect(check.status, source).toBe(0);
     }
   });

@@ -47,7 +47,7 @@ export class SetupService {
   ) {}
 
   async run() {
-    ensure(this.artifacts.some(artifact => artifact.path === 'forge.js') && this.artifacts.some(artifact => artifact.path === 'package.json'), 'INVALID_SETUP', 'Setup requires the complete built bin distribution. Run the bundled CLI or build it first.');
+    ensure(['forge.js', 'forge-runtime.js', 'package.json'].every(path => this.artifacts.some(artifact => artifact.path === path)), 'INVALID_SETUP', 'Setup requires the complete built bin distribution. Run the bundled CLI or build it first.');
     const candidates: WriteRequest[] = [
       ...this.artifacts.map(artifact => ({ path: `bin/${vaultPath(artifact.path)}`, bytes: Uint8Array.from(artifact.bytes) })),
       { path: 'bin/config.json', bytes: encode(JSON.stringify(this.config, null, 2) + '\n') },

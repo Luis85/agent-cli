@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -29,10 +30,13 @@ async function fixture() {
   return root;
 }
 
+const reportPath = (task: 'lint' | 'analyze') => `.quality-reports/${task === 'lint' ? 'oxlint' : 'fallow'}.json`;
+
 function run(root: string, task: 'lint' | 'analyze') {
   const result = spawnSync(process.execPath, [join(root, `scripts/quality/${task}.mjs`)], { cwd: root, encoding: 'utf8' });
   if (result.error) throw result.error;
-  return { status: result.status, output: JSON.parse(result.stdout) };
+  const saved = join(root, reportPath(task));
+  return { status: result.status, output: JSON.parse(result.stdout), saved: existsSync(saved) ? JSON.parse(readFileSync(saved, 'utf8')) : undefined };
 }
 
 describe('agent quality gates', () => {
@@ -49,9 +53,9 @@ describe('agent quality gates', () => {
     for (const task of ['lint', 'analyze'] as const) {
       const result = run(root, task);
       expect(result.status, JSON.stringify(result.output.errors)).toBe(0);
-      expect(result.output.scope).toContain('src/the-forge/main.ts');
-      expect(result.output.scope).not.toContain('src/index.ts');
-      expect(result.output.scope).not.toContain('src/other-project/broken.ts');
+      expect(result.saved.scope).toContain('src/the-forge/main.ts');
+      expect(result.saved.scope).not.toContain('src/index.ts');
+      expect(result.saved.scope).not.toContain('src/other-project/broken.ts');
     }
   });
 
@@ -61,10 +65,10 @@ describe('agent quality gates', () => {
       const result = run(root, task);
       expect(result.output.errors).toEqual([]);
       expect(result.status).toBe(0);
-      expect(result.output.ok).toBe(true);
-      expect(result.output.scope).toContain('src/index.ts');
-      const saved = JSON.parse(await readFile(join(root, `.quality-reports/${task === 'lint' ? 'oxlint' : 'fallow'}.json`), 'utf8'));
-      expect(saved).toEqual(result.output);
+      // A pass prints a summary that names the saved report, which keeps the full scope and tool report.
+      expect(result.output).toEqual({ tool: task === 'lint' ? 'oxlint' : 'fallow', ok: true, errors: [], files: result.saved.scope.length, report: reportPath(task) });
+      expect(result.saved).toMatchObject({ ok: true, errors: [], report: expect.any(Object) });
+      expect(result.saved.scope).toContain('src/index.ts');
     }
   });
 

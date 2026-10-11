@@ -33,7 +33,7 @@ async function plugin(name: string, failure = false) {
 
 describe('portable host lifecycle observation', () => {
   it('replays pre-activation phases and observes file operations through the public SDK', async () => {
-    const configured = await plugin('observe-success'), result = configured.run();
+    const configured = await plugin('observe-success'), result = await configured.run();
     expect(result.status, result.stdout).toBe(0);
     // Bundled core plugins register and activate in bundle order before user plugins and unload after them.
     const core = bundledCorePlugins.flatMap(id => [`plugin.activating:${id}`, `plugin.activated:${id}`]);
@@ -53,7 +53,7 @@ describe('portable host lifecycle observation', () => {
   });
 
   it('reports invalid results before unloading and retains the committed file evidence', async () => {
-    const result = (await plugin('observe-invalid-result', true)).run();
+    const result = await (await plugin('observe-invalid-result', true)).run();
     expect(result.status).toBe(1);
     expect(result.body.error.code).toBe('INVALID_RESULT');
     expect(result.body.events).toContainEqual(expect.objectContaining({ id: 'vault.create' }));
