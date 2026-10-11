@@ -10,6 +10,16 @@ const workspace = dirname(bin);
 await mkdir(join(bin, 'data'), { recursive: true });
 // The local CommonJS boundary lets forge.js run in projects declaring type:module.
 await writeFile(join(bin, 'package.json'), JSON.stringify({ name: 'forge-bundle', version, private: true, type: 'commonjs', main: 'forge.js', engines }, null, 2) + '\n');
+// Every command starts a new process. The launcher enables V8's compile cache before loading the runtime bundle, so
+// later invocations skip compiling it again. Node keeps the cache under the OS temporary directory, never in the
+// workspace, and NODE_DISABLE_COMPILE_CACHE=1 turns it off.
+await writeFile(join(bin, 'forge.js'), [
+  '#!/usr/bin/env node',
+  "'use strict';",
+  "require('node:module').enableCompileCache();",
+  "require('./forge-runtime.js');",
+  '',
+].join('\n'));
 try { await copyFile(join(bin, 'config/default.json'), join(bin, 'config.json'), constants.COPYFILE_EXCL); }
 catch (error) { if (error.code !== 'EEXIST') throw error; }
 for (const directory of ['plugins', 'templates']) {
@@ -56,7 +66,7 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a.l
   }
   notices.push('');
 }
-// Vendored assets are embedded in forge.js without a package; scripts/vendor-docker-agent.mjs records their source.
+// Vendored assets are embedded in forge-runtime.js without a package; scripts/vendor-docker-agent.mjs records their source.
 const dockerAgent = JSON.parse(await readFile('src/plugins/agents/infrastructure/vendor/source.json', 'utf8'));
 await copyFile('scripts/licenses/docker-agent-LICENSE', join(bin, 'data/licenses/docker-agent-LICENSE'));
 notices.push('# Vendored asset notices', '', `## docker-agent ${dockerAgent.files.join(', ')}`, '',
@@ -76,5 +86,5 @@ async function collect(directory) {
 for (const directory of ownedDirectories) await collect(`data/${directory}`);
 await collect('skills');
 await writeFile(join(bin, 'data/distribution.json'), JSON.stringify({ schemaVersion: distributionPolicy.schemaVersion, files: files.sort() }, null, 2) + '\n');
-const bundle = await readFile(join(bin, 'forge.js'), 'utf8');
+const bundle = await readFile(join(bin, 'forge-runtime.js'), 'utf8');
 if (/require\(["']yaml["']\)/.test(bundle)) throw new Error('YAML was not bundled');

@@ -11,7 +11,8 @@ node bin/forge.js setup
 
 ```text
 bin/
-  forge.js
+  forge.js                # launcher: enables Node's compile cache, then loads forge-runtime.js
+  forge-runtime.js
   config.json
   package.json
   plugins/
@@ -21,7 +22,7 @@ bin/
 projects/                 # configurable with paths.projects
 ```
 
-`bin/package.json` keeps `forge.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
+`bin/package.json` keeps `forge.js` and `forge-runtime.js` executable under either ESM or CommonJS parent projects. `bin/data` holds packaged documentation, type declarations and notices; packaged process skills live in `bin/skills`, and shipped defaults in `bin/config/default.json`. Setup installs process skills in workspace `.agents/skills` and creates a lean workspace `AGENTS.md`.
 
 To initialize another existing directory, run `node /absolute/path/to/bin/forge.js --root /absolute/path/to/workspace setup`. The workspace root must exist. Setup always targets the workspace, even while a project is open. It does not install npm packages or silently upgrade existing application files; replace a bundle explicitly from a reviewed distribution.
 
