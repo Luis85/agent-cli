@@ -368,6 +368,8 @@ node bin/forge.js schema apply
 node bin/forge.js help backlog --lang de
 node bin/forge.js skills list
 node bin/forge.js skills show forge-backlog
+node bin/forge.js server status
+node bin/forge.js help server
 ```
 
 ## Project toolchain

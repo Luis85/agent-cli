@@ -15,7 +15,7 @@ Every built-in failure has a stable `code` from this catalog. The catalog is the
 | `code` | Stable machine identifier. Match on it, never on `message` |
 | `message` | The original diagnostic in English, or the translated summary with `--lang de` |
 | `hint` | The next step to take. Present for every catalogued code |
-| `retryable` | `true` when repeating the unchanged invocation later can succeed. The catalog gives each code's default; an occurrence may override it, as `WORKSPACE_BUSY` does with `false` for a lock whose holder Forge cannot verify. Among built-in codes only `WORKSPACE_BUSY` is retryable; every other failure needs a changed request or inspected state |
+| `retryable` | `true` when repeating the unchanged invocation later can succeed. The catalog gives each code's default; an occurrence may override it, as `WORKSPACE_BUSY` does with `false` for a lock whose holder Forge cannot verify. Built-in `WORKSPACE_BUSY`, `SERVER_BUSY` and `SERVER_STOP_FAILED` may be retryable; inspect lifecycle state with `server status` before repeating a failed stop |
 | `details` | Optional structured data, documented per code below |
 
 Plugins can register their own codes with a category, summary, hint and retryability (see [plugin error codes](plugins.md#strings-and-error-codes)); `schema` lists them after the built-in codes with their `plugin`, and their failures carry `hint` and `retryable` like built-in ones. Other plugin-defined codes keep their own shape, without `hint` or `retryable`. A code thrown by plugin code maps only when that plugin registered it, a provider of a service it declared registered it, or it is a built-in code ([code ownership](plugins.md#strings-and-error-codes)); any other plugin's code, like any thrown value that is not a Forge error, becomes `OPERATION_FAILED`. With `--lang de`, `message` and `hint` are German, `code`, `retryable` and `details` stay unchanged, and the original diagnostic moves to `details.localization.originalMessage`. See [CLI language](language.md).
@@ -30,7 +30,7 @@ Plugins can register their own codes with a category, summary, hint and retryabi
 | `input` | 2 | Invalid arguments, definitions or edit requests |
 | `conflict` | 2 | The target exists or changed since it was read |
 | `not-found` | 3 | A file, project or selected project is missing |
-| `busy` | 4 | Another Forge writer holds the workspace lock |
+| `busy` | 4 | Another Forge writer holds the workspace lock, or another command holds the server lifecycle lock |
 | `drift` | 5 | Generated UI, data-source or workflow output differs from its sources |
 | `interrupted` | 130 | Claude Code was interrupted by SIGINT; SIGTERM reports 143 |
 
@@ -75,6 +75,10 @@ A stale `--if-match` for the moved or deleted path, or a referring file that cha
 
 | Code | Exit | Category | Retryable | Summary | Hint |
 | --- | --- | --- | --- | --- | --- |
+| `SERVER_START_FAILED` | 1 | runtime | no | The localhost server could not start. | Check the requested port and installed server bundle, then retry server start. |
+| `SERVER_STOP_FAILED` | 1 | runtime | yes | The verified localhost server could not stop. | Run server status, then retry server stop. |
+| `SERVER_STATE_INVALID` | 2 | conflict | no | The saved localhost server state is invalid or unsafe. | Inspect `.forge/server.json` and its parent directory; do not stop an unverified process. |
+| `SERVER_BUSY` | 4 | busy | yes | Another command is changing the localhost server state. | Wait for the other server command to finish, then retry. |
 | `UNKNOWN_COMMAND` | 2 | input | no | The command is not registered. | Run help or schema to list available commands, including enabled plugin commands. |
 | `UNKNOWN_OPTION` | 2 | input | no | The option is not accepted by this command. | Run `help <command>` to list its options. |
 | `MISSING_ARGUMENT` | 2 | input | no | A required argument or option value is missing. | Correct the arguments named in the message; run `help <command>` for usage. |

@@ -13,8 +13,9 @@
   },
   "scripts": {
     "dev": "vite build --watch --emptyOutDir=false",
+    "dev:server": "vite build --mode server --watch --emptyOutDir=false",
     "typecheck": "node scripts/quality/typecheck.mjs",
-    "build": "vite build && node scripts/package.mjs",
+    "build": "vite build && vite build --mode server && node scripts/package.mjs",
     "test": "vitest run",
     "check": "npm run check:fast && npm run build && npm test && npm run showcase:check",
     "release": "npm run check && node scripts/release.mjs",

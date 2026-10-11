@@ -1,5 +1,5 @@
 {
   "schemaVersion": 1,
-  "requiredAssets": ["forge.js", "forge-runtime.js", "package.json", "config/default.json", "data/distribution.json"],
-  "ownedAssetPattern": "^(?:forge(?:-runtime)?\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$"
+  "requiredAssets": ["forge.js", "forge-runtime.js", "forge-server.cjs", "package.json", "config/default.json", "data/distribution.json", "webviews/admin/index.html", "webviews/admin/manifest.json", "webviews/admin/THIRD-PARTY-NOTICES.md"],
+  "ownedAssetPattern": "^(?:forge(?:-runtime)?\\.js|forge-server\\.cjs|package\\.json|config/default\\.json|skills/.+|webviews/admin/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$"
 }

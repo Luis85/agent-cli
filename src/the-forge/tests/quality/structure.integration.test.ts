@@ -110,7 +110,7 @@ describe('structure quality gate', () => {
     const root = await fixture();
     await rm(join(root, 'src/index.ts'));
     for (const path of [
-      'src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts',
+      'src/main.ts', 'src/server-main.ts', 'src/sdk.ts', 'src/vite-env.d.ts',
       'src/domain/documents/file.ts', 'src/application/new-concern/deep/service.ts',
       'src/infrastructure/workspace/files.ts', 'src/presentation/cli/commands.ts',
       'src/plugins/skills/plugin.ts', 'src/plugins/skills/presentation/commands.ts', 'src/plugins/search-index/domain/nested/query.ts',

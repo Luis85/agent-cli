@@ -31,8 +31,8 @@ it('keeps every core plugin within its own layers, kernel ports and domain contr
   expect(violations).toEqual([]);
 });
 
-it('reaches core plugins from the composition root only through their plugin.ts factories', async () => {
-  const file = resolve('src/main.ts');
+it.each(['src/main.ts', 'src/server-main.ts'])('reaches core plugins from composition entry %s only through their plugin.ts factories', async entry => {
+  const file = resolve(entry);
   expect(compositionViolations(file, await readFile(file, 'utf8'))).toEqual([]);
 });
 

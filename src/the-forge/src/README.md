@@ -25,6 +25,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 ## Entry points
 
 - [main.ts](main.ts) composes adapters and application services, creates invocation contexts, loads enabled plugins and owns cleanup and response serialization.
+- [server-main.ts](server-main.ts) composes the detached localhost HTTP runtime. Its lifecycle, static webview discovery and read-only inspection adapters live in `infrastructure/server/`; `application/server/contracts.ts` defines the public model and lifecycle port.
 - [sdk.ts](sdk.ts) exports application/domain types for plugin authors. It contains no runtime behavior; packaging generates the distributable declarations.
 - [cli/commands.ts](presentation/cli/commands.ts) assembles command families; [catalog-commands.ts](presentation/cli/catalog-commands.ts) handles discovery.
 - [command-metadata.ts](application/plugins/command-metadata.ts) defines the declarative command metadata (scope, discovery, mutating, destructive, idempotent, options, arguments, actions, output, errors), the input and output JSON Schemas that `schema` publishes and the annotations derived from it; [envelope.ts](presentation/cli/envelope.ts) and [catalog-output.ts](presentation/cli/catalog-output.ts) hold the response envelope schema and the `schema` document's own output schema; [invocation-policy.ts](presentation/cli/invocation-policy.ts) derives workspace/project scope, plugin activation and explicit project selection from it before services are bound.
@@ -38,6 +39,7 @@ Import the concrete module you need. Do not add layer barrels, re-export chains 
 | --- | --- |
 | File formats and editing | `domain/documents/`, `application/workspace/`, `infrastructure/documents/`, `presentation/documents/` |
 | Workspace configuration and setup | `application/workspace/`, `infrastructure/workspace/`, `presentation/workspace/` |
+| Localhost server and read-only webviews | `application/server/`, `infrastructure/server/`, `presentation/server/`; the independent Vue application ships prebuilt assets in `bin/webviews/admin/` |
 | Projects (selection, `project create`/`component` policy) | `application/projects/`, `presentation/workspace/` |
 | Code, form, plugin-folder and project scaffolds (`scaffolds` core plugin, service `scaffolds.projects`) | `plugins/scaffolds/` |
 | Markdown templates, `make document` and the workflow pack (`templates` core plugin, service `templates.installer` for `setup`) | `plugins/templates/` |

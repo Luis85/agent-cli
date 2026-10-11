@@ -23,6 +23,10 @@ const claudeDefinitionHint = 'Fix the field named in the message, then rerun the
 const argumentsHint = 'Correct the arguments named in the message; run help <command> for usage.';
 
 export const errorCatalog = {
+  SERVER_START_FAILED: entry('runtime', 'The localhost server could not start.', 'Check the requested port and installed server bundle, then retry server start.'),
+  SERVER_STOP_FAILED: entry('runtime', 'The verified localhost server could not stop.', 'Run server status, then retry server stop.', true),
+  SERVER_STATE_INVALID: entry('conflict', 'The saved localhost server state is invalid or unsafe.', 'Inspect .forge/server.json and its parent directory; do not stop an unverified process.'),
+  SERVER_BUSY: entry('busy', 'Another command is changing the localhost server state.', 'Wait for the other server command to finish, then retry.', true),
   // Arguments, options and input
   UNKNOWN_COMMAND: entry('input', 'The command is not registered.', 'Run help or schema to list available commands, including enabled plugin commands.'),
   UNKNOWN_OPTION: entry('input', 'The option is not accepted by this command.', 'Run help <command> to list its options.'),

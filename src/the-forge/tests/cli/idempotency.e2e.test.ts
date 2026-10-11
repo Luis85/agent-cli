@@ -47,8 +47,10 @@ const revision = async (path: string) => createHash('sha256').update(await readF
 const backlog = (...args: string[]) => ['backlog', ...args, '--base', base];
 
 /** Ordered probes, one per mutating mode; a probe may prepare its state with ordinary invocations first. */
-const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<[readonly string[], string?]> }> = [
+const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<[readonly string[], string?]>; lifecycle?: boolean }> = [
   { mode: 'setup', args: ['setup'] },
+  { mode: 'server start', args: ['server', 'start'], lifecycle: true },
+  { mode: 'server stop', args: ['server', 'stop'], prepare: [[['server', 'start']]], lifecycle: true },
   { mode: 'project create', args: ['project', 'create', 'web'] },
   { mode: 'project open', args: ['project', 'open', 'web'] },
   { mode: 'project component', args: ['project', 'component', 'web', 'Billing'] },
@@ -142,19 +144,45 @@ describe('idempotentHint agrees with a repeated invocation', () => {
 
   for (const probe of probes) {
     it(`${probe.mode}: the repeat matches the declared hint`, async () => {
-      for (const [args, input] of probe.prepare ?? []) { const prepared = await cli([...args], input); expect(prepared.status, prepared.stdout).toBe(0); }
-      const args = typeof probe.args === 'function' ? await probe.args() : probe.args;
-      const first = await cli([...args], probe.input);
-      expect(first.status, first.stdout).toBe(0);
-      const before = await snapshot();
-      const repeat = await cli([...args], probe.input);
-      const after = await snapshot();
-      if (declared.get(probe.mode)) {
-        expect(after, repeat.stdout).toEqual(before);
-        if (repeat.status === 0) expect(repeat.body.data.changes ?? [], repeat.stdout).toEqual([]);
-      } else {
-        expect(repeat.status, repeat.stdout).toBe(0);
-        expect(after, repeat.stdout).not.toEqual(before);
+      try {
+        for (const [args, input] of probe.prepare ?? []) { const prepared = await cli([...args], input); expect(prepared.status, prepared.stdout).toBe(0); }
+        const args = typeof probe.args === 'function' ? await probe.args() : probe.args;
+        const first = await cli([...args], probe.input);
+        expect(first.status, first.stdout).toBe(0);
+        const before = await snapshot();
+        const repeat = await cli([...args], probe.input);
+        const after = await snapshot();
+        if (declared.get(probe.mode)) {
+          expect(after, repeat.stdout).toEqual(before);
+          if (repeat.status === 0) expect(repeat.body.data.changes ?? [], repeat.stdout).toEqual([]);
+        } else {
+          expect(repeat.status, repeat.stdout).toBe(0);
+          expect(after, repeat.stdout).not.toEqual(before);
+        }
+        if (probe.lifecycle) {
+          expect(repeat.status, repeat.stdout).toBe(0);
+          expect(first.body.data.changed).toBe(true);
+          expect(repeat.body.data.changed).toBe(false);
+          const status = await cli(['server', 'status']);
+          expect(status.status, status.stdout).toBe(0);
+          if (probe.mode === 'server start') {
+            // File stability alone cannot prove that startup reused the same live process.
+            const identity = { pid: first.body.data.server.pid, port: first.body.data.server.port, startedAt: first.body.data.server.startedAt };
+            expect(first.body.data.running).toBe(true);
+            expect(repeat.body.data).toMatchObject({ running: true, server: identity, url: first.body.data.url });
+            expect(status.body.data).toMatchObject({ running: true, stale: false, server: identity });
+          } else {
+            expect(first.body.data).toMatchObject({ running: false, server: null });
+            expect(repeat.body.data).toMatchObject({ running: false, server: null });
+            expect(status.body.data).toMatchObject({ running: false, stale: false, server: null });
+          }
+        }
+      } finally {
+        if (probe.lifecycle) {
+          const stopped = await cli(['server', 'stop']);
+          expect(stopped.status, stopped.stdout).toBe(0);
+          expect(stopped.body.data.running).toBe(false);
+        }
       }
     });
   }

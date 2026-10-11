@@ -1,3 +1,4 @@
+import { NodeServerController } from './infrastructure/server/controller.ts';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import metadata from '../package.json';
@@ -109,6 +110,7 @@ async function run(): Promise<void> {
       const scaffolder: ProjectScaffolderLookup = action => registry.requireService<ProjectScaffolder>(projectScaffolderService, `project ${action}`);
       const services: WorkflowServices = {
         loaded, files,
+        server: new NodeServerController({ workspaceRoot: files.root, distributionPath: __dirname, version: metadata.version }),
         get projects() { return new ProjectService(files, environment, config.paths.projects, scaffolder, events); },
         get workflows() { return new WorkflowSync(environment, this.projects, yamlWorkflowRenderer); },
         setup: async () => {

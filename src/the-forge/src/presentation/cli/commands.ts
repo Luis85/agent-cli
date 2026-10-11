@@ -1,3 +1,4 @@
+import { serverCommands } from '../server/commands.ts';
 import type { Command, Registry } from '../../application/plugins/registry.ts';
 import type { WorkflowServices } from './services.ts';
 import { catalogCommands, extensionCommands } from './catalog-commands.ts';
@@ -12,6 +13,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
   return [
     ...workflowCommands(services),
     ...workflowsCommands(services),
+    ...serverCommands(services.server),
     ...catalogCommands(registry),
     ...documentCommands(),
     ...vaultCommands(),

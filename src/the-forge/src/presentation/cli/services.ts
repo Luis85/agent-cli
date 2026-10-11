@@ -1,3 +1,4 @@
+import type { ServerController } from '../../application/server/contracts.ts';
 import type { FileRepository } from '../../application/workspace/ports.ts';
 import type { LoadedConfig } from '../../application/workspace/config.ts';
 import type { ProjectService } from '../../application/projects/projects.ts';
@@ -10,6 +11,7 @@ export interface WorkflowServices {
   files: FileRepository;
   projects: ProjectService;
   workflows: WorkflowSync;
+  server: ServerController;
   /** Plugin config sections the registered plugins declare. */
   configSections(): SettingsSection[];
   /** User plugin directories under `bin/plugins` with valid manifests. */

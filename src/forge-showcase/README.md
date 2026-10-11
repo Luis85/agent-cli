@@ -631,6 +631,31 @@ node bin/forge.js help backlog --lang de
 | `check` | Eltern- und Abhängigkeitszyklen, defekte Links, unaufgelöste Zugehörigkeiten, Konfigurations- und Feldprobleme sowie Rang-Gleichstände melden. |
 | `sync` | Jede an eine Verbindung gebundene Ansicht (Ansichtsoption connection: <id>) in beide Richtungen mit ausdrücklichen Konflikten abgleichen; status liest beide Seiten ohne zu schreiben, resolve löst einen Konflikt. |
 
+### Localhost admin inspection
+
+The core server is independent of the Vue/Nuxt UI admin view. Generation records only read-only discovery and never starts a background process:
+
+```sh
+node bin/forge.js server status
+node bin/forge.js help server
+```
+
+```json
+{
+  "running": false,
+  "stale": false,
+  "server": null,
+  "url": null,
+  "webviews": []
+}
+```
+
+> Manage the workspace localhost server and discover its installed webviews.
+
+Available actions: `status`, `start`, `stop`.
+
+To inspect the containing workspace yourself, run `node bin/forge.js server start --webview admin --json` from its root and open `data.url`. The read-only view reports context, projects, plugins, counts and runtime health. End the session with `node bin/forge.js server stop`. The server uses localhost and preserves project selection; the launch link includes a local session token.
+
 ### Agent Skills
 
 ```sh
