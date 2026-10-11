@@ -34,9 +34,9 @@ export class NodeMetadataSnapshotStore implements MetadataSnapshotStore {
    * `file` is relative to the workspace `root` (see `snapshotFile`); `program` is the running bundle, whose size and
    * modification time identify the build.
    */
-  constructor(private readonly root: string, private readonly file: string, private readonly program: string, private readonly list: () => Promise<StampedListing>) {}
+  constructor(private readonly root: string, private readonly file: string, private readonly program: string, private readonly list: (stamped: (path: string) => boolean) => Promise<StampedListing>) {}
 
-  listing(): Promise<StampedListing> { return this.list(); }
+  listing(stamped: (path: string) => boolean): Promise<StampedListing> { return this.list(stamped); }
 
   async load(): Promise<unknown> {
     try {

@@ -38,15 +38,16 @@ async function invocation(options: { later?: number; save?: boolean; directory?:
   const parser = new ObsidianMetadataParser(new ObsidianDocuments());
   const counting: MetadataParser = { indexes: path => parser.indexes(path), parse: (path, bytes) => { parsed.push(path); return parser.parse(path, bytes); } };
   const file = snapshotFile(options.directory ?? null);
-  const store = new NodeMetadataSnapshotStore(root, file, program, async () => {
-    const listing = await stampedFiles(files, options.directory);
+  const stampedPaths: string[] = [];
+  const store = new NodeMetadataSnapshotStore(root, file, program, async stamped => {
+    const listing = await stampedFiles(files, options.directory, path => stamped(path) && stampedPaths.push(path) > 0);
     return { ...listing, checkedAtMs: listing.checkedAtMs + (options.later ?? 0) };
   });
   const metadata = new VaultMetadata(repository, counting, { workspaceRoot: !options.directory, snapshots: { store, key: 'forge test; parser 1', save: options.save ?? true } });
   const cache = await metadata.load();
   await metadata.persist();
   const fresh = metadataState(await metadataIndex(scoped, { workspaceRoot: !options.directory }).load());
-  return { cache, state: metadataState(cache), fresh, reads: reads.sort(), parsed: parsed.sort(), file: join(root, file) };
+  return { cache, state: metadataState(cache), fresh, reads: reads.sort(), parsed: parsed.sort(), stamped: stampedPaths.sort(), file: join(root, file) };
 }
 
 /** A modification time in whole seconds, which every filesystem stores and restores exactly. */
@@ -79,6 +80,8 @@ describe('metadata snapshots in the workspace cache folder', () => {
   it('stores parse results outside the vault and listings, and reuses unchanged files without reading them', async () => {
     const first = await invocation({ later: 10_000 });
     expect(first.parsed).toEqual(['Notes/Ideas.md', 'Notes/Plan.md']);
+    // Only the files the index parses need a stamp; attachments and the workspace distribution are listed by name.
+    expect(first.stamped).toEqual(['Notes/Ideas.md', 'Notes/Plan.md']);
     expect(first.state).toEqual(first.fresh);
     expect(first.file).toBe(join(root, '.forge/cache/metadata.v1.workspace.json'));
     expect(await readFile(join(root, '.forge/cache/.gitignore'), 'utf8')).toBe('*\n');
@@ -153,7 +156,7 @@ describe('metadata snapshots in the workspace cache folder', () => {
       await mkdir(join(root, '.forge'));
       await symlink(elsewhere, join(root, '.forge/cache'), 'junction');
       const files = await NodeFiles.at(root);
-      const store = new NodeMetadataSnapshotStore(root, snapshotFile(null), program, () => stampedFiles(files));
+      const store = new NodeMetadataSnapshotStore(root, snapshotFile(null), program, stamped => stampedFiles(files, undefined, stamped));
       const metadata = new VaultMetadata(files, new ObsidianMetadataParser(new ObsidianDocuments()), { workspaceRoot: true, snapshots: { store, key: 'k', save: true } });
       await metadata.load();
       await expect(metadata.persist()).rejects.toMatchObject({ code: 'UNSAFE_PATH' });
@@ -169,7 +172,8 @@ describe('metadata snapshots in the workspace cache folder', () => {
     expect(project.file).toBe(join(root, '.forge/cache/metadata.v1.project.projects%2Fapp.json'));
     expect(project.cache.files()).toEqual(['Docs/Guide.md', 'Readme.md']);
     expect(project.cache.resolvedLinks['Docs/Guide.md']).toEqual({ 'Readme.md': 1 });
-    expect((await stampedFiles(await NodeFiles.at(root), 'projects/app')).files.map(file => file.path)).toEqual(['.forge/cache/kept.json', 'Docs/Guide.md', 'Readme.md']);
+    const listing = await stampedFiles(await NodeFiles.at(root), 'projects/app', path => path.endsWith('.md'));
+    expect(listing.files.map(file => [file.path, 'stamp' in file])).toEqual([['.forge/cache/kept.json', false], ['Docs/Guide.md', true], ['Readme.md', true]]);
     expect((await invocation({ directory: 'projects/app', later: 10_000 })).reads).toEqual([]);
   });
 });

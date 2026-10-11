@@ -166,7 +166,7 @@ async function run(): Promise<void> {
         workspaceRoot: project === null,
         revisionOf,
         snapshots: {
-          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, () => stampedFiles(files, project?.directory)),
+          store: new NodeMetadataSnapshotStore(files.root, cacheFile, __filename, stamped => stampedFiles(files, project?.directory, stamped)),
           key: `forge ${metadata.version}; parser ${metadataParserVersion}; scope ${project?.directory ?? '.'}`,
           save: !config.settings.dryRun,
         },

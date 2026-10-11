@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir, readlink, realpath, rename, rm, open } from 'node:fs/promises';
+import { lstatSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
@@ -228,25 +229,31 @@ export class NodeFiles implements FileRepository, BatchHost {
 }
 /**
  * The files `list()` of the repository at `files` returns below `directory` (default: the root), relative to it and
- * in the same order, each with an opaque stamp of its size, nanosecond modification and status-change times and
- * inode, and `changedMs`, the later of both times. `checkedAtMs` is taken before the first stamp. Files that vanish
- * during the walk are left out; a symlinked or missing `directory` fails like `resolvePath`.
+ * in the same order. Each file that `stamped` accepts (default: every file) carries an opaque stamp of its size,
+ * nanosecond modification and status-change times and inode, and `changedMs`, the later of both times; the others
+ * are listed by name only, without a status call. `checkedAtMs` is taken before the first stamp. Stamped files that
+ * vanish during the walk are left out; a symlinked or missing `directory` fails like `resolvePath`. The walk uses
+ * synchronous calls: thousands of small status calls cost several times more through the thread pool.
  */
-export async function stampedFiles(files: NodeFiles, directory?: string): Promise<{ checkedAtMs: number; files: Array<{ path: string } & FileStamp> }> {
+export async function stampedFiles(files: NodeFiles, directory?: string, stamped: (path: string) => boolean = () => true): Promise<{ checkedAtMs: number; files: Array<{ path: string } | ({ path: string } & FileStamp)> }> {
   const checkedAtMs = Date.now();
-  const stamped: Array<{ path: string } & FileStamp> = [];
+  const listed: Array<{ path: string } | ({ path: string } & FileStamp)> = [];
   const scope = directory === undefined ? '' : `${vaultPath(directory)}/`;
-  const walk = async (folder: string, prefix: string) => {
-    const entries = (await readdir(folder, { withFileTypes: true })).filter(entry => !unlisted(entry.name, scope + prefix + entry.name));
-    await Promise.all(entries.filter(entry => entry.isFile()).map(async entry => {
-      try {
-        const info = await lstat(join(folder, entry.name), { bigint: true });
+  const walk = (folder: string, prefix: string) => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const path = prefix + entry.name;
+      if (unlisted(entry.name, scope + path)) continue;
+      if (entry.isDirectory()) walk(join(folder, entry.name), `${path}/`);
+      else if (!entry.isFile()) continue;
+      else if (!stamped(path)) listed.push({ path });
+      else {
+        const info = lstatSync(join(folder, entry.name), { bigint: true, throwIfNoEntry: false });
+        if (info === undefined) continue;
         const changed = info.mtimeNs > info.ctimeNs ? info.mtimeNs : info.ctimeNs;
-        stamped.push({ path: prefix + entry.name, stamp: `${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.ino}`, changedMs: Number(changed / 1_000_000n) });
-      } catch (error) { if (!missing(error)) throw error; }
-    }));
-    for (const entry of entries) if (entry.isDirectory()) await walk(join(folder, entry.name), `${prefix}${entry.name}/`);
+        listed.push({ path, stamp: `${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.ino}`, changedMs: Number(changed / 1_000_000n) });
+      }
+    }
   };
-  await walk(directory === undefined ? files.root : await files.resolvePath(directory, true), '');
-  return { checkedAtMs, files: stamped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) };
+  walk(directory === undefined ? files.root : await files.resolvePath(directory, true), '');
+  return { checkedAtMs, files: listed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) };
 }

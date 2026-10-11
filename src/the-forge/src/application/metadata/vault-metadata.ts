@@ -186,7 +186,7 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
    * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
    */
   private async build(): Promise<void> {
-    const listing = await this.results.listing(() => this.repository.list());
+    const listing = await this.results.listing(() => this.repository.list(), path => this.member(path) && this.parser.indexes(path));
     const stamps = new Map<string, FileStamp>();
     for (const file of listing.files) if ('stamp' in file) stamps.set(file.path, file);
     this.paths = listing.files.map(file => file.path).filter(this.member);
@@ -286,11 +286,12 @@ export class VaultMetadata implements MetadataIndex, MetadataCache {
   /** Re-resolves one parsed source and replaces its link counts and backlink entries. */
   private resolve(source: string): void {
     this.unlink(source);
-    const references = orderedReferences(this.caches.get(source)!).flatMap(item => {
-      const relative = !['wikilink', 'canvas'].includes(item.reference.syntax);
+    const references: SourceReference[] = [];
+    for (const item of orderedReferences(this.caches.get(source)!)) {
+      const syntax = item.reference.syntax, relative = syntax !== 'wikilink' && syntax !== 'canvas';
       const resolution = resolveLinkpath(this.index, item.reference.link, source, { relative, aliases: true });
-      return resolution.status === 'external' ? [] : [{ ...item, resolution } as SourceReference];
-    });
+      if (resolution.status !== 'external') references.push({ ...item, resolution } as SourceReference);
+    }
     const resolved = counts(), unresolved = counts();
     for (const { resolution } of references) {
       if (resolution.status === 'resolved') {

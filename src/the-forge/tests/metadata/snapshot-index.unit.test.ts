@@ -37,7 +37,10 @@ class MemoryStore implements MetadataSnapshotStore {
   stored: unknown = null;
   saves = 0;
   constructor(private readonly files: StampedFiles) {}
-  async listing() { return this.files.listing(); }
+  async listing(stamped: (path: string) => boolean) {
+    const listing = this.files.listing();
+    return { ...listing, files: listing.files.map(file => stamped(file.path) ? file : { path: file.path }) };
+  }
   async load() { return this.stored; }
   async save(snapshot: MetadataSnapshot) { this.saves++; this.stored = JSON.parse(JSON.stringify(snapshot)); }
 }

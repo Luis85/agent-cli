@@ -11,9 +11,18 @@ function decoded(text: string): string {
  */
 const comparable = (text: string) => decoded(text).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
+/** Each note's comparable heading texts, built once per metadata object; cached metadata is replaced, never mutated. */
+const headingSets = new WeakMap<CachedMetadata, ReadonlySet<string>>();
+
+function headingsOf(cache: CachedMetadata): ReadonlySet<string> {
+  let headings = headingSets.get(cache);
+  if (headings === undefined) headingSets.set(cache, headings = new Set((cache.headings ?? []).map(item => comparable(item.heading))));
+  return headings;
+}
+
 /** Whether a heading named by one subpath segment exists; a trailing `-1` style suffix names a repeated heading. */
 function hasHeading(cache: CachedMetadata, segment: string): boolean {
-  const headings = new Set((cache.headings ?? []).map(item => comparable(item.heading)));
+  const headings = headingsOf(cache);
   const wanted = comparable(segment);
   if (headings.has(wanted)) return true;
   const repeated = / \d+$/.exec(wanted);

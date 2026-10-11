@@ -67,7 +67,7 @@ describe('indexed link resolution', () => {
 
   it('joins and normalizes relative targets exactly like posix paths', () => {
     for (const folder of ['.', 'Notes', 'Notes/Sub', 'a/b/c']) {
-      for (const target of ['x', '../x', '../../x', '../../../../x', './x', 'x/', 'x//y', '.', '..', '../', 'a/./b/../c', '', '../../..']) {
+      for (const target of ['x', '../x', '../../x', '../../../../x', './x', 'x/', 'x//y', '.', '..', '../', 'a/./b/../c', '', '../../..', 'a..b', '...', 'x/.', 'x/..', '.x/y', 'Note 1.md', 'Ünï/x/']) {
         expect(joinPath(folder, target), `${target} from ${folder}`).toBe(posix.normalize(posix.join(folder, target)));
       }
     }

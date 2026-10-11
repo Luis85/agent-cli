@@ -24,10 +24,10 @@ export class ParseResults {
 
   constructor(private readonly options: SnapshotOptions | undefined) {}
 
-  /** The scope's files with stamps from the store, or the repository listing without stamps. */
-  async listing(list: () => Promise<string[]>): Promise<StampedListing | { checkedAtMs: null; files: Array<{ path: string }> }> {
+  /** The scope's files with stamps from the store for those `stamped` accepts, or the repository listing without stamps. */
+  async listing(list: () => Promise<string[]>, stamped: (path: string) => boolean): Promise<StampedListing | { checkedAtMs: null; files: Array<{ path: string }> }> {
     if (this.options === undefined) return { checkedAtMs: null, files: (await list()).map(path => ({ path })) };
-    const listing = await this.options.store.listing();
+    const listing = await this.options.store.listing(stamped);
     this.checkedAtMs = listing.checkedAtMs;
     return listing;
   }

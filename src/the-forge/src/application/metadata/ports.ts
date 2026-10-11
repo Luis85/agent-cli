@@ -106,8 +106,11 @@ export interface MetadataParser {
   parse(path: string, bytes: Uint8Array): CachedMetadata;
 }
 
-/** The scope's files with stamps of their filesystem state, taken after `checkedAtMs` and before any content read. */
-export interface StampedListing { checkedAtMs: number; files: ReadonlyArray<{ path: string } & FileStamp> }
+/**
+ * The scope's files, those the index asked for with stamps of their filesystem state, taken after `checkedAtMs` and
+ * before any content read.
+ */
+export interface StampedListing { checkedAtMs: number; files: ReadonlyArray<{ path: string } | ({ path: string } & FileStamp)> }
 
 /**
  * Persists the metadata index's parse results between invocations as derived data outside the vault: no events, no
@@ -116,8 +119,11 @@ export interface StampedListing { checkedAtMs: number; files: ReadonlyArray<{ pa
  * never needs to be current. The repository it serves must report SHA-256 content revisions.
  */
 export interface MetadataSnapshotStore {
-  /** Every file that the scope repository's `list()` returns, in the same order, each with its current stamp. */
-  listing(): Promise<StampedListing>;
+  /**
+   * Every file that the scope repository's `list()` returns, in the same order; each file that `stamped` accepts
+   * (the files the index parses) carries its current stamp, the others only their path.
+   */
+  listing(stamped: (path: string) => boolean): Promise<StampedListing>;
   /** The stored snapshot as written, or null when there is none or it cannot be read intact; never throws. */
   load(): Promise<unknown>;
   /** Replaces the stored snapshot atomically; a failure leaves the previous snapshot or none. */
