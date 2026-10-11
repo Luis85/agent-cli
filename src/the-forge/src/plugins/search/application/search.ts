@@ -22,8 +22,11 @@ export interface SearchSources {
   files: FileRepository;
   /** The scope's vault paths, as the metadata index enumerates them (`MetadataIndex.vaultFiles`). */
   paths(): Promise<readonly string[]>;
-  /** The metadata of one read file (`MetadataIndex.parseFile`), used only by tag, property and code filters. */
-  parse(path: string, bytes: Uint8Array): CachedMetadata | null;
+  /**
+   * The metadata of one read file (`MetadataIndex.parseFile`), used only by tag, property and code filters; a stored
+   * parse result of the same revision is reused.
+   */
+  parse(file: FileSnapshot): Promise<CachedMetadata | null>;
   budget: SearchBudget;
 }
 /** A hit before its snippet and context lines are built, which happens only for hits on the returned page. */
@@ -91,7 +94,7 @@ export async function searchFiles(sources: SearchSources, query: SearchQuery, pa
     }));
     for (const { file, lines, hits } of scanned) {
       // Metadata parsing happens outside the matching budget and only for files with hits.
-      const metadata = filtered || query.skipCode ? sources.parse(file.path, file.bytes) : null;
+      const metadata = filtered || query.skipCode ? await sources.parse(file) : null;
       if (filtered && !metadataMatches(metadata, query)) continue;
       const code = query.skipCode ? codeLines(metadata) : undefined;
       for (const hit of hits) {

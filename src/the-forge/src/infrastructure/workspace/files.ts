@@ -3,6 +3,7 @@ import { lstat, readFile, readdir, readlink, realpath, rename, rm, open } from '
 import { dirname, resolve, join } from 'node:path';
 import { forgeError, errorMessage, ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest, type FileChange, type FileStat } from '../../domain/documents/file.ts';
+import type { FileStamp } from '../../domain/metadata/snapshot.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch, FileRepository, WriteBatchResult } from '../../application/workspace/ports.ts';
 import { Transaction, type BatchHost, type FilePlan, type FolderSnapshot, type SpecialEntry, type StoredFile } from './batch.ts';
@@ -12,6 +13,13 @@ import { retryTransient } from './retry.ts';
 
 export const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
+/**
+ * The workspace root's folder of derived caches (the metadata snapshots). Like the writer lock it is Forge's own
+ * state, not workspace content: listings leave it out, while direct reads still reach it.
+ */
+export const cacheFolder = '.forge/cache';
+/** Entries `list()` never reports or enters: Git, dependencies, Forge's own lock and temporary files and the root cache folder. */
+const unlisted = (name: string, path: string) => ['.git', 'node_modules', lockName].includes(name) || name.startsWith('.agent-cli-tmp-') || path === cacheFolder;
 /** Concurrent staging lets the filesystem group fsyncs while bounding open handles. */
 const stagingConcurrency = 8;
 
@@ -48,7 +56,7 @@ export class NodeFiles implements FileRepository, BatchHost {
     const result: string[] = [];
     const walk = async (directory: string, prefix: string) => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
-        if (['.git', 'node_modules', lockName].includes(entry.name) || entry.name.startsWith('.agent-cli-tmp-')) continue;
+        if (unlisted(entry.name, prefix + entry.name)) continue;
         const path = prefix + entry.name;
         if (entry.isDirectory()) await walk(join(directory, entry.name), path + '/');
         else if (entry.isFile()) result.push(path);
@@ -207,4 +215,28 @@ export class NodeFiles implements FileRepository, BatchHost {
       if (!renamed) await retryTransient(() => rm(temp, { force: true })).catch(() => {});
     }
   }
+}
+/**
+ * The files `list()` of the repository at `files` returns below `directory` (default: the root), relative to it and
+ * in the same order, each with an opaque stamp of its size, nanosecond modification and status-change times and
+ * inode, and `changedMs`, the later of both times. `checkedAtMs` is taken before the first stamp. Files that vanish
+ * during the walk are left out; a symlinked or missing `directory` fails like `resolvePath`.
+ */
+export async function stampedFiles(files: NodeFiles, directory?: string): Promise<{ checkedAtMs: number; files: Array<{ path: string } & FileStamp> }> {
+  const checkedAtMs = Date.now();
+  const stamped: Array<{ path: string } & FileStamp> = [];
+  const scope = directory === undefined ? '' : `${vaultPath(directory)}/`;
+  const walk = async (folder: string, prefix: string) => {
+    const entries = (await readdir(folder, { withFileTypes: true })).filter(entry => !unlisted(entry.name, scope + prefix + entry.name));
+    await Promise.all(entries.filter(entry => entry.isFile()).map(async entry => {
+      try {
+        const info = await lstat(join(folder, entry.name), { bigint: true });
+        const changed = info.mtimeNs > info.ctimeNs ? info.mtimeNs : info.ctimeNs;
+        stamped.push({ path: prefix + entry.name, stamp: `${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.ino}`, changedMs: Number(changed / 1_000_000n) });
+      } catch (error) { if (!missing(error)) throw error; }
+    }));
+    for (const entry of entries) if (entry.isDirectory()) await walk(join(folder, entry.name), `${prefix}${entry.name}/`);
+  };
+  await walk(directory === undefined ? files.root : await files.resolvePath(directory, true), '');
+  return { checkedAtMs, files: stamped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) };
 }

@@ -78,10 +78,14 @@ async function generate(workspace) {
   return join(workspace, project.directory);
 }
 
-/** Generation must not leave anything outside the project except the temporary workspace's own bin. @param {string} workspace */
+/**
+ * Generation must not leave anything outside the project except the temporary workspace's own bin and Forge's
+ * derived metadata cache in .forge/cache. @param {string} workspace
+ */
 function assertContained(workspace) {
+  const cacheOnly = (/** @type {string} */ name) => name === '.forge' && readdirSync(join(workspace, name)).every(entry => entry === 'cache');
   const stray = [
-    ...readdirSync(workspace).filter(name => !['bin', 'src'].includes(name)),
+    ...readdirSync(workspace).filter(name => !['bin', 'src'].includes(name) && !cacheOnly(name)),
     ...readdirSync(join(workspace, 'src')).filter(name => name !== 'forge-showcase').map(name => `src/${name}`),
   ];
   if (stray.length > 0) throw new Error(`Generation wrote outside ${project.directory}: ${stray.join(', ')}`);

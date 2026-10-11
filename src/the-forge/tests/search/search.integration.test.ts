@@ -6,6 +6,7 @@ import { searchFiles, type SearchResult } from '../../src/plugins/search/applica
 import { vmSearchBudget } from '../../src/plugins/search/infrastructure/budget.ts';
 import type { SearchQuery } from '../../src/plugins/search/domain/query.ts';
 import type { PageRequest } from '../../src/domain/shared/paging.ts';
+import type { FileSnapshot } from '../../src/domain/documents/file.ts';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
 import { metadataIndex } from '../support/metadata.ts';
 
@@ -21,7 +22,7 @@ async function search(pattern: string, extra: Partial<SearchQuery> = {}, page: P
   const files = await NodeFiles.at(root);
   const index = metadataIndex(files, { workspaceRoot: true });
   parsed.length = 0;
-  const parse = (path: string, bytes: Uint8Array) => { parsed.push(path); return index.parseFile(path, bytes); };
+  const parse = (file: FileSnapshot) => { parsed.push(file.path); return index.parseFile(file); };
   const result = await searchFiles({ files, paths: () => index.vaultFiles(), parse, budget: vmSearchBudget(timeoutMs) }, query(pattern, extra), page);
   if (extra.tag === undefined && extra.property === undefined && !extra.skipCode) expect(parsed).toEqual([]);
   return result;
