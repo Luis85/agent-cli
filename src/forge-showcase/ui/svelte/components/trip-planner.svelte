@@ -16,7 +16,7 @@ async function _uiFormAction(target: EventTarget | null, action: string, option:
     if (!form.reportValidity()) throw new globalThis.TypeError('Form validation failed.');
     const fields = new view.FormData(form);
     if (action === 'upload-form') {
-      if (option !== option.trim() || /[\u0000-\u001f\\]/.test(option) || option.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(option) && !/^https?:\/\//i.test(option))) throw new globalThis.TypeError('Unsafe interaction upload URL.');
+      if (option !== option.trim() || globalThis.Array.from(option).some(character => character < ' ' || character === "\\") || option.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(option) && !/^https?:\/\//i.test(option))) throw new globalThis.TypeError('Unsafe interaction upload URL.');
       const url = new view.URL(option, form.ownerDocument.baseURI);
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction upload URL.');
       const response = await view.fetch(url.href, { method: 'POST', body: fields, credentials: 'same-origin' });
@@ -34,7 +34,7 @@ async function _uiFormAction(target: EventTarget | null, action: string, option:
       view.localStorage.setItem(option, JSON.stringify(data));
       _uiEmit(target, 'forge:save', { key: option, data });
     } else {
-      if (/[\u0000-\u001f/\\]/.test(option)) throw new globalThis.TypeError('Download filename must not contain path separators or control characters.');
+      if (globalThis.Array.from(option).some(character => character < ' ' || character === "/" || character === "\\")) throw new globalThis.TypeError('Download filename must not contain path separators or control characters.');
       const blob = new view.Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
       const url = view.URL.createObjectURL(blob);
       const link = form.ownerDocument.createElement('a');

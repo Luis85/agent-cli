@@ -67,6 +67,7 @@ export declare class EventBus implements EventChannel {
     private subscribe;
     once<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;
     emit(id: string, payload: unknown): Promise<void>;
+    /** Records a warning: a host message by code, anything else as text (see warningText), so no value can break the response. */
     warn(message: string | KernelMessage): void;
     onLayoutReady(callback: Callback): void;
     onQuit(task: Callback): void;

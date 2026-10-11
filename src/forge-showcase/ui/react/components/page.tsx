@@ -9,7 +9,7 @@ function attribute(value: unknown): string | undefined {
 }
 
 export default function Page(input: PageProps) {
-  const props = { ...{}, ...input };
+  const props = { ...input };
 
   return _uiCreateElement("div", {"className": attribute("page")}, props.children);
 }

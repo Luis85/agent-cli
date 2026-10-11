@@ -1,28 +1,31 @@
+/** @typedef {readonly (Node | string | null | undefined)[]} DomChildren */
+/** @typedef {{  }} Props */
 const booleanAttributes = new Set(["allowfullscreen","async","autofocus","autoplay","checked","controls","default","defer","disabled","formnovalidate","hidden","inert","ismap","itemscope","loop","multiple","muted","nomodule","novalidate","open","playsinline","readonly","required","reversed","selected"]);
 const updateProps = Symbol.for('forge.ui.updateProps');
 
-/** Create a live component; mounting and removal remain owned by the caller. */
+/**
+ * Create a live component; mounting and removal remain owned by the caller.
+ * @param {Props} [input] @param {DomChildren} [children] @returns {HTMLElement | DocumentFragment}
+ */
 export default function createPage(input = {}, children = []) {
-  const props = { ...{}, ...input };
-
-  const _uiState = {};
+  /** @type {Props} */
+  const props = { ...input };
+  /** @type {Array<() => void>} */
   const updates = [];
   const refresh = () => { for (const update of updates) update(); };
-
-  function slot(content) {
+  /** @param {DomChildren} children */
+  function slot(children) {
     const fragment = document.createDocumentFragment();
-    for (const child of content) if (child != null) fragment.append(child);
+    for (const child of children) if (child != null) fragment.append(child);
     return fragment;
   }
-  function component(factory, values, content) {
-    const result = factory(values(), content);
-    // Capture before a parent sharing this root attaches its own callback.
-    const update = result[updateProps];
-    if (update) updates.push(() => update(values()));
-    return result;
-  }
+  /**
+   * @param {string} tag @param {() => Record<string, unknown>} attributes @param {(() => unknown) | null} text
+   * @param {readonly Node[]} content @param {Record<string, Array<(event: Event) => unknown>>} listeners
+   */
   function element(tag, attributes, text, content, listeners) {
     const result = document.createElement(tag);
+    /** @type {Record<string, string | null>} */
     const previous = Object.create(null);
     const textNode = text ? document.createTextNode('') : null;
     if (textNode) result.append(textNode);
@@ -38,7 +41,7 @@ export default function createPage(input = {}, children = []) {
         previous[key] = normalized;
       }
       if (textNode) {
-        const value = String(text() ?? '');
+        const value = String(text?.() ?? '');
         if (textNode.data !== value) textNode.data = value;
       }
     };
@@ -48,10 +51,9 @@ export default function createPage(input = {}, children = []) {
     return result;
   }
   const result = element("div", () => ({"class": "page"}), null, [slot(children)], {});
-  Object.defineProperty(result, updateProps, { configurable: true, value: input => {
-    for (const key of Object.keys(props)) delete props[key];
-    Object.assign(props, {}, input);
-
+  Object.defineProperty(result, updateProps, { configurable: true, value: (/** @type {Props} */ next) => {
+    for (const key of Object.keys(props)) Reflect.deleteProperty(props, key);
+    Object.assign(props, {}, next);
     refresh();
   } });
   return result;

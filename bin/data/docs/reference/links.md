@@ -64,4 +64,5 @@ A dead end is a parsed note without any reference to another file. Unresolved an
 ## Limits
 
 - No paging: every report returns all its results in one response, unlike `list` and `search`. Narrow `unresolved`, `orphans` and `deadends` with `--path`.
+- Parsing a note with thousands of separate lists or block quotes is slow (about 3.4 s for 4,000); see the [known limit of the metadata index](formats.md#metadata-index).
 - Obsidian's link preferences in `.obsidian/app.json` (new link format, relative or absolute paths, wikilinks or Markdown links) are not read. Reports resolve links by the [metadata index rules](formats.md#metadata-index), and [moves](cli.md#moving-and-deleting) write links in Obsidian's default "shortest path when possible" format.

@@ -9,7 +9,7 @@ function attribute(value: unknown): string | undefined {
 }
 
 export default function Card(input: CardProps) {
-  const props = { ...{}, ...input };
+  const props = { ...input };
 
   return _uiCreateElement("article", {"className": attribute("card")}, props.children);
 }

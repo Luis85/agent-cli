@@ -325,10 +325,40 @@ const kernelMessages = {
   QUIT_TASK_FAILED: "Quit task: {diagnostic}",
   PLUGIN_CLEANUP_FAILED: "Plugin cleanup: {diagnostic}"
 };
-const kernelMessage = (code2, params = {}) => ({ code: code2, params });
+const hostMessages = /* @__PURE__ */ new WeakSet();
+function kernelMessage(code2, params = {}) {
+  const message2 = Object.freeze({ code: code2, params: Object.freeze({ ...params }) });
+  hostMessages.add(message2);
+  return message2;
+}
+const isKernelMessage = (value2) => typeof value2 === "object" && value2 !== null && hostMessages.has(value2);
 function renderKernelMessage(message2, templates2 = kernelMessages) {
-  const params = Object.fromEntries(Object.entries(message2.params).map(([name2, value2]) => [name2, typeof value2 === "object" ? renderKernelMessage(value2, templates2) : value2]));
+  const params = Object.fromEntries(Object.entries(message2.params).map(([name2, value2]) => [name2, isKernelMessage(value2) ? renderKernelMessage(value2, templates2) : typeof value2 === "string" || typeof value2 === "number" ? value2 : warningText(value2)]));
   return fill$1(templates2[message2.code], params);
+}
+function renderWarning(warning2, templates2) {
+  return isKernelMessage(warning2) ? renderKernelMessage(warning2, templates2) : warningText(warning2);
+}
+function warningText(value2) {
+  try {
+    if (typeof value2 === "string") return value2;
+    if (typeof value2 === "function") return "[function]";
+    if (typeof value2 !== "object" || value2 === null) return String(value2);
+    if (value2 instanceof Error) return value2.message;
+    const ancestors = [];
+    return JSON.stringify(value2, function replacer(_key, item) {
+      if (typeof item === "bigint") return `${item}n`;
+      if (typeof item === "function") return "[function]";
+      if (typeof item === "symbol") return item.toString();
+      if (typeof item !== "object" || item === null) return item;
+      while (ancestors.length > 0 && ancestors.at(-1) !== this) ancestors.pop();
+      if (ancestors.includes(item)) return "[circular]";
+      ancestors.push(item);
+      return item;
+    }) ?? String(value2);
+  } catch {
+    return "Operation failed with an unreadable error.";
+  }
 }
 function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return true;
@@ -361,7 +391,7 @@ class EventBus {
   warningRecords = [];
   /** The warnings in English. */
   get warnings() {
-    return this.warningRecords.map((warning2) => typeof warning2 === "string" ? warning2 : renderKernelMessage(warning2));
+    return this.warningRecords.map((warning2) => renderWarning(warning2));
   }
   nextOperationId() {
     return ++this.operationId;
@@ -463,8 +493,9 @@ class EventBus {
       }
     });
   }
+  /** Records a warning: a host message by code, anything else as text (see warningText), so no value can break the response. */
   warn(message2) {
-    if (this.warningRecords.length < 1e3) this.warningRecords.push(message2);
+    if (this.warningRecords.length < 1e3) this.warningRecords.push(isKernelMessage(message2) ? message2 : warningText(message2));
   }
   onLayoutReady(callback) {
     this.ensureCallback(callback);
@@ -1136,15 +1167,6 @@ const isHostNamespace = (namespace) => hostEventNamespaces.includes(namespace);
 function ensurePluginNamespace(pluginId) {
   ensure(!isHostNamespace(pluginId), "PLUGIN_NAMESPACE", `Plugin id ${pluginId} is reserved for host events (${hostEventNamespaces.join(", ")}).`);
 }
-function pluginWarningText(value2) {
-  if (typeof value2 === "string") return value2;
-  if (value2 instanceof Error || typeof value2 !== "object" || value2 === null) return errorMessage(value2);
-  try {
-    return JSON.stringify(value2) ?? errorMessage(value2);
-  } catch {
-    return errorMessage(value2);
-  }
-}
 function pluginEvents(bus, pluginId) {
   return {
     ids: () => bus.ids(),
@@ -1153,7 +1175,8 @@ function pluginEvents(bus, pluginId) {
     once: (id2, listener) => bus.once(id2, listener),
     onAny: (listener) => bus.onAny(listener),
     replay: (listener) => bus.replay(listener),
-    warn: (message2) => bus.warn(pluginWarningText(message2)),
+    // Plugins are plain JavaScript and may pass any value; it is reported as text, never as a host message.
+    warn: (message2) => bus.warn(warningText(message2)),
     onLayoutReady: (callback) => bus.onLayoutReady(callback),
     onQuit: (task2) => bus.onQuit(task2),
     async emit(id2, payload2) {
@@ -3183,12 +3206,12 @@ function requireStringifyComment() {
   if (hasRequiredStringifyComment) return stringifyComment;
   hasRequiredStringifyComment = 1;
   const stringifyComment$1 = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
-  function indentComment(comment, indent) {
+  function indentComment(comment, indent2) {
     if (/^\n+$/.test(comment))
       return comment.substring(1);
-    return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
+    return indent2 ? comment.replace(/^(?! *$)/gm, indent2) : comment;
   }
-  const lineComment = (str, indent, comment) => str.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str.endsWith(" ") ? "" : " ") + comment;
+  const lineComment = (str, indent2, comment) => str.endsWith("\n") ? indentComment(comment, indent2) : comment.includes("\n") ? "\n" + indentComment(comment, indent2) : (str.endsWith(" ") ? "" : " ") + comment;
   stringifyComment.indentComment = indentComment;
   stringifyComment.lineComment = lineComment;
   stringifyComment.stringifyComment = stringifyComment$1;
@@ -3203,17 +3226,17 @@ function requireFoldFlowLines() {
   const FOLD_FLOW = "flow";
   const FOLD_BLOCK = "block";
   const FOLD_QUOTED = "quoted";
-  function foldFlowLines$1(text2, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
+  function foldFlowLines$1(text2, indent2, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
     if (!lineWidth || lineWidth < 0)
       return text2;
     if (lineWidth < minContentWidth)
       minContentWidth = 0;
-    const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
+    const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent2.length);
     if (text2.length <= endStep)
       return text2;
     const folds = [];
     const escapedFolds = {};
-    let end2 = lineWidth - indent.length;
+    let end2 = lineWidth - indent2.length;
     if (typeof indentAtStart === "number") {
       if (indentAtStart > lineWidth - Math.max(2, minContentWidth))
         folds.push(0);
@@ -3227,7 +3250,7 @@ function requireFoldFlowLines() {
     let escStart = -1;
     let escEnd = -1;
     if (mode === FOLD_BLOCK) {
-      i = consumeMoreIndentedLines(text2, i, indent.length);
+      i = consumeMoreIndentedLines(text2, i, indent2.length);
       if (i !== -1)
         end2 = i + endStep;
     }
@@ -3251,8 +3274,8 @@ function requireFoldFlowLines() {
       }
       if (ch === "\n") {
         if (mode === FOLD_BLOCK)
-          i = consumeMoreIndentedLines(text2, i, indent.length);
-        end2 = i + indent.length + endStep;
+          i = consumeMoreIndentedLines(text2, i, indent2.length);
+        end2 = i + indent2.length + endStep;
         split = void 0;
       } else {
         if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
@@ -3297,22 +3320,22 @@ function requireFoldFlowLines() {
       const end3 = folds[i2 + 1] || text2.length;
       if (fold === 0)
         res = `
-${indent}${text2.slice(0, end3)}`;
+${indent2}${text2.slice(0, end3)}`;
       else {
         if (mode === FOLD_QUOTED && escapedFolds[fold])
           res += `${text2[fold]}\\`;
         res += `
-${indent}${text2.slice(fold + 1, end3)}`;
+${indent2}${text2.slice(fold + 1, end3)}`;
       }
     }
     return res;
   }
-  function consumeMoreIndentedLines(text2, i, indent) {
+  function consumeMoreIndentedLines(text2, i, indent2) {
     let end2 = i;
     let start2 = i + 1;
     let ch = text2[start2];
     while (ch === " " || ch === "	") {
-      if (i < start2 + indent) {
+      if (i < start2 + indent2) {
         ch = text2[++i];
       } else {
         do {
@@ -3367,7 +3390,7 @@ function requireStringifyString() {
       return json2;
     const { implicitKey } = ctx;
     const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
-    const indent = ctx.indent || (containsDocumentMarker(value2) ? "  " : "");
+    const indent2 = ctx.indent || (containsDocumentMarker(value2) ? "  " : "");
     let str = "";
     let start2 = 0;
     for (let i = 0, ch = json2[i]; ch; ch = json2[++i]) {
@@ -3427,7 +3450,7 @@ function requireStringifyString() {
                 str += "\n";
                 i += 2;
               }
-              str += indent;
+              str += indent2;
               if (json2[i + 2] === " ")
                 str += "\\";
               i += 1;
@@ -3439,15 +3462,15 @@ function requireStringifyString() {
         }
     }
     str = start2 ? str + json2.slice(start2) : json2;
-    return implicitKey ? str : foldFlowLines2.foldFlowLines(str, indent, foldFlowLines2.FOLD_QUOTED, getFoldOptions(ctx, false));
+    return implicitKey ? str : foldFlowLines2.foldFlowLines(str, indent2, foldFlowLines2.FOLD_QUOTED, getFoldOptions(ctx, false));
   }
   function singleQuotedString(value2, ctx) {
     if (ctx.options.singleQuote === false || ctx.implicitKey && value2.includes("\n") || /[ \t]\n|\n[ \t]/.test(value2))
       return doubleQuotedString(value2, ctx);
-    const indent = ctx.indent || (containsDocumentMarker(value2) ? "  " : "");
+    const indent2 = ctx.indent || (containsDocumentMarker(value2) ? "  " : "");
     const res = "'" + value2.replace(/'/g, "''").replace(/\n+/g, `$&
-${indent}`) + "'";
-    return ctx.implicitKey ? res : foldFlowLines2.foldFlowLines(res, indent, foldFlowLines2.FOLD_FLOW, getFoldOptions(ctx, false));
+${indent2}`) + "'";
+    return ctx.implicitKey ? res : foldFlowLines2.foldFlowLines(res, indent2, foldFlowLines2.FOLD_FLOW, getFoldOptions(ctx, false));
   }
   function quotedString(value2, ctx) {
     const { singleQuote } = ctx.options;
@@ -3477,8 +3500,8 @@ ${indent}`) + "'";
     if (!blockQuote2 || /\n[\t ]+$/.test(value2)) {
       return quotedString(value2, ctx);
     }
-    const indent = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value2) ? "  " : "");
-    const literal2 = blockQuote2 === "literal" ? true : blockQuote2 === "folded" || type2 === Scalar2.Scalar.BLOCK_FOLDED ? false : type2 === Scalar2.Scalar.BLOCK_LITERAL ? true : !lineLengthOverLimit(value2, lineWidth, indent.length);
+    const indent2 = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value2) ? "  " : "");
+    const literal2 = blockQuote2 === "literal" ? true : blockQuote2 === "folded" || type2 === Scalar2.Scalar.BLOCK_FOLDED ? false : type2 === Scalar2.Scalar.BLOCK_LITERAL ? true : !lineLengthOverLimit(value2, lineWidth, indent2.length);
     if (!value2)
       return literal2 ? "|\n" : ">\n";
     let chomp;
@@ -3503,7 +3526,7 @@ ${indent}`) + "'";
       value2 = value2.slice(0, -end2.length);
       if (end2[end2.length - 1] === "\n")
         end2 = end2.slice(0, -1);
-      end2 = end2.replace(blockEndNewlines, `$&${indent}`);
+      end2 = end2.replace(blockEndNewlines, `$&${indent2}`);
     }
     let startWithSpace = false;
     let startEnd;
@@ -3520,9 +3543,9 @@ ${indent}`) + "'";
     let start2 = value2.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
     if (start2) {
       value2 = value2.substring(start2.length);
-      start2 = start2.replace(/\n+/g, `$&${indent}`);
+      start2 = start2.replace(/\n+/g, `$&${indent2}`);
     }
-    const indentSize = indent ? "2" : "1";
+    const indentSize = indent2 ? "2" : "1";
     let header2 = (startWithSpace ? indentSize : "") + chomp;
     if (comment) {
       header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
@@ -3530,7 +3553,7 @@ ${indent}`) + "'";
         onComment();
     }
     if (!literal2) {
-      const foldedValue = value2.replace(/\n+/g, "\n$&").replace(/(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?/g, "$1$2").replace(/\n+/g, `$&${indent}`);
+      const foldedValue = value2.replace(/\n+/g, "\n$&").replace(/(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?/g, "$1$2").replace(/\n+/g, `$&${indent2}`);
       let literalFallback = false;
       const foldOptions = getFoldOptions(ctx, true);
       if (blockQuote2 !== "folded" && type2 !== Scalar2.Scalar.BLOCK_FOLDED) {
@@ -3538,18 +3561,18 @@ ${indent}`) + "'";
           literalFallback = true;
         };
       }
-      const body = foldFlowLines2.foldFlowLines(`${start2}${foldedValue}${end2}`, indent, foldFlowLines2.FOLD_BLOCK, foldOptions);
+      const body = foldFlowLines2.foldFlowLines(`${start2}${foldedValue}${end2}`, indent2, foldFlowLines2.FOLD_BLOCK, foldOptions);
       if (!literalFallback)
         return `>${header2}
-${indent}${body}`;
+${indent2}${body}`;
     }
-    value2 = value2.replace(/\n+/g, `$&${indent}`);
+    value2 = value2.replace(/\n+/g, `$&${indent2}`);
     return `|${header2}
-${indent}${start2}${value2}${end2}`;
+${indent2}${start2}${value2}${end2}`;
   }
   function plainString(item, ctx, onComment, onChompKeep) {
     const { type: type2, value: value2 } = item;
-    const { actualString, implicitKey, indent, indentStep, inFlow } = ctx;
+    const { actualString, implicitKey, indent: indent2, indentStep, inFlow } = ctx;
     if (implicitKey && value2.includes("\n") || inFlow && /[[\]{},]/.test(value2)) {
       return quotedString(value2, ctx);
     }
@@ -3560,22 +3583,22 @@ ${indent}${start2}${value2}${end2}`;
       return blockString(item, ctx, onComment, onChompKeep);
     }
     if (containsDocumentMarker(value2)) {
-      if (indent === "") {
+      if (indent2 === "") {
         ctx.forceBlockIndent = true;
         return blockString(item, ctx, onComment, onChompKeep);
-      } else if (implicitKey && indent === indentStep) {
+      } else if (implicitKey && indent2 === indentStep) {
         return quotedString(value2, ctx);
       }
     }
     const str = value2.replace(/\n+/g, `$&
-${indent}`);
+${indent2}`);
     if (actualString) {
       const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str);
       const { compat, tags: tags2 } = ctx.doc.schema;
       if (tags2.some(test) || compat?.some(test))
         return quotedString(value2, ctx);
     }
-    return implicitKey ? str : foldFlowLines2.foldFlowLines(str, indent, foldFlowLines2.FOLD_FLOW, getFoldOptions(ctx, false));
+    return implicitKey ? str : foldFlowLines2.foldFlowLines(str, indent2, foldFlowLines2.FOLD_FLOW, getFoldOptions(ctx, false));
   }
   function stringifyString$1(item, ctx, onComment, onChompKeep) {
     const { implicitKey, inFlow } = ctx;
@@ -3745,7 +3768,7 @@ function requireStringifyPair() {
   var stringify2 = requireStringify();
   var stringifyComment2 = requireStringifyComment();
   function stringifyPair$1({ key, value: value2 }, ctx, onComment, onChompKeep) {
-    const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
+    const { allNullValues, doc, indent: indent2, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
     let keyComment = identity2.isNode(key) && key.comment || null;
     if (simpleKeys) {
       if (keyComment) {
@@ -3760,7 +3783,7 @@ function requireStringifyPair() {
     ctx = Object.assign({}, ctx, {
       allNullValues: false,
       implicitKey: !explicitKey && (simpleKeys || !allNullValues),
-      indent: indent + indentStep
+      indent: indent2 + indentStep
     });
     let keyCommentDone = false;
     let chompKeep = false;
@@ -3790,7 +3813,7 @@ function requireStringifyPair() {
       if (keyComment)
         str += stringifyComment2.lineComment(str, ctx.indent, commentString(keyComment));
       str = `? ${str}
-${indent}:`;
+${indent2}:`;
     } else {
       str = `${str}:`;
       if (keyComment)
@@ -4070,7 +4093,7 @@ function requireStringifyCollection() {
     return stringify3(collection, ctx, options2);
   }
   function stringifyBlockCollection({ comment, items: items2 }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
-    const { indent, options: { commentString } } = ctx;
+    const { indent: indent2, options: { commentString } } = ctx;
     const itemCtx = Object.assign({}, ctx, { indent: itemIndent, type: null });
     let chompKeep = false;
     const lines2 = [];
@@ -4107,11 +4130,11 @@ function requireStringifyCollection() {
       for (let i = 1; i < lines2.length; ++i) {
         const line = lines2[i];
         str += line ? `
-${indent}${line}` : "\n";
+${indent2}${line}` : "\n";
       }
     }
     if (comment) {
-      str += "\n" + stringifyComment2.indentComment(commentString(comment), indent);
+      str += "\n" + stringifyComment2.indentComment(commentString(comment), indent2);
       if (onComment)
         onComment();
     } else if (chompKeep && onChompKeep)
@@ -4119,7 +4142,7 @@ ${indent}${line}` : "\n";
     return str;
   }
   function stringifyFlowCollection({ items: items2 }, ctx, { flowChars, itemIndent }) {
-    const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
+    const { indent: indent2, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
     itemIndent += indentStep;
     const itemCtx = Object.assign({}, ctx, {
       indent: itemIndent,
@@ -4188,19 +4211,19 @@ ${indent}${line}` : "\n";
         let str = start2;
         for (const line of lines2)
           str += line ? `
-${indentStep}${indent}${line}` : "\n";
+${indentStep}${indent2}${line}` : "\n";
         return `${str}
-${indent}${end2}`;
+${indent2}${end2}`;
       } else {
         return `${start2}${fcPadding}${lines2.join(" ")}${fcPadding}${end2}`;
       }
     }
   }
-  function addCommentBefore({ indent, options: { commentString } }, lines2, comment, chompKeep) {
+  function addCommentBefore({ indent: indent2, options: { commentString } }, lines2, comment, chompKeep) {
     if (comment && chompKeep)
       comment = comment.replace(/^\n+/, "");
     if (comment) {
-      const ic = stringifyComment2.indentComment(commentString(comment), indent);
+      const ic = stringifyComment2.indentComment(commentString(comment), indent2);
       lines2.push(ic.trimStart());
     }
   }
@@ -6150,10 +6173,10 @@ function requireUtilFlowIndentCheck() {
   if (hasRequiredUtilFlowIndentCheck) return utilFlowIndentCheck;
   hasRequiredUtilFlowIndentCheck = 1;
   var utilContainsNewline2 = requireUtilContainsNewline();
-  function flowIndentCheck(indent, fc, onError) {
+  function flowIndentCheck(indent2, fc, onError) {
     if (fc?.type === "flow-collection") {
       const end2 = fc.end[0];
-      if (end2.indent === indent && (end2.source === "]" || end2.source === "}") && utilContainsNewline2.containsNewline(fc)) {
+      if (end2.indent === indent2 && (end2.source === "]" || end2.source === "}") && utilContainsNewline2.containsNewline(fc)) {
         const msg = "Flow end indicator should be more indented than parent";
         onError(end2, "BAD_INDENT", msg, true);
       }
@@ -6670,17 +6693,17 @@ function requireResolveBlockScalar() {
     let offset = scalar2.offset + header2.length;
     let contentStart = 0;
     for (let i = 0; i < chompStart; ++i) {
-      const [indent, content2] = lines2[i];
+      const [indent2, content2] = lines2[i];
       if (content2 === "" || content2 === "\r") {
-        if (header2.indent === 0 && indent.length > trimIndent)
-          trimIndent = indent.length;
+        if (header2.indent === 0 && indent2.length > trimIndent)
+          trimIndent = indent2.length;
       } else {
-        if (indent.length < trimIndent) {
+        if (indent2.length < trimIndent) {
           const message2 = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
-          onError(offset + indent.length, "MISSING_CHAR", message2);
+          onError(offset + indent2.length, "MISSING_CHAR", message2);
         }
         if (header2.indent === 0)
-          trimIndent = indent.length;
+          trimIndent = indent2.length;
         contentStart = i;
         if (trimIndent === 0 && !ctx.atRoot) {
           const message2 = "Block scalar values in collections must be indented";
@@ -6688,7 +6711,7 @@ function requireResolveBlockScalar() {
         }
         break;
       }
-      offset += indent.length + content2.length + 1;
+      offset += indent2.length + content2.length + 1;
     }
     for (let i = lines2.length - 1; i >= chompStart; --i) {
       if (lines2[i][0].length > trimIndent)
@@ -6700,26 +6723,26 @@ function requireResolveBlockScalar() {
     for (let i = 0; i < contentStart; ++i)
       value2 += lines2[i][0].slice(trimIndent) + "\n";
     for (let i = contentStart; i < chompStart; ++i) {
-      let [indent, content2] = lines2[i];
-      offset += indent.length + content2.length + 1;
+      let [indent2, content2] = lines2[i];
+      offset += indent2.length + content2.length + 1;
       const crlf = content2[content2.length - 1] === "\r";
       if (crlf)
         content2 = content2.slice(0, -1);
-      if (content2 && indent.length < trimIndent) {
+      if (content2 && indent2.length < trimIndent) {
         const src = header2.indent ? "explicit indentation indicator" : "first line";
         const message2 = `Block scalar lines must not be less indented than their ${src}`;
         onError(offset - content2.length - (crlf ? 2 : 1), "BAD_INDENT", message2);
-        indent = "";
+        indent2 = "";
       }
       if (type2 === Scalar2.Scalar.BLOCK_LITERAL) {
-        value2 += sep + indent.slice(trimIndent) + content2;
+        value2 += sep + indent2.slice(trimIndent) + content2;
         sep = "\n";
-      } else if (indent.length > trimIndent || content2[0] === "	") {
+      } else if (indent2.length > trimIndent || content2[0] === "	") {
         if (sep === " ")
           sep = "\n";
         else if (!prevMoreIndented && sep === "\n")
           sep = "\n\n";
-        value2 += sep + indent.slice(trimIndent) + content2;
+        value2 += sep + indent2.slice(trimIndent) + content2;
         sep = "\n";
         prevMoreIndented = true;
       } else if (content2 === "") {
@@ -6755,7 +6778,7 @@ function requireResolveBlockScalar() {
     }
     const { source: source2 } = props[0];
     const mode = source2[0];
-    let indent = 0;
+    let indent2 = 0;
     let chomp = "";
     let error2 = -1;
     for (let i = 1; i < source2.length; ++i) {
@@ -6764,8 +6787,8 @@ function requireResolveBlockScalar() {
         chomp = ch;
       else {
         const n = Number(ch);
-        if (!indent && n)
-          indent = n;
+        if (!indent2 && n)
+          indent2 = n;
         else if (error2 === -1)
           error2 = offset + i;
       }
@@ -6806,7 +6829,7 @@ function requireResolveBlockScalar() {
         }
       }
     }
-    return { mode, indent, chomp, comment, length };
+    return { mode, indent: indent2, chomp, comment, length };
   }
   function splitLines2(source2) {
     const split = source2.split(/\n( *)/);
@@ -7537,15 +7560,15 @@ function requireCstScalar() {
     return null;
   }
   function createScalarToken(value2, context) {
-    const { implicitKey = false, indent, inFlow = false, offset = -1, type: type2 = "PLAIN" } = context;
+    const { implicitKey = false, indent: indent2, inFlow = false, offset = -1, type: type2 = "PLAIN" } = context;
     const source2 = stringifyString2.stringifyString({ type: type2, value: value2 }, {
       implicitKey,
-      indent: indent > 0 ? " ".repeat(indent) : "",
+      indent: indent2 > 0 ? " ".repeat(indent2) : "",
       inFlow,
       options: { blockQuote: true, lineWidth: -1 }
     });
     const end2 = context.end ?? [
-      { type: "newline", offset: -1, indent, source: "\n" }
+      { type: "newline", offset: -1, indent: indent2, source: "\n" }
     ];
     switch (source2[0]) {
       case "|":
@@ -7554,25 +7577,25 @@ function requireCstScalar() {
         const head = source2.substring(0, he);
         const body = source2.substring(he + 1) + "\n";
         const props = [
-          { type: "block-scalar-header", offset, indent, source: head }
+          { type: "block-scalar-header", offset, indent: indent2, source: head }
         ];
         if (!addEndtoBlockProps(props, end2))
-          props.push({ type: "newline", offset: -1, indent, source: "\n" });
-        return { type: "block-scalar", offset, indent, props, source: body };
+          props.push({ type: "newline", offset: -1, indent: indent2, source: "\n" });
+        return { type: "block-scalar", offset, indent: indent2, props, source: body };
       }
       case '"':
-        return { type: "double-quoted-scalar", offset, indent, source: source2, end: end2 };
+        return { type: "double-quoted-scalar", offset, indent: indent2, source: source2, end: end2 };
       case "'":
-        return { type: "single-quoted-scalar", offset, indent, source: source2, end: end2 };
+        return { type: "single-quoted-scalar", offset, indent: indent2, source: source2, end: end2 };
       default:
-        return { type: "scalar", offset, indent, source: source2, end: end2 };
+        return { type: "scalar", offset, indent: indent2, source: source2, end: end2 };
     }
   }
   function setScalarValue(token, value2, context = {}) {
     let { afterKey = false, implicitKey = false, inFlow = false, type: type2 } = context;
-    let indent = "indent" in token ? token.indent : null;
-    if (afterKey && typeof indent === "number")
-      indent += 2;
+    let indent2 = "indent" in token ? token.indent : null;
+    if (afterKey && typeof indent2 === "number")
+      indent2 += 2;
     if (!type2)
       switch (token.type) {
         case "single-quoted-scalar":
@@ -7592,8 +7615,8 @@ function requireCstScalar() {
           type2 = "PLAIN";
       }
     const source2 = stringifyString2.stringifyString({ type: type2, value: value2 }, {
-      implicitKey: implicitKey || indent === null,
-      indent: indent !== null && indent > 0 ? " ".repeat(indent) : "",
+      implicitKey: implicitKey || indent2 === null,
+      indent: indent2 !== null && indent2 > 0 ? " ".repeat(indent2) : "",
       inFlow,
       options: { blockQuote: true, lineWidth: -1 }
     });
@@ -7624,16 +7647,16 @@ function requireCstScalar() {
       token.source = body;
     } else {
       const { offset } = token;
-      const indent = "indent" in token ? token.indent : -1;
+      const indent2 = "indent" in token ? token.indent : -1;
       const props = [
-        { type: "block-scalar-header", offset, indent, source: head }
+        { type: "block-scalar-header", offset, indent: indent2, source: head }
       ];
       if (!addEndtoBlockProps(props, "end" in token ? token.end : void 0))
-        props.push({ type: "newline", offset: -1, indent, source: "\n" });
+        props.push({ type: "newline", offset: -1, indent: indent2, source: "\n" });
       for (const key of Object.keys(token))
         if (key !== "type" && key !== "offset")
           delete token[key];
-      Object.assign(token, { type: "block-scalar", indent, props, source: body });
+      Object.assign(token, { type: "block-scalar", indent: indent2, props, source: body });
     }
   }
   function addEndtoBlockProps(props, end2) {
@@ -7678,12 +7701,12 @@ function requireCstScalar() {
         break;
       }
       default: {
-        const indent = "indent" in token ? token.indent : -1;
+        const indent2 = "indent" in token ? token.indent : -1;
         const end2 = "end" in token && Array.isArray(token.end) ? token.end.filter((st) => st.type === "space" || st.type === "comment" || st.type === "newline") : [];
         for (const key of Object.keys(token))
           if (key !== "type" && key !== "offset")
             delete token[key];
-        Object.assign(token, { type: type2, indent, source: source2, end: end2 });
+        Object.assign(token, { type: type2, indent: indent2, source: source2, end: end2 });
       }
     }
   }
@@ -7988,15 +8011,15 @@ function requireLexer() {
     continueScalar(offset) {
       let ch = this.buffer[offset];
       if (this.indentNext > 0) {
-        let indent = 0;
+        let indent2 = 0;
         while (ch === " ")
-          ch = this.buffer[++indent + offset];
+          ch = this.buffer[++indent2 + offset];
         if (ch === "\r") {
-          const next = this.buffer[indent + offset + 1];
+          const next = this.buffer[indent2 + offset + 1];
           if (next === "\n" || !next && !this.atEnd)
-            return offset + indent + 1;
+            return offset + indent2 + 1;
         }
-        return ch === "\n" || indent >= this.indentNext || !ch && !this.atEnd ? offset + indent : -1;
+        return ch === "\n" || indent2 >= this.indentNext || !ch && !this.atEnd ? offset + indent2 : -1;
       }
       if (ch === "-" || ch === ".") {
         const dt = this.buffer.substr(offset, 3);
@@ -8165,12 +8188,12 @@ function requireLexer() {
     }
     *parseFlowCollection() {
       let nl, sp;
-      let indent = -1;
+      let indent2 = -1;
       do {
         nl = yield* this.pushNewline();
         if (nl > 0) {
           sp = yield* this.pushSpaces(false);
-          this.indentValue = indent = sp;
+          this.indentValue = indent2 = sp;
         } else {
           sp = 0;
         }
@@ -8179,8 +8202,8 @@ function requireLexer() {
       const line = this.getLine();
       if (line === null)
         return this.setNext("flow");
-      if (indent !== -1 && indent < this.indentNext && line[0] !== "#" || indent === 0 && (line.startsWith("---") || line.startsWith("...")) && isEmpty2(line[3])) {
-        const atFlowEndMarker = indent === this.indentNext - 1 && this.flowLevel === 1 && (line[0] === "]" || line[0] === "}");
+      if (indent2 !== -1 && indent2 < this.indentNext && line[0] !== "#" || indent2 === 0 && (line.startsWith("---") || line.startsWith("...")) && isEmpty2(line[3])) {
+        const atFlowEndMarker = indent2 === this.indentNext - 1 && this.flowLevel === 1 && (line[0] === "]" || line[0] === "}");
         if (!atFlowEndMarker) {
           this.flowLevel = 0;
           yield cst2.FLOW_END;
@@ -8288,16 +8311,16 @@ function requireLexer() {
     }
     *parseBlockScalar() {
       let nl = this.pos - 1;
-      let indent = 0;
+      let indent2 = 0;
       let ch;
       loop: for (let i2 = this.pos; ch = this.buffer[i2]; ++i2) {
         switch (ch) {
           case " ":
-            indent += 1;
+            indent2 += 1;
             break;
           case "\n":
             nl = i2;
-            indent = 0;
+            indent2 = 0;
             break;
           case "\r": {
             const next = this.buffer[i2 + 1];
@@ -8313,9 +8336,9 @@ function requireLexer() {
       }
       if (!ch && !this.atEnd)
         return this.setNext("block-scalar");
-      if (indent >= this.indentNext) {
+      if (indent2 >= this.indentNext) {
         if (this.blockScalarIndent === -1)
-          this.indentNext = indent;
+          this.indentNext = indent2;
         else {
           this.indentNext = this.blockScalarIndent + (this.indentNext === 0 ? 1 : this.indentNext);
         }
@@ -8348,7 +8371,7 @@ function requireLexer() {
           const lastChar = i2;
           while (ch2 === " ")
             ch2 = this.buffer[--i2];
-          if (ch2 === "\n" && i2 >= this.pos && i2 + 1 + indent > lastChar)
+          if (ch2 === "\n" && i2 >= this.pos && i2 + 1 + indent2 > lastChar)
             nl = i2;
           else
             break;
@@ -9364,10 +9387,10 @@ function requireParser() {
       }
       return null;
     }
-    atIndentedComment(start2, indent) {
+    atIndentedComment(start2, indent2) {
       if (this.type !== "comment")
         return false;
-      if (this.indent <= indent)
+      if (this.indent <= indent2)
         return false;
       return start2.every((st) => st.type === "newline" || st.type === "space");
     }
@@ -9489,8 +9512,8 @@ function requirePublicApi() {
     if (typeof options2 === "string")
       options2 = options2.length;
     if (typeof options2 === "number") {
-      const indent = Math.round(options2);
-      options2 = indent < 1 ? void 0 : indent > 8 ? { indent: 8 } : { indent };
+      const indent2 = Math.round(options2);
+      options2 = indent2 < 1 ? void 0 : indent2 > 8 ? { indent: 8 } : { indent: indent2 };
     }
     if (value2 === void 0) {
       const { keepUndefined } = options2 ?? replacer ?? {};
@@ -21584,6 +21607,7 @@ function origins(...lists2) {
   return [...unique.entries()].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([, origin]) => origin);
 }
 function covers(coverage, origin) {
+  if (coverage.existing !== void 0 && !coverage.existing.includes(origin.file)) return true;
   return (coverage.files === null || coverage.files.includes(origin.file)) && (coverage.agent === void 0 || origin.agent === coverage.agent);
 }
 const nonEmpty$1 = (rules2) => Object.fromEntries(Object.entries(rules2).filter(([, entries2]) => entries2.length > 0));
@@ -21754,10 +21778,10 @@ function section(path2, value2, key) {
 }
 function json$6(value2, text2) {
   const indented2 = text2 === void 0 ? void 0 : /^([ \t]+)\S/m.exec(text2)?.[1];
-  const indent = indented2 === void 0 ? 2 : indented2.startsWith("	") ? "	" : indented2.length;
+  const indent2 = indented2 === void 0 ? 2 : indented2.startsWith("	") ? "	" : indented2.length;
   const eol = text2?.includes("\r\n") ? "\r\n" : "\n";
   const final = text2 === void 0 || /\r?\n$/.test(text2) ? eol : "";
-  return `${JSON.stringify(value2, null, indent).replaceAll("\n", eol)}${final}`;
+  return `${JSON.stringify(value2, null, indent2).replaceAll("\n", eol)}${final}`;
 }
 function ruleLists(path2, value2) {
   const permissions = section(path2, value2, "permissions"), rules2 = {};
@@ -21875,8 +21899,7 @@ class AgentGeneration {
     }
     const markdown = [...generated.agents, ...generated.skills];
     const writes = markdown.map((file) => ({ path: file.path, bytes: encode$2(this.render(file)) }));
-    const coverage = request.file === void 0 && request.agent === void 0 ? { files: null } : { files: sources.map((source2) => source2.path), ...request.agent ? { agent: request.agent } : {} };
-    const merged = project2 ? this.projectWrites(project2, generated, coverage) : { writes: [], revoked: [] };
+    const merged = project2 ? this.projectWrites(project2, generated, await this.coverage(request, sources)) : { writes: [], revoked: [] };
     writes.push(...merged.writes);
     const generation = new GenerationService(this.workspace);
     const plan = await generation.plan(writes, request.mode === "plan" ? request.manifestPath : void 0);
@@ -21924,6 +21947,15 @@ class AgentGeneration {
     const written = { servers: servers2, ...generated.settings?.agent ? { agent: generated.settings.agent } : {}, ...settings2 ? { permissions: settings2.owned } : {} };
     const files = { ...project2, ...settings2 ? { settings: settings2.text } : {} };
     return { writes: [...writes, { path: manifestPath$1, bytes: encode$2(nextManifest(project2.manifest, project2.manifestText, files, written)) }], revoked: settings2?.revoked ?? [] };
+  }
+  /**
+   * A run over some definitions re-derives only their permission origins, so the rules of the others stay. Every
+   * run re-derives the origins of definition files that no longer exist.
+   */
+  async coverage(request, sources) {
+    if (request.file === void 0 && request.agent === void 0) return { files: null };
+    const files = sources.map((source2) => source2.path);
+    return { files, ...request.agent ? { agent: request.agent } : {}, existing: [.../* @__PURE__ */ new Set([...await this.definitions.paths(), ...files])] };
   }
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */
   async sources(request) {
@@ -21992,10 +22024,10 @@ function locateNode(document2, path2) {
 function layout(text2) {
   const lines2 = text2.split(/\r?\n/).filter((line) => line.trim() !== "" && !line.trimStart().startsWith("#"));
   const indented2 = lines2.find((line) => /^ +\S/.test(line));
-  const indent = indented2 ? indented2.length - indented2.trimStart().length : 2;
+  const indent2 = indented2 ? indented2.length - indented2.trimStart().length : 2;
   const index2 = lines2.findIndex((line, position2) => /:\s*$/.test(line) && /^\s*- /.test(lines2[position2 + 1] ?? ""));
   const width = (line) => line.length - line.trimStart().length;
-  return { indent: Math.min(Math.max(indent, 2), 8), indentSeq: index2 < 0 ? true : width(lines2[index2 + 1]) > width(lines2[index2]) };
+  return { indent: Math.min(Math.max(indent2, 2), 8), indentSeq: index2 < 0 ? true : width(lines2[index2 + 1]) > width(lines2[index2]) };
 }
 const same$1 = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 function expanded(document2) {
@@ -28862,7 +28894,7 @@ ${body}`;
   }
 };
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
-const content$3 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too, with the definitions that grant them, and removed once none of them grants the rule (a `revokes-permission` warning; a `--file` or `--agent` run never removes a rule another definition grants); rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
+const content$3 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too, with the definitions that grant them, and removed once none of them grants the rule (a `revokes-permission` warning; a `--file` or `--agent` run never removes a rule another definition grants, but every run removes the rules of a renamed or deleted definition file); rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
 const agentsSkill = { id: "forge-agents", content: content$3 };
 const germanAgentMessages = {
   toolFilterNone: "Der Werkzeugfilter {filter} wird durch keine Claude-Werkzeuge angenähert.",
@@ -29685,6 +29717,10 @@ const syncMessages = {
   remoteChanged: "The remote item changed during the sync; run the sync again.",
   linksChanged: "The remote item's links changed on the other end during the update, so a link may have been removed in place of another. The next sync reports the parent and dependencies as conflicts where the two sides differ; compare them and run backlog sync resolve."
 };
+const syncWarnings = {
+  lockLeft: "The backlog sync lock {lock} no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs."
+};
+const englishSyncWarning = (key, params) => fill$1(syncWarnings[key], params);
 const OPTIONAL_PROPERTIES = [
   { field: "state", option: "stateProperty", suggested: "status", settingsKey: "stateKey" },
   { field: "startedDate", option: "startedDateProperty", suggested: "started", settingsKey: "startedDateKey" },
@@ -32441,7 +32477,7 @@ const totals = (views2, left) => ({
   left: left.length,
   failed: views2.reduce((sum, view) => sum + view.failed.length, 0)
 });
-async function runSync(context, services2, request) {
+async function runSync(context, services2, request, warning2 = englishSyncWarning) {
   const views2 = await boundViews(context, request);
   const live = request.mode === "sync" && !context.workspace.dryRun;
   const open2 = (view) => openBacklog(context, services2.bases, services2.ports, { base: view.base, view: view.view, ...request.today ? { today: request.today } : {} });
@@ -32472,7 +32508,7 @@ async function runSync(context, services2, request) {
     if (interruption?.signal) throw interrupted(interruption.signal);
   };
   try {
-    if (live) for (const id2 of [...connections].sort()) releases.push(await services2.lock(lockPath(id2), "backlog sync"));
+    if (live) for (const id2 of [...connections].sort()) releases.push({ lock: lockPath(id2), release: await services2.lock(lockPath(id2), "backlog sync") });
     const stores = /* @__PURE__ */ new Map();
     for (const id2 of connections) stores.set(id2, await SyncStore.open(context.workspace, id2));
     const all2 = request.base === void 0 && request.view === void 0 ? views2 : [...views2, ...await boundViews(context, {})];
@@ -32491,7 +32527,7 @@ async function runSync(context, services2, request) {
   } finally {
     interruption?.dispose();
     services2.activity.syncing = false;
-    for (const release2 of releases.reverse()) if (!await release2()) context.events.warn("A backlog sync lock no longer carried this run's token and was left in place; inspect .forge/sync for concurrent syncs.");
+    for (const { lock, release: release2 } of releases.reverse()) if (!await release2()) context.events.warn(warning2("lockLeft", { lock }));
   }
   return {
     dryRun: request.mode === "status" || context.workspace.dryRun,
@@ -32517,6 +32553,10 @@ async function heldPaths(all2, connections, open2) {
 function leftEntries(connection, store, held) {
   return Object.entries(store.state.items).filter(([path2]) => !held.has(path2)).map(([path2, entry2]) => ({ connection, path: path2, remoteId: entry2.id, url: entry2.url }));
 }
+const germanSyncWarnings = {
+  lockLeft: "Die Sperre {lock} von backlog sync trug nicht mehr das Token dieses Laufs und wurde nicht entfernt; prüfen Sie .forge/sync auf gleichzeitige Synchronisierungen."
+};
+const syncWarningText = (language2) => (key, params) => fill$1((language2 === "de" ? germanSyncWarnings : syncWarnings)[key], params);
 const germanCheckMessages = {
   parentCycle: "{title} schließt eine Schleife über übergeordnete Einträge; die Schleife wird hier aufgetrennt und die Notiz erscheint als Wurzel.",
   unresolvedParent: "Der übergeordnete Eintrag von {title} verweist auf keine geladene Notiz.",
@@ -32589,7 +32629,7 @@ function syncAction(rest, flags, context, services2, selection2) {
   const [sub, ...args] = rest;
   const direction = value$2(flags, "direction") ?? "both";
   ensure(["push", "pull", "both"].includes(direction), "INVALID_ARGUMENT", "--direction must be push, pull or both.");
-  const run2 = async (request) => localizedSync(await runSync(context, services2, request), context.language);
+  const run2 = async (request) => localizedSync(await runSync(context, services2, request, syncWarningText(context.language)), context.language);
   if (sub === void 0) return run2({ ...selection2, direction, mode: "sync" });
   if (sub === "status") {
     arity(args, 0);
@@ -40700,15 +40740,28 @@ function textExpression(value2, scope2 = "props", stateScope = "_uiState") {
   const result = expression(value2, scope2, stateScope);
   return parts.length === 1 && "prop" in parts[0] ? `(${result} ?? '')` : result;
 }
+function propsWithDefaults(definition2, input = "input") {
+  return `{ ${[...ordered(defaults$1(definition2)).map(([key, value2]) => `${json$2(key)}: ${json$2(value2)}`), `...${input}`].join(", ")} }`;
+}
 function defaultAssignments(definition2) {
   return ordered(definition2.props).filter(([, prop2]) => prop2.default !== void 0).map(([key, prop2]) => `  if (props[${json$2(key)}] === undefined) props[${json$2(key)}] = ${json$2(prop2.default)};`).join("\n");
 }
+const typedAs = (value2, type2, typescript) => typescript ? `${value2} as ${type2}` : `/** @type {${type2}} */ (${value2})`;
+function typedParameters(parameters, typescript) {
+  if (typescript) return { list: parameters.map(([name2, type2]) => `${name2}: ${type2}`).join(", "), jsdoc: "" };
+  return { list: parameters.map(([name2]) => name2).join(", "), jsdoc: `/** ${parameters.map(([name2, type2]) => `@param {${type2}} ${name2}`).join(" ")} */
+` };
+}
+const unsafeCharacters = (value2, extra) => `globalThis.Array.from(${value2}).some(character => character < ' '${extra.map((item) => ` || character === ${json$2(item)}`).join("")})`;
 function formActionHelper(prefix, typescript, classMembers) {
   const member2 = classMembers ? "this." : "";
-  return `async function ${prefix}FormAction(target${typescript ? ": EventTarget | null" : ""}, action${typescript ? ": string" : ""}, option${typescript ? ": unknown" : ""}) {
+  const parameters = typedParameters([["target", "EventTarget | null"], ["action", "string"], ["option", "unknown"]], typescript);
+  const data = typescript ? "const data: Record<string, unknown> = Object.create(null);" : `/** @type {Record<string, unknown>} */
+    const data = Object.create(null);`;
+  return `${parameters.jsdoc}async function ${prefix}FormAction(${parameters.list}) {
   try {
-    const element = target${typescript ? " as HTMLElement | null" : ""};
-    const form = element?.closest('form') ?? (${typescript ? "element as HTMLButtonElement | null" : "element"})?.form;
+    const element = ${typedAs("target", "HTMLElement | null", typescript)};
+    const form = element?.closest('form') ?? (${typedAs("element", "HTMLButtonElement | null", typescript)})?.form;
     if (!form || form.tagName !== 'FORM') throw new globalThis.TypeError('Form interaction requires an associated form.');
     const view = form.ownerDocument.defaultView;
     if (!view) throw new globalThis.TypeError('Form interaction requires a browser window.');
@@ -40716,7 +40769,7 @@ function formActionHelper(prefix, typescript, classMembers) {
     if (!form.reportValidity()) throw new globalThis.TypeError('Form validation failed.');
     const fields = new view.FormData(form);
     if (action === 'upload-form') {
-      if (option !== option.trim() || /[\\u0000-\\u001f\\\\]/.test(option) || option.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(option) && !/^https?:\\/\\//i.test(option))) throw new globalThis.TypeError('Unsafe interaction upload URL.');
+      if (option !== option.trim() || ${unsafeCharacters("option", ["\\"])} || option.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(option) && !/^https?:\\/\\//i.test(option))) throw new globalThis.TypeError('Unsafe interaction upload URL.');
       const url = new view.URL(option, form.ownerDocument.baseURI);
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction upload URL.');
       const response = await view.fetch(url.href, { method: 'POST', body: fields, credentials: 'same-origin' });
@@ -40724,7 +40777,7 @@ function formActionHelper(prefix, typescript, classMembers) {
       ${member2}${prefix}Emit(target, 'forge:upload', { url: url.href, status: response.status, ok: true });
       return true;
     }
-    const data${typescript ? ": Record<string, unknown>" : ""} = Object.create(null);
+    ${data}
     for (const [name, field] of fields.entries()) {
       const value = typeof field === 'string' ? field : { name: field.name, size: field.size, type: field.type, lastModified: field.lastModified };
       if (!Object.hasOwn(data, name)) data[name] = value;
@@ -40734,7 +40787,7 @@ function formActionHelper(prefix, typescript, classMembers) {
       view.localStorage.setItem(option, JSON.stringify(data));
       ${member2}${prefix}Emit(target, 'forge:save', { key: option, data });
     } else {
-      if (/[\\u0000-\\u001f/\\\\]/.test(option)) throw new globalThis.TypeError('Download filename must not contain path separators or control characters.');
+      if (${unsafeCharacters("option", ["/", "\\"])}) throw new globalThis.TypeError('Download filename must not contain path separators or control characters.');
       const blob = new view.Blob([JSON.stringify(data, null, 2) + '\\n'], { type: 'application/json' });
       const url = view.URL.createObjectURL(blob);
       const link = form.ownerDocument.createElement('a');
@@ -40788,7 +40841,8 @@ function renderInteractionHandlers(definition2, interactions, options2) {
   const functions = selected2.map((interaction) => {
     const asynchronous = interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type));
     const currentTarget = asynchronous ? `${prefix}Target` : `${event}.currentTarget`;
-    const lines2 = [`${asynchronous ? "async " : ""}function ${handlerName(interaction.id, prefix)}(${event}${typescript ? `: ${eventType}` : ""}) {`];
+    const parameters = typedParameters([[event, eventType]], typescript);
+    const lines2 = [`${parameters.jsdoc}${asynchronous ? "async " : ""}function ${handlerName(interaction.id, prefix)}(${parameters.list}) {`];
     if (interaction.keys) lines2.push(`  if (!${json$2(interaction.keys)}.includes(${event}.key ?? '')) return;`);
     if (interaction.preventDefault) lines2.push(`  ${event}.preventDefault();`);
     if (interaction.stopPropagation) lines2.push(`  ${event}.stopPropagation();`);
@@ -40799,7 +40853,7 @@ function renderInteractionHandlers(definition2, interactions, options2) {
         let assigned = action2.type === "toggle-state" ? `!${next}[${json$2(action2.state)}]` : "value" in action2 ? value2(action2.value) : "";
         if (action2.type === "set-state" && "fromEvent" in action2) {
           const field2 = `${prefix}Value${index2}`;
-          lines2.push(`  const ${field2} = (${currentTarget}${typescript ? ` as { ${action2.fromEvent}?: unknown } | null` : ""})?.${action2.fromEvent};`);
+          lines2.push(`  const ${field2} = (${typedAs(currentTarget, `{ ${action2.fromEvent}?: unknown } | null`, typescript)})?.${action2.fromEvent};`);
           lines2.push(`  if (typeof ${field2} !== ${json$2(action2.fromEvent === "checked" ? "boolean" : "string")}) throw new globalThis.TypeError(${json$2(`Interaction ${interaction.id} requires event.currentTarget.${action2.fromEvent}.`)});`);
           assigned = field2;
         }
@@ -40820,18 +40874,19 @@ function renderInteractionHandlers(definition2, interactions, options2) {
   const needsForms = selected2.some((interaction) => interaction.actions.some((action2) => ["save-form", "upload-form", "download-form"].includes(action2.type)));
   const needsEmit = needsForms || selected2.some((interaction) => interaction.actions.some((action2) => action2.type === "emit"));
   const needsNavigate = selected2.some((interaction) => interaction.actions.some((action2) => action2.type === "navigate"));
-  const target = `target${typescript ? ": EventTarget | null" : ""}`;
-  const element2 = `target${typescript ? " as Element | null" : ""}`;
+  const element2 = typedAs("target", "Element | null", typescript);
+  const emit = typedParameters([["target", "EventTarget | null"], ["name", "string"], ["detail", "Record<string, unknown>"]], typescript);
+  const navigate = typedParameters([["target", "EventTarget | null"], ["value", "unknown"]], typescript);
   const helpers = [];
   if (needsForms) helpers.push(formActionHelper(prefix, typescript, !!options2.classMembers));
-  if (needsEmit) helpers.push(`function ${prefix}Emit(${target}, name${typescript ? ": string" : ""}, detail${typescript ? ": Record<string, unknown>" : ""}) {
+  if (needsEmit) helpers.push(`${emit.jsdoc}function ${prefix}Emit(${emit.list}) {
   const element = ${element2};
   const EventConstructor = element?.ownerDocument.defaultView?.CustomEvent ?? globalThis.CustomEvent;
   element?.dispatchEvent(new EventConstructor(name, { detail, bubbles: true, composed: true }));
 }`);
-  if (needsNavigate) helpers.push(`function ${prefix}Navigate(${target}, value${typescript ? ": unknown" : ""}) {
+  if (needsNavigate) helpers.push(`${navigate.jsdoc}function ${prefix}Navigate(${navigate.list}) {
   const element = ${element2};
-  if (typeof value !== 'string' || !value || value !== value.trim() || /[\\u0000-\\u001f\\\\]/.test(value) || value.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\\/\\//i.test(value))) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
+  if (typeof value !== 'string' || !value || value !== value.trim() || ${unsafeCharacters("value", ["\\"])} || value.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:\\/\\//i.test(value))) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
   const url = new globalThis.URL(value, element?.ownerDocument.baseURI);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new globalThis.TypeError('Unsafe interaction navigation URL.');
   element?.ownerDocument.defaultView?.location.assign(url.href);
@@ -40839,43 +40894,108 @@ function renderInteractionHandlers(definition2, interactions, options2) {
   const source2 = [...helpers, ...functions].join("\n");
   return options2.classMembers ? source2.replace(/^(async )?function (\w+)\((.*)\) \{$/gm, "$2 = $1($3) => {").replace(/^\}$/gm, "};") : source2;
 }
+const requiredProp = (prop2) => prop2.required === true && prop2.default === void 0;
+const hasRequiredProps = (definition2) => Object.values(definition2.props).some(requiredProp);
+const propsType = (definition2) => `{ ${ordered(definition2.props).map(([key, prop2]) => `${json$2(key)}${requiredProp(prop2) ? "" : "?"}: ${prop2.type}`).join("; ")} }`;
+const childrenType = "readonly (Node | string | null | undefined)[]";
+function domTypedefs(definition2) {
+  return `/** @typedef {${childrenType}} DomChildren */
+/** @typedef {${propsType(definition2)}} Props */
+`;
+}
+const domSlot = `/** @param {DomChildren} children */
+function slot(children) {
+  const fragment = document.createDocumentFragment();
+  for (const child of children) if (child != null) fragment.append(child);
+  return fragment;
+}
+`;
+function domFactory(definition2, summary, uses) {
+  const required2 = hasRequiredProps(definition2);
+  const input = uses.props ? "input" : "_input", children = uses.children ? "children" : "_children";
+  return `/**
+ * ${summary}
+ * @param {Props} ${required2 ? input : `[${input}]`} @param {DomChildren} [${children}] @returns {HTMLElement | DocumentFragment}
+ */
+export default function ${componentArtifact(definition2, "html").exportName}(${required2 ? input : `${input} = {}`}, ${children} = []) {`;
+}
+function domProps(definition2) {
+  return `  /** @type {Props} */
+  const props = ${propsWithDefaults(definition2)};
+`;
+}
+function domDeclaration(definition2) {
+  return `export interface ${className(definition2)}Props {
+${ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}${requiredProp(prop2) ? "" : "?"}: ${prop2.type};`).join("\n")}
+}
+
+export default function ${componentArtifact(definition2, "html").exportName}(input${hasRequiredProps(definition2) ? "" : "?"}: ${className(definition2)}Props, children?: ${childrenType}): HTMLElement | DocumentFragment;
+`;
+}
 function reactiveDomModule(definition2, interactions) {
   const references = componentDependencies(definition2.root);
   const aliases = new Map(references.map((id2, index2) => [id2, `UiChild_${index2}`]));
   const imports = references.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${id2}.js`)};`).join("\n");
   const prefix = interactionPrefix(definition2);
+  const used = { slot: false, component: false, element: false };
   function nodeCode(node2) {
-    if ("slot" in node2) return "slot(children)";
+    if ("slot" in node2) {
+      used.slot = true;
+      return "slot(children)";
+    }
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
-    if ("component" in node2) return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
-    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers }) => `${json$2(event)}: [${handlers.join(", ")}]`).join(", ");
+    if ("component" in node2) {
+      used.component = true;
+      return `component(${aliases.get(node2.component)}, () => ({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${children})`;
+    }
+    used.element = true;
+    const listeners = groupElementInteractions(node2, interactions, prefix).map(({ event, handlers: handlers2 }) => `${json$2(event)}: [${handlers2.join(", ")}]`).join(", ");
     return `element(${json$2(node2.tag)}, () => ({${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}), ${node2.text === void 0 ? "null" : `() => ${expression(node2.text)}`}, ${children}, {${listeners}})`;
   }
-  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
-const updateProps = Symbol.for('forge.ui.updateProps');
+  const root = nodeCode(definition2.root);
+  const handlers = renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` });
+  const assignments = defaultAssignments(definition2);
+  const usesState = root.includes("_uiState") || handlers.includes("_uiState");
+  return `${imports}${imports ? "\n\n" : ""}${domTypedefs(definition2)}${used.element ? `const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
+` : ""}const updateProps = Symbol.for('forge.ui.updateProps');
 
-/** Create a live component; mounting and removal remain owned by the caller. */
-export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$2(defaults$1(definition2))}, ...input };
-${defaultAssignments(definition2)}
+${domFactory(definition2, "Create a live component; mounting and removal remain owned by the caller.", { props: true, children: used.slot })}
+${domProps(definition2)}${assignments}${assignments ? "\n" : ""}${usesState ? `  /** @type {${stateType(definition2)}} */
   const _uiState = ${json$2(stateDefaults(definition2))};
+` : ""}  /** @type {Array<() => void>} */
   const updates = [];
   const refresh = () => { for (const update of updates) update(); };
-${renderInteractionHandlers(definition2, interactions, { typescript: false, prefix, commit: (next) => `Object.assign(_uiState, ${next}); refresh();` })}
-  function slot(content) {
-    const fragment = document.createDocumentFragment();
-    for (const child of content) if (child != null) fragment.append(child);
-    return fragment;
-  }
+${handlers}${handlers ? "\n" : ""}${used.slot ? indent(domSlot) : ""}${used.component ? liveComponent : ""}${used.element ? liveElement : ""}  const result = ${root};
+  Object.defineProperty(result, updateProps, { configurable: true, value: (/** @type {Props} */ next) => {
+    for (const key of Object.keys(props)) Reflect.deleteProperty(props, key);
+    Object.assign(props, ${json$2(defaults$1(definition2))}, next);
+${assignments}${assignments ? "\n" : ""}    refresh();
+  } });
+  return result;
+}
+`;
+}
+const indent = (source2) => source2.split("\n").map((line) => line ? `  ${line}` : line).join("\n");
+const liveComponent = `  /**
+   * @template P
+   * @param {(input: P, children: DomChildren) => HTMLElement | DocumentFragment} factory @param {() => P} values @param {DomChildren} content
+   */
   function component(factory, values, content) {
     const result = factory(values(), content);
     // Capture before a parent sharing this root attaches its own callback.
-    const update = result[updateProps];
+    /** @type {((values: P) => void) | undefined} */
+    const update = Reflect.get(result, updateProps);
     if (update) updates.push(() => update(values()));
     return result;
   }
+`;
+const liveElement = `  /**
+   * @param {string} tag @param {() => Record<string, unknown>} attributes @param {(() => unknown) | null} text
+   * @param {readonly Node[]} content @param {Record<string, Array<(event: Event) => unknown>>} listeners
+   */
   function element(tag, attributes, text, content, listeners) {
     const result = document.createElement(tag);
+    /** @type {Record<string, string | null>} */
     const previous = Object.create(null);
     const textNode = text ? document.createTextNode('') : null;
     if (textNode) result.append(textNode);
@@ -40891,7 +41011,7 @@ ${renderInteractionHandlers(definition2, interactions, { typescript: false, pref
         previous[key] = normalized;
       }
       if (textNode) {
-        const value = String(text() ?? '');
+        const value = String(text?.() ?? '');
         if (textNode.data !== value) textNode.data = value;
       }
     };
@@ -40900,17 +41020,7 @@ ${renderInteractionHandlers(definition2, interactions, { typescript: false, pref
     for (const [event, handlers] of Object.entries(listeners)) result.addEventListener(event, value => { for (const handler of handlers) handler(value); });
     return result;
   }
-  const result = ${nodeCode(definition2.root)};
-  Object.defineProperty(result, updateProps, { configurable: true, value: input => {
-    for (const key of Object.keys(props)) delete props[key];
-    Object.assign(props, ${json$2(defaults$1(definition2))}, input);
-${defaultAssignments(definition2)}
-    refresh();
-  } });
-  return result;
-}
 `;
-}
 function hasReactiveDom(definitions2) {
   function interactive(node2) {
     return "tag" in node2 && !!node2.interactions?.length || "children" in node2 && !!node2.children?.some(interactive);
@@ -40940,18 +41050,21 @@ function domModule(definition2, definitions2, interactions = []) {
   const refs = componentDependencies(definition2.root);
   const aliases = new Map(refs.map((id2, index2) => [id2, `UiChild_${index2}`]));
   const imports = refs.map((id2) => `import ${aliases.get(id2)} from ${json$2(`./${definitions2.get(id2).id}.js`)};`).join("\n");
+  let slots = false;
   function nodeCode(node2) {
-    if ("slot" in node2) return "slot(children)";
+    if ("slot" in node2) {
+      slots = true;
+      return "slot(children)";
+    }
     const children = `[${(node2.children ?? []).map(nodeCode).join(", ")}]`;
     if ("component" in node2) return `${aliases.get(node2.component)}({${ordered(node2.props ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}, ${children})`;
     return `element(${json$2(node2.tag)}, {${ordered(node2.attrs ?? {}).map(([key, value2]) => `${json$2(key)}: ${expression(value2)}`).join(", ")}}, ${node2.text === void 0 ? "null" : expression(node2.text)}, ${children})`;
   }
-  return `${imports}${imports ? "\n\n" : ""}const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
-function slot(children) {
-  const fragment = document.createDocumentFragment();
-  for (const child of children) if (child != null) fragment.append(child);
-  return fragment;
-}
+  const root = nodeCode(definition2.root), assignments = defaultAssignments(definition2);
+  const usesProps = root.includes("props[") || assignments !== "";
+  const elements = root.includes("element(");
+  return `${imports}${imports ? "\n\n" : ""}${domTypedefs(definition2)}${elements ? `const booleanAttributes = new Set(${json$2([...uiBooleanAttributes].sort())});
+` : ""}${slots ? domSlot : ""}${elements ? `/** @param {string} tag @param {Record<string, unknown>} attributes @param {unknown} text @param {readonly Node[]} children */
 function element(tag, attributes, text, children) {
   const result = document.createElement(tag);
   for (const [key, value] of Object.entries(attributes)) {
@@ -40962,22 +41075,10 @@ function element(tag, attributes, text, children) {
   result.append(...children);
   return result;
 }
-
-/** Create DOM using text nodes and attributes; caller owns mounting and event listeners. */
-export default function ${componentArtifact(definition2, "html").exportName}(input = {}, children = []) {
-  const props = { ...${json$2(defaults$1(definition2))}, ...input };
-${defaultAssignments(definition2)}
-  return ${nodeCode(definition2.root)};
+` : ""}
+${domFactory(definition2, "Create DOM using text nodes and attributes; caller owns mounting and event listeners.", { props: usesProps, children: slots })}
+${usesProps ? `${domProps(definition2)}${assignments}${assignments ? "\n" : ""}` : ""}  return ${root};
 }
-`;
-}
-function domDeclaration(definition2) {
-  const required2 = Object.values(definition2.props).some((prop2) => prop2.required && prop2.default === void 0);
-  return `export interface ${className(definition2)}Props {
-${ordered(definition2.props).map(([key, prop2]) => `  ${json$2(key)}${prop2.required && prop2.default === void 0 ? "" : "?"}: ${prop2.type};`).join("\n")}
-}
-
-export default function ${componentArtifact(definition2, "html").exportName}(input${required2 ? "" : "?"}: ${className(definition2)}Props, children?: readonly (Node | string | null | undefined)[]): HTMLElement | DocumentFragment;
 `;
 }
 const reactStyleHelper = `function css(value: unknown): _UiCSSProperties {
@@ -41093,7 +41194,7 @@ ${usesControls ? `const ${prefix}ControlValues = new globalThis.WeakMap<HTMLElem
 }
 ` : ""}
 export default function ${className(definition2)}(${usesProps ? "input" : "_input"}: ${className(definition2)}Props) {
-${usesProps ? `  const props = { ...${json$2(defaults$1(definition2))}, ...input };
+${usesProps ? `  const props = ${propsWithDefaults(definition2)};
 ${defaultAssignments(definition2)}` : ""}${mutatesState ? `
   const [${state2}, ${prefix}SetState] = _uiUseState<${stateType(definition2)}>(() => (${json$2(stateDefaults(definition2))}));
   const ${prefix}StateRef = _uiUseRef(${state2});
@@ -41252,14 +41353,14 @@ function modulePath(directory, target) {
   const relative = minpath.posix.relative(directory, target).replace(/\.tsx?$/, "");
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
-function literal(value2, indent = 0) {
-  if (Array.isArray(value2)) return `[${value2.map((item) => literal(item, indent)).join(", ")}]`;
+function literal(value2, indent2 = 0) {
+  if (Array.isArray(value2)) return `[${value2.map((item) => literal(item, indent2)).join(", ")}]`;
   if (value2 !== null && typeof value2 === "object") {
     const entries2 = Object.entries(value2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     if (!entries2.length) return "{}";
     return `{
-${entries2.map(([key, item]) => `${" ".repeat(indent + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item, indent + 2)}`).join(",\n")}
-${" ".repeat(indent)}}`;
+${entries2.map(([key, item]) => `${" ".repeat(indent2 + 2)}${key === "__proto__" ? `[${JSON.stringify(key)}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}: ${literal(item, indent2 + 2)}`).join(",\n")}
+${" ".repeat(indent2)}}`;
   }
   return JSON.stringify(value2) ?? "undefined";
 }
@@ -44217,11 +44318,17 @@ const RELATION_INDEX = /^\/relations\/(\d+)$/;
 const tally = (keys) => keys.reduce((counts2, key) => counts2.set(key, (counts2.get(key) ?? 0) + 1), /* @__PURE__ */ new Map());
 function relationsLanded(read2, operations2, result) {
   const removed = new Set(operations2.flatMap((operation2) => operation2.op === "remove" && RELATION_INDEX.test(operation2.path) ? [Number(RELATION_INDEX.exec(operation2.path)[1])] : []));
+  if (removed.size === 0) return true;
+  const reach = Math.max(...removed) + removed.size;
   const added = operations2.filter((operation2) => operation2.op === "add" && operation2.path === "/relations/-").map((operation2) => relationKey(operation2.value));
-  const expected = tally([...read2.filter((_relation, index2) => !removed.has(index2)).map(relationKey), ...added]);
+  const expected = tally([...read2.filter((_relation, index2) => index2 <= reach && !removed.has(index2)).map(relationKey), ...added]);
+  const optional2 = tally(read2.filter((_relation, index2) => index2 > reach).map(relationKey));
   const actual = tally(result.map(relationKey));
   if ([...expected].some(([key, count2]) => (actual.get(key) ?? 0) < count2)) return false;
-  return [...removed].every((index2) => (actual.get(relationKey(read2[index2])) ?? 0) <= (expected.get(relationKey(read2[index2])) ?? 0));
+  return [...removed].every((index2) => {
+    const key = relationKey(read2[index2]);
+    return (actual.get(key) ?? 0) <= (expected.get(key) ?? 0) + (optional2.get(key) ?? 0);
+  });
 }
 const byId = (a, b) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
 const text$7 = (value2) => typeof value2 === "string" && value2.trim() !== "" ? value2 : null;
@@ -44769,6 +44876,10 @@ class ParseResults {
   forget(path2) {
     if (this.records.delete(path2)) this.changed = true;
   }
+  /** The vault's paths or aliases changed, so the stored link resolutions no longer match. */
+  outdated() {
+    this.changed = true;
+  }
   /**
    * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
    * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
@@ -45058,6 +45169,7 @@ class VaultMetadata {
     for (const path2 of changed) if (!this.caches.has(path2)) this.forget(path2);
     let resolved;
     if (pathsChanged || aliasesChanged) {
+      this.results.outdated();
       this.reindex();
       const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
       for (const source2 of this.sources()) this.resolve(source2);
@@ -66097,9 +66209,12 @@ class Localizer {
     if (!isRecord$1(value2)) return value2;
     return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, key === "description" && typeof item === "string" ? this.description(item) : this.schema(item)]));
   }
-  /** A host warning or plugin state reason in the response language; plugin warnings keep their own text. */
+  /**
+   * A host warning or plugin state reason in the response language. Plugin warnings keep their own text, and any
+   * record that is not a message the host created reads as text, so it can neither pass for one nor break the response.
+   */
   warning(warning2) {
-    return typeof warning2 === "string" ? warning2 : renderKernelMessage(warning2, this.language === "de" ? germanKernelMessages : void 0);
+    return renderWarning(warning2, this.language === "de" ? germanKernelMessages : void 0);
   }
   /** A plugin's manifest `name` and `description` in the response language. */
   manifest(manifest) {
@@ -66823,8 +66938,8 @@ function subtreeEnd(items2, item) {
   }
   return end2;
 }
-function indented(lines2, first, indent, newline) {
-  return lines2.map((line, index2) => index2 === 0 ? first + line : line.trim() === "" ? indent.trimEnd() + line : indent + line).join(newline);
+function indented(lines2, first, indent2, newline) {
+  return lines2.map((line, index2) => index2 === 0 ? first + line : line.trim() === "" ? indent2.trimEnd() + line : indent2 + line).join(newline);
 }
 function editListItem(text2, metadata2, item, id2, mode, content2, newline) {
   const start2 = item.position.start.offset, lineAt = lineStart(text2, start2), prefix = text2.slice(lineAt, start2);

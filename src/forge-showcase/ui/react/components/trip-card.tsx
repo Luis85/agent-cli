@@ -12,7 +12,7 @@ function attribute(value: unknown): string | undefined {
 }
 
 export default function TripCard(input: TripCardProps) {
-  const props = { ...{"destination":"Lake Tahoe","nights":2,"title":"Lakeside weekend"}, ...input };
+  const props = { "destination": "Lake Tahoe", "nights": 2, "title": "Lakeside weekend", ...input };
   if (props["destination"] === undefined) props["destination"] = "Lake Tahoe";
   if (props["nights"] === undefined) props["nights"] = 2;
   if (props["title"] === undefined) props["title"] = "Lakeside weekend";

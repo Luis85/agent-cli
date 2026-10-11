@@ -49,6 +49,19 @@ export interface KernelMessage {
     code: KernelMessageCode;
     params: Readonly<Record<string, string | number | KernelMessage>>;
 }
-export declare const kernelMessage: (code: KernelMessageCode, params?: KernelMessage["params"]) => KernelMessage;
+/** A host message; it is frozen, so nothing can change what it renders after the host created it. */
+export declare function kernelMessage(code: KernelMessageCode, params?: KernelMessage['params']): KernelMessage;
+/** Whether `value` is a message the host created with `kernelMessage`. */
+export declare const isKernelMessage: (value: unknown) => value is KernelMessage;
 /** Renders a message with `templates`, English by default. */
 export declare function renderKernelMessage(message: KernelMessage, templates?: Readonly<Record<KernelMessageCode, string>>): string;
+/** A warning record in the response: a host message rendered with `templates`, any other value as `warningText`. */
+export declare function renderWarning(warning: unknown, templates?: Readonly<Record<KernelMessageCode, string>>): string;
+/**
+ * Any value as warning text, never throwing: a string as itself, an `Error` as its message, a function as
+ * `[function]`, and an object or array as its JSON, in which a circular reference reads `"[circular]"`, a BigInt
+ * `"<digits>n"`, a function `"[function]"` and a symbol its description. A value that cannot be read (a throwing
+ * `toJSON` or `toString`, a hostile proxy) reads `Operation failed with an unreadable error.`; other values read as
+ * `String(value)`.
+ */
+export declare function warningText(value: unknown): string;
