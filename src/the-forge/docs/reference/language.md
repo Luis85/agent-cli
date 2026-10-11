@@ -27,7 +27,7 @@ Localized, in the response language:
 | What | Where it appears |
 | --- | --- |
 | Command, action and generator descriptions | `help`, `schema` (`description`, `annotations.actions`, the `inputSchema` branch descriptions), `make` |
-| Option, argument and global option descriptions | `help`, `schema` (`options`, `args`, `annotations.actions.*.options`, `globalOptions` and the `inputSchema` property descriptions) |
+| Option, argument and global option descriptions | `help`, `schema` (`options`, `args`, `annotations.actions.*.options`, `globalOptions` and the `inputSchema` property descriptions), including the descriptions inside the JSON document an option or argument holds (the `edit --edits` list and the `apply` plan, in `schema` and in `inputSchema` `contentSchema`) |
 | Event descriptions and the delivery explanation | `events`, `schema` (`eventOutput`) |
 | Format and setup guidance, empty-library guidance | `formats`, `setup` (`nextSteps[].purpose`), library commands (`nextStep`) |
 | Error summaries and hints | `error.message`, `error.hint`, `schema` (`data.errors[].summary`) |
@@ -42,7 +42,7 @@ The documentation (`docs/`, also packaged as `bin/data/docs`) and the authored a
 
 ## How texts are translated
 
-Kernel catalogs live in `src/presentation/localization/`: command, action, event and guidance descriptions (`catalog.ts`), error summaries and hints by code (`errors.ts`), option, argument and global option descriptions by their English text (`descriptions.ts`), and the host's warnings and plugin state reasons by stable code (`messages.ts`, over the English templates in `src/domain/shared/kernel-messages.ts`). Kernel code, adapters included, never emits warning text: it records a coded message, and the response renders every warning in its language. This one catalog covers configuration, plugin, setup, lock, metadata cache and post-commit warnings alike. Every bundled core plugin contributes its own strings: its manifest name and description, its command, action, generator and event descriptions, its option, argument and settings descriptions, its error codes and its result messages; see [strings and error codes](plugins.md#strings-and-error-codes). The test `tests/cli/localization-parity.integration.test.ts` fails when any of these declared texts lacks a German translation.
+Kernel catalogs live in `src/presentation/localization/`: command, action, event and guidance descriptions (`catalog.ts`), error summaries and hints by code (`errors.ts`), option, argument and global option descriptions by their English text (`descriptions.ts`), and the host's warnings and plugin state reasons by stable code (`messages.ts`, over the English templates in `src/domain/shared/kernel-messages.ts`). Kernel code, adapters included, never emits warning text: it records a coded message, and the response renders every warning in its language. This one catalog covers configuration, plugin, setup, lock, metadata cache and post-commit warnings alike. Every bundled core plugin contributes its own strings: its manifest name and description, its command, action, generator and event descriptions, its option, argument and settings descriptions, its error codes and its result messages; see [strings and error codes](plugins.md#strings-and-error-codes). The test `tests/cli/localization-parity.integration.test.ts` fails when any of these declared texts lacks a German translation, and when a German description, command or action entry no longer matches an English text or id that anything declares.
 
 User plugins localize the same way through their `strings` (`en`, `de`). Plugin text without a German entry, unregistered plugin error codes and the warnings a plugin sends with `context.events.warn` stay in the plugin's language; a plugin renders its warnings and results in `context.language` itself, for example with `context.t(key)`. Built-in error codes raised by plugins receive the same translated summary while retaining their original diagnostic.
 
@@ -50,7 +50,7 @@ User plugins localize the same way through their `strings` (`en`, `de`). Plugin 
 
 These texts are not yet localized and remain English with `--lang de`:
 
-- A finding whose parameter is itself a sentence fragment containing a space-separated value (for example an `agents` permission pattern with spaces) may keep that fragment in English: the presentation recognizes coded findings by matching their English templates.
+- A coded plugin result message whose values contain the very text that separates them in its English template stays English, for example a `backlog check` problem about a note titled `Plan has the iteration Q3`. The presentation recognizes coded findings by matching their English templates; when two readings of the values are possible, it keeps the English message rather than split a title, command or pattern at a guess. The templates keep a distinctive phrase between two free-text values, so ordinary titles, types such as `Test case`, commands and patterns with spaces read in German.
 
 ## Errors during discovery
 

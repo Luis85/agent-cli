@@ -9,7 +9,7 @@ let root: string;
 const run = (...args: string[]) => fixture.cli(args, undefined, { root });
 const uiDefaults = {
   framework: 'html', components: 'components', componentImports: 'imports/components', componentExports: 'exports/components',
-  interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions', output: 'src/ui', stories: 'stories',
+  interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions', output: 'ui/{framework}/components', stories: 'ui/{framework}/stories',
 };
 const dataSourceDefaults = { library: 'data-sources', imports: 'imports/data-sources', exports: 'exports/data-sources', output: 'src/data-sources', fixtures: 'test-data' };
 const configure = (settings: Record<string, unknown>) => writeFile(join(root, 'bin/config.json'), JSON.stringify({ plugins: { enabled: ['quality'], settings: { quality: settings } } }));

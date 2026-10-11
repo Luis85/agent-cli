@@ -83,7 +83,7 @@ A connector implements `BacklogConnector` (exported as a type from the SDK, with
 ```ts
 interface BacklogConnector {
   readonly id: string;                                      // the platform, e.g. "azure-devops"
-  describe(): ConnectorDescription;                         // name, profile JSON Schema, defaults, secret-free summary, warnings
+  describe(language?: Language): ConnectorDescription;      // name, profile JSON Schema, defaults, secret-free summary, warnings
   mapping(connection: Connection): ConnectorMapping;        // process defaults merged with the profile's mappings
   link(connection: Connection, id: string): string;         // the item's web URL
   idFromLink(connection: Connection, url: string): string | null; // null for another connection's URL
@@ -94,6 +94,7 @@ interface BacklogConnector {
 }
 ```
 
+- `describe(language)` receives the response language (`'en'` when omitted). The `description` and the texts `warnings(connection)` returns must read in that language; `connectors list` and `connectors inspect` show them as returned. The platform `name`, ids and profile values stay as written.
 - `RemoteItem` is `{id, rev, url, type, title, state, parentId?, dependencies?, iteration?, area?, priority?, effort?, tags, description?, descriptionMarkdown?, fields}` in the remote vocabulary. `area` is null in the connection's default area. `description` is the remote text exactly as read, Markdown or HTML (absent when the field is not mapped); `descriptionMarkdown` is true only when the platform declared the text as Markdown on that read. `dependencies` lists the remote ids of the item's predecessors (absent when the connection does not map dependencies); in a `RemoteDraft` or `RemotePatch` it is the complete new set, so links to other ids are removed; `fields` holds `mappings.properties` values by remote field reference.
 - `RemoteDraft` and `RemotePatch` carry the same neutral fields (`parentId`, `dependencies`, …); `null` clears a field (an iteration or area falls back to the connection's default).
 - `create` returns the item as stored, so the sync engine takes defaults and rules the platform applied from it. A platform that creates items in an initial state follows up with an update to the drafted state; if that fails, `create` still returns the created item rather than failing, so its id is never lost.

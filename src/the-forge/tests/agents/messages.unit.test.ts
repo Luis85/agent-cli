@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fill } from '../../src/domain/shared/messages.ts';
-import { agentMessages, type AgentMessage } from '../../src/plugins/agents/domain/messages.ts';
+import { agentFragments, agentMessages, type AgentMessage } from '../../src/plugins/agents/domain/messages.ts';
 import { germanAgentMessages, localizedDiagnostics } from '../../src/plugins/agents/presentation/messages.ts';
 
 const placeholders = (text: string) => [...new Set([...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]!))].sort();
@@ -18,11 +18,30 @@ describe('agents diagnostic messages', () => {
   });
 
   it('render each English message in German from the template that produced it, never from another', () => {
+    const values = (key: AgentMessage) => Object.fromEntries(placeholders(agentMessages[key]).map(name => [name, `v${name}`]));
     for (const key of keys) {
-      const params = Object.fromEntries(placeholders(agentMessages[key]).map(name => [name, `v${name}`]));
-      const [localized] = localizedDiagnostics([diagnostic(fill(agentMessages[key], params))], 'de');
-      expect(localized!.message, key).toBe(fill(germanAgentMessages[key], params));
+      // A declared fragment parameter holds a message of the catalog, in the language of the sentence around it.
+      const fragment = (name: string, templates: Record<AgentMessage, string>) => {
+        const allowed = agentFragments[key]?.[name];
+        return allowed ? fill(templates[allowed[0]!], values(allowed[0]!)) : `v${name}`;
+      };
+      const params = (templates: Record<AgentMessage, string>) => Object.fromEntries(placeholders(agentMessages[key]).map(name => [name, fragment(name, templates)]));
+      const [localized] = localizedDiagnostics([diagnostic(fill(agentMessages[key], params(agentMessages)))], 'de');
+      expect(localized!.message, key).toBe(fill(germanAgentMessages[key], params(germanAgentMessages)));
     }
+  });
+
+  it('keep commands and patterns exactly as written, whatever words of the catalog they contain', () => {
+    const command = "/usr/local/bin/notify --title 'end of turn' --label '/backup of db'";
+    const pattern = 'read_file:path=/home/me/My Documents/*';
+    const german = localizedDiagnostics([
+      diagnostic(fill(agentMessages.hookExecutes, { event: 'PostToolUse', agent: 'root', command })),
+      diagnostic(fill(agentMessages.permissionDropped, { list: 'deny', pattern, reason: agentMessages.reasonArguments })),
+    ], 'de');
+    expect(german.map(entry => entry.message)).toEqual([
+      `Der PostToolUse-Hook von root führt den Befehl aus: ${command}`,
+      `Das deny-Muster ${pattern} ${germanAgentMessages.reasonArguments}; es wird nicht ausgegeben.`,
+    ]);
   });
 
   it('render nested fragments and leave docker-agent and parser messages, codes and pointers alone', () => {

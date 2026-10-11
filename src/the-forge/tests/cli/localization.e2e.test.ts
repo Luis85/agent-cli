@@ -32,14 +32,17 @@ describe('localized portable CLI', () => {
     const english = await cli(['schema', '--lang', 'en']), german = await cli(['--lang', 'de', 'schema']);
     expect(german.status).toBe(0);
     expect(Object.keys(german.body)).toEqual(Object.keys(english.body));
-    // Option names, types, enums and defaults stay; their descriptions are German.
+    // Option names, types, enums, defaults and document schemas stay; their descriptions, nested ones included, are German.
     type Options = Record<string, { description: string }>;
-    const shapes = (options: Options) => Object.fromEntries(Object.entries(options).map(([name, { description: _description, ...shape }]) => [name, shape]));
+    const shape = (value: unknown): unknown => Array.isArray(value) ? value.map(shape)
+      : value !== null && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'description').map(([key, item]) => [key, shape(item)])) : value;
+    const shapes = (options: Options) => shape(options);
     const contracts = (commands: Array<{ id: string; usage: string; options: Options }>) => commands.map(({ id, usage, options }) => ({ id, usage, options: shapes(options) }));
     expect(contracts(german.body.data.commands)).toEqual(contracts(english.body.data.commands));
     expect(shapes(german.body.data.globalOptions)).toEqual(shapes(english.body.data.globalOptions));
     expect(german.body.data.globalOptions.root.description).toContain('Workspace-Stammverzeichnis');
     expect(german.body.data.commands.find((command: { id: string }) => command.id === 'edit').options.find.description).toContain('wörtlicher Text');
+    expect(german.body.data.commands.find((command: { id: string }) => command.id === 'edit').options.edits.schema.items.properties.find.description).toContain('Genauer Text');
     expect(german.body.data.commands.find((command: { id: string }) => command.id === 'read').description).not.toBe(english.body.data.commands.find((command: { id: string }) => command.id === 'read').description);
     expect((await cli(['make', '--lang', 'de'])).body.data.generators.find((generator: { id: string }) => generator.id === 'ui').description).toContain('Markdown');
     // Every action description is German, including make's generators and core plugin actions; action modes stay.

@@ -6,7 +6,7 @@ The CLI is built with strict TypeScript, Vite and Vitest. It needs no npm instal
 
 ## Use the committed bundle
 
-Requires **Node 22.12 or newer**. Extract a release into a new workspace, or copy the complete repository `bin` folder and reset its checkout-specific configuration as shown below. Run `node bin/forge.js`; the executable contains all runtime dependencies. Keep `bin/package.json` beside it so the app runs in ESM and CommonJS parent projects. Packaged process skills live in `bin/skills`; packaged documentation, type declarations and notices live in `bin/data`. Shipped defaults live in `bin/config/default.json`; active workspace settings remain in `bin/config.json`.
+Requires **Node 22.12 or newer**. Extract a release into a new workspace, or copy the complete repository `bin` folder and reset its checkout-specific configuration as shown below. Run `node bin/forge.js`, a small launcher that loads the runtime bundle `bin/forge-runtime.js`, which contains all runtime dependencies. Keep both files and `bin/package.json` together so the app runs in ESM and CommonJS parent projects. Packaged process skills live in `bin/skills`; packaged documentation, type declarations and notices live in `bin/data`. Shipped defaults live in `bin/config/default.json`; active workspace settings remain in `bin/config.json`.
 
 The following quickstart assumes a new portable workspace. This source checkout instead selects its own `src/the-forge` project; see [source organization](#source-organization) before running file or generation commands here.
 
@@ -47,7 +47,7 @@ node bin/forge.js --version
 node bin/forge.js setup
 ```
 
-This URL serves the latest `main` branch. For a fixed version, use a reviewed commit archive instead. The reset commands apply only to the new copy: the repository itself intentionally selects `the-forge`, and `setup` preserves existing settings and selection. Maintainers can produce `src/the-forge/release/forge-0.1.0.tar.gz` with `npm run release` from `src/the-forge`; its `bin` already contains generic defaults and no selected project. Releases are not automatically published. For an existing installation, extract separately and preserve configuration, shared plugins/templates and project selection when updating the executable and packaged assets.
+This URL serves the latest `main` branch. For a fixed version, use a reviewed commit archive instead. The reset commands apply only to the new copy: the repository itself intentionally selects `the-forge`, and `setup` preserves existing settings and selection. Maintainers can produce `src/the-forge/release/forge-0.1.0.tar.gz` with `npm run release` from `src/the-forge`; its `bin` already contains generic defaults and no selected project. Releases are not automatically published. For an existing installation, extract separately and preserve configuration, shared plugins/templates and project selection when replacing `bin/forge.js`, `bin/forge-runtime.js` and the packaged assets together.
 
 ## Capabilities
 
@@ -126,7 +126,7 @@ The repository is a thin Forge workspace. Its root holds only the shipped `bin/`
 
 The Forge itself is the project `src/the-forge`. It owns `package.json`, the lockfile, TypeScript/Vite/Vitest configuration, `scripts/`, `configs/`, `tests/`, these Diátaxis `docs/`, the authored agent `skills/<id>/SKILL.md` folders and the agent evaluation tasks in `evals/` ([evaluate agents](docs/how-to/evaluate-agents.md)). Runtime source lives in `src/the-forge/src`: the kernel uses domain, application, infrastructure and presentation layers divided into concern folders, and bundled core plugins live in `src/plugins/<id>/` with their own layers; `src/main.ts` composes the runtime and `src/sdk.ts` exposes plugin types. Examples live in `docs/examples`, and authored workflow/project templates in `docs/templates`; editable runtime templates remain in the workspace's `bin/templates`. Run npm commands from `src/the-forge`. Its `src/README.md` maps entry points; the [architecture](docs/explanation/architecture.md) explains dependency rules.
 
-`npm run build` writes the executable and packaged assets into the workspace `bin/` named by `config.distribution` in `package.json` (`../../bin`). Forge's own CI is authored in `src/infrastructure/workflows/<concern>/`, like every managed project's workflows; `node bin/forge.js workflows sync` generates the workspace `.github/workflows` entrypoints from them. See [workflows](docs/reference/workflows.md).
+`npm run build` writes the launcher `bin/forge.js`, the runtime bundle `bin/forge-runtime.js` and the packaged assets into the workspace `bin/` named by `config.distribution` in `package.json` (`../../bin`). Forge's own CI is authored in `src/infrastructure/workflows/<concern>/`, like every managed project's workflows; `node bin/forge.js workflows sync` generates the workspace `.github/workflows` entrypoints from them. See [workflows](docs/reference/workflows.md).
 
 This checkout manages its own source as a Forge project. Tracked `bin/config.json` sets `paths.projects` to `src`, `src/the-forge/.forge/project.json` identifies the project, and `bin/data/context.json` selects `the-forge`. Verify it from the workspace root before using project-relative paths:
 

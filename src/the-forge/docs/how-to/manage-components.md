@@ -49,13 +49,13 @@ node bin/forge.js make ui page --framework react --plan-out ui-revisions.json
 
 Only the revision-map file is written; generated UI is untouched. The map destination is relative to the active project or workspace, and existing map files are not overwritten. Use the same framework, output paths and `--stories` options for planning and regeneration so the output set agrees. `--plan-out` implies planning; do not combine plan/check modes with `--revisions-from`.
 
-For intentional regeneration, `make ui` and `make stories` accept `--revisions-from <file.json>`. The plan can create this map for you; alternatively, read every existing destination, review its current contents, and create a JSON object mapping generated `change.path` values to their current SHA-256 revisions. For project output, keys include the workspace-relative project directory, such as `projects/portal/src/ui/page.tsx`; the revision-map file itself is read relative to the active output scope. New files omit keys. Unknown output keys, missing revisions for existing outputs and stale revisions are rejected. No force flag bypasses revision checks.
+For intentional regeneration, `make ui` and `make stories` accept `--revisions-from <file.json>`. The plan can create this map for you; alternatively, read every existing destination, review its current contents, and create a JSON object mapping generated `change.path` values to their current SHA-256 revisions. For project output, keys include the workspace-relative project directory, such as `projects/portal/ui/react/components/page.tsx`; the revision-map file itself is read relative to the active output scope. New files omit keys. Unknown output keys, missing revisions for existing outputs and stale revisions are rejected. No force flag bypasses revision checks.
 
-For example, after reading and reviewing an existing workspace `src/ui/page.tsx`, write its actual revision into `ui-revisions.json`:
+For example, after reading and reviewing an existing workspace `ui/react/components/page.tsx`, write its actual revision into `ui-revisions.json`:
 
 ```json
 {
-  "src/ui/page.tsx": "REPLACE_WITH_CURRENT_SHA256_REVISION"
+  "ui/react/components/page.tsx": "REPLACE_WITH_CURRENT_SHA256_REVISION"
 }
 ```
 

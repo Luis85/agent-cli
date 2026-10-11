@@ -2,7 +2,7 @@ import type { Language } from '../../../application/plugins/plugin-catalog.ts';
 import type { Command } from '../../../application/plugins/registry.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 import { retranslate } from '../../../domain/shared/messages.ts';
-import { agentMessages, type AgentMessage } from '../domain/messages.ts';
+import { agentFragments, agentMessages, type AgentMessage } from '../domain/messages.ts';
 
 /** German mapping diagnostics; names, paths, rules, commands and docker-agent or Claude field names stay as written. */
 export const germanAgentMessages: Record<AgentMessage, string> = {
@@ -48,8 +48,8 @@ export const germanAgentMessages: Record<AgentMessage, string> = {
   bangToolCall: 'Der Bang-Werkzeugaufruf {call} bleibt wörtlich erhalten.',
   commandDescription: 'Der Befehl /{command} hat keine Beschreibung; "{description}" wird ausgegeben.',
   commandForked: 'docker-agent übergibt die Unterhaltung an {target}; der Claude-Skill läuft stattdessen in einem abgezweigten Subagenten {agent}.',
-  mcpNotGenerated: 'Der MCP-Server {server} ({target}) wird nicht generiert und seine Werkzeuge werden nicht gewährt; übergeben Sie --mcp inline oder --mcp project, um ihn zu schreiben.',
-  mcpExecutes: 'Der MCP-Server {server} in {file} führt den Befehl aus: {command}',
+  mcpNotGenerated: 'Der MCP-Server {server} wird nicht generiert und seine Werkzeuge werden nicht gewährt; übergeben Sie --mcp inline oder --mcp project, um ihn zu schreiben. Sein Befehl oder seine URL: {target}',
+  mcpExecutes: 'Der MCP-Server {server} (geschrieben in {file}) führt den Befehl aus: {command}',
   hooksNotGenerated: 'Hooks führen Befehle aus und werden nur mit --hooks generiert; übersprungen: {hooks}.',
   hookExecutes: 'Der {event}-Hook von {agent} führt den Befehl aus: {command}',
   toolsNone: 'Kein Toolset gewährt ein Claude-Werkzeug, daher erhält {agent} tools: [] und verbietet {tools}, statt jedes Werkzeug zu erben.',
@@ -112,7 +112,7 @@ export const germanAgentMessages: Record<AgentMessage, string> = {
   commandsNotGenerated: 'Befehle werden mit --commands zu Claude-Skills.',
   topLevelUnsupported: 'Der oberste Abschnitt {key} hat keine Claude-Entsprechung und wird nicht ausgegeben.',
   permissionsNotGenerated: 'Berechtigungen werden mit --settings zu Regeln in den Projekteinstellungen.',
-  commandLabel: '/{command} von {agent}',
+  commandLabel: '/{command} des Agenten {agent}',
   commandCollision: 'Der Befehl {label} würde .claude/skills/{name}/SKILL.md generieren, die bereits der Befehl {owner} generiert; benennen Sie einen der Befehle um.',
   commandRenamed: 'Mehrere Agenten definieren ein abweichendes /{command}; dieses wird zum Skill {name}.',
   agentCollision: 'Der Agent {name} würde .claude/agents/{claude}.md generieren, die bereits {owner} generiert.',
@@ -134,7 +134,7 @@ export function localizedDiagnostics<T>(value: T, language: Language): T {
     if (Array.isArray(item)) return item.map(walk);
     if (!isRecord(item)) return item;
     const entries = Object.fromEntries(Object.entries(item).map(([key, entry]) => [key, walk(entry)]));
-    return isDiagnostic(item) ? { ...entries, message: retranslate(item.message as string, agentMessages, germanAgentMessages) } : entries;
+    return isDiagnostic(item) ? { ...entries, message: retranslate(item.message as string, agentMessages, germanAgentMessages, agentFragments) } : entries;
   };
   return walk(value) as T;
 }

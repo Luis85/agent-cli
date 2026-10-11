@@ -1,4 +1,4 @@
-import { fill, type MessageParams } from '../../../domain/shared/messages.ts';
+import { fill, type MessageFragments, type MessageParams } from '../../../domain/shared/messages.ts';
 
 /**
  * English templates of the diagnostics Forge writes about the docker-agent ↔ Claude Code mapping, filled with `say`.
@@ -10,7 +10,7 @@ export const agentMessages = {
   // Toolsets (claude-tools, claude-mcp).
   toolFilterNone: 'The tools filter {filter} is approximated by the Claude tools (none).',
   toolFilter: 'The tools filter {filter} is approximated by the Claude tools {tools}.',
-  toolsetFieldUnsupported: '{label} ({field}) have no Claude equivalent and are not emitted.',
+  toolsetFieldUnsupported: '{label} (the field {field}) have no Claude equivalent and are not emitted.',
   filesystemApproximated: 'The filesystem toolset is approximated by the Claude tools {tools}.',
   allowListUnsupported: 'allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent\'s file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).',
   denyListApproximated: 'deny_list becomes Read and Edit deny rules in project settings with --settings.',
@@ -52,8 +52,8 @@ export const agentMessages = {
   bangToolCall: 'The bang tool call {call} is kept literally.',
   commandDescription: 'The /{command} command has no description; "{description}" is emitted.',
   commandForked: 'docker-agent switches the conversation to {target}; the Claude skill runs in a forked {agent} subagent instead.',
-  mcpNotGenerated: 'MCP server {server} ({target}) is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it.',
-  mcpExecutes: 'MCP server {server} in {file} runs the command: {command}',
+  mcpNotGenerated: 'MCP server {server} is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it. Its command or URL: {target}',
+  mcpExecutes: 'MCP server {server} (written to {file}) runs the command: {command}',
   hooksNotGenerated: 'Hooks run commands and are generated only with --hooks; skipped {hooks}.',
   hookExecutes: 'The {event} hook of {agent} runs the command: {command}',
   toolsNone: 'No toolset grants a Claude tool, so {agent} gets tools: [] and disallows {tools} instead of inheriting every tool.',
@@ -120,7 +120,7 @@ export const agentMessages = {
   commandsNotGenerated: 'Commands become Claude skills with --commands.',
   topLevelUnsupported: 'The top-level {key} section has no Claude equivalent and is not emitted.',
   permissionsNotGenerated: 'Permissions become project settings rules with --settings.',
-  commandLabel: '/{command} of {agent}',
+  commandLabel: '/{command} command of agent {agent}',
   commandCollision: 'The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.',
   commandRenamed: 'Several agents define a different /{command}; this one becomes the skill {name}.',
   agentCollision: 'Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.',
@@ -130,6 +130,14 @@ export const agentMessages = {
 } as const satisfies Record<string, string>;
 
 export type AgentMessage = keyof typeof agentMessages;
+
+const reasons = ['reasonNoBuiltin', 'reasonUnmappedOne', 'reasonUnmapped', 'reasonMcpNone', 'reasonMcpUnknown', 'reasonArguments'] as const;
+/** The parameters whose value is itself a message of this catalog; every other parameter is user data. */
+export const agentFragments: MessageFragments<AgentMessage> = {
+  permissionPartial: { reason: reasons },
+  permissionDropped: { reason: reasons },
+  commandCollision: { label: ['commandLabel'], owner: ['commandLabel'] },
+};
 
 /** An English diagnostic message from its template. */
 export const say = (key: AgentMessage, params: MessageParams = {}): string => fill(agentMessages[key], params);

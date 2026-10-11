@@ -46,8 +46,8 @@ export const uiStrings: PluginStrings = {
       'Workspace-relative interaction library folder.': 'Ordner der Interaktionsbibliothek, relativ zum Workspace.',
       'Workspace-relative folder that interactions import copies definitions from.': 'Ordner relativ zum Workspace, aus dem interactions import Definitionen kopiert.',
       'Workspace-relative folder that interactions export copies definitions to.': 'Ordner relativ zum Workspace, in den interactions export Definitionen kopiert.',
-      'Generated UI folder, relative to the output project (or the workspace without one).': 'Ordner der generierten UI, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace).',
-      'Generated Storybook story folder, relative to the output project (or the workspace without one).': 'Ordner der generierten Storybook-Stories, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace).',
+      'Generated UI folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.': 'Ordner der generierten UI, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace); {framework} steht für das UI-Ziel.',
+      'Generated Storybook story folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.': 'Ordner der generierten Storybook-Stories, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace); {framework} steht für das UI-Ziel.',
     },
   },
 };

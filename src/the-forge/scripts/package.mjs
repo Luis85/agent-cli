@@ -12,12 +12,22 @@ await mkdir(join(bin, 'data'), { recursive: true });
 await writeFile(join(bin, 'package.json'), JSON.stringify({ name: 'forge-bundle', version, private: true, type: 'commonjs', main: 'forge.js', engines }, null, 2) + '\n');
 // Every command starts a new process. The launcher enables V8's compile cache before loading the runtime bundle, so
 // later invocations skip compiling it again. Node keeps the cache under the OS temporary directory, never in the
-// workspace, and NODE_DISABLE_COMPILE_CACHE=1 turns it off.
+// workspace, and NODE_DISABLE_COMPILE_CACHE=1 turns it off. Without the bundle, such as after an upgrade that replaced
+// only forge.js, the launcher answers with the CLI's JSON envelope: the catalog's INVALID_SETUP hint and exit code
+// (tests/distribution/launcher.e2e.test.ts compares them with src/domain/shared/error-catalog.ts).
+const invalidSetupHint = 'Repair the bin path named in the message, then run setup again.';
 await writeFile(join(bin, 'forge.js'), [
   '#!/usr/bin/env node',
   "'use strict';",
   "require('node:module').enableCompileCache();",
-  "require('./forge-runtime.js');",
+  "const runtime = require('node:path').join(__dirname, 'forge-runtime.js');",
+  "if (require('node:fs').existsSync(runtime)) require(runtime);",
+  'else {',
+  '  const message = `The runtime bundle ${runtime} is missing. bin/forge.js and bin/forge-runtime.js ship together; replace both from the same release.`;',
+  `  const error = { code: 'INVALID_SETUP', message, hint: ${JSON.stringify(invalidSetupHint)}, retryable: false };`,
+  "  process.stdout.write(JSON.stringify({ ok: false, error, events: [], warnings: [] }, null, 2) + '\\n');",
+  '  process.exitCode = 2;',
+  '}',
   '',
 ].join('\n'));
 try { await copyFile(join(bin, 'config/default.json'), join(bin, 'config.json'), constants.COPYFILE_EXCL); }

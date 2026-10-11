@@ -23,9 +23,9 @@ describe('MCP servers', () => {
     expect(output.agents[0]!.metadata.mcpServers).toBeUndefined();
     expect(output.mcpServers).toEqual({});
     expect(findings(output, 'mcp-not-generated')).toEqual([
-      { severity: 'info', pointer: '/agents/root/toolsets/1', message: expect.stringContaining('github (npx -y @modelcontextprotocol/server-github --label "two words")') },
-      { severity: 'info', pointer: '/agents/root/toolsets/2/ref', message: expect.stringContaining('context7 (docker mcp gateway run --servers context7)') },
-      { severity: 'info', pointer: '/agents/root/toolsets/3', message: expect.stringContaining('notion (https://mcp.notion.com/mcp)') },
+      { severity: 'info', pointer: '/agents/root/toolsets/1', message: expect.stringMatching(/^MCP server github is not .* URL: npx -y @modelcontextprotocol\/server-github --label "two words"$/) },
+      { severity: 'info', pointer: '/agents/root/toolsets/2/ref', message: expect.stringMatching(/^MCP server context7 is not .* URL: docker mcp gateway run --servers context7$/) },
+      { severity: 'info', pointer: '/agents/root/toolsets/3', message: expect.stringMatching(/^MCP server notion is not .* URL: https:\/\/mcp\.notion\.com\/mcp$/) },
     ]);
     expect(findings(output, 'executes-command')).toEqual([]);
   });
@@ -35,8 +35,8 @@ describe('MCP servers', () => {
     expect(output.agents[0]!.metadata.tools).toBe('Read, Glob, Grep, mcp__github__list_issues, mcp__context7__*, mcp__notion__*');
     const target = mcp === 'inline' ? '.claude/agents/root.md' : '.mcp.json';
     expect(findings(output, 'executes-command')).toEqual([
-      { severity: 'warning', pointer: '/agents/root/toolsets/1', message: `MCP server github in ${target} runs the command: npx -y @modelcontextprotocol/server-github --label "two words"` },
-      { severity: 'warning', pointer: '/agents/root/toolsets/2/ref', message: `MCP server context7 in ${target} runs the command: docker mcp gateway run --servers context7` },
+      { severity: 'warning', pointer: '/agents/root/toolsets/1', message: `MCP server github (written to ${target}) runs the command: npx -y @modelcontextprotocol/server-github --label "two words"` },
+      { severity: 'warning', pointer: '/agents/root/toolsets/2/ref', message: `MCP server context7 (written to ${target}) runs the command: docker mcp gateway run --servers context7` },
     ]);
     expect(Object.keys(mcp === 'inline' ? Object.assign({}, ...output.agents[0]!.metadata.mcpServers as object[]) : output.mcpServers)).toEqual(['github', 'context7', 'notion']);
   });

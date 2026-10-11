@@ -3,8 +3,8 @@ import { retranslate } from '../../../domain/shared/messages.ts';
 import { indexMessages, type IndexMessage } from '../application/messages.ts';
 
 /** German Bases index warnings; `{problem}` keeps the parser's original message. */
-const germanIndexMessages: Record<IndexMessage, string> = {
-  ambiguousLink: 'Der Link {link} in {source} passt auf {candidates}; er wird zur nächstgelegenen Datei {resolved} aufgelöst.',
+export const germanIndexMessages: Record<IndexMessage, string> = {
+  ambiguousLink: 'Der Link {link} in der Notiz {source} passt auf {candidates}; er wird zur nächstgelegenen Datei {resolved} aufgelöst.',
   unparseableNote: '{path} kann nicht geparst werden und wird ohne Eigenschaften, Links und Tags indexiert: {problem}',
 };
 
