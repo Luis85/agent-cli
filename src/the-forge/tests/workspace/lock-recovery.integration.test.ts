@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/pro
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFiles } from '../../src/infrastructure/workspace/files.ts';
-import { acquireLock, breakStale, hostIdentity, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
+import { acquireLock, breakStale, hostIdentity, inspectLock, releaseLock } from '../../src/infrastructure/workspace/lock.ts';
 import { encodeText } from '../../src/infrastructure/documents/codec.ts';
 
 /**
@@ -93,9 +93,39 @@ describe('breaking a stale writer lock', () => {
   it('never removes a lock that another contender took after the stale one was diagnosed', async () => {
     const stale = holder({ pid: exitedPid() });
     const token = await acquireLock(lock, () => ({ command: 'write' }));
-    expect(await breakStale(lock, stale)).toBe(false);
+    expect(await breakStale(lock, stale)).toEqual({ broken: false });
     expect(JSON.parse(await readFile(lock, 'utf8')).token).toBe(token);
     expect(await releaseLock(lock, token)).toBe('released');
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it('asks for a retry, never for a deletion, while another live contender holds the break guard', async () => {
+    const guard = join(root, '.agent-cli-tmp-break-.agent-cli.lock');
+    await writeFile(guard, holder({ pid: process.ppid, command: 'break stale lock' }));
+    await writeFile(lock, holder({ pid: exitedPid() }));
+    const failure = await acquireLock(lock, () => ({})).catch((error: unknown) => error as Error);
+    expect(failure).toMatchObject({ code: 'WORKSPACE_BUSY', retryable: true, details: { stale: 'active', reason: 'dead-process', path: '.agent-cli.lock', breaker: { pid: process.ppid, command: 'break stale lock' } } });
+    expect(failure.message).toMatch(/another Forge process .* is removing it/);
+    expect(failure.message).not.toMatch(/delete/i);
+    expect(await readdir(root)).toEqual(expect.arrayContaining(['.agent-cli.lock', '.agent-cli-tmp-break-.agent-cli.lock']));
+  });
+
+  it('names the break guard to delete once verified when its holder cannot be checked', async () => {
+    await writeFile(join(root, '.agent-cli-tmp-break-.agent-cli.lock'), holder({ pid: exitedPid(), hostname: `${hostname()}-elsewhere`, command: 'break stale lock' }));
+    await writeFile(lock, holder({ pid: exitedPid() }));
+    const failure = files.writeBatch([write('note.md')], false);
+    await expect(failure).rejects.toMatchObject({ code: 'WORKSPACE_BUSY', retryable: false, details: { stale: 'unknown', path: '.agent-cli-tmp-break-.agent-cli.lock' } });
+    await expect(failure).rejects.toThrow(/delete \.agent-cli-tmp-break-\.agent-cli\.lock/);
+  });
+
+  it('never diagnoses a lock that its own process is releasing as stale', async () => {
+    for (let round = 0; round < 50; round++) {
+      const token = await acquireLock(lock, () => ({}));
+      const release = releaseLock(lock, token);
+      const seen = await inspectLock(lock);
+      expect(await release).toBe('released');
+      expect(seen.stale === 'stale' ? seen.reason : seen.stale).not.toBe('reused-pid');
+    }
     expect(await readdir(root)).toEqual([]);
   });
 

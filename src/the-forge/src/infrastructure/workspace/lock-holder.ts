@@ -109,10 +109,14 @@ export async function inspectLock(path: string): Promise<LockInspection> {
     // Another boot of this host: proven only for a lock written before this boot (a host name alone is no proof).
     return lock.bootId !== undefined && current.bootId !== undefined && Date.parse(lock.startedAt) < bootedAt() ? stale('rebooted') : { lock, stale: 'unknown' };
   }
-  // This process is not writing under that token, so a lock naming its pid is left over (for example a fixed-pid container restart).
   if (lock.pid === process.pid) {
     const token = tokenOf(content);
-    return typeof token === 'string' && heldTokens.has(token) ? { lock, stale: 'active' } : stale('reused-pid');
+    if (typeof token === 'string' && heldTokens.has(token)) return { lock, stale: 'active' };
+    // This process drops a token only after removing its lock, and tokens are never reused. A lock that still holds
+    // this content now was not written by this run (for example after a fixed-pid container restart); otherwise
+    // it was released since it was read, so it is inspected again.
+    if ((await readLock(path)).content !== content) return inspectLock(path);
+    return stale('reused-pid');
   }
   const alive = processAlive(lock.pid);
   if (alive === undefined) return { lock, stale: 'unknown' };
