@@ -3,6 +3,7 @@ import { lstat, open, readFile, readlink } from 'node:fs/promises';
 import { hostname, uptime } from 'node:os';
 import type { LockHolder, StaleReason } from '../../application/workspace/ports.ts';
 import { isRecord } from '../../domain/shared/errors.ts';
+import { retryTransient } from './retry.ts';
 
 /** Where a pid is meaningful: Linux pid namespace and boot, when the host exposes them. */
 interface HostIdentity { pidNamespace?: string; bootId?: string }
@@ -64,18 +65,24 @@ function parseHolder(content: string): LockHolder | null {
     ...(text(start) ? { processStart: start } : {}) };
 }
 
-/** The lock file's content (bounded) and whether it is young enough to still be receiving its record. */
+/**
+ * The lock file's content (bounded) and whether it is young enough to still be receiving its record. On Windows a lock
+ * another process is deleting stays listed but refuses opens (EPERM) until the deletion completes, so transient
+ * refusals are retried and a lock that is gone afterwards reads as missing rather than unverifiable.
+ */
 async function readLock(path: string): Promise<{ content: string | null; young: boolean; missing?: true }> {
   try {
-    const entry = await lstat(path);
-    if (!entry.isFile()) return { content: null, young: false };
-    const young = Date.now() - entry.mtimeMs < writingWindowMs;
-    const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-    try {
-      const buffer = Buffer.alloc(4096);
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      return { content: buffer.subarray(0, bytesRead).toString('utf8'), young };
-    } finally { await handle.close(); }
+    return await retryTransient(async () => {
+      const entry = await lstat(path);
+      if (!entry.isFile()) return { content: null, young: false };
+      const young = Date.now() - entry.mtimeMs < writingWindowMs;
+      const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      try {
+        const buffer = Buffer.alloc(4096);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        return { content: buffer.subarray(0, bytesRead).toString('utf8'), young };
+      } finally { await handle.close(); }
+    });
   } catch (error) { return { content: null, young: false, ...(errorCode(error) === 'ENOENT' ? { missing: true as const } : {}) }; }
 }
 

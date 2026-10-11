@@ -4,10 +4,10 @@ const node_crypto = require("node:crypto");
 const node_async_hooks = require("node:async_hooks");
 const require$$0 = require("process");
 const require$$0$1 = require("buffer");
-const promises = require("node:fs/promises");
+const promises$1 = require("node:fs/promises");
 const fs = require("node:fs");
 const node_os = require("node:os");
-const promises$1 = require("node:timers/promises");
+const promises = require("node:timers/promises");
 const node_url = require("node:url");
 const node_module = require("node:module");
 const node_vm = require("node:vm");
@@ -10032,22 +10032,37 @@ const yamlWorkflowRenderer = {
 ${document2.toString({ lineWidth: 0 })}`);
   }
 };
+const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
+const lockedFileDelays = [10, 20, 40, 80, 160, 320];
+const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
+async function retryTransient(operation2, options2 = {}) {
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options2;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation2();
+    } catch (error2) {
+      const code2 = errorCode$1(error2);
+      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
+      await sleep(delays[attempt]);
+    }
+  }
+}
 const writingWindowMs = 5e3;
 const heldTokens = /* @__PURE__ */ new Set();
 const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
 const text$h = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
-const errorCode$1 = (error2) => error2.code ?? "";
+const errorCode = (error2) => error2.code ?? "";
 let identity;
 function hostIdentity() {
   identity ??= (async () => {
-    const pidNamespace = await promises.readlink("/proc/self/ns/pid").catch(() => void 0);
-    const bootId = (await promises.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
     return { ...text$h(pidNamespace) ? { pidNamespace } : {}, ...text$h(bootId) ? { bootId } : {} };
   })();
   return identity;
 }
 async function processStart(pid) {
-  const stat = await promises.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
+  const stat = await promises$1.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
   const fields2 = stat?.slice(stat.lastIndexOf(")") + 2).split(" ");
   const start2 = fields2?.[19];
   return start2 !== void 0 && /^\d+$/.test(start2) ? start2 : void 0;
@@ -10079,19 +10094,21 @@ function parseHolder(content2) {
 }
 async function readLock(path2) {
   try {
-    const entry2 = await promises.lstat(path2);
-    if (!entry2.isFile()) return { content: null, young: false };
-    const young = Date.now() - entry2.mtimeMs < writingWindowMs;
-    const handle = await promises.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
-    try {
-      const buffer = Buffer.alloc(4096);
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      return { content: buffer.subarray(0, bytesRead).toString("utf8"), young };
-    } finally {
-      await handle.close();
-    }
+    return await retryTransient(async () => {
+      const entry2 = await promises$1.lstat(path2);
+      if (!entry2.isFile()) return { content: null, young: false };
+      const young = Date.now() - entry2.mtimeMs < writingWindowMs;
+      const handle = await promises$1.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+      try {
+        const buffer = Buffer.alloc(4096);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        return { content: buffer.subarray(0, bytesRead).toString("utf8"), young };
+      } finally {
+        await handle.close();
+      }
+    });
   } catch (error2) {
-    return { content: null, young: false, ...errorCode$1(error2) === "ENOENT" ? { missing: true } : {} };
+    return { content: null, young: false, ...errorCode(error2) === "ENOENT" ? { missing: true } : {} };
   }
 }
 function tokenOf(content2) {
@@ -10106,7 +10123,7 @@ function processAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error2) {
-    return errorCode$1(error2) === "ESRCH" ? false : errorCode$1(error2) === "EPERM" ? true : void 0;
+    return errorCode(error2) === "ESRCH" ? false : errorCode(error2) === "EPERM" ? true : void 0;
   }
 }
 const bootedAt = () => Date.now() - node_os.uptime() * 1e3;
@@ -10131,21 +10148,6 @@ async function inspectLock(path2) {
   if (!alive) return stale("dead-process");
   const start2 = lock.processStart === void 0 ? void 0 : await processStart(lock.pid);
   return start2 !== void 0 && start2 !== lock.processStart ? stale("reused-pid") : { lock, stale: "active" };
-}
-const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
-const lockedFileDelays = [10, 20, 40, 80, 160, 320];
-const errorCode = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
-async function retryTransient(operation2, options2 = {}) {
-  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises$1.setTimeout } = options2;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await operation2();
-    } catch (error2) {
-      const code2 = errorCode(error2);
-      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
-      await sleep(delays[attempt]);
-    }
-  }
 }
 const lockName = ".agent-cli.lock";
 const staleReasons = {
@@ -10188,7 +10190,7 @@ async function acquireLock(path2, owner, display = lockName, recovered = () => {
     try {
       outcome = await breakStale(path2, found.content);
     } catch (error2) {
-      throw busy(display, found, `Forge could not remove it (${errorCode$1(error2) || String(error2)})`);
+      throw busy(display, found, `Forge could not remove it (${errorCode(error2) || String(error2)})`);
     }
     if (outcome.broken) recovered({ path: display, holder: found.lock, reason: found.reason });
     if (outcome.guard?.stale === "unknown") throw busy(guardDisplay(display), outcome.guard);
@@ -10209,13 +10211,13 @@ async function create(path2, content2) {
   const temporary2 = temporaryName(path2, "lock");
   try {
     await writeDurably(temporary2, content2);
-    await retryTransient(() => promises.link(temporary2, path2), { codes: ["EBUSY"] });
+    await retryTransient(() => promises$1.link(temporary2, path2), { codes: ["EBUSY"] });
     return true;
   } catch (error2) {
-    if (errorCode$1(error2) === "EEXIST") return false;
-    if (!linkUnsupported.has(errorCode$1(error2))) throw error2;
+    if (errorCode(error2) === "EEXIST") return false;
+    if (!linkUnsupported.has(errorCode(error2))) throw error2;
   } finally {
-    await retryTransient(() => promises.rm(temporary2, { force: true })).catch(() => {
+    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
     });
   }
   return createExclusively(path2, content2);
@@ -10224,13 +10226,13 @@ const guardName = (path2) => `.agent-cli-tmp-break-${minpath.basename(path2)}`;
 const guardPath = (path2) => minpath.join(minpath.dirname(path2), guardName(path2));
 const guardDisplay = (display) => `${display.slice(0, display.lastIndexOf("/") + 1)}${guardName(display)}`;
 async function removeUnchanged(path2, expected) {
-  const current = await promises.readFile(path2, "utf8").catch(() => null);
+  const current = await promises$1.readFile(path2, "utf8").catch(() => null);
   if (current !== expected) return false;
   try {
-    await retryTransient(() => promises.unlink(path2));
+    await retryTransient(() => promises$1.unlink(path2));
     return true;
   } catch (error2) {
-    if (errorCode$1(error2) === "ENOENT") return false;
+    if (errorCode(error2) === "ENOENT") return false;
     throw error2;
   }
 }
@@ -10259,20 +10261,20 @@ async function record$4(handle, content2) {
   }
 }
 async function writeDurably(path2, content2) {
-  await record$4(await retryTransient(() => promises.open(path2, "wx")), content2);
+  await record$4(await retryTransient(() => promises$1.open(path2, "wx")), content2);
 }
 async function createExclusively(path2, content2) {
   let handle;
   try {
-    handle = await retryTransient(() => promises.open(path2, "wx"));
+    handle = await retryTransient(() => promises$1.open(path2, "wx"));
   } catch (error2) {
-    if (errorCode$1(error2) === "EEXIST" || deniedCodes.has(errorCode$1(error2))) return false;
+    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) return false;
     throw error2;
   }
   try {
     await record$4(handle, content2);
   } catch (error2) {
-    await retryTransient(() => promises.rm(path2, { force: true })).catch(() => {
+    await retryTransient(() => promises$1.rm(path2, { force: true })).catch(() => {
     });
     throw error2;
   }
@@ -10282,13 +10284,13 @@ async function releaseLock(path2, token) {
   try {
     let content2;
     try {
-      content2 = await retryTransient(() => promises.readFile(path2, "utf8"));
+      content2 = await retryTransient(() => promises$1.readFile(path2, "utf8"));
     } catch (error2) {
-      if (errorCode$1(error2) === "ENOENT") return "missing";
+      if (errorCode(error2) === "ENOENT") return "missing";
       throw error2;
     }
     if (tokenOf(content2) !== token) return "foreign";
-    await retryTransient(() => promises.unlink(path2));
+    await retryTransient(() => promises$1.unlink(path2));
     return "released";
   } finally {
     heldTokens.delete(token);
@@ -10313,7 +10315,7 @@ const inside$1 = (path2, folder) => path2 === folder || path2.startsWith(`${fold
 const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
 async function exists(target) {
   try {
-    return await promises.lstat(target);
+    return await promises$1.lstat(target);
   } catch (error2) {
     if (missing$2(error2)) return void 0;
     throw error2;
@@ -10391,7 +10393,7 @@ class Transaction {
     const target = await this.host.resolvePath(path2, true);
     const info = await exists(target);
     if (!info) return void 0;
-    if ((await promises.lstat(target)).isDirectory()) {
+    if ((await promises$1.lstat(target)).isDirectory()) {
       const snapshot = await this.host.folder(path2);
       ensure(!snapshot.git, "PROTECTED_PATH", `Folder ${path2} contains a Git repository; Forge never moves or removes .git.`);
       return { kind: "folder", snapshot };
@@ -10414,7 +10416,7 @@ class Transaction {
   async caseOnly(request, source2, target) {
     const existing = await exists(target);
     if (!existing) return false;
-    const original = await promises.lstat(source2);
+    const original = await promises$1.lstat(source2);
     const same2 = request.from.toLowerCase() === request.to.toLowerCase() && existing.ino === original.ino && existing.dev === original.dev;
     ensure(same2, "DESTINATION_EXISTS", `Destination already exists: ${request.to}`, { path: request.to, from: request.from });
     return true;
@@ -10454,7 +10456,7 @@ class Transaction {
     for (const [index2, part] of parts.slice(0, -1).entries()) {
       directory = minpath.join(directory, part);
       try {
-        await promises.mkdir(directory);
+        await promises$1.mkdir(directory);
         this.createdDirectories.push(directory);
         this.folders.push(parts.slice(0, index2 + 1).join("/"));
         this.touched.add(minpath.dirname(directory));
@@ -10513,7 +10515,7 @@ class Transaction {
     for (const plan of removes) {
       await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
       const temp = temporary(plan.target);
-      await retryTransient(() => promises.rename(plan.target, temp));
+      await retryTransient(() => promises$1.rename(plan.target, temp));
       plan.temp = temp;
       this.committedRemoves.push(plan);
       this.touched.add(minpath.dirname(plan.target));
@@ -10530,11 +10532,11 @@ class Transaction {
   async move(plan, source2, target) {
     if (plan.caseOnly) {
       const temp = temporary(source2);
-      await retryTransient(() => promises.rename(source2, temp));
+      await retryTransient(() => promises$1.rename(source2, temp));
       try {
-        await retryTransient(() => promises.rename(temp, target));
+        await retryTransient(() => promises$1.rename(temp, target));
       } catch (error2) {
-        await retryTransient(() => promises.rename(temp, source2)).catch(() => {
+        await retryTransient(() => promises$1.rename(temp, source2)).catch(() => {
         });
         throw error2;
       }
@@ -10543,12 +10545,12 @@ class Transaction {
     const occupied = () => forgeError("DESTINATION_EXISTS", `Destination already exists: ${plan.request.to}`, { path: plan.request.to, from: plan.request.from });
     if (plan.entry.kind === "file" && await this.linkInPlace(source2, target, occupied)) return;
     if (await exists(target)) throw occupied();
-    await retryTransient(() => promises.rename(source2, target));
+    await retryTransient(() => promises$1.rename(source2, target));
   }
   /** Moves a file by hard link and unlink; false when the filesystem has no hard links. */
   async linkInPlace(source2, target, occupied) {
     try {
-      await retryTransient(() => promises.link(source2, target), { codes: ["EBUSY"] });
+      await retryTransient(() => promises$1.link(source2, target), { codes: ["EBUSY"] });
     } catch (error2) {
       const code2 = error2.code ?? "";
       if (code2 === "EEXIST") throw occupied();
@@ -10556,9 +10558,9 @@ class Transaction {
       throw error2;
     }
     try {
-      await retryTransient(() => promises.unlink(source2));
+      await retryTransient(() => promises$1.unlink(source2));
     } catch (error2) {
-      await retryTransient(() => promises.unlink(target)).catch(() => {
+      await retryTransient(() => promises$1.unlink(target)).catch(() => {
       });
       throw error2;
     }
@@ -10568,7 +10570,7 @@ class Transaction {
   async finalize() {
     for (const plan of this.committedRemoves) {
       try {
-        await retryTransient(() => promises.rm(plan.temp, { recursive: true, force: true }));
+        await retryTransient(() => promises$1.rm(plan.temp, { recursive: true, force: true }));
       } catch (error2) {
         this.host.warn(kernelMessage("REMOVAL_TEMPORARY_LEFT", { path: plan.request.path, temporary: plan.temp, diagnostic: String(error2) }));
       }
@@ -10581,13 +10583,13 @@ class Transaction {
     }
   }
   async rollback() {
-    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises.rm(this.stagedAt(index2), { force: true })).catch(() => {
+    for (const index2 of this.staged.keys()) if (this.staged[index2]) await retryTransient(() => promises$1.rm(this.stagedAt(index2), { force: true })).catch(() => {
     });
     const failures = [];
     for (const plan of this.committedRemoves.reverse()) {
       try {
         ensure(!await exists(plan.target), "ROLLBACK_FAILED", plan.target);
-        await retryTransient(() => promises.rename(plan.temp, plan.target));
+        await retryTransient(() => promises$1.rename(plan.temp, plan.target));
       } catch {
         failures.push(plan.target);
       }
@@ -10598,7 +10600,7 @@ class Transaction {
         if (entry2.before) await this.host.replace(entry2.target, entry2.before.bytes, entry2.before.mode, verify);
         else {
           await verify();
-          await retryTransient(() => promises.rm(entry2.target));
+          await retryTransient(() => promises$1.rm(entry2.target));
         }
       } catch {
         failures.push(entry2.target);
@@ -10615,7 +10617,7 @@ class Transaction {
     }
     for (const directory of this.createdDirectories.reverse()) {
       try {
-        await retryTransient(() => promises.rmdir(directory));
+        await retryTransient(() => promises$1.rmdir(directory));
         this.touched.delete(directory);
       } catch {
       }
@@ -10646,7 +10648,7 @@ class Transaction {
 }
 const unsupported$1 = /* @__PURE__ */ new Set(["EISDIR", "EPERM", "EINVAL"]);
 const isUnsupported = (error2) => unsupported$1.has(String(error2?.code));
-async function syncDirectory(path2, openDirectory = (directory) => promises.open(directory, "r")) {
+async function syncDirectory(path2, openDirectory = (directory) => promises$1.open(directory, "r")) {
   let handle;
   try {
     handle = await openDirectory(path2);
@@ -10682,7 +10684,7 @@ class NodeFiles {
    */
   static async at(root, warn = () => {
   }, owner = () => ({})) {
-    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner);
+    return new NodeFiles(await promises$1.realpath(minpath.resolve(root)), warn, owner);
   }
   /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
   async resolvePath(path2, allowFolder = false) {
@@ -10691,7 +10693,7 @@ class NodeFiles {
     for (const [index2, part] of parts.entries()) {
       current = minpath.join(current, part);
       try {
-        const info = await promises.lstat(current);
+        const info = await promises$1.lstat(current);
         ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path2}`);
         ensure(index2 === parts.length - 1 ? info.isFile() || allowFolder && info.isDirectory() : info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path2}`);
       } catch (error2) {
@@ -10702,7 +10704,7 @@ class NodeFiles {
   }
   async read(path2) {
     try {
-      const bytes = await promises.readFile(await this.resolvePath(path2));
+      const bytes = await promises$1.readFile(await this.resolvePath(path2));
       return { path: path2, bytes, revision: revisionOf(bytes) };
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File not found: ${path2}`);
@@ -10712,7 +10714,7 @@ class NodeFiles {
   async list() {
     const result = [];
     const walk = async (directory, prefix) => {
-      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         if (unlisted(entry2.name, prefix + entry2.name)) continue;
         const path2 = prefix + entry2.name;
         if (entry2.isDirectory()) await walk(minpath.join(directory, entry2.name), path2 + "/");
@@ -10726,8 +10728,8 @@ class NodeFiles {
   async stored(path2) {
     const target = await this.resolvePath(path2);
     try {
-      const mode = (await promises.lstat(target)).mode & 4095;
-      const bytes = await promises.readFile(target);
+      const mode = (await promises$1.lstat(target)).mode & 4095;
+      const bytes = await promises$1.readFile(target);
       return { bytes, mode, revision: revisionOf(bytes) };
     } catch (error2) {
       if (!missing$1(error2)) throw error2;
@@ -10767,7 +10769,7 @@ class NodeFiles {
     const target = await this.resolvePath(path2, true);
     let info;
     try {
-      info = await promises.lstat(target);
+      info = await promises$1.lstat(target);
     } catch (error2) {
       if (missing$1(error2)) throw forgeError("NOT_FOUND", `File or folder not found: ${path2}`);
       throw error2;
@@ -10788,20 +10790,20 @@ class NodeFiles {
     const files = [], folders2 = [], special = [];
     let git = false;
     const walk = async (directory, prefix) => {
-      for (const entry2 of await promises.readdir(directory, { withFileTypes: true })) {
+      for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         if (entry2.name === ".git") {
           git = true;
           continue;
         }
         if (entry2.name === lockName || entry2.name.startsWith(".agent-cli-tmp-")) continue;
         const relative = prefix + entry2.name, absolute = minpath.join(directory, entry2.name);
-        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises.readlink(absolute) });
+        if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises$1.readlink(absolute) });
         else if (entry2.isDirectory() && entry2.name === "node_modules") special.push({ path: relative, kind: "node_modules" });
         else if (entry2.isDirectory()) {
           folders2.push(relative);
           await walk(absolute, relative + "/");
         } else if (entry2.isFile()) {
-          const bytes = await promises.readFile(absolute);
+          const bytes = await promises$1.readFile(absolute);
           files.push({ path: relative, revision: revisionOf(bytes), bytes: bytes.length });
         } else special.push({ path: relative, kind: "other" });
       }
@@ -10878,7 +10880,7 @@ class NodeFiles {
   /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
   async stage(target, bytes, mode, directory = minpath.dirname(target)) {
     const temp = minpath.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
-    const handle = await promises.open(temp, "wx", mode ?? 438);
+    const handle = await promises$1.open(temp, "wx", mode ?? 438);
     try {
       try {
         await handle.writeFile(bytes);
@@ -10888,7 +10890,7 @@ class NodeFiles {
         await handle.close();
       }
     } catch (error2) {
-      await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
       });
       throw error2;
     }
@@ -10901,10 +10903,10 @@ class NodeFiles {
     let renamed = false;
     try {
       await verify?.();
-      await retryTransient(() => promises.rename(temp, target));
+      await retryTransient(() => promises$1.rename(temp, target));
       renamed = true;
     } finally {
-      if (!renamed) await retryTransient(() => promises.rm(temp, { force: true })).catch(() => {
+      if (!renamed) await retryTransient(() => promises$1.rm(temp, { force: true })).catch(() => {
       });
     }
   }
@@ -10940,7 +10942,7 @@ function nodeFileDates(root) {
       checked = (files ??= NodeFiles.at(root)).then(async (repository) => {
         if (path2 === "") return repository.root;
         const absolute = await repository.resolvePath(path2, true);
-        const info = await promises.lstat(absolute).catch(() => null);
+        const info = await promises$1.lstat(absolute).catch(() => null);
         ensure(info === null || info.isDirectory(), "INVALID_PATH", `Not a regular file path: ${path2}`);
         return absolute;
       });
@@ -42525,7 +42527,7 @@ const claudeTarget = (openFiles) => async (context, flags) => {
     let root = directory;
     while (true) {
       try {
-        ensure((await promises.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
+        ensure((await promises$1.stat(root)).isDirectory(), "INVALID_PATH", `Not a directory: ${root}`);
         break;
       } catch (error2) {
         if (error2.code !== "ENOENT") throw error2;
@@ -42587,7 +42589,7 @@ class NodeClaudeRuntime {
     );
     let directory;
     try {
-      directory = (await promises.stat(options2.cwd)).isDirectory();
+      directory = (await promises$1.stat(options2.cwd)).isDirectory();
     } catch (error2) {
       throw forgeError("CLAUDE_WORKING_DIRECTORY_UNAVAILABLE", `Cannot access Claude working directory: ${options2.cwd}`, { cause: errorMessage(error2) });
     }
@@ -44596,7 +44598,7 @@ const azureDevOpsPlugin = {
 function nodeLockFiles(root, warn) {
   return async (path2, command2) => {
     const target = await (await NodeFiles.at(root)).resolvePath(path2);
-    await promises.mkdir(minpath.dirname(target), { recursive: true });
+    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
     const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
     return async () => await releaseLock(target, token) === "released";
   };
@@ -44683,7 +44685,7 @@ async function loadConfig(options2) {
   let content2;
   let exists2 = true;
   try {
-    content2 = JSON.parse(await promises.readFile(path2, "utf8"));
+    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
   } catch (error2) {
     if (error2.code === "ENOENT") {
       content2 = {};
@@ -44705,7 +44707,7 @@ const distributionPolicy = {
 };
 const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
-  const root = await promises.lstat(bundleDir);
+  const root = await promises$1.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
   const readAsset = async (path2) => {
     vaultPath(path2);
@@ -44714,13 +44716,13 @@ async function readSetupArtifacts(bundleDir) {
     let current = bundleDir;
     for (const [index2, segment2] of segments2.entries()) {
       current = minpath.join(current, segment2);
-      const entry2 = await promises.lstat(current).catch((error2) => {
+      const entry2 = await promises$1.lstat(current).catch((error2) => {
         if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
         throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
       });
       ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
     }
-    return promises.readFile(current);
+    return promises$1.readFile(current);
   };
   let manifest;
   try {
@@ -61851,7 +61853,7 @@ class NodeMetadataSnapshotStore {
   }
   async load() {
     try {
-      const bytes = await promises.readFile(await this.folder(false).then((folder) => minpath.join(folder, this.name)));
+      const bytes = await promises$1.readFile(await this.folder(false).then((folder) => minpath.join(folder, this.name)));
       const end2 = bytes.indexOf(10);
       if (end2 < 0) return null;
       const header2 = JSON.parse(bytes.toString("utf8", 0, end2));
@@ -61866,16 +61868,16 @@ class NodeMetadataSnapshotStore {
     const body = Buffer.from(JSON.stringify(snapshot));
     const header2 = JSON.stringify({ type: documentType, build: await this.identity(), digest: sha256(body) });
     const folder = await this.folder(true);
-    await promises.writeFile(minpath.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
+    await promises$1.writeFile(minpath.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
       if (error2.code !== "EEXIST") throw error2;
     });
     const temp = minpath.join(folder, `.${this.name}.${node_crypto.randomUUID()}.tmp`);
     try {
-      await promises.writeFile(temp, Buffer.concat([Buffer.from(`${header2}
+      await promises$1.writeFile(temp, Buffer.concat([Buffer.from(`${header2}
 `), body]));
-      await retryTransient(() => promises.rename(temp, minpath.join(folder, this.name)));
+      await retryTransient(() => promises$1.rename(temp, minpath.join(folder, this.name)));
     } catch (error2) {
-      await promises.rm(temp, { force: true }).catch(() => {
+      await promises$1.rm(temp, { force: true }).catch(() => {
       });
       throw error2;
     }
@@ -61888,11 +61890,11 @@ class NodeMetadataSnapshotStore {
     let current = this.root;
     for (const part of this.file.split("/").slice(0, -1)) {
       current = minpath.join(current, part);
-      const info = await promises.lstat(current).catch((error2) => {
+      const info = await promises$1.lstat(current).catch((error2) => {
         if (error2.code === "ENOENT" && create2) return null;
         throw error2;
       });
-      if (info === null) await promises.mkdir(current).catch((error2) => {
+      if (info === null) await promises$1.mkdir(current).catch((error2) => {
         if (error2.code !== "EEXIST") throw error2;
       });
       else ensure(info.isDirectory() && !info.isSymbolicLink(), "UNSAFE_PATH", `The metadata cache folder ${this.file.split("/").slice(0, -1).join("/")} must be a folder, not a symlink or file.`);
@@ -61900,7 +61902,7 @@ class NodeMetadataSnapshotStore {
     return current;
   }
   identity() {
-    this.build ??= promises.stat(this.program).then((info) => `${info.size}:${info.mtimeMs}`, () => "unknown");
+    this.build ??= promises$1.stat(this.program).then((info) => `${info.size}:${info.mtimeMs}`, () => "unknown");
     return this.build;
   }
 }
