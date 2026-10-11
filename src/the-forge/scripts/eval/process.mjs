@@ -17,8 +17,9 @@ function killTree(child, signal) {
     if (child.exitCode === null && child.signalCode === null) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     return;
   }
+  // macOS reports EPERM rather than ESRCH for a group whose remaining members are unreaped zombies.
   try { process.kill(-child.pid, signal); }
-  catch (error) { if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'ESRCH') throw error; }
+  catch (error) { if (!['ESRCH', 'EPERM'].includes(/** @type {string} */ (/** @type {NodeJS.ErrnoException} */ (error).code))) throw error; }
 }
 
 /** Agents of the runs in progress, each with the promise of its exit; `stopping` once a signal ends the driver. */
