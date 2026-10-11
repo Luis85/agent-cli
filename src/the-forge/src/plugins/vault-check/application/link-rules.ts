@@ -2,7 +2,7 @@ import type { MetadataCache, SourceReference } from '../../../application/metada
 import type { CachedMetadata } from '../../../domain/metadata/cache.ts';
 import { missingAnchor } from '../domain/anchors.ts';
 import type { Detection, RuleId } from '../domain/rules.ts';
-import { closestFile } from '../domain/suggestion.ts';
+import { ClosestFiles } from '../domain/suggestion.ts';
 import type { FrontmatterLocator, Location } from './sources.ts';
 
 /** Body embeds, frontmatter embeds (`"![[…]]"`) and Canvas file nodes show a file; every other reference links to one. */
@@ -52,8 +52,9 @@ export async function referenceDetections(
 /** Closest-file suggestions over the vault's paths, computed once per missing link path. */
 export function suggestions(paths: readonly string[]): (linkpath: string) => string | undefined {
   const known = new Map<string, string | undefined>();
+  let index: ClosestFiles | undefined;
   return linkpath => {
-    if (!known.has(linkpath)) known.set(linkpath, closestFile(linkpath, paths));
+    if (!known.has(linkpath)) known.set(linkpath, (index ??= new ClosestFiles(paths)).closest(linkpath));
     return known.get(linkpath);
   };
 }

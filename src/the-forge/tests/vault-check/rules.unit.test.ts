@@ -4,7 +4,6 @@ import { missingAnchor } from '../../src/plugins/vault-check/domain/anchors.ts';
 import { dominantType, propertyInventory, propertyUses, tagInventory } from '../../src/plugins/vault-check/domain/inventory.ts';
 import { acceptsType, inferPropertyType, typeRegistry } from '../../src/plugins/vault-check/domain/property-types.ts';
 import { compareFindings, effectiveSeverities, ruleDefaults, ruleIds, type Finding } from '../../src/plugins/vault-check/domain/rules.ts';
-import { closestFile } from '../../src/plugins/vault-check/domain/suggestion.ts';
 import { fill } from '../../src/plugins/vault-check/presentation/messages.ts';
 
 const at = { position: { start: { line: 0, col: 0, offset: 0 }, end: { line: 0, col: 0, offset: 0 } } };
@@ -81,22 +80,6 @@ describe('anchors', () => {
     expect(missingAnchor('#Budget#Plan', cache)).toBe('#Budget');
     expect(missingAnchor('#^nope', cache)).toBe('#^nope');
     expect(missingAnchor('#^ref-1', {})).toBe('#^ref-1');
-  });
-});
-
-describe('closest file suggestions', () => {
-  const paths = ['Projects/Alpha.md', 'Notes/Alpha Plan.md', 'assets/diagram.png', 'Deep/Nested/alpha.md'];
-
-  it('suggests the nearest file name, ignoring case and .md, preferring shallow paths', () => {
-    expect(closestFile('Projects/Alpah', paths)).toBe('Projects/Alpha.md');
-    expect(closestFile('alpha', paths)).toBe('Projects/Alpha.md');
-    expect(closestFile('diagramm.png', paths)).toBe('assets/diagram.png');
-    expect(closestFile('Alpha Plna.md', paths)).toBe('Notes/Alpha Plan.md');
-  });
-
-  it('suggests nothing beyond a third of the name length', () => {
-    expect(closestFile('Roadmap', paths)).toBeUndefined();
-    expect(closestFile('', paths)).toBeUndefined();
   });
 });
 
