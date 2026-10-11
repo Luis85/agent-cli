@@ -87,8 +87,8 @@ describe('committed showcase project', () => {
     for (const target of targets) {
       expect(tree.some(path => path.startsWith(`ui/${target}/components/trip-planner.`))).toBe(true);
       expect(tree).toContain(`ui/${target}/stories/trip-planner.stories.ts`);
-      const output = ['--out', `ui/${target}/components`, '--stories', '--stories-out', `ui/${target}/stories`];
-      const check = await cli(['make', 'ui', 'trip-planner', '--framework', target, '--project', 'forge-showcase', ...libraries, ...output, '--check']);
+      // The committed output sits in each target's default folders, so the check needs no --out or --stories-out.
+      const check = await cli(['make', 'ui', 'trip-planner', '--framework', target, '--project', 'forge-showcase', ...libraries, '--stories', '--check']);
       expect(check.status, target).toBe(0);
     }
     for (const source of ['trips-api', 'trail-guides']) {

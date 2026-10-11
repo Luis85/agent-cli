@@ -60,7 +60,7 @@ node bin/forge.js help backlog --lang de
 UI and data-source drift checks accept `--project` and leave the selection unchanged:
 
 ```sh
-node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --out ui/react/components --stories --stories-out ui/react/stories --check
+node bin/forge.js make ui trip-planner --framework react --project forge-showcase --library src/forge-showcase/library/components --interactions-library src/forge-showcase/library/interactions --stories --check
 ```
 
 ## Run the showcase's own checks

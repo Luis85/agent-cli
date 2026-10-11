@@ -31,7 +31,7 @@ const folders = [
   ['library/components', 'Starter component library plus the Trailhead `trip-card` and `trip-planner` definitions', '`components init`, `components create`, `write --if-match`, `components validate`'],
   ['library/interactions', 'Starter interactions plus `toggle-favorite`, `capture-destination` and `save-trip-draft`', '`interactions init`, `interactions create`, `write --if-match`, `interactions validate`'],
   ['library/data-sources', 'REST (`trips-api`) and local JSON (`trail-guides`) data-source definitions', '`data-sources create`, `write --if-match`, `data-sources validate`'],
-  [`ui/{${uiTargets.join(',')}}`, 'Generated UI components and Storybook CSF stories for all seven targets, checked for drift', '`make ui trip-planner --framework <target> --stories --out ... --stories-out ...`, `make ui ... --check`'],
+  [`ui/{${uiTargets.join(',')}}`, 'Generated UI components and Storybook CSF stories for all seven targets, checked for drift', '`make ui trip-planner --framework <target> --stories` into the default `ui/<target>/components` and `ui/<target>/stories`, `make ui ... --check`'],
   ['src/domain, src/application', 'Domain entity, value object and event; application use cases with injected ports', '`project component`, `make entity`, `make value-object`, `make event`, `make use-case`'],
   ['src/presentation/forms', 'Typed Zod forms rendered by the Vite form preview (`npm run dev`)', '`project create`, `make form TripRequest`'],
   [`${dataOutputs.adapters}, ${dataOutputs.fixtures}`, 'Typed adapters and deterministic fixtures generated from the data-source definitions', '`make data-source`, `make data-source --check`'],

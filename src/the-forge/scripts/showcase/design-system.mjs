@@ -235,14 +235,11 @@ export async function buildDesignSystem(cli) {
   await cli.runConcurrently([['components', 'validate', ...libraryOptions], ['components', 'inspect', 'trip-planner', ...libraryOptions]]);
 
   cli.begin('UI for every target');
-  const generate = (/** @type {string} */ framework) => ['make', 'ui', 'trip-planner', '--framework', framework, '--project', project.id, ...libraryOptions, ...uiOptions(framework), '--stories'];
+  // Without --out and --stories-out, each target writes to its default ui/<target>/components and ui/<target>/stories.
+  const generate = (/** @type {string} */ framework) => ['make', 'ui', 'trip-planner', '--framework', framework, '--project', project.id, ...libraryOptions, '--stories'];
   cli.run([...generate('html'), '--dry-run']);
   for (const framework of uiTargets) cli.run(generate(framework));
   // Drift checks are read-only, so they run concurrently.
   await cli.runConcurrently(uiTargets.map(framework => [...generate(framework), '--check']));
 }
 
-/** @param {string} framework */
-function uiOptions(framework) {
-  return ['--out', `ui/${framework}/components`, '--stories-out', `ui/${framework}/stories`];
-}
