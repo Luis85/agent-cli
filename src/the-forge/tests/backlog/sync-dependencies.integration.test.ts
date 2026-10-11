@@ -223,4 +223,18 @@ describe('links changed concurrently on the other end', () => {
     expect(fake.predecessors('contoso', pack)).toEqual([]);
     void flights;
   });
+
+  it('settles an update that only adds links although another link was removed from the other end meanwhile', async () => {
+    vault = await backlogVault({ 'plan/Plan.base': base, 'plan/Pack.md': noteText({ type: 'PBI', order: 1000 }), 'plan/Book flights.md': noteText({ type: 'PBI', order: 2000 }) });
+    await sync();
+    const [pack, flights] = [await idOf('plan/Pack.md'), await idOf('plan/Book flights.md')];
+    const stranger = fake.add('contoso', { 'System.WorkItemType': 'User Story', 'System.Title': 'Stranger' });
+    fake.link('contoso', stranger.id, 'System.LinkTypes.Related', pack);
+    await replaceIn('plan/Pack.md', 'type: "PBI"', 'type: "PBI"\ndependsOn: ["[[Book flights]]"]');
+    fake.beforeWrite = () => { fake.beforeWrite = null; fake.unlink('contoso', stranger.id, 'System.LinkTypes.Related', pack); };
+    const raced = await sync();
+    expect(raced.data.counts).toMatchObject({ updated: 1, failed: 0 });
+    expect(fake.predecessors('contoso', pack)).toEqual([flights]);
+    expect((await sync()).data.counts).toMatchObject({ updated: 0, conflicts: 0, failed: 0 });
+  });
 });

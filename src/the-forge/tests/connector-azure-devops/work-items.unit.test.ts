@@ -87,6 +87,29 @@ describe('JSON Patch documents', () => {
     expect(relationsLanded(read, operations, [related, parent])).toBe(false);
     expect(relationsLanded(read, updateOperations({ title: 'Only a field' }, '3', context(), read), read)).toBe(true);
   });
+
+  it('ignores links removed on the other end that no removal by position could have hit', () => {
+    const link = (rel: string, id: number) => ({ rel, url: `${organization}/_apis/wit/workItems/${id}` });
+    const [predecessor, related, parent] = [link('System.LinkTypes.Dependency-Reverse', 4), link('System.LinkTypes.Related', 9), link('System.LinkTypes.Hierarchy-Reverse', 1)];
+    const added = link('System.LinkTypes.Dependency-Reverse', 5);
+    // An update that removes nothing: the Related link and the parent went meanwhile, the addition landed.
+    const adding = updateOperations({ dependencies: ['4', '5'] }, '3', context(), [predecessor, related, parent]);
+    expect(adding.some(operation => operation.op === 'remove')).toBe(false);
+    expect(relationsLanded([predecessor, related, parent], adding, [predecessor, added])).toBe(true);
+    // One removal at index 0 can only have hit index 0 or 1, so the parent at index 2 may go meanwhile.
+    const removing = updateOperations({ dependencies: ['5'] }, '3', context(), [predecessor, related, parent]);
+    expect(relationsLanded([predecessor, related, parent], removing, [related, added])).toBe(true);
+    expect(relationsLanded([predecessor, related, parent], removing, [related, parent, added, link('System.LinkTypes.Related', 12)])).toBe(true);
+    // Still wrong: the removed link must be gone, and the next link stays, or the removal may have hit it.
+    expect(relationsLanded([predecessor, related, parent], removing, [predecessor, parent, added])).toBe(false);
+    expect(relationsLanded([predecessor, related, parent], removing, [parent, added])).toBe(false);
+    expect(relationsLanded([predecessor, related, parent], removing, [added])).toBe(false);
+    // Two removals up to index 1 reach up to index 3.
+    const [other, tail] = [link('System.LinkTypes.Dependency-Reverse', 6), link('System.LinkTypes.Related', 12)];
+    const both = updateOperations({ dependencies: ['5'] }, '3', context(), [predecessor, other, related, parent, tail]);
+    expect(relationsLanded([predecessor, other, related, parent, tail], both, [related, parent, added])).toBe(true);
+    expect(relationsLanded([predecessor, other, related, parent, tail], both, [related, tail, added])).toBe(false);
+  });
 });
 
 describe('reading work items', () => {
