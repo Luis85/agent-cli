@@ -83,8 +83,16 @@ export function updateOperations(patch: RemotePatch, expectedRev: string, contex
   return [...operations, ...additions];
 }
 
-/** What a relation is compared by: its type and its target (the work item id, else the URL). */
-const relationKey = (relation: unknown) => (isRecord(relation) ? `${String(relation.rel)} ${lastSegment(relation.url) ?? String(relation.url).toLowerCase()}` : '');
+const WORK_ITEM_URL = /\/_apis\/wit\/workitems\/(\d+)$/i;
+/**
+ * What a relation is compared by: its type and its target, the work item id for a link to a work item (the server may
+ * return another URL form for it) and the complete URL for any other link, so `…/pull/7` and `…/issues/7` differ.
+ */
+const relationKey = (relation: unknown) => {
+  if (!isRecord(relation)) return '';
+  const url = String(relation.url), item = WORK_ITEM_URL.exec(url)?.[1];
+  return `${String(relation.rel)} ${item === undefined ? `url ${url}` : `item ${item}`}`;
+};
 const RELATION_INDEX = /^\/relations\/(\d+)$/;
 const tally = (keys: readonly string[]) => keys.reduce((counts, key) => counts.set(key, (counts.get(key) ?? 0) + 1), new Map<string, number>());
 
@@ -95,17 +103,19 @@ const tally = (keys: readonly string[]) => keys.reduce((counts, key) => counts.s
  * the PATCH applies an index may name another relation. A relation that went meanwhile shifts only the removals at
  * or above its index, by one position each, so an update that removes nothing always landed. With `n` removals up to
  * the highest removed index, a removal can only have hit a relation up to `n` positions above that index: relations
- * read further up may have gone meanwhile. Every other relation read and not removed and every one added must still
- * be there, and every removed one gone (unless a relation with the same key was allowed to go); relations added
- * meanwhile are ignored.
+ * read further up may have gone meanwhile, unless one read up to there is the same link, which they could stand in
+ * for. Every other relation read and not removed and every one added must still be there, and every removed one gone
+ * (unless a relation with the same key was allowed to go); relations added meanwhile are ignored.
  */
 export function relationsLanded(read: readonly unknown[], operations: readonly PatchOperation[], result: readonly unknown[]): boolean {
   const removed = new Set(operations.flatMap(operation => (operation.op === 'remove' && RELATION_INDEX.test(operation.path) ? [Number(RELATION_INDEX.exec(operation.path)![1])] : [])));
   if (removed.size === 0) return true;
   const reach = Math.max(...removed) + removed.size;
   const added = operations.filter(operation => operation.op === 'add' && operation.path === '/relations/-').map(operation => relationKey(operation.value));
-  const expected = tally([...read.filter((_relation, index) => index <= reach && !removed.has(index)).map(relationKey), ...added]);
-  const optional = tally(read.filter((_relation, index) => index > reach).map(relationKey));
+  const within = new Set(read.filter((_relation, index) => index <= reach).map(relationKey));
+  const required = (relation: unknown, index: number) => (index <= reach ? !removed.has(index) : within.has(relationKey(relation)));
+  const expected = tally([...read.filter(required).map(relationKey), ...added]);
+  const optional = tally(read.filter((relation, index) => index > reach && !within.has(relationKey(relation))).map(relationKey));
   const actual = tally(result.map(relationKey));
   if ([...expected].some(([key, count]) => (actual.get(key) ?? 0) < count)) return false;
   return [...removed].every(index => {
