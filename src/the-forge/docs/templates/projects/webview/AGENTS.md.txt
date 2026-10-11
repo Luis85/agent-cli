@@ -1,0 +1,11 @@
+# Working on __FORGE_WEBVIEW_ID__
+
+Read README.md, PRODUCT.md, DESIGN.md and package.json. This independent Vue 3/Nuxt UI project owns its source, dependencies, lockfile, scripts, tests and workflow. Never import sibling source or toolchains; integration uses the portable `bin/forge.js` distribution only.
+
+Before changing the product, define the user task and acceptance examples. Replace the clearly labeled sample model with intentional behavior; do not represent illustrative content as live system state. Keep components small, visible controls functional, inputs labeled, and keyboard/mobile interactions usable. No persistence or authenticated API client is included. Add those only for an authorized concrete need.
+
+Run Forge from the containing workspace and confirm `project current` before document edits. File operations use the selected project. Preview mutations and use the observed revision when changing existing files or published assets. Never auto-accept a fresh revision after a conflict. Build with npm run build, inspect with `webview inspect --project __FORGE_WEBVIEW_ID__`, preview publication, then publish with the reviewed revision. Offer to start the server when the user wants a local preview; never start a second custom server as a substitute for the managed workflow. Vite is available for deliberate source iteration.
+
+Run npm install once and commit package-lock.json; then use npm ci. Run npm run check:fast while editing and npm run check before handoff (install Chromium with npm run browsers:install first). The browser fixture starts and stops its own temporary CLI-managed server; do not point tests at the user's live workspace server. Inspect both saved screenshots and provide user-visible links. Keep source under 400 code-bearing lines and tests/support under 450.
+
+Keep authored workflows in src/infrastructure/workflows/<concern>/ and regenerate workspace entrypoints using `workflows sync`. Do not edit generated workflow files. Keep dist/, node_modules/, test-results/ and playwright-report/ out of Git. Never put a session token or secrets in source, fixtures, docs or screenshots.

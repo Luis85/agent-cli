@@ -5,6 +5,8 @@ Tests live under the concern they verify. Every executable test file declares it
 | Concern | Coverage |
 | --- | --- |
 | [architecture](architecture/) | Kernel layer boundaries, core plugin layering (no plugin-to-plugin or plugin-to-kernel-adapter imports) and the SDK |
+| [browser](browser/) | Screenshot and tutorial contracts, guarded artifact publication, explicit interaction plans, isolated Playwright runtime and portable real-browser workflows |
+| [webviews](webviews/) | Independent prototype publication, replacement guards, distribution ownership and multiple CLI-served views |
 | [bases](bases/) | The `bases` core plugin: standalone native Bases filters, formulas, file metadata, metadata-cache adaptation, portable repository queries, query scaling, the static `bases.validation` checks and disabling it through `plugins.disabled` |
 | [backlog](backlog/) | The `backlog` core plugin: backlog-view conformance fixtures, settings, model, ranks, writes, releases, the CLI workflow, and the sync engine (three-way field decisions, sync state, push/pull/conflict/resolve against the Azure DevOps fake, portable sync) |
 | [connector](connector/) | The `connector` core plugin: connection profiles and their validation, the connectors hub, token handling and redaction, and the kernel HTTP transport (retries, Retry-After, timeouts) |
@@ -59,3 +61,5 @@ npm run check
 The full gate builds the distribution before tests. Portable CLI and packaged-document tests need that current build; when running them directly after source or documentation changes, run `npm run build` first. Unit and integration tests that only read source do not require a distribution rebuild.
 
 Vitest discovers classified files recursively, including nested concern directories. The structure gate rejects unclassified tests and tests outside `tests/`; TypeScript checks every discovered test and support file. Keep source and test code limits enforced by the existing quality gates. Shared fixtures belong in `support/` or a concern-specific support module, with an ordinary source filename rather than an unranked test filename.
+
+Native portable browser acceptance is opt-in with `FORGE_BROWSER_TESTS=1`; when enabled, an unavailable browser fails the test. Set `FORGE_BROWSER_EXECUTABLE` to an installed Chromium path or run `browser install` first. Linux/Node 24 CI installs Chromium and enables this suite. Other platforms still run browser contract, validation, guard and installer tests without downloading a browser.

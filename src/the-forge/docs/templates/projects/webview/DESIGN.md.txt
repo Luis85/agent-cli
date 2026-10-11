@@ -1,0 +1,17 @@
+# __FORGE_WEBVIEW_ID__ design
+
+## Surface and mode
+
+Operate: a compact, single-column prototype list for inspecting and trying one interaction. Inherit the Forge developer webview's quiet slate and emerald system. The project identity, sample-data label, purpose, search and working list must remain immediately understandable. Avoid invented live statistics or backend status.
+
+## Tokens
+
+System sans typography; text #172333, secondary #526176, canvas #f8fafc, border #dbe2e8, focus/action emerald #047857. Content max-width 760px inside a 960px shell. Desktop gutters 32px; mobile gutters 20px. Page-title tracking -0.03em, fluid 32–44px. Minimum input/button height 44px. Separate list rows with a single subtle rule, not nested cards.
+
+## Behavior
+
+Use explicit search labels, semantic headings and lists, pressed states for save buttons, polite state announcements, and a skip-to-content link. The empty state explains recovery. Mobile stacks each row's copy and action. Content is visible immediately; motion is unnecessary for this starter. Keep visible focus, text contrast, natural wrapping and no horizontal overflow.
+
+## Evidence
+
+Playwright captures desktop and mobile in test-results and verifies the sample interaction and keyboard path. Review captures after changing composition, copy or type. Update this document when the actual product replaces the sample.

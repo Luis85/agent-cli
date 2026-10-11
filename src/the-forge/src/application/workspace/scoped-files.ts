@@ -1,5 +1,6 @@
 import { ensure } from '../../domain/shared/errors.ts';
 import { vaultPath, type FileChange, type FileRename, type FileSnapshot, type FileStat, type WriteRequest } from '../../domain/documents/file.ts';
+import { snapshotBatch } from './batch-plan.ts';
 import { snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, CommitObserver, FileBatch, FileRepository, WriteBatchResult } from './ports.ts';
 
@@ -41,7 +42,9 @@ export class ScopedFiles implements FileRepository {
 
   /** Folders created or removed above the project directory are outside this scope and are not reported. */
   async commit(batch: FileBatch, dryRun: boolean): Promise<BatchResult> {
+    batch = snapshotBatch(batch);
     const result = await this.files.commit({
+      guards: (batch.guards ?? []).map(guard => ({ ...guard, path: this.prefix + guard.path })),
       renames: (batch.renames ?? []).map(rename => ({ ...rename, from: this.prefix + vaultPath(rename.from), to: this.prefix + vaultPath(rename.to) })),
       writes: snapshotWriteRequests(batch.writes ?? []).map(write => ({ ...write, path: this.prefix + write.path })),
       removes: (batch.removes ?? []).map(remove => ({ ...remove, path: this.prefix + vaultPath(remove.path) })),

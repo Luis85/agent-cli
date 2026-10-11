@@ -107,7 +107,7 @@ describe('declared command errors', async () => {
     }
   });
 
-  it.each(['templates', 'scaffolds', 'ui', 'data-sources', 'claude', 'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog'])(
+  it.each(['templates', 'scaffolds', 'ui', 'data-sources', 'claude', 'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser'])(
     'declares every code the %s plugin raises on the commands that report it', pluginId => {
       expect(pluginIds).toContain(pluginId);
       const own = pluginErrors(registry, pluginId);

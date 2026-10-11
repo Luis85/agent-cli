@@ -62,7 +62,7 @@ export const germanErrors = {
   INVALID_CONFIG: { summary: 'Die Konfiguration ist ungültig oder nicht lesbar.', hint: 'Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config.' },
   INVALID_SETUP: { summary: 'Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.', hint: 'Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus.' },
   INVALID_PROJECT: { summary: 'Die Projektmetadaten sind ungültig.', hint: 'Korrigieren Sie .forge/project.json im Projektverzeichnis.' },
-  INVALID_PROJECT_NAME: { summary: 'Der Projektname ist ungültig.', hint: 'Verwenden Sie einen kleingeschriebenen Kebab-Case-Namen, zum Beispiel billing-service.' },
+  INVALID_PROJECT_NAME: { summary: 'Der Projektname ist ungültig.', hint: 'Verwenden Sie einen kleingeschriebenen Kebab-Case-Namen, zum Beispiel billing-service. Der Webview-Name admin ist reserviert.' },
   INVALID_PROJECT_CONTEXT: { summary: 'Die gespeicherte Projektauswahl ist ungültig.', hint: 'Verwenden Sie project open <name> oder project close.' },
   INVALID_COMPONENT_KIND: { summary: 'Der Komponententyp ist ungültig.', hint: 'Verwenden Sie domain oder application.' },
   PROJECT_EXISTS: { summary: 'Das Projekt existiert bereits.', hint: 'Wählen Sie einen anderen Namen oder öffnen Sie es mit project open <name>.' },

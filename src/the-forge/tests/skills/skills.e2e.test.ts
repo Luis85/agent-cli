@@ -10,8 +10,8 @@ const config = (value: unknown) => writeFile(join(fixture.project, 'bin/config.j
 
 describe('the skills core plugin', () => {
   it('lists, shows and installs the bundled skills with an unchanged CLI contract', async () => {
-    // The agents and backlog core plugins contribute forge-agents and forge-backlog after the bundled skills.
-    expect((await cli(['skills'])).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog'] });
+    // Feature plugins contribute their skills after the shared workflow skills.
+    expect((await cli(['skills'])).body.data).toEqual({ skills: ['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser'] });
     expect((await cli(['skills', 'show', 'forge-vault'])).body.data).toEqual({ id: 'forge-vault', content: expect.stringContaining('name: forge-vault') });
     expect((await cli(['skills', 'show', 'missing'])).body.error.code).toBe('UNKNOWN_SKILL');
     expect((await cli(['skills', 'list', '--out', 'x'])).body.error.code).toBe('INVALID_ARGUMENT');
@@ -19,7 +19,7 @@ describe('the skills core plugin', () => {
     const installed = await cli(['skills', 'install']);
     expect(installed.status).toBe(0);
     // Both agent skill roots by default: Claude Code reads .claude/skills, other agents .agents/skills.
-    expect(installed.body.data.changes.map((change: { path: string }) => change.path)).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog']
+    expect(installed.body.data.changes.map((change: { path: string }) => change.path)).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']
       .flatMap(id => [`.claude/skills/${id}/SKILL.md`, `.agents/skills/${id}/SKILL.md`]));
     for (const root of ['.claude/skills', '.agents/skills']) {
       expect(await readFile(join(fixture.project, root, 'forge-workflow/SKILL.md'), 'utf8')).toBe((await cli(['skills', 'show', 'forge-workflow'])).body.data.content);
@@ -43,8 +43,8 @@ describe('the skills core plugin', () => {
     try {
       const schema = (await cli(['schema'])).body.data;
       expect(ids(schema.commands)).not.toContain('skills');
-      // Skills contributed by other plugins stay registered for setup: agents brings forge-agents, backlog forge-backlog.
-      expect(schema.skills).toEqual(['forge-agents', 'forge-backlog']);
+      // Skills contributed by other plugins stay registered for setup.
+      expect(schema.skills).toEqual(['forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']);
       expect(ids((await cli(['help'])).body.data.commands)).not.toContain('skills');
       expect((await cli(['help', 'skills'])).body.error.code).toBe('UNKNOWN_COMMAND');
       expect((await cli(['skills'])).body.error.code).toBe('UNKNOWN_COMMAND');
@@ -55,7 +55,7 @@ describe('the skills core plugin', () => {
       expect(help.body.warnings).toEqual([expect.stringContaining('ignored quality')]);
     } finally { await rm(join(fixture.project, 'bin/config.json')); }
     expect(ids((await cli(['help'])).body.data.commands)).toContain('skills');
-    expect((await cli(['--no-plugins', 'skills'])).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog']);
+    expect((await cli(['--no-plugins', 'skills'])).body.data.skills).toEqual(['forge-workflow', 'forge-vault', 'forge-development', 'forge-agents', 'forge-backlog', 'forge-webviews', 'forge-browser']);
   });
 
   it('publishes per-command JSON Schema and annotations from the same metadata as help', async () => {

@@ -19,6 +19,7 @@ export const germanDescriptions: Record<string, string> = {
   'Report the Forge version; used without a command.': 'Die Forge-Version melden; ohne Befehl verwenden.',
   // Discovery and project commands.
   'A command id from the catalog.': 'Eine Befehls-ID aus dem Katalog.',
+  'Project scaffold type for project create.': 'Projektvorlage für project create.',
   'Component kind for project component.': 'Komponentenart für project component.',
   'list (default), create, open, current, close, inspect or component.': 'list (Standard), create, open, current, close, inspect oder component.',
   'A project id, or the component name.': 'Eine Projekt-ID oder der Komponentenname.',

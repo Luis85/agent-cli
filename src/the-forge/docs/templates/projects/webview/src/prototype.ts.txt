@@ -1,0 +1,15 @@
+export interface PrototypeItem { id: string; title: string; description: string; saved: boolean }
+
+/** Illustrative, in-memory content. Replace this module with your own product model. */
+export function sampleItems(): PrototypeItem[] {
+  return [
+    { id: 'brief', title: 'Shape the brief', description: 'Agree on the user, their task, and what a useful first version should prove.', saved: false },
+    { id: 'prototype', title: 'Try the interaction', description: 'Make one complete workflow tangible before expanding the surface.', saved: false },
+    { id: 'review', title: 'Review together', description: 'Use desktop and mobile captures to discuss what works and what needs to change.', saved: false },
+  ];
+}
+
+export function matchingItems(items: readonly PrototypeItem[], query: string): PrototypeItem[] {
+  const needle = query.trim().toLocaleLowerCase('en');
+  return items.filter(item => `${item.title} ${item.description}`.toLocaleLowerCase('en').includes(needle));
+}

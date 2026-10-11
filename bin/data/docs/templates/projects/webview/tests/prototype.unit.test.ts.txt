@@ -1,0 +1,18 @@
+import { describe, expect, it } from 'vitest';
+import { matchingItems, sampleItems } from '../src/prototype';
+
+describe('prototype sample', () => {
+  it('searches titles and descriptions without case or surrounding-space sensitivity', () => {
+    expect(matchingItems(sampleItems(), '  BRIEF ')).toHaveLength(1);
+    expect(matchingItems(sampleItems(), 'mobile')[0]?.id).toBe('review');
+  });
+  it('shows all items for an empty search and none for an unknown term', () => {
+    expect(matchingItems(sampleItems(), ' ')).toHaveLength(3);
+    expect(matchingItems(sampleItems(), 'unmatched')).toEqual([]);
+  });
+  it('creates independent sample state for each session', () => {
+    const first = sampleItems();
+    first[0]!.saved = true;
+    expect(sampleItems()[0]?.saved).toBe(false);
+  });
+});

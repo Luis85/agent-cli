@@ -96,6 +96,12 @@ const probes: Array<{ mode: string; args: Args; input?: string; prepare?: Array<
   { mode: 'backlog ranks', args: backlog('ranks', 'respace') },
   { mode: 'backlog iteration', args: backlog('iteration', 'add', '--today', '2026-10-01') },
   { mode: 'backlog release', args: backlog('release', 'add', '2.0') },
+  { mode: 'webview publish', args: ['webview', 'publish'], prepare: [
+    [['project', 'create', 'repeat-view', '--type', 'webview']],
+    [['project', 'open', 'repeat-view']],
+    [['create', 'dist/index.html', '--content', '<h1>Repeatable prototype</h1>']],
+    [['create', 'dist/manifest.json', '--content', '{"id":"repeat-view","name":"Repeatable prototype","entry":"index.html"}']],
+  ] },
   { mode: 'project close', args: ['project', 'close'] },
 ];
 
@@ -106,6 +112,11 @@ const unprobed: Record<string, string> = {
   'claude marketplaces': 'runs the installed Claude Code CLI',
   'claude runtime': 'runs the installed Claude Code CLI',
 };
+
+/** Browser modes require explicit opt-in runtime setup; never download a browser in this general CLI suite.
+ * The browser acceptance suite checks screenshot/tutorial repeats; runtime adapter tests cover installation.
+ */
+const browserProbes = ['browser install', 'browser screenshot', 'browser tutorial'];
 
 /**
  * Every workspace file with its digest. The derived metadata cache is left out, as `list`, revisions and events leave
@@ -138,8 +149,9 @@ describe('idempotentHint agrees with a repeated invocation', () => {
   let declared: Map<string, boolean>;
   beforeAll(async () => { declared = await declaredModes(); });
   it('probes every mutating mode the schema publishes', () => {
-    expect([...declared.keys()].sort()).toEqual([...probes.map(probe => probe.mode), ...Object.keys(unprobed)].sort());
+    expect([...declared.keys()].sort()).toEqual([...probes.map(probe => probe.mode), ...Object.keys(unprobed), ...browserProbes].sort());
     for (const mode of Object.keys(unprobed)) expect(declared.get(mode), mode).toBe(false);
+    for (const mode of browserProbes) expect(declared.get(mode), mode).toBe(true);
   });
 
   for (const probe of probes) {

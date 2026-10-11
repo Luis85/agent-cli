@@ -1,0 +1,59 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { matchingItems, sampleItems } from './prototype';
+
+const query = ref('');
+const items = ref(sampleItems());
+const visibleItems = computed(() => matchingItems(items.value, query.value));
+const announcement = ref('');
+function toggleSaved(id: string) {
+  const item = items.value.find(candidate => candidate.id === id);
+  if (!item) return;
+  item.saved = !item.saved;
+  announcement.value = `${item.title} ${item.saved ? 'saved' : 'removed from saved items'}.`;
+}
+</script>
+
+<template>
+  <UApp>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="prototype-shell">
+      <header class="project-header">
+        <span class="project-name">__FORGE_WEBVIEW_ID__</span>
+        <span class="sample-label">Sample data · this tab only</span>
+      </header>
+      <main id="main" tabindex="-1">
+        <div class="page-intro">
+          <h1>A place to start.</h1>
+          <p>Explore a small working interaction, then make it your own.</p>
+        </div>
+        <section aria-labelledby="ideas-heading">
+          <div class="list-heading">
+            <h2 id="ideas-heading">Prototype ideas</h2>
+            <span class="result-count" aria-live="polite">{{ visibleItems.length }} of {{ items.length }}</span>
+          </div>
+          <label class="search-label" for="idea-search">Find an idea</label>
+          <UInput id="idea-search" v-model="query" class="search-input" icon="i-lucide-search" placeholder="Search title or description" autocomplete="off" />
+          <ul v-if="visibleItems.length" class="idea-list">
+            <li v-for="item in visibleItems" :key="item.id" class="idea-row">
+              <div class="idea-copy">
+                <h3>{{ item.title }}</h3>
+                <p>{{ item.description }}</p>
+              </div>
+              <UButton :aria-label="`${item.saved ? 'Unsave' : 'Save'} ${item.title}`" :aria-pressed="item.saved" :color="item.saved ? 'primary' : 'neutral'" :variant="item.saved ? 'soft' : 'outline'" :icon="item.saved ? 'i-lucide-check' : 'i-lucide-bookmark'" @click="toggleSaved(item.id)">
+                {{ item.saved ? 'Saved' : 'Save' }}
+              </UButton>
+            </li>
+          </ul>
+          <div v-else class="empty-state">
+            <h3>No ideas match your search</h3>
+            <p>Try a shorter phrase or clear the search to see every idea.</p>
+            <UButton color="neutral" variant="outline" @click="query = ''">Clear search</UButton>
+          </div>
+          <p class="sr-only" role="status">{{ announcement }}</p>
+        </section>
+        <footer>Changes stay in memory. Reloading restores the sample.</footer>
+      </main>
+    </div>
+  </UApp>
+</template>

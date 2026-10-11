@@ -36,6 +36,8 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | --- | --- | --- |
 | `help` | `[command]` | A concise catalog of command descriptions, usage and behavior hints, or one command's described options, arguments, action details and error codes. Response schemas are available through `schema <command>`; see [command metadata](plugins.md#command-metadata) |
 | `schema` | `[command]` | Machine-readable contract: every command (or one) with a JSON Schema 2020-12 `inputSchema`, its `outputSchema` where declared, annotations and error codes; the response `envelope` schema; generator and skill IDs; built-in and plugin error codes. See the [schema contract](schema.md) |
+| `browser` | `status / install / screenshot <url> --out image.png / validate <source> [--out directory] / tutorial <source> --out directory` | Capture on-demand webpage evidence or generate an illustrated tutorial from an explicit JSON/Markdown/Canvas plan. Scoped writes, dry runs and revision guards; see [browser reference](browser.md). Contributed by the `browser` core plugin |
+| `webview` | `inspect / publish [--if-match revision] [--check] [--dry-run]` | Inspect or publish the selected webview project's `dist/` into `bin/webviews/<id>`. Use `--project <id>` for an explicit invocation target; see [webviews](webviews.md). Contributed by the `webviews` core plugin |
 | `server` | `[status / start [--port 0..65535] [--webview id] [--dry-run] / stop [--dry-run]]` | Workspace-scoped localhost server lifecycle and read-only admin inspection. `status` is the default and never starts a process; `start --webview admin` returns its authenticated launch URL. See [localhost server](server.md) |
 | `config` | none | Effective validated configuration and selected paths, with plugin config sections in `config.plugins.settings` and their schemas in `sections` |
 | `templates` | `[list / inspect <template.md> / install [workflow]]` | Discover template inputs or install missing editable workflow templates |
@@ -79,7 +81,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 | `bases` | `list / inspect <path.base> / query <path.base> [--view name] [--context note.md] [--limit count] / capabilities` | Evaluate a saved view and return matching files in the active vault without Obsidian; see [Bases queries](bases.md). Contributed by the `bases` core plugin |
 | `skills` | `[list / show <id> / install [--target both / claude / agents / --out directory]]` | List/read [Agent Skills](../how-to/install-agent-skills.md) or install each as `<root>/<id>/SKILL.md` in the active scope: into `.claude/skills` and `.agents/skills` by default, one of them with `--target`, or a custom `--out` directory; existing files are refused. Contributed by the `skills` core plugin |
 | `setup` | none | Initialize missing app/config, skills (in `.claude/skills` and `.agents/skills`), example template and lean AGENTS.md; report existing destinations as skipped |
-| `project` | `list / inspect [id] / create <kebab-name>` | Discover or scaffold workspace projects; inspect without an ID uses the selected project |
+| `project` | `list / inspect [id] / create <kebab-name> [--type library / webview]` | Discover or scaffold independent projects; the default type is `library`. Inspect without an ID uses the selected project |
 | `project open` | `<id>` | Persist a managed project as the active scope |
 | `project current` | none | Report the selected project, or `null` |
 | `project close` | none | Clear selection and restore workspace scope |

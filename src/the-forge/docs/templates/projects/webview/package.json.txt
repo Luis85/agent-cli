@@ -1,0 +1,49 @@
+{
+  "name": "__FORGE_WEBVIEW_ID__",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Self-contained Vue webview prototype",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "config": {
+    "webview": {
+      "id": "__FORGE_WEBVIEW_ID__"
+    },
+    "forgeWorkspace": "__FORGE_WORKSPACE_RELATIVE__"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "browsers:install": "playwright install chromium",
+    "package": "node scripts/forge.mjs",
+    "check:fast": "npm run typecheck && npm test",
+    "check": "npm run check:fast && npm run build && npm run test:e2e"
+  },
+  "dependencies": {
+    "@nuxt/ui": "4.11.3",
+    "tailwindcss": "4.3.3",
+    "vue": "3.5.43",
+    "vue-router": "4.6.4"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "1.2.142",
+    "@playwright/test": "1.64.0",
+    "@types/node": "22.20.5",
+    "@vitejs/plugin-vue": "6.0.10",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "5.0.3",
+    "vue-tsc": "3.3.13"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": false
+  }
+}

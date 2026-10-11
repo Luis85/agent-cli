@@ -6,7 +6,8 @@ import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent } from '../plugins/host-events.ts';
 
 export type ComponentKind = 'domain' | 'application';
-export interface ProjectMetadata { schemaVersion: 1; name: string; type: 'library' }
+export type ProjectType = 'library' | 'webview';
+export interface ProjectMetadata { schemaVersion: 1; name: string; type: ProjectType }
 export interface ProjectInfo extends ProjectMetadata { directory: string }
 interface ProjectSelection { name: string; directory: string }
 /**
@@ -14,15 +15,16 @@ interface ProjectSelection { name: string; directory: string }
  * `scaffolds.projects`; `project create` and `project component` fail with PLUGIN_UNAVAILABLE without it.
  */
 export interface ProjectScaffolder {
-  project(name: string, projectsDirectory: string): readonly WriteRequest[];
+  project(name: string, projectsDirectory: string, type?: ProjectType): readonly WriteRequest[];
   component(projectName: string, componentName: string, projectsDirectory: string, kind: ComponentKind): readonly WriteRequest[];
 }
 export const projectScaffolderService = 'scaffolds.projects';
 /** Resolves the scaffolder when a `project create` or `project component` action needs it. */
 export type ProjectScaffolderLookup = (action: 'create' | 'component') => ProjectScaffolder;
 
-export function projectName(name: string): string {
+export function projectName(name: string, type: ProjectType = 'library'): string {
   ensure(typeof name === 'string' && name.length <= 214 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name), 'INVALID_PROJECT_NAME', 'Use a lowercase kebab-case project name, for example billing-service.');
+  ensure(type !== 'webview' || name !== 'admin', 'INVALID_PROJECT_NAME', 'The webview id admin is reserved for the packaged developer view. Choose another project name.');
   return name;
 }
 
@@ -51,8 +53,8 @@ export class ProjectService {
     let metadata: unknown;
     try { metadata = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(marker.bytes)); }
     catch { throw forgeError('INVALID_PROJECT', `Invalid project metadata: ${directory}/.forge/project.json`); }
-    ensure(isRecord(metadata) && metadata.schemaVersion === 1 && metadata.name === name && metadata.type === 'library', 'INVALID_PROJECT', `Expected schemaVersion 1, matching name and library type in ${directory}/.forge/project.json.`);
-    return { schemaVersion: 1, name, type: 'library', directory };
+    ensure(isRecord(metadata) && metadata.schemaVersion === 1 && metadata.name === name && (metadata.type === 'library' || metadata.type === 'webview'), 'INVALID_PROJECT', `Expected schemaVersion 1, matching name and library or webview type in ${directory}/.forge/project.json.`);
+    return { schemaVersion: 1, name, type: metadata.type, directory };
   }
 
   async current(): Promise<ProjectInfo | null> {
@@ -86,16 +88,21 @@ export class ProjectService {
     return this.select(null);
   }
 
-  async create(name: string) {
-    const directory = `${this.projectsDirectory}/${projectName(name)}`;
+  async create(name: string, type: ProjectType = 'library') {
+    ensure(type === 'library' || type === 'webview', 'INVALID_ARGUMENT', 'Project type must be library or webview.');
+    const directory = `${this.projectsDirectory}/${projectName(name, type)}`;
     ensure(!(await this.files.list()).some(path => path === directory || path.startsWith(directory + '/')), 'PROJECT_EXISTS', `Project directory already contains files: ${directory}`);
-    const plan = this.scaffolder('create').project(name, this.projectsDirectory);
+    const plan = this.scaffolder('create').project(name, this.projectsDirectory, type);
     const result = await this.workspace.write(plan);
-    return { project: { schemaVersion: 1, name, type: 'library', directory }, ...result, ...this.preview(plan), nextSteps: [
+    return { project: { schemaVersion: 1, name, type, directory }, ...result, ...this.preview(plan), nextSteps: [
       { scope: 'workspace', command: `node bin/forge.js project open ${name}` },
       { scope: 'project', directory, command: 'npm install' },
-      { scope: 'project', directory, command: 'npm run check' },
-      { scope: 'project', directory, command: 'npm run dev' },
+      { scope: 'project', directory, command: type === 'webview' ? 'npm run build' : 'npm run check' },
+      ...(type === 'webview' ? [
+        { scope: 'workspace', command: `node bin/forge.js webview publish --project ${name} --dry-run` },
+        { scope: 'workspace', command: `node bin/forge.js webview publish --project ${name}` },
+        { scope: 'workspace', command: `node bin/forge.js server start --webview ${name}` },
+      ] : [{ scope: 'project', directory, command: 'npm run dev' }]),
     ] };
   }
 

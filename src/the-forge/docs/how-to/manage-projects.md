@@ -28,7 +28,7 @@ To initialize another existing directory, run `node /absolute/path/to/bin/forge.
 
 ## Independent library projects
 
-Newly generated projects are TypeScript libraries under `paths.projects`, default `projects`. Set that configuration value to `src` or another workspace-relative directory when preferred. Generated projects have their own build/test setup and a marker used for discovery; unrelated directories are not assumed to be managed projects.
+New projects default to TypeScript libraries under `paths.projects`, default `projects`; `--type webview` selects the independent Vue/Nuxt UI starter. Set that configuration value to `src` or another workspace-relative directory when preferred. Generated projects have their own build/test setup and a marker used for discovery; unrelated directories are not assumed to be managed projects.
 
 The Forge checkout manages The Forge itself as the self-contained project `the-forge` under configured `src`, using `src/the-forge/.forge/project.json`. Like a generated project, it owns its package, lockfile, build/test toolchain, docs and CI; its build writes the workspace `bin/`. With that selection, file commands address `src/the-forge`, so runtime source is `src/main.ts` and `--out src/domain/example` targets a source layer, exactly as in a generated project. Run `project open the-forge` to restore this project scope after working with another project. Released bundles start with generic defaults and no source-checkout selection.
 
@@ -47,6 +47,16 @@ node bin/forge.js project component FindWorkItem --kind application
 ```
 
 Use lowercase kebab-case project IDs and PascalCase component names. Project creation provides strict TypeScript, Vite, Vitest, domain/application/infrastructure boundaries and focused agent instructions. Components use the project's existing layout. The starter includes a typed `ProjectDetailsForm` and a Vite HTML showcase; `make form <Name>` adds a definition and its unit tests to an open project. See [forms and preview](../reference/forms.md). Preview the generated source and adapt generic invariants and ports to the actual domain; a generated class is not a completed business feature.
+
+## Independent webview projects
+
+```sh
+node bin/forge.js project create idea-board --type webview --dry-run
+node bin/forge.js project create idea-board --type webview
+node bin/forge.js project inspect idea-board --json
+```
+
+A webview owns its Vue 3/Nuxt UI source, local sample data, build configuration, package and Playwright tests. Creation does not install dependencies or change selection. Build and test from the returned directory, then use `node bin/forge.js webview publish --project idea-board` and `server start --webview idea-board` for the packaged preview. See [prototype a webview](prototype-webviews.md) for installation, screenshots, guarded publication and repeat iterations. `project component` is for library projects; edit a webview's ordinary Vue source directly.
 
 ## Persistent project context
 
@@ -68,6 +78,8 @@ Selection is shared by CLI invocations using the same workspace. Keep it fixed w
 Saved selection includes the project's workspace-relative directory. Changing `paths.projects` makes the selection stale, even if the new directory contains a project with the same name. Run `project open <id>` to explicitly select the new location, or `project close` to return to workspace scope. Older selection files without a directory are invalid and can be repaired with the same commands.
 
 ## Project quality checks
+
+The commands in this section describe the library starter. Webviews have their own Vue and browser gates; follow their generated README and the [webview guide](prototype-webviews.md).
 
 The distributed Forge CLI requires only Node. Building and testing a generated TypeScript project uses its own development dependencies, including Oxlint 1.86.0 and fallow 3.31.0 native binaries. The scaffold does not install packages or fabricate a lockfile. Install from the project directory, review and commit the generated `package-lock.json`, then use `npm ci` for repeat installations and CI:
 

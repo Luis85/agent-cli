@@ -80,7 +80,12 @@ jobs:
           npm --version
           tar --version | sed -n 1p
       - run: npm ci
+      - name: Install Chromium for native browser acceptance
+        if: runner.os == 'Linux' && matrix.node == 24
+        run: npx playwright-core install chromium --no-shell --with-deps
       - name: Full quality gate
+        env:
+          FORGE_BROWSER_TESTS: ${{ runner.os == 'Linux' && matrix.node == 24 && '1' || '0' }}
         run: npm run check
       - name: Upload quality diagnostics
         if: always()

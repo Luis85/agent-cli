@@ -52,6 +52,8 @@ node bin/forge.js skills show forge-vault
 | `forge-workflow` | Starting any Forge task: discovery with `schema`, project selection, dry runs, revision guards and error recovery |
 | `forge-vault` | Reading, searching, linking and editing notes, properties, Canvas, Bases and attachments |
 | `forge-development` | Generating and verifying TypeScript code with scaffolds and quality gates |
+| `forge-browser` | Capturing webpage evidence and generating illustrated tutorials from reviewed flows |
+| `forge-webviews` | Creating, testing and publishing independent Vue/Nuxt UI prototypes through the CLI |
 | `forge-agents` | Maintaining docker-agent definitions and generating Claude Code agents |
 | `forge-backlog` | Planning, ranking, releasing and syncing a product backlog |
 

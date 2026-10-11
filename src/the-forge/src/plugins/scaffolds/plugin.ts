@@ -15,7 +15,7 @@ const projects: ProjectScaffolder = { project: projectScaffold, component: compo
 export const scaffoldsPlugin: CorePlugin = {
   manifest: {
     id: 'scaffolds', name: 'Scaffolds', version: '0.1.0', minAppVersion: '0.1.0', core: true, author: 'The Forge',
-    description: 'Generate tested TypeScript projects, components, domain and application code, typed forms and plugin folders.',
+    description: 'Generate self-contained TypeScript libraries and Vue webviews, tested components, typed forms and plugin folders.',
   },
   strings: scaffoldsStrings,
   create: () => ({

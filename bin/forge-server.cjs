@@ -76,7 +76,7 @@ const errorCatalog = {
   INVALID_CONFIG: entry("input", "The configuration is invalid or unreadable.", "Fix bin/config.json at the location named in the message, then run config."),
   INVALID_SETUP: entry("input", "Setup cannot complete with the current distribution files.", "Repair the bin path named in the message, then run setup again."),
   INVALID_PROJECT: entry("input", "The project metadata is invalid.", "Fix .forge/project.json in the project directory."),
-  INVALID_PROJECT_NAME: entry("input", "The project name is invalid.", "Use a lowercase kebab-case name, for example billing-service."),
+  INVALID_PROJECT_NAME: entry("input", "The project name is invalid.", "Use a lowercase kebab-case name, for example billing-service. The webview name admin is reserved."),
   INVALID_PROJECT_CONTEXT: entry("input", "The saved project selection is invalid.", "Run project open <name> or project close."),
   INVALID_COMPONENT_KIND: entry("input", "The component kind is invalid.", "Use domain or application."),
   PROJECT_EXISTS: entry("conflict", "The project already exists.", "Choose another name or run project open <name>."),

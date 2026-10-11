@@ -370,6 +370,9 @@ node bin/forge.js skills list
 node bin/forge.js skills show forge-backlog
 node bin/forge.js server status
 node bin/forge.js help server
+node bin/forge.js help webview
+node bin/forge.js skills show forge-webviews
+node bin/forge.js help browser
 ```
 
 ## Project toolchain

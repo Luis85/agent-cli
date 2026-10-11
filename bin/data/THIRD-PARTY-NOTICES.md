@@ -284,6 +284,13 @@ License: MIT.
 
 - [LICENSE](licenses/node_modules__parse5-LICENSE)
 
+## playwright-core 1.64.0
+
+License: Apache-2.0.
+
+- [LICENSE](licenses/node_modules__playwright-core-LICENSE)
+- [NOTICE](licenses/node_modules__playwright-core-NOTICE)
+
 ## remark-parse 11.0.0
 
 License: MIT.

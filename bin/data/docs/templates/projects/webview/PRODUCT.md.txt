@@ -1,0 +1,17 @@
+# __FORGE_WEBVIEW_ID__
+
+## Purpose
+
+A self-contained starting point for a local webview prototype, created and published through The Forge. The first surface lets a user search and save illustrative prototype ideas, so the project starts with a complete and testable interaction.
+
+## Current truth
+
+All displayed ideas are sample data. Changes live only in tab memory and reset on reload. No external network service, file mutation, persistence or authenticated API is implemented. The portable server hosts the static build independently of its contents.
+
+## Acceptance examples
+
+- A user can identify the page as a sample, search titles or descriptions, clear an empty result, and save or unsave an idea.
+- The same workflow works by keyboard and at a 390px mobile viewport.
+- A project builds without sibling source and is previewed through its own Forge webview mount.
+
+Replace this brief with the actual product's user, task, data source, success criteria and intentional limits before expanding the prototype.

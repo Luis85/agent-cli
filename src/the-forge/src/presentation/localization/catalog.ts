@@ -6,7 +6,7 @@ export const germanCommands = {
   schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
   setup: 'The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.',
-  project: 'TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
+  project: 'Eigenständige Bibliotheks- und Webview-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.',
   workflows: 'Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.',
   formats: 'Native Obsidian-Formate und unterstützte Vorgänge anzeigen.',
   list: 'Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.',
@@ -30,7 +30,7 @@ export const germanCommands = {
 export const germanActions: Record<string, string> = {
   ...germanServerActions,
   'project list': 'Die verwalteten Projekte auflisten.',
-  'project create': 'Ein eigenständiges TypeScript-Projekt erstellen.',
+  'project create': 'Eine eigenständige TypeScript-Bibliothek oder ein Vue-Webview-Projekt erstellen.',
   'project open': 'Ein Projekt für Dateibefehle und Generatoren auswählen.',
   'project current': 'Das ausgewählte Projekt melden.',
   'project close': 'Die Projektauswahl aufheben.',
