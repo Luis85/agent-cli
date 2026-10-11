@@ -2,6 +2,7 @@ import { diagnostic, isObject, pointer, record, stringList, type AgentConfigDocu
 import { claudeToolsFor, filesystemTools, readOnlyFilesystemTools, taskTools, writeTools } from './claude-vocabulary.ts';
 import { mcpServer, type McpServer } from './claude-mcp.ts';
 import type { PermissionRule } from './claude-permissions.ts';
+import { say } from './messages.ts';
 
 /** A Claude tool: a built-in tool name, or one tool (`*` for all) of an MCP server whose generated name is final later. */
 export type ToolGrant = string | { server: McpServer; tool: string };
@@ -55,7 +56,8 @@ function filtered(granted: readonly string[], toolset: Record<string, unknown>, 
   const filter = stringList(toolset.tools);
   if (filter.length === 0) return [...granted];
   const allowed = new Set(filter.flatMap(claudeToolsFor));
-  diagnostics.push(diagnostic('warning', 'tool-filter', `${at}/tools`, `The tools filter ${filter.join(', ')} is approximated by the Claude tools ${granted.filter(tool => allowed.has(tool)).join(', ') || '(none)'}.`, 'A'));
+  const kept = granted.filter(tool => allowed.has(tool));
+  diagnostics.push(diagnostic('warning', 'tool-filter', `${at}/tools`, kept.length > 0 ? say('toolFilter', { filter: filter.join(', '), tools: kept.join(', ') }) : say('toolFilterNone', { filter: filter.join(', ') }), 'A'));
   return granted.filter(tool => allowed.has(tool));
 }
 
@@ -71,39 +73,39 @@ export function claudeTools(config: AgentConfigDocument, name: string, agent: Re
   for (const { toolset, at } of resolvedToolsets(config, name, agent)) {
     const type = String(toolset.type), readonly = agentReadonly || toolset.readonly === true;
     for (const [field, label] of Object.entries(ignoredFields)) if (toolset[field] !== undefined && !(type === 'mcp' && (field === 'env' || field === 'headers'))) {
-      warn('toolset-field-unsupported', `${at}/${field}`, `${label[0]!.toUpperCase()}${label.slice(1)} (${field}) have no Claude equivalent and are not emitted.`, 'U');
+      warn('toolset-field-unsupported', `${at}/${field}`, say('toolsetFieldUnsupported', { label: `${label[0]!.toUpperCase()}${label.slice(1)}`, field }), 'U');
     }
     if (type === 'filesystem') {
       result.tools.push(...filtered(readonly ? readOnlyFilesystemTools : filesystemTools, toolset, at, result.diagnostics));
-      warn('toolset-approximated', at, `The filesystem toolset is approximated by the Claude tools ${(readonly ? readOnlyFilesystemTools : filesystemTools).join(', ')}.`);
-      if (stringList(toolset.allow_list).length > 0) restriction(`${at}/allow_list`, 'allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent\'s file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).');
+      warn('toolset-approximated', at, say('filesystemApproximated', { tools: (readonly ? readOnlyFilesystemTools : filesystemTools).join(', ') }));
+      if (stringList(toolset.allow_list).length > 0) restriction(`${at}/allow_list`, say('allowListUnsupported'));
       const denied = stringList(toolset.deny_list);
       if (denied.length > 0) {
         result.permissions.push(...denied.flatMap(pathRules).map(rule => ({ list: 'deny' as const, rule, at: `${at}/deny_list` })));
-        warn('permission-approximated', `${at}/deny_list`, 'deny_list becomes Read and Edit deny rules in project settings with --settings.');
+        warn('permission-approximated', `${at}/deny_list`, say('denyListApproximated'));
       }
     } else if (type === 'shell') {
-      if (readonly) warn('readonly-approximated', at, 'A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.');
+      if (readonly) warn('readonly-approximated', at, say('readonlyShell'));
       else result.tools.push(...filtered(['Bash'], toolset, at, result.diagnostics));
     } else if (type === 'fetch') {
       result.tools.push(...filtered(['WebFetch'], toolset, at, result.diagnostics));
-      if (stringList(toolset.allowed_domains).length > 0) restriction(`${at}/allowed_domains`, 'allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.');
+      if (stringList(toolset.allowed_domains).length > 0) restriction(`${at}/allowed_domains`, say('allowedDomainsUnsupported'));
       const blocked = stringList(toolset.blocked_domains);
       if (blocked.length > 0) {
         result.permissions.push(...blocked.filter(domain => !domain.includes('/')).flatMap(domainRules).map(rule => ({ list: 'deny' as const, rule, at: `${at}/blocked_domains` })));
-        warn('permission-approximated', `${at}/blocked_domains`, 'blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.');
+        warn('permission-approximated', `${at}/blocked_domains`, say('blockedDomainsApproximated'));
       }
     } else if (type === 'todo' || type === 'tasks') {
       result.tools.push(...filtered(taskTools, toolset, at, result.diagnostics));
-      warn('toolset-approximated', at, `The ${type} toolset is approximated by Claude's task tools ${taskTools.join(', ')}.`);
+      warn('toolset-approximated', at, say('taskToolsetApproximated', { type, tools: taskTools.join(', ') }));
     } else if (type === 'memory') {
       result.memory = true;
-      warn('toolset-approximated', at, 'The memory toolset is approximated by memory: project; its database path is not used.');
+      warn('toolset-approximated', at, say('memoryApproximated'));
     } else if (type === 'user_prompt') {
       result.tools.push('AskUserQuestion');
-      warn('toolset-approximated', at, 'The user_prompt toolset is approximated by AskUserQuestion.');
+      warn('toolset-approximated', at, say('userPromptApproximated'));
     } else if (type === 'think') {
-      warn('toolset-approximated', at, 'The think toolset is not emitted; Claude models think natively, tuned by effort.');
+      warn('toolset-approximated', at, say('thinkNotEmitted'));
     } else if (type === 'mcp') {
       const server = mcpServer(toolset, at, result.servers.map(entry => entry.name));
       result.diagnostics.push(...server.diagnostics);
@@ -111,15 +113,15 @@ export function claudeTools(config: AgentConfigDocument, name: string, agent: Re
         result.servers.push(server.server);
         const tools = stringList(toolset.tools), mapped = server.server;
         result.tools.push(...(tools.length > 0 ? tools : ['*']).map(tool => ({ server: mapped, tool })));
-        if (readonly) warn('readonly-approximated', at, `Claude cannot select read-only tools of MCP server ${server.server.name}; every granted tool is emitted.`);
+        if (readonly) warn('readonly-approximated', at, say('mcpReadonly', { server: server.server.name }));
       }
     } else {
-      result.diagnostics.push(diagnostic('warning', 'toolset-unsupported', at, `The ${type} toolset has no Claude equivalent and is not emitted.`, 'U'));
+      result.diagnostics.push(diagnostic('warning', 'toolset-unsupported', at, say('toolsetUnsupported', { type }), 'U'));
     }
   }
   if (agentReadonly) {
     result.disallowedTools.push(...writeTools);
-    warn('readonly-approximated', pointer('agents', name, 'readonly'), `readonly keeps read-only tools and disallows ${writeTools.join(', ')}.`);
+    warn('readonly-approximated', pointer('agents', name, 'readonly'), say('readonlyApproximated', { tools: writeTools.join(', ') }));
   }
   result.tools = [...new Set(result.tools)];
   return result;

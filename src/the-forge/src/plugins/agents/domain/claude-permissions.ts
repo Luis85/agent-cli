@@ -1,6 +1,7 @@
 import { diagnostic, pointer, record, stringList, type AgentConfigDocument, type AgentDiagnostic } from './config.ts';
 import type { McpServer } from './claude-mcp.ts';
 import type { McpMode } from './claude-execution.ts';
+import { say } from './messages.ts';
 
 /** One Claude permission rule for `.claude/settings.json`, with the JSON pointer of the docker-agent setting it comes from. */
 export interface PermissionRule { list: 'allow' | 'ask' | 'deny'; rule: string; at: string }
@@ -37,15 +38,15 @@ interface Mapped { rules: string[]; reason?: string }
 function builtinRules(pattern: string): Mapped {
   const expression = new RegExp(globSource(pattern)), matched = knownTools.filter(name => expression.test(name));
   const rules = [...new Set(matched.flatMap(name => permissionTools[name] ? [permissionTools[name]] : []))];
-  if (matched.length === 0) return { rules, reason: 'names no docker-agent built-in tool with a Claude permission rule' };
+  if (matched.length === 0) return { rules, reason: say('reasonNoBuiltin') };
   const unmapped = matched.filter(name => !permissionTools[name]);
-  return { rules, ...(unmapped.length > 0 ? { reason: `matches ${unmapped.join(', ')}, which ${unmapped.length === 1 ? 'has' : 'have'} no Claude permission rule of the same reach` } : {}) };
+  return { rules, ...(unmapped.length > 0 ? { reason: say(unmapped.length === 1 ? 'reasonUnmappedOne' : 'reasonUnmapped', { tools: unmapped.join(', ') }) } : {}) };
 }
 
 function mcpRules(server: string, tool: string, servers: ReadonlyMap<string, readonly string[]>, mode: McpMode): Mapped {
-  if (mode === 'none') return { rules: [], reason: 'names an MCP server, and no MCP server is generated without --mcp inline or --mcp project' };
+  if (mode === 'none') return { rules: [], reason: say('reasonMcpNone') };
   const names = servers.get(server);
-  if (!names) return { rules: [], reason: `names the MCP server ${server}, which no generated agent defines` };
+  if (!names) return { rules: [], reason: say('reasonMcpUnknown', { server }) };
   return { rules: names.map(name => tool === '*' ? `mcp__${name}` : `mcp__${name}__${tool}`) };
 }
 
@@ -55,7 +56,7 @@ function patternRules(pattern: string, servers: ReadonlyMap<string, readonly str
   if (shell) return { rules: [`Bash(${shell[1]})`] };
   const mcp = /^mcp:([^:]+):(.+)$/.exec(pattern);
   if (mcp) return mcpRules(mcp[1]!, mcp[2]!, servers, mode);
-  if (pattern.includes(':')) return { rules: [], reason: 'matches tool arguments, which Claude permission rules express only for shell commands' };
+  if (pattern.includes(':')) return { rules: [], reason: say('reasonArguments') };
   return builtinRules(pattern);
 }
 
@@ -76,10 +77,10 @@ export function topLevelRules(config: AgentConfigDocument, servers: ReadonlyMap<
     const patterns = stringList(record(config.permissions)[list]);
     patterns.forEach((pattern, index) => {
       const at = pointer('permissions', list, index), mapped = patternRules(pattern, servers, mode);
-      if (mapped.reason) diagnostics.push(diagnostic(list === 'allow' ? 'info' : 'warning', 'permission-unsupported', at, `The ${list} pattern ${pattern} ${mapped.reason}; ${mapped.rules.length > 0 ? `only ${mapped.rules.join(', ')} is emitted` : 'it is not emitted'}.`, 'U'));
+      if (mapped.reason) diagnostics.push(diagnostic(list === 'allow' ? 'info' : 'warning', 'permission-unsupported', at, mapped.rules.length > 0 ? say('permissionPartial', { list, pattern, reason: mapped.reason, rules: mapped.rules.join(', ') }) : say('permissionDropped', { list, pattern, reason: mapped.reason }), 'U'));
       rules.push(...mapped.rules.map(rule => ({ list, rule, at })));
     });
-    if (patterns.length > 0) diagnostics.push(diagnostic('warning', 'permission-approximated', pointer('permissions', list), `permissions.${list} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.`, 'A'));
+    if (patterns.length > 0) diagnostics.push(diagnostic('warning', 'permission-approximated', pointer('permissions', list), say('permissionApproximated', { list }), 'A'));
   }
   return { rules, diagnostics };
 }
@@ -91,10 +92,10 @@ export function topLevelRules(config: AgentConfigDocument, servers: ReadonlyMap<
 export function reviewedRules(rules: readonly PermissionRule[], allowBroad: boolean, diagnostics: AgentDiagnostic[]): PermissionRule[] {
   return rules.filter(entry => {
     if (entry.list === 'allow' && isBroadRule(entry.rule) && !allowBroad) {
-      diagnostics.push(diagnostic('error', 'broad-permission', entry.at, `The rule ${entry.rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.`));
+      diagnostics.push(diagnostic('error', 'broad-permission', entry.at, say('broadPermission', { rule: entry.rule })));
       return false;
     }
-    diagnostics.push(diagnostic('warning', 'grants-permission', entry.at, `.claude/settings.json permissions.${entry.list} gets the rule ${entry.rule}${entry.list === 'allow' && isBroadRule(entry.rule) ? ' (broad, allowed by --allow-broad-permissions)' : ''}.`));
+    diagnostics.push(diagnostic('warning', 'grants-permission', entry.at, say(entry.list === 'allow' && isBroadRule(entry.rule) ? 'grantsPermissionBroad' : 'grantsPermission', { list: entry.list, rule: entry.rule })));
     return true;
   });
 }

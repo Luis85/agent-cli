@@ -36,13 +36,16 @@ function templateParams(template: string, text: string): Record<string, string> 
  * Renders a message in another language. A plugin's domain renders its findings in English from a template catalog
  * (`fill(english.key, params)`), so results stay plain data; its presentation finds the English template that
  * rendered `text` (the first match in catalog order) and fills the same parameters into the `target` template.
- * Text that no template rendered, such as a third-party diagnostic, is returned unchanged.
+ * Text that no template rendered, such as a third-party diagnostic, is returned unchanged. A parameter that is itself
+ * a fragment rendered from the catalog (a reason inside a sentence) is rendered in the target language too.
  */
-export function retranslate<K extends string>(text: string, english: Readonly<Record<K, string>>, target: Readonly<Partial<Record<K, string>>>): string {
+export function retranslate<K extends string>(text: string, english: Readonly<Record<K, string>>, target: Readonly<Partial<Record<K, string>>>, depth = 2): string {
   for (const [key, template] of Object.entries(english) as Array<[K, string]>) {
     const params = templateParams(template, text);
     const translated = target[key];
-    if (params && translated !== undefined) return fill(translated, params);
+    if (!params || translated === undefined) continue;
+    const nested = depth > 0 ? Object.fromEntries(Object.entries(params).map(([name, value]) => [name, retranslate(value, english, target, depth - 1)])) : params;
+    return fill(translated, nested);
   }
   return text;
 }

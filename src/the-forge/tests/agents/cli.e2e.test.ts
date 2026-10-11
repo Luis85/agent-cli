@@ -48,6 +48,12 @@ describe('the agents core plugin through the portable CLI', () => {
     const imported = ok(['agents', 'import', 'critic', '--from', 'claude', '--file', 'design.yaml']);
     expect(imported).toMatchObject({ path: 'agents/design.yaml', agent: 'critic', created: true });
     expect(imported.diagnostics.map((entry: { code: string; fidelity: string }) => `${entry.code}:${entry.fidelity}`)).toEqual(expect.arrayContaining(['model-approximated:A', 'toolset-approximated:A', 'tool-unsupported:U', 'field-unsupported:U']));
+    // German diagnostics keep their codes, pointers and fidelity and differ only in the message.
+    const german = cli(['--lang', 'de', 'agents', 'import', 'critic', '--from', 'claude', '--file', 'review.yaml', '--dry-run']).body.data;
+    type Entry = { code: string; pointer: string; fidelity: string; message: string };
+    expect(german.diagnostics.map(({ message: _message, ...entry }: Entry) => entry)).toEqual(imported.diagnostics.map(({ message: _message, ...entry }: Entry) => entry));
+    german.diagnostics.forEach((entry: Entry, index: number) => expect(entry.message).not.toBe(imported.diagnostics[index].message));
+    expect(german.diagnostics.find((entry: Entry) => entry.code === 'tool-unsupported').message).toBe('Das Claude-Werkzeug WebSearch hat kein docker-agent-Toolset und wird nicht importiert.');
     const generated = ok(['agents', 'generate', '--target', 'claude', '--file', 'design.yaml', '--plan']);
     expect(generated.files).toEqual([{ path: '.claude/agents/critic.md', status: 'hand-edited' }]);
     expect(generated.outputs[0].content).toContain('name: critic\ndescription: Critiques designs.\ntools: Read, Glob, Grep\nmodel: claude-opus-5\n');

@@ -8,6 +8,7 @@ import {
 import { semanticDiagnostics } from '../domain/semantics.ts';
 import { agentError } from '../domain/errors.ts';
 import type { AgentPorts, ParsedDefinition } from './ports.ts';
+import { say } from '../domain/messages.ts';
 
 /** One definition file read from the scope: the document when it parses, and every diagnostic in source order. */
 export interface LoadedDefinition {
@@ -72,7 +73,7 @@ export class AgentDefinitions {
     const snapshot = await this.files.read(path);
     let text: string;
     try { text = decoder.decode(snapshot.bytes); }
-    catch { return { path, revision: snapshot.revision, text: '', diagnostics: [diagnostic('error', 'encoding', '', 'Definition files must be valid UTF-8.')], instructions: {} }; }
+    catch { return { path, revision: snapshot.revision, text: '', diagnostics: [diagnostic('error', 'encoding', '', say('encoding'))], instructions: {} }; }
     const checked = this.check(text);
     const instructions: Record<string, string> = {}, missing: AgentDiagnostic[] = [];
     if (checked.config && !hasErrors(checked.diagnostics)) {

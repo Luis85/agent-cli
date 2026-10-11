@@ -7,6 +7,7 @@ import { simpleToolsets, type AgentAuthoring, type CreateRequest } from '../appl
 import { agentTemplates } from '../domain/templates.ts';
 import type { AgentDefinitions } from '../application/definitions.ts';
 import type { AgentGeneration, GenerateRequest } from '../application/generation.ts';
+import { withLocalizedDiagnostics } from './messages.ts';
 
 /** The agents use cases of one command context, over its scope's definitions directory. */
 export interface AgentServices {
@@ -60,7 +61,7 @@ function toolsets(flags: CommandFlags): string[] | undefined {
 }
 
 export function agentsCommand(services: (context: CommandContext) => AgentServices): Command {
-  return {
+  return withLocalizedDiagnostics({
     id: 'agents',
     description: 'Manage docker-agent definitions (list, inspect, validate, create, import) and generate Claude Code agents from them.',
     usage: 'agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]',
@@ -117,5 +118,5 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
         mode: controls.mode, ...(controls.manifestPath ? { manifestPath: controls.manifestPath } : {}), ...(controls.revisions ? { revisions: controls.revisions } : {}),
       });
     },
-  };
+  });
 }
