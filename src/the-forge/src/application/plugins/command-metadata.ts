@@ -125,11 +125,11 @@ function documentContent(schema: JsonSchema | undefined): JsonSchema {
 }
 
 /** The items of a `list` option's value: comma-separated, with whitespace around each item ignored. */
-export function listItems(value: string): string[] {
+export function listOptionItems(value: string): string[] {
   return value.split(',').map(item => item.trim());
 }
 
-/** The `pattern` of a comma-separated list of `values`: one or more of them, separated by commas, as `listItems` reads it. */
+/** The `pattern` of a comma-separated list of `values`: one or more of them, separated by commas, as `listOptionItems` reads it. */
 function listPattern(values: readonly string[]): string {
   const value = `\\s*(?:${values.map(item => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*`;
   return `^${value}(?:,${value})*$`;

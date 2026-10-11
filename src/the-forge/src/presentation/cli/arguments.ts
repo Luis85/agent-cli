@@ -1,6 +1,6 @@
 import { Command, CommanderError, Option } from 'commander';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
-import { listItems, option, type CommandOption } from '../../application/plugins/command-metadata.ts';
+import { listOptionItems, option, type CommandOption } from '../../application/plugins/command-metadata.ts';
 import { globalOptions } from '../../application/plugins/command-input.ts';
 /** The global options as help and schema describe them; routing options must precede the command. */
 export const globalOptionMetadata = {
@@ -49,7 +49,7 @@ export function ensureDeclaredValues(options: Readonly<Record<string, CommandOpt
       continue;
     }
     if (schema.enum === undefined || typeof given !== 'string') continue;
-    if (!(schema.list ? listItems(given) : [given]).every(item => schema.enum!.includes(item))) {
+    if (!(schema.list ? listOptionItems(given) : [given]).every(item => schema.enum!.includes(item))) {
       const expected = schema.list ? 'a comma-separated list of' : 'one of';
       throw forgeError('INVALID_OPTION_VALUE', `--${key} must be ${expected}: ${schema.enum.join(', ')}.`, { option: key, value: given, allowed: [...schema.enum] });
     }
