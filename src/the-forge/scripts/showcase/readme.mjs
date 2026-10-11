@@ -38,7 +38,7 @@ const folders = [
   ['.claude/skills', 'The team\'s `/trace` command as a Claude skill, plus the Forge process skills as Agent Skills folders for Claude Code', '`agents generate --commands`, `skills install`'],
   ['.agents/skills', 'The same Forge process skills for other agents that read the cross-agent `.agents/skills` root', '`skills install`'],
   ['src/index.ts', 'Library public API exporting the Trailhead model, form and adapters', '`write --if-match`'],
-  ['package.json, configs, scripts', 'Independent toolchain: structure, Oxlint, fallow, TypeScript, Vite and Vitest. `configs/quality/fallow.json` also ignores `ui/**`, whose framework sources belong to downstream applications', '`project create`, `write --if-match`'],
+  ['package.json, configs, scripts', 'Independent toolchain from `project create`: structure, Oxlint, fallow, TypeScript, Vite and Vitest. Its checks skip `ui/`, whose framework sources belong to downstream applications', '`project create`'],
 ];
 
 /**

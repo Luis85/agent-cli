@@ -31,24 +31,13 @@ export {
 } from './infrastructure/data-sources/trail-guides.js';
 `;
 
-/** Directory of generated multi-framework UI that this TypeScript library does not compile. */
-const uiDirectory = 'ui/**';
-
 /**
- * Keep the generated project toolchain coherent with the showcase content:
- * publish the generated code through src/index.ts and exclude the
- * framework-specific UI output from the library's static analysis.
+ * Publish the generated code through src/index.ts, the library contract that the project's own fallow gate checks
+ * for unused code. The scaffold's configuration already keeps the framework UI under ui/ out of the library checks.
  * @param {import('./cli.mjs').ForgeCli} cli
  */
 export function configureToolchain(cli) {
   cli.begin('Project toolchain');
   cli.run(['project', 'inspect', project.id]);
   cli.replace('src/index.ts', publicApi);
-  const fallowPath = 'configs/quality/fallow.json';
-  const fallow = JSON.parse(cli.readText(fallowPath));
-  // ui/<target> holds React, Vue, Svelte, Angular and Storybook sources for
-  // downstream applications. Their frameworks are not dependencies of this
-  // library, so analysing them here would only report missing packages.
-  fallow.ignorePatterns = [...fallow.ignorePatterns, uiDirectory];
-  cli.replace(fallowPath, `${JSON.stringify(fallow, null, 2)}\n`);
 }

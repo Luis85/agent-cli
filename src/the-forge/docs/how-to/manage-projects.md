@@ -91,6 +91,8 @@ For an agent, use this feedback loop:
 4. Rerun the failed stage (`check:structure`, `lint`, `analyze`, `typecheck`, `build` or `test`), then finish with `npm run check` from the project directory.
 5. Review the diff and report the acceptance evidence, checks run and any unresolved failures. Do not delete coverage, broaden exclusions or suppress findings merely to pass a gate.
 
+Generated code joins these checks like authored code. Export generated data-source adapters from `src/index.ts` once they are part of the library, because they have no generated test and `analyze` otherwise reports them as unused. Generate framework UI and Storybook stories for downstream applications under `ui/<framework>` (for example `make ui trip-card --framework react --project <name> --out ui/react/components --stories-out ui/react/stories`): React, Vue, Svelte and Angular are not dependencies of the library, so the scaffold's fallow configuration ignores `ui/**` and its lint and type checks cover only the library source, tests and configuration.
+
 The Forge's repository checks validate the scaffold and distribution; they do not validate business behavior added later to a generated project. Run the selected project's own checks after scaffolding components or editing its code.
 
 Project mutations use the same contained paths, collision checks, dry-run previews and post-commit events as other commands. They do not overwrite existing source files. Use `read`, guarded edits and the target project's toolchain for subsequent changes. Keep workspace and project AGENTS.md files brief: describe boundaries, actual commands and the evidence expected before delivery.
