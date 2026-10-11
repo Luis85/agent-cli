@@ -11,6 +11,9 @@ import { option } from '../../../application/plugins/command-metadata.ts';
 import { claudeInput, claudeOptions } from './input.ts';
 import { buildClaudeRuntimeArgs, claudeRuntimeNeedsInput, claudeRuntimeOptions, claudeRuntimeOutput } from './runtime-commands.ts';
 
+/** `--scope` of one section: each section declares the Claude configuration scopes it supports; default project. */
+const scope = (description: string, scopes: readonly string[]) => option.string(`Claude configuration scope (default project). ${description}`, { enum: scopes });
+
 export function claudeCommand(adapters: ClaudeCommandServices): Command {
   return {
     id: 'claude', description: 'Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.',
@@ -20,10 +23,10 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
       capabilities: { description: 'Describe supported formats, scopes and operations.', scope: 'workspace', discovery: true, mutating: false },
       // Agent files and settings need --if-match once they exist, so a repeated write fails with CONFLICT. The
       // plugins, marketplaces and runtime sections run the installed CLI, whose repeats Forge cannot guarantee.
-      agents: { description: 'List, inspect, create, update, remove, enable, disable or export native agents.', idempotent: true },
-      hooks: { description: 'Inspect, check and edit native hook configuration.', idempotent: true },
-      plugins: { description: 'Author Claude plugin assets, or run the installed CLI\'s plugin lifecycle.' },
-      marketplaces: { description: 'Add, list, remove or update plugin marketplaces through the installed CLI.' },
+      agents: { description: 'List, inspect, create, update, remove, enable, disable or export native agents.', idempotent: true, options: { scope: scope('Agent files of the project, the user or a plugin.', ['project', 'user', 'plugin']) } },
+      hooks: { description: 'Inspect, check and edit native hook configuration.', idempotent: true, options: { scope: scope('Hook settings of the project, local settings, the user or a plugin.', ['project', 'local', 'user', 'plugin']) } },
+      plugins: { description: 'Author Claude plugin assets, or run the installed CLI\'s plugin lifecycle.', options: { scope: scope('Installed-CLI plugin commands: the native scope; managed only with plugins update.', ['project', 'local', 'user', 'managed']) } },
+      marketplaces: { description: 'Add, list, remove or update plugin marketplaces through the installed CLI.', options: { scope: scope('Marketplace add and remove: the native scope.', ['project', 'local', 'user']) } },
       runtime: { description: 'Report, diagnose, install or update the installed Claude Code CLI.' },
     },
     args: [
@@ -33,7 +36,6 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
     errors: ['INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_HOOKS', 'INVALID_CLAUDE_PLUGIN', 'INVALID_CLAUDE_SETTINGS', 'INVALID_CLAUDE_COMMAND', 'INVALID_CLAUDE_ARGUMENT', 'INVALID_CLAUDE_OPTION', 'INVALID_CLAUDE_SCOPE', 'INVALID_CLAUDE_INPUT', 'CLAUDE_NOT_INSTALLED', 'CLAUDE_COMMAND_FAILED', 'CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_RUNTIME_FAILED', 'CLAUDE_INVALID_OUTPUT', 'CONFLICT'],
     options: {
       ...claudeRuntimeOptions,
-      scope: option.string('Claude configuration scope of the action.', { enum: ['project', 'local', 'user', 'plugin'] }),
       directory: option.string('Plugin directory for plugin-scoped agents and hooks.'),
       'claude-dir': option.string('Claude user configuration directory for user scope.'),
       from: option.string('Read native input from a file.'),

@@ -36,7 +36,6 @@ export async function agentCommands(args: string[], flags: Flags, context: Comma
   const inputs = ['create', 'update'].includes(action) ? [...claudeInputOptions, 'metadata', 'prompt'] : [];
   claudeOptions(flags, [...claudeScopeOptions, ...inputs, ...(mutating ? ['if-match'] : []), ...(action === 'export' ? ['out', 'if-match'] : [])]);
   const target = await services.target(context, flags);
-  ensure(target.scope !== 'local', 'INVALID_ARGUMENT', 'Claude agents have project, user, or plugin scope; local applies only to settings.');
   const agents = new ClaudeAgents(target.workspace, services.agentCodec, target.agentsDirectory);
   const settings = new ClaudeSettings(target.workspace, target.settingsPath, target.scope === 'plugin');
   let result: object;

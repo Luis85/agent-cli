@@ -162,7 +162,7 @@ describe('portable native Claude management', () => {
     await expect(readFile(join(root, '.claude/agents/review.md'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await cli(['agents', 'list'])).body.data.agents).toEqual([]);
     expect((await cli(['agents', 'list', ...flags])).body.data.agents).toHaveLength(1);
-    expect((await cli(['agents', 'list', '--scope', 'local'])).body.error.code).toBe('INVALID_ARGUMENT');
+    expect((await cli(['agents', 'list', '--scope', 'local'])).body.error.code).toBe('INVALID_OPTION_VALUE');
   }, 60_000);
 
   // The fake claude executable runs through its #! line, which Windows does not honor.
