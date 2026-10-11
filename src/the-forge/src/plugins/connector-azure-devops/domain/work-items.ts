@@ -83,6 +83,27 @@ export function updateOperations(patch: RemotePatch, expectedRev: string, contex
   return [...operations, ...additions];
 }
 
+/** What a relation is compared by: its type and its target (the work item id, else the URL). */
+const relationKey = (relation: unknown) => (isRecord(relation) ? `${String(relation.rel)} ${lastSegment(relation.url) ?? String(relation.url).toLowerCase()}` : '');
+const RELATION_INDEX = /^\/relations\/(\d+)$/;
+const tally = (keys: readonly string[]) => keys.reduce((counts, key) => counts.set(key, (counts.get(key) ?? 0) + 1), new Map<string, number>());
+
+/**
+ * Whether an update's `operations` changed the item's links as planned, judged by the relations the update returned.
+ * Relations are removed by index, and the Work Items reference documents a JSON Patch `test` of `/rev` only (no test
+ * of a relation). A link added or removed on the item at the other end does not revise this item, so by the time
+ * the PATCH applies an index may name another relation. Every relation read and not removed and every one added must
+ * still be there, and every removed one gone; relations added meanwhile are ignored.
+ */
+export function relationsLanded(read: readonly unknown[], operations: readonly PatchOperation[], result: readonly unknown[]): boolean {
+  const removed = new Set(operations.flatMap(operation => (operation.op === 'remove' && RELATION_INDEX.test(operation.path) ? [Number(RELATION_INDEX.exec(operation.path)![1])] : [])));
+  const added = operations.filter(operation => operation.op === 'add' && operation.path === '/relations/-').map(operation => relationKey(operation.value));
+  const expected = tally([...read.filter((_relation, index) => !removed.has(index)).map(relationKey), ...added]);
+  const actual = tally(result.map(relationKey));
+  if ([...expected].some(([key, count]) => (actual.get(key) ?? 0) < count)) return false;
+  return [...removed].every(index => (actual.get(relationKey(read[index])) ?? 0) <= (expected.get(relationKey(read[index])) ?? 0));
+}
+
 /** Numeric ids in numeric order. */
 const byId = (a: string, b: string) => Number(a) - Number(b) || (a < b ? -1 : a > b ? 1 : 0);
 const text = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null);

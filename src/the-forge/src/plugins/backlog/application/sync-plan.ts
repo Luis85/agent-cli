@@ -31,8 +31,11 @@ export interface ItemPlan {
   local: Values; remoteValues: Values;
   /** The remote description is known to be Markdown (or empty), so it may land in the note. */
   remoteMarkdown: boolean;
-  /** Pushed fields whose next base is the value the platform stored rather than the note's value. */
-  baseFrom: Map<FieldKey, 'local' | 'remote'>;
+  /**
+   * Fields whose next base is the value the platform stored rather than the note's value (`remote`), or that have no
+   * base after the sync (`none`: their remote side is unconfirmed, so differing values are conflicts next time).
+   */
+  baseFrom: Map<FieldKey, 'local' | 'remote' | 'none'>;
   /** Fields left out of this sync, with the reason. */
   skipped: Skip[];
   /** The note's link property is missing or names another item; the sync writes the remote URL. */
@@ -97,9 +100,15 @@ const fieldSkip = (path: string, field: FieldKey, local: boolean, base: boolean)
     : { path, field, code: 'unreadable-remote', reason: `the remote ${field} cannot be read, so the note's value is not pushed over it` });
 
 /**
- * The three-way plan of one member. The remote side is unchanged for every field while the remote revision equals
- * the stored one; otherwise each field compares the canonical hashes of both sides with the stored base. The
- * description compares the note body and the remote text each with its own base (see `decideDescription`).
+ * Fields held in work item links. A link added or removed on the item at the other end changes this item's links
+ * without a new revision (as the platform's update history records it), so their remote side is always compared.
+ */
+export const LINK_FIELDS: ReadonlySet<FieldKey> = new Set(['parent', 'dependencies']);
+
+/**
+ * The three-way plan of one member. The remote side of every field but the link fields is unchanged while the remote
+ * revision equals the stored one; otherwise each field compares the canonical hashes of both sides with the stored
+ * base. The description compares the note body and the remote text each with its own base (see `decideDescription`).
  */
 export function planItem(context: ValueContext, member: Member, remote: RemoteItem | null, options: PlanOptions): ItemPlan | Skip {
   const { item, entry } = member;
@@ -120,7 +129,7 @@ export function planItem(context: ValueContext, member: Member, remote: RemoteIt
     const baseKey = field === 'description' ? `${REMOTE_BASE}${field}` : field;
     const base = entry?.fields[field], remoteBase = entry?.fields[baseKey];
     const localHash = hashOf(field, local);
-    const remoteHash = unchangedRemote && remoteBase !== undefined && plan.remoteValues.has(field) ? remoteBase : hashOf(field, plan.remoteValues);
+    const remoteHash = unchangedRemote && !LINK_FIELDS.has(field) && remoteBase !== undefined && plan.remoteValues.has(field) ? remoteBase : hashOf(field, plan.remoteValues);
     let decision: Decision = field === 'description'
       ? decideDescription({ local: localHash, remote: remoteHash, localBase: base, remoteBase, same: localHash !== undefined && localHash === hashOf(field, plan.remoteValues), markdown: plan.remoteMarkdown })
       : decide(base, localHash, remoteHash);
@@ -178,7 +187,8 @@ export function settlePush(context: ValueContext, plan: ItemPlan, result: Remote
 /**
  * The base hashes after the sync: pushed and converged fields take the note's value (or the platform's, where it
  * kept another), pulled fields the remote one, and every other field keeps its previous base (conflicts stay
- * conflicts). A settled description also records the hash of the remote text as stored.
+ * conflicts). A settled description also records the hash of the remote text as stored. Fields whose remote side is
+ * unconfirmed (`baseFrom` is `none`) have no base afterwards.
  */
 export function nextBase(plan: ItemPlan, pushed: ReadonlySet<FieldKey>, pulled: ReadonlySet<FieldKey>, hash: (text: string) => string): Record<string, string> {
   const fields: Record<string, string> = { ...plan.entry?.fields };
@@ -189,5 +199,6 @@ export function nextBase(plan: ItemPlan, pushed: ReadonlySet<FieldKey>, pulled: 
   };
   for (const field of plan.create ? plan.local.keys() : [...pushed, ...plan.converged]) settle(field, plan.baseFrom.get(field) === 'remote' ? plan.remoteValues.get(field) : plan.local.get(field));
   for (const field of pulled) settle(field, plan.remoteValues.get(field));
+  for (const [field, from] of plan.baseFrom) if (from === 'none') delete fields[field];
   return fields;
 }

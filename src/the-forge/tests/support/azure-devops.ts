@@ -59,6 +59,11 @@ export class FakeAzureDevOps {
   linksReviseTarget = false;
   /** Runs after each committed create or update, before the response is sent (to simulate concurrent changes). */
   afterWrite: ((item: FakeWorkItem, operation: 'create' | 'update') => void | Promise<void>) | null = null;
+  /**
+   * Runs when a create or update arrives, before the fake checks or applies it (to simulate a change made just before
+   * the request, or a refusal). A returned message refuses the request with HTTP 400 and the service's error body.
+   */
+  beforeWrite: ((operation: 'create' | 'update', operations: ReadonlyArray<{ op: string; path: string; value?: unknown }>) => string | void) | null = null;
   private readonly items = new Map<string, Map<number, FakeWorkItem>>();
   private readonly nextId = new Map<string, number>();
   private clock = Date.UTC(2026, 9, 1);
@@ -207,6 +212,8 @@ export class FakeAzureDevOps {
   }
 
   private async create(response: ServerResponse, organization: string, project: string, store: Map<number, FakeWorkItem>, type: string, operations: Operation[]): Promise<void> {
+    const refusal = this.beforeWrite?.('create', operations);
+    if (typeof refusal === 'string') return json(response, 400, serviceError(refusal, 'RuleValidationException'));
     const id = this.nextId.get(organization) ?? 1;
     this.nextId.set(organization, id + 1);
     const item: FakeWorkItem = { id, rev: 0, fields: { 'System.WorkItemType': type, 'System.State': 'New', 'System.AreaPath': project, 'System.IterationPath': project, 'System.TeamProject': project, ...this.createDefaults }, relations: [], multilineFieldsFormat: {} };
@@ -221,6 +228,8 @@ export class FakeAzureDevOps {
   }
 
   private async update(response: ServerResponse, organization: string, item: FakeWorkItem, operations: Operation[]): Promise<void> {
+    const refusal = this.beforeWrite?.('update', operations);
+    if (typeof refusal === 'string') return json(response, 400, serviceError(refusal, 'RuleValidationException'));
     const test = operations.find(operation => operation.op === 'test' && operation.path === '/rev');
     if (test && test.value !== item.rev) return json(response, 412, serviceError(`TF26071: This work item has been changed by someone else since you opened it. You will need to refresh it and discard your changes.`, 'WorkItemRevisionMismatchException'));
     // Validate on a copy of the organization's items, so a refused patch changes neither end of any link.

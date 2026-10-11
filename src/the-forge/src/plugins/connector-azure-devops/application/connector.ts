@@ -5,7 +5,7 @@ import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
 import { isRecord } from '../../../domain/shared/errors.ts';
 import { redact } from '../../../domain/connectors/secrets.ts';
 import { PROCESSES, processMapping, unknownFields, type MappingOverrides, type Process } from '../domain/processes.ts';
-import { createOperations, remoteItem, updateOperations, type DescriptionFormat, type PatchContext } from '../domain/work-items.ts';
+import { createOperations, relationsLanded, remoteItem, updateOperations, type DescriptionFormat, type PatchContext } from '../domain/work-items.ts';
 
 const API_VERSION = '7.1';
 const BATCH_SIZE = 200;
@@ -126,10 +126,15 @@ export class AzureDevOpsConnector implements BacklogConnector {
   async update(connection: Connection, id: string, patch: RemotePatch, expectedRev: string): Promise<RemoteItem> {
     const context = this.context(connection);
     const url = this.projectUrl(connection, `workitems/${encodeURIComponent(id)}`);
-    const relations = patch.parentId === undefined && patch.dependencies === undefined ? [] : (await this.call(connection, 'GET', `${url}?$expand=relations&api-version=${API_VERSION}`)).relations;
-    const operations = updateOperations(withDefaults(connection, patch), expectedRev, context, Array.isArray(relations) ? relations : []);
+    const links = patch.parentId !== undefined || patch.dependencies !== undefined;
+    const read = links ? (await this.call(connection, 'GET', `${url}?$expand=relations&api-version=${API_VERSION}`)).relations : [];
+    const relations = Array.isArray(read) ? read : [];
+    const operations = updateOperations(withDefaults(connection, patch), expectedRev, context, relations);
     // The update starts with a test of the revision, so repeating it after throttling can never apply it twice.
     const json = await this.call(connection, 'PATCH', `${url}?$expand=relations&api-version=${API_VERSION}`, operations, { contentType: 'application/json-patch+json', retry: true });
+    if (links && !relationsLanded(relations, operations, Array.isArray(json.relations) ? json.relations : [])) {
+      throw failure('CONNECTOR_REQUEST_FAILED', `Azure DevOps applied the update of work item ${id} for connection ${connection.id}, but its links changed on the other end meanwhile, so a link removed by position may not be the one intended. Compare the item's links in Azure DevOps.`, { connection: connection.id, status: 200, method: 'PATCH', url, reason: 'relations-changed', remoteId: id });
+    }
     return remoteItem(json, context, item => this.link(connection, item));
   }
 

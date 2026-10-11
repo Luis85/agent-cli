@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { markdownToHtml } from '../../src/plugins/connector-azure-devops/domain/markdown-html.ts';
 import { processMapping, unknownFields } from '../../src/plugins/connector-azure-devops/domain/processes.ts';
-import { createOperations, remoteItem, updateOperations } from '../../src/plugins/connector-azure-devops/domain/work-items.ts';
+import { createOperations, relationsLanded, remoteItem, updateOperations } from '../../src/plugins/connector-azure-devops/domain/work-items.ts';
 
 const organization = 'https://dev.azure.com/contoso';
 const context = (descriptionFormat: 'markdown' | 'html' = 'markdown', process: 'agile' | 'scrum' = 'agile') => ({ mapping: processMapping(process), descriptionFormat, organization, defaultArea: 'Trailhead\\Default' });
@@ -69,6 +69,23 @@ describe('JSON Patch documents', () => {
     const unmapped = { ...context(), mapping: processMapping('agile', { fields: { dependencies: '' } }) };
     expect(updateOperations({ dependencies: [] }, '3', unmapped, relations)).toEqual([{ op: 'test', path: '/rev', value: 3 }]);
     expect(remoteItem({ id: 1, rev: 1, fields: {}, relations }, unmapped, id => id)).not.toHaveProperty('dependencies');
+  });
+
+  it('confirms link changes only when the returned relations are the read ones minus the removed plus the added', () => {
+    const link = (rel: string, id: number) => ({ rel, url: `${organization}/_apis/wit/workItems/${id}` });
+    const [related, predecessor, parent] = [link('System.LinkTypes.Related', 9), link('System.LinkTypes.Dependency-Reverse', 4), link('System.LinkTypes.Hierarchy-Reverse', 1)];
+    const read = [related, predecessor, parent];
+    const operations = updateOperations({ dependencies: ['5'] }, '3', context(), read);
+    const added = link('System.LinkTypes.Dependency-Reverse', 5);
+    expect(relationsLanded(read, operations, [related, parent, added])).toBe(true);
+    // A relation added on the other end meanwhile does not matter.
+    expect(relationsLanded(read, operations, [related, parent, added, link('System.LinkTypes.Related', 12)])).toBe(true);
+    // The Related link was removed on the other end before the PATCH: index 1 then named the parent.
+    expect(relationsLanded(read, operations, [predecessor, added])).toBe(false);
+    // The predecessor was removed on the other end, so the removal by index hit the parent although the predecessor is gone.
+    expect(relationsLanded(read, operations, [related, added])).toBe(false);
+    expect(relationsLanded(read, operations, [related, parent])).toBe(false);
+    expect(relationsLanded(read, updateOperations({ title: 'Only a field' }, '3', context(), read), read)).toBe(true);
   });
 });
 
