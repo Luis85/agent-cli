@@ -129,6 +129,39 @@ describe('generating Claude agents in a workspace', () => {
     expect(await deny()).toEqual(['Bash(*sudo*)', 'Bash(*rm -rf*)']);
   });
 
+  it('revokes the rules of a renamed or deleted definition file in every --file run, and --check reports them', async () => {
+    const team = (name: string, list: string, rule: string) => `agents:\n  ${name}:\n    model: anthropic/claude-sonnet-5\n    description: Lead.\n    instruction: Lead.\npermissions:\n  ${list}:\n    - "${rule}"\n`;
+    const permissions = async () => JSON.parse(await scope.read('.claude/settings.json')).permissions as Record<string, string[]>;
+    const revoked = (result: { data: Record<string, unknown> }) => (result.data.diagnostics as Array<{ code: string; path: string; message: string }>)
+      .filter(entry => entry.code === 'revokes-permission').map(entry => `${entry.path}: ${entry.message}`);
+    const loses = (rule: string) => `.claude/settings.json permissions.allow loses the rule ${rule}, which Forge wrote and no definition grants any more.`;
+    await scope.remove('agents/team.yaml');
+    await scope.put('agents/a.yaml', team('alpha', 'allow', 'shell:cmd=npm test'));
+    await scope.put('agents/b.yaml', team('beta', 'deny', 'shell:cmd=*rm -rf*'));
+    await generate({ settings: true });
+    // A one-file run makes its default agent the main agent, so the filtered check below sees only the stale rule.
+    expect(revoked(await reviewed({ settings: true, file: 'b.yaml' }))).toEqual([]);
+    expect((await generate({ settings: true, file: 'b.yaml', check: true })).data).toMatchObject({ matches: true });
+
+    // Deleted: a run over another file revokes the rule only the deleted file granted, and a filtered check sees it.
+    await scope.remove('agents/a.yaml');
+    expect(await failure(generate({ settings: true, file: 'b.yaml', check: true }))).toMatchObject({ code: 'AGENT_DRIFT', details: { outputs: expect.arrayContaining([{ path: '.claude/settings.json', status: 'changed' }]) } });
+    expect(revoked(await reviewed({ settings: true, file: 'b.yaml' }))).toEqual([`agents/a.yaml: ${loses('Bash(npm test)')}`]);
+    expect(await permissions()).toEqual({ deny: ['Bash(*rm -rf*)'] });
+    expect((await generate({ settings: true, file: 'b.yaml', check: true })).data).toMatchObject({ matches: true });
+
+    // Renamed: the old file's origin goes with the first run over the new name, so dropping the grant there revokes it.
+    await scope.put('agents/a.yaml', team('alpha', 'allow', 'shell:cmd=npm test'));
+    await reviewed({ settings: true, file: 'a.yaml' });
+    await scope.put('agents/c.yaml', await scope.read('agents/a.yaml'));
+    await scope.remove('agents/a.yaml');
+    expect(revoked(await reviewed({ settings: true, file: 'c.yaml' }))).toEqual([]);
+    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings.permissions.allow).toEqual([{ rule: 'Bash(npm test)', origins: [{ file: 'agents/c.yaml' }] }]);
+    await scope.put('agents/c.yaml', team('alpha', 'allow', 'shell:cmd=npm run lint'));
+    expect(revoked(await reviewed({ settings: true, file: 'c.yaml' }))).toEqual([`agents/c.yaml: ${loses('Bash(npm test)')}`]);
+    expect((await permissions()).allow).toEqual(['Bash(npm run lint)']);
+  });
+
   it('merges MCP servers into .mcp.json, updating only servers Forge owns', async () => {
     await scope.put('.mcp.json', JSON.stringify({ mcpServers: { local: { command: 'mine' }, context7: { command: 'my-context7' } } }));
     const flags = { file: 'team.yaml', mcp: 'project', agent: 'frontend' };
