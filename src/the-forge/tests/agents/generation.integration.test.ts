@@ -84,6 +84,25 @@ describe('generating Claude agents in a workspace', () => {
     expect((await generate({ file: 'switching.yaml', settings: true, commands: true, check: true })).data).toMatchObject({ matches: true });
   });
 
+  it('removes the permission rules it granted once a definition stops granting them, keeping user rules', async () => {
+    const team = (deny: string) => `agents:\n  root:\n    model: anthropic/claude-sonnet-5\n    description: Lead.\n    instruction: Lead.\npermissions:\n  allow:\n    - "shell:cmd=git *"\n  deny:\n${deny}`;
+    await scope.put('agents/guarded.yaml', team('    - "shell:cmd=*sudo*"\n    - "shell:cmd=*rm -rf*"\n'));
+    await scope.put('.claude/settings.json', '{\n  "permissions": {"allow": ["Bash(git *)"], "deny": ["Read(.env)"]}\n}\n');
+    // The settings file exists, so every generation is reviewed: plan, then write the planned revisions.
+    const reviewed = async () => {
+      await scope.put('review.json', JSON.stringify((await generate({ file: 'guarded.yaml', settings: true, plan: true })).data.revisions));
+      await generate({ file: 'guarded.yaml', settings: true, 'revisions-from': 'review.json' });
+    };
+    await reviewed();
+    expect(JSON.parse(await scope.read('.claude/settings.json')).permissions).toEqual({ allow: ['Bash(git *)'], deny: ['Read(.env)', 'Bash(*sudo*)', 'Bash(*rm -rf*)'] });
+    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings).toEqual({ agent: 'root', permissions: { deny: ['Bash(*sudo*)', 'Bash(*rm -rf*)'] } });
+
+    await scope.put('agents/guarded.yaml', team('    - "shell:cmd=*sudo*"\n'));
+    await reviewed();
+    expect(JSON.parse(await scope.read('.claude/settings.json')).permissions).toEqual({ allow: ['Bash(git *)'], deny: ['Read(.env)', 'Bash(*sudo*)'] });
+    expect(JSON.parse(await scope.read('.claude/forge-generated.json')).settings).toEqual({ agent: 'root', permissions: { deny: ['Bash(*sudo*)'] } });
+  });
+
   it('merges MCP servers into .mcp.json, updating only servers Forge owns', async () => {
     await scope.put('.mcp.json', JSON.stringify({ mcpServers: { local: { command: 'mine' }, context7: { command: 'my-context7' } } }));
     const flags = { file: 'team.yaml', mcp: 'project', agent: 'frontend' };

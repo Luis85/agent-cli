@@ -111,10 +111,12 @@ export class AgentGeneration {
   private projectWrites(project: ProjectFiles, generated: ReturnType<typeof generateClaude>): WriteRequest[] {
     const servers = generated.mcpServers, writes: WriteRequest[] = [];
     if (Object.keys(servers).length > 0) writes.push({ path: mcpPath, bytes: encode(mergeMcpServers(project.mcp, servers, project.manifest)) });
-    if (generated.settings) writes.push({ path: settingsPath, bytes: encode(mergeSettings(project.settings, generated.settings, project.manifest)) });
+    const settings = generated.settings ? mergeSettings(project.settings, generated.settings, project.manifest) : undefined;
+    if (settings) writes.push({ path: settingsPath, bytes: encode(settings.text) });
     if (writes.length === 0) return [];
-    const written = { servers, ...(generated.settings?.agent ? { agent: generated.settings.agent } : {}) };
-    return [...writes, { path: manifestPath, bytes: encode(nextManifest(project.manifest, project.manifestText, project, written)) }];
+    const written = { servers, ...(generated.settings?.agent ? { agent: generated.settings.agent } : {}), ...(settings ? { permissions: settings.owned } : {}) };
+    const files = { ...project, ...(settings ? { settings: settings.text } : {}) };
+    return [...writes, { path: manifestPath, bytes: encode(nextManifest(project.manifest, project.manifestText, files, written)) }];
   }
 
   /** Loaded definitions to generate; any invalid file stops generation with its diagnostics. */

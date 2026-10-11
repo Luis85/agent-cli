@@ -103,9 +103,9 @@ describe('Claude file codecs and merges', () => {
     const empty = parseManifest(undefined);
     const mcp = mergeMcpServers('{\n    "mcpServers": {\n        "mine": {"command": "x"},\n        "tools": {"command": "old"}\n    },\n    "other": true\n}', { tools: { type: 'stdio', command: 'old' } }, { mcpServers: { tools: { command: 'old' } }, settings: {} });
     expect(mcp).toBe('{\n    "mcpServers": {\n        "mine": {\n            "command": "x"\n        },\n        "tools": {\n            "type": "stdio",\n            "command": "old"\n        }\n    },\n    "other": true\n}');
-    const settings = mergeSettings('{\r\n\t"model": "opus",\r\n\t"permissions": {"allow": ["Read"], "defaultMode": "plan"}\r\n}\r\n', { permissions: { allow: ['Read', 'Bash(ls*)'], ask: [], deny: ['WebFetch'] }, agent: 'root' }, empty);
+    const settings = mergeSettings('{\r\n\t"model": "opus",\r\n\t"permissions": {"allow": ["Read"], "defaultMode": "plan"}\r\n}\r\n', { permissions: { allow: ['Read', 'Bash(ls*)'], ask: [], deny: ['WebFetch'] }, agent: 'root' }, empty).text;
     expect(settings).toBe('{\r\n\t"model": "opus",\r\n\t"permissions": {\r\n\t\t"allow": [\r\n\t\t\t"Read",\r\n\t\t\t"Bash(ls*)"\r\n\t\t],\r\n\t\t"defaultMode": "plan",\r\n\t\t"deny": [\r\n\t\t\t"WebFetch"\r\n\t\t]\r\n\t},\r\n\t"agent": "root"\r\n}\r\n');
-    expect(JSON.parse(mergeSettings(undefined, { permissions: { allow: [], ask: [], deny: [] } }, empty))).toEqual({});
+    expect(JSON.parse(mergeSettings(undefined, { permissions: { allow: [], ask: [], deny: [] } }, empty).text)).toEqual({});
     expect(() => mergeMcpServers('{', {}, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
     expect(() => mergeSettings('{"permissions": {"allow": "Read"}}', { permissions: { allow: ['x'], ask: [], deny: [] } }, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
   });
@@ -118,7 +118,7 @@ describe('Claude file codecs and merges', () => {
     expect(JSON.parse(mergeMcpServers(mcp, { owned: { command: 'new' } }, manifest)).mcpServers.owned).toEqual({ command: 'new' });
     expect(() => mergeMcpServers(mcp, { mine: { command: 'other' } }, manifest)).toThrow(expect.objectContaining({ code: 'AGENT_MERGE_CONFLICT' }));
     expect(() => mergeSettings(JSON.stringify({ agent: 'mine' }), { permissions: { allow: [], ask: [], deny: [] }, agent: 'root' }, manifest)).toThrow(expect.objectContaining({ code: 'AGENT_MERGE_CONFLICT' }));
-    expect(JSON.parse(mergeSettings(JSON.stringify({ agent: 'lead' }), { permissions: { allow: [], ask: [], deny: [] }, agent: 'root' }, manifest))).toEqual({ agent: 'root' });
+    expect(JSON.parse(mergeSettings(JSON.stringify({ agent: 'lead' }), { permissions: { allow: [], ask: [], deny: [] }, agent: 'root' }, manifest).text)).toEqual({ agent: 'root' });
     expect(JSON.parse(nextManifest(manifest, undefined, { mcp }, { servers: { tools: { command: 't' } } }))).toMatchObject({ mcpServers: { owned: { command: 'a' }, tools: { command: 't' } }, settings: {} });
     expect(() => parseManifest('[]')).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
   });
