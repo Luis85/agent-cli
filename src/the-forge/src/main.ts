@@ -229,13 +229,13 @@ async function run(): Promise<void> {
   }
 }
 /**
- * A reader that closed the pipe early (`forge schema | head -c 10`) wants no more output: stop quietly with the
- * status so far instead of an unhandled stream error. Windows reports a closed pipe as EOF.
+ * A reader that closed standard output early (`forge schema | head -c 10`) wants no more output: stop quietly with the
+ * status so far instead of an unhandled stream error. Windows reports a closed pipe as EOF. Standard error carries
+ * only diagnostics, so a failed write there never ends the command: it completes and answers on standard output.
  */
-for (const stream of [process.stdout, process.stderr]) {
-  stream.on('error', (error: NodeJS.ErrnoException) => {
-    if (error.code !== 'EPIPE' && error.code !== 'EOF') throw error;
-    process.exit(process.exitCode ?? 0);
-  });
-}
+process.stdout.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code !== 'EPIPE' && error.code !== 'EOF') throw error;
+  process.exit(process.exitCode ?? 0);
+});
+process.stderr.on('error', () => {});
 void run();
