@@ -38,4 +38,13 @@ describe('Commander integration', () => {
       code: 'INVALID_OPTION_VALUE', message: '--kind must be one of: rest, json.', details: { option: 'kind', value: 'xml', allowed: ['rest', 'json'] },
     }));
   });
+  it('checks every item of a comma-separated list option against its enum', () => {
+    const options = { parts: option.string('Parts.', { enum: ['body', 'links'], list: true }) };
+    expect(() => ensureDeclaredValues(options, { parts: 'links,body,links' })).not.toThrow();
+    for (const parts of ['body,', 'body, links', 'nope']) {
+      expect(() => ensureDeclaredValues(options, { parts }), parts).toThrowError(expect.objectContaining({
+        code: 'INVALID_OPTION_VALUE', message: '--parts must be a comma-separated list of: body, links.', details: { option: 'parts', value: parts, allowed: ['body', 'links'] },
+      }));
+    }
+  });
 });

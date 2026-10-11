@@ -35,8 +35,8 @@ const readParts = ['body'];
 function selectedParts(flags: Record<string, string | boolean>, kind: string): Set<string> {
   const requested = value(flags, 'parts');
   if (requested === undefined) return new Set();
-  const parts = requested.split(',').map(part => part.trim());
-  ensure(parts.every(part => readParts.includes(part)), 'INVALID_ARGUMENT', `--parts accepts a comma-separated list of: ${readParts.join(', ')}.`);
+  // The host checked every item against readParts.
+  const parts = requested.split(',');
   ensure(kind === 'markdown', 'INVALID_ARGUMENT', '--parts body requires a Markdown file.');
   return new Set(parts);
 }
@@ -65,7 +65,7 @@ export function documentCommands(): Command[] {
       return { files: pager.items.map(path => ({ path, kind: fileKind(path) })), ...(nextCursor === undefined ? {} : { nextCursor }) };
     } },
     { id: 'read', description: 'Read a document, UTF-8 text or base64 attachment with its SHA-256 revision.', usage: 'read <path> [--parts body]', ...reading, args: [pathArgument()], errors: ['NOT_FOUND', 'INVALID_FRONTMATTER'],
-      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts }) }, output: readOutput, async run(args, flags, { workspace }) {
+      options: { parts: option.string('Comma-separated optional parts of a Markdown read.', { enum: readParts, list: true }) }, output: readOutput, async run(args, flags, { workspace }) {
       arity(args, 1); const parts = selectedParts(flags, fileKind(args[0]!));
       const result = await workspace.read(args[0]!);
       if (!isRecord(result.document) || result.document.kind !== 'markdown' || parts.has('body')) return result;

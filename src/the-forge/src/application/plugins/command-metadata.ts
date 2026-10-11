@@ -29,11 +29,12 @@ export type UnknownActionCode = typeof unknownActionCodes[number];
 export type CommandFlags = Record<string, string | boolean>;
 /**
  * `schema` describes the JSON document a string option or argument holds or names, such as `apply`'s plan; `help`
- * and `schema` publish it with the option or argument.
+ * and `schema` publish it with the option or argument. `list` makes a string option with an `enum` a comma-separated
+ * list of its values (`read --parts body`); its input schema is a `pattern` instead of the `enum`.
  */
 export interface CommandOption {
   type: 'string' | 'boolean'; description: string;
-  enum?: readonly string[]; default?: string | boolean; required?: boolean; schema?: JsonSchema;
+  enum?: readonly string[]; list?: boolean; default?: string | boolean; required?: boolean; schema?: JsonSchema;
 }
 export interface CommandArgument { name: string; description: string; required?: boolean; enum?: readonly string[]; variadic?: boolean; schema?: JsonSchema }
 const documentSchema = (value: unknown) => value === undefined || schemaIssues(value).length === 0;
@@ -123,9 +124,16 @@ function documentContent(schema: JsonSchema | undefined): JsonSchema {
   return { contentMediaType: 'application/json', contentSchema: document };
 }
 
+/** The `pattern` of a comma-separated list of `values`: one or more of them, separated by commas. */
+function listPattern(values: readonly string[]): string {
+  const value = `(?:${values.map(item => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`;
+  return `^${value}(?:,${value})*$`;
+}
+
 function optionSchema(schema: CommandOption): JsonSchema {
+  const values = schema.enum === undefined ? {} : schema.list ? { pattern: listPattern(schema.enum) } : { enum: [...schema.enum] };
   return {
-    type: schema.type, description: schema.description, ...(schema.enum ? { enum: [...schema.enum] } : {}),
+    type: schema.type, description: schema.description, ...values,
     ...(schema.default === undefined ? {} : { default: schema.default }), ...documentContent(schema.schema),
   };
 }
@@ -241,6 +249,7 @@ function validateOptions(options: Record<string, unknown>, shared: Readonly<Reco
     ensure(flag.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), 'INVALID_PLUGIN', `Invalid command option ${key}.`);
     ensure(isRecord(schema) && (schema.type === 'string' || schema.type === 'boolean') && text(schema.description), 'INVALID_PLUGIN', `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema.enum === undefined || (Array.isArray(schema.enum) && schema.enum.length > 0 && schema.enum.every(item => typeof item === 'string')), 'INVALID_PLUGIN', `Command option ${key} enum must list strings.`);
+    ensure(schema.list === undefined || (typeof schema.list === 'boolean' && (!schema.list || (schema.type === 'string' && schema.enum !== undefined && (schema.enum as string[]).every(item => item.length > 0 && !item.includes(','))))), 'INVALID_PLUGIN', `Command option ${key} list must be a boolean, and a list option needs an enum of values without commas.`);
     ensure(schema.default === undefined || typeof schema.default === schema.type, 'INVALID_PLUGIN', `Command option ${key} default must match its type.`);
     ensure(schema.required === undefined || typeof schema.required === 'boolean', 'INVALID_PLUGIN', `Command option ${key} required must be a boolean.`);
     ensure(documentSchema(schema.schema) && (schema.schema === undefined || schema.type === 'string'), 'INVALID_PLUGIN', `Command option ${key} schema must be a supported JSON Schema on a string option.`);

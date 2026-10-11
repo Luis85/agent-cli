@@ -5,8 +5,9 @@ import type { EventRecord } from './events.ts';
 export const eventOutputLevels = ['none', 'changes', 'all'] as const;
 export type EventOutput = typeof eventOutputLevels[number];
 
+/** The level `--events` names; another value fails with INVALID_OPTION_VALUE, as for any declared enum. */
 export function eventOutput(value: string): EventOutput {
-  ensure((eventOutputLevels as readonly string[]).includes(value), 'INVALID_ARGUMENT', `--events must be one of: ${eventOutputLevels.join(', ')}.`);
+  ensure((eventOutputLevels as readonly string[]).includes(value), 'INVALID_OPTION_VALUE', `--events must be one of: ${eventOutputLevels.join(', ')}.`, { option: 'events', value, allowed: [...eventOutputLevels] });
   return value as EventOutput;
 }
 

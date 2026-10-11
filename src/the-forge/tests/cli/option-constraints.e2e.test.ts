@@ -50,6 +50,27 @@ describe('declared option constraints', () => {
     expect(checked).toEqual(expect.arrayContaining(['edit --if-match', 'patch --pointer', 'make document --template']));
   });
 
+  it('checks every item of a comma-separated list option and publishes the list as a pattern', async () => {
+    expect((await cli(['create', 'notes/parts.md', '--content', '# Parts\n'])).status).toBe(0);
+    const read = await cli(['read', 'notes/parts.md', '--parts', 'body,body']);
+    expect(read.body.error).toBeUndefined();
+    expect(read.body.data.document.body).toBeDefined();
+    expect((await cli(['read', 'notes/parts.md', '--parts', 'body,nope'])).body.error)
+      .toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'parts', value: 'body,nope', allowed: ['body'] } });
+    const contract = (await cli(['schema', 'read'])).body.data.commands[0];
+    expect(contract.options.parts).toMatchObject({ type: 'string', enum: ['body'], list: true });
+    const published = contract.inputSchema.properties.options.properties.parts as { enum?: string[]; pattern: string };
+    expect(published.enum).toBeUndefined();
+    expect(['body', 'body,body'].map(value => new RegExp(published.pattern, 'u').test(value))).toEqual([true, true]);
+    expect(['', 'nope', 'body,', 'body,nope'].some(value => new RegExp(published.pattern, 'u').test(value))).toBe(false);
+  });
+
+  it('enforces the enum of the global --events option before and after the command', async () => {
+    for (const tokens of [['--events', 'xx', 'list'], ['list', '--events', 'xx']]) {
+      expect((await cli(tokens)).body.error, tokens.join(' ')).toMatchObject({ code: 'INVALID_OPTION_VALUE', details: { option: 'events', value: 'xx', allowed: ['none', 'changes', 'all'] } });
+    }
+  });
+
   it('describes the constraint in the response language and leaves help available', async () => {
     const german = await cli(['--lang', 'de', 'list', '--kind', 'note']);
     expect(german.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: expect.stringContaining('Optionswert'), details: { option: 'kind', localization: { originalMessage: expect.stringContaining('--kind must be one of') } } });

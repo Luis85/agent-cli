@@ -17,7 +17,7 @@ node bin/forge.js schema read --json     # one command, with only the error code
 | --- | --- |
 | `name`, `version`, `apiVersion`, `node` | The executable, its version, the envelope version (currently 1) and the supported Node range |
 | `dialect` | `https://json-schema.org/draft/2020-12/schema`; every published schema declares it as `$schema` and has a `title` |
-| `globalOptions` | The options every command accepts, with `type`, `description`, `enum` and `default` |
+| `globalOptions` | The options every command accepts, with `type`, `description`, `enum` and `default`. An `--events` value outside its `enum` fails with `INVALID_OPTION_VALUE`; an unsupported `--lang` fails with `INVALID_LANGUAGE` |
 | `envelope` | JSON Schema of every response; see [envelope](#envelope) |
 | `eventOutput` | The `--events` levels and the default |
 | `commands` | One [command contract](#command-contract) per registered command (one entry for `schema <command>`) |
@@ -31,7 +31,7 @@ node bin/forge.js schema read --json     # one command, with only the error code
 | --- | --- |
 | `id`, `description`, `usage` | The command id, what it does and its usage line |
 | `options`, `args` | The declared options and positional arguments, as `help` shows them |
-| `inputSchema` | JSON Schema of one invocation `{args, options}`: positional arguments after the command id and the command's own options. A command with actions publishes one `oneOf` branch per action; see [command metadata](plugins.md#command-metadata). A string option or argument that holds or names a JSON document carries that document's schema as `contentMediaType: "application/json"` and `contentSchema`: the `edit --edits` list and the `apply` plan. The host enforces each option's `required` and `enum` before the command runs: a missing option fails with `MISSING_ARGUMENT`, another value with `INVALID_OPTION_VALUE` (`details` `{option, value, allowed}`) |
+| `inputSchema` | JSON Schema of one invocation `{args, options}`: positional arguments after the command id and the command's own options. A command with actions publishes one `oneOf` branch per action; see [command metadata](plugins.md#command-metadata). A string option or argument that holds or names a JSON document carries that document's schema as `contentMediaType: "application/json"` and `contentSchema`: the `edit --edits` list and the `apply` plan. The host enforces each option's `required` and `enum` before the command runs: a missing option fails with `MISSING_ARGUMENT`, another value with `INVALID_OPTION_VALUE` (`details` `{option, value, allowed}`). An option with `list: true` (`read --parts`) takes a comma-separated list of its `enum` values; its `inputSchema` property carries the equivalent `pattern` instead of the `enum`, and any item outside the `enum` fails with `INVALID_OPTION_VALUE` |
 | `outputSchema` | JSON Schema of `data` in a successful response, when the command declares one. An action may declare its own, published as `annotations.actions.<action>.outputSchema`; it replaces the command's for that action |
 | `errors` | Codes the command reports itself, besides `commonErrors` |
 | `annotations` | Behavior hints derived from metadata; see [annotations](#annotations) |

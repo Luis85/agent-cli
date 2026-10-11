@@ -9,7 +9,7 @@ const scope: JsonSchema = { type: 'string', enum: ['workspace', 'project'] };
 
 const optionSchema: JsonSchema = {
   type: 'object', required: ['type', 'description'],
-  properties: { type: { type: 'string', enum: ['string', 'boolean'] }, description: text, enum: texts, default: {}, required: flag },
+  properties: { type: { type: 'string', enum: ['string', 'boolean'] }, description: text, enum: texts, list: flag, default: {}, required: flag },
 };
 const options: JsonSchema = { type: 'object', additionalProperties: optionSchema };
 const argumentSchema: JsonSchema = {

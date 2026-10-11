@@ -128,6 +128,8 @@ describe('command modes', () => {
     [{ options: { label: { type: 'string', description: 'L', default: true } } }, 'default must match its type'],
     [{ options: { help: { type: 'boolean', description: 'H' } } }, 'Invalid command option help'],
     [{ projectOption: 'target' }, 'projectOption must name a declared string option'],
+    [{ options: { parts: { type: 'string', description: 'P', list: true } } }, 'a list option needs an enum'],
+    [{ options: { parts: { type: 'string', description: 'P', enum: ['a,b'], list: true } } }, 'without commas'],
     [{ actions: { list: {} } }, 'action list requires a description'],
     [{ defaultAction: 'list' }, 'defaultAction must name a declared action'],
     [{ args: [{ name: 'rest', description: 'R', variadic: true }, { name: 'last', description: 'L' }] }, 'only the last may be variadic'],
