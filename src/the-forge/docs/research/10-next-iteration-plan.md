@@ -6,7 +6,7 @@ This plan turns the [research synthesis](README.md) and the maintainer's directi
 
 ## Status
 
-Updated 2026-10-11. Every milestone shipped as its own stacked pull request, in the planned order. All of them, with this research (#8), are consolidated into the single next-iteration pull request from `claude/next-iteration`. The table records where each milestone landed. The notes below it record where the result differs from the plan.
+Updated 2026-10-11. Every milestone shipped as its own stacked pull request, in the planned order. Pull request #18 consolidates them, with this research (#8), into one next-iteration pull request from `claude/next-iteration`, and adds a consolidation and polish pass on top. The table records where each milestone landed. The notes below it record where the result differs from the plan, what #18 changed and what remains open.
 
 | Milestone | Pull request | Result |
 | --- | --- | --- |
@@ -17,21 +17,22 @@ Updated 2026-10-11. Every milestone shipped as its own stacked pull request, in 
 | M3 Plugin platform v2 and the first core plugins | #12 | Shipped; `skills` migrated as well |
 | M3b Agent definitions with docker-agent compatibility | #13 | Shipped with stricter safety defaults |
 | M4 The `backlog` core plugin | #14 | Shipped; the deferred items remain deferred |
-| M4b Backlog connectors, Azure DevOps first | #15 | Shipped without dependency sync |
+| M4b Backlog connectors, Azure DevOps first | #15 | Shipped without dependency sync, which #18 added |
 | M5 Remaining features as core plugins | #16 | Shipped as one pull request, not one per plugin |
 | M6 Agent experience continued | #17 | Shipped; real-agent evaluations are opt-in only |
-| Showcase in every milestone | #9–#17 | Maintained; partial coverage of M3, M5 and M6 |
+| Consolidation and polish | #18 | Closed most follow-ups of #9–#17; see [below](#consolidation-and-polish-18) |
+| Showcase in every milestone | #9–#18 | Maintained; #18 extended it to most of M3, M5 and M6 |
 
 ### Deviations by milestone
 
 **M1 (#9)**
 - The Bases budget test uses 1,000 notes and 2,000 attachments with a 30 s budget, not 5,000 notes. 5,000 notes went from 710 s to 13 s in an offline measurement, not in the committed test.
 - The error catalog grew beyond the plan: each code has a category, hint and retryable flag. The exit code follows from the category, and responses carry `error.hint` and `error.retryable`.
-- The lock is owned by a random token and diagnoses staleness per PID namespace and boot id. It is never removed automatically.
-- The showcase landed here rather than as a separate item. Its generated UI lives in `ui/`, not `src/ui`, and its toolchain is patched (fallow ignore and re-exports of generated adapters) to pass the generated project's own gate. The generators and scaffolds were not changed.
+- The lock is owned by a random token and diagnoses staleness per PID namespace and boot id. #9 never removed it automatically; #18 removes a provably stale lock.
+- The showcase landed here rather than as a separate item. Its generated UI lives in `ui/`, not `src/ui`. #9 patched its toolchain to pass the generated project's own gate; #18 made `ui/` the default output and dropped the patch.
 
 **M1b (#10)**
-- The executable was renamed from `bin/app.js` to `bin/forge.js`, although naming was out of scope.
+- The executable was renamed from `bin/app.js` to `bin/forge.js`, although naming was out of scope. Since #18, `bin/forge.js` is a launcher for the runtime bundle `bin/forge-runtime.js`.
 - The workflow drift guard became its own generated workflow, `the-forge--guard--workflows.yml`. Generated files are named `<project>--<concern>[--<file>].yml`.
 
 **M2 (#11)**
@@ -43,25 +44,25 @@ Updated 2026-10-11. Every milestone shipped as its own stacked pull request, in 
 - Core plugins live in `src/the-forge/src/plugins/<id>/`, not `src/the-forge/plugins/<id>/`, because M1b gave The Forge a `src/` folder. The plugin SDK is the kernel's `src/application/plugins/`.
 - `skills` was also migrated as a core plugin.
 - Config sections live under `plugins.settings.<id>`, and `plugins.disabled` turns off a core plugin. `--no-plugins` now skips user plugins only.
-- `schema` publishes option `enum` and `required`, but the host does not enforce them; each command validates its own values. Option descriptions stay English. `links` has no paging.
+- `schema` publishes option `enum` and `required`. In #12 each command validated its own values and option descriptions stayed English; #18 moved both checks into the host and localized the descriptions. `links` has no paging.
 
 **M3b (#13)**
 - Generation is safe by default. `--mcp none` is the default, and hooks need `--hooks`. Permissions need `--settings`, and broad rules are refused without `--allow-broad-permissions`. Merges touch only entries recorded in `.claude/forge-generated.json`.
 - Unsupported versions are errors, not diagnostics. HCL definitions, flavors and template expansion are not supported.
-- Permission rules written with `--settings` are appended and not tracked for later removal. The generated output is not verified against a live Claude Code.
+- In #13, permission rules written with `--settings` were appended and never removed. Since #18 the manifest records each rule's origins, and a later run revokes a rule that no definition grants any more. The generated output is not verified against a live Claude Code.
 
 **M4 (#14)**
 - Commands go beyond the plan: `move --top|--first|--last`, `set` for horizon, priority, risk, dates, assignee and type, and `release list`.
 - These platform changes were made in this milestone:
   - Bases degrades per note: a bad note becomes a warning instead of a failure, and `AMBIGUOUS_BASE_LINK` and `BASE_INDEX_ERROR` are removed.
   - Ambiguous links in Bases resolve to the closest file.
-  - One plugin-state model applies (`enabled`, `unavailable`, `disabled`, `skipped`, `rejected`), with `PLUGIN_UNAVAILABLE`.
+  - One plugin-state model applies (`enabled`, `unavailable`, `disabled`, `skipped`, `rejected`), with `PLUGIN_UNAVAILABLE`. #18 added `missing`.
 - Still deferred: estimation writes, My Work, absences and backfill stubs. Release actions use the first `product-release` view. Obsidian's exact YAML folding is not pinned.
 
 **M4b (#15)**
 - The design changed: connection profiles live in `plugins.settings.connector.connections.<id>`, not a top-level `connectors` section. A generic `connector` core plugin owns them, provides `connector.hub` and the `connectors` command, and `connector-azure-devops` provides the platform service.
-- Sync state lives in `.forge/sync/<connection>.json`, guarded by a per-connection lock file that a crash leaves behind.
-- Not synced: `dependsOn` ↔ predecessor links (the plan allowed them to follow), assignee, dates and comments. Remote items without a note are not imported. Only personal access tokens are supported. The connector is tested against an in-process fake, not a live organization.
+- Sync state lives in `.forge/sync/<connection>.json`, guarded by a lock file. In #15 the lock was per connection and a crash left it behind; #18 moved it to the workspace root and recovers it like the writer lock.
+- #15 did not sync `dependsOn` ↔ predecessor links; #18 does. Not synced: assignee, dates and comments. Remote items without a note are not imported. Only personal access tokens are supported. The connector is tested against an in-process fake, not a live organization.
 - New host ports were added for `http`, `environment` and `locks`, along with optional services and namespaced service ids.
 
 **M5 (#16)**
@@ -71,17 +72,42 @@ Updated 2026-10-11. Every milestone shipped as its own stacked pull request, in 
   - `CommandContext.claude` was replaced by the `claude.lifecycle` service, whose types the SDK exports.
   - `claude` is no longer a host event namespace.
   - The Claude agent and hook validators stay in the kernel domain, so `agents` works without `claude`.
-- The showcase gained no new demonstration.
+- The showcase gained no new demonstration in #16; #18 added the native Claude files and the data-source exchange.
 
 **M6 (#17)**
 - `vault check` ships as the core plugin `vault-check`, because `vault` is the host's event namespace. It adds `vault tags` and `vault properties`. The Forge checkout passes `vault check --strict`.
 - Skills became `skills/<id>/SKILL.md` folders installed into `.claude/skills` and `.agents/skills`. User-plugin skill ids became `<plugin>-<name>`.
 - The evaluation harness has 33 tasks, above the planned 20–30. In `npm run check` it runs only the reference driver. The real-agent `claude` driver is opt-in and refused in CI, and no baseline results are recorded.
-- Follow-ups: `vault check` takes about 5.5 s on 2,000 notes because the metadata index is rebuilt on every call. `backlog set`, `move` and `depend` stay `idempotentHint: false`. `trace check` remains future work.
+- #17 left two follow-ups, both closed in #18: `vault check` took about 5.5 s on 2,000 notes, and `backlog set`, `move` and `depend` published `idempotentHint: false`. `trace check` remains future work.
 
 **Showcase**
-- Each milestone regenerated the showcase, and `npm run showcase:check` and its e2e test guard against drift. The script is `scripts/showcase.mjs` with modules in `scripts/showcase/`.
-- It does not yet demonstrate `plugins`, `schema`, `--events`, `vault tags` or `vault properties`, `edit --block` or `--edits`, a committed `apply`, `connectors test`, or `backlog sync status|resolve`. Its plan and sync runs are dry runs.
+- Each milestone regenerated the showcase, and `npm run showcase:check` guards against drift. Since #18 it is the last stage of `npm run check`. The script is `scripts/showcase.mjs` with modules in `scripts/showcase/`.
+- It does not yet demonstrate `plugins`, `--events`, `connectors test`, or `backlog sync status|resolve`. Its plan and sync runs are dry runs.
+
+### Consolidation and polish (#18)
+
+Five review-driven slices (kernel performance, connectors and backlog, agent contract, docs and localization, tests and showcase), their fix rounds and a final contract round changed:
+
+- **Metadata cache.** Parse results and link resolutions persist in the workspace's `.forge/cache` (`metadata.v2.*`) and are reused by file stamp and content revision. A warm `vault check` on 2,000 notes takes about 0.5 s instead of 5.5 s; `links`, `search` and `bases query` gain likewise. `npm run bench` measures it.
+- **Locks.** A writer or sync lock whose holder provably no longer runs is broken atomically, with a warning; any other lock is refused with `details.stale` (`active`, `unknown` or `stale`) and a per-occurrence `retryable`. The sync lock lives at the workspace root whatever the scope. SIGINT or SIGTERM stops a live sync at the next safe point with `SYNC_INTERRUPTED`.
+- **Dependencies.** `dependsOn` syncs with Azure DevOps predecessor links in both directions. A link changed on the other end during an update is reported as `SYNC_CONFLICT`.
+- **Agent contract.** The host enforces each option's `enum` and `required` before the command runs (`INVALID_OPTION_VALUE`, `MISSING_ARGUMENT`), including comma-separated list options and the global `--events`. Idempotent and destructive hints were corrected, and `tests/cli/idempotency.e2e.test.ts` repeats every mutating mode to check them. Every command and generator declares the error codes it raises, and a static test maps the codes raised in source to those declarations. A reader that closes the output pipe early no longer crashes the CLI.
+- **Plugins.** Permission rules generated with `--settings` are tracked with their origins and revoked once no definition grants them. An enabled user plugin without a manifest is listed as `missing` instead of failing every command, and a plugin whose required provider is missing becomes `unavailable`.
+- **Localization.** The policy in `docs/reference/language.md` is applied: option, argument and settings descriptions, plugin names, host warnings, plugin state reasons and coded findings (backlog check, sync skips, Bases, agents, claude) read in German with `--lang de`. A parity test covers every catalog.
+- **Showcase.** It now demonstrates a committed `apply`, `edit --edits` and `--block`, `move` with link rewriting, `vault tags` and `vault properties`, `links`, native Claude hooks and plugin files, the data-source exchange and a contract section with `schema`, German `help` and `skills`.
+- **Toolchain.** Vitest 5 with explicit per-level test budgets and an asynchronous CLI harness; `npm audit` reports 0 vulnerabilities in the Forge and the showcase. Actions are pinned by SHA to Node 24 releases. `bin/forge.js` enables Node's compile cache before it loads `bin/forge-runtime.js`.
+- **UI output.** `make ui` and `make stories` write to `ui/<target>/components` and `ui/<target>/stories` by default, outside the generated project's library checks; `tests/ui/ui-project-gate.e2e.test.ts` runs that gate for all seven targets.
+- **Evaluations.** The `claude` driver runs the agent as a process group and ends it on a timeout or a signal. It isolates MCP servers and plugins, gives Forge an allowlisted environment, redacts secrets and exits 1 when an attempt fails. It is tested against a fake `claude` only.
+
+Still open after #18:
+
+- Remote items without a note are not imported. A Bases filter has no WIQL equivalent, and `bases query` cannot test a planned note against the filter without writing it, which would break dry runs.
+- Personal access tokens only, no Microsoft Entra ID. Assignee, dates and comments are not synced. Whether a link change revises the target item, and `multilineFieldsFormat` on reads, are not verified against a live organization.
+- A link removed by position can still hit the wrong relation when the item changes on the other end. The sync detects this and reports a conflict, but cannot prevent it.
+- On macOS and Windows a lock records no process start time, so a lock whose pid was reused by a live process stays `active`.
+- No real-agent evaluation run has been executed, and no baseline is recorded.
+- `links` has no paging, `.obsidian/app.json` link preferences are not read, and `trace check` is not started.
+- The UI renderers' output fails a generated project's lint when it is placed under `src/` instead of the default `ui/`.
 
 ### Decisions
 
