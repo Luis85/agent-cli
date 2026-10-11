@@ -114,9 +114,7 @@ async function fail(run: Run, plan: ItemPlan, error: unknown): Promise<void> {
   const stale = isStale(error), links = reasonOf(error) === 'relations-changed';
   if (links) await unsettleLinks(run, plan);
   if ((stale || links) && options.resolution) throw backlogError('SYNC_CONFLICT', `${plan.path}: the remote ${links ? 'item\'s links' : 'item'} changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
-  const message = stale ? syncMessages.remoteChanged
-    : links ? 'The remote item\'s links changed on the other end during the update, so a link may have been removed in place of another. The next sync reports the parent and dependencies as conflicts where the two sides differ; compare them and run backlog sync resolve.'
-      : String((error as Error).message);
+  const message = stale ? syncMessages.remoteChanged : links ? syncMessages.linksChanged : String((error as Error).message);
   report.failed.push({ path: plan.path, remoteId: plan.id, code: stale || links ? 'SYNC_CONFLICT' : codeOf(error), message });
 }
 

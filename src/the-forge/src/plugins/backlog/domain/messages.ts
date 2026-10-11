@@ -53,6 +53,7 @@ export const syncMessages = {
   missingIteration: 'no iteration note named {name}',
   titleTaken: '{path} already exists',
   remoteChanged: 'The remote item changed during the sync; run the sync again.',
+  linksChanged: "The remote item's links changed on the other end during the update, so a link may have been removed in place of another. The next sync reports the parent and dependencies as conflicts where the two sides differ; compare them and run backlog sync resolve.",
 } as const satisfies Record<string, string>;
 
 export type SyncMessage = keyof typeof syncMessages;

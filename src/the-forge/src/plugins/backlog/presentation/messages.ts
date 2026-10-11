@@ -53,6 +53,7 @@ export const germanSyncMessages: Record<SyncMessage, string> = {
   missingIteration: 'keine Iteration-Notiz heißt {name}',
   titleTaken: '{path} existiert bereits',
   remoteChanged: 'Das Remote-Element wurde während der Synchronisierung geändert; führen Sie die Synchronisierung erneut aus.',
+  linksChanged: 'Die Verknüpfungen des Remote-Elements wurden während der Aktualisierung auf der anderen Seite geändert, sodass möglicherweise eine Verknüpfung anstelle einer anderen entfernt wurde. Die nächste Synchronisierung meldet den übergeordneten Eintrag und die Abhängigkeiten als Konflikte, wo sich beide Seiten unterscheiden; vergleichen Sie sie und führen Sie backlog sync resolve aus.',
 };
 
 const syncText = (text: string) => retranslate(text, syncMessages, germanSyncMessages);
