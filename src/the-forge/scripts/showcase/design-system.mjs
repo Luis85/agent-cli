@@ -232,8 +232,7 @@ export async function buildDesignSystem(cli) {
     cli.run(['components', 'create', id, '--tag', 'article', ...libraryOptions]);
     cli.replace(`library/components/${id}.md`, content);
   }
-  cli.run(['components', 'validate', ...libraryOptions]);
-  cli.run(['components', 'inspect', 'trip-planner', ...libraryOptions]);
+  await cli.runConcurrently([['components', 'validate', ...libraryOptions], ['components', 'inspect', 'trip-planner', ...libraryOptions]]);
 
   cli.begin('UI for every target');
   const generate = (/** @type {string} */ framework) => ['make', 'ui', 'trip-planner', '--framework', framework, '--project', project.id, ...libraryOptions, ...uiOptions(framework), '--stories'];

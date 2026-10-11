@@ -134,18 +134,16 @@ A bundled, read-only JSON catalogue of trail guides used while offline ([[UC-003
  * Data-source definitions, typed adapters and deterministic fixtures.
  * @param {import('./cli.mjs').ForgeCli} cli
  */
-export function buildDataSources(cli) {
+export async function buildDataSources(cli) {
   cli.begin('Data sources');
   const library = ['--library', libraries.dataSources];
   for (const [id, source] of Object.entries(sources)) {
     cli.run(['data-sources', 'create', id, '--kind', source.kind, ...library]);
     cli.replace(`library/data-sources/${id}.md`, source.content);
   }
-  cli.run(['data-sources', 'validate', ...library]);
-  cli.run(['data-sources', 'list', ...library]);
-  for (const id of Object.keys(sources)) {
-    const output = ['--out', dataOutputs.adapters, '--test-data-out', dataOutputs.fixtures];
-    cli.run(['make', 'data-source', id, ...library, ...output]);
-    cli.run(['make', 'data-source', id, ...library, ...output, '--check']);
-  }
+  // Validation, listing and drift checks only read, so they run concurrently.
+  await cli.runConcurrently([['data-sources', 'validate', ...library], ['data-sources', 'list', ...library]]);
+  const output = ['--out', dataOutputs.adapters, '--test-data-out', dataOutputs.fixtures];
+  for (const id of Object.keys(sources)) cli.run(['make', 'data-source', id, ...library, ...output]);
+  await cli.runConcurrently(Object.keys(sources).map(id => ['make', 'data-source', id, ...library, ...output, '--check']));
 }

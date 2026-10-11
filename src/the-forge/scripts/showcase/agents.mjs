@@ -63,18 +63,16 @@ const uiBuilder = {
  * `trace` command as a skill), then checks them for drift. Returns the generation result for the README.
  * @param {import('./cli.mjs').ForgeCli} cli
  */
-export function buildAgents(cli) {
+export async function buildAgents(cli) {
   cli.begin('Agent definitions');
   cli.create(agentTeam.file, teamYaml);
   cli.guarded(agentTeam.file, ['agents', 'create', 'ui-builder', '--file', 'trailhead-team.yaml', '--model', 'anthropic/claude-haiku-4-5',
     '--description', uiBuilder.description, '--instruction', uiBuilder.instruction, '--toolset', 'filesystem,shell']);
   cli.guarded(agentTeam.file, ['edit', agentTeam.file, '--find', 'sub_agents: [spec-writer]', '--replace', 'sub_agents: [spec-writer, ui-builder]']);
-  cli.run(['agents', 'validate']);
-  cli.run(['agents', 'list']);
-  cli.run([...agentTeam.generate, '--plan']);
+  // Validation, listing, the generation plan and the drift check only read, so they run concurrently.
+  await cli.runConcurrently([['agents', 'validate'], ['agents', 'list'], [...agentTeam.generate, '--plan']]);
   const generated = cli.run(agentTeam.generate).data;
-  cli.run([...agentTeam.generate, '--check']);
-  cli.run(['claude', 'agents', 'inspect', 'trailhead-lead']);
+  await cli.runConcurrently([[...agentTeam.generate, '--check'], ['claude', 'agents', 'inspect', 'trailhead-lead']]);
   return generated;
 }
 

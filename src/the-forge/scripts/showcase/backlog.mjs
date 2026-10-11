@@ -68,12 +68,16 @@ const items = [
   ['Task', 'Add the share dialog', 'Share an itinerary link'],
 ];
 
+/** The item whose details `backlog show` records, and the dependency that `backlog undepend` drops again. */
+const shown = 'Share an itinerary link';
+const dropped = { item: 'Add the share dialog', on: 'Build the trip card component' };
+
 /**
  * Builds the Trailhead backlog through the `backlog` core plugin with fixed dates, then records the tree, board,
- * release readiness and check results for the README.
+ * releases, one item's details, the ranked list and the check results for the README.
  * @param {import('./cli.mjs').ForgeCli} cli
  */
-export function buildBacklog(cli) {
+export async function buildBacklog(cli) {
   cli.begin('Product backlog');
   cli.run(['backlog', 'init', '--folder', backlogPaths.folder]);
   cli.replace(backlogPaths.base, base);
@@ -88,7 +92,7 @@ export function buildBacklog(cli) {
   cli.run(['backlog', 'set', 'Share an itinerary link', '--state', 'Open', '--priority', '2 - Should', '--risk', '1 - High']);
   cli.run(['backlog', 'set', 'Duplicate stops after reordering', '--state', 'Open', '--priority', '1 - Must']);
   cli.run(['backlog', 'depend', 'Share an itinerary link', '--on', 'Draft a trip itinerary']);
-  cli.run(['backlog', 'depend', 'Add the share dialog', '--on', 'Build the trip card component']);
+  cli.run(['backlog', 'depend', dropped.item, '--on', dropped.on]);
 
   cli.begin('Iterations and releases');
   const iteration = cli.run(['backlog', 'iteration', 'add', '--goal', 'Plan a first trip', '--today', '2026-10-12']).data.item.title;
@@ -104,16 +108,21 @@ export function buildBacklog(cli) {
   cli.run(['backlog', 'release', 'notes', backlogPaths.release]);
   cli.guarded(vaultPaths.hub, ['edit', vaultPaths.hub, '--append', '--content', `\n## Product backlog\n\n- Backlog view: [[Product Backlog.base]]\n- Next release: [[${backlogPaths.release}]] and its [[${backlogPaths.release} release notes]]\n`]);
 
+  cli.begin('Backlog maintenance');
+  // The share dialog no longer waits for the trip card, and moves and inserts left uneven gaps between ranks.
+  cli.run(['backlog', 'undepend', dropped.item, '--on', dropped.on]);
+  cli.run(['backlog', 'ranks', 'respace']);
+
   cli.begin('Backlog reports');
-  const tree = cli.run(['backlog', 'tree']).data;
-  const board = cli.run(['backlog', 'board']).data;
-  const releases = cli.run(['backlog', 'release', 'list', '--today', '2026-10-20']).data;
-  const check = cli.run(['backlog', 'check']).data;
+  // Reports only read, so they run concurrently.
+  const [tree, board, releases, item, list, check] = (await cli.runConcurrently([
+    ['backlog', 'tree'], ['backlog', 'board'], ['backlog', 'release', 'list', '--today', '2026-10-20'], ['backlog', 'show', shown], ['backlog', 'list'], ['backlog', 'check'],
+  ])).map(envelope => envelope.data);
   if (!check.ok) throw new Error(`backlog check reported problems: ${JSON.stringify(check.problems)}`);
-  return { tree, board, releases, readiness, check };
+  return { tree, board, releases, readiness, item: item.item, list, check };
 }
 
-/** @typedef {ReturnType<typeof buildBacklog>} BacklogSummary */
+/** @typedef {Awaited<ReturnType<typeof buildBacklog>>} BacklogSummary */
 
 /** @param {string} path */
 const link = path => `[${path}](<${path}>)`;
@@ -154,7 +163,22 @@ export function backlogSection(summary) {
     '',
     ...criteria,
     '',
-    `\`backlog release notes\` generated ${link(backlogPaths.notes)}. \`backlog check\` reports ${summary.check.counts.errors} errors and ${summary.check.counts.warnings} warnings over ${summary.check.counts.items} items.`,
+    `\`backlog release notes\` generated ${link(backlogPaths.notes)}.`,
+    '',
+    `### One item (\`backlog show '${shown}'\`)`,
+    '',
+    itemSummary(summary.item),
+    '',
+    `\`backlog undepend\` then dropped the dependency of "${dropped.item}" on "${dropped.on}", and \`backlog ranks respace\` spaced the ${summary.list.total} ranked items 1000 apart again without changing their order. \`backlog list\` returns them by global rank; \`backlog check\` reports ${summary.check.counts.errors} errors and ${summary.check.counts.warnings} warnings over ${summary.check.counts.items} items.`,
     '',
   ].join('\n');
+}
+
+/** @param {any} item */
+function itemSummary(item) {
+  const facts = [
+    ['Type', item.displayType], ['State', item.state], ['Rank', item.rank], ['Priority', item.priority], ['Risk', item.risk],
+    ['Start', item.start], ['Due', item.due], ['Release', item.release?.raw], ['Depends on', (item.dependsOn ?? []).map((/** @type {any} */ entry) => entry.raw ?? entry).join(', ')],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== '');
+  return ['| Field | Value |', '| --- | --- |', ...facts.map(([field, value]) => `| ${field} | ${String(value).replaceAll('|', '\\|')} |`)].join('\n');
 }
