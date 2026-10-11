@@ -141,11 +141,11 @@ export class AgentGeneration {
     return { files, ...(request.agent ? { agent: request.agent } : {}), existing: [...new Set([...files, ...present.flat()])] };
   }
 
-  /** Whether a recorded scope path names an existing file; an invalid or missing path does not. */
+  /** Whether a recorded scope path names an existing file; an invalid, missing or symlinked path does not. */
   private async isFile(path: string): Promise<boolean> {
     try { return (await this.workspace.files.stat(vaultPath(path))).kind === 'file'; }
     catch (error) {
-      if (error instanceof AppError && (error.code === 'NOT_FOUND' || error.code === 'INVALID_PATH')) return false;
+      if (error instanceof AppError && ['NOT_FOUND', 'INVALID_PATH', 'UNSAFE_PATH'].includes(error.code)) return false;
       throw error;
     }
   }

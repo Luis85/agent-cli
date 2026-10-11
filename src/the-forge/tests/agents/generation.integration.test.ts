@@ -1,3 +1,5 @@
+import { rm, symlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentsWorkspace, example, type AgentsWorkspace } from './agents-workspace.ts';
 
@@ -185,6 +187,16 @@ describe('generating Claude agents in a workspace', () => {
     // Deleted outside the directory: revoked by the next run, as for a file in it.
     await scope.remove('shared/guard2.yaml');
     expect(revoked(await reviewed({ settings: true, file: 'a.yaml' }))).toEqual(['shared/guard2.yaml']);
+    expect(await permissions()).toEqual({ allow: ['Bash(npm test)'] });
+
+    // Reached through a symlinked folder: Forge never follows it, so the origin counts as gone instead of failing
+    // every run over other files.
+    await scope.put('shared/guard.yaml', team('guard', 'deny', 'shell:cmd=*rm -rf*'));
+    await reviewed({ settings: true, file: 'shared/guard.yaml' });
+    await scope.put('real/guard.yaml', await scope.read('shared/guard.yaml'));
+    await rm(join(scope.root, 'shared'), { recursive: true });
+    await symlink(join(scope.root, 'real'), join(scope.root, 'shared'), 'junction');
+    expect(revoked(await reviewed({ settings: true, file: 'a.yaml' }))).toEqual(['shared/guard.yaml']);
     expect(await permissions()).toEqual({ allow: ['Bash(npm test)'] });
   });
 
