@@ -5,14 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { distribution } from './workspace.ts';
 
-interface Invocation { root?: string | null; entry?: string; cwd?: string; env?: Record<string, string> }
+/** `env` adds variables to the test process's environment; an undefined value removes that variable. */
+interface Invocation { root?: string | null; entry?: string; cwd?: string; env?: Record<string, string | undefined> }
 interface CliResult { status: number | null; body: any; stdout: string }
 
 /** Every portable call finishes well within this; a hung child fails its test instead of the whole run. */
 const callTimeout = 30_000;
 
 /** Start Node with `args`, write `input` to its standard input and collect its output. */
-function run(args: string[], cwd: string, input: string | Buffer | undefined, env: Record<string, string> = {}) {
+function run(args: string[], cwd: string, input: string | Buffer | undefined, env: Record<string, string | undefined> = {}) {
   return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd, env: { ...process.env, NODE_PATH: '', ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
