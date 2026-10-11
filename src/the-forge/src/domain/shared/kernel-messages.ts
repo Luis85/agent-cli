@@ -54,10 +54,56 @@ export type KernelMessageCode = keyof typeof kernelMessages;
 /** A host message by code; a parameter may itself be a message, rendered in the same language. */
 export interface KernelMessage { code: KernelMessageCode; params: Readonly<Record<string, string | number | KernelMessage>> }
 
-export const kernelMessage = (code: KernelMessageCode, params: KernelMessage['params'] = {}): KernelMessage => ({ code, params });
+/**
+ * The messages the host created with `kernelMessage`. Only these render from the catalog: a look-alike object that
+ * other code (such as a plugin, which is plain JavaScript) hands the warning sink stays literal text.
+ */
+const hostMessages = new WeakSet<object>();
+
+/** A host message; it is frozen, so nothing can change what it renders after the host created it. */
+export function kernelMessage(code: KernelMessageCode, params: KernelMessage['params'] = {}): KernelMessage {
+  const message = Object.freeze({ code, params: Object.freeze({ ...params }) });
+  hostMessages.add(message);
+  return message;
+}
+
+/** Whether `value` is a message the host created with `kernelMessage`. */
+export const isKernelMessage = (value: unknown): value is KernelMessage => typeof value === 'object' && value !== null && hostMessages.has(value);
 
 /** Renders a message with `templates`, English by default. */
 export function renderKernelMessage(message: KernelMessage, templates: Readonly<Record<KernelMessageCode, string>> = kernelMessages): string {
-  const params = Object.fromEntries(Object.entries(message.params).map(([name, value]) => [name, typeof value === 'object' ? renderKernelMessage(value, templates) : value]));
+  const params = Object.fromEntries(Object.entries(message.params).map(([name, value]) => [name, isKernelMessage(value) ? renderKernelMessage(value, templates) : typeof value === 'string' || typeof value === 'number' ? value : warningText(value)]));
   return fill(templates[message.code], params);
+}
+
+/** A warning record in the response: a host message rendered with `templates`, any other value as `warningText`. */
+export function renderWarning(warning: unknown, templates?: Readonly<Record<KernelMessageCode, string>>): string {
+  return isKernelMessage(warning) ? renderKernelMessage(warning, templates) : warningText(warning);
+}
+
+/**
+ * Any value as warning text, never throwing: a string as itself, an `Error` as its message, a function as
+ * `[function]`, and an object or array as its JSON, in which a circular reference reads `"[circular]"`, a BigInt
+ * `"<digits>n"`, a function `"[function]"` and a symbol its description. A value that cannot be read (a throwing
+ * `toJSON` or `toString`, a hostile proxy) reads `Operation failed with an unreadable error.`; other values read as
+ * `String(value)`.
+ */
+export function warningText(value: unknown): string {
+  try {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'function') return '[function]';
+    if (typeof value !== 'object' || value === null) return String(value);
+    if (value instanceof Error) return value.message;
+    const ancestors: object[] = [];
+    return JSON.stringify(value, function replacer(this: unknown, _key: string, item: unknown) {
+      if (typeof item === 'bigint') return `${item}n`;
+      if (typeof item === 'function') return '[function]';
+      if (typeof item === 'symbol') return item.toString();
+      if (typeof item !== 'object' || item === null) return item;
+      while (ancestors.length > 0 && ancestors.at(-1) !== this) ancestors.pop();
+      if (ancestors.includes(item)) return '[circular]';
+      ancestors.push(item);
+      return item;
+    }) ?? String(value);
+  } catch { return 'Operation failed with an unreadable error.'; }
 }

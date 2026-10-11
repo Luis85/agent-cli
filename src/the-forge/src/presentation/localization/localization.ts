@@ -2,7 +2,7 @@ import { AppError, ensure, errorMessage, isRecord } from '../../domain/shared/er
 import { germanActions, germanCommands, germanEvents, germanGuidance } from './catalog.ts';
 import { germanDescriptions } from './descriptions.ts';
 import { germanKernelMessages } from './messages.ts';
-import { renderKernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
+import { renderWarning } from '../../domain/shared/kernel-messages.ts';
 import type { CommandArgument, CommandOption } from '../../application/plugins/command-metadata.ts';
 import { germanErrors } from './errors.ts';
 import { errorDefinition, type ErrorCode } from '../../domain/shared/error-catalog.ts';
@@ -77,9 +77,12 @@ export class Localizer {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === 'description' && typeof item === 'string' ? this.description(item) : this.schema(item)]));
   }
 
-  /** A host warning or plugin state reason in the response language; plugin warnings keep their own text. */
-  warning(warning: string | KernelMessage): string {
-    return typeof warning === 'string' ? warning : renderKernelMessage(warning, this.language === 'de' ? germanKernelMessages : undefined);
+  /**
+   * A host warning or plugin state reason in the response language. Plugin warnings keep their own text, and any
+   * record that is not a message the host created reads as text, so it can neither pass for one nor break the response.
+   */
+  warning(warning: unknown): string {
+    return renderWarning(warning, this.language === 'de' ? germanKernelMessages : undefined);
   }
 
   /** A plugin's manifest `name` and `description` in the response language. */

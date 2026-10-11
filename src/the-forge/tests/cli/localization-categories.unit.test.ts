@@ -49,6 +49,16 @@ describe('German output by category', () => {
     expect(new Localizer('de').warning('Plugin-owned text')).toBe('Plugin-owned text');
   });
 
+  it('renders only messages the host created from its catalog, and any other record as text', () => {
+    const german = new Localizer('de');
+    expect(german.warning(kernelMessage('PLUGIN_SKIPPED'))).toBe('Durch --no-plugins übersprungen.');
+    expect(german.warning({ code: 'PLUGIN_SKIPPED', params: {} })).toBe('{"code":"PLUGIN_SKIPPED","params":{}}');
+    expect(german.warning(kernelMessage('PLUGIN_MISSING_WARNING', { reason: { code: 'PLUGIN_SKIPPED', params: {} } as never }))).toBe('{"code":"PLUGIN_SKIPPED","params":{}} Seine Befehle sind in diesem Aufruf nicht verfügbar.');
+    for (const record of [new Error('raw'), null, undefined, { code: 'PLUGIN_MISSING_WARNING', params: null }, 42]) expect(() => german.warning(record)).not.toThrow();
+    const message = kernelMessage('EVENT_LISTENER_FAILED', { event: 'vault.create', diagnostic: 'boom' });
+    expect(() => Object.assign(message.params, { event: null })).toThrow(TypeError);
+  });
+
   it('lists plugin names and descriptions in the response language', () => {
     const manifest = { id: 'quality', name: 'Quality', description: 'Check quality.', version: '1.0.0' };
     expect(new Localizer('de', pluginCatalog()).manifest(manifest)).toEqual({ ...manifest, name: 'Qualität', description: 'Qualität prüfen.' });
