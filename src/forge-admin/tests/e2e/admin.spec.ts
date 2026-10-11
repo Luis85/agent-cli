@@ -51,8 +51,14 @@ test('supports keyboard navigation and a narrow mobile viewport', async ({ page,
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: /skip to/i })).toBeFocused()
   await page.keyboard.press('Enter')
+  await expect(page.getByRole('main')).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('switch', { name: 'Auto-refresh' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
   const search = page.getByRole('textbox', { name: 'Search plugins' })
-  await search.focus()
+  await expect(search).toBeFocused()
   await page.keyboard.type('claude')
   await expect(search).toHaveValue('claude')
   await search.clear()
@@ -83,6 +89,8 @@ test('retains the last snapshot on disconnect and recovers on refresh', async ({
   await page.route('**/api/system', route => route.abort('connectionrefused'))
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()
   await expect(page.getByText('Server unavailable', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Connection status' })).toHaveText('Disconnected')
+  await expect(page.getByText('The view below is the last successful snapshot.', { exact: true })).toBeVisible()
   await expect(page.getByText('inspection-fixture', { exact: true }).first()).toBeVisible()
   await page.unroute('**/api/system')
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()
@@ -108,5 +116,12 @@ test('reports an unavailable selection when the selected project disappears', as
     await expect(page.getByRole('status', { name: 'Connection status' })).toHaveText('Connected')
   } finally {
     await rename(backup, marker)
+    // Restore the server's cached inspection too: this worker reuses its
+    // isolated CLI server for subsequent browser scenarios.
+    await expect(async () => {
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+      await expect(page.getByText('inspection-fixture', { exact: true }).first()).toBeVisible({ timeout: 1000 })
+      await expect(page.getByText('Selection unavailable', { exact: true })).toHaveCount(0)
+    }).toPass({ timeout: 10_000, intervals: [250, 1000] })
   }
 })

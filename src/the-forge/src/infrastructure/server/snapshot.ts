@@ -10,15 +10,17 @@ export interface SnapshotOptions {
   webviews: WebviewInfo[];
   signal?: AbortSignal;
 }
-function command(options: SnapshotOptions, args: string[]): Promise<Record<string, unknown>> {
+interface Inspection { args: string[]; valid: (data: Record<string, unknown>) => boolean }
+interface InspectionResult { data: Record<string, unknown>; warned: boolean }
+function command(options: SnapshotOptions, inspection: Inspection): Promise<InspectionResult> {
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [join(options.distributionPath, 'forge.js'), '--root', options.workspaceRoot, '--json', '--events', 'none', '--dry-run', ...args],
+    execFile(process.execPath, [join(options.distributionPath, 'forge.js'), '--root', options.workspaceRoot, '--json', '--events', 'none', '--dry-run', ...inspection.args],
       { cwd: options.workspaceRoot, timeout: 15_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, signal: options.signal }, (error, stdout) => {
         if (error) { reject(new Error('Inspection command failed.')); return; }
         try {
           const response: unknown = JSON.parse(stdout);
-          if (!isRecord(response) || response.ok !== true || !isRecord(response.data)) throw new Error('Invalid inspection response.');
-          resolve(response.data);
+          if (!isRecord(response) || response.ok !== true || !isRecord(response.data) || !inspection.valid(response.data)) throw new Error('Invalid inspection response.');
+          resolve({ data: response.data, warned: Array.isArray(response.warnings) && response.warnings.length > 0 });
         } catch { reject(new Error('Invalid inspection response.')); }
       });
   });
@@ -48,12 +50,22 @@ export function createSnapshotProvider(options: SnapshotOptions): () => Promise<
   let cached: SystemSnapshot | undefined;
   let pending: Promise<SystemSnapshot> | undefined;
   async function collect(): Promise<SystemSnapshot> {
-    const requests = [['config'], ['project', 'list'], ['project', 'current'], ['plugins'], ['help']];
-    const results = await Promise.allSettled(requests.map(args => command(options, args)));
+    const requests: Inspection[] = [
+      { args: ['config'], valid: data => isRecord(data.config) && isRecord(data.config.paths) && typeof data.config.paths.projects === 'string' },
+      { args: ['project', 'list'], valid: data => Array.isArray(data.projects) && data.projects.every(value => project(value) !== null) },
+      { args: ['project', 'current'], valid: data => data.project === null || project(data.project) !== null },
+      { args: ['plugins'], valid: data => Array.isArray(data.plugins) && data.plugins.every(value => isRecord(value) && typeof value.id === 'string' && typeof value.state === 'string') },
+      { args: ['help'], valid: data => Array.isArray(data.commands) && Array.isArray(data.generators) && Array.isArray(data.skills) },
+    ];
+    const results = await Promise.allSettled(requests.map(inspection => command(options, inspection)));
     const warnings: string[] = [];
     const data = results.map((result, index) => {
-      if (result.status === 'fulfilled') return result.value;
-      warnings.push(`Could not inspect ${requests[index]!.join(' ')}. Retry or inspect this command through the CLI.`);
+      const command = requests[index]!.args.join(' ');
+      if (result.status === 'fulfilled') {
+        if (result.value.warned) warnings.push(`The ${command} inspection reported warnings. Inspect this command through the CLI for details.`);
+        return result.value.data;
+      }
+      warnings.push(`Could not inspect ${command}. Retry or inspect this command through the CLI.`);
       return {} as Record<string, unknown>;
     });
     const configuration = isRecord(data[0]!.config) ? data[0]!.config : {};

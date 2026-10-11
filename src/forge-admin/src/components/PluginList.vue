@@ -11,7 +11,9 @@ const search = ref('');
 const state = ref('all');
 const filtered = computed(() => filterPlugins(props.plugins, search.value, state.value));
 const enabledCount = computed(() => props.plugins.filter(plugin => plugin.state === 'enabled').length);
-const states = computed(() => [{ label: 'All states', value: 'all' }, ...[...new Set(props.plugins.map(plugin => plugin.state))].sort().map(value => ({ label: value.charAt(0).toUpperCase() + value.slice(1), value }))]);
+const states = computed(() => [{ label: 'All states', value: 'all' }, ...[...new Set([
+  ...props.plugins.map(plugin => plugin.state), ...(state.value === 'all' ? [] : [state.value]),
+])].sort().map(value => ({ label: value.charAt(0).toUpperCase() + value.slice(1), value }))]);
 function badgeColor(state: string) { return state === 'enabled' ? 'primary' : state === 'failed' ? 'error' : 'neutral'; }
 function clearFilters() { search.value = ''; state.value = 'all'; }
 </script>
@@ -28,7 +30,7 @@ function clearFilters() { search.value = ''; state.value = 'all'; }
       <li v-for="plugin in filtered" :key="plugin.id" class="plugin-row">
         <div class="plugin-heading"><div class="plugin-identity"><h3>{{ plugin.name }}</h3><span class="plugin-version">{{ plugin.version }}</span></div><UBadge :color="badgeColor(plugin.state)" variant="soft" size="sm">{{ plugin.state }}</UBadge></div>
         <p class="plugin-description">{{ plugin.description || 'No description provided.' }}</p>
-        <p v-if="plugin.reason" class="plugin-reason">{{ plugin.reason }}</p>
+        <p v-if="plugin.reason" class="plugin-reason" :class="{ 'is-failed': plugin.state === 'failed' }">{{ plugin.reason }}</p>
         <div class="plugin-meta"><code>{{ plugin.id }}</code><span>{{ plugin.core ? 'Core' : 'Workspace' }}</span><span>{{ plugin.commands.length }} command{{ plugin.commands.length === 1 ? '' : 's' }}</span><span v-if="plugin.generators.length">{{ plugin.generators.length }} generator{{ plugin.generators.length === 1 ? '' : 's' }}</span><span v-if="plugin.skills.length">{{ plugin.skills.length }} skill{{ plugin.skills.length === 1 ? '' : 's' }}</span></div>
       </li>
     </ul>

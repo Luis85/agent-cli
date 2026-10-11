@@ -21,6 +21,7 @@ Each project authors its CI workflows under `src/infrastructure/workflows/<conce
 | `src/plugins/<id>/<layer>/` | A bundled core plugin's own layers, with the same inward rules | The plugin's inward layers plus kernel domain (and, above domain, kernel application) |
 | `src/plugins/<id>/plugin.ts` | The core plugin's manifest and factory, wiring its layers to injected kernel ports | The plugin's four layers, kernel domain and application |
 | `src/main.ts` | Composition root: construct adapters, bind services, register core plugins, run the invocation and clean up | All kernel layers and each core plugin's `plugin.ts` |
+| `src/server-main.ts` | Detached server composition root: accept startup configuration and bind HTTP, snapshot and lifecycle adapters | Kernel infrastructure and domain contracts |
 | `src/sdk.ts` | Explicit public type exports for plugin authors | Application and domain types only |
 
 Domain and application use no Node or external package imports. Infrastructure owns runtime dependencies such as filesystem access, YAML parsing and child processes. Presentation uses Commander for CLI grammar and package metadata for discovery, but does not import infrastructure or instantiate its adapters. Simple text encoding belongs with input translation; document codecs stay behind application ports. Composition supplies concrete services instead of using a global service locator.

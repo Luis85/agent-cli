@@ -39,7 +39,7 @@ export const test = base.extend<{}, { forge: ForgeFixture }>({
       if (!result.ok) throw new Error(`Forge command failed: ${args.join(' ')} (${result.error?.code}): ${result.error?.message}`)
       return result.data
     }
-    let started = false
+    let startupAttempted = false
     try {
       await cp(distribution, join(workspace, 'bin'), { recursive: true })
       const config = JSON.parse(await readFile(join(workspace, 'bin/config/default.json'), 'utf8'))
@@ -53,15 +53,17 @@ export const test = base.extend<{}, { forge: ForgeFixture }>({
       await cli(['setup'])
       await cli(['project', 'create', 'inspection-fixture'])
       await cli(['project', 'open', 'inspection-fixture'])
+      // Even a timed-out CLI call may have spawned the detached process. Always
+      // attempt the authenticated stop after startup, including setup failures.
+      startupAttempted = true
       const status = await cli(['server', 'start', '--port', '0', '--webview', 'admin'])
-      started = status.running
       if (!status.running || !status.url) throw new Error('CLI did not return a running admin webview URL')
       const url = new URL(status.url)
       const token = new URLSearchParams(url.hash.slice(1)).get('token')
       if (!token) throw new Error('CLI admin URL did not contain a fragment access token')
       await use({ url: status.url, origin: url.origin, token, workspace })
     } finally {
-      if (started) {
+      if (startupAttempted) {
         try {
           await cli(['server', 'stop'])
           const status = await cli(['server', 'status'])

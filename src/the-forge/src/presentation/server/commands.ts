@@ -8,23 +8,26 @@ import { ensure } from '../../domain/shared/errors.ts';
 const statusOutput: JsonSchema = {
   type: 'object', required: ['running', 'stale', 'server', 'url', 'webviews'], additionalProperties: false,
   properties: {
-    running: { type: 'boolean' }, stale: { type: 'boolean' },
+    running: { type: 'boolean', description: 'The saved server passed its authenticated identity check.' },
+    stale: { type: 'boolean', description: 'Saved state exists, but its server could not be verified as running.' },
     server: { oneOf: [{ type: 'null' }, {
-      type: 'object', required: ['pid', 'startedAt', 'host', 'port', 'version', 'nodeVersion', 'uptimeSeconds'],
+      type: 'object', required: ['pid', 'startedAt', 'host', 'port', 'version', 'nodeVersion', 'uptimeSeconds'], additionalProperties: false,
       properties: {
         pid: { type: 'integer', minimum: 1 }, startedAt: { type: 'string' }, host: { const: '127.0.0.1' },
         port: { type: 'integer', minimum: 1, maximum: 65535 }, version: { type: 'string' },
         nodeVersion: { type: 'string' }, uptimeSeconds: { type: 'number', minimum: 0 },
       },
     }] },
-    url: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+    url: { description: 'Local launch link containing an access token; null when stopped. Use start --webview <id> for a view-specific link.', oneOf: [{ type: 'string' }, { type: 'null' }] },
     webviews: { type: 'array', items: {
-      type: 'object', required: ['id', 'name', 'path'],
+      type: 'object', required: ['id', 'name', 'path'], additionalProperties: false,
       properties: { id: { type: 'string' }, name: { type: 'string' }, path: { type: 'string' } },
     } },
-    dryRun: { type: 'boolean' }, changed: { type: 'boolean' },
+    dryRun: { const: true, description: 'Lifecycle preview only; no process or saved state changes.' },
+    changed: { type: 'boolean', description: 'Whether lifecycle state changed, or would change during a dry run.' },
   },
 };
+const lifecycleOutput: JsonSchema = { ...statusOutput, required: [...statusOutput.required!, 'changed'] };
 
 /** The injected controller owns processes; CLI metadata owns workspace routing and dry-run propagation. */
 export function serverCommands(controller: ServerController): Command[] {
@@ -35,16 +38,16 @@ export function serverCommands(controller: ServerController): Command[] {
     args: [{ name: 'action', description: 'status (default), start or stop.', enum: ['status', 'start', 'stop'] }],
     output: statusOutput,
     actions: {
-      status: { description: 'Inspect the workspace server without starting it or changing saved state.', mutating: false },
+      status: { description: 'Inspect the workspace server and discover installed webviews, including while stopped.', mutating: false },
       start: {
         description: 'Start or reuse the localhost server and return its authenticated URL; no browser opens.',
-        mutating: true, destructive: false, idempotent: true,
+        mutating: true, destructive: false, idempotent: true, output: lifecycleOutput,
         options: {
-          port: option.string('TCP port from 0 to 65535; 0 chooses an available port.', { default: '0' }),
+          port: option.string('TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.', { default: '0' }),
           webview: option.string('Installed webview id to include in the launch URL, such as admin.'),
         },
       },
-      stop: { description: 'Stop the verified workspace server; repeated stops have no further effect.', mutating: true, destructive: false, idempotent: true },
+      stop: { description: 'Stop the verified workspace server; repeated stops have no further effect.', mutating: true, destructive: false, idempotent: true, output: lifecycleOutput },
     },
     errors: ['SERVER_START_FAILED', 'SERVER_STOP_FAILED', 'SERVER_STATE_INVALID', 'SERVER_BUSY'],
     async run(args, flags, context) {

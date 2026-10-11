@@ -35,8 +35,8 @@ export async function readState(root: string): Promise<ServerState | null> {
   const path = join(await stateDirectory(root), 'server.json');
   let handle;
   try {
-    if ((await lstat(path)).isSymbolicLink()) throw invalid();
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (!(await lstat(path)).isFile()) throw invalid();
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 64 * 1024 || (process.platform !== 'win32' && ((info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()))) throw invalid();
     const value: unknown = JSON.parse(await handle.readFile('utf8'));
@@ -64,8 +64,8 @@ export async function ensureStateIgnored(root: string): Promise<void> {
   let mode = 0o644;
   let handle;
   try {
-    if ((await lstat(path)).isSymbolicLink()) throw invalid();
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (!(await lstat(path)).isFile()) throw invalid();
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 1024 * 1024) throw invalid();
     original = await handle.readFile();
@@ -73,9 +73,10 @@ export async function ensureStateIgnored(root: string): Promise<void> {
   } catch (error) {
     if (!missing(error)) throw invalid();
   } finally { await handle?.close(); }
-  const lines = original.toString('utf8').split(/\r?\n/);
-  const entries = ['/server.json', '/server.lock', '/.server-*.tmp', '/.agent-cli-tmp-*'].filter(entry => !lines.includes(entry));
-  if (!entries.length) return;
+  const lines = original.toString('utf8').trimEnd().split(/\r?\n/);
+  const entries = ['/server.json', '/server.lock', '/.server-*.tmp', '/.agent-cli-tmp-*'];
+  // Ignore rules use last-match precedence: earlier entries may be undone by later negations.
+  if (entries.every((entry, index) => lines.at(index - entries.length) === entry)) return;
   const newline = original.includes(Buffer.from('\r\n')) ? '\r\n' : '\n';
   const separator = original.length && original.at(-1) !== 10 ? newline : '';
   const bytes = Buffer.concat([original, Buffer.from(separator + entries.join(newline) + newline)]);

@@ -658,8 +658,8 @@ async function readState$1(root) {
   const path2 = path$3.join(await stateDirectory(root), "server.json");
   let handle;
   try {
-    if ((await promises$1.lstat(path2)).isSymbolicLink()) throw invalid$1();
-    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    if (!(await promises$1.lstat(path2)).isFile()) throw invalid$1();
+    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 64 * 1024 || process.platform !== "win32" && ((info.mode & 63) !== 0 || info.uid !== process.getuid?.())) throw invalid$1();
     const value2 = JSON.parse(await handle.readFile("utf8"));
@@ -680,8 +680,8 @@ async function ensureStateIgnored(root) {
   let mode = 420;
   let handle;
   try {
-    if ((await promises$1.lstat(path2)).isSymbolicLink()) throw invalid$1();
-    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    if (!(await promises$1.lstat(path2)).isFile()) throw invalid$1();
+    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 1024 * 1024) throw invalid$1();
     original = await handle.readFile();
@@ -691,9 +691,9 @@ async function ensureStateIgnored(root) {
   } finally {
     await handle?.close();
   }
-  const lines2 = original.toString("utf8").split(/\r?\n/);
-  const entries2 = ["/server.json", "/server.lock", "/.server-*.tmp", "/.agent-cli-tmp-*"].filter((entry2) => !lines2.includes(entry2));
-  if (!entries2.length) return;
+  const lines2 = original.toString("utf8").trimEnd().split(/\r?\n/);
+  const entries2 = ["/server.json", "/server.lock", "/.server-*.tmp", "/.agent-cli-tmp-*"];
+  if (entries2.every((entry2, index2) => lines2.at(index2 - entries2.length) === entry2)) return;
   const newline = original.includes(Buffer.from("\r\n")) ? "\r\n" : "\n";
   const separator = original.length && original.at(-1) !== 10 ? newline : "";
   const bytes = Buffer.concat([original, Buffer.from(separator + entries2.join(newline) + newline)]);
@@ -740,6 +740,12 @@ async function withServerLock(root, action2) {
     await releaseLock(path2, token);
   }
 }
+function hasUnsafePathCharacters(value2) {
+  return value2.includes("\\") || value2.includes(":") || [...value2].some((character) => {
+    const code2 = character.charCodeAt(0);
+    return code2 < 32 || code2 === 127;
+  });
+}
 async function discoverWebviews(distributionPath) {
   const root = path$3.join(distributionPath, "webviews");
   try {
@@ -750,7 +756,7 @@ async function discoverWebviews(distributionPath) {
       const directory = path$3.join(root, entry2.name);
       const manifestPath2 = path$3.join(directory, "manifest.json");
       try {
-        if ((await promises$1.lstat(manifestPath2)).isSymbolicLink()) continue;
+        if (!(await promises$1.lstat(manifestPath2)).isFile()) continue;
         const manifest = JSON.parse(await promises$1.readFile(manifestPath2, "utf8"));
         if (!manifest || typeof manifest !== "object" || !("id" in manifest) || manifest.id !== entry2.name || !("name" in manifest) || typeof manifest.name !== "string" || !manifest.name.trim() || !("entry" in manifest) || manifest.entry !== "index.html") continue;
         const asset = { id: entry2.name, name: manifest.name, directory };
@@ -790,7 +796,7 @@ async function readAsset(assets, pathname) {
   if (!asset) return void 0;
   if (segments2.length === 0 || segments2.at(-1) === "") segments2.push("index.html");
   const parts = segments2.filter((segment2) => segment2 !== "");
-  if (parts.some((part) => part.startsWith(".") || part.includes("\\") || part.includes("\0")) || parts[0] === "manifest.json") return void 0;
+  if (parts.some((part) => part.startsWith(".") || hasUnsafePathCharacters(part)) || parts[0]?.toLowerCase() === "manifest.json") return void 0;
   try {
     if ((await promises$1.lstat(asset.directory)).isSymbolicLink()) return void 0;
     const root = await promises$1.realpath(asset.directory);
@@ -805,11 +811,12 @@ async function readAsset(assets, pathname) {
     const extension2 = path$3.extname(resolved).toLowerCase();
     const contentType = mimeTypes[extension2];
     if (!contentType) return void 0;
-    const immutable = extension2 !== ".html" && /[-.][\w-]{8,}\.[a-z0-9]+$/i.test(path$3.basename(resolved));
     return {
       bytes: await promises$1.readFile(resolved),
       contentType,
-      cacheControl: extension2 === ".html" ? "no-store" : immutable ? "public, max-age=31536000, immutable" : "no-cache"
+      // A filename cannot prove content addressing. Revalidate local assets so
+      // repackaging a view never leaves the browser using a stale script or style.
+      cacheControl: extension2 === ".html" ? "no-store" : "no-cache"
     };
   } catch (error2) {
     if (missingAsset(error2)) return void 0;
@@ -864,8 +871,9 @@ class NodeServerController {
   }
   async status() {
     const state2 = await readState$1(await this.root());
-    if (!state2) return stopped();
-    return await healthy(state2) ? running(state2) : stopped(true);
+    if (state2 && await healthy(state2)) return running(state2);
+    const assets = await discoverWebviews(await promises$1.realpath(this.options.distributionPath));
+    return { ...stopped(Boolean(state2)), webviews: assets.map((asset) => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` })) };
   }
   async start(options2) {
     const port = options2.port ?? 0;
@@ -62709,11 +62717,12 @@ const statusOutput = {
   required: ["running", "stale", "server", "url", "webviews"],
   additionalProperties: false,
   properties: {
-    running: { type: "boolean" },
-    stale: { type: "boolean" },
+    running: { type: "boolean", description: "The saved server passed its authenticated identity check." },
+    stale: { type: "boolean", description: "Saved state exists, but its server could not be verified as running." },
     server: { oneOf: [{ type: "null" }, {
       type: "object",
       required: ["pid", "startedAt", "host", "port", "version", "nodeVersion", "uptimeSeconds"],
+      additionalProperties: false,
       properties: {
         pid: { type: "integer", minimum: 1 },
         startedAt: { type: "string" },
@@ -62724,16 +62733,18 @@ const statusOutput = {
         uptimeSeconds: { type: "number", minimum: 0 }
       }
     }] },
-    url: { oneOf: [{ type: "string" }, { type: "null" }] },
+    url: { description: "Local launch link containing an access token; null when stopped. Use start --webview <id> for a view-specific link.", oneOf: [{ type: "string" }, { type: "null" }] },
     webviews: { type: "array", items: {
       type: "object",
       required: ["id", "name", "path"],
+      additionalProperties: false,
       properties: { id: { type: "string" }, name: { type: "string" }, path: { type: "string" } }
     } },
-    dryRun: { type: "boolean" },
-    changed: { type: "boolean" }
+    dryRun: { const: true, description: "Lifecycle preview only; no process or saved state changes." },
+    changed: { type: "boolean", description: "Whether lifecycle state changed, or would change during a dry run." }
   }
 };
+const lifecycleOutput = { ...statusOutput, required: [...statusOutput.required, "changed"] };
 function serverCommands(controller) {
   return [{
     id: "server",
@@ -62747,18 +62758,19 @@ function serverCommands(controller) {
     args: [{ name: "action", description: "status (default), start or stop.", enum: ["status", "start", "stop"] }],
     output: statusOutput,
     actions: {
-      status: { description: "Inspect the workspace server without starting it or changing saved state.", mutating: false },
+      status: { description: "Inspect the workspace server and discover installed webviews, including while stopped.", mutating: false },
       start: {
         description: "Start or reuse the localhost server and return its authenticated URL; no browser opens.",
         mutating: true,
         destructive: false,
         idempotent: true,
+        output: lifecycleOutput,
         options: {
-          port: option$1.string("TCP port from 0 to 65535; 0 chooses an available port.", { default: "0" }),
+          port: option$1.string("TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.", { default: "0" }),
           webview: option$1.string("Installed webview id to include in the launch URL, such as admin.")
         }
       },
-      stop: { description: "Stop the verified workspace server; repeated stops have no further effect.", mutating: true, destructive: false, idempotent: true }
+      stop: { description: "Stop the verified workspace server; repeated stops have no further effect.", mutating: true, destructive: false, idempotent: true, output: lifecycleOutput }
     },
     errors: ["SERVER_START_FAILED", "SERVER_STOP_FAILED", "SERVER_STATE_INVALID", "SERVER_BUSY"],
     async run(args, flags, context) {
@@ -66268,13 +66280,13 @@ const germanServerCommands = {
   server: "Den lokalen Workspace-Server verwalten und seine installierten Webviews entdecken."
 };
 const germanServerActions = {
-  "server status": "Den Workspace-Server prüfen, ohne ihn zu starten oder gespeicherten Zustand zu ändern.",
+  "server status": "Den Workspace-Server prüfen und installierte Webviews auch bei beendetem Server entdecken.",
   "server start": "Den lokalen Server starten oder wiederverwenden und seine authentifizierte URL zurückgeben; kein Browser wird geöffnet.",
   "server stop": "Den verifizierten Workspace-Server beenden; wiederholtes Beenden hat keine weitere Wirkung."
 };
 const germanServerDescriptions = {
   "status (default), start or stop.": "status (Standard), start oder stop.",
-  "TCP port from 0 to 65535; 0 chooses an available port.": "TCP-Port von 0 bis 65535; 0 wählt einen verfügbaren Port.",
+  "TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.": "TCP-Port von 0 bis 65535; 0 wählt einen verfügbaren Port. Ein laufender Server behält seinen aktuellen Port.",
   "Installed webview id to include in the launch URL, such as admin.": "ID einer installierten Webview für die Start-URL, zum Beispiel admin."
 };
 const germanCommands = {

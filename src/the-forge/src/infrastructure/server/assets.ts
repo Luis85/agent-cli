@@ -3,6 +3,13 @@ import path from 'node:path';
 
 export interface WebviewAsset { id: string; name: string; directory: string }
 
+export function hasUnsafePathCharacters(value: string): boolean {
+  return value.includes('\\') || value.includes(':') || [...value].some(character => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+}
+
 /** Discover packaged views by manifest; missing optional view assets leave the server usable. */
 export async function discoverWebviews(distributionPath: string): Promise<WebviewAsset[]> {
   const root = path.join(distributionPath, 'webviews');
@@ -14,7 +21,9 @@ export async function discoverWebviews(distributionPath: string): Promise<Webvie
       const directory = path.join(root, entry.name);
       const manifestPath = path.join(directory, 'manifest.json');
       try {
-        if ((await lstat(manifestPath)).isSymbolicLink()) continue;
+        // A directory or pipe is not a manifest. Check before reading so malformed
+        // optional views cannot fail discovery or hold startup open indefinitely.
+        if (!(await lstat(manifestPath)).isFile()) continue;
         const manifest: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
         if (!manifest || typeof manifest !== 'object' || !('id' in manifest) || manifest.id !== entry.name ||
           !('name' in manifest) || typeof manifest.name !== 'string' || !manifest.name.trim() ||
@@ -58,7 +67,7 @@ export async function readAsset(assets: readonly WebviewAsset[], pathname: strin
   if (!asset) return undefined;
   if (segments.length === 0 || segments.at(-1) === '') segments.push('index.html');
   const parts = segments.filter(segment => segment !== '');
-  if (parts.some(part => part.startsWith('.') || part.includes('\\') || part.includes('\0')) || parts[0] === 'manifest.json') return undefined;
+  if (parts.some(part => part.startsWith('.') || hasUnsafePathCharacters(part)) || parts[0]?.toLowerCase() === 'manifest.json') return undefined;
   try {
     if ((await lstat(asset.directory)).isSymbolicLink()) return undefined;
     const root = await realpath(asset.directory);
@@ -74,10 +83,11 @@ export async function readAsset(assets: readonly WebviewAsset[], pathname: strin
     const extension = path.extname(resolved).toLowerCase();
     const contentType = mimeTypes[extension];
     if (!contentType) return undefined;
-    const immutable = extension !== '.html' && /[-.][\w-]{8,}\.[a-z0-9]+$/i.test(path.basename(resolved));
     return {
       bytes: await readFile(resolved), contentType,
-      cacheControl: extension === '.html' ? 'no-store' : immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+      // A filename cannot prove content addressing. Revalidate local assets so
+      // repackaging a view never leaves the browser using a stale script or style.
+      cacheControl: extension === '.html' ? 'no-store' : 'no-cache',
     };
   } catch (error) {
     if (missingAsset(error)) return undefined;

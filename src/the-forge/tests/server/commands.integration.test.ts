@@ -15,6 +15,7 @@ import { Workspace } from '../../src/application/workspace/workspace.ts';
 import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { scopeServices } from '../support/metadata.ts';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
+import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
 
 let root: string;
 let context: CommandContext;
@@ -106,5 +107,18 @@ describe('server CLI controller boundary', () => {
     expect(localized.actions!.start!.description).not.toBe(command.actions!.start!.description);
     expect(localized.actions!.start!.options!.port!.description).not.toBe(command.actions!.start!.options!.port!.description);
     expect(localized.args![0]!.description).not.toBe(command.args![0]!.description);
+  });
+
+  it('distinguishes lifecycle results from status and documents preview-only fields', () => {
+    expect(validateJsonValue(commandOutputSchema(command, ['status'])!, stopped, 'data').issues).toEqual([]);
+    for (const action of ['start', 'stop']) {
+      const output = commandOutputSchema(command, [action])!;
+      expect(validateJsonValue(output, stopped, 'data').issues).toContain('data.changed: is required');
+      for (const changed of [true, false]) {
+        expect(validateJsonValue(output, { ...stopped, changed }, 'data').issues).toEqual([]);
+        expect(validateJsonValue(output, { ...stopped, changed, dryRun: true }, 'data').issues).toEqual([]);
+      }
+      expect(validateJsonValue(output, { ...stopped, changed: false, dryRun: false }, 'data').issues).not.toEqual([]);
+    }
   });
 });

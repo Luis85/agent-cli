@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,6 +80,24 @@ describe('detached server lifecycle', () => {
     expect(await readState(root)).toBeNull();
   });
 
+  it('keeps credentials ignored when existing rules are followed by a negation', async () => {
+    execFileSync('git', ['init', '--quiet', root]);
+    await mkdir(join(root, '.forge'));
+    const existing = '/server.json\n/server.lock\n/.server-*.tmp\n/.agent-cli-tmp-*\n!*\n';
+    await writeFile(join(root, '.forge/.gitignore'), existing);
+    await controller.start({ dryRun: false });
+    expect((await readFile(join(root, '.forge/.gitignore'), 'utf8')).startsWith(existing)).toBe(true);
+    expect(execFileSync('git', ['check-ignore', '.forge/server.json'], { cwd: root, encoding: 'utf8' }).trim()).toBe('.forge/server.json');
+  });
+
+  it.skipIf(process.platform === 'win32').each(['server.json', '.gitignore'])('rejects a named pipe at %s without waiting for a writer', async filename => {
+    await mkdir(join(root, '.forge'));
+    const path = join(root, '.forge', filename);
+    execFileSync('mkfifo', [path]);
+    await expect(controller.start({ dryRun: false })).rejects.toMatchObject({ code: 'SERVER_STATE_INVALID' });
+    expect((await lstat(path)).isFIFO()).toBe(true);
+  });
+
   it('does not create lifecycle state when stopping an inactive workspace', async () => {
     expect(await controller.stop({ dryRun: false })).toMatchObject({ running: false, changed: false });
     await expect(lstat(join(root, '.forge'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -105,6 +123,10 @@ describe('detached server lifecycle', () => {
     await mkdir(view, { recursive: true });
     await writeFile(join(view, 'manifest.json'), JSON.stringify({ id: 'admin', name: 'Admin', entry: 'index.html' }));
     await writeFile(join(view, 'index.html'), '<h1>Admin</h1>');
+    expect(await controller.status()).toMatchObject({ running: false, stale: false, webviews: [{ id: 'admin', name: 'Admin', path: '/views/admin/' }] });
+    await expect(lstat(join(root, '.forge'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await writeState(root, staleState(root));
+    expect(await controller.status()).toMatchObject({ running: false, stale: true, webviews: [{ id: 'admin', name: 'Admin', path: '/views/admin/' }] });
     const result = await controller.start({ webview: 'admin', dryRun: false });
     expect(new URL(result.url!).pathname).toBe('/views/admin/');
     expect(result.webviews).toEqual([{ id: 'admin', name: 'Admin', path: '/views/admin/' }]);

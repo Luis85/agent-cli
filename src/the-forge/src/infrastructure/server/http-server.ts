@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { SystemSnapshot } from '../../application/server/contracts.ts';
-import { readAsset, type WebviewAsset } from './assets.ts';
+import { hasUnsafePathCharacters, readAsset, type WebviewAsset } from './assets.ts';
 
 export interface HttpServerOptions {
   port: number;
@@ -38,8 +38,12 @@ function requestPath(request: IncomingMessage): string | undefined {
   const raw = request.url ?? '/';
   if (!raw.startsWith('/') || raw.startsWith('//')) return undefined;
   try {
-    const decoded = decodeURIComponent(raw.split('?')[0] ?? '');
-    if (decoded.includes('\\') || decoded.includes('\0') || decoded.split('/').some(part => part === '.' || part === '..')) return undefined;
+    const pathname = raw.split('?')[0] ?? '';
+    // Decode filename characters, not path separators. Each mount has one URL
+    // shape, independent of filesystem normalization on the host platform.
+    if (/%2f/i.test(pathname)) return undefined;
+    const decoded = decodeURIComponent(pathname);
+    if (hasUnsafePathCharacters(decoded) || decoded.includes('//') || decoded.split('/').some(part => part === '.' || part === '..')) return undefined;
     return decoded;
   } catch { return undefined; }
 }

@@ -32,6 +32,10 @@ describe('versioned system response', () => {
     { ok: true, data: { ...response().data, workspace: { root: '/workspace' } } },
     { ok: true, data: { ...response().data, updatedAt: 'unknown' } },
     { ok: true, data: { ...response().data, availability: null } },
+    ...[-1, 1.5, Number.MAX_SAFE_INTEGER + 1].map(commands => ({ ok: true, data: { ...response().data, stats: { ...response().data.stats, commands } } })),
+    ...[0, -1, 65536, 1.5].map(port => ({ ok: true, data: { ...response().data, server: { ...response().data.server, port } } })),
+    { ok: true, data: { ...response().data, server: { ...response().data.server, startedAt: 'invalid' } } },
+    { ok: true, data: { ...response().data, server: { ...response().data.server, uptimeSeconds: -1 } } },
   ])('rejects invalid responses instead of rendering misleading state', value => {
     expect(() => parseSnapshot(value)).toThrow('Invalid system response');
   });

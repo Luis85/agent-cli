@@ -43,8 +43,10 @@ const record = (value: unknown): value is RecordValue => typeof value === 'objec
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
 const fields = (value: RecordValue, keys: string[], type: 'string' | 'number') => keys.every(key =>
   type === 'number' ? typeof value[key] === 'number' && Number.isFinite(value[key]) : typeof value[key] === 'string');
+const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const timestamp = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const project = (value: unknown): value is Project => record(value) && fields(value, ['name', 'type', 'directory'], 'string')
-  && fields(value, ['schemaVersion'], 'number');
+  && count(value.schemaVersion) && value.schemaVersion > 0;
 const plugin = (value: unknown): value is Plugin => record(value)
   && fields(value, ['id', 'name', 'version', 'state', 'description'], 'string') && typeof value.core === 'boolean'
   && (value.reason === undefined || typeof value.reason === 'string')
@@ -55,14 +57,17 @@ export function parseSnapshot(response: unknown): SystemSnapshot {
   const data = response.data;
   if (data.schemaVersion !== 1 || !record(data.availability)
     || !['config', 'projects', 'selectedProject', 'plugins', 'capabilities'].every(key => typeof (data.availability as RecordValue)[key] === 'boolean')
-    || typeof data.updatedAt !== 'string' || !Number.isFinite(Date.parse(data.updatedAt))
-    || !record(data.server) || !fields(data.server, ['pid', 'port', 'uptimeSeconds'], 'number')
+    || !timestamp(data.updatedAt)
+    || !record(data.server) || !count(data.server.pid) || data.server.pid === 0
+    || !count(data.server.port) || data.server.port === 0 || data.server.port > 65535
+    || typeof data.server.uptimeSeconds !== 'number' || !Number.isFinite(data.server.uptimeSeconds) || data.server.uptimeSeconds < 0
+    || !timestamp(data.server.startedAt)
     || !fields(data.server, ['startedAt', 'version', 'nodeVersion'], 'string') || data.server.host !== '127.0.0.1'
     || !record(data.workspace) || !fields(data.workspace, ['root', 'projectsPath'], 'string')
     || !(data.workspace.selectedProject === null || project(data.workspace.selectedProject))
     || !Array.isArray(data.projects) || !data.projects.every(project)
     || !Array.isArray(data.plugins) || !data.plugins.every(plugin)
-    || !record(data.stats) || !fields(data.stats, ['projects', 'plugins', 'enabledPlugins', 'commands', 'generators', 'skills'], 'number')
+    || !record(data.stats) || !['projects', 'plugins', 'enabledPlugins', 'commands', 'generators', 'skills'].every(key => count((data.stats as RecordValue)[key]))
     || !Array.isArray(data.webviews) || !data.webviews.every(view => record(view) && fields(view, ['id', 'name', 'path'], 'string'))
     || !strings(data.warnings)) throw new Error('Invalid system response');
   return data as unknown as SystemSnapshot;

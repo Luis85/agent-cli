@@ -34,13 +34,15 @@ export function useSystem() {
     if (refreshing.value || disposed) return;
     if (!token) { connection.value = 'unauthorized'; return; }
     refreshing.value = true;
-    controller = new AbortController();
-    const timeout = setTimeout(() => controller?.abort(), 10_000);
+    const request = new AbortController();
+    controller = request;
+    const timeout = setTimeout(() => request.abort(), 10_000);
     try {
       const response = await fetch('/api/system', {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        cache: 'no-store', credentials: 'omit', signal: controller.signal,
+        cache: 'no-store', credentials: 'omit', signal: request.signal,
       });
+      if (disposed || controller !== request) return;
       if (response.status === 401 || response.status === 403) {
         connection.value = 'unauthorized';
         token = null;
@@ -48,33 +50,54 @@ export function useSystem() {
         return;
       }
       if (!response.ok) throw new Error('Server unavailable');
-      try { snapshot.value = parseSnapshot(await response.json()); }
-      catch { connection.value = 'invalid'; return; }
+      try {
+        const nextSnapshot = parseSnapshot(await response.json());
+        if (disposed || controller !== request) return;
+        snapshot.value = nextSnapshot;
+      } catch {
+        if (!disposed && controller === request) connection.value = request.signal.aborted ? 'disconnected' : 'invalid';
+        return;
+      }
       connection.value = 'connected';
     } catch {
-      if (!disposed) connection.value = 'disconnected';
+      if (!disposed && controller === request) connection.value = 'disconnected';
     } finally {
       clearTimeout(timeout);
-      refreshing.value = false;
+      if (controller === request) {
+        controller = undefined;
+        refreshing.value = false;
+      }
     }
   }
 
   function refreshWhenVisible() {
     if (autoRefresh.value && !document.hidden && connection.value !== 'unauthorized') void refresh();
   }
-  onMounted(() => {
+  function acceptToken() {
     let storage: Storage | undefined;
     try { storage = window.sessionStorage; } catch { /* Token still works in memory. */ }
     token = takeToken(window.location, window.history, storage);
+    controller?.abort();
+    controller = undefined;
+    refreshing.value = false;
+    connection.value = 'loading';
     void refresh();
+  }
+  function acceptFragment() {
+    if (new URLSearchParams(window.location.hash.slice(1)).has('token')) acceptToken();
+  }
+  onMounted(() => {
+    acceptToken();
     interval = setInterval(refreshWhenVisible, 15_000);
     document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('hashchange', acceptFragment);
   });
   onUnmounted(() => {
     disposed = true;
     clearInterval(interval);
     controller?.abort();
     document.removeEventListener('visibilitychange', refreshWhenVisible);
+    window.removeEventListener('hashchange', acceptFragment);
   });
   return { snapshot, connection, refreshing, autoRefresh, lastUpdated, refresh };
 }

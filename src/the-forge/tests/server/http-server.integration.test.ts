@@ -111,7 +111,7 @@ describe('localhost webview transport', () => {
     expect(html.headers['x-content-type-options']).toBe('nosniff');
     const script = await get('/views/inspector/app-Abcd1234.js');
     expect(script.headers['content-type']).toBe('text/javascript; charset=utf-8');
-    expect(script.headers['cache-control']).toContain('immutable');
+    expect(script.headers['cache-control']).toBe('no-cache');
     const head = await get('/views/inspector/theme.css', { method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(head.body).toBe('');
@@ -119,16 +119,38 @@ describe('localhost webview transport', () => {
     expect(head.headers['cache-control']).toBe('no-cache');
   });
 
+  it('keeps replaced scripts revalidatable regardless of their filename', async () => {
+    const filename = path.join(directory, 'assets', 'app-development.js');
+    await writeFile(filename, 'export const version = 1;');
+    const original = await get('/views/inspector/app-development.js');
+    expect(original.headers['cache-control']).toBe('no-cache');
+    await writeFile(filename, 'export const version = 2;');
+    const updated = await get('/views/inspector/app-development.js');
+    expect(updated.body).toBe('export const version = 2;');
+    expect(updated.headers['cache-control']).toBe('no-cache');
+  });
+
   it('rejects path traversal, malformed escaping, hidden files, and unknown assets', async () => {
     for (const pathname of [
       '/views/inspector/../secret.json', '/views/inspector/%2e%2e/secret.json',
       '/views/inspector/%2e%2e%2fsecret.json', '/views/inspector/%00.json', '/views/inspector/%zz',
       '/views/inspector/%5c..%5csecret.json', '//views/inspector/',
+      '/views/inspector//index.html', '/views%2finspector/index.html',
+      '/views/inspector/index.html%0a', '/views/inspector/index.html%7f',
+      '/views/inspector/index.html:stream.json', '/views/inspector/index.html%3astream.json',
     ]) expect((await get(pathname)).status).toBe(400);
     await writeFile(path.join(directory, 'assets', '.credentials.json'), '{}');
     for (const pathname of ['/secret.json', '/views/missing/', '/views/inspector/.credentials.json', '/views/inspector/missing.js']) {
       expect((await get(pathname)).status).toBe(404);
     }
+  });
+
+  it('accepts escaped filenames and query strings without normalizing URL structure', async () => {
+    await writeFile(path.join(directory, 'assets', 'theme contrast.css'), 'body { color: white; }');
+    expect((await get('/views/inspector/theme%20contrast.css?source=%2f')).status).toBe(200);
+    expect((await get('/views/inspector/?source=%zz')).status).toBe(200);
+    expect((await get('/api%2fsystem', { headers: auth() })).status).toBe(400);
+    expect(snapshot).not.toHaveBeenCalled();
   });
 
   it('refuses symlink files and directories outside the mounted assets', async () => {
@@ -141,7 +163,7 @@ describe('localhost webview transport', () => {
   it('discovers only valid packaged manifests with contained entry documents', async () => {
     expect(await discoverWebviews(directory)).toEqual([]);
     const views = path.join(directory, 'webviews');
-    for (const id of ['inspector', 'missing', 'invalid', 'mismatched', 'linked']) {
+    for (const id of ['inspector', 'missing', 'invalid', 'mismatched', 'linked', 'directory', 'manifest-link']) {
       await mkdir(path.join(views, id), { recursive: true });
       await writeFile(path.join(views, id, 'manifest.json'), JSON.stringify({ id, name: id, entry: 'index.html' }));
     }
@@ -149,9 +171,18 @@ describe('localhost webview transport', () => {
     await writeFile(path.join(views, 'invalid', 'manifest.json'), '{broken');
     await writeFile(path.join(views, 'mismatched', 'manifest.json'), JSON.stringify({ id: 'elsewhere', name: 'Wrong mount', entry: '../secret.json' }));
     await symlink(path.join(directory, 'secret.json'), path.join(views, 'linked', 'index.html'), 'file');
+    await rm(path.join(views, 'directory', 'manifest.json'));
+    await mkdir(path.join(views, 'directory', 'manifest.json'));
+    await writeFile(path.join(views, 'directory', 'index.html'), '<h1>Invalid manifest</h1>');
+    await rm(path.join(views, 'manifest-link', 'manifest.json'));
+    await writeFile(path.join(directory, 'manifest.json'), JSON.stringify({ id: 'manifest-link', name: 'Linked manifest', entry: 'index.html' }));
+    await symlink(path.join(directory, 'manifest.json'), path.join(views, 'manifest-link', 'manifest.json'), 'file');
+    await writeFile(path.join(views, 'manifest-link', 'index.html'), '<h1>Linked manifest</h1>');
     expect(await discoverWebviews(directory)).toEqual([{ id: 'inspector', name: 'inspector', directory: path.join(views, 'inspector') }]);
     await writeFile(path.join(directory, 'assets', 'manifest.json'), '{"id":"inspector"}');
     expect((await get('/views/inspector/manifest.json')).status).toBe(404);
+    await writeFile(path.join(directory, 'assets', 'MANIFEST.JSON'), '{"id":"inspector"}');
+    expect((await get('/views/inspector/MANIFEST.JSON')).status).toBe(404);
   });
 
   it('only allows the control endpoint to stop the server using authenticated POST', async () => {

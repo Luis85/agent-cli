@@ -28,7 +28,17 @@ npm run package
 
 The project owns its package, lockfile, Vue/Vite/TypeScript configuration and tests. It never imports sibling source or `node_modules`. `npm run build` produces static `dist/` assets at the `/views/admin/` base URL, together with `manifest.json` and dependency notices. `npm run package` publishes those built assets to the explicit `config.distribution` target (`../../bin/webviews/admin`) and refreshes the Forge asset manifest. `npm run package:check` verifies that the committed distribution matches the build.
 
-After packaging, start the server using the repository CLI and open its returned URL. The server serves the latest packaged assets; reload after rebuilding and packaging. `npm run dev` is only the standalone frontend Vite server and has no Forge API, so use the CLI-managed view for system inspection and integration work.
+After packaging, start the server using the repository CLI and open its returned URL. The server serves the latest packaged assets; reload after rebuilding and packaging. Adding a view or changing its manifest requires stopping and starting the server to refresh its mounted catalog. `npm run dev` is only the standalone frontend Vite server and has no Forge API, so use the CLI-managed view for system inspection and integration work.
+
+From the workspace root, the development inspection loop is:
+
+```sh
+node bin/forge.js server start --webview admin --json
+# After changes, run npm run build && npm run package inside src/forge-admin, then reload.
+node bin/forge.js server stop --json
+```
+
+Use the admin-specific start command again to recover a missing/expired session. `server status` reports the generic server catalog URL; a copied browser address whose token has already been removed cannot authenticate a browser session that has no saved token.
 
 ## Browser inspection and tests
 

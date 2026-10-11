@@ -646,7 +646,13 @@ node bin/forge.js help server
   "stale": false,
   "server": null,
   "url": null,
-  "webviews": []
+  "webviews": [
+    {
+      "id": "admin",
+      "name": "Developer admin",
+      "path": "/views/admin/"
+    }
+  ]
 }
 ```
 

@@ -37,8 +37,9 @@ export class NodeServerController implements ServerController {
   private async root(): Promise<string> { return realpath(this.options.workspaceRoot); }
   async status(): Promise<ServerStatus> {
     const state = await readState(await this.root());
-    if (!state) return stopped();
-    return await healthy(state) ? running(state) : stopped(true);
+    if (state && await healthy(state)) return running(state);
+    const assets = await discoverWebviews(await realpath(this.options.distributionPath));
+    return { ...stopped(Boolean(state)), webviews: assets.map(asset => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` })) };
   }
   async start(options: { port?: number; webview?: string; dryRun: boolean }): Promise<ServerStatus> {
     const port = options.port ?? 0;

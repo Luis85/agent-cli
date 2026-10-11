@@ -176,6 +176,12 @@ function forgeError(code, message, details, exitCode = errorCatalog[code].exitCo
   return new AppError(code, message, exitCode, details, retryable);
 }
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+function hasUnsafePathCharacters(value) {
+  return value.includes("\\") || value.includes(":") || [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+}
 async function discoverWebviews(distributionPath) {
   const root = path.join(distributionPath, "webviews");
   try {
@@ -186,7 +192,7 @@ async function discoverWebviews(distributionPath) {
       const directory = path.join(root, entry2.name);
       const manifestPath = path.join(directory, "manifest.json");
       try {
-        if ((await promises.lstat(manifestPath)).isSymbolicLink()) continue;
+        if (!(await promises.lstat(manifestPath)).isFile()) continue;
         const manifest = JSON.parse(await promises.readFile(manifestPath, "utf8"));
         if (!manifest || typeof manifest !== "object" || !("id" in manifest) || manifest.id !== entry2.name || !("name" in manifest) || typeof manifest.name !== "string" || !manifest.name.trim() || !("entry" in manifest) || manifest.entry !== "index.html") continue;
         const asset = { id: entry2.name, name: manifest.name, directory };
@@ -226,7 +232,7 @@ async function readAsset(assets, pathname) {
   if (!asset) return void 0;
   if (segments.length === 0 || segments.at(-1) === "") segments.push("index.html");
   const parts = segments.filter((segment) => segment !== "");
-  if (parts.some((part) => part.startsWith(".") || part.includes("\\") || part.includes("\0")) || parts[0] === "manifest.json") return void 0;
+  if (parts.some((part) => part.startsWith(".") || hasUnsafePathCharacters(part)) || parts[0]?.toLowerCase() === "manifest.json") return void 0;
   try {
     if ((await promises.lstat(asset.directory)).isSymbolicLink()) return void 0;
     const root = await promises.realpath(asset.directory);
@@ -241,11 +247,12 @@ async function readAsset(assets, pathname) {
     const extension = path.extname(resolved).toLowerCase();
     const contentType = mimeTypes[extension];
     if (!contentType) return void 0;
-    const immutable = extension !== ".html" && /[-.][\w-]{8,}\.[a-z0-9]+$/i.test(path.basename(resolved));
     return {
       bytes: await promises.readFile(resolved),
       contentType,
-      cacheControl: extension === ".html" ? "no-store" : immutable ? "public, max-age=31536000, immutable" : "no-cache"
+      // A filename cannot prove content addressing. Revalidate local assets so
+      // repackaging a view never leaves the browser using a stale script or style.
+      cacheControl: extension === ".html" ? "no-store" : "no-cache"
     };
   } catch (error) {
     if (missingAsset(error)) return void 0;
@@ -269,8 +276,10 @@ function requestPath(request) {
   const raw = request.url ?? "/";
   if (!raw.startsWith("/") || raw.startsWith("//")) return void 0;
   try {
-    const decoded = decodeURIComponent(raw.split("?")[0] ?? "");
-    if (decoded.includes("\\") || decoded.includes("\0") || decoded.split("/").some((part) => part === "." || part === "..")) return void 0;
+    const pathname = raw.split("?")[0] ?? "";
+    if (/%2f/i.test(pathname)) return void 0;
+    const decoded = decodeURIComponent(pathname);
+    if (hasUnsafePathCharacters(decoded) || decoded.includes("//") || decoded.split("/").some((part) => part === "." || part === "..")) return void 0;
     return decoded;
   } catch {
     return void 0;
@@ -398,8 +407,8 @@ async function readState(root) {
   const path$1 = path.join(await stateDirectory(root), "server.json");
   let handle;
   try {
-    if ((await promises.lstat(path$1)).isSymbolicLink()) throw invalid();
-    handle = await promises.open(path$1, node_fs.constants.O_RDONLY | node_fs.constants.O_NOFOLLOW);
+    if (!(await promises.lstat(path$1)).isFile()) throw invalid();
+    handle = await promises.open(path$1, node_fs.constants.O_RDONLY | node_fs.constants.O_NOFOLLOW | node_fs.constants.O_NONBLOCK);
     const info = await handle.stat();
     if (!info.isFile() || info.size > 64 * 1024 || process.platform !== "win32" && ((info.mode & 63) !== 0 || info.uid !== process.getuid?.())) throw invalid();
     const value = JSON.parse(await handle.readFile("utf8"));
@@ -444,11 +453,11 @@ function serverInfo(state) {
     uptimeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(state.startedAt)) / 1e3))
   };
 }
-function command(options, args) {
+function command(options, inspection) {
   return new Promise((resolve, reject) => {
     node_child_process.execFile(
       process.execPath,
-      [path.join(options.distributionPath, "forge.js"), "--root", options.workspaceRoot, "--json", "--events", "none", "--dry-run", ...args],
+      [path.join(options.distributionPath, "forge.js"), "--root", options.workspaceRoot, "--json", "--events", "none", "--dry-run", ...inspection.args],
       { cwd: options.workspaceRoot, timeout: 15e3, maxBuffer: 4 * 1024 * 1024, windowsHide: true, signal: options.signal },
       (error, stdout) => {
         if (error) {
@@ -457,8 +466,8 @@ function command(options, args) {
         }
         try {
           const response = JSON.parse(stdout);
-          if (!isRecord(response) || response.ok !== true || !isRecord(response.data)) throw new Error("Invalid inspection response.");
-          resolve(response.data);
+          if (!isRecord(response) || response.ok !== true || !isRecord(response.data) || !inspection.valid(response.data)) throw new Error("Invalid inspection response.");
+          resolve({ data: response.data, warned: Array.isArray(response.warnings) && response.warnings.length > 0 });
         } catch {
           reject(new Error("Invalid inspection response."));
         }
@@ -494,12 +503,22 @@ function createSnapshotProvider(options) {
   let cached;
   let pending;
   async function collect() {
-    const requests = [["config"], ["project", "list"], ["project", "current"], ["plugins"], ["help"]];
-    const results = await Promise.allSettled(requests.map((args) => command(options, args)));
+    const requests = [
+      { args: ["config"], valid: (data2) => isRecord(data2.config) && isRecord(data2.config.paths) && typeof data2.config.paths.projects === "string" },
+      { args: ["project", "list"], valid: (data2) => Array.isArray(data2.projects) && data2.projects.every((value) => project(value) !== null) },
+      { args: ["project", "current"], valid: (data2) => data2.project === null || project(data2.project) !== null },
+      { args: ["plugins"], valid: (data2) => Array.isArray(data2.plugins) && data2.plugins.every((value) => isRecord(value) && typeof value.id === "string" && typeof value.state === "string") },
+      { args: ["help"], valid: (data2) => Array.isArray(data2.commands) && Array.isArray(data2.generators) && Array.isArray(data2.skills) }
+    ];
+    const results = await Promise.allSettled(requests.map((inspection) => command(options, inspection)));
     const warnings = [];
     const data = results.map((result, index) => {
-      if (result.status === "fulfilled") return result.value;
-      warnings.push(`Could not inspect ${requests[index].join(" ")}. Retry or inspect this command through the CLI.`);
+      const command2 = requests[index].args.join(" ");
+      if (result.status === "fulfilled") {
+        if (result.value.warned) warnings.push(`The ${command2} inspection reported warnings. Inspect this command through the CLI for details.`);
+        return result.value.data;
+      }
+      warnings.push(`Could not inspect ${command2}. Retry or inspect this command through the CLI.`);
       return {};
     });
     const configuration = isRecord(data[0].config) ? data[0].config : {};

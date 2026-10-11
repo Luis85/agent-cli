@@ -59,4 +59,28 @@ describe('read-only system snapshot', () => {
     expect(JSON.stringify(result)).not.toContain('sensitive-plugin-error');
     expect(result.workspace.selectedProject).toBeNull();
   });
+
+  it('marks malformed discovery results unavailable rather than reporting healthy empty state', async () => {
+    await writeFile(join(root, 'forge.js'), `process.stdout.write(JSON.stringify({ ok: true, data: {} }));`);
+    const snapshot = createSnapshotProvider({ workspaceRoot: root, distributionPath: root, server: () => info, webviews: [] });
+    const result = await snapshot();
+    expect(result.availability).toEqual({ config: false, projects: false, selectedProject: false, plugins: false, capabilities: false });
+    expect(result.warnings).toHaveLength(5);
+  });
+
+  it('preserves successful results while surfacing sanitized CLI warnings', async () => {
+    await writeFile(join(root, 'forge.js'), `
+      const args = process.argv.slice(2);
+      const data = args.includes('config') ? { config: { paths: { projects: 'src' } } }
+        : args.includes('list') ? { projects: [] } : args.includes('current') ? { project: null }
+        : args.includes('plugins') ? { plugins: [] } : { commands: [], generators: [], skills: [] };
+      process.stdout.write(JSON.stringify({ ok: true, data, warnings: ['private-plugin-token'] }));
+    `);
+    const snapshot = createSnapshotProvider({ workspaceRoot: root, distributionPath: root, server: () => info, webviews: [] });
+    const result = await snapshot();
+    expect(result.availability).toEqual({ config: true, projects: true, selectedProject: true, plugins: true, capabilities: true });
+    expect(result.warnings).toHaveLength(5);
+    expect(result.warnings[0]).toContain('config inspection reported warnings');
+    expect(JSON.stringify(result)).not.toContain('private-plugin-token');
+  });
 });

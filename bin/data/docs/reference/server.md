@@ -10,7 +10,7 @@ All server commands run at workspace scope, bypass plugin activation and leave p
 
 | Usage | Effect |
 | --- | --- |
-| `server status` | Inspect the saved workspace server and verify its health without starting it or modifying saved state. |
+| `server status` | Inspect the saved workspace server and verify its health without starting it or modifying saved state. Discover installed webviews even when the server is stopped. |
 | `server start [--port <0..65535>] [--webview <id>] [--dry-run]` | Start a background localhost server or reuse the workspace's running server. Port `0` (the default) chooses an available port. `--webview admin` selects the installed admin view's launch URL. |
 | `server stop [--dry-run]` | Stop the verified server belonging to this workspace. Repeating a completed stop has no further effect. |
 
@@ -36,11 +36,13 @@ Successful responses use the standard envelope. `data` contains:
 | `stale` | Saved server state exists but its recorded server could not be verified as running. |
 | `server` | Runtime identity and health: `pid`, `startedAt`, `host`, `port`, `version`, `nodeVersion`, `uptimeSeconds`; otherwise `null`. |
 | `url` | Authenticated local launch URL when running; otherwise `null`. With `--webview admin`, its path is `/views/admin/`. |
-| `webviews` | Available installed views, each with `id`, `name` and `path`. |
-| `changed` | On start/stop, whether the invocation changed lifecycle state, or would change it during a dry run. |
-| `dryRun` | Present for a lifecycle preview. No process is started/stopped and no server state is written. |
+| `webviews` | Views with `id`, `name` and `path`: the running server's mounted catalog, or the installed catalog when inspecting an inactive server with `status`. An inactive startup preview also lists installed views. Stop responses do not discover installed assets. |
+| `changed` | Required on start/stop: whether the invocation changed lifecycle state, or would change it during a dry run. |
+| `dryRun` | Present as `true` for a lifecycle preview. No process is started/stopped and no server state is written. |
 
 A preview of an inactive server cannot supply the future ephemeral port or a valid launch link. Repeated startup reuses the current process and reports `changed: false`; it does not silently restart a running server on a new requested port. Stop and then start to change the port. `status` does not remove stale records.
+
+`status` returns a launch link to the server's JSON view catalog, not directly to the admin page. To recover an admin tab after losing its token or closing the browser, run `server start --webview admin` again and open its complete `data.url`. This reuses a healthy server; it does not change project selection.
 
 ## Inspection and access
 
@@ -59,6 +61,8 @@ Inspection runs only these fixed discovery commands against the server's workspa
 The server caches a collected snapshot for three seconds and shares a pending collection between concurrent requests. Runtime uptime is refreshed when a cached snapshot is returned. `updatedAt` identifies when the inspection snapshot was collected. The admin view polls every 15 seconds while auto-refresh is enabled and the tab is visible, refreshes when the tab becomes visible, and offers manual refresh. Manual refresh can still receive the server's three-second cached snapshot.
 
 Failed individual discovery commands produce `warnings` and set the corresponding `availability` flag to `false`. The admin view labels those sections unavailable instead of presenting their empty/null placeholders as confirmed state. For example, a stale selection can leave `selectedProject: null` with a warning; it does not block the remaining inspection. Empty counts accompanied by warnings do not establish that the workspace contains no projects or plugins. Run the named CLI discovery command to diagnose the failure.
+
+Malformed discovery responses also mark their section unavailable. A successful command that reports warnings retains its data and availability, with a generic warning directing you to that CLI command for details. The snapshot does not include arbitrary warning text from plugins.
 
 If the HTTP request fails or its response cannot be parsed, the admin view retains its last successful snapshot and labels the connection failure and last update time. Displayed data is then historical, not proof that the server remains healthy. Missing or expired authentication requires a fresh launch link; repeated malformed responses require matching CLI and webview assets. `server status`'s lifecycle `stale` flag describes saved process state and is separate from the age of a browser snapshot.
 
@@ -86,7 +90,7 @@ Build each webview in its own project and export only static output into `bin/we
 {"id":"example-view","name":"Example view","entry":"index.html"}
 ```
 
-The lowercase kebab-case `id` must match its directory name. The display name must be nonempty and `entry` must be exactly `index.html`. Invalid manifests or missing entry assets are skipped. Webview discovery happens when the server starts; stop and start after installing or replacing a view to refresh the catalog.
+The lowercase kebab-case `id` must match its directory name. The display name must be nonempty and `entry` must be exactly `index.html`. Invalid manifests or missing entry assets are skipped. Webview mounts are discovered when the server starts; stop and start after adding a view or changing its manifest to refresh the running catalog. `start --webview <id>` on an existing server selects from that server's catalog. Rebuilding and packaging an existing view's assets only requires a browser reload: HTML is not cached and other static files require revalidation.
 
 Build asset URLs relative to `/views/<id>/` or use relative asset paths. The server serves explicit files only: it provides no SPA history fallback, directory listing, workspace-file mount or framework development middleware. Use client-side hash routing or package explicit HTML entry files. Dotfiles, the manifest and symlinked assets are not served. The same-origin content policy requires locally packaged scripts, styles, fonts and images; external CDNs are not available.
 

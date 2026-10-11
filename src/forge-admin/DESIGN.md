@@ -14,7 +14,11 @@ Page maximum width: 1240px, desktop side padding: 28px, mobile: 20px. Section se
 
 The first focusable control is a visible-on-focus skip link. Semantic headings, lists and definition lists describe inventory and runtime data. Inputs carry explicit accessible names. Connection changes use a polite live status; authentication and connection errors use actionable alerts. Focus rings use emerald with a visible offset. Colors supplement state text.
 
+Primary mobile controls have at least 44px touch targets. Disabled plugin explanations use neutral text; failed plugin explanations use red with explicit state text. Inventory filters retain the selected state even when a refresh removes its last matching plugin. Long names, paths and version strings wrap within their section.
+
 Manual refresh preserves the last good snapshot while loading. Optional auto-refresh runs every 15 seconds and pauses while the tab is hidden. Authentication failures stop polling and clear the expired session token. Missing access, empty inventories, no search results, malformed responses and server disconnects each have explicit states and recovery text. The token is removed from the URL fragment before requesting data and retained only in tab session storage (or memory when browser storage is unavailable).
+
+Opening a fresh CLI launch link in the same tab immediately replaces the old session and removes its fragment. An earlier request cannot overwrite that new session's result. Snapshot timestamps expose their complete date and time on hover; invalid runtime numbers, counts and timestamps trigger the malformed-response recovery state.
 
 Partial inspection failures show explicit unavailable labels per section, alongside the server warning; they never imply an empty inventory, zero capabilities or workspace scope.
 

@@ -30,7 +30,7 @@ const project = computed(() => snapshot.value?.availability.selectedProject ? sn
           <p class="intro">A live view of your local workspace.</p>
         </div>
         <div class="refresh-controls">
-          <USwitch v-model="autoRefresh" label="Auto-refresh" size="sm" />
+          <USwitch v-model="autoRefresh" label="Auto-refresh" size="sm" :disabled="connection === 'unauthorized'" class="auto-refresh-control" />
           <UButton color="neutral" variant="outline" :disabled="refreshing || connection === 'unauthorized'" @click="refresh">
             {{ refreshing ? 'Refreshing…' : 'Refresh' }}
           </UButton>
@@ -41,7 +41,7 @@ const project = computed(() => snapshot.value?.availability.selectedProject ? sn
           <span class="status-dot" :class="{ 'is-connected': connection === 'connected' }" aria-hidden="true"></span>
           {{ connectionLabel }}
         </div>
-        <p v-if="lastUpdated" class="last-updated">{{ connection === 'connected' ? 'Updated' : 'Last updated' }} <time :datetime="snapshot?.updatedAt">{{ lastUpdated }}</time><span v-if="autoRefresh && connection === 'connected'"> · Every 15 seconds</span></p>
+        <p v-if="lastUpdated" class="last-updated">{{ connection === 'connected' ? 'Updated' : 'Last updated' }} <time :datetime="snapshot?.updatedAt" :title="snapshot ? new Date(snapshot.updatedAt).toLocaleString() : undefined">{{ lastUpdated }}</time><span v-if="autoRefresh && connection === 'connected'"> · Every 15 seconds</span></p>
       </div>
 
       <section v-if="connection === 'unauthorized'" role="alert" class="notice notice-warning">
