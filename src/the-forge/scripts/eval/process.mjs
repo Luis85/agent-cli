@@ -22,39 +22,77 @@ function killTree(child, signal) {
   catch (error) { if (!['ESRCH', 'EPERM'].includes(/** @type {string} */ (/** @type {NodeJS.ErrnoException} */ (error).code))) throw error; }
 }
 
-/** Agents of the runs in progress, each with the promise of its exit; `stopping` once a signal ends the driver. */
+/** Agents of the runs in progress, each with the promise of its exit. */
 const running = new Map();
-let stopping = false;
+/** Work the driver completes before it ends on a signal (see completeBeforeSignal). */
+const pending = new Set();
+/** @type {NodeJS.Signals | null} The signal the driver is ending on. */
+let signaled = null;
+let listening = false;
 const forwarded = /** @type {const} */ (['SIGINT', 'SIGTERM']);
+
+/** The driver listens for signals while agents run or work is pending, until the first signal arrives. */
+function listen() {
+  const wanted = signaled === null && running.size + pending.size > 0;
+  if (wanted === listening) return;
+  listening = wanted;
+  for (const name of forwarded) {
+    if (wanted) process.on(name, interrupted);
+    else process.removeListener(name, interrupted);
+  }
+}
+
 /**
  * A SIGINT or SIGTERM to the driver (Ctrl+C in a terminal) reaches no agent, because each leads its own process
- * group. While runs are in progress, the driver forwards the signal to every agent group, force-ends the groups that
- * still run after the grace period, and then ends itself with the same signal.
+ * group. The driver forwards the signal to every agent group and force-ends the groups that still run after the
+ * grace period. Once they have exited it completes the pending work, such as removing an attempt's temporary folders
+ * and writing a partial report, and then ends itself with the same signal. A second signal ends it at once.
  * @param {NodeJS.Signals} signal
  */
 function interrupted(signal) {
-  stopping = true;
-  for (const name of forwarded) process.removeListener(name, interrupted);
+  signaled = signal;
+  listen();
   const agents = [...running.keys()];
   for (const child of agents) killTree(child, signal);
   const forced = setTimeout(() => { for (const child of agents) killTree(child, 'SIGKILL'); }, graceMs);
-  void Promise.all(running.values()).then(() => { clearTimeout(forced); process.kill(process.pid, signal); });
+  void Promise.all(running.values()).then(async () => {
+    clearTimeout(forced);
+    while (pending.size > 0) await Promise.allSettled([...pending]);
+    process.kill(process.pid, signal);
+  });
 }
+
+/** The signal the driver is ending on, or null. */
+export const interruption = () => signaled;
+
+/**
+ * Registers `work` that a SIGINT or SIGTERM lets finish before the driver ends with that signal, and returns it.
+ * While work is pending the driver handles these signals, so its cleanup (`finally` blocks) runs.
+ * @template T @param {Promise<T>} work @returns {Promise<T>}
+ */
+export function completeBeforeSignal(work) {
+  pending.add(work);
+  listen();
+  const done = () => { pending.delete(work); listen(); };
+  work.then(done, done);
+  return work;
+}
+
 /** @param {import('node:child_process').ChildProcess} child @param {Promise<void>} exited */
 function track(child, exited) {
-  if (running.size === 0) for (const name of forwarded) process.on(name, interrupted);
   running.set(child, exited);
+  listen();
 }
 /** @param {import('node:child_process').ChildProcess} child */
 function untrack(child) {
   running.delete(child);
-  if (running.size === 0) for (const name of forwarded) process.removeListener(name, interrupted);
+  listen();
 }
 
-/** A failed or timed-out headless run; `timedOut` names a run the driver ended. */
+/** A failed or timed-out headless run; `timedOut` names a run the driver ended, `interrupted` one a signal ended. */
 export class HeadlessError extends Error {
-  /** @param {string} message @param {boolean} timedOut */
-  constructor(message, timedOut) { super(message); this.timedOut = timedOut; }
+  /** @param {string} message @param {boolean} timedOut @param {boolean} [interrupted] */
+  constructor(message, timedOut, interrupted = false) { super(message); this.timedOut = timedOut; this.interrupted = interrupted; }
 }
 
 /**
@@ -75,16 +113,17 @@ export function redact(text, env = process.env) {
 
 /**
  * Runs `executable` in its own process group and resolves its standard output. At `timeoutMs` the whole group is
- * terminated (SIGTERM, then SIGKILL after a grace period), so tool processes the agent started never outlive the
- * attempt, and the run fails with a `timedOut` HeadlessError. After a normal exit, leftover group members are
- * killed too (POSIX only; see killTree). A SIGINT or SIGTERM to the driver ends the group first (see interrupted).
+ * terminated (SIGTERM, then SIGKILL after a grace period; on Windows `taskkill /T /F` ends the tree), so tool
+ * processes the agent started never outlive the attempt, and the run fails with a `timedOut` HeadlessError. After a
+ * normal exit, leftover group members are killed too (POSIX only; see killTree). A SIGINT or SIGTERM to the driver
+ * ends the group first and fails the run with an `interrupted` HeadlessError (see interrupted).
  * A nonzero exit without a `result` event fails with its redacted standard error.
  * @param {string} executable @param {string[]} args @param {string} cwd @param {number} timeoutMs @returns {Promise<string>}
  */
 export function headless(executable, args, cwd, timeoutMs) {
   return new Promise((resolvePromise, reject) => {
     // The driver is ending on a signal: no further agent starts.
-    if (stopping) { reject(new HeadlessError(`${executable} was not started; the driver is ending on a signal.`, false)); return; }
+    if (signaled !== null) { reject(new HeadlessError(`${executable} was not started; the driver is ending on ${signaled}.`, false, true)); return; }
     const child = spawn(executable, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: !windows, windowsHide: true });
     /** @type {Buffer[]} */ const stdout = [];
     /** @type {Buffer[]} */ const stderr = [];
@@ -104,7 +143,9 @@ export function headless(executable, args, cwd, timeoutMs) {
     child.on('close', (status, signal) => {
       clearTimeout(timer); clearTimeout(forced); untrack(child);
       const text = Buffer.concat(stdout).toString('utf8');
-      if (timedOut) reject(new HeadlessError(`${executable} timed out after ${timeoutMs / 1000} s; its process group was terminated (${signal ?? `exit ${status}`}).`, true));
+      const ended = signal ?? `exit ${status}`;
+      if (timedOut) reject(new HeadlessError(`${executable} timed out after ${timeoutMs / 1000} s; ${windows ? 'its process tree was ended with taskkill' : 'its process group was terminated'} (${ended}).`, true));
+      else if (signaled !== null) reject(new HeadlessError(`${executable} was ended by the driver's ${signaled} (${ended}).`, false, true));
       else if (status !== 0 && !text.includes('"type":"result"')) reject(new HeadlessError(`${executable} exited ${status ?? signal}: ${redact(Buffer.concat(stderr).toString('utf8')).slice(0, 2000)}`, false));
       else resolvePromise(text);
     });

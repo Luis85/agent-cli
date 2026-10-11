@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { defaultAllowedTools, runClaude } from './claude.mjs';
+import { completeBeforeSignal, interruption } from './process.mjs';
 import { runReference } from './reference.mjs';
 import { evalsRoot, loadTasks } from './tasks.mjs';
 import { distributionPath } from './workspace.mjs';
@@ -61,21 +62,33 @@ async function main() {
   }
   if (values.driver !== 'claude') throw new Error(`Unknown driver ${values.driver}. ${usage}`);
   if (process.env.CI) throw new Error('The claude driver is opt-in and never runs in CI.');
+  // A SIGINT or SIGTERM ends the running agent; the driver then writes the partial report and ends with the signal.
+  await completeBeforeSignal(claudeDriver(selected, distribution));
+}
+
+/**
+ * The claude driver's attempts and report.
+ * @param {import('./tasks.mjs').Task[]} selected @param {string} distribution
+ */
+async function claudeDriver(selected, distribution) {
   const repeat = positive('repeat', values.repeat);
   const options = {
     model: values.model, maxTurns: positive('max-turns', values['max-turns']), timeoutMs: positive('timeout', values.timeout) * 1000,
     allowedTools: values['allowed-tool'] ?? defaultAllowedTools, executable: values.claude, distribution,
   };
   const runs = selected.flatMap(task => Array.from({ length: repeat }, (_, attempt) => ({ task, attempt: attempt + 1 })));
-  // Sequential: concurrent agents would compete for the same account limits and skew durations.
-  const results = await pool(runs, 1, ({ task, attempt }) => runClaude(task, options, attempt));
+  // Sequential: concurrent agents would compete for the same account limits and skew durations. After a signal no
+  // further attempt starts, and the report covers the attempts so far.
+  const started = await pool(runs, 1, ({ task, attempt }) => (interruption() === null ? runClaude(task, options, attempt) : Promise.resolve(null)));
+  const results = started.filter(result => result !== null);
   const tasks = selected.map(task => {
     const attempts = results.filter(result => result.id === task.id);
-    return { id: task.id, category: task.category, passes: attempts.filter(result => result.passed).length, attempts: attempts.length, passAll: attempts.every(result => result.passed) };
+    return { id: task.id, category: task.category, passes: attempts.filter(result => result.passed).length, attempts: attempts.length, passAll: attempts.length > 0 && attempts.every(result => result.passed) };
   });
   const summary = {
     driver: 'claude', model: values.model ?? null, repeat, startedTasks: selected.length,
-    passRate: results.filter(result => result.passed).length / results.length,
+    interrupted: interruption(), attempts: runs.length, notStarted: runs.length - results.length,
+    passRate: results.length === 0 ? 0 : results.filter(result => result.passed).length / results.length,
     passAllRate: tasks.filter(task => task.passAll).length / tasks.length,
     turns: sum(results.map(result => result.transcript.turns)), costUsd: sum(results.map(result => result.transcript.costUsd)),
     tokens: Object.fromEntries((/** @type {const} */ (['input', 'output', 'cacheRead', 'cacheCreation'])).map(kind => [kind, sum(results.map(result => result.transcript.tokens?.[kind] ?? null))])),
