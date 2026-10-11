@@ -33,6 +33,7 @@ export function dataSourceGenerator(services: DataSourceServicesFactory): Genera
   return {
     id: 'data-source', description: 'Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.', usage: 'make data-source <id> [--project id] [--out directory] [--test-data-out directory]',
     projectOption: 'project', review: true, idempotent: true,
+    errors: ['INVALID_DATA_SOURCE', 'DUPLICATE_DATA_SOURCE', 'UNKNOWN_DATA_SOURCE', 'EMPTY_DATA_SOURCE_LIBRARY', 'DATA_SOURCE_RENDERER_UNAVAILABLE', 'DATA_SOURCE_DRIFT', 'INVALID_GENERATION_PLAN', 'PROJECT_REQUIRED'],
     options: { ...libraryGenerationOptions, 'test-data-out': option.string('Test-data output directory; defaults to plugins.settings.data-sources.fixtures.') },
     run: ({ name, flags, context }) => makeDataSource(name, flags, context, services),
   };
@@ -45,7 +46,7 @@ export function dataSourcesCommand(services: DataSourceServicesFactory): Command
     usage: 'data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]',
     ...libraryMetadata('data-source'),
     options: { ...libraryOptions, kind: option.string('Data-source kind for create.', { enum: ['rest', 'json'], default: 'rest' }) },
-    errors: ['INVALID_DATA_SOURCE', 'DUPLICATE_DATA_SOURCE', 'UNKNOWN_DATA_SOURCE', 'CONFLICT'],
+    errors: ['INVALID_DATA_SOURCE', 'DUPLICATE_DATA_SOURCE', 'UNKNOWN_DATA_SOURCE', 'EMPTY_DATA_SOURCE_LIBRARY', 'CONFLICT'],
     async run(args, flags, context) {
       const { settings, library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.library;

@@ -44,8 +44,12 @@ async function makeUi(kind: 'ui' | 'stories', id: string, flags: CommandFlags, c
  * `make ui` and `make stories` render the workspace component library into the output project: the selected one, or
  * the one `--project` names for this invocation. `make` adds `--out` and the review controls.
  */
+const uiGenerationErrors = [
+  'INVALID_UI', 'INVALID_UI_LIBRARY', 'DUPLICATE_UI_COMPONENT', 'UNKNOWN_UI_COMPONENT', 'CYCLIC_UI_COMPONENT', 'INVALID_INTERACTION', 'DUPLICATE_INTERACTION',
+  'UNKNOWN_INTERACTION', 'EMPTY_UI_LIBRARY', 'INVALID_UI_FRAMEWORK', 'UI_RENDERER_UNAVAILABLE', 'UI_DRIFT', 'INVALID_GENERATION_PLAN', 'PROJECT_REQUIRED',
+];
 export function uiGenerators(services: UiServicesFactory): Generator[] {
-  const library = { projectOption: 'project', review: true, idempotent: true, options: uiGenerationOptions } as const;
+  const library = { projectOption: 'project', review: true, idempotent: true, options: uiGenerationOptions, errors: uiGenerationErrors } as const;
   return [
     {
       id: 'ui', description: 'Generate deterministic UI code from Markdown component definitions.', usage: 'make ui <component-id> [--framework target] [--stories] [--project id] [--out directory]',

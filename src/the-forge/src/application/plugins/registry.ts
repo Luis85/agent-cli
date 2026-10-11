@@ -50,6 +50,8 @@ export interface Generator extends CommandMode {
   options?: Readonly<Record<string, CommandOption>>;
   /** Default output directory; with `fixedDirectory`, --out is rejected. */
   directory?: string; fixedDirectory?: boolean; review?: boolean;
+  /** Failure codes the generator reports itself; `make` publishes them with its own. */
+  errors?: readonly string[];
   generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
   run?(request: GeneratorRequest): unknown | Promise<unknown>;
 }
@@ -106,6 +108,8 @@ export function validatePluginManifest(value: unknown, origin: PluginOrigin = 'u
   const firstDifference = minimum.findIndex((part, index) => part !== appVersion[index]);
   ensure(firstDifference === -1 || minimum[firstDifference]! < appVersion[firstDifference]!, 'INCOMPATIBLE_PLUGIN', `Plugin ${value.id} requires agent-cli ${value.minAppVersion} or newer.`);
 }
+/** A plugin's commands and generators fail with PLUGIN_UNAVAILABLE while the plugin cannot run, so they declare it. */
+const availabilityErrors = (errors: readonly string[] = []) => errors.includes('PLUGIN_UNAVAILABLE') ? errors : [...errors, 'PLUGIN_UNAVAILABLE'];
 export class Registry {
   /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
   constructor(private readonly skillFrontmatter: SkillFrontmatterReader) {}
@@ -347,7 +351,7 @@ export class Registry {
   /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
   private ownedCommand(plugin: Plugin, command: Command, events: EventBus): Command {
     return {
-      ...command,
+      ...command, errors: availabilityErrors(command.errors),
       run: async (args, flags, context) => {
         this.ensureAvailable(plugin, { command: command.id });
         try { return await command.run(args, flags, this.pluginContext(plugin, context, events)); }
@@ -363,7 +367,7 @@ export class Registry {
     };
     const { generate, run } = generator;
     return {
-      ...generator,
+      ...generator, errors: availabilityErrors(generator.errors),
       ...(generate ? { generate: owned(request => generate.call(generator, request)) as Generator['generate'] } : {}),
       ...(run ? { run: owned(request => run.call(generator, request)) } : {}),
     };

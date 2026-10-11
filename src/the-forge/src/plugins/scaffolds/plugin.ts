@@ -21,7 +21,7 @@ export const scaffoldsPlugin: CorePlugin = {
   create: () => ({
     // Every scaffold is a new file the host writes create-only: a generator never replaces existing content.
     // Each plan only creates files, so the identical repeat fails with CONFLICT on the existing output.
-    generators: scaffoldGenerators.map(generator => ({ ...generator, destructive: false, idempotent: true })),
+    generators: scaffoldGenerators.map(generator => ({ ...generator, destructive: false, idempotent: true, errors: ['INVALID_NAME', 'PROJECT_REQUIRED', 'NOT_FOUND', 'CONFLICT'] })),
     provides: { [projectScaffolderService]: projects },
     strings: {
       de: {

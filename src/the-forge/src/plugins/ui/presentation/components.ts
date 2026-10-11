@@ -19,7 +19,7 @@ export function componentsCommand(services: UiServicesFactory): Command {
     usage: 'components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]',
     ...libraryMetadata('component'),
     options: { ...libraryOptions, tag: option.string('Root element tag for create.', { default: 'div' }), 'interactions-library': option.string('Interaction library directory used to validate component interactions.') },
-    errors: ['INVALID_UI', 'INVALID_UI_LIBRARY', 'DUPLICATE_UI_COMPONENT', 'UNKNOWN_UI_COMPONENT', 'CYCLIC_UI_COMPONENT', 'UNKNOWN_INTERACTION', 'CONFLICT'],
+    errors: ['INVALID_UI', 'INVALID_UI_LIBRARY', 'DUPLICATE_UI_COMPONENT', 'UNKNOWN_UI_COMPONENT', 'CYCLIC_UI_COMPONENT', 'UNKNOWN_INTERACTION', 'EMPTY_UI_LIBRARY', 'CONFLICT'],
     async run(args, flags, context) {
       const { settings, components: library } = services(context);
       const action = args[0] ?? 'list', directory = value(flags, 'library') ?? settings.components;

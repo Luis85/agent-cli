@@ -111,7 +111,7 @@ export function backlogCommand(ports: (context: CommandContext) => { bases: Base
       { name: 'arguments', description: 'The action\'s arguments: an item, a type and title, or a sub-action and its arguments.', variadic: true },
     ],
     options,
-    errors: ['BACKLOG_NOT_FOUND', 'BACKLOG_AMBIGUOUS', 'BACKLOG_CONFIG_PROBLEM', 'BACKLOG_WRITE_REFUSED', 'BACKLOG_NO_GAP', 'CONFLICT', 'SYNC_CONFLICT', 'CONNECTOR_NOT_FOUND', 'CONNECTION_INVALID', 'CONNECTOR_AUTH_FAILED', 'CONNECTOR_REQUEST_FAILED'],
+    errors: ['BACKLOG_NOT_FOUND', 'BACKLOG_AMBIGUOUS', 'BACKLOG_CONFIG_PROBLEM', 'BACKLOG_WRITE_REFUSED', 'BACKLOG_NO_GAP', 'CONFLICT', 'SYNC_CONFLICT', 'SYNC_INTERRUPTED', 'CONNECTOR_NOT_FOUND', 'CONNECTION_INVALID', 'CONNECTOR_AUTH_FAILED', 'CONNECTOR_REQUEST_FAILED'],
     async run(args, flags, context) {
       const [action, ...rest] = args;
       ensure(action !== undefined && actions.includes(action), 'INVALID_ARGUMENT', `Use backlog ${actions.join(', backlog ')}.`);

@@ -35,7 +35,12 @@ export function claudeCommand(adapters: ClaudeCommandServices): Command {
       { name: 'section', description: 'capabilities (default), agents, hooks, plugins, marketplaces or runtime.', enum: ['capabilities', 'agents', 'hooks', 'plugins', 'marketplaces', 'runtime'] },
       { name: 'operands', description: 'The section action and its operands; see usage.', variadic: true },
     ],
-    errors: ['INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_HOOKS', 'INVALID_CLAUDE_PLUGIN', 'INVALID_CLAUDE_SETTINGS', 'INVALID_CLAUDE_COMMAND', 'INVALID_CLAUDE_ARGUMENT', 'INVALID_CLAUDE_OPTION', 'INVALID_CLAUDE_SCOPE', 'INVALID_CLAUDE_INPUT', 'CLAUDE_NOT_INSTALLED', 'CLAUDE_COMMAND_FAILED', 'CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_RUNTIME_FAILED', 'CLAUDE_INVALID_OUTPUT', 'CONFLICT'],
+    errors: [
+      'INVALID_CLAUDE_AGENT', 'INVALID_CLAUDE_HOOKS', 'INVALID_CLAUDE_PLUGIN', 'INVALID_CLAUDE_SETTINGS', 'INVALID_CLAUDE_COMMAND', 'INVALID_CLAUDE_ARGUMENT',
+      'INVALID_CLAUDE_OPTION', 'INVALID_CLAUDE_SCOPE', 'INVALID_CLAUDE_INPUT', 'INVALID_CLAUDE_EXECUTABLE', 'CLAUDE_NOT_INSTALLED', 'CLAUDE_WORKING_DIRECTORY_UNAVAILABLE',
+      'CLAUDE_COMMAND_FAILED', 'CLAUDE_COMMAND_TIMEOUT', 'CLAUDE_COMMAND_INTERRUPTED', 'CLAUDE_OUTPUT_LIMIT', 'CLAUDE_RUNTIME_FAILED', 'CLAUDE_INVALID_OUTPUT',
+      'INVALID_INPUT', 'INVALID_ENCODING', 'NOT_FOUND', 'CONFLICT',
+    ],
     options: {
       ...claudeRuntimeOptions,
       directory: option.string('Plugin directory for plugin-scoped agents and hooks.'),
