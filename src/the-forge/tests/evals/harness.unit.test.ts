@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { categories, commandIds, loadTasks, taskSchema } from '../../scripts/eval/tasks.mjs';
-import { summarizeStream } from '../../scripts/eval/claude.mjs';
+import { isolationFailure, summarizeStream } from '../../scripts/eval/claude.mjs';
+import { redact } from '../../scripts/eval/process.mjs';
+import { forgeEnvironment } from '../../scripts/eval/guard.mjs';
 import { refusal } from '../../scripts/eval/guard.mjs';
 import { answerFailure, describeCheck } from '../../scripts/eval/checks.mjs';
 import type { EvalWorkspace } from '../../scripts/eval/workspace.mjs';
@@ -80,7 +82,7 @@ describe('the claude driver Forge wrapper', () => {
 describe('the claude driver transcript summary', () => {
   it('counts Forge, shell and native tool calls, Forge error codes and the final result metrics', () => {
     const lines = [
-      { type: 'system', subtype: 'init' },
+      { type: 'system', subtype: 'init', mcp_servers: [{ name: 'github', status: 'connected' }], plugins: [{ name: 'review', path: '/p' }] },
       { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'node bin/forge.js read Home.md --json' } }, { type: 'text', text: 'Reading' }] } },
       { type: 'user', message: { content: [{ type: 'tool_result', content: '{"ok":false,"error":{"code":"CONFLICT","message":"File changed"}}' }] } },
       { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'Home.md' } }, { type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] } },
@@ -91,7 +93,25 @@ describe('the claude driver transcript summary', () => {
       answer: 'Done: Alpha is active.', isError: false, turns: 4, durationMs: 1200, costUsd: 0.02,
       tokens: { input: 10, output: 5, cacheRead: 100, cacheCreation: 0 },
       toolCalls: { total: 3, forge: 1, otherBash: 1, native: { Read: 1 } }, forgeErrors: ['CONFLICT', 'NOT_FOUND'],
+      init: { mcpServers: ['github'], plugins: ['review'] },
     });
-    expect(summarizeStream('')).toMatchObject({ answer: '', isError: true, turns: null, tokens: null });
+    expect(summarizeStream('')).toMatchObject({ answer: '', isError: true, turns: null, tokens: null, init: null });
+  });
+});
+
+describe('the claude driver isolation', () => {
+  it('requires an init event without MCP servers or plugins', () => {
+    const transcript = summarizeStream('');
+    expect(isolationFailure(transcript)).toContain('no system init event');
+    expect(isolationFailure({ ...transcript, init: { mcpServers: [], plugins: [] } })).toBeUndefined();
+    expect(isolationFailure({ ...transcript, init: { mcpServers: ['github'], plugins: ['review'] } })).toContain('MCP server github, plugin review');
+  });
+
+  it('forwards no secret to Forge and redacts secrets from reports', () => {
+    const env = forgeEnvironment({ PATH: '/bin', LC_ALL: 'C', GITHUB_TOKEN: 'ghp_secret', NODE_OPTIONS: '--require x' }, '/guard/home');
+    expect(env).toEqual(expect.objectContaining({ PATH: '/bin', LC_ALL: 'C', HOME: '/guard/home', USERPROFILE: '/guard/home' }));
+    expect(Object.keys(env)).not.toEqual(expect.arrayContaining(['GITHUB_TOKEN']));
+    expect(env).not.toHaveProperty('NODE_OPTIONS');
+    expect(redact('auth failed for ghp_secret and abc', { GITHUB_TOKEN: 'ghp_secret', PLAIN: 'abc' })).toBe('auth failed for *** and abc');
   });
 });
