@@ -1,68 +1,22 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { loadConfig } from '../../src/infrastructure/workspace/config.ts';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { Localizer } from '../../src/presentation/localization/localization.ts';
 import { germanKernelMessages } from '../../src/presentation/localization/messages.ts';
 import { kernelMessages, type KernelMessageCode } from '../../src/domain/shared/kernel-messages.ts';
-import { EventBus } from '../../src/application/plugins/events.ts';
-import { registerHostEvents } from '../../src/application/plugins/host-events.ts';
-import { NodeEventScope } from '../../src/infrastructure/plugins/event-scope.ts';
-import { commands } from '../../src/presentation/cli/commands.ts';
 import { globalOptionMetadata } from '../../src/presentation/cli/arguments.ts';
-import { Registry, type Command } from '../../src/application/plugins/registry.ts';
-import type { WorkflowServices } from '../../src/presentation/cli/services.ts';
-import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
-import { basesPlugin } from '../../src/plugins/bases/plugin.ts';
-import { skillsPlugin } from '../../src/plugins/skills/plugin.ts';
-import { searchPlugin } from '../../src/plugins/search/plugin.ts';
-import { linksPlugin } from '../../src/plugins/links/plugin.ts';
-import { vaultCheckPlugin } from '../../src/plugins/vault-check/plugin.ts';
-import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
-import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
-import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
-import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
-import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
-import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
-import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
-import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
-import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
-import { bundledCorePlugins, offlineHost, testHost } from '../support/core-plugins.ts';
-import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
+import type { Command, Registry } from '../../src/application/plugins/registry.ts';
+import { bundledCorePlugins } from '../support/core-plugins.ts';
+import { corePlugins, fullRegistry } from '../support/full-registry.ts';
 
 /**
  * The localization policy as a regression gate: every human-facing text that kernel and core plugin metadata
  * declare has a German translation that differs from the English text. A new option, argument, setting, plugin
  * message or kernel warning without German fails here, with the untranslated texts listed.
  */
-const corePlugins = [
-  templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
-];
-let root: string;
 let registry: Registry;
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'forge-locale-parity-'));
-  const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
-  const services: WorkflowServices = {
-    loaded,
-    get files(): never { throw new Error('Catalog must not access files'); },
-    get projects(): never { throw new Error('Catalog must not access projects'); },
-    get workflows(): never { throw new Error('Catalog must not access workflows'); },
-    async setup() { throw new Error('Catalog must not run setup'); },
-    configSections: () => registry.settings.sections(),
-    async installedPlugins() { return []; },
-  };
-  registry = new Registry(skillFrontmatter);
-  const bus = new EventBus(new NodeEventScope());
-  registerHostEvents(bus);
-  for (const command of commands(registry, services)) registry.add(registry.commands, command);
   expect(corePlugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
-  registerCorePlugins(registry, bus, corePlugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }), []);
-  await registry.configure({}, async () => [], () => undefined);
+  registry = await fullRegistry();
 });
-afterAll(async () => { await rm(root, { recursive: true, force: true }); });
 
 /** Every option and argument description of a command and its actions, keyed by where it is declared. */
 function described(command: Pick<Command, 'id' | 'options' | 'args' | 'actions'>): Map<string, string> {

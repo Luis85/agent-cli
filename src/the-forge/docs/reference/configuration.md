@@ -62,6 +62,45 @@ The `plugins` section has three keys:
 | `plugins.disabled` | `[]` | Bundled core plugin ids to turn off, such as `["skills"]`. Core plugins are enabled by default; other ids are ignored with a warning. A plugin that requires a service of a disabled core plugin becomes unavailable (`backlog` without `bases`) |
 | `plugins.settings` | `{}` | One config section per plugin id, validated against the JSON Schema that the loaded plugin declares; defaults fill missing values and `config` shows the effective result. An invalid section makes only that plugin, and plugins that require its services, unavailable, with a warning: their commands fail with `PLUGIN_UNAVAILABLE`. Sections naming no installed plugin are kept with a warning. Core plugins declare sections too: `search.timeoutMs` bounds [search matching](search.md#regular-expression-safety), `links.roots` lists entry notes that are never [orphans](links.md#orphans-and-dead-ends), `vault-check.rules` sets [vault check](vault.md#settings) rule severities (`error`, `warning`, `info` or `off`) and `vault-check.ignore` the path globs it skips, `agents.directory` and `agents.defaultModel` configure [agent definitions](agents.md), `backlog.base`/`backlog.view` choose the default [backlog](backlog.md#choosing-the-backlog), `connector.connections` holds the [connection profiles](connectors.md#connection-profiles) of backlog sync, `templates.dateFormat`/`templates.timeFormat` (defaults `YYYY-MM-DD` and `HH:mm`) set the dayjs formats of [template](templates.md) `{{date}}` and `{{time}}` placeholders without their own format, `ui` holds the UI framework and folders described above, and `data-sources` the data-source folders described below. See [config sections](plugins.md#config-sections) |
 
+## Core plugin settings
+
+Every setting the bundled core plugins declare, by section. `config` reports the same schemas, with their descriptions in the response language, in `data.sections`; the linked pages describe each setting in detail.
+
+| Section | Key | Type | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `templates` | `dateFormat` | string | `YYYY-MM-DD` | dayjs format of [template](templates.md) `{{date}}` placeholders without their own format |
+| `templates` | `timeFormat` | string | `HH:mm` | dayjs format of `{{time}}` placeholders without their own format |
+| `scaffolds` | none | | | |
+| `ui` | `framework` | `html`, `htmx`, `vanilla`, `vue`, `svelte`, `react` or `angular` | `html` | Default target of `make ui` and `make stories`; see the `ui` section above |
+| `ui` | `components` | string | `components` | Workspace-relative component library folder |
+| `ui` | `componentImports` | string | `imports/components` | Folder that `components import` copies definitions from |
+| `ui` | `componentExports` | string | `exports/components` | Folder that `components export` copies definitions to |
+| `ui` | `interactions` | string | `interactions` | Workspace-relative interaction library folder |
+| `ui` | `interactionImports` | string | `imports/interactions` | Folder that `interactions import` copies definitions from |
+| `ui` | `interactionExports` | string | `exports/interactions` | Folder that `interactions export` copies definitions to |
+| `ui` | `output` | string | `src/ui` | Generated UI folder, relative to the output project or the workspace |
+| `ui` | `stories` | string | `stories` | Generated Storybook story folder, relative to the output project or the workspace |
+| `data-sources` | `library` | string | `data-sources` | Workspace-relative [data-source](data-sources.md) definition library folder |
+| `data-sources` | `imports` | string | `imports/data-sources` | Folder that `data-sources import` copies definitions from |
+| `data-sources` | `exports` | string | `exports/data-sources` | Folder that `data-sources export` copies definitions to |
+| `data-sources` | `output` | string | `src/data-sources` | Generated adapter folder, relative to the output project or the workspace |
+| `data-sources` | `fixtures` | string | `test-data` | Generated test-data folder, relative to the output project or the workspace |
+| `claude` | none | | | |
+| `bases` | none | | | |
+| `skills` | none | | | |
+| `search` | `timeoutMs` | integer | `10000` | Milliseconds one search may spend matching before it fails with `SEARCH_TIMEOUT`; see [regular-expression safety](search.md#regular-expression-safety) |
+| `links` | `roots` | array of path globs | `[]` | Entry notes, such as an index or home note, that `links orphans` never reports; see [orphans](links.md#orphans-and-dead-ends) |
+| `vault-check` | `rules` | object: rule id to `error`, `warning`, `info` or `off` | `{}` | Severity per rule, overriding the rule's default; see [vault check settings](vault.md#settings) |
+| `vault-check` | `ignore` | array of path globs | `[]` | Files that `vault check`, `vault tags` and `vault properties` skip; they remain link targets |
+| `agents` | `directory` | string | `agents` | Scope-relative folder of docker-agent definition files (`*.yaml`); see [agents](agents.md) |
+| `agents` | `defaultModel` | string | `anthropic/claude-sonnet-5` | Model reference for `agents create` and `agents import` when none is given |
+| `connector` | `connections` | object: connection id to profile | `{}` | [Connection profiles](connectors.md#connection-profiles) of backlog sync, by lowercase kebab-case id; see the example below |
+| `connector-azure-devops` | none | | | Its platform fields (`organization`, `project`, `process`, …) live in each `connector.connections` profile with `platform: azure-devops`; see the [Azure DevOps connector](connector-azure-devops.md) |
+| `backlog` | `base` | string | none | The default `.base` file of the `backlog` command, relative to the command scope; see [choosing the backlog](backlog.md#choosing-the-backlog) |
+| `backlog` | `view` | string | none | The default `product-backlog` view of that base |
+
+A connection profile (`connector.connections.<id>`) has `platform` (required), `tokenEnv` and `linkProperty` (the platform defaults when omitted), `effortProperty` (default `effort`), `areaProperty` (default `area`), `mappings` (`types`, `states`, `fields` and `properties` over the process defaults) and the platform's own fields.
+
 Connection profiles to external work trackers live in this workspace configuration, one entry per connection, so one repository can sync different backlog views to different organizations and projects. They never hold secrets: `tokenEnv` names the environment variable with the access token.
 
 ```json

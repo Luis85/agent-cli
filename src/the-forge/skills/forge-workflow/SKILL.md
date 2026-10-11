@@ -23,4 +23,8 @@ For UI work, inspect `components list`, `components inspect <id>` and the config
 
 For agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.
 
+For agent skills, `skills list` and `skills show <id>` read the bundled skills; `skills install --dry-run` previews installing each as `<root>/<id>/SKILL.md` into `.claude/skills` and `.agents/skills` (`--target claude` or `--target agents` for one root, `--out <directory>` for a custom one); existing files are refused. For native Claude Code configuration, start with `claude capabilities`, then `claude agents list` and `claude hooks inspect --scope project`; validate with `claude hooks check` and change hooks with `claude hooks set`, `add` or `remove` plus `--dry-run` and the file's `--if-match` revision. `bin/data/docs/reference/claude.md` describes every section and scope.
+
+Add `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.
+
 For workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{"owner":"Team"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.

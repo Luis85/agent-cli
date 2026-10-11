@@ -55,14 +55,23 @@ A plugin bundles everything an agent needs to use a capability well:
 
 The Forge emits the same vault and metadata events as Obsidian, and plugins can use an Obsidian-shaped API.
 
+## Where it stands
+
+The vision is delivered incrementally; the installed executable's `schema` and `help` remain the authority on what exists. The first iteration shipped:
+
+- **A small core with core plugins:** every feature beyond the kernel is a bundled core plugin on the versioned plugin contract, enabled by default and disabled with `plugins.disabled`. See [plugins](../reference/plugins.md).
+- **Obsidian event parity:** the host emits Obsidian-style `vault.*`, `metadataCache.*` and `workspace.*` events, and plugins use an Obsidian-shaped `app` facade.
+- **Backlog management** compatible with the [backlog-view](https://github.com/Luis85/backlog-view) Obsidian plugin. See [backlog](../reference/backlog.md).
+- **Backlog connectors:** two-way sync of base views with Azure DevOps Boards, with explicit conflicts. See [connectors](../reference/connectors.md).
+- **Agent definitions** authored as [docker-agent](https://github.com/docker/docker-agent) compatible YAML, from which Claude Code agents are generated and drift-checked. See [agents](../reference/agents.md).
+- **Vault knowledge tools:** search, link reports and vault checks over the metadata cache.
+- **The showcase project,** which exercises the capabilities together, regenerated deterministically and checked for drift. See [explore the showcase](../how-to/explore-the-showcase.md).
+
 ## Direction
 
-The vision is delivered incrementally. The capabilities below are planned and may not yet be part of the installed version. The installed executable's `schema` and `help` remain the authority on what exists today.
+The next capabilities extend the same principles. They are planned and not part of the installed version:
 
-- **Core plugins:** existing features move into self-contained core plugins on a versioned plugin contract.
-- **Backlog management:** compatible with the [backlog-view](https://github.com/Luis85/backlog-view) Obsidian plugin.
-- **Backlog connectors:** Azure DevOps Boards first, then GitHub and Jira. Base views define which items stay in two-way sync with each organization and project.
-- **Agent definitions:** authored as [docker-agent](https://github.com/docker/docker-agent) compatible YAML, from which Claude Code agents are generated and drift-checked.
-- **The showcase project:** demonstrates every capability, regenerated deterministically and checked for drift. See [explore the showcase](../how-to/explore-the-showcase.md).
+- **More backlog connectors:** GitHub and Jira after Azure DevOps.
+- **Complete localization:** every message an agent acts on in the response language; see the known gaps in [CLI language](../reference/language.md#known-gaps).
 
 See the [architecture](architecture.md) for how the current boundaries realize these principles.
