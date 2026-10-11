@@ -178,6 +178,8 @@
     "data/types/domain/schema/json-schema.d.ts",
     "data/types/domain/shared/error-catalog.d.ts",
     "data/types/domain/shared/errors.d.ts",
+    "data/types/domain/shared/kernel-messages.d.ts",
+    "data/types/domain/shared/messages.d.ts",
     "data/types/domain/skills/skill.d.ts",
     "data/types/sdk.d.ts",
     "forge-runtime.js",

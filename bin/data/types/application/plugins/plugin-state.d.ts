@@ -1,4 +1,5 @@
 import type { Workspace } from '../workspace/workspace.ts';
+import { type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 /** What the host remembers about an enabled plugin between invocations. */
 export interface PluginStateEntry {
     settings: string | null;
@@ -29,7 +30,7 @@ export declare class WorkspacePluginState implements PluginStateStore {
     private readonly settings;
     private revision;
     private stored;
-    constructor(workspace: Workspace, warn: (message: string) => void, settings?: (pluginId: string) => Promise<string | null>);
+    constructor(workspace: Workspace, warn: (message: string | KernelMessage) => void, settings?: (pluginId: string) => Promise<string | null>);
     settingsRevision(pluginId: string): Promise<string | null>;
     load(): Promise<PluginStates>;
     save(states: PluginStates): Promise<void>;
@@ -50,6 +51,6 @@ export declare class ActivationTracker {
      * state since it was loaded, the save rereads it, keeps that invocation's entries for enabled plugins this one
      * did not activate, and retries once. A failed save is a warning.
      */
-    save(plugins: ReadonlyArray<TrackedPlugin<unknown>>, warn: (message: string) => void): Promise<void>;
+    save(plugins: ReadonlyArray<TrackedPlugin<unknown>>, warn: (message: string | KernelMessage) => void): Promise<void>;
 }
 export {};

@@ -13,6 +13,16 @@ export interface PluginStringTable {
     }>;
     /** Free-form guidance a plugin reads back through `context.t(key)`. */
     messages?: Record<string, string>;
+    /**
+     * Translations of the plugin's option, argument and settings descriptions, keyed by their English text: `help`,
+     * `schema` and `config` show them in this language wherever the plugin declares that text.
+     */
+    descriptions?: Record<string, string>;
+    /** The plugin's manifest `name` and `description` as `plugins` lists them. */
+    manifest?: {
+        name?: string;
+        description?: string;
+    };
 }
 export type PluginStrings = Partial<Record<Language, PluginStringTable>>;
 /** A plugin-defined failure code with the same fields as a built-in catalog entry. */
@@ -60,6 +70,21 @@ export declare class PluginCatalog {
     add(pluginId: string, strings: PluginStrings | undefined, errors: readonly PluginErrorDefinition[] | undefined, prefix?: string | null): void;
     /** Contributed text for a command, generator or event id in `language`, if any. */
     text(language: Language, kind: TextKind, id: string): string | undefined;
+    /**
+     * The translation of an option, argument or settings description in `language`, by its English text. Plugins
+     * translate the texts they declare; a text several plugins declare reads the same in each.
+     */
+    description(language: Language, english: string): string | undefined;
+    /** A plugin's localized manifest fields, also for a bundled core plugin that `plugins.disabled` lists. */
+    manifest(pluginId: string, language: Language): {
+        name?: string;
+        description?: string;
+    } | undefined;
+    /**
+     * Records the manifest strings of a bundled core plugin that `plugins.disabled` lists: it contributes nothing,
+     * but `plugins` still lists its name and description in the response language.
+     */
+    addDisabled(pluginId: string, strings: PluginStrings): void;
     /** A plugin message in `language`, falling back to English and then to the key itself. */
     message(pluginId: string, language: Language, key: string): string;
     error(code: string): CatalogedError | undefined;

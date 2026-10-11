@@ -1,3 +1,4 @@
+import { type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 export interface EventDefinition<T = unknown> {
     id: string;
     description?: string;
@@ -46,7 +47,10 @@ export declare class EventBus implements EventChannel {
     private readonly quitTasks;
     private readonly settling;
     readonly history: EventRecord[];
-    readonly warnings: string[];
+    /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
+    readonly warningRecords: Array<string | KernelMessage>;
+    /** The warnings in English. */
+    get warnings(): string[];
     constructor(delivery: EventDeliveryScope);
     nextOperationId(): number;
     define<T>(definition: EventDefinition<T>): void;
@@ -63,7 +67,7 @@ export declare class EventBus implements EventChannel {
     private subscribe;
     once<T = unknown>(id: string, listener: (payload: T) => void | Promise<void>): () => void;
     emit(id: string, payload: unknown): Promise<void>;
-    warn(message: string): void;
+    warn(message: string | KernelMessage): void;
     onLayoutReady(callback: Callback): void;
     onQuit(task: Callback): void;
     /** Host: plugins are active. Queued layout callbacks run in registration order; failures become warnings. */

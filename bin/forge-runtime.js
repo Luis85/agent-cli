@@ -228,6 +228,89 @@ function ensure(condition, code2, message2, details) {
   if (!condition) throw forgeError(code2, message2, details);
 }
 const isRecord$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+const placeholder = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
+function fill$1(template, params = {}) {
+  return template.replace(placeholder, (match, name2) => Object.hasOwn(params, name2) ? String(params[name2]) : match);
+}
+const escape$3 = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const patterns = /* @__PURE__ */ new Map();
+function pattern$1(template) {
+  let compiled2 = patterns.get(template);
+  if (!compiled2) {
+    const names2 = [];
+    const source2 = template.split(placeholder).map((part, index2) => {
+      if (index2 % 2 === 0) return escape$3(part);
+      names2.push(part);
+      return "([\\s\\S]*?)";
+    }).join("");
+    compiled2 = { expression: new RegExp(`^${source2}$`), names: names2 };
+    patterns.set(template, compiled2);
+  }
+  return compiled2;
+}
+function templateParams(template, text2) {
+  const { expression: expression2, names: names2 } = pattern$1(template);
+  const match = expression2.exec(text2);
+  return match ? Object.fromEntries(names2.map((name2, index2) => [name2, match[index2 + 1]])) : void 0;
+}
+function retranslate(text2, english, target, depth2 = 2) {
+  for (const [key, template] of Object.entries(english)) {
+    const params = templateParams(template, text2);
+    const translated2 = target[key];
+    if (!params || translated2 === void 0) continue;
+    const nested = depth2 > 0 ? Object.fromEntries(Object.entries(params).map(([name2, value2]) => [name2, retranslate(value2, english, target, depth2 - 1)])) : params;
+    return fill$1(translated2, nested);
+  }
+  return text2;
+}
+const kernelMessages = {
+  // Plugin state reasons (`plugins` reason, PLUGIN_UNAVAILABLE details).
+  PLUGIN_LISTED_DISABLED: "Listed in plugins.disabled.",
+  PLUGIN_NOT_ENABLED: "Not listed in plugins.enabled.",
+  PLUGIN_SKIPPED: "Skipped by --no-plugins.",
+  PLUGIN_ID_RESERVED: "Plugin id {plugin} is reserved by the bundled core plugin; rename the user plugin.",
+  PLUGIN_SETTINGS_INVALID: "plugins.settings.{plugin} is invalid: {issues}.",
+  PLUGIN_PROVIDER_UNAVAILABLE: "Requires service {service}; its provider {provider} is unavailable.",
+  PLUGIN_PROVIDER_DISABLED: "Requires service {service}; its provider {provider} is disabled.",
+  PLUGIN_MISSING: "plugins.enabled names {plugin}, but {path} does not exist; install the plugin there, or remove it from plugins.enabled.",
+  // Configuration and setup warnings.
+  PLUGIN_UNAVAILABLE: "Plugin {plugin} is unavailable in this invocation: {reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.",
+  SETTINGS_UNDECLARED: "plugins.settings has sections for plugins that declare no settings: {plugins}; they are ignored.",
+  SETTINGS_UNKNOWN_PLUGIN: "plugins.settings names no installed plugin: {plugins}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.",
+  DISABLED_UNKNOWN_PLUGIN: "plugins.disabled names only bundled core plugins ({core}); ignored {plugins}. Disable a user plugin by removing it from plugins.enabled.",
+  PLUGIN_MISSING_WARNING: "{reason} Its commands are unavailable in this invocation.",
+  PLUGIN_DIRECTORY_IGNORED: "Ignored plugin directory {directory}: {diagnostic}",
+  PLUGIN_STATE_IGNORED: "Ignored invalid {path}; plugins with activation hooks are treated as newly enabled.",
+  PLUGIN_STATE_UNSAVED: "Could not record plugin activation state in {path}: {diagnostic}",
+  SETUP_TEMPLATES_UNAVAILABLE: "The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.",
+  METADATA_CACHE_UNSAVED: "The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {diagnostic}",
+  // Writer and sync locks: a stale lock an acquisition removed, and a lock its writer could not release cleanly.
+  LOCK_RECOVERED: "Removed the stale lock {path} of pid {pid} on {host} (since {since}{command}): {reason}. Inspect what that run left unfinished (for example git status or backlog sync status).",
+  LOCK_HOLDER_COMMAND: ", command {command}",
+  LOCK_STALE_DEAD_PROCESS: "its process no longer runs",
+  LOCK_STALE_REUSED_PID: "its pid was reused by another process",
+  LOCK_STALE_REBOOTED: "it was written before this host restarted",
+  LOCK_LEFT_FOREIGN: "Left {lock} in place: it no longer carries this writer's token, so another writer may hold it.",
+  LOCK_REMOVED_BY_OTHER: "{lock} was removed by someone else while this writer held it; inspect concurrent changes.",
+  LOCK_UNREMOVABLE: "Could not remove {lock}; inspect the lock before retrying: {diagnostic}",
+  // Failures after a committed write or during lifecycle callbacks; they never undo the command's result.
+  POST_COMMIT_FAILED: "Committed {count} file(s); post-commit update failed: {diagnostic}",
+  REMOVAL_TEMPORARY_LEFT: "Removed {path}, but could not delete its temporary entry {temporary}: {diagnostic}",
+  REMOVAL_SYNC_FAILED: "Removed files, but syncing their folders failed: {diagnostic}",
+  VAULT_NOTIFICATION_FAILED: "Committed {path}; vault notification failed: {diagnostic}",
+  EVENT_HISTORY_FULL: "Event history reached 1000 records; later notifications are delivered but omitted from history and replay.",
+  EVENT_LISTENER_FAILED: "Listener {event}: {diagnostic}",
+  EVENT_REPLAY_FAILED: "Replay {event}: {diagnostic}",
+  HOST_NOTIFICATION_FAILED: "Host notification {event}: {diagnostic}",
+  LAYOUT_CALLBACK_FAILED: "Layout ready: {diagnostic}",
+  QUIT_TASK_FAILED: "Quit task: {diagnostic}",
+  PLUGIN_CLEANUP_FAILED: "Plugin cleanup: {diagnostic}"
+};
+const kernelMessage = (code2, params = {}) => ({ code: code2, params });
+function renderKernelMessage(message2, templates2 = kernelMessages) {
+  const params = Object.fromEntries(Object.entries(message2.params).map(([name2, value2]) => [name2, typeof value2 === "object" ? renderKernelMessage(value2, templates2) : value2]));
+  return fill$1(templates2[message2.code], params);
+}
 function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "string" || typeof value2 === "boolean") return true;
   if (typeof value2 === "number") return Number.isFinite(value2);
@@ -255,7 +338,12 @@ class EventBus {
   quitTasks = [];
   settling = /* @__PURE__ */ new Set();
   history = [];
-  warnings = [];
+  /** Warnings in order: plugin text as written, host messages by code for rendering in the response language. */
+  warningRecords = [];
+  /** The warnings in English. */
+  get warnings() {
+    return this.warningRecords.map((warning2) => typeof warning2 === "string" ? warning2 : renderKernelMessage(warning2));
+  }
   nextOperationId() {
     return ++this.operationId;
   }
@@ -304,7 +392,7 @@ class EventBus {
         try {
           await listener(record2);
         } catch (error2) {
-          this.warn(`Replay ${record2.id}: ${errorMessage(error2)}`);
+          this.warn(kernelMessage("EVENT_REPLAY_FAILED", { event: record2.id, diagnostic: errorMessage(error2) }));
         }
       }
     });
@@ -343,7 +431,7 @@ class EventBus {
     if (this.history.length < 1e3) this.history.push({ id: id2, payload: structuredClone(snapshot) });
     else if (!this.historyTruncated) {
       this.historyTruncated = true;
-      this.warn("Event history reached 1000 records; later notifications are delivered but omitted from history and replay.");
+      this.warn(kernelMessage("EVENT_HISTORY_FULL"));
     }
     await this.delivery.run(async () => {
       for (const entry2 of Array.from(this.listeners).filter((listener) => listener.id === void 0 || listener.id === id2)) {
@@ -351,13 +439,13 @@ class EventBus {
         try {
           await entry2.invoke(structuredClone(entry2.id === void 0 ? { id: id2, payload: snapshot } : snapshot));
         } catch (error2) {
-          this.warn(`Listener ${id2}: ${errorMessage(error2)}`);
+          this.warn(kernelMessage("EVENT_LISTENER_FAILED", { event: id2, diagnostic: errorMessage(error2) }));
         }
       }
     });
   }
   warn(message2) {
-    if (this.warnings.length < 1e3) this.warnings.push(message2);
+    if (this.warningRecords.length < 1e3) this.warningRecords.push(message2);
   }
   onLayoutReady(callback) {
     this.ensureCallback(callback);
@@ -365,7 +453,7 @@ class EventBus {
       this.layoutCallbacks.push(callback);
       return;
     }
-    const running = this.settle("Layout ready", callback);
+    const running = this.settle("LAYOUT_CALLBACK_FAILED", callback);
     this.settling.add(running);
     void running.then(() => this.settling.delete(running));
   }
@@ -377,25 +465,25 @@ class EventBus {
   async markLayoutReady() {
     if (this.layoutReady) return;
     this.layoutReady = true;
-    for (const callback of this.layoutCallbacks.splice(0)) await this.settle("Layout ready", callback);
+    for (const callback of this.layoutCallbacks.splice(0)) await this.settle("LAYOUT_CALLBACK_FAILED", callback);
   }
   /** Host: settle immediate layout callbacks, then run quit tasks in order, including tasks added meanwhile. */
   async runQuitTasks() {
     await Promise.allSettled(this.settling);
-    for (let task2 = this.quitTasks.shift(); task2; task2 = this.quitTasks.shift()) await this.settle("Quit task", task2);
+    for (let task2 = this.quitTasks.shift(); task2; task2 = this.quitTasks.shift()) await this.settle("QUIT_TASK_FAILED", task2);
   }
   ensureCallback(callback) {
     ensure(!this.disposed, "INVALID_EVENT", "Cannot schedule callbacks after disposal.");
     ensure(typeof callback === "function", "INVALID_EVENT_LISTENER", "Lifecycle callbacks must be functions.");
   }
-  async settle(label2, callback) {
+  async settle(failure2, callback) {
     try {
       await this.delivery.run(async () => {
         await callback();
       });
     } catch (error2) {
       try {
-        this.warn(`${label2}: ${errorMessage(error2)}`);
+        this.warn(kernelMessage(failure2, { diagnostic: errorMessage(error2) }));
       } catch {
       }
     }
@@ -461,7 +549,7 @@ async function publishHostEvent(events2, id2, payload2) {
     await events2.emit(id2, payload2);
   } catch (error2) {
     try {
-      events2.warn(`Host notification ${id2}: ${errorMessage(error2)}`);
+      events2.warn(kernelMessage("HOST_NOTIFICATION_FAILED", { event: id2, diagnostic: errorMessage(error2) }));
     } catch {
     }
   }
@@ -534,7 +622,7 @@ class WorkspacePluginState {
       this.stored = serialize(states2);
       return states2;
     } catch {
-      this.warn(`Ignored invalid ${pluginStatePath}; plugins with activation hooks are treated as newly enabled.`);
+      this.warn(kernelMessage("PLUGIN_STATE_IGNORED", { path: pluginStatePath }));
       return {};
     }
   }
@@ -591,7 +679,7 @@ class ActivationTracker {
       }
     } catch (error2) {
       try {
-        warn(`Could not record plugin activation state in ${pluginStatePath}: ${errorMessage(error2)}`);
+        warn(kernelMessage("PLUGIN_STATE_UNSAVED", { path: pluginStatePath, diagnostic: errorMessage(error2) }));
       } catch {
       }
     }
@@ -920,7 +1008,7 @@ class Workspace {
       try {
         await this.observer.committed({ renames: moved2, changes: changes2 });
       } catch (error2) {
-        this.warn(`Committed ${moved2.length + changes2.length} file(s); post-commit update failed: ${errorMessage(error2)}`);
+        this.warn(kernelMessage("POST_COMMIT_FAILED", { count: moved2.length + changes2.length, diagnostic: errorMessage(error2) }));
       }
     }
   }
@@ -928,7 +1016,7 @@ class Workspace {
     try {
       await this.events.emit(id2, payload2);
     } catch (error2) {
-      this.warn(`Committed ${path2}; vault notification failed: ${errorMessage(error2)}`);
+      this.warn(kernelMessage("VAULT_NOTIFICATION_FAILED", { path: path2, diagnostic: errorMessage(error2) }));
     }
   }
   warn(message2) {
@@ -1374,9 +1462,9 @@ class PluginCatalog {
     for (const [language2, table] of Object.entries(strings2 ?? {})) {
       ensure(languages.includes(language2) && isRecord$1(table), "INVALID_PLUGIN", `strings.${language2} is not a supported language table (en, de).`);
       for (const [kind2, entries2] of Object.entries(table)) {
-        ensure(["commands", "actions", "generators", "events", "errors", "messages"].includes(kind2) && isRecord$1(entries2), "INVALID_PLUGIN", `strings.${language2}.${kind2} is not a string table.`);
+        ensure(["commands", "actions", "generators", "events", "errors", "messages", "descriptions", "manifest"].includes(kind2) && isRecord$1(entries2), "INVALID_PLUGIN", `strings.${language2}.${kind2} is not a string table.`);
         for (const [id2, entry2] of Object.entries(entries2)) {
-          const known2 = kind2 === "messages" || (kind2 === "errors" ? codes.has(id2) : owned[kind2].includes(id2));
+          const known2 = kind2 === "messages" || kind2 === "descriptions" || (kind2 === "manifest" ? ["name", "description"].includes(id2) : kind2 === "errors" ? codes.has(id2) : owned[kind2].includes(id2));
           ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind2}.${id2} does not name a contribution of plugin ${pluginId}.`);
           ensure(kind2 === "errors" ? isRecord$1(entry2) && text$j(entry2.summary) && text$j(entry2.hint) : text$j(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind2}.${id2} must be ${kind2 === "errors" ? "a summary and hint" : "nonempty text"}.`);
         }
@@ -1418,6 +1506,32 @@ class PluginCatalog {
       if (entries2 && Object.hasOwn(entries2, id2)) return entries2[id2];
     }
     return void 0;
+  }
+  /**
+   * The translation of an option, argument or settings description in `language`, by its English text. Plugins
+   * translate the texts they declare; a text several plugins declare reads the same in each.
+   */
+  description(language2, english) {
+    for (const table of this.tables.values()) {
+      const entries2 = table[language2]?.descriptions;
+      if (entries2 && Object.hasOwn(entries2, english)) return entries2[english];
+    }
+    return void 0;
+  }
+  /** A plugin's localized manifest fields, also for a bundled core plugin that `plugins.disabled` lists. */
+  manifest(pluginId, language2) {
+    return this.tables.get(pluginId)?.[language2]?.manifest;
+  }
+  /**
+   * Records the manifest strings of a bundled core plugin that `plugins.disabled` lists: it contributes nothing,
+   * but `plugins` still lists its name and description in the response language.
+   */
+  addDisabled(pluginId, strings2) {
+    const table = (language2) => {
+      const manifest = strings2[language2]?.manifest;
+      return manifest ? { manifest } : {};
+    };
+    this.tables.set(pluginId, { en: table("en"), de: table("de") });
   }
   /** A plugin message in `language`, falling back to English and then to the key itself. */
   message(pluginId, language2, key) {
@@ -1810,7 +1924,7 @@ class Registry {
   catalog = new PluginCatalog();
   settings = new PluginSettings();
   /**
-   * Registered plugins that cannot run in this invocation, with a `reason` sentence: an invalid settings section
+   * Registered plugins that cannot run in this invocation, with a `reason` message: an invalid settings section
    * (`issues` lists its problems), or a required service whose provider is disabled or itself unavailable (`issues`
    * are the provider's). They stay listed with their contributions but never activate; their commands and
    * generators fail with PLUGIN_UNAVAILABLE.
@@ -1865,9 +1979,9 @@ class Registry {
    * as `missing`, and every response warns, while every other command keeps working.
    */
   recordMissing(pluginId, manifestPath2, events2) {
-    const reason = `plugins.enabled names ${pluginId}, but ${manifestPath2} does not exist; install the plugin there, or remove it from plugins.enabled.`;
+    const reason = kernelMessage("PLUGIN_MISSING", { plugin: pluginId, path: manifestPath2 });
     this.missing.set(pluginId, reason);
-    events2.warn(`${reason} Its commands are unavailable in this invocation.`);
+    events2.warn(kernelMessage("PLUGIN_MISSING_WARNING", { reason }));
   }
   /** Why a disabled core plugin contributes nothing. */
   disabledReason(pluginId) {
@@ -1890,16 +2004,16 @@ class Registry {
    */
   async configure(sections2, installed, warn) {
     const report = this.settings.configure(sections2, new Set(this.origins.keys()));
-    for (const [pluginId, issues2] of report.invalid) this.unavailable.set(pluginId, { reason: `plugins.settings.${pluginId} is invalid: ${issues2.join("; ")}.`, issues: issues2 });
+    for (const [pluginId, issues2] of report.invalid) this.unavailable.set(pluginId, { reason: kernelMessage("PLUGIN_SETTINGS_INVALID", { plugin: pluginId, issues: issues2.join("; ") }), issues: issues2 });
     this.cascadeUnavailable();
     for (const [pluginId, { reason, issues: issues2 }] of this.unavailable) {
-      if (issues2.length > 0) warn(`Plugin ${pluginId} is unavailable in this invocation: ${reason} Its commands and generators fail with PLUGIN_UNAVAILABLE; fix bin/config.json and run config.`);
+      if (issues2.length > 0) warn(kernelMessage("PLUGIN_UNAVAILABLE", { plugin: pluginId, reason }));
     }
-    if (report.undeclared.length > 0) warn(`plugins.settings has sections for plugins that declare no settings: ${report.undeclared.join(", ")}; they are ignored.`);
+    if (report.undeclared.length > 0) warn(kernelMessage("SETTINGS_UNDECLARED", { plugins: report.undeclared.join(", ") }));
     const foreign = Object.keys(sections2).filter((id2) => !this.origins.has(id2) && !this.disabled.some((manifest) => manifest.id === id2));
     const present2 = foreign.length > 0 ? new Set(await installed()) : /* @__PURE__ */ new Set();
     const unknown2 = foreign.filter((id2) => !present2.has(id2)).sort();
-    if (unknown2.length > 0) warn(`plugins.settings names no installed plugin: ${unknown2.join(", ")}; the sections are kept unchanged. Check for misspelled plugin ids with plugins.`);
+    if (unknown2.length > 0) warn(kernelMessage("SETTINGS_UNKNOWN_PLUGIN", { plugins: unknown2.join(", ") }));
     return report.effective;
   }
   /**
@@ -1919,7 +2033,7 @@ class Registry {
     if (service !== void 0) return service;
     const pluginId = id2.split(".")[0];
     const unavailable = this.unavailable.get(pluginId);
-    const reason = unavailable?.reason ?? (this.disabled.some((manifest) => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id2}.`);
+    const reason = unavailable ? renderKernelMessage(unavailable.reason) : this.disabled.some((manifest) => manifest.id === pluginId) ? `Plugin ${pluginId} is disabled (plugins.disabled).` : `No enabled plugin provides service ${id2}.`;
     throw forgeError("PLUGIN_UNAVAILABLE", `Command ${command2} is unavailable because it needs service ${id2} of plugin ${pluginId}: ${reason}`, { command: command2, plugin: pluginId, service: id2, reason, issues: unavailable?.issues ?? [] });
   }
   /** Marks every plugin unavailable whose required service has a disabled or unavailable provider, transitively. */
@@ -1928,9 +2042,9 @@ class Registry {
     const blocked = (service) => {
       const provider = providers.get(service)?.manifest.id;
       const unavailable = provider === void 0 ? void 0 : this.unavailable.get(provider);
-      if (unavailable) return { reason: `Requires service ${service}; its provider ${provider} is unavailable.`, issues: unavailable.issues };
+      if (unavailable) return { reason: kernelMessage("PLUGIN_PROVIDER_UNAVAILABLE", { service, provider }), issues: unavailable.issues };
       const disabled = provider === void 0 ? this.disabled.find((manifest) => service.startsWith(`${manifest.id}.`)) : void 0;
-      return disabled && { reason: `Requires service ${service}; its provider ${disabled.id} is disabled.`, issues: [] };
+      return disabled && { reason: kernelMessage("PLUGIN_PROVIDER_DISABLED", { service, provider: disabled.id }), issues: [] };
     };
     for (let changed = true; changed; ) {
       changed = false;
@@ -2012,7 +2126,7 @@ class Registry {
       } catch (error2) {
         await publishHostEvent(events2, "plugin.unload-failed", { pluginId: cleanup.pluginId, error: summarizeError(error2) });
         try {
-          events2.warn(`Plugin cleanup: ${errorMessage(error2)}`);
+          events2.warn(kernelMessage("PLUGIN_CLEANUP_FAILED", { diagnostic: errorMessage(error2) }));
         } catch {
         }
       }
@@ -2033,7 +2147,8 @@ class Registry {
     const unavailable = this.unavailable.get(plugin2.manifest.id);
     if (!unavailable) return;
     const label2 = "command" in contribution ? `Command ${contribution.command}` : `Generator ${contribution.generator}`;
-    throw forgeError("PLUGIN_UNAVAILABLE", `${label2} is unavailable because plugin ${plugin2.manifest.id} is unavailable: ${unavailable.reason}`, { ...contribution, plugin: plugin2.manifest.id, reason: unavailable.reason, issues: unavailable.issues });
+    const reason = renderKernelMessage(unavailable.reason);
+    throw forgeError("PLUGIN_UNAVAILABLE", `${label2} is unavailable because plugin ${plugin2.manifest.id} is unavailable: ${reason}`, { ...contribution, plugin: plugin2.manifest.id, reason, issues: unavailable.issues });
   }
   /** Plugin commands run with their plugin's context, so they can emit only their own events; coded errors resolve through the catalog. */
   ownedCommand(plugin2, command2, events2) {
@@ -9965,12 +10080,13 @@ async function retryTransient(operation2, options2 = {}) {
 }
 const lockName = ".agent-cli.lock";
 const staleReasons = {
-  "dead-process": "its process no longer runs",
-  "reused-pid": "its pid was reused by another process",
-  rebooted: "it was written before this host restarted"
+  "dead-process": "LOCK_STALE_DEAD_PROCESS",
+  "reused-pid": "LOCK_STALE_REUSED_PID",
+  rebooted: "LOCK_STALE_REBOOTED"
 };
 function recoveredLockMessage({ path: path2, holder, reason }) {
-  return `Removed the stale lock ${path2} of pid ${holder.pid} on ${holder.hostname} (since ${holder.startedAt}${holder.command ? `, command ${holder.command}` : ""}): ${staleReasons[reason]}. Inspect what that run left unfinished (for example git status or backlog sync status).`;
+  const command2 = holder.command ? kernelMessage("LOCK_HOLDER_COMMAND", { command: holder.command }) : "";
+  return kernelMessage("LOCK_RECOVERED", { path: path2, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command: command2, reason: kernelMessage(staleReasons[reason]) });
 }
 const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
 const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
@@ -10366,14 +10482,14 @@ class Transaction {
       try {
         await retryTransient(() => promises.rm(plan.temp, { recursive: true, force: true }));
       } catch (error2) {
-        this.host.warn(`Removed ${plan.request.path}, but could not delete its temporary entry ${plan.temp}: ${String(error2)}`);
+        this.host.warn(kernelMessage("REMOVAL_TEMPORARY_LEFT", { path: plan.request.path, temporary: plan.temp, diagnostic: String(error2) }));
       }
     }
     if (this.committedRemoves.length === 0) return;
     try {
       await this.host.syncDirectories(this.committedRemoves.map((plan) => minpath.dirname(plan.target)));
     } catch (error2) {
-      this.host.warn(`Removed files, but syncing their folders failed: ${String(error2)}`);
+      this.host.warn(kernelMessage("REMOVAL_SYNC_FAILED", { diagnostic: String(error2) }));
     }
   }
   async rollback() {
@@ -10464,23 +10580,21 @@ const cacheFolder = ".forge/cache";
 const unlisted = (name2, path2) => [".git", "node_modules", lockName].includes(name2) || name2.startsWith(".agent-cli-tmp-") || path2 === cacheFolder;
 const stagingConcurrency = 8;
 class NodeFiles {
-  constructor(root, warning2, owner, recovered) {
+  constructor(root, warning2, owner) {
     this.root = root;
     this.warning = warning2;
     this.owner = owner;
-    this.recovered = recovered;
   }
   root;
   warning;
   owner;
-  recovered;
   /**
-   * `owner` names the invocation recorded in the writer lock; composition code supplies it. `recovered` reports a
-   * stale writer lock a commit removed (by default as an English warning).
+   * `warn` receives coded diagnostics, such as a stale writer lock a commit removed or a lock it could not release;
+   * `owner` names the invocation recorded in the writer lock. Composition code supplies both.
    */
   static async at(root, warn = () => {
-  }, owner = () => ({}), recovered) {
-    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner, recovered ?? ((_lock, message2) => warn(message2)));
+  }, owner = () => ({})) {
+    return new NodeFiles(await promises.realpath(minpath.resolve(root)), warn, owner);
   }
   /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
   async resolvePath(path2, allowFolder = false) {
@@ -10635,19 +10749,16 @@ class NodeFiles {
     }
   }
   report(lock) {
-    try {
-      this.recovered(lock, recoveredLockMessage(lock));
-    } catch {
-    }
+    this.warn(recoveredLockMessage(lock));
   }
   async cleanupLock(lock, token) {
     let warning2;
     try {
       const outcome = await this.releaseLock(lock, token);
-      if (outcome === "foreign") warning2 = `Left ${lockName} in place: it no longer carries this writer's token, so another writer may hold it.`;
-      else if (outcome === "missing") warning2 = `${lockName} was removed by someone else while this writer held it; inspect concurrent changes.`;
+      if (outcome === "foreign") warning2 = kernelMessage("LOCK_LEFT_FOREIGN", { lock: lockName });
+      else if (outcome === "missing") warning2 = kernelMessage("LOCK_REMOVED_BY_OTHER", { lock: lockName });
     } catch (error2) {
-      warning2 = `Could not remove ${lockName}; inspect the lock before retrying: ${errorMessage(error2)}`;
+      warning2 = kernelMessage("LOCK_UNREMOVABLE", { lock: lockName, diagnostic: errorMessage(error2) });
     }
     if (warning2 !== void 0) this.warn(warning2);
   }
@@ -11099,7 +11210,7 @@ async function installedPlugins(directory, enabled2, skipped, files, warn) {
       ensure(manifest.id === id2, "INVALID_PLUGIN", `Manifest id must match plugin directory ${id2}.`);
       installed.push({ manifest, skipped: skipped && enabled2.includes(id2) });
     } catch (error2) {
-      warn(`Ignored plugin directory ${directory}/${id2}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+      warn(kernelMessage("PLUGIN_DIRECTORY_IGNORED", { directory: `${directory}/${id2}`, diagnostic: error2 instanceof Error ? error2.message : String(error2) }));
     }
   }
   return installed;
@@ -11127,13 +11238,28 @@ async function loadEnabledPlugins(directory, ids, files, registry2, events2) {
     registry2.register(Object.assign(instance, { manifest }), events2);
   }
 }
+function mergeStrings(created, extra) {
+  if (!extra) return created;
+  const merged = { ...created };
+  for (const language2 of Object.keys(extra)) {
+    const table = { ...merged[language2] };
+    for (const [kind2, entries2] of Object.entries(extra[language2] ?? {})) Object.assign(table, { [kind2]: { ...table[kind2], ...entries2 } });
+    merged[language2] = table;
+  }
+  return merged;
+}
 function registerCorePlugins(registry2, events2, plugins, host, disabled) {
   const ids = plugins.map((plugin2) => plugin2.manifest.id);
   const unknown2 = disabled.filter((id2) => !ids.includes(id2));
-  if (unknown2.length > 0) events2.warn(`plugins.disabled names only bundled core plugins (${ids.join(", ")}); ignored ${unknown2.join(", ")}. Disable a user plugin by removing it from plugins.enabled.`);
+  if (unknown2.length > 0) events2.warn(kernelMessage("DISABLED_UNKNOWN_PLUGIN", { core: ids.join(", "), plugins: unknown2.join(", ") }));
   for (const plugin2 of plugins) {
-    if (disabled.includes(plugin2.manifest.id)) registry2.disable(plugin2.manifest, "Listed in plugins.disabled.");
-    else registry2.register({ ...plugin2.create(host), manifest: plugin2.manifest }, events2, "core");
+    if (disabled.includes(plugin2.manifest.id)) {
+      registry2.disable(plugin2.manifest, kernelMessage("PLUGIN_LISTED_DISABLED"));
+      if (plugin2.strings) registry2.catalog.addDisabled(plugin2.manifest.id, plugin2.strings);
+    } else {
+      const created = plugin2.create(host);
+      registry2.register({ ...created, manifest: plugin2.manifest, strings: mergeStrings(created.strings, plugin2.strings) }, events2, "core");
+    }
   }
 }
 function registrySkills(registry2) {
@@ -17398,6 +17524,10 @@ function fileToLinktext(index2, path2, source2, omitMdExtension = true) {
   }
   return path2;
 }
+const indexMessages = {
+  ambiguousLink: "Link {link} in {source} matches {candidates}; it resolves to the closest, {resolved}.",
+  unparseableNote: "{path} cannot be parsed and is indexed without properties, links or tags: {problem}"
+};
 const pendingFileReads$1 = 16;
 const isMarkdown = (path2) => path2.toLowerCase().endsWith(".md");
 function typedLinks(value2, source2, cache) {
@@ -17420,7 +17550,7 @@ function baseLink({ reference, resolution }, source2, warnings) {
       link: resolution.linkpath,
       candidates: resolution.candidates,
       resolvedPath,
-      message: `Link ${resolution.linkpath} in ${source2} matches ${resolution.candidates.join(", ")}; it resolves to the closest, ${resolvedPath}.`
+      message: fill$1(indexMessages.ambiguousLink, { link: resolution.linkpath, source: source2, candidates: resolution.candidates.join(", "), resolved: resolvedPath })
     });
   }
   return { path: reference.link, resolvedPath };
@@ -17447,7 +17577,7 @@ function baseFile(path2, cache, problems, warnings) {
   if (!isMarkdown(path2)) return bare;
   const problem = problems.get(path2);
   if (problem !== void 0) {
-    warnings.push({ code: "unparseable-note", path: path2, message: `${path2} cannot be parsed and is indexed without properties, links or tags: ${problem}` });
+    warnings.push({ code: "unparseable-note", path: path2, message: fill$1(indexMessages.unparseableNote, { path: path2, problem }) });
     return bare;
   }
   const references = cache.references(path2), metadata2 = cache.getFileCache(path2);
@@ -17725,6 +17855,14 @@ class NodeBasesQueryEngine {
     return { path: path2, view: String(view.name), context: contextPath, total: rows.length, files: rows.slice(0, limit).map((row) => row.path), warnings, compatibility: this.capabilities() };
   }
 }
+const germanIndexMessages = {
+  ambiguousLink: "Der Link {link} in {source} passt auf {candidates}; er wird zur nächstgelegenen Datei {resolved} aufgelöst.",
+  unparseableNote: "{path} kann nicht geparst werden und wird ohne Eigenschaften, Links und Tags indexiert: {problem}"
+};
+function localizedQuery(result, language2) {
+  if (language2 === "en") return result;
+  return { ...result, warnings: result.warnings.map((warning2) => ({ ...warning2, message: retranslate(warning2.message, indexMessages, germanIndexMessages) })) };
+}
 const queryOptions = ["view", "context", "limit"];
 function basesCommand(service) {
   return {
@@ -17772,7 +17910,7 @@ function basesCommand(service) {
         return { path: path2, revision: file.revision, definition: document2.data, views: document2.data.views ?? [], repository: { path: path2, viewSelection: "name; first view when omitted" } };
       }
       const limit = value$2(flags, "limit");
-      const result = await service(context).query(path2, { view: value$2(flags, "view"), context: value$2(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } });
+      const result = localizedQuery(await service(context).query(path2, { view: value$2(flags, "view"), context: value$2(flags, "context"), ...limit === void 0 ? {} : { limit: Number(limit) } }), context.language);
       return { ...result, repository: { path: result.path, view: result.view }, scope: context.root };
     }
   };
@@ -17819,6 +17957,18 @@ function baseDefinitionIssues(base) {
   }
   return issues2;
 }
+const basesStrings = {
+  de: {
+    manifest: { name: "Bases-Abfragen", description: "Native Obsidian-Bases-Ansichten als Dateirepositorys abfragen, ohne Obsidian auszuführen." },
+    descriptions: {
+      "View name for query; the first view when omitted.": "Ansichtsname für query; ohne Angabe die erste Ansicht.",
+      "Note used as this file in query expressions.": "Notiz, die in Abfrageausdrücken als this file dient.",
+      "Maximum number of rows for query.": "Höchstzahl der Zeilen für query.",
+      "list (default), inspect, query or capabilities.": "list (Standard), inspect, query oder capabilities.",
+      "The .base file for inspect and query.": "Die .base-Datei für inspect und query."
+    }
+  }
+};
 const basesPlugin = {
   manifest: {
     id: "bases",
@@ -17829,6 +17979,7 @@ const basesPlugin = {
     author: "The Forge",
     description: "Query native Obsidian Bases views as file repositories without running Obsidian."
   },
+  strings: basesStrings,
   create: (host) => {
     const bases = (context) => new Bases(new NodeBasesQueryEngine(
       context.workspace.files,
@@ -17841,7 +17992,7 @@ const basesPlugin = {
       // `bases.query` evaluates a saved view in the caller's command scope: its result files in result order.
       // `bases.validation` reports what `bases query` would reject in a `.base` file before evaluating it, without throwing.
       provides: {
-        "bases.query": { query: (context, path2, options2) => bases(context).query(path2, options2) },
+        "bases.query": { query: async (context, path2, options2) => localizedQuery(await bases(context).query(path2, options2), context.language) },
         "bases.validation": { validate: (context, path2) => validateBaseFile(context.workspace.files, context.workspace.codec, baseDefinitionIssues, path2) }
       },
       strings: {
@@ -17858,9 +18009,9 @@ const basesPlugin = {
     };
   }
 };
-const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then `node bin/forge.js schema --json` to discover commands and generator contracts. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`; nothing was written.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
+const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then `node bin/forge.js schema --json` to discover commands and generator contracts. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Coordinate agents before switching shared context. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`; nothing was written.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` when you need lifecycle records, or `--events none`. Warnings may report failed notification listeners after a successful write.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
 const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active` or `unknown`. Wait and retry while it is `active` (`retryable: true`). `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
-const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de`, and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add a task with reference steps and deterministic checks and validate it with `npm run eval -- --task <id>`. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
+const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add a task with reference steps and deterministic checks and validate it with `npm run eval -- --task <id>`. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const bundledSkills = [
   { id: "forge-workflow", content: workflow },
   { id: "forge-vault", content: vault },
@@ -17923,6 +18074,17 @@ function skillsCommand(skills2) {
     }
   };
 }
+const skillsStrings = {
+  de: {
+    manifest: { name: "Agent-Skills", description: "Mitgelieferte Agent-Skills und der Befehl skills, um sie aufzulisten, zu lesen und zu installieren." },
+    descriptions: {
+      "skills install: the skill roots, .claude/skills (claude), .agents/skills (agents) or both (the default).": "skills install: die Skill-Stammordner .claude/skills (claude), .agents/skills (agents) oder beide (Standard).",
+      "skills install: one custom directory instead of the --target roots.": "skills install: ein eigenes Verzeichnis statt der --target-Stammordner.",
+      "list (default), show or install.": "list (Standard), show oder install.",
+      "The skill id for show.": "Die Skill-ID für show."
+    }
+  }
+};
 const skillsPlugin = {
   manifest: {
     id: "skills",
@@ -17933,6 +18095,7 @@ const skillsPlugin = {
     author: "The Forge",
     description: "Bundled agent skills and the skills command to list, read and install them."
   },
+  strings: skillsStrings,
   create: (host) => ({
     skills: bundledSkills,
     commands: [skillsCommand(host.skills)],
@@ -18437,6 +18600,26 @@ function searchCommand(service) {
     }
   };
 }
+const searchStrings = {
+  de: {
+    manifest: { name: "Suche", description: "Textdateien nach wörtlichen Mustern oder regulären Ausdrücken durchsuchen, mit Metadatenfiltern und seitenweiser Ausgabe." },
+    descriptions: {
+      "Treat the pattern as a JavaScript regular expression (u flag).": "Das Muster als regulären JavaScript-Ausdruck behandeln (u-Flag).",
+      "Match case exactly; matching ignores case by default.": "Groß- und Kleinschreibung exakt beachten; standardmäßig wird sie ignoriert.",
+      "Markdown lines to read: the body after frontmatter, the frontmatter, or both.": "Zu lesende Markdown-Zeilen: der Inhalt nach dem Frontmatter, das Frontmatter oder beides.",
+      "Skip fenced and indented code blocks in Markdown.": "Umzäunte und eingerückte Codeblöcke in Markdown überspringen.",
+      "Only files of this text kind.": "Nur Dateien dieser Textart.",
+      "Only files whose root-relative path matches this glob.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
+      "Only notes with this tag or a nested tag below it.": "Nur Notizen mit diesem Tag oder einem darunter verschachtelten Tag.",
+      "Only notes whose frontmatter has key (not null), or key=value.": "Nur Notizen, deren Frontmatter key (nicht null) oder key=value enthält.",
+      "Lines of context before and after each hit (0–50).": "Kontextzeilen vor und nach jedem Treffer (0–50).",
+      "Maximum hits per page; a truncated page returns nextCursor.": "Höchstzahl der Treffer je Seite; eine gekürzte Seite liefert nextCursor.",
+      "Continue after the page that returned this nextCursor, with the same pattern and filters.": "Nach der Seite fortfahren, die diesen nextCursor geliefert hat, mit demselben Muster und denselben Filtern.",
+      "Literal text, or a JavaScript regular expression with --regex. Use -- before a pattern that starts with -.": "Wörtlicher Text oder mit --regex ein regulärer JavaScript-Ausdruck. Setzen Sie -- vor ein Muster, das mit - beginnt.",
+      "Milliseconds one search may spend matching before it fails with SEARCH_TIMEOUT.": "Millisekunden, die eine Suche für den Abgleich aufwenden darf, bevor sie mit SEARCH_TIMEOUT fehlschlägt."
+    }
+  }
+};
 const defaultTimeoutMs = 1e4;
 const searchPlugin = {
   manifest: {
@@ -18448,6 +18631,7 @@ const searchPlugin = {
     author: "The Forge",
     description: "Search text files for literal or regular-expression patterns with metadata filters and paging."
   },
+  strings: searchStrings,
   create: () => ({
     commands: [searchCommand((context) => (query, page) => searchFiles({
       files: context.workspace.files,
@@ -18621,6 +18805,17 @@ function linksCommand(service) {
     }
   };
 }
+const linksStrings = {
+  de: {
+    manifest: { name: "Linkberichte", description: "Ausgehende Links, Backlinks, nicht aufgelöste Links, verwaiste Notizen und Sackgassen aus dem Metadaten-Cache melden." },
+    descriptions: {
+      "For unresolved, orphans and deadends: only files whose root-relative path matches this glob.": "Für unresolved, orphans und deadends: nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
+      "out, back, unresolved, orphans or deadends.": "out, back, unresolved, orphans oder deadends.",
+      "The vault path of the file for out and back.": "Der Vault-Pfad der Datei für out und back.",
+      "Path globs of entry notes, such as an index or home note, that links orphans never reports.": "Pfad-Globs von Einstiegsnotizen wie einer Index- oder Startnotiz, die links orphans nie meldet."
+    }
+  }
+};
 function rootIssues(settings2) {
   return (settings2.roots ?? []).flatMap((root, index2) => {
     const path2 = `plugins.settings.links.roots[${index2}]`;
@@ -18642,6 +18837,7 @@ const linksPlugin = {
     author: "The Forge",
     description: "Report outgoing links, backlinks, unresolved links, orphans and dead ends from the metadata cache."
   },
+  strings: linksStrings,
   create: () => ({
     commands: [linksCommand((context) => ({
       cache: () => context.metadata.load(),
@@ -19279,7 +19475,7 @@ function selectedRules(text2) {
   ensure(names2.length > 0 && unknown2.length === 0, "INVALID_ARGUMENT", `--rule takes comma-separated rule ids (${ruleIds.join(", ")}); unknown: ${unknown2.join(", ") || "(none given)"}.`);
   return ruleIds.filter((id2) => names2.includes(id2));
 }
-function localized(service, severity2) {
+function localized$1(service, severity2) {
   return (detection) => {
     const hint = fill(service.t(`${detection.rule}.hint`), detection.params);
     const suggestion = detection.suggestion === void 0 ? "" : ` ${fill(service.t("suggestion"), { suggestion: detection.suggestion })}`;
@@ -19297,7 +19493,7 @@ function localized(service, severity2) {
 }
 function checkResult(report, service, settings2, strict2) {
   const severity2 = (rule2) => settings2[rule2];
-  const findings = report.detections.map(localized(service, severity2)).sort(compareFindings);
+  const findings = report.detections.map(localized$1(service, severity2)).sort(compareFindings);
   const count2 = (level) => findings.filter((finding2) => finding2.severity === level).length;
   const summary = { files: report.files, findings: findings.length, ...Object.fromEntries(severities.map((level) => [level, count2(level)])) };
   const rules2 = report.rules.map((id2) => ({ id: id2, severity: severity2(id2), findings: findings.filter((finding2) => finding2.rule === id2).length }));
@@ -19371,6 +19567,24 @@ function vaultCommand(service) {
     }
   };
 }
+const vaultCheckStrings = {
+  de: {
+    manifest: { name: "Vault-Prüfung", description: "Den Vault auf defekte Links, ungültige Dateien und uneinheitliche Eigenschaften prüfen und seine Tags und Eigenschaften auflisten." },
+    descriptions: {
+      "check (default), tags or properties.": "check (Standard), tags oder properties.",
+      "Only files whose root-relative path matches this glob.": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht.",
+      "Only these comma-separated rules: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.": "Nur diese kommagetrennten Regeln: unresolved-link, unresolved-embed, ambiguous-link, unresolved-anchor, invalid-frontmatter, invalid-canvas, invalid-base, property-type-mismatch, duplicate-block-id, empty-file, orphan-attachment.",
+      "Fail with VAULT_CHECK_FAILED when any finding has error severity.": "Mit VAULT_CHECK_FAILED fehlschlagen, wenn ein Befund den Schweregrad error hat.",
+      "Order by tag name or by file count, most used first.": "Nach Tag-Name oder nach Dateianzahl sortieren, die häufigsten zuerst.",
+      "Only this property, with the value type of each note.": "Nur diese Eigenschaft, mit dem Werttyp jeder Notiz.",
+      "Severity per rule id (error, warning, info or off), overriding the rule's default.": "Schweregrad je Regel-ID (error, warning, info oder off), der den Standard der Regel überschreibt.",
+      "Default error.": "Standard: error.",
+      "Default warning.": "Standard: warning.",
+      "Default info.": "Standard: info.",
+      "Path globs of files that vault check, tags and properties skip; they remain link targets.": "Pfad-Globs von Dateien, die vault check, tags und properties überspringen; sie bleiben Linkziele."
+    }
+  }
+};
 const basesValidation = "bases.validation";
 function ignoreIssues(settings2) {
   return (settings2.ignore ?? []).flatMap((pattern2, index2) => {
@@ -19393,6 +19607,7 @@ const vaultCheckPlugin = {
     author: "The Forge",
     description: "Check the vault for broken links, invalid files and inconsistent properties, and inventory its tags and properties."
   },
+  strings: vaultCheckStrings,
   create: () => ({
     optional: [basesValidation],
     commands: [vaultCommand((context) => {
@@ -19846,6 +20061,128 @@ function forceHandoffDiagnostics(config2) {
 function agentError(code2, message2, details) {
   return Object.assign(new Error(message2), { code: code2, ...details ? { details } : {} });
 }
+const agentMessages = {
+  // Toolsets (claude-tools, claude-mcp).
+  toolFilterNone: "The tools filter {filter} is approximated by the Claude tools (none).",
+  toolFilter: "The tools filter {filter} is approximated by the Claude tools {tools}.",
+  toolsetFieldUnsupported: "{label} ({field}) have no Claude equivalent and are not emitted.",
+  filesystemApproximated: "The filesystem toolset is approximated by the Claude tools {tools}.",
+  allowListUnsupported: "allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent's file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).",
+  denyListApproximated: "deny_list becomes Read and Edit deny rules in project settings with --settings.",
+  readonlyShell: "A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.",
+  allowedDomainsUnsupported: "allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.",
+  blockedDomainsApproximated: "blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.",
+  taskToolsetApproximated: "The {type} toolset is approximated by Claude's task tools {tools}.",
+  memoryApproximated: "The memory toolset is approximated by memory: project; its database path is not used.",
+  userPromptApproximated: "The user_prompt toolset is approximated by AskUserQuestion.",
+  thinkNotEmitted: "The think toolset is not emitted; Claude models think natively, tuned by effort.",
+  mcpReadonly: "Claude cannot select read-only tools of MCP server {server}; every granted tool is emitted.",
+  toolsetUnsupported: "The {type} toolset has no Claude equivalent and is not emitted.",
+  readonlyApproximated: "readonly keeps read-only tools and disallows {tools}.",
+  mcpTemplateLiteral: "The template expression {expression} has no Claude MCP equivalent and is kept literally.",
+  oauthUnsupported: "OAuth {field} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.",
+  dockerGateway: "{ref} runs through the Docker MCP Gateway: {command}.",
+  mcpToolsetUnsupported: "The MCP toolset has no command, remote URL or Docker ref and is not emitted.",
+  // Models (claude-models).
+  modelAlias: "Model {id} is emitted as the alias {alias}, which Claude Code resolves to the newest model of that family.",
+  modelNoAlias: "Model {id} has no Claude alias; its id is emitted.",
+  effortLevel: "thinking_budget {budget} is emitted as effort: {effort}.",
+  effortBudget: "A thinking budget of {budget} tokens is approximated as effort: {effort}.",
+  effortNone: "thinking_budget {budget} disables or minimizes thinking; no effort is emitted.",
+  modelSettingUnsupported: "Model setting {key} has no Claude agent equivalent and is not emitted.",
+  harnessUnsupported: "The {type} harness has no Claude agent equivalent; the agent inherits the session model.",
+  harnessApproximated: "The claude-code harness runs the agent in Claude Code; its model and effort are emitted on the generated agent.",
+  modelMissing: "The agent names no model; the Claude agent inherits the session model.",
+  modelNoAnthropic: "Model {reference} has no Anthropic candidate; the Claude agent inherits the session model.",
+  modelSelected: "Model {reference} selects among several models; the first Anthropic candidate {candidate} is emitted.",
+  // Hooks and commands (claude-hooks, claude-commands, claude-execution).
+  hookTypeUnsupported: "A {type} hook has no Claude equivalent and is not emitted.",
+  hookFieldUnsupported: "Hook {field} is not emitted.",
+  hookEventUnsupported: "The {event} hook event has no Claude equivalent and is not emitted.",
+  hookMatcherApproximated: "Matcher alternatives {matchers} have no known Claude tool and are kept literally.",
+  preemptYolo: "preempt_yolo is not emitted.",
+  hookApproximated: "{event} hooks run on Claude's {target} event, which sends Claude Code's hook input; check each command's input and decision format.",
+  commandUrl: "The /{command} command opens a URL, which a Claude skill cannot do; it is not emitted.",
+  commandTemplateLiteral: "The template expression {expression} is kept literally; Claude skills do not evaluate docker-agent expressions.",
+  bangToolCall: "The bang tool call {call} is kept literally.",
+  commandDescription: 'The /{command} command has no description; "{description}" is emitted.',
+  commandForked: "docker-agent switches the conversation to {target}; the Claude skill runs in a forked {agent} subagent instead.",
+  mcpNotGenerated: "MCP server {server} ({target}) is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it.",
+  mcpExecutes: "MCP server {server} in {file} runs the command: {command}",
+  hooksNotGenerated: "Hooks run commands and are generated only with --hooks; skipped {hooks}.",
+  hookExecutes: "The {event} hook of {agent} runs the command: {command}",
+  toolsNone: "No toolset grants a Claude tool, so {agent} gets tools: [] and disallows {tools} instead of inheriting every tool.",
+  // Permissions (claude-permissions); the reasons are fragments of permissionPartial and permissionDropped.
+  reasonNoBuiltin: "names no docker-agent built-in tool with a Claude permission rule",
+  reasonUnmappedOne: "matches {tools}, which has no Claude permission rule of the same reach",
+  reasonUnmapped: "matches {tools}, which have no Claude permission rule of the same reach",
+  reasonMcpNone: "names an MCP server, and no MCP server is generated without --mcp inline or --mcp project",
+  reasonMcpUnknown: "names the MCP server {server}, which no generated agent defines",
+  reasonArguments: "matches tool arguments, which Claude permission rules express only for shell commands",
+  permissionPartial: "The {list} pattern {pattern} {reason}; only {rules} is emitted.",
+  permissionDropped: "The {list} pattern {pattern} {reason}; it is not emitted.",
+  permissionApproximated: "permissions.{list} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.",
+  broadPermission: "The rule {rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.",
+  grantsPermissionBroad: ".claude/settings.json permissions.{list} gets the rule {rule} (broad, allowed by --allow-broad-permissions).",
+  grantsPermission: ".claude/settings.json permissions.{list} gets the rule {rule}.",
+  // Agents (claude-agent).
+  envTemplateLiteral: "{expression} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.",
+  templateLiteral: "{expression} is kept literally; Claude Code cannot evaluate docker-agent template expressions.",
+  addDate: "Claude Code adds the current date to its system prompt itself.",
+  addEnvironment: "Claude Code adds working directory, platform and Git information to its system prompt itself.",
+  promptFilesUnsupported: "{field} is not emitted; Claude Code loads CLAUDE.md files instead.",
+  welcomeMessage: "Claude agents have no welcome message.",
+  externalSubAgent: "The external sub-agent {agent} is not generated.",
+  subAgentsApproximated: "Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when {agent} runs as the main thread.",
+  delegationUnsupported: "{field} is not emitted; Claude delegates only through the Agent tool.",
+  skillsDiscovered: "Claude Code discovers project and user skills itself.",
+  skillsDisabled: "Skills are disabled; Claude agents cannot disable skill discovery.",
+  inlineSkill: "The inline skill {skill} is not generated; write it as .claude/skills/{skill}/SKILL.md.",
+  skillSource: "The skill source {source} is not emitted; Claude Code loads skills from .claude/skills.",
+  namedSkills: "Named skills are preloaded through the skills frontmatter; Claude Code resolves them by name.",
+  nameSanitized: "Agent {name} is generated as {claude}.",
+  agentDescription: 'The agent has no description; "{description}" is emitted so Claude Code can delegate to it.',
+  maxIterations: "max_iterations is emitted as maxTurns: {turns}; Claude counts agentic turns, not model calls.",
+  settingUnsupported: "{field} has no Claude agent equivalent and is not emitted.",
+  // Import (claude-import).
+  importAlias: "The alias {alias} is imported as anthropic/{model}.",
+  importOmittedModel: "An omitted model is imported as the configured default {default}.",
+  importModel: "Model {model} is imported as the configured default {default}.",
+  serverReference: "The server reference {server} names a server configured outside the agent; add it as an mcp toolset or mcps definition.",
+  transportUnsupported: "The {type} transport has no docker-agent equivalent; the server is not imported.",
+  toolsInherited: "The Claude agent inherits every tool; filesystem, shell, fetch, todo and user_prompt toolsets are imported.",
+  fileToolsReadonly: "File tools are imported as a read-only filesystem toolset.",
+  fileTools: "File tools are imported as a filesystem toolset.",
+  taskTools: "Task tools are imported as a todo toolset.",
+  askUser: "AskUserQuestion is imported as a user_prompt toolset.",
+  toolUnsupported: "The Claude tool {tool} has no docker-agent toolset and is not imported.",
+  disallowedUnsupported: "Disallowing {tool} has no docker-agent equivalent.",
+  memoryImported: "memory: {memory} is imported as a memory toolset.",
+  importHookUnsupported: "The {event} hook event has no docker-agent equivalent.",
+  importHookApproximated: "{event} command hooks are imported as {target}; only command hooks are kept and docker-agent sends its own hook input.",
+  importNameSanitized: "Agent {name} is imported as {imported}.",
+  generatedAgent: "This agent was generated from {source}; edit that definition instead, since an import is lossy.",
+  subAgentsImported: "Agent(…) entries become sub_agents: {agents}.",
+  subAgentMissing: "Agent({agent}) is not imported because {agent} is not defined in the target file; import it first.",
+  importFieldUnsupported: "{field} has no docker-agent equivalent and is not imported.",
+  unknownField: "The unknown field {field} is not imported.",
+  maxTurnsImported: "maxTurns is imported as max_iterations, which counts model calls.",
+  skillsImported: "Preloaded skills are imported as skill names; docker-agent loads them on demand.",
+  // Generation (claude-generation) and definition files.
+  mcpServerConflict: ".mcp.json already defines the server {server}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.",
+  mcpServerRenamed: ".mcp.json already defines a different server {server}; this one is generated as {name}.",
+  commandsNotGenerated: "Commands become Claude skills with --commands.",
+  topLevelUnsupported: "The top-level {key} section has no Claude equivalent and is not emitted.",
+  permissionsNotGenerated: "Permissions become project settings rules with --settings.",
+  commandLabel: "/{command} of {agent}",
+  commandCollision: "The {label} would generate .claude/skills/{name}/SKILL.md, which the {owner} already generates; rename one of the commands.",
+  commandRenamed: "Several agents define a different /{command}; this one becomes the skill {name}.",
+  agentCollision: "Agent {name} would generate .claude/agents/{claude}.md, which {owner} already generates.",
+  mainAgent: `The default agent {agent} becomes the project's main agent ("agent": "{claude}").`,
+  settingsAgentConflict: ".claude/settings.json already sets agent to {agent}, which Forge did not generate; remove it to let Forge set {claude}.",
+  encoding: "Definition files must be valid UTF-8."
+};
+const say = (key, params = {}) => fill$1(agentMessages[key], params);
 const definitionFile = /\.ya?ml$/;
 const decoder$4 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 const byPosition = (left, right) => (left.line ?? 0) - (right.line ?? 0) || (left.column ?? 0) - (right.column ?? 0);
@@ -19900,7 +20237,7 @@ class AgentDefinitions {
     try {
       text2 = decoder$4.decode(snapshot.bytes);
     } catch {
-      return { path: path2, revision: snapshot.revision, text: "", diagnostics: [diagnostic("error", "encoding", "", "Definition files must be valid UTF-8.")], instructions: {} };
+      return { path: path2, revision: snapshot.revision, text: "", diagnostics: [diagnostic("error", "encoding", "", say("encoding"))], instructions: {} };
     }
     const checked = this.check(text2);
     const instructions2 = {}, missing2 = [];
@@ -20234,17 +20571,17 @@ function model(value2, defaultModel, diagnostics2) {
   if (typeof value2 === "string" && /^claude-[a-z0-9.-]+$/.test(value2)) return `anthropic/${value2}`;
   const alias = typeof value2 === "string" ? modelAlias(value2) : void 0;
   if (alias && value2 === alias) {
-    diagnostics2.push(diagnostic("warning", "model-approximated", "/model", `The alias ${alias} is imported as anthropic/${aliasModels[alias]}.`, "A"));
+    diagnostics2.push(diagnostic("warning", "model-approximated", "/model", say("importAlias", { alias, model: aliasModels[alias] }), "A"));
     return `anthropic/${aliasModels[alias]}`;
   }
-  diagnostics2.push(diagnostic("warning", "model-approximated", "/model", `${value2 === void 0 ? "An omitted model" : `Model ${String(value2)}`} is imported as the configured default ${defaultModel}.`, "A"));
+  diagnostics2.push(diagnostic("warning", "model-approximated", "/model", value2 === void 0 ? say("importOmittedModel", { default: defaultModel }) : say("importModel", { model: String(value2), default: defaultModel }), "A"));
   return defaultModel;
 }
 function mcpToolsets(metadata2, grants, diagnostics2) {
   return (Array.isArray(metadata2.mcpServers) ? metadata2.mcpServers : []).flatMap((entry2, index2) => {
     const at = pointer("mcpServers", index2);
     if (typeof entry2 === "string") {
-      diagnostics2.push(diagnostic("warning", "mcp-reference-unsupported", at, `The server reference ${entry2} names a server configured outside the agent; add it as an mcp toolset or mcps definition.`, "U"));
+      diagnostics2.push(diagnostic("warning", "mcp-reference-unsupported", at, say("serverReference", { server: entry2 }), "U"));
       return [];
     }
     return Object.entries(record$3(entry2)).flatMap(([name2, value2]) => {
@@ -20255,7 +20592,7 @@ function mcpToolsets(metadata2, grants, diagnostics2) {
         const remote = { url: server.url, transport_type: type2 === "sse" ? "sse" : "streamable", ...isObject$1(server.headers) ? { headers: server.headers } : {} };
         return [{ type: "mcp", name: name2, remote, ...filter }];
       }
-      diagnostics2.push(diagnostic("warning", "mcp-transport-unsupported", `${at}${pointer(name2)}`, `The ${String(type2)} transport has no docker-agent equivalent; the server is not imported.`, "U"));
+      diagnostics2.push(diagnostic("warning", "mcp-transport-unsupported", `${at}${pointer(name2)}`, say("transportUnsupported", { type: String(type2) }), "U"));
       return [];
     });
   });
@@ -20264,34 +20601,34 @@ function toolsets$1(metadata2, diagnostics2) {
   const granted = metadata2.tools === void 0 ? void 0 : toolList(metadata2.tools);
   const disallowed = toolList(metadata2.disallowedTools);
   const tools = granted ?? ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "WebFetch", "TaskCreate", "AskUserQuestion"];
-  if (granted === void 0) diagnostics2.push(diagnostic("warning", "tools-inherited", "/tools", "The Claude agent inherits every tool; filesystem, shell, fetch, todo and user_prompt toolsets are imported.", "A"));
+  if (granted === void 0) diagnostics2.push(diagnostic("warning", "tools-inherited", "/tools", say("toolsInherited"), "A"));
   const result = [], subAgents = [], grants = /* @__PURE__ */ new Map();
   const has = (names2) => tools.some((tool) => names2.includes(tool) && !disallowed.includes(tool));
   if (has(fileTools)) {
     const readonly2 = !has(writing$1);
     result.push({ type: "filesystem", ...readonly2 ? { readonly: true } : {} });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", `File tools are imported as a${readonly2 ? " read-only" : ""} filesystem toolset.`, "A"));
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say(readonly2 ? "fileToolsReadonly" : "fileTools"), "A"));
   }
   if (has(["Bash"])) result.push({ type: "shell" });
   if (has(["WebFetch"])) result.push({ type: "fetch" });
   if (has(taskTools)) {
     result.push({ type: "todo" });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", "Task tools are imported as a todo toolset.", "A"));
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say("taskTools"), "A"));
   }
   if (has(["AskUserQuestion"])) {
     result.push({ type: "user_prompt" });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", "AskUserQuestion is imported as a user_prompt toolset.", "A"));
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/tools", say("askUser"), "A"));
   }
   for (const tool of tools) {
     const agent = /^Agent\((.+)\)$/.exec(tool), mcp = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(tool);
     if (agent) subAgents.push(agent[1]);
     else if (mcp) grants.set(mcp[1], [...grants.get(mcp[1]) ?? [], mcp[2]]);
-    else if (![...fileTools, ...taskTools, "Bash", "WebFetch", "AskUserQuestion"].includes(tool)) diagnostics2.push(diagnostic("warning", "tool-unsupported", "/tools", `The Claude tool ${tool} has no docker-agent toolset and is not imported.`, "U"));
+    else if (![...fileTools, ...taskTools, "Bash", "WebFetch", "AskUserQuestion"].includes(tool)) diagnostics2.push(diagnostic("warning", "tool-unsupported", "/tools", say("toolUnsupported", { tool }), "U"));
   }
-  for (const tool of disallowed) if (!fileTools.includes(tool)) diagnostics2.push(diagnostic("info", "tool-unsupported", "/disallowedTools", `Disallowing ${tool} has no docker-agent equivalent.`, "U"));
+  for (const tool of disallowed) if (!fileTools.includes(tool)) diagnostics2.push(diagnostic("info", "tool-unsupported", "/disallowedTools", say("disallowedUnsupported", { tool }), "U"));
   if (metadata2.memory !== void 0) {
     result.push({ type: "memory" });
-    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/memory", `memory: ${String(metadata2.memory)} is imported as a memory toolset.`, "A"));
+    diagnostics2.push(diagnostic("warning", "toolset-approximated", "/memory", say("memoryImported", { memory: String(metadata2.memory) }), "A"));
   }
   return { toolsets: [...result, ...mcpToolsets(metadata2, grants, diagnostics2)], subAgents };
 }
@@ -20300,7 +20637,7 @@ function hooks$2(value2, diagnostics2) {
   for (const [event, groups] of Object.entries(record$3(value2))) {
     const target = reverseEvents[event];
     if (!target) {
-      diagnostics2.push(diagnostic("warning", "hook-unsupported", pointer("hooks", event), `The ${event} hook event has no docker-agent equivalent.`, "U"));
+      diagnostics2.push(diagnostic("warning", "hook-unsupported", pointer("hooks", event), say("importHookUnsupported", { event }), "U"));
       continue;
     }
     const tool = ["pre_tool_use", "post_tool_use", "permission_request"].includes(target);
@@ -20310,7 +20647,7 @@ function hooks$2(value2, diagnostics2) {
       const matcher = typeof group.matcher === "string" ? group.matcher.split("|").map((name2) => reverseTools[name2] ?? name2).join("|") : "*";
       result[target] = [...result[target] ?? [], ...tool ? [{ matcher, hooks: handlers }] : handlers];
     }
-    diagnostics2.push(diagnostic("warning", "hook-approximated", pointer("hooks", event), `${event} command hooks are imported as ${target}; only command hooks are kept and docker-agent sends its own hook input.`, "A"));
+    diagnostics2.push(diagnostic("warning", "hook-approximated", pointer("hooks", event), say("importHookApproximated", { event, target }), "A"));
   }
   return Object.keys(result).length > 0 ? result : void 0;
 }
@@ -20320,21 +20657,21 @@ function importedName(name2) {
 function importClaudeAgent(metadata2, prompt, defaultModel, knownAgents) {
   const diagnostics2 = [];
   const name2 = importedName(metadata2.name);
-  if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", `Agent ${String(metadata2.name)} is imported as ${name2}.`, "E"));
+  if (name2 !== metadata2.name) diagnostics2.push(diagnostic("info", "name-sanitized", "/name", say("importNameSanitized", { name: String(metadata2.name), imported: name2 }), "E"));
   const source2 = record$3(metadata2["x-forge-source"]);
-  if (text$d(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", `This agent was generated from ${source2.path}#${String(source2.agent)}; edit that definition instead, since an import is lossy.`, "A"));
+  if (text$d(source2.path)) diagnostics2.push(diagnostic("warning", "generated-agent", "/x-forge-source", say("generatedAgent", { source: `${String(source2.path)}#${String(source2.agent)}` }), "A"));
   const { toolsets: imported, subAgents: delegates } = toolsets$1(metadata2, diagnostics2);
   const subAgents = delegates.filter((agent2) => knownAgents.includes(agent2));
-  if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", `Agent(…) entries become sub_agents: ${subAgents.join(", ")}.`, "A"));
+  if (subAgents.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", "/tools", say("subAgentsImported", { agents: subAgents.join(", ") }), "A"));
   for (const agent2 of delegates.filter((entry2) => !subAgents.includes(entry2))) {
-    diagnostics2.push(diagnostic("warning", "delegation-unsupported", "/tools", `Agent(${agent2}) is not imported because ${agent2} is not defined in the target file; import it first.`, "U"));
+    diagnostics2.push(diagnostic("warning", "delegation-unsupported", "/tools", say("subAgentMissing", { agent: agent2 }), "U"));
   }
   const mappedHooks = hooks$2(metadata2.hooks, diagnostics2);
-  for (const field2 of unsupportedFields$1) if (metadata2[field2] !== void 0) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), `${field2} has no docker-agent equivalent and is not imported.`, "U"));
-  for (const field2 of Object.keys(metadata2)) if (!known.includes(field2)) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), `The unknown field ${field2} is not imported.`, "U"));
-  if (metadata2.maxTurns !== void 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", "/maxTurns", "maxTurns is imported as max_iterations, which counts model calls.", "A"));
+  for (const field2 of unsupportedFields$1) if (metadata2[field2] !== void 0) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), say("importFieldUnsupported", { field: field2 }), "U"));
+  for (const field2 of Object.keys(metadata2)) if (!known.includes(field2)) diagnostics2.push(diagnostic("info", "field-unsupported", pointer(field2), say("unknownField", { field: field2 }), "U"));
+  if (metadata2.maxTurns !== void 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", "/maxTurns", say("maxTurnsImported"), "A"));
   const skills2 = stringList(metadata2.skills);
-  if (skills2.length > 0) diagnostics2.push(diagnostic("warning", "skills-approximated", "/skills", "Preloaded skills are imported as skill names; docker-agent loads them on demand.", "A"));
+  if (skills2.length > 0) diagnostics2.push(diagnostic("warning", "skills-approximated", "/skills", say("skillsImported"), "A"));
   const agent = {
     model: model(metadata2.model, defaultModel, diagnostics2),
     description: metadata2.description,
@@ -20554,19 +20891,19 @@ function candidates$1(config2, reference, seen = /* @__PURE__ */ new Set()) {
 function styled(id2, style, at) {
   if (style === "id") return { model: id2, diagnostics: [] };
   const alias = modelAlias(id2);
-  return alias ? { model: alias, diagnostics: [diagnostic("warning", "model-alias", at, `Model ${id2} is emitted as the alias ${alias}, which Claude Code resolves to the newest model of that family.`, "A")] } : { model: id2, diagnostics: [diagnostic("info", "model-alias", at, `Model ${id2} has no Claude alias; its id is emitted.`, "A")] };
+  return alias ? { model: alias, diagnostics: [diagnostic("warning", "model-alias", at, say("modelAlias", { id: id2, alias }), "A")] } : { model: id2, diagnostics: [diagnostic("info", "model-alias", at, say("modelNoAlias", { id: id2 }), "A")] };
 }
 function effort$1(budget, at) {
   if (budget === void 0) return { diagnostics: [] };
   const level = typeof budget === "string" ? budget === "adaptive" ? "high" : budget.replace(/^adaptive\//, "") : void 0;
   if (level !== void 0 && efforts.includes(level)) {
-    return { effort: level, diagnostics: [diagnostic("warning", "effort-approximated", at, `thinking_budget ${JSON.stringify(budget)} is emitted as effort: ${level}.`, "A")] };
+    return { effort: level, diagnostics: [diagnostic("warning", "effort-approximated", at, say("effortLevel", { budget: JSON.stringify(budget), effort: level }), "A")] };
   }
   if (typeof budget === "number" && budget > 0) {
     const bucket = budget <= 4096 ? "low" : budget <= 16384 ? "medium" : "high";
-    return { effort: bucket, diagnostics: [diagnostic("warning", "effort-approximated", at, `A thinking budget of ${budget} tokens is approximated as effort: ${bucket}.`, "A")] };
+    return { effort: bucket, diagnostics: [diagnostic("warning", "effort-approximated", at, say("effortBudget", { budget, effort: bucket }), "A")] };
   }
-  return { diagnostics: [diagnostic("info", "effort-approximated", at, `thinking_budget ${JSON.stringify(budget)} disables or minimizes thinking; no effort is emitted.`, "A")] };
+  return { diagnostics: [diagnostic("info", "effort-approximated", at, say("effortNone", { budget: String(JSON.stringify(budget)) }), "A")] };
 }
 function unsupportedSettings(config2, named) {
   const model2 = record$3(record$3(config2.models)[named]);
@@ -20574,31 +20911,31 @@ function unsupportedSettings(config2, named) {
     "info",
     "model-setting-unsupported",
     pointer("models", named, key),
-    `Model setting ${key} has no Claude agent equivalent and is not emitted.`,
+    say("modelSettingUnsupported", { key }),
     "U"
   ));
 }
 function harnessModel(agent, at, style) {
   const harness = record$3(agent.harness);
   if (harness.type !== "claude-code") {
-    return { model: "inherit", diagnostics: [diagnostic("warning", "harness-unsupported", `${at}/harness`, `The ${String(harness.type)} harness has no Claude agent equivalent; the agent inherits the session model.`, "U")] };
+    return { model: "inherit", diagnostics: [diagnostic("warning", "harness-unsupported", `${at}/harness`, say("harnessUnsupported", { type: String(harness.type) }), "U")] };
   }
   const chosen = text$d(harness.model) ? styled(harness.model.replace(/^anthropic\//, ""), style, `${at}/harness/model`) : { model: "inherit", diagnostics: [] };
   return {
     model: chosen.model,
     ...typeof harness.effort === "string" ? { effort: harness.effort } : {},
-    diagnostics: [diagnostic("warning", "harness-approximated", `${at}/harness`, "The claude-code harness runs the agent in Claude Code; its model and effort are emitted on the generated agent.", "A"), ...chosen.diagnostics]
+    diagnostics: [diagnostic("warning", "harness-approximated", `${at}/harness`, say("harnessApproximated"), "A"), ...chosen.diagnostics]
   };
 }
 function claudeModel(config2, name2, agent, style) {
   const at = pointer("agents", name2);
   if (isObject$1(agent.harness)) return harnessModel(agent, at, style);
   const reference = typeof agent.model === "string" ? agent.model.trim() : "";
-  if (reference === "") return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, "The agent names no model; the Claude agent inherits the session model.", "A")] };
+  if (reference === "") return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, say("modelMissing"), "A")] };
   const options2 = candidates$1(config2, reference);
   const anthropic = options2.find((candidate) => candidate.provider === "anthropic" && text$d(candidate.id));
   if (!anthropic) {
-    return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, `Model ${reference} has no Anthropic candidate; the Claude agent inherits the session model.`, "A")] };
+    return { model: "inherit", diagnostics: [diagnostic("warning", "model-approximated", `${at}/model`, say("modelNoAnthropic", { reference }), "A")] };
   }
   const exact2 = options2.length === 1 && expandModelReference(config2, reference).length === 1 && !firstAvailable(record$3(config2.models)[reference]);
   const chosen = styled(anthropic.id, style, `${at}/model`);
@@ -20607,7 +20944,7 @@ function claudeModel(config2, name2, agent, style) {
     model: chosen.model,
     ...thinking.effort ? { effort: thinking.effort } : {},
     diagnostics: [
-      ...exact2 ? [] : [diagnostic("warning", "model-approximated", `${at}/model`, `Model ${reference} selects among several models; the first Anthropic candidate ${anthropic.reference} is emitted.`, "A")],
+      ...exact2 ? [] : [diagnostic("warning", "model-approximated", `${at}/model`, say("modelSelected", { reference, candidate: anthropic.reference }), "A")],
       ...chosen.diagnostics,
       ...thinking.diagnostics,
       ...anthropic.named ? unsupportedSettings(config2, anthropic.named) : []
@@ -20703,7 +21040,7 @@ function derivedName(toolset) {
 }
 function variables(value2, at, diagnostics2) {
   const converted = mcpVariables(value2);
-  for (const kept of converted.kept) diagnostics2.push(diagnostic("warning", "template-literal", at, `The template expression ${kept} has no Claude MCP equivalent and is kept literally.`, "U"));
+  for (const kept of converted.kept) diagnostics2.push(diagnostic("warning", "template-literal", at, say("mcpTemplateLiteral", { expression: kept }), "U"));
   return converted.text;
 }
 function variableMap(value2, at, diagnostics2) {
@@ -20717,7 +21054,7 @@ function remoteServer(remote, at, diagnostics2) {
   if (text$d(oauth2.clientId)) mapped.clientId = oauth2.clientId;
   if (typeof oauth2.callbackPort === "number") mapped.callbackPort = oauth2.callbackPort;
   for (const field2 of ["clientSecret", "scopes", "callbackRedirectURL"]) if (oauth2[field2] !== void 0) {
-    diagnostics2.push(diagnostic("warning", "mcp-oauth-unsupported", `${at}/remote/oauth/${field2}`, `OAuth ${field2} is not emitted; Claude Code asks for client secrets interactively and negotiates scopes and redirects itself.`, "U"));
+    diagnostics2.push(diagnostic("warning", "mcp-oauth-unsupported", `${at}/remote/oauth/${field2}`, say("oauthUnsupported", { field: field2 }), "U"));
   }
   return { type: type2, url: variables(String(remote.url), `${at}/remote/url`, diagnostics2), ...headers ? { headers } : {}, ...Object.keys(mapped).length > 0 ? { oauth: mapped } : {} };
 }
@@ -20726,7 +21063,7 @@ function mcpServer(toolset, at, taken) {
   let name2 = serverName(declared);
   for (let index2 = 2; taken.includes(name2); index2++) name2 = `${serverName(declared)}-${index2}`;
   for (const [field2, label2] of Object.entries(unsupported)) if (toolset[field2] !== void 0) {
-    diagnostics2.push(diagnostic("info", "toolset-field-unsupported", `${at}/${field2}`, `MCP ${label2} (${field2}) have no Claude equivalent and are not emitted.`, "U"));
+    diagnostics2.push(diagnostic("info", "toolset-field-unsupported", `${at}/${field2}`, say("toolsetFieldUnsupported", { label: `MCP ${label2}`, field: field2 }), "U"));
   }
   const env = variableMap(toolset.env, `${at}/env`, diagnostics2);
   const args = stringList(toolset.args).map((arg, index2) => variables(arg, `${at}/args/${index2}`, diagnostics2));
@@ -20734,10 +21071,10 @@ function mcpServer(toolset, at, taken) {
   if (text$d(remote.url)) return { server: { name: name2, declared, at, config: remoteServer(remote, at, diagnostics2) }, diagnostics: diagnostics2 };
   if (typeof toolset.ref === "string" && toolset.ref.startsWith("docker:")) {
     const gateway = ["mcp", "gateway", "run", "--servers", toolset.ref.slice("docker:".length)];
-    diagnostics2.push(diagnostic("warning", "mcp-docker-gateway", `${at}/ref`, `${toolset.ref} runs through the Docker MCP Gateway: ${commandLine("docker", gateway)}.`, "A"));
+    diagnostics2.push(diagnostic("warning", "mcp-docker-gateway", `${at}/ref`, say("dockerGateway", { ref: toolset.ref, command: commandLine("docker", gateway) }), "A"));
     return { server: { name: name2, declared, at: `${at}/ref`, config: { type: "stdio", command: "docker", args: gateway, ...env ? { env } : {} }, commandLine: commandLine("docker", gateway) }, diagnostics: diagnostics2 };
   }
-  if (!text$d(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, "The MCP toolset has no command, remote URL or Docker ref and is not emitted.", "U")] };
+  if (!text$d(toolset.command)) return { diagnostics: [...diagnostics2, diagnostic("warning", "toolset-unsupported", at, say("mcpToolsetUnsupported"), "U")] };
   const command2 = variables(toolset.command, `${at}/command`, diagnostics2);
   return { server: { name: name2, declared, at, config: { type: "stdio", command: command2, ...args.length > 0 ? { args } : {}, ...env ? { env } : {} }, commandLine: commandLine(command2, args) }, diagnostics: diagnostics2 };
 }
@@ -20782,7 +21119,8 @@ function filtered(granted, toolset, at, diagnostics2) {
   const filter = stringList(toolset.tools);
   if (filter.length === 0) return [...granted];
   const allowed = new Set(filter.flatMap(claudeToolsFor));
-  diagnostics2.push(diagnostic("warning", "tool-filter", `${at}/tools`, `The tools filter ${filter.join(", ")} is approximated by the Claude tools ${granted.filter((tool) => allowed.has(tool)).join(", ") || "(none)"}.`, "A"));
+  const kept = granted.filter((tool) => allowed.has(tool));
+  diagnostics2.push(diagnostic("warning", "tool-filter", `${at}/tools`, kept.length > 0 ? say("toolFilter", { filter: filter.join(", "), tools: kept.join(", ") }) : say("toolFilterNone", { filter: filter.join(", ") }), "A"));
   return granted.filter((tool) => allowed.has(tool));
 }
 function claudeTools(config2, name2, agent) {
@@ -20793,39 +21131,39 @@ function claudeTools(config2, name2, agent) {
   for (const { toolset, at } of resolvedToolsets(config2, name2, agent)) {
     const type2 = String(toolset.type), readonly2 = agentReadonly || toolset.readonly === true;
     for (const [field2, label2] of Object.entries(ignoredFields)) if (toolset[field2] !== void 0 && !(type2 === "mcp" && (field2 === "env" || field2 === "headers"))) {
-      warn("toolset-field-unsupported", `${at}/${field2}`, `${label2[0].toUpperCase()}${label2.slice(1)} (${field2}) have no Claude equivalent and are not emitted.`, "U");
+      warn("toolset-field-unsupported", `${at}/${field2}`, say("toolsetFieldUnsupported", { label: `${label2[0].toUpperCase()}${label2.slice(1)}`, field: field2 }), "U");
     }
     if (type2 === "filesystem") {
       result.tools.push(...filtered(readonly2 ? readOnlyFilesystemTools : filesystemTools, toolset, at, result.diagnostics));
-      warn("toolset-approximated", at, `The filesystem toolset is approximated by the Claude tools ${(readonly2 ? readOnlyFilesystemTools : filesystemTools).join(", ")}.`);
-      if (stringList(toolset.allow_list).length > 0) restriction(`${at}/allow_list`, "allow_list limits the filesystem toolset to these directories; Claude Code cannot confine an agent's file tools to paths, so the limit is not emitted. Add deny rules for paths the agent must not reach (the project settings permissions.additionalDirectories only widens access).");
+      warn("toolset-approximated", at, say("filesystemApproximated", { tools: (readonly2 ? readOnlyFilesystemTools : filesystemTools).join(", ") }));
+      if (stringList(toolset.allow_list).length > 0) restriction(`${at}/allow_list`, say("allowListUnsupported"));
       const denied = stringList(toolset.deny_list);
       if (denied.length > 0) {
         result.permissions.push(...denied.flatMap(pathRules).map((rule2) => ({ list: "deny", rule: rule2, at: `${at}/deny_list` })));
-        warn("permission-approximated", `${at}/deny_list`, "deny_list becomes Read and Edit deny rules in project settings with --settings.");
+        warn("permission-approximated", `${at}/deny_list`, say("denyListApproximated"));
       }
     } else if (type2 === "shell") {
-      if (readonly2) warn("readonly-approximated", at, "A read-only shell toolset exposes no tools in docker-agent; Bash is not granted.");
+      if (readonly2) warn("readonly-approximated", at, say("readonlyShell"));
       else result.tools.push(...filtered(["Bash"], toolset, at, result.diagnostics));
     } else if (type2 === "fetch") {
       result.tools.push(...filtered(["WebFetch"], toolset, at, result.diagnostics));
-      if (stringList(toolset.allowed_domains).length > 0) restriction(`${at}/allowed_domains`, "allowed_domains limits fetch to these domains; Claude permission rules cannot allow WebFetch only for some domains, so the limit is not emitted.");
+      if (stringList(toolset.allowed_domains).length > 0) restriction(`${at}/allowed_domains`, say("allowedDomainsUnsupported"));
       const blocked = stringList(toolset.blocked_domains);
       if (blocked.length > 0) {
         result.permissions.push(...blocked.filter((domain) => !domain.includes("/")).flatMap(domainRules).map((rule2) => ({ list: "deny", rule: rule2, at: `${at}/blocked_domains` })));
-        warn("permission-approximated", `${at}/blocked_domains`, "blocked_domains becomes WebFetch(domain:…) deny rules in project settings with --settings; CIDR ranges are not emitted.");
+        warn("permission-approximated", `${at}/blocked_domains`, say("blockedDomainsApproximated"));
       }
     } else if (type2 === "todo" || type2 === "tasks") {
       result.tools.push(...filtered(taskTools$1, toolset, at, result.diagnostics));
-      warn("toolset-approximated", at, `The ${type2} toolset is approximated by Claude's task tools ${taskTools$1.join(", ")}.`);
+      warn("toolset-approximated", at, say("taskToolsetApproximated", { type: type2, tools: taskTools$1.join(", ") }));
     } else if (type2 === "memory") {
       result.memory = true;
-      warn("toolset-approximated", at, "The memory toolset is approximated by memory: project; its database path is not used.");
+      warn("toolset-approximated", at, say("memoryApproximated"));
     } else if (type2 === "user_prompt") {
       result.tools.push("AskUserQuestion");
-      warn("toolset-approximated", at, "The user_prompt toolset is approximated by AskUserQuestion.");
+      warn("toolset-approximated", at, say("userPromptApproximated"));
     } else if (type2 === "think") {
-      warn("toolset-approximated", at, "The think toolset is not emitted; Claude models think natively, tuned by effort.");
+      warn("toolset-approximated", at, say("thinkNotEmitted"));
     } else if (type2 === "mcp") {
       const server = mcpServer(toolset, at, result.servers.map((entry2) => entry2.name));
       result.diagnostics.push(...server.diagnostics);
@@ -20833,15 +21171,15 @@ function claudeTools(config2, name2, agent) {
         result.servers.push(server.server);
         const tools = stringList(toolset.tools), mapped = server.server;
         result.tools.push(...(tools.length > 0 ? tools : ["*"]).map((tool) => ({ server: mapped, tool })));
-        if (readonly2) warn("readonly-approximated", at, `Claude cannot select read-only tools of MCP server ${server.server.name}; every granted tool is emitted.`);
+        if (readonly2) warn("readonly-approximated", at, say("mcpReadonly", { server: server.server.name }));
       }
     } else {
-      result.diagnostics.push(diagnostic("warning", "toolset-unsupported", at, `The ${type2} toolset has no Claude equivalent and is not emitted.`, "U"));
+      result.diagnostics.push(diagnostic("warning", "toolset-unsupported", at, say("toolsetUnsupported", { type: type2 }), "U"));
     }
   }
   if (agentReadonly) {
     result.disallowedTools.push(...writeTools);
-    warn("readonly-approximated", pointer("agents", name2, "readonly"), `readonly keeps read-only tools and disallows ${writeTools.join(", ")}.`);
+    warn("readonly-approximated", pointer("agents", name2, "readonly"), say("readonlyApproximated", { tools: writeTools.join(", ") }));
   }
   result.tools = [...new Set(result.tools)];
   return result;
@@ -20849,11 +21187,11 @@ function claudeTools(config2, name2, agent) {
 const ignoredHandlerFields = ["name", "args", "env", "working_dir", "on_error", "strict_output"];
 function handler(definition2, at, diagnostics2) {
   if (definition2.type !== "command" || typeof definition2.command !== "string") {
-    diagnostics2.push(diagnostic("warning", "hook-unsupported", at, `A ${String(definition2.type)} hook has no Claude equivalent and is not emitted.`, "U"));
+    diagnostics2.push(diagnostic("warning", "hook-unsupported", at, say("hookTypeUnsupported", { type: String(definition2.type) }), "U"));
     return void 0;
   }
   for (const field2 of ignoredHandlerFields) if (definition2[field2] !== void 0) {
-    diagnostics2.push(diagnostic("info", "hook-field-unsupported", `${at}/${field2}`, `Hook ${field2} is not emitted.`, "U"));
+    diagnostics2.push(diagnostic("info", "hook-field-unsupported", `${at}/${field2}`, say("hookFieldUnsupported", { field: field2 }), "U"));
   }
   return { type: "command", command: definition2.command, ...typeof definition2.timeout === "number" ? { timeout: definition2.timeout } : {} };
 }
@@ -20862,7 +21200,7 @@ function claudeHooks(name2, hooks2) {
   for (const [event, entries2] of Object.entries(record$3(hooks2))) {
     const at = pointer("agents", name2, "hooks", event), target = hookEvents[event];
     if (!target) {
-      diagnostics2.push(diagnostic("warning", "hook-unsupported", at, `The ${event} hook event has no Claude equivalent and is not emitted.`, "U"));
+      diagnostics2.push(diagnostic("warning", "hook-unsupported", at, say("hookEventUnsupported", { event }), "U"));
       continue;
     }
     const groups = [];
@@ -20881,14 +21219,14 @@ function claudeHooks(name2, hooks2) {
       if (grouped && toolMatcherEvents.includes(target)) {
         const translated2 = translateMatcher(typeof entry2.matcher === "string" ? entry2.matcher : "*");
         matcher = translated2.matcher;
-        if (translated2.unknown.length > 0) diagnostics2.push(diagnostic("warning", "hook-matcher-approximated", `${where2}/matcher`, `Matcher alternatives ${translated2.unknown.join(", ")} have no known Claude tool and are kept literally.`, "A"));
+        if (translated2.unknown.length > 0) diagnostics2.push(diagnostic("warning", "hook-matcher-approximated", `${where2}/matcher`, say("hookMatcherApproximated", { matchers: translated2.unknown.join(", ") }), "A"));
       }
-      if (entry2.preempt_yolo !== void 0) diagnostics2.push(diagnostic("info", "hook-field-unsupported", `${where2}/preempt_yolo`, "preempt_yolo is not emitted.", "U"));
+      if (entry2.preempt_yolo !== void 0) diagnostics2.push(diagnostic("info", "hook-field-unsupported", `${where2}/preempt_yolo`, say("preemptYolo"), "U"));
       groups.push({ ...matcher === void 0 ? {} : { matcher }, hooks: handlers });
     });
     if (groups.length === 0) continue;
     result[target] = [...result[target] ?? [], ...groups];
-    diagnostics2.push(diagnostic("warning", "hook-approximated", at, `${event} hooks run on Claude's ${target} event, which sends Claude Code's hook input; check each command's input and decision format.`, "A"));
+    diagnostics2.push(diagnostic("warning", "hook-approximated", at, say("hookApproximated", { event, target }), "A"));
   }
   return { ...Object.keys(result).length > 0 ? { hooks: result } : {}, commands: commands2, diagnostics: diagnostics2 };
 }
@@ -20910,46 +21248,46 @@ const unsupportedFields = [
   "budgets"
 ];
 function templates(value2, at) {
-  return templateExpressions(value2).map((expression2) => expression2.body.startsWith("env.") ? diagnostic("warning", "template-literal", at, `${expression2.source} is kept literally; Claude Code does not expand docker-agent environment expressions in agents.`, "A") : diagnostic("warning", "template-literal", at, `${expression2.source} is kept literally; Claude Code cannot evaluate docker-agent template expressions.`, "U"));
+  return templateExpressions(value2).map((expression2) => expression2.body.startsWith("env.") ? diagnostic("warning", "template-literal", at, say("envTemplateLiteral", { expression: expression2.source }), "A") : diagnostic("warning", "template-literal", at, say("templateLiteral", { expression: expression2.source }), "U"));
 }
 function promptOptions(name2, agent) {
   const at = (field2) => pointer("agents", name2, field2);
   const diagnostics2 = [];
-  if (agent.add_date === true) diagnostics2.push(diagnostic("info", "prompt-option-approximated", at("add_date"), "Claude Code adds the current date to its system prompt itself.", "A"));
-  if (agent.add_environment_info === true) diagnostics2.push(diagnostic("info", "prompt-option-approximated", at("add_environment_info"), "Claude Code adds working directory, platform and Git information to its system prompt itself.", "A"));
-  for (const field2 of ["add_prompt_files", "add_prompt_files_depth"]) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "prompt-option-unsupported", at(field2), `${field2} is not emitted; Claude Code loads CLAUDE.md files instead.`, "U"));
-  if (agent.welcome_message !== void 0) diagnostics2.push(diagnostic("info", "prompt-option-unsupported", at("welcome_message"), "Claude agents have no welcome message.", "U"));
+  if (agent.add_date === true) diagnostics2.push(diagnostic("info", "prompt-option-approximated", at("add_date"), say("addDate"), "A"));
+  if (agent.add_environment_info === true) diagnostics2.push(diagnostic("info", "prompt-option-approximated", at("add_environment_info"), say("addEnvironment"), "A"));
+  for (const field2 of ["add_prompt_files", "add_prompt_files_depth"]) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "prompt-option-unsupported", at(field2), say("promptFilesUnsupported", { field: field2 }), "U"));
+  if (agent.welcome_message !== void 0) diagnostics2.push(diagnostic("info", "prompt-option-unsupported", at("welcome_message"), say("welcomeMessage"), "U"));
   return diagnostics2;
 }
 function delegation(name2, agent, names2) {
   const diagnostics2 = [], local = [];
   stringList(agent.sub_agents).forEach((reference, index2) => {
-    if (isExternalReference(reference) || !names2.has(reference)) diagnostics2.push(diagnostic("warning", "delegation-unsupported", pointer("agents", name2, "sub_agents", index2), `The external sub-agent ${reference} is not generated.`, "U"));
+    if (isExternalReference(reference) || !names2.has(reference)) diagnostics2.push(diagnostic("warning", "delegation-unsupported", pointer("agents", name2, "sub_agents", index2), say("externalSubAgent", { agent: reference }), "U"));
     else local.push(names2.get(reference));
   });
-  if (local.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", pointer("agents", name2, "sub_agents"), `Sub-agents become Agent(…) entries in tools, which Claude Code enforces only when ${names2.get(name2)} runs as the main thread.`, "A"));
+  if (local.length > 0) diagnostics2.push(diagnostic("warning", "delegation-approximated", pointer("agents", name2, "sub_agents"), say("subAgentsApproximated", { agent: String(names2.get(name2)) }), "A"));
   for (const field2 of ["handoffs", "force_handoff", "routing"]) if (agent[field2] !== void 0) {
-    diagnostics2.push(diagnostic("warning", "delegation-unsupported", pointer("agents", name2, field2), `${field2} is not emitted; Claude delegates only through the Agent tool.`, "U"));
+    diagnostics2.push(diagnostic("warning", "delegation-unsupported", pointer("agents", name2, field2), say("delegationUnsupported", { field: field2 }), "U"));
   }
   return { agents: local, diagnostics: diagnostics2 };
 }
 function skills(name2, agent) {
   const at = pointer("agents", name2, "skills"), value2 = agent.skills;
   if (value2 === void 0) return { skills: [], diagnostics: [] };
-  if (!Array.isArray(value2)) return { skills: [], diagnostics: [diagnostic("info", "skills-approximated", at, value2 === true ? "Claude Code discovers project and user skills itself." : "Skills are disabled; Claude agents cannot disable skill discovery.", "A")] };
+  if (!Array.isArray(value2)) return { skills: [], diagnostics: [diagnostic("info", "skills-approximated", at, say(value2 === true ? "skillsDiscovered" : "skillsDisabled"), "A")] };
   const names2 = value2.filter((entry2) => typeof entry2 === "string" && entry2 !== "local" && !/^https?:\/\//.test(entry2));
-  const diagnostics2 = value2.flatMap((entry2, index2) => isObject$1(entry2) ? [diagnostic("warning", "skills-unsupported", `${at}/${index2}`, `The inline skill ${String(entry2.name)} is not generated; write it as .claude/skills/${String(entry2.name)}/SKILL.md.`, "U")] : typeof entry2 === "string" && !names2.includes(entry2) ? [diagnostic("info", "skills-unsupported", `${at}/${index2}`, `The skill source ${entry2} is not emitted; Claude Code loads skills from .claude/skills.`, "U")] : []);
-  if (names2.length > 0) diagnostics2.push(diagnostic("warning", "skills-approximated", at, "Named skills are preloaded through the skills frontmatter; Claude Code resolves them by name.", "A"));
+  const diagnostics2 = value2.flatMap((entry2, index2) => isObject$1(entry2) ? [diagnostic("warning", "skills-unsupported", `${at}/${index2}`, say("inlineSkill", { skill: String(entry2.name) }), "U")] : typeof entry2 === "string" && !names2.includes(entry2) ? [diagnostic("info", "skills-unsupported", `${at}/${index2}`, say("skillSource", { source: entry2 }), "U")] : []);
+  if (names2.length > 0) diagnostics2.push(diagnostic("warning", "skills-approximated", at, say("namedSkills"), "A"));
   return { skills: names2, diagnostics: diagnostics2 };
 }
 function claudeAgent(config2, name2, instructions2, names2, style) {
   const agent = record$3(record$3(config2.agents)[name2]), at = pointer("agents", name2), claude = names2.get(name2);
   const diagnostics2 = [];
-  if (claude !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, `Agent ${name2} is generated as ${claude}.`, "E"));
+  if (claude !== name2) diagnostics2.push(diagnostic("info", "name-sanitized", at, say("nameSanitized", { name: name2, claude }), "E"));
   let description2 = typeof agent.description === "string" ? agent.description : "";
   if (!text$d(description2)) {
     description2 = `The ${name2} agent.`;
-    diagnostics2.push(diagnostic("warning", "description-synthesized", `${at}/description`, `The agent has no description; "${description2}" is emitted so Claude Code can delegate to it.`, "A"));
+    diagnostics2.push(diagnostic("warning", "description-synthesized", `${at}/description`, say("agentDescription", { description: description2 }), "A"));
   }
   diagnostics2.push(...templates(description2, `${at}/description`));
   const instruction = instructionText(agent.instruction) ?? instructions2[name2] ?? "";
@@ -20959,8 +21297,8 @@ function claudeAgent(config2, name2, instructions2, names2, style) {
   diagnostics2.push(...model2.diagnostics, ...tools.diagnostics, ...hooks2.diagnostics, ...delegates.diagnostics, ...preloaded.diagnostics);
   const granted = [...tools.tools, ...delegates.agents.map((agentName2) => `Agent(${agentName2})`)];
   const maxTurns = agent.max_iterations;
-  if (typeof maxTurns === "number" && maxTurns > 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", `${at}/max_iterations`, `max_iterations is emitted as maxTurns: ${maxTurns}; Claude counts agentic turns, not model calls.`, "A"));
-  for (const field2 of unsupportedFields) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", `${at}/${field2}`, `${field2} has no Claude agent equivalent and is not emitted.`, "U"));
+  if (typeof maxTurns === "number" && maxTurns > 0) diagnostics2.push(diagnostic("warning", "max-iterations-approximated", `${at}/max_iterations`, say("maxIterations", { turns: maxTurns }), "A"));
+  for (const field2 of unsupportedFields) if (agent[field2] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", `${at}/${field2}`, say("settingUnsupported", { field: field2 }), "U"));
   const metadata2 = {
     name: claude,
     description: description2,
@@ -20992,22 +21330,22 @@ function commandSkills(config2, name2, agent, agentNames) {
   for (const [command2, value2, at] of commandEntries(config2, name2, agent)) {
     const definition2 = isObject$1(value2) ? value2 : { instruction: value2 };
     if (typeof definition2.url === "string") {
-      diagnostics2.push(diagnostic("warning", "command-unsupported", at, `The /${command2} command opens a URL, which a Claude skill cannot do; it is not emitted.`, "U"));
+      diagnostics2.push(diagnostic("warning", "command-unsupported", at, say("commandUrl", { command: command2 }), "U"));
       continue;
     }
     const target = typeof definition2.agent === "string" ? definition2.agent : void 0;
     const instruction = typeof definition2.instruction === "string" ? definition2.instruction : "";
     const converted = commandArguments(instruction);
-    for (const kept of converted.kept) diagnostics2.push(diagnostic("warning", "template-literal", `${at}${isObject$1(value2) ? "/instruction" : ""}`, `The template expression ${kept} is kept literally; Claude skills do not evaluate docker-agent expressions.`, "U"));
-    for (const call of bangToolCalls(instruction)) diagnostics2.push(diagnostic("warning", "template-literal", `${at}${isObject$1(value2) ? "/instruction" : ""}`, `The bang tool call ${call} is kept literally.`, "U"));
+    for (const kept of converted.kept) diagnostics2.push(diagnostic("warning", "template-literal", `${at}${isObject$1(value2) ? "/instruction" : ""}`, say("commandTemplateLiteral", { expression: kept }), "U"));
+    for (const call of bangToolCalls(instruction)) diagnostics2.push(diagnostic("warning", "template-literal", `${at}${isObject$1(value2) ? "/instruction" : ""}`, say("bangToolCall", { call }), "U"));
     const body = converted.text.trim() === "" ? "$ARGUMENTS" : converted.text;
     const description2 = typeof definition2.description === "string" && definition2.description.trim() !== "" ? definition2.description : `Run the /${command2} command of the ${name2} agent.`;
-    if (description2 !== definition2.description) diagnostics2.push(diagnostic("warning", "description-synthesized", at, `The /${command2} command has no description; "${description2}" is emitted.`, "A"));
+    if (description2 !== definition2.description) diagnostics2.push(diagnostic("warning", "description-synthesized", at, say("commandDescription", { command: command2, description: description2 }), "A"));
     const metadata2 = { name: claudeName(command2), description: description2, "disable-model-invocation": true };
     if (target !== void 0) {
       metadata2.context = "fork";
       metadata2.agent = agentNames.get(target) ?? claudeName(target);
-      diagnostics2.push(diagnostic("warning", "command-approximated", `${at}/agent`, `docker-agent switches the conversation to ${target}; the Claude skill runs in a forked ${metadata2.agent} subagent instead.`, "A"));
+      diagnostics2.push(diagnostic("warning", "command-approximated", `${at}/agent`, say("commandForked", { target, agent: metadata2.agent }), "A"));
     }
     skills2.push({ name: claudeName(command2), agent: name2, command: command2, metadata: metadata2, body: body.endsWith("\n") ? body : `${body}
 ` });
@@ -21019,13 +21357,13 @@ const serverTarget = (server) => server.commandLine ?? String(server.config.url)
 function servers(draft, mode, diagnostics2) {
   if (mode === "none") {
     for (const server of draft.servers) {
-      diagnostics2.push(diagnostic("info", "mcp-not-generated", server.at, `MCP server ${server.declared} (${serverTarget(server)}) is not generated and its tools are not granted; pass --mcp inline or --mcp project to write it.`, "U"));
+      diagnostics2.push(diagnostic("info", "mcp-not-generated", server.at, say("mcpNotGenerated", { server: server.declared, target: serverTarget(server) }), "U"));
     }
     return [];
   }
   const target = mode === "inline" ? `.claude/agents/${draft.name}.md` : ".mcp.json";
   for (const server of draft.servers) if (server.commandLine !== void 0) {
-    diagnostics2.push(diagnostic("warning", "executes-command", server.at, `MCP server ${server.name} in ${target} runs the command: ${server.commandLine}`));
+    diagnostics2.push(diagnostic("warning", "executes-command", server.at, say("mcpExecutes", { server: server.name, file: target, command: server.commandLine })));
   }
   return draft.servers;
 }
@@ -21033,11 +21371,11 @@ function hooks$1(draft, enabled2, diagnostics2) {
   if (!draft.hooks) return void 0;
   if (!enabled2) {
     const skipped = draft.hookCommands.map((entry2) => `${entry2.event}: ${entry2.command}`).join("; ");
-    diagnostics2.push(diagnostic("info", "hooks-not-generated", pointer("agents", draft.agent, "hooks"), `Hooks run commands and are generated only with --hooks; skipped ${skipped}.`, "U"));
+    diagnostics2.push(diagnostic("info", "hooks-not-generated", pointer("agents", draft.agent, "hooks"), say("hooksNotGenerated", { hooks: skipped }), "U"));
     return void 0;
   }
   for (const entry2 of draft.hookCommands) {
-    diagnostics2.push(diagnostic("warning", "executes-command", entry2.at, `The ${entry2.event} hook of ${draft.name} runs the command: ${entry2.command}`));
+    diagnostics2.push(diagnostic("warning", "executes-command", entry2.at, say("hookExecutes", { event: entry2.event, agent: draft.name, command: entry2.command })));
   }
   return draft.hooks;
 }
@@ -21047,7 +21385,7 @@ function completeAgent(draft, options2, diagnostics2) {
   const disallowed = [...draft.disallowed];
   if (tools.length === 0) {
     disallowed.push(...noToolsDisallowed.filter((tool) => !disallowed.includes(tool)));
-    diagnostics2.push(diagnostic("info", "tools-none", pointer("agents", draft.agent), `No toolset grants a Claude tool, so ${draft.name} gets tools: [] and disallows ${noToolsDisallowed.join(", ")} instead of inheriting every tool.`, "E"));
+    diagnostics2.push(diagnostic("info", "tools-none", pointer("agents", draft.agent), say("toolsNone", { agent: draft.name, tools: noToolsDisallowed.join(", ") }), "E"));
   }
   return {
     ...draft.metadata,
@@ -21088,14 +21426,14 @@ const globSource = (glob) => `^${glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").repl
 function builtinRules(pattern2) {
   const expression2 = new RegExp(globSource(pattern2)), matched2 = knownTools.filter((name2) => expression2.test(name2));
   const rules2 = [...new Set(matched2.flatMap((name2) => permissionTools[name2] ? [permissionTools[name2]] : []))];
-  if (matched2.length === 0) return { rules: rules2, reason: "names no docker-agent built-in tool with a Claude permission rule" };
+  if (matched2.length === 0) return { rules: rules2, reason: say("reasonNoBuiltin") };
   const unmapped = matched2.filter((name2) => !permissionTools[name2]);
-  return { rules: rules2, ...unmapped.length > 0 ? { reason: `matches ${unmapped.join(", ")}, which ${unmapped.length === 1 ? "has" : "have"} no Claude permission rule of the same reach` } : {} };
+  return { rules: rules2, ...unmapped.length > 0 ? { reason: say(unmapped.length === 1 ? "reasonUnmappedOne" : "reasonUnmapped", { tools: unmapped.join(", ") }) } : {} };
 }
 function mcpRules(server, tool, servers2, mode) {
-  if (mode === "none") return { rules: [], reason: "names an MCP server, and no MCP server is generated without --mcp inline or --mcp project" };
+  if (mode === "none") return { rules: [], reason: say("reasonMcpNone") };
   const names2 = servers2.get(server);
-  if (!names2) return { rules: [], reason: `names the MCP server ${server}, which no generated agent defines` };
+  if (!names2) return { rules: [], reason: say("reasonMcpUnknown", { server }) };
   return { rules: names2.map((name2) => tool === "*" ? `mcp__${name2}` : `mcp__${name2}__${tool}`) };
 }
 function patternRules(pattern2, servers2, mode) {
@@ -21103,7 +21441,7 @@ function patternRules(pattern2, servers2, mode) {
   if (shell) return { rules: [`Bash(${shell[1]})`] };
   const mcp = /^mcp:([^:]+):(.+)$/.exec(pattern2);
   if (mcp) return mcpRules(mcp[1], mcp[2], servers2, mode);
-  if (pattern2.includes(":")) return { rules: [], reason: "matches tool arguments, which Claude permission rules express only for shell commands" };
+  if (pattern2.includes(":")) return { rules: [], reason: say("reasonArguments") };
   return builtinRules(pattern2);
 }
 function serverNames(drafts) {
@@ -21114,23 +21452,23 @@ function serverNames(drafts) {
 function topLevelRules(config2, servers2, mode) {
   const rules2 = [], diagnostics2 = [];
   for (const list2 of ["allow", "ask", "deny"]) {
-    const patterns = stringList(record$3(config2.permissions)[list2]);
-    patterns.forEach((pattern2, index2) => {
+    const patterns2 = stringList(record$3(config2.permissions)[list2]);
+    patterns2.forEach((pattern2, index2) => {
       const at = pointer("permissions", list2, index2), mapped = patternRules(pattern2, servers2, mode);
-      if (mapped.reason) diagnostics2.push(diagnostic(list2 === "allow" ? "info" : "warning", "permission-unsupported", at, `The ${list2} pattern ${pattern2} ${mapped.reason}; ${mapped.rules.length > 0 ? `only ${mapped.rules.join(", ")} is emitted` : "it is not emitted"}.`, "U"));
+      if (mapped.reason) diagnostics2.push(diagnostic(list2 === "allow" ? "info" : "warning", "permission-unsupported", at, mapped.rules.length > 0 ? say("permissionPartial", { list: list2, pattern: pattern2, reason: mapped.reason, rules: mapped.rules.join(", ") }) : say("permissionDropped", { list: list2, pattern: pattern2, reason: mapped.reason }), "U"));
       rules2.push(...mapped.rules.map((rule2) => ({ list: list2, rule: rule2, at })));
     });
-    if (patterns.length > 0) diagnostics2.push(diagnostic("warning", "permission-approximated", pointer("permissions", list2), `permissions.${list2} becomes Claude permission rules in .claude/settings.json; argument matching is approximated.`, "A"));
+    if (patterns2.length > 0) diagnostics2.push(diagnostic("warning", "permission-approximated", pointer("permissions", list2), say("permissionApproximated", { list: list2 }), "A"));
   }
   return { rules: rules2, diagnostics: diagnostics2 };
 }
 function reviewedRules(rules2, allowBroad, diagnostics2) {
   return rules2.filter((entry2) => {
     if (entry2.list === "allow" && isBroadRule(entry2.rule) && !allowBroad) {
-      diagnostics2.push(diagnostic("error", "broad-permission", entry2.at, `The rule ${entry2.rule} would auto-approve every use of its tool; pass --allow-broad-permissions to write it to permissions.allow, or narrow the docker-agent pattern.`));
+      diagnostics2.push(diagnostic("error", "broad-permission", entry2.at, say("broadPermission", { rule: entry2.rule })));
       return false;
     }
-    diagnostics2.push(diagnostic("warning", "grants-permission", entry2.at, `.claude/settings.json permissions.${entry2.list} gets the rule ${entry2.rule}${entry2.list === "allow" && isBroadRule(entry2.rule) ? " (broad, allowed by --allow-broad-permissions)" : ""}.`));
+    diagnostics2.push(diagnostic("warning", "grants-permission", entry2.at, say(entry2.list === "allow" && isBroadRule(entry2.rule) ? "grantsPermissionBroad" : "grantsPermission", { list: entry2.list, rule: entry2.rule })));
     return true;
   });
 }
@@ -21145,7 +21483,7 @@ function projectServers(drafts, servers2, options2, diagnostics2) {
     const base = server.name;
     for (let index2 = 2; taken(server.name, base, server.config); index2++) server.name = `${base}-${index2}`;
     if (foreign[base] !== void 0 && !same$3(foreign[base], server.config) && (server.name === base || options2.renameConflicts === true)) {
-      diagnostics2.push(server.name === base ? diagnostic("error", "mcp-server-conflict", server.at, `.mcp.json already defines the server ${base}, which Forge did not generate; rename the toolset's server or pass --rename-conflicts.`) : diagnostic("warning", "mcp-server-renamed", server.at, `.mcp.json already defines a different server ${base}; this one is generated as ${server.name}.`, "A"));
+      diagnostics2.push(server.name === base ? diagnostic("error", "mcp-server-conflict", server.at, say("mcpServerConflict", { server: base })) : diagnostic("warning", "mcp-server-renamed", server.at, say("mcpServerRenamed", { server: base, name: server.name }), "A"));
     }
     servers2[server.name] = server.config;
   }
@@ -21161,10 +21499,10 @@ function generateSource(source2, names2, options2) {
     if (options2.commands) {
       skills2.push(...commands2.skills);
       diagnostics2.push(...commands2.diagnostics);
-    } else if (commands2.skills.length > 0) diagnostics2.push(diagnostic("info", "commands-not-generated", pointer("agents", name2, "commands"), "Commands become Claude skills with --commands.", "U"));
+    } else if (commands2.skills.length > 0) diagnostics2.push(diagnostic("info", "commands-not-generated", pointer("agents", name2, "commands"), say("commandsNotGenerated"), "U"));
   }
-  for (const key of unsupportedTopLevel) if (source2.config[key] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", pointer(key), `The top-level ${key} section has no Claude equivalent and is not emitted.`, "U"));
-  if (!options2.settings && source2.config.permissions !== void 0) diagnostics2.push(diagnostic("info", "permissions-not-generated", "/permissions", "Permissions become project settings rules with --settings.", "U"));
+  for (const key of unsupportedTopLevel) if (source2.config[key] !== void 0) diagnostics2.push(diagnostic("info", "setting-unsupported", pointer(key), say("topLevelUnsupported", { key }), "U"));
+  if (!options2.settings && source2.config.permissions !== void 0) diagnostics2.push(diagnostic("info", "permissions-not-generated", "/permissions", say("permissionsNotGenerated"), "U"));
   return { drafts, skills: skills2, diagnostics: diagnostics2 };
 }
 function settingsRules(source2, drafts, options2, diagnostics2) {
@@ -21180,13 +21518,13 @@ function uniqueSkills(skills2, diagnostics2) {
     const identical = group.every((skill) => same$3(skill.metadata, group[0].metadata) && skill.body === group[0].body);
     return (identical ? [group[0]] : group).flatMap((skill) => {
       const name2 = identical ? skill.name : claudeName(`${skill.agent}-${skill.command}`), at = pointer("agents", skill.agent, "commands", skill.command);
-      const owner = owners.get(name2), label2 = `/${skill.command} of ${skill.agent}`;
+      const owner = owners.get(name2), label2 = say("commandLabel", { command: skill.command, agent: skill.agent });
       if (owner !== void 0) {
-        diagnostics2.push({ ...diagnostic("error", "command-name-collision", at, `The ${label2} would generate .claude/skills/${name2}/SKILL.md, which the ${owner} already generates; rename one of the commands.`), path: skill.source.path });
+        diagnostics2.push({ ...diagnostic("error", "command-name-collision", at, say("commandCollision", { label: label2, name: name2, owner })), path: skill.source.path });
         return [];
       }
       owners.set(name2, label2);
-      if (!identical) diagnostics2.push({ ...diagnostic("warning", "command-renamed", at, `Several agents define a different /${skill.command}; this one becomes the skill ${name2}.`, "A"), path: skill.source.path });
+      if (!identical) diagnostics2.push({ ...diagnostic("warning", "command-renamed", at, say("commandRenamed", { command: skill.command, name: name2 }), "A"), path: skill.source.path });
       const metadata2 = { ...skill.metadata, name: name2, "x-forge-source": { path: skill.source.path, agent: skill.agent, command: skill.command, sourceHash: skill.source.sourceHash } };
       return [{ path: `.claude/skills/${name2}/SKILL.md`, metadata: metadata2, body: skill.body }];
     });
@@ -21196,7 +21534,7 @@ function generateClaude(sources, options2) {
   const names2 = /* @__PURE__ */ new Map(), owners = /* @__PURE__ */ new Map(), diagnostics2 = [];
   for (const source2 of sources) for (const [name2] of agentEntries(source2.config)) {
     const claude = claudeName(name2), owner = owners.get(claude);
-    if (owner !== void 0) diagnostics2.push({ ...diagnostic("error", "agent-name-collision", pointer("agents", name2), `Agent ${name2} would generate .claude/agents/${claude}.md, which ${owner} already generates.`), path: source2.path });
+    if (owner !== void 0) diagnostics2.push({ ...diagnostic("error", "agent-name-collision", pointer("agents", name2), say("agentCollision", { name: name2, claude, owner })), path: source2.path });
     owners.set(claude, `${source2.path}#${name2}`);
     names2.set(name2, claude);
   }
@@ -21219,10 +21557,10 @@ function generateClaude(sources, options2) {
   if (options2.settings) {
     const main = sources.length === 1 ? defaultAgent(sources[0].config) : void 0;
     const agent = main !== void 0 && output2.agents.some((entry2) => entry2.agent === main && entry2.source === sources[0].path) ? names2.get(main) : void 0;
-    if (agent !== void 0) diagnostics2.push({ ...diagnostic("warning", "main-agent-approximated", pointer("agents", main), `The default agent ${main} becomes the project's main agent ("agent": "${agent}").`, "A"), path: sources[0].path });
+    if (agent !== void 0) diagnostics2.push({ ...diagnostic("warning", "main-agent-approximated", pointer("agents", main), say("mainAgent", { agent: main, claude: agent }), "A"), path: sources[0].path });
     const foreignAgent = options2.foreign?.agent;
     if (agent !== void 0 && foreignAgent !== void 0 && foreignAgent !== agent) {
-      diagnostics2.push({ ...diagnostic("error", "settings-agent-conflict", pointer("agents", main), `.claude/settings.json already sets agent to ${foreignAgent}, which Forge did not generate; remove it to let Forge set ${agent}.`), path: sources[0].path });
+      diagnostics2.push({ ...diagnostic("error", "settings-agent-conflict", pointer("agents", main), say("settingsAgentConflict", { agent: foreignAgent, claude: agent })), path: sources[0].path });
     }
     output2.settings = { permissions: Object.fromEntries(Object.entries(permissions).map(([list2, rules2]) => [list2, [...new Set(rules2)]])), ...agent ? { agent } : {} };
   }
@@ -27607,9 +27945,9 @@ function requirePatternProperties() {
     code(cxt) {
       const { gen, schema: schema2, data, parentSchema, it } = cxt;
       const { opts } = it;
-      const patterns = (0, code_1.allSchemaProperties)(schema2);
-      const alwaysValidPatterns = patterns.filter((p) => (0, util_1.alwaysValidSchema)(it, schema2[p]));
-      if (patterns.length === 0 || alwaysValidPatterns.length === patterns.length && (!it.opts.unevaluated || it.props === true)) {
+      const patterns2 = (0, code_1.allSchemaProperties)(schema2);
+      const alwaysValidPatterns = patterns2.filter((p) => (0, util_1.alwaysValidSchema)(it, schema2[p]));
+      if (patterns2.length === 0 || alwaysValidPatterns.length === patterns2.length && (!it.opts.unevaluated || it.props === true)) {
         return;
       }
       const checkProperties = opts.strictSchema && !opts.allowMatchingProperties && parentSchema.properties;
@@ -27620,7 +27958,7 @@ function requirePatternProperties() {
       const { props } = it;
       validatePatternProperties();
       function validatePatternProperties() {
-        for (const pat of patterns) {
+        for (const pat of patterns2) {
           if (checkProperties)
             checkMatchingProperties(pat);
           if (it.allErrors) {
@@ -28367,6 +28705,145 @@ ${body}`;
 const sha256Digest = (text2) => node_crypto.createHash("sha256").update(text2, "utf8").digest("hex");
 const content$3 = '---\nname: forge-agents\ndescription: Maintain docker-agent definitions in agents/*.yaml and validate, create, import and generate Claude Code agents, skills and MCP settings from them with drift checks. Use when editing agent teams, generating .claude/agents, or when agents validate or agents generate --check reports problems.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nAgent definitions are [docker-agent](https://github.com/docker/docker-agent) YAML files in the scope\'s `agents/` folder (`plugins.settings.agents.directory`). One file is a team: `agents.<name>` entries with `model`, `description`, `instruction`, `toolsets`, `sub_agents` and `commands`, plus shared `models`, `mcps` and `toolsets`. The YAML file is the source of truth; generated `.claude/agents/*.md` files are outputs. Never edit a generated agent by hand: change the definition and regenerate.\n\nInspect before changing anything:\n- `agents list` returns each file\'s `revision`, `agents` (`name`, `description`, `model`, `subAgents`), `default` agent (`root`, else the first) and error/warning counts.\n- `agents inspect team.yaml` returns the parsed `config` and `diagnostics`; `agents inspect team.yaml#reviewer` returns one agent\'s `definition` and resolved `instruction`.\n- `agents validate [team.yaml]` checks the vendored docker-agent JSON Schema and docker-agent\'s semantic rules (references, models, toolsets, `force_handoff` cycles, `instruction` vs `instruction_file`, version `"16"`, `16` or absent). `instruction_file` paths are relative to the definition file and must stay in its folder or below (`./prompt.md` and `prompts/../x.md` are fine, `../x.md` is not). Errors fail with `INVALID_AGENT_DEFINITION`; `details.files[].diagnostics` give `severity`, `code`, JSON `pointer`, 1-based `line`/`column` and `message`.\n\nAuthor agents:\n- `agents create reviewer --file team.yaml --description "Reviews changes" --instruction "..." --toolset filesystem,shell --if-match <revision> --dry-run` adds an agent to an existing team file without touching its other lines or comments; omit `--if-match` for a new file. `--model` defaults to `plugins.settings.agents.defaultModel`. `--from-template basic|team|mcp` starts from a bundled template instead of `--toolset` (`team` adds `<name>-researcher` and `<name>-writer`). MCP, LSP, API and similar toolsets need settings: edit the YAML with `edit agents/team.yaml --find … --replace … --if-match <revision>`, then `agents validate`.\n- `agents import code-reviewer --from claude --file team.yaml` converts `.claude/agents/code-reviewer.md` into a docker-agent agent. The conversion is approximate: read every diagnostic (`fidelity` `A` approximated, `U` dropped) and fix the YAML.\n- `create` and `import` write only `.yaml`/`.yml` files directly in the definitions folder; other paths fail with `INVALID_PATH`.\n\nGenerate Claude Code agents:\n- `agents generate --target claude --plan` reports every output with `status` `missing`, `changed`, `hand-edited` or `unchanged` and the mapping `diagnostics` (each with `fidelity` and a JSON `pointer` into the definition). Review warnings: models other than Anthropic become `inherit`; unsupported toolsets, delegation settings and filesystem `allow_list`/fetch `allowed_domains` limits (`restriction-unsupported`) are dropped.\n- `agents generate --target claude` writes new files. Existing outputs are never overwritten silently: run `--plan-out review.json`, review, then `--revisions-from review.json`.\n- Nothing that runs commands or grants permissions is written without an opt-in: `--mcp inline` (agent frontmatter) or `--mcp project` (`.mcp.json`) writes MCP servers (default `--mcp none`, reported as `mcp-not-generated`); `--hooks` writes hooks (else `hooks-not-generated`); `--settings` merges permission rules and the main agent into `.claude/settings.json`, and allow rules for a whole tool (`Bash`, `Bash(*)`, `Edit`, `Write`, `WebFetch`, every tool of an MCP server) also need `--allow-broad-permissions` (else `broad-permission` errors). Before opting in, read every `executes-command` (full command line) and `grants-permission` (exact rule) diagnostic of the plan.\n- `--commands` writes `/commands` as `.claude/skills/<name>/SKILL.md`; `--model-style alias` emits `sonnet`/`opus`/`haiku`/`fable`. Agents without a Claude tool get `tools: []`, never every tool.\n- Merges change only entries Forge wrote, recorded in `.claude/forge-generated.json`, and keep the files\' indentation and key order. With `--settings`, permission rules Forge added are recorded too and removed once no definition grants them; rules already in the file stay. A server name or main agent you set yourself fails with `AGENT_MERGE_CONFLICT`; `--rename-conflicts` (with `--mcp project`) gives the generated server a numbered name instead. Pass the same options to `--check`.\n- `agents generate --target claude --check` exits 5 with `AGENT_DRIFT` when outputs are `missing`, `changed` (definition, instruction file or options changed), `hand-edited` (output no longer matches what Forge recorded) or `stale` (generated from a definition that no longer defines it). Run it in CI after changing definitions.\n\nGenerated files carry `x-forge-source: {path, agent, sourceHash, optionsHash, outputHash}` provenance and pass Forge\'s Claude agent validation (`claude agents inspect <name>`). A docker-agent → Claude → docker-agent round trip is lossy; the YAML file keeps everything Claude cannot represent.\n';
 const agentsSkill = { id: "forge-agents", content: content$3 };
+const germanAgentMessages = {
+  toolFilterNone: "Der Werkzeugfilter {filter} wird durch keine Claude-Werkzeuge angenähert.",
+  toolFilter: "Der Werkzeugfilter {filter} wird durch die Claude-Werkzeuge {tools} angenähert.",
+  toolsetFieldUnsupported: "Das Feld {field} hat keine Claude-Entsprechung und wird nicht ausgegeben.",
+  filesystemApproximated: "Das Toolset filesystem wird durch die Claude-Werkzeuge {tools} angenähert.",
+  allowListUnsupported: "allow_list beschränkt das Toolset filesystem auf diese Verzeichnisse; Claude Code kann die Dateiwerkzeuge eines Agenten nicht auf Pfade begrenzen, daher wird die Beschränkung nicht ausgegeben. Fügen Sie deny-Regeln für Pfade hinzu, die der Agent nicht erreichen darf (permissions.additionalDirectories in den Projekteinstellungen erweitert den Zugriff nur).",
+  denyListApproximated: "deny_list wird mit --settings zu deny-Regeln für Read und Edit in den Projekteinstellungen.",
+  readonlyShell: "Ein schreibgeschütztes Toolset shell stellt in docker-agent keine Werkzeuge bereit; Bash wird nicht gewährt.",
+  allowedDomainsUnsupported: "allowed_domains beschränkt fetch auf diese Domains; Claude-Berechtigungsregeln können WebFetch nicht nur für einige Domains erlauben, daher wird die Beschränkung nicht ausgegeben.",
+  blockedDomainsApproximated: "blocked_domains wird mit --settings zu deny-Regeln WebFetch(domain:…) in den Projekteinstellungen; CIDR-Bereiche werden nicht ausgegeben.",
+  taskToolsetApproximated: "Das Toolset {type} wird durch Claudes Aufgabenwerkzeuge {tools} angenähert.",
+  memoryApproximated: "Das Toolset memory wird durch memory: project angenähert; sein Datenbankpfad wird nicht verwendet.",
+  userPromptApproximated: "Das Toolset user_prompt wird durch AskUserQuestion angenähert.",
+  thinkNotEmitted: "Das Toolset think wird nicht ausgegeben; Claude-Modelle denken von sich aus, gesteuert über effort.",
+  mcpReadonly: "Claude kann keine schreibgeschützten Werkzeuge des MCP-Servers {server} auswählen; jedes gewährte Werkzeug wird ausgegeben.",
+  toolsetUnsupported: "Das Toolset {type} hat keine Claude-Entsprechung und wird nicht ausgegeben.",
+  readonlyApproximated: "readonly behält schreibgeschützte Werkzeuge und verbietet {tools}.",
+  mcpTemplateLiteral: "Der Vorlagenausdruck {expression} hat keine Claude-MCP-Entsprechung und bleibt wörtlich erhalten.",
+  oauthUnsupported: "OAuth {field} wird nicht ausgegeben; Claude Code fragt Client-Geheimnisse interaktiv ab und handelt Scopes und Weiterleitungen selbst aus.",
+  dockerGateway: "{ref} läuft über das Docker MCP Gateway: {command}.",
+  mcpToolsetUnsupported: "Das MCP-Toolset hat weder einen Befehl noch eine entfernte URL oder Docker-Referenz und wird nicht ausgegeben.",
+  modelAlias: "Das Modell {id} wird als Alias {alias} ausgegeben, den Claude Code zum neuesten Modell dieser Familie auflöst.",
+  modelNoAlias: "Das Modell {id} hat keinen Claude-Alias; seine ID wird ausgegeben.",
+  effortLevel: "thinking_budget {budget} wird als effort: {effort} ausgegeben.",
+  effortBudget: "Ein Denkbudget von {budget} Token wird als effort: {effort} angenähert.",
+  effortNone: "thinking_budget {budget} schaltet das Denken ab oder minimiert es; es wird kein effort ausgegeben.",
+  modelSettingUnsupported: "Die Modelleinstellung {key} hat keine Entsprechung in Claude-Agenten und wird nicht ausgegeben.",
+  harnessUnsupported: "Der Harness {type} hat keine Entsprechung in Claude-Agenten; der Agent erbt das Modell der Sitzung.",
+  harnessApproximated: "Der Harness claude-code führt den Agenten in Claude Code aus; sein Modell und effort werden am generierten Agenten ausgegeben.",
+  modelMissing: "Der Agent nennt kein Modell; der Claude-Agent erbt das Modell der Sitzung.",
+  modelNoAnthropic: "Das Modell {reference} hat keinen Anthropic-Kandidaten; der Claude-Agent erbt das Modell der Sitzung.",
+  modelSelected: "Das Modell {reference} wählt unter mehreren Modellen; der erste Anthropic-Kandidat {candidate} wird ausgegeben.",
+  hookTypeUnsupported: "Ein Hook vom Typ {type} hat keine Claude-Entsprechung und wird nicht ausgegeben.",
+  hookFieldUnsupported: "Das Hook-Feld {field} wird nicht ausgegeben.",
+  hookEventUnsupported: "Das Hook-Ereignis {event} hat keine Claude-Entsprechung und wird nicht ausgegeben.",
+  hookMatcherApproximated: "Für die Matcher-Alternativen {matchers} gibt es kein bekanntes Claude-Werkzeug; sie bleiben wörtlich erhalten.",
+  preemptYolo: "preempt_yolo wird nicht ausgegeben.",
+  hookApproximated: "{event}-Hooks laufen beim Claude-Ereignis {target}, das die Hook-Eingabe von Claude Code sendet; prüfen Sie Eingabe- und Entscheidungsformat jedes Befehls.",
+  commandUrl: "Der Befehl /{command} öffnet eine URL, was ein Claude-Skill nicht kann; er wird nicht ausgegeben.",
+  commandTemplateLiteral: "Der Vorlagenausdruck {expression} bleibt wörtlich erhalten; Claude-Skills werten keine docker-agent-Ausdrücke aus.",
+  bangToolCall: "Der Bang-Werkzeugaufruf {call} bleibt wörtlich erhalten.",
+  commandDescription: 'Der Befehl /{command} hat keine Beschreibung; "{description}" wird ausgegeben.',
+  commandForked: "docker-agent übergibt die Unterhaltung an {target}; der Claude-Skill läuft stattdessen in einem abgezweigten Subagenten {agent}.",
+  mcpNotGenerated: "Der MCP-Server {server} ({target}) wird nicht generiert und seine Werkzeuge werden nicht gewährt; übergeben Sie --mcp inline oder --mcp project, um ihn zu schreiben.",
+  mcpExecutes: "Der MCP-Server {server} in {file} führt den Befehl aus: {command}",
+  hooksNotGenerated: "Hooks führen Befehle aus und werden nur mit --hooks generiert; übersprungen: {hooks}.",
+  hookExecutes: "Der {event}-Hook von {agent} führt den Befehl aus: {command}",
+  toolsNone: "Kein Toolset gewährt ein Claude-Werkzeug, daher erhält {agent} tools: [] und verbietet {tools}, statt jedes Werkzeug zu erben.",
+  reasonNoBuiltin: "nennt kein eingebautes docker-agent-Werkzeug mit einer Claude-Berechtigungsregel",
+  reasonUnmappedOne: "trifft {tools}, das keine Claude-Berechtigungsregel gleicher Reichweite hat",
+  reasonUnmapped: "trifft {tools}, die keine Claude-Berechtigungsregel gleicher Reichweite haben",
+  reasonMcpNone: "nennt einen MCP-Server, und ohne --mcp inline oder --mcp project wird kein MCP-Server generiert",
+  reasonMcpUnknown: "nennt den MCP-Server {server}, den kein generierter Agent definiert",
+  reasonArguments: "trifft Werkzeugargumente, die Claude-Berechtigungsregeln nur für Shell-Befehle ausdrücken",
+  permissionPartial: "Das {list}-Muster {pattern} {reason}; nur {rules} wird ausgegeben.",
+  permissionDropped: "Das {list}-Muster {pattern} {reason}; es wird nicht ausgegeben.",
+  permissionApproximated: "permissions.{list} wird zu Claude-Berechtigungsregeln in .claude/settings.json; der Abgleich von Argumenten wird angenähert.",
+  broadPermission: "Die Regel {rule} würde jede Verwendung ihres Werkzeugs automatisch freigeben; übergeben Sie --allow-broad-permissions, um sie in permissions.allow zu schreiben, oder grenzen Sie das docker-agent-Muster ein.",
+  grantsPermissionBroad: ".claude/settings.json permissions.{list} erhält die Regel {rule} (weitreichend, durch --allow-broad-permissions erlaubt).",
+  grantsPermission: ".claude/settings.json permissions.{list} erhält die Regel {rule}.",
+  envTemplateLiteral: "{expression} bleibt wörtlich erhalten; Claude Code expandiert keine docker-agent-Umgebungsausdrücke in Agenten.",
+  templateLiteral: "{expression} bleibt wörtlich erhalten; Claude Code kann keine docker-agent-Vorlagenausdrücke auswerten.",
+  addDate: "Claude Code fügt das aktuelle Datum selbst in seinen System-Prompt ein.",
+  addEnvironment: "Claude Code fügt Arbeitsverzeichnis, Plattform und Git-Informationen selbst in seinen System-Prompt ein.",
+  promptFilesUnsupported: "{field} wird nicht ausgegeben; Claude Code lädt stattdessen CLAUDE.md-Dateien.",
+  welcomeMessage: "Claude-Agenten haben keine Willkommensnachricht.",
+  externalSubAgent: "Der externe Unteragent {agent} wird nicht generiert.",
+  subAgentsApproximated: "Unteragenten werden zu Agent(…)-Einträgen in tools, die Claude Code nur durchsetzt, wenn {agent} als Hauptthread läuft.",
+  delegationUnsupported: "{field} wird nicht ausgegeben; Claude delegiert nur über das Werkzeug Agent.",
+  skillsDiscovered: "Claude Code findet Projekt- und Benutzer-Skills selbst.",
+  skillsDisabled: "Skills sind deaktiviert; Claude-Agenten können die Skill-Erkennung nicht abschalten.",
+  inlineSkill: "Der eingebettete Skill {skill} wird nicht generiert; schreiben Sie ihn als .claude/skills/{skill}/SKILL.md.",
+  skillSource: "Die Skill-Quelle {source} wird nicht ausgegeben; Claude Code lädt Skills aus .claude/skills.",
+  namedSkills: "Benannte Skills werden über das skills-Frontmatter vorgeladen; Claude Code löst sie nach Namen auf.",
+  nameSanitized: "Der Agent {name} wird als {claude} generiert.",
+  agentDescription: 'Der Agent hat keine Beschreibung; "{description}" wird ausgegeben, damit Claude Code an ihn delegieren kann.',
+  maxIterations: "max_iterations wird als maxTurns: {turns} ausgegeben; Claude zählt agentische Runden, nicht Modellaufrufe.",
+  settingUnsupported: "{field} hat keine Entsprechung in Claude-Agenten und wird nicht ausgegeben.",
+  importAlias: "Der Alias {alias} wird als anthropic/{model} importiert.",
+  importOmittedModel: "Ein fehlendes Modell wird als konfigurierter Standard {default} importiert.",
+  importModel: "Das Modell {model} wird als konfigurierter Standard {default} importiert.",
+  serverReference: "Die Serverreferenz {server} nennt einen außerhalb des Agenten konfigurierten Server; fügen Sie ihn als mcp-Toolset oder mcps-Definition hinzu.",
+  transportUnsupported: "Der Transport {type} hat keine docker-agent-Entsprechung; der Server wird nicht importiert.",
+  toolsInherited: "Der Claude-Agent erbt jedes Werkzeug; die Toolsets filesystem, shell, fetch, todo und user_prompt werden importiert.",
+  fileToolsReadonly: "Dateiwerkzeuge werden als schreibgeschütztes Toolset filesystem importiert.",
+  fileTools: "Dateiwerkzeuge werden als Toolset filesystem importiert.",
+  taskTools: "Aufgabenwerkzeuge werden als Toolset todo importiert.",
+  askUser: "AskUserQuestion wird als Toolset user_prompt importiert.",
+  toolUnsupported: "Das Claude-Werkzeug {tool} hat kein docker-agent-Toolset und wird nicht importiert.",
+  disallowedUnsupported: "Das Verbot von {tool} hat keine docker-agent-Entsprechung.",
+  memoryImported: "memory: {memory} wird als Toolset memory importiert.",
+  importHookUnsupported: "Das Hook-Ereignis {event} hat keine docker-agent-Entsprechung.",
+  importHookApproximated: "{event}-Befehls-Hooks werden als {target} importiert; nur Befehls-Hooks bleiben erhalten, und docker-agent sendet seine eigene Hook-Eingabe.",
+  importNameSanitized: "Der Agent {name} wird als {imported} importiert.",
+  generatedAgent: "Dieser Agent wurde aus {source} generiert; bearbeiten Sie stattdessen diese Definition, da ein Import verlustbehaftet ist.",
+  subAgentsImported: "Agent(…)-Einträge werden zu sub_agents: {agents}.",
+  subAgentMissing: "Agent({agent}) wird nicht importiert, weil {agent} in der Zieldatei nicht definiert ist; importieren Sie ihn zuerst.",
+  importFieldUnsupported: "{field} hat keine docker-agent-Entsprechung und wird nicht importiert.",
+  unknownField: "Das unbekannte Feld {field} wird nicht importiert.",
+  maxTurnsImported: "maxTurns wird als max_iterations importiert, das Modellaufrufe zählt.",
+  skillsImported: "Vorgeladene Skills werden als Skill-Namen importiert; docker-agent lädt sie bei Bedarf.",
+  mcpServerConflict: ".mcp.json definiert bereits den Server {server}, den Forge nicht generiert hat; benennen Sie den Server des Toolsets um oder übergeben Sie --rename-conflicts.",
+  mcpServerRenamed: ".mcp.json definiert bereits einen anderen Server {server}; dieser wird als {name} generiert.",
+  commandsNotGenerated: "Befehle werden mit --commands zu Claude-Skills.",
+  topLevelUnsupported: "Der oberste Abschnitt {key} hat keine Claude-Entsprechung und wird nicht ausgegeben.",
+  permissionsNotGenerated: "Berechtigungen werden mit --settings zu Regeln in den Projekteinstellungen.",
+  commandLabel: "/{command} von {agent}",
+  commandCollision: "Der Befehl {label} würde .claude/skills/{name}/SKILL.md generieren, die bereits der Befehl {owner} generiert; benennen Sie einen der Befehle um.",
+  commandRenamed: "Mehrere Agenten definieren ein abweichendes /{command}; dieses wird zum Skill {name}.",
+  agentCollision: "Der Agent {name} würde .claude/agents/{claude}.md generieren, die bereits {owner} generiert.",
+  mainAgent: 'Der Standardagent {agent} wird zum Hauptagenten des Projekts ("agent": "{claude}").',
+  settingsAgentConflict: ".claude/settings.json setzt agent bereits auf {agent}, das Forge nicht generiert hat; entfernen Sie es, damit Forge {claude} setzen kann.",
+  encoding: "Definitionsdateien müssen gültiges UTF-8 sein."
+};
+const isDiagnostic = (value2) => typeof value2.severity === "string" && typeof value2.code === "string" && typeof value2.pointer === "string" && typeof value2.message === "string";
+function localizedDiagnostics(value2, language2) {
+  if (language2 === "en") return value2;
+  const walk = (item) => {
+    if (Array.isArray(item)) return item.map(walk);
+    if (!isRecord$1(item)) return item;
+    const entries2 = Object.fromEntries(Object.entries(item).map(([key, entry2]) => [key, walk(entry2)]));
+    return isDiagnostic(item) ? { ...entries2, message: retranslate(item.message, agentMessages, germanAgentMessages) } : entries2;
+  };
+  return walk(value2);
+}
+function withLocalizedDiagnostics(command2) {
+  return {
+    ...command2,
+    async run(args, flags, context) {
+      try {
+        return localizedDiagnostics(await command2.run(args, flags, context), context.language);
+      } catch (error2) {
+        const failure2 = error2;
+        if (error2 instanceof Error && isRecord$1(failure2.details)) failure2.details = localizedDiagnostics(failure2.details, context.language);
+        throw error2;
+      }
+    }
+  };
+}
 const actions$3 = ["list", "inspect", "validate", "create", "import", "generate"];
 const options$2 = {
   file: option$1.string("create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file."),
@@ -28405,7 +28882,7 @@ function toolsets(flags) {
   return list2;
 }
 function agentsCommand(services2) {
-  return {
+  return withLocalizedDiagnostics({
     id: "agents",
     description: "Manage docker-agent definitions (list, inspect, validate, create, import) and generate Claude Code agents from them.",
     usage: "agents [list] | inspect <file[#agent]> | validate [file] | create <name> [--from-template basic|team|mcp] [--file team.yaml] [--model ref] [--description text] [--instruction text] [--toolset filesystem,shell] [--if-match sha256] | import <agent|path.md> --from claude [--file team.yaml] [--if-match sha256] | generate --target claude [--file team.yaml] [--agent name] [--mcp none|inline|project [--rename-conflicts]] [--hooks] [--settings [--allow-broad-permissions]] [--commands] [--model-style id|alias] [--plan | --plan-out path.json | --check | --revisions-from path.json]",
@@ -28488,8 +28965,40 @@ function agentsCommand(services2) {
         ...controls.revisions ? { revisions: controls.revisions } : {}
       });
     }
-  };
+  });
 }
+const agentsStrings = {
+  de: {
+    manifest: { name: "Agenten", description: "docker-agent-Agentendefinitionen verwalten und daraus Claude-Code-Agenten generieren." },
+    descriptions: {
+      "create and import: the team file to add to, directly in the definitions directory (team.yaml or agents/team.yaml); defaults to <name>.yaml with the sanitized agent name. generate: only this file.": "create und import: die Team-Datei, der der Agent hinzugefügt wird, direkt im Definitionsverzeichnis (team.yaml oder agents/team.yaml); standardmäßig <name>.yaml mit dem bereinigten Agentennamen. generate: nur diese Datei.",
+      "create: the model reference, such as anthropic/claude-sonnet-5 or a named model; defaults to plugins.settings.agents.defaultModel.": "create: die Modellreferenz, etwa anthropic/claude-sonnet-5 oder ein benanntes Modell; standardmäßig plugins.settings.agents.defaultModel.",
+      "create: the agent description.": "create: die Beschreibung des Agenten.",
+      "create: the agent instruction (system prompt); defaults to the description.": "create: die Anweisung des Agenten (System-Prompt); standardmäßig die Beschreibung.",
+      "create: comma-separated toolset types without required settings (filesystem, shell, fetch, think, todo, tasks, memory, user_prompt, calculator, random, datetime, environment, git, plan, session_context, background_jobs, background_agents, scheduler, mcp_catalog, file).": "create: kommagetrennte Toolset-Typen ohne Pflichteinstellungen (filesystem, shell, fetch, think, todo, tasks, memory, user_prompt, calculator, random, datetime, environment, git, plan, session_context, background_jobs, background_agents, scheduler, mcp_catalog, file).",
+      "create: start from a bundled template: basic (one read-only agent), team (a coordinator with <name>-researcher and <name>-writer sub-agents) or mcp (an agent with a Docker MCP Gateway server).": "create: mit einer mitgelieferten Vorlage beginnen: basic (ein schreibgeschützter Agent), team (ein Koordinator mit den Unteragenten <name>-researcher und <name>-writer) oder mcp (ein Agent mit einem Docker-MCP-Gateway-Server).",
+      "create and import: the current revision of an existing team file, required to add an agent to it.": "create und import: die aktuelle Revision einer vorhandenen Team-Datei; erforderlich, um ihr einen Agenten hinzuzufügen.",
+      "import: the agent format to convert from.": "import: das Agentenformat, aus dem konvertiert wird.",
+      "generate: the agent format to generate.": "generate: das zu generierende Agentenformat.",
+      "generate: only this docker-agent agent.": "generate: nur diesen docker-agent-Agenten.",
+      "generate: MCP servers start processes or reach remote services, so none are written by default; inline writes them in agent frontmatter, project merges them into the project .mcp.json.": "generate: MCP-Server starten Prozesse oder erreichen entfernte Dienste, daher werden standardmäßig keine geschrieben; inline schreibt sie ins Frontmatter des Agenten, project führt sie in die .mcp.json des Projekts zusammen.",
+      "generate: write agent hooks, which run commands; without it hooks are reported and skipped.": "generate: Agenten-Hooks schreiben, die Befehle ausführen; ohne diese Option werden Hooks gemeldet und übersprungen.",
+      "generate: merge permission rules and the main agent into .claude/settings.json; every rule is listed as a grants-permission diagnostic.": "generate: Berechtigungsregeln und den Hauptagenten in .claude/settings.json zusammenführen; jede Regel wird als Diagnose grants-permission aufgeführt.",
+      "generate --mcp project: give a generated MCP server whose name .mcp.json already uses for a server Forge did not generate a numbered name, instead of failing with AGENT_MERGE_CONFLICT.": "generate --mcp project: einem generierten MCP-Server, dessen Namen .mcp.json bereits für einen nicht von Forge generierten Server verwendet, einen nummerierten Namen geben, statt mit AGENT_MERGE_CONFLICT fehlzuschlagen.",
+      "generate --settings: also write allow rules that approve a whole tool (Bash, Bash(*), Edit, Write, WebFetch without a domain, every tool of an MCP server); without it they fail as broad-permission errors.": "generate --settings: auch allow-Regeln schreiben, die ein ganzes Werkzeug freigeben (Bash, Bash(*), Edit, Write, WebFetch ohne Domain, jedes Werkzeug eines MCP-Servers); ohne diese Option schlagen sie als broad-permission-Fehler fehl.",
+      "generate: generate commands as .claude/skills/<name>/SKILL.md.": "generate: Befehle als .claude/skills/<name>/SKILL.md generieren.",
+      "generate: emit Anthropic model ids, or Claude aliases (opus, sonnet, haiku, fable).": "generate: Anthropic-Modell-IDs oder Claude-Aliasse (opus, sonnet, haiku, fable) ausgeben.",
+      "generate: JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out).": "generate: JSON-Datei, die generierte Pfade freigegebenen SHA-256-Revisionen zuordnet (aus --plan-out).",
+      "generate: Report planned outputs and their status without writing.": "generate: Geplante Ausgaben und ihren Status melden, ohne zu schreiben.",
+      "generate: Write the plan's revision manifest to this path.": "generate: Das Revisionsmanifest des Plans in diesen Pfad schreiben.",
+      "generate: Fail with a drift code when outputs are missing or differ.": "generate: Mit einem Abweichungscode fehlschlagen, wenn Ausgaben fehlen oder abweichen.",
+      "list (default), inspect, validate, create, import or generate.": "list (Standard), inspect, validate, create, import oder generate.",
+      "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path.": "inspect: Datei[#Agent]; validate: Datei; create: der Agentenname; import: ein Claude-Agentenname oder Markdown-Pfad.",
+      "Scope-relative folder of docker-agent definition files (*.yaml).": "Ordner der docker-agent-Definitionsdateien (*.yaml), relativ zum Geltungsbereich.",
+      "Model reference for agents create and agents import when none is given.": "Modellreferenz für agents create und agents import, wenn keine angegeben ist."
+    }
+  }
+};
 const defaults$3 = { directory: "agents", defaultModel: "anthropic/claude-sonnet-5" };
 const ports = { codec: yamlDefinitions, schema: ajvDefinitionSchema, markdown: markdownFrontmatter, digest: sha256Digest };
 const strings$2 = (value2) => Array.isArray(value2) && value2.every((item) => typeof item === "string");
@@ -28503,6 +29012,7 @@ const agentsPlugin = {
     author: "The Forge",
     description: "Manage docker-agent agent definitions and generate Claude Code agents from them."
   },
+  strings: agentsStrings,
   create: () => ({
     commands: [agentsCommand((context) => {
       const settings2 = context.settings ?? {};
@@ -28971,6 +29481,49 @@ function mayHoldField(type2, field2, iterationBars) {
   if (field2 === "start" || field2 === "target") return placementEnds(type2, iterationBars).includes(field2);
   return field2 !== "horizon" && field2 !== "iteration" && field2 !== "iterationGoal";
 }
+const checkMessages = {
+  parentCycle: "{title} closes a parent loop; the loop is cut here and the note shows as a root.",
+  unresolvedParent: "The parent of {title} does not resolve to a loaded note.",
+  dependencyCycle: "{title} depends on {target}, which closes a dependency loop.",
+  unresolvedDependency: "{title} depends on {target}, which does not resolve to a loaded item.",
+  brokenIteration: "The iteration of {title} ({iteration}) is not an Iteration note.",
+  brokenAssignee: "The assignee of {title} ({assignee}) is not a Resource note.",
+  fieldNotHeldUntyped: "This type {title} may not hold {key}.",
+  fieldNotHeld: "{type} {title} may not hold {key}.",
+  unreadableValue: "{title} has an unreadable {key}; the plugin shelves it.",
+  reversedSpan: "{title} starts after its target date.",
+  unresolvedMembership: "The release membership of {path} does not resolve to exactly one Release note of this base.",
+  rankTie: "{count} items share rank {rank}; ties follow result order.",
+  unrankedOne: "1 item has no rank and sorts last; run backlog ranks seed.",
+  unranked: "{count} items have no rank and sort last; run backlog ranks seed.",
+  sharedKey: 'The properties {roles} all use the key "{key}".',
+  sharedReleaseKey: 'The release properties {roles} all use the key "{key}".',
+  releasedDateIsTarget: 'The released date and the target date share the key "{key}".',
+  releasedTransition: 'The released transition value "{value}" is not one of the released status values.',
+  membershipCollision: 'The release membership key "{key}" is also the {role} property.'
+};
+const syncMessages = {
+  duplicateLinkCopy: "{holder} already syncs remote item {id}; remove or change {property} in this copy",
+  duplicateLinkNotes: "{count} notes link remote item {id}; keep {property} in one of them",
+  duplicateLink: "{holder} already syncs remote item {id}",
+  unmappedType: "type {type} has no remote type mapping",
+  untyped: "the note has no type, so it has no remote type mapping",
+  foreignLink: "{property} links an item of another connection",
+  remoteFormatUnknown: "the remote description changed but is not known to be Markdown, so it is not pulled; edit the note or run backlog sync resolve with --field description",
+  unexpressible: "the note's {field} cannot be expressed on this connection, so the remote value is not pulled over it",
+  unreadableRemote: "the remote {field} cannot be read, so the note's value is not pushed over it",
+  remoteMissing: "remote item {id} no longer exists or is not readable",
+  serverKept: "the platform stored {stored} instead of {sent}; the next sync pushes the note's value again",
+  serverApplied: "the platform applied {value}; a pull takes it into the note",
+  notCreated: "not synced yet; a push creates it",
+  predecessorNotCreated: "a predecessor was not created in this run; the links follow on the next sync",
+  unmappedRemoteType: "remote type {type} has no local type mapping; add it to mappings.types",
+  unsyncedParent: "remote parent {parent} is not synced on this connection",
+  unsyncedDependency: "remote predecessor {ids} is not synced on this connection",
+  missingIteration: "no iteration note named {name}",
+  titleTaken: "{path} already exists",
+  remoteChanged: "The remote item changed during the sync; run the sync again."
+};
 const OPTIONAL_PROPERTIES = [
   { field: "state", option: "stateProperty", suggested: "status", settingsKey: "stateKey" },
   { field: "startedDate", option: "startedDateProperty", suggested: "started", settingsKey: "startedDateKey" },
@@ -29097,7 +29650,7 @@ function configProblems(settings2) {
   for (const { role, key } of ownedProperties(settings2)) if (key) keys.set(key, [...keys.get(key) ?? [], role]);
   const problems = [];
   for (const [key, roles] of keys) {
-    if (roles.length > 1 && !roles.every((role) => workflowRoles.includes(role))) problems.push(`The properties ${roles.join(", ")} all use the key "${key}".`);
+    if (roles.length > 1 && !roles.every((role) => workflowRoles.includes(role))) problems.push(fill$1(checkMessages.sharedKey, { roles: roles.join(", "), key }));
   }
   return problems;
 }
@@ -29258,10 +29811,10 @@ function releaseOwned(settings2) {
 function releaseNoteProblems(settings2) {
   const keys = /* @__PURE__ */ new Map();
   for (const { role, key } of releaseOwned(settings2)) if (key) keys.set(key, [...keys.get(key) ?? [], role]);
-  const problems = [...keys].filter(([, roles]) => roles.length > 1).map(([key, roles]) => `The release properties ${roles.join(", ")} all use the key "${key}".`);
-  if (settings2.releasedDateKey !== "" && settings2.releasedDateKey === settings2.targetDateKey) problems.push(`The released date and the target date share the key "${settings2.releasedDateKey}".`);
+  const problems = [...keys].filter(([, roles]) => roles.length > 1).map(([key, roles]) => fill$1(checkMessages.sharedReleaseKey, { roles: roles.join(", "), key }));
+  if (settings2.releasedDateKey !== "" && settings2.releasedDateKey === settings2.targetDateKey) problems.push(fill$1(checkMessages.releasedDateIsTarget, { key: settings2.releasedDateKey }));
   if (settings2.releasedTransition !== "" && settings2.releasedValues.length > 0 && !settings2.releasedValues.some((value2) => sameValue(value2, settings2.releasedTransition))) {
-    problems.push(`The released transition value "${settings2.releasedTransition}" is not one of the released status values.`);
+    problems.push(fill$1(checkMessages.releasedTransition, { value: settings2.releasedTransition }));
   }
   return problems;
 }
@@ -29269,7 +29822,7 @@ function membershipCollision(release2, plan) {
   if (release2.membershipKey === "") return null;
   const owners = [...ownedProperties(plan).filter((owned) => owned.role !== "release"), ...releaseOwned(release2)];
   const owner = owners.find(({ key }) => key !== "" && key === release2.membershipKey);
-  return owner ? `The release membership key "${release2.membershipKey}" is also the ${owner.role} property.` : null;
+  return owner ? fill$1(checkMessages.membershipCollision, { key: release2.membershipKey, role: owner.role }) : null;
 }
 const ITEM_ID_KEY = "pbl-id";
 function sanitizeTitle(title2) {
@@ -30864,25 +31417,26 @@ function requirementsBoard(model2, settings2) {
 }
 const error$2 = (code2, message2, extra = {}) => ({ code: code2, severity: "error", message: message2, ...extra });
 const warning = (code2, message2, extra = {}) => ({ code: code2, severity: "warning", message: message2, ...extra });
+const notHeld = (item, key) => item.typeName === null ? fill$1(checkMessages.fieldNotHeldUntyped, { title: item.title, key }) : fill$1(checkMessages.fieldNotHeld, { type: item.typeName, title: item.title, key });
 function linkProblems(item, input) {
   const problems = [];
   const { settings: settings2 } = input;
-  if (item.cycleCut) problems.push(error$2("parent-cycle", `${item.title} closes a parent loop; the loop is cut here and the note shows as a root.`, { path: item.path, key: settings2.parentKey }));
-  else if (item.orphan) problems.push(error$2("unresolved-parent", `The parent of ${item.title} does not resolve to a loaded note.`, { path: item.path, key: settings2.parentKey }));
+  if (item.cycleCut) problems.push(error$2("parent-cycle", fill$1(checkMessages.parentCycle, { title: item.title }), { path: item.path, key: settings2.parentKey }));
+  else if (item.orphan) problems.push(error$2("unresolved-parent", fill$1(checkMessages.unresolvedParent, { title: item.title }), { path: item.path, key: settings2.parentKey }));
   for (const broken of item.brokenPrerequisites) {
     problems.push(error$2(
       broken.reason === "cycle" ? "dependency-cycle" : "unresolved-dependency",
-      broken.reason === "cycle" ? `${item.title} depends on ${broken.raw}, which closes a dependency loop.` : `${item.title} depends on ${broken.raw}, which does not resolve to a loaded item.`,
+      fill$1(broken.reason === "cycle" ? checkMessages.dependencyCycle : checkMessages.unresolvedDependency, { title: item.title, target: broken.raw }),
       { path: item.path, key: settings2.dependsOnKey, value: broken.raw }
     ));
   }
   const iteration2 = item.iterationEntry;
   if (iteration2 && (iteration2.path === null || !isIterationType(input.typeOf(iteration2.path)))) {
-    problems.push(error$2("broken-iteration", `The iteration of ${item.title} (${iteration2.raw}) is not an Iteration note.`, { path: item.path, key: settings2.iterationKey, value: iteration2.raw }));
+    problems.push(error$2("broken-iteration", fill$1(checkMessages.brokenIteration, { title: item.title, iteration: iteration2.raw }), { path: item.path, key: settings2.iterationKey, value: iteration2.raw }));
   }
   const assignee = item.assigneeEntry;
   if (assignee && (assignee.path === null || !isResourceType(input.typeOf(assignee.path)))) {
-    problems.push(warning("broken-assignee", `The assignee of ${item.title} (${assignee.raw}) is not a Resource note.`, { path: item.path, key: settings2.assigneeKey, value: assignee.raw }));
+    problems.push(warning("broken-assignee", fill$1(checkMessages.brokenAssignee, { title: item.title, assignee: assignee.raw }), { path: item.path, key: settings2.assigneeKey, value: assignee.raw }));
   }
   return problems;
 }
@@ -30895,15 +31449,15 @@ function fieldProblems(item, settings2) {
     ["iterationGoal", item.iterationGoalValue !== null, settings2.iterationGoalKey]
   ];
   for (const [field2, present2, key] of held) {
-    if (present2 && !mayHoldField(item.typeName, field2, settings2.iterationBars)) problems.push(error$2("field-not-held", `${item.typeName ?? "This type"} ${item.title} may not hold ${key}.`, { path: item.path, key }));
+    if (present2 && !mayHoldField(item.typeName, field2, settings2.iterationBars)) problems.push(error$2("field-not-held", notHeld(item, key), { path: item.path, key }));
   }
   const ends = placementEnds(item.typeName, true);
   for (const [end2, reading2, key] of [["start", item.plannedStart, settings2.startKey], ["target", item.plannedTarget, settings2.targetKey]]) {
-    if (reading2.value !== null && !ends.includes(end2)) problems.push(error$2("field-not-held", `${item.typeName ?? "This type"} ${item.title} may not hold ${key}.`, { path: item.path, key }));
-    if (reading2.invalid) problems.push(warning("unreadable-date", `${item.title} has an unreadable ${key}; the plugin shelves it.`, { path: item.path, key }));
+    if (reading2.value !== null && !ends.includes(end2)) problems.push(error$2("field-not-held", notHeld(item, key), { path: item.path, key }));
+    if (reading2.invalid) problems.push(warning("unreadable-date", fill$1(checkMessages.unreadableValue, { title: item.title, key }), { path: item.path, key }));
   }
-  if (item.horizon.invalid) problems.push(warning("unreadable-horizon", `${item.title} has an unreadable ${settings2.horizonKey}; the plugin shelves it.`, { path: item.path, key: settings2.horizonKey }));
-  if (reversedSpan(item.plannedStart.value, item.plannedTarget.value)) problems.push(warning("reversed-span", `${item.title} starts after its target date.`, { path: item.path }));
+  if (item.horizon.invalid) problems.push(warning("unreadable-horizon", fill$1(checkMessages.unreadableValue, { title: item.title, key: settings2.horizonKey }), { path: item.path, key: settings2.horizonKey }));
+  if (reversedSpan(item.plannedStart.value, item.plannedTarget.value)) problems.push(warning("reversed-span", fill$1(checkMessages.reversedSpan, { title: item.title }), { path: item.path }));
   return problems;
 }
 function checkBacklog(input) {
@@ -30914,13 +31468,12 @@ function checkBacklog(input) {
   ];
   const results = model2.items.filter((item) => !item.outsideFilter);
   for (const item of results) problems.push(...linkProblems(item, input), ...fieldProblems(item, settings2));
-  for (const path2 of input.unresolvedMemberships) problems.push(error$2("unresolved-membership", `The release membership of ${path2} does not resolve to exactly one Release note of this base.`, { path: path2 }));
+  for (const path2 of input.unresolvedMemberships) problems.push(error$2("unresolved-membership", fill$1(checkMessages.unresolvedMembership, { path: path2 }), { path: path2 }));
   const byOrder = /* @__PURE__ */ new Map();
   for (const item of results) if (item.order !== null) byOrder.set(item.order, [...byOrder.get(item.order) ?? [], item.path]);
-  for (const [order2, paths2] of byOrder) if (paths2.length > 1) problems.push(warning("rank-tie", `${paths2.length} items share rank ${order2}; ties follow result order.`, { value: String(order2), paths: paths2 }));
+  for (const [order2, paths2] of byOrder) if (paths2.length > 1) problems.push(warning("rank-tie", fill$1(checkMessages.rankTie, { count: paths2.length, rank: order2 }), { value: String(order2), paths: paths2 }));
   const unranked = results.filter((item) => item.order === null && !isReleaseType(item.typeName)).map((item) => item.path);
-  const count2 = unranked.length === 1 ? "1 item has no rank and sorts" : `${unranked.length} items have no rank and sort`;
-  if (unranked.length > 0) problems.push(warning("unranked", `${count2} last; run backlog ranks seed.`, { paths: unranked }));
+  if (unranked.length > 0) problems.push(warning("unranked", fill$1(unranked.length === 1 ? checkMessages.unrankedOne : checkMessages.unranked, { count: unranked.length }), { paths: unranked }));
   return problems;
 }
 const date$2 = (reading2) => reading2.invalid ? { invalid: true } : reading2.value === null ? null : formatCivil(reading2.value);
@@ -31204,22 +31757,22 @@ function pulledNote(context, item, pulls, pathOfRemote2, body) {
     if (field2 === "title") note.title = sanitizeTitle(String(value2));
     else if (field2 === "type" && typeof value2 === "string") {
       const local = localType(context.mapping, value2, type2);
-      if (local === void 0) note.skipped.push({ field: field2, code: "unmapped-remote-type", reason: `remote type ${value2} has no local type mapping; add it to mappings.types` });
+      if (local === void 0) note.skipped.push({ field: field2, code: "unmapped-remote-type", reason: fill$1(syncMessages.unmappedRemoteType, { type: String(value2) }) });
       else note.write.typeName = local;
     } else if (field2 === "state") Object.assign(note.write, stateWrite(item, workflowOf(item.typeName, item.ladder), value2 === null ? null : localState(context.mapping, type2, String(value2), item.stateValue, settings2.states), settings2, formatCivil(session.today)));
     else if (field2 === "parent") {
       const parent2 = value2 === null ? null : pathOfRemote2(String(value2));
-      if (value2 !== null && parent2 === null) note.skipped.push({ field: field2, code: "unsynced-parent", reason: `remote parent ${String(value2)} is not synced on this connection` });
+      if (value2 !== null && parent2 === null) note.skipped.push({ field: field2, code: "unsynced-parent", reason: fill$1(syncMessages.unsyncedParent, { parent: String(value2) }) });
       else note.write.parent = parent2;
     } else if (field2 === "dependencies" && Array.isArray(value2)) {
       const paths2 = value2.map((id2) => pathOfRemote2(id2));
       const missing2 = value2.filter((_id, index2) => paths2[index2] === null);
-      if (missing2.length > 0) note.skipped.push({ field: field2, code: "unsynced-dependency", reason: `remote predecessor ${missing2.join(", ")} is not synced on this connection` });
+      if (missing2.length > 0) note.skipped.push({ field: field2, code: "unsynced-dependency", reason: fill$1(syncMessages.unsyncedDependency, { ids: missing2.join(", ") }) });
       else note.dependsOn = paths2;
     } else if (field2 === "iteration") {
       const name2 = iterationName(iterationRoot(context), value2 === null ? null : String(value2));
       const target = name2 === null ? null : iterationNote(session, name2);
-      if (name2 !== null && target === null) note.skipped.push({ field: field2, code: "missing-iteration", reason: `no iteration note named ${name2}` });
+      if (name2 !== null && target === null) note.skipped.push({ field: field2, code: "missing-iteration", reason: fill$1(syncMessages.missingIteration, { name: name2 }) });
       else note.write.iteration = target;
     } else if (field2 === "priority") note.write.priority = value2 === null ? null : priorityLabel(Number(value2), settings2.priorityValues);
     else if (field2 === "tags" && Array.isArray(value2)) {
@@ -31241,7 +31794,7 @@ function identify(context, items2, state2, linkId, exists2) {
   const mapped = items2.filter(({ item }) => {
     const type2 = itemType(item);
     if (type2 !== null && remoteType(context.mapping, type2) !== void 0) return true;
-    skipped.push({ path: item.path, code: "unmapped-type", reason: `type ${type2 ?? "(none)"} has no remote type mapping` });
+    skipped.push({ path: item.path, code: "unmapped-type", reason: type2 === null ? syncMessages.untyped : fill$1(syncMessages.unmappedType, { type: type2 }) });
     return false;
   });
   const linkOf = ({ frontmatter }) => {
@@ -31252,7 +31805,7 @@ function identify(context, items2, state2, linkId, exists2) {
     const entry2 = state2.items[source2.item.path];
     if (entry2 === void 0) continue;
     if (claimed.has(entry2.id)) {
-      skipped.push({ path: source2.item.path, code: "duplicate-link", reason: `${claimed.get(entry2.id)} already syncs remote item ${entry2.id}` });
+      skipped.push({ path: source2.item.path, code: "duplicate-link", reason: fill$1(syncMessages.duplicateLink, { holder: claimed.get(entry2.id), id: entry2.id }) });
       continue;
     }
     claimed.set(entry2.id, source2.item.path);
@@ -31264,17 +31817,17 @@ function identify(context, items2, state2, linkId, exists2) {
   for (const { source: source2, link: link2, id: id2 } of linkOnly) {
     const { path: path2 } = source2.item;
     if (link2 !== null && id2 === null) {
-      skipped.push({ path: path2, code: "foreign-link", reason: `${context.connection.linkProperty} links an item of another connection` });
+      skipped.push({ path: path2, code: "foreign-link", reason: fill$1(syncMessages.foreignLink, { property: context.connection.linkProperty }) });
       continue;
     }
     const previous2 = id2 === null ? null : pathOfRemote(state2, id2);
     const holder = id2 === null ? void 0 : claimed.get(id2) ?? (previous2 !== null && exists2(previous2) ? previous2 : void 0);
     if (holder !== void 0) {
-      skipped.push({ path: path2, code: "duplicate-link", reason: `${holder} already syncs remote item ${id2}; remove or change ${context.connection.linkProperty} in this copy` });
+      skipped.push({ path: path2, code: "duplicate-link", reason: fill$1(syncMessages.duplicateLinkCopy, { holder, id: id2, property: context.connection.linkProperty }) });
       continue;
     }
     if (id2 !== null && linking.get(id2) > 1) {
-      skipped.push({ path: path2, code: "duplicate-link", reason: `${linking.get(id2)} notes link remote item ${id2}; keep ${context.connection.linkProperty} in one of them` });
+      skipped.push({ path: path2, code: "duplicate-link", reason: fill$1(syncMessages.duplicateLinkNotes, { count: linking.get(id2), id: id2, property: context.connection.linkProperty }) });
       continue;
     }
     let entry2 = null;
@@ -31289,7 +31842,7 @@ function identify(context, items2, state2, linkId, exists2) {
   members2.sort((a, b) => order2.get(a.item.path) - order2.get(b.item.path));
   return { members: members2, skipped, adopted };
 }
-const fieldSkip = (path2, field2, local, base) => field2 === "description" && base ? { path: path2, field: field2, code: "remote-format-unknown", reason: "the remote description changed but is not known to be Markdown, so it is not pulled; edit the note or run backlog sync resolve with --field description" } : local ? { path: path2, field: field2, code: "unexpressible", reason: `the note's ${field2} cannot be expressed on this connection, so the remote value is not pulled over it` } : { path: path2, field: field2, code: "unreadable-remote", reason: `the remote ${field2} cannot be read, so the note's value is not pushed over it` };
+const fieldSkip = (path2, field2, local, base) => field2 === "description" && base ? { path: path2, field: field2, code: "remote-format-unknown", reason: syncMessages.remoteFormatUnknown } : local ? { path: path2, field: field2, code: "unexpressible", reason: fill$1(syncMessages.unexpressible, { field: field2 }) } : { path: path2, field: field2, code: "unreadable-remote", reason: fill$1(syncMessages.unreadableRemote, { field: field2 }) };
 function planItem(context, member2, remote, options2) {
   const { item, entry: entry2 } = member2;
   const local = localValues(context, item, member2.frontmatter, member2.body);
@@ -31317,7 +31870,7 @@ function planItem(context, member2, remote, options2) {
     relink: member2.relink
   };
   if (plan.create) return plan;
-  if (remote === null) return { path: item.path, code: "remote-missing", reason: `remote item ${member2.id} no longer exists or is not readable` };
+  if (remote === null) return { path: item.path, code: "remote-missing", reason: fill$1(syncMessages.remoteMissing, { id: String(member2.id) }) };
   plan.remoteValues = remoteValues(context, remote);
   plan.remoteMarkdown = remote.description === null || remote.descriptionMarkdown === true;
   const unchangedRemote = entry2 !== null && entry2.rev === remote.rev;
@@ -31360,10 +31913,10 @@ function settlePush(context, plan, result, direction, freshLocal) {
     if (local === void 0 || canonical(field2, local) === canonical(field2, remote)) continue;
     if (!empty(local)) {
       plan.baseFrom.set(field2, "remote");
-      plan.skipped.push({ path: plan.path, field: field2, code: "server-kept", reason: `the platform stored ${canonical(field2, remote)} instead of ${canonical(field2, local)}; the next sync pushes the note's value again` });
+      plan.skipped.push({ path: plan.path, field: field2, code: "server-kept", reason: fill$1(syncMessages.serverKept, { stored: canonical(field2, remote), sent: canonical(field2, local) }) });
     } else if (direction === "push") {
       plan.remoteChanged.push(field2);
-      plan.skipped.push({ path: plan.path, field: field2, code: "server-applied", reason: `the platform applied ${canonical(field2, remote)}; a pull takes it into the note` });
+      plan.skipped.push({ path: plan.path, field: field2, code: "server-applied", reason: fill$1(syncMessages.serverApplied, { value: canonical(field2, remote) }) });
     } else {
       plan.remoteChanged.push(field2);
       plan.pull.set(field2, remote);
@@ -31399,7 +31952,7 @@ async function pushAll(context, bound2, plans, ids, report, options2, live, stor
   const links2 = [];
   for (const plan of plans) {
     if (plan.create && options2.direction === "pull") {
-      report.skipped.push({ path: plan.path, code: "not-created", reason: "not synced yet; a push creates it" });
+      report.skipped.push({ path: plan.path, code: "not-created", reason: syncMessages.notCreated });
       continue;
     }
     const values2 = plan.create ? new Map([...plan.local].filter(([, value2]) => value2 !== null && !(Array.isArray(value2) && value2.length === 0))) : plan.push;
@@ -31439,7 +31992,7 @@ async function pushAll(context, bound2, plans, ids, report, options2, live, stor
   for (const { plan, wanted } of links2) {
     const resolved = wanted.map(resolve2);
     if (resolved.some((id2) => id2 === void 0)) {
-      plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "unsynced-dependency", reason: "a predecessor was not created in this run; the links follow on the next sync" });
+      plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "unsynced-dependency", reason: syncMessages.predecessorNotCreated });
       continue;
     }
     options2.checkpoint?.();
@@ -31474,7 +32027,7 @@ function fail({ report, options: options2 }, plan, error2) {
   if (codeOf(error2) === "CONNECTOR_AUTH_FAILED") throw error2;
   const stale = isStale(error2);
   if (stale && options2.resolution) throw backlogError("SYNC_CONFLICT", `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
-  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? "SYNC_CONFLICT" : codeOf(error2), message: stale ? "The remote item changed during the sync; run the sync again." : String(error2.message) });
+  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? "SYNC_CONFLICT" : codeOf(error2), message: stale ? syncMessages.remoteChanged : String(error2.message) });
 }
 async function record$2({ store, hash }, plan) {
   store.set(plan.path, { id: plan.id, url: plan.url, rev: plan.remoteChanged.length === 0 ? plan.remote.rev : UNSETTLED_REV, fields: nextBase(plan, /* @__PURE__ */ new Set(), /* @__PURE__ */ new Set(), hash) });
@@ -31498,7 +32051,7 @@ function settleLinks(context, plan, result, resolved) {
   const stored = plan.remoteValues.get(DEPENDENCIES);
   if (stored !== void 0 && canonical(DEPENDENCIES, stored) !== canonical(DEPENDENCIES, resolved)) {
     plan.baseFrom.set(DEPENDENCIES, "remote");
-    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "server-kept", reason: `the platform stored ${canonical(DEPENDENCIES, stored)} instead of ${canonical(DEPENDENCIES, resolved)}; the next sync pushes the note's value again` });
+    plan.skipped.push({ path: plan.path, field: DEPENDENCIES, code: "server-kept", reason: fill$1(syncMessages.serverKept, { stored: canonical(DEPENDENCIES, stored), sent: canonical(DEPENDENCIES, resolved) }) });
   }
 }
 const basename = (path2) => path2.slice(path2.lastIndexOf("/") + 1).replace(/\.md$/i, "");
@@ -31513,7 +32066,7 @@ function landings(session, context, plans, pathOfRemote2) {
       const target = `${folder}${note.title}.md`;
       if (target.toLowerCase() !== plan.path.toLowerCase() && pathTaken(session, target)) {
         pulled.delete("title");
-        skipped.push({ path: plan.path, field: "title", code: "title-taken", reason: `${target} already exists` });
+        skipped.push({ path: plan.path, field: "title", code: "title-taken", reason: fill$1(syncMessages.titleTaken, { path: target }) });
       } else if (target !== plan.path) renameTo = target;
     }
     return { plan, note, pulled, renameTo, skipped };
@@ -31787,6 +32340,65 @@ async function heldPaths(all2, connections, open2) {
 function leftEntries(connection, store, held) {
   return Object.entries(store.state.items).filter(([path2]) => !held.has(path2)).map(([path2, entry2]) => ({ connection, path: path2, remoteId: entry2.id, url: entry2.url }));
 }
+const germanCheckMessages = {
+  parentCycle: "{title} schließt eine Schleife über übergeordnete Einträge; die Schleife wird hier aufgetrennt und die Notiz erscheint als Wurzel.",
+  unresolvedParent: "Der übergeordnete Eintrag von {title} verweist auf keine geladene Notiz.",
+  dependencyCycle: "{title} hängt von {target} ab, womit sich eine Abhängigkeitsschleife schließt.",
+  unresolvedDependency: "{title} hängt von {target} ab, das auf keinen geladenen Eintrag verweist.",
+  brokenIteration: "Die Iteration von {title} ({iteration}) ist keine Iteration-Notiz.",
+  brokenAssignee: "Die Zuweisung von {title} ({assignee}) ist keine Resource-Notiz.",
+  fieldNotHeldUntyped: "Der Eintrag {title} darf mit diesem Typ {key} nicht enthalten.",
+  fieldNotHeld: "Der {type}-Eintrag {title} darf {key} nicht enthalten.",
+  unreadableValue: "{title} hat einen unlesbaren Wert in {key}; das Plugin lässt ihn unberücksichtigt.",
+  reversedSpan: "{title} beginnt nach seinem Zieldatum.",
+  unresolvedMembership: "Die Release-Zugehörigkeit von {path} verweist nicht auf genau eine Release-Notiz dieser Base.",
+  rankTie: "{count} Einträge teilen sich den Rang {rank}; Gleichstände folgen der Ergebnisreihenfolge.",
+  unrankedOne: "1 Eintrag hat keinen Rang und steht am Ende; führen Sie backlog ranks seed aus.",
+  unranked: "{count} Einträge haben keinen Rang und stehen am Ende; führen Sie backlog ranks seed aus.",
+  sharedKey: 'Die Eigenschaften {roles} verwenden alle den Schlüssel "{key}".',
+  sharedReleaseKey: 'Die Release-Eigenschaften {roles} verwenden alle den Schlüssel "{key}".',
+  releasedDateIsTarget: 'Das Veröffentlichungsdatum und das Zieldatum verwenden denselben Schlüssel "{key}".',
+  releasedTransition: 'Der Übergangswert "{value}" für veröffentlichte Releases ist keiner der Statuswerte für veröffentlicht.',
+  membershipCollision: 'Der Schlüssel der Release-Zugehörigkeit "{key}" ist auch die Eigenschaft {role}.'
+};
+function localizedCheck(result, language2) {
+  if (language2 === "en") return result;
+  return { ...result, problems: result.problems.map((problem) => ({ ...problem, message: retranslate(problem.message, checkMessages, germanCheckMessages) })) };
+}
+const germanSyncMessages = {
+  duplicateLinkCopy: "{holder} synchronisiert bereits das Remote-Element {id}; entfernen oder ändern Sie {property} in dieser Kopie",
+  duplicateLinkNotes: "{count} Notizen verweisen auf das Remote-Element {id}; behalten Sie {property} in nur einer davon",
+  duplicateLink: "{holder} synchronisiert bereits das Remote-Element {id}",
+  unmappedType: "der Typ {type} hat keine Zuordnung zu einem Remote-Typ",
+  untyped: "die Notiz hat keinen Typ und damit keine Zuordnung zu einem Remote-Typ",
+  foreignLink: "{property} verweist auf ein Element einer anderen Verbindung",
+  remoteFormatUnknown: "die Remote-Beschreibung wurde geändert, ist aber nicht als Markdown bekannt und wird daher nicht übernommen; bearbeiten Sie die Notiz oder führen Sie backlog sync resolve mit --field description aus",
+  unexpressible: "{field} der Notiz lässt sich auf dieser Verbindung nicht ausdrücken, daher wird der Remote-Wert nicht darüber übernommen",
+  unreadableRemote: "das Remote-Feld {field} ist nicht lesbar, daher wird der Wert der Notiz nicht darüber übertragen",
+  remoteMissing: "das Remote-Element {id} existiert nicht mehr oder ist nicht lesbar",
+  serverKept: "die Plattform hat {stored} statt {sent} gespeichert; die nächste Synchronisierung überträgt den Wert der Notiz erneut",
+  serverApplied: "die Plattform hat {value} übernommen; ein Pull übernimmt den Wert in die Notiz",
+  notCreated: "noch nicht synchronisiert; ein Push legt das Element an",
+  predecessorNotCreated: "ein Vorgänger wurde in diesem Lauf nicht angelegt; die Verknüpfungen folgen bei der nächsten Synchronisierung",
+  unmappedRemoteType: "der Remote-Typ {type} hat keine lokale Typzuordnung; ergänzen Sie ihn in mappings.types",
+  unsyncedParent: "das übergeordnete Remote-Element {parent} wird auf dieser Verbindung nicht synchronisiert",
+  unsyncedDependency: "der Remote-Vorgänger {ids} wird auf dieser Verbindung nicht synchronisiert",
+  missingIteration: "keine Iteration-Notiz heißt {name}",
+  titleTaken: "{path} existiert bereits",
+  remoteChanged: "Das Remote-Element wurde während der Synchronisierung geändert; führen Sie die Synchronisierung erneut aus."
+};
+const syncText = (text2) => retranslate(text2, syncMessages, germanSyncMessages);
+function localizedSync(result, language2) {
+  if (language2 === "en") return result;
+  return {
+    ...result,
+    views: result.views.map((view) => ({
+      ...view,
+      skipped: view.skipped.map((skip) => ({ ...skip, reason: syncText(skip.reason) })),
+      failed: view.failed.map((failure2) => ({ ...failure2, message: syncText(failure2.message) }))
+    }))
+  };
+}
 const syncOptions = {
   direction: option$1.string("sync: push vault changes, pull remote changes, or both (default).", { enum: ["push", "pull", "both"] }),
   take: option$1.string("sync resolve: settle the conflict with the local or the remote value.", { enum: ["local", "remote"] }),
@@ -31799,10 +32411,11 @@ function syncAction(rest, flags, context, services2, selection2) {
   const [sub, ...args] = rest;
   const direction = value$2(flags, "direction") ?? "both";
   ensure(["push", "pull", "both"].includes(direction), "INVALID_ARGUMENT", "--direction must be push, pull or both.");
-  if (sub === void 0) return runSync(context, services2, { ...selection2, direction, mode: "sync" });
+  const run2 = async (request) => localizedSync(await runSync(context, services2, request), context.language);
+  if (sub === void 0) return run2({ ...selection2, direction, mode: "sync" });
   if (sub === "status") {
     arity(args, 0);
-    return runSync(context, services2, { ...selection2, direction, mode: "status" });
+    return run2({ ...selection2, direction, mode: "status" });
   }
   ensure(sub === "resolve", "INVALID_ARGUMENT", "Use backlog sync, backlog sync status or backlog sync resolve <item> --take local|remote.");
   arity(args, 1);
@@ -31810,7 +32423,7 @@ function syncAction(rest, flags, context, services2, selection2) {
   ensure(take === "local" || take === "remote", "INVALID_ARGUMENT", "--take must be local or remote.");
   const fields2 = value$2(flags, "field")?.split(",").map((field2) => field2.trim()).filter(Boolean) ?? null;
   ensure(fields2 === null || fields2.length > 0, "INVALID_ARGUMENT", "--field needs at least one field name.");
-  return runSync(context, services2, { ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
+  return run2({ ...selection2, direction: "both", mode: "sync", resolve: { item: args[0], take, fields: fields2 } });
 }
 const selection = ["base", "view", "today"];
 const accepted = {
@@ -31942,7 +32555,7 @@ function backlogCommand(ports2) {
           return showItem(session, rest[0]);
         case "check":
           arity(rest, 0);
-          return check$1(session);
+          return localizedCheck(check$1(session), context.language);
         case "add": {
           arity(rest, 2);
           const tags2 = value$2(flags, "tags");
@@ -32020,6 +32633,51 @@ function release(session, bases, rest, flags, ifMatch2) {
       return listReleases(session, bases);
   }
 }
+const backlogStrings = {
+  de: {
+    manifest: { name: "Produkt-Backlog", description: "Ein Produkt-Backlog planen, das mit der Obsidian-Ansicht Product Backlog kompatibel ist: Hierarchie, Ränge, Zustände, Iterationen, Releases und Abhängigkeiten." },
+    descriptions: {
+      "The .base file of the backlog; discovered when it is the only one with a product-backlog view.": "Die .base-Datei des Backlogs; wird ermittelt, wenn sie die einzige mit einer product-backlog-Ansicht ist.",
+      "The product-backlog view of the base.": "Die product-backlog-Ansicht der Base.",
+      "The date used for started/finished stamps, iteration defaults and release dates (YYYY-MM-DD); default today.": "Das Datum für Start- und Abschlussstempel, Iterationsstandards und Releasedaten (YYYY-MM-DD); standardmäßig heute.",
+      "init: the backlog folder (default docs). add: the folder of the new note instead of its type folder.": "init: der Backlog-Ordner (Standard docs). add: der Ordner der neuen Notiz statt ihres Typordners.",
+      "list: include read-only context rows (ancestors outside the filter).": "list: schreibgeschützte Kontextzeilen einschließen (Vorfahren außerhalb des Filters).",
+      "add: the parent item. move: the new parent.": "add: der übergeordnete Eintrag. move: der neue übergeordnete Eintrag.",
+      "move: make the item a top-level item (no parent).": "move: den Eintrag zu einem Eintrag der obersten Ebene machen (ohne übergeordneten Eintrag).",
+      "move: place before this sibling.": "move: vor diesem Geschwistereintrag einordnen.",
+      "move: place after this sibling.": "move: nach diesem Geschwistereintrag einordnen.",
+      "move: place first among the siblings.": "move: als ersten der Geschwistereinträge einordnen.",
+      "move: place last among the siblings (the default).": "move: als letzten der Geschwistereinträge einordnen (Standard).",
+      "add/set: the workflow state.": "add/set: der Workflow-Zustand.",
+      "set: the roadmap horizon (Now, Next, Later…).": "set: der Roadmap-Horizont (Now, Next, Later…).",
+      "set: the priority.": "set: die Priorität.",
+      "set: the risk.": "set: das Risiko.",
+      "set/iteration add: the planned start date.": "set/iteration add: das geplante Startdatum.",
+      "set/iteration add: the planned target date.": "set/iteration add: das geplante Zieldatum.",
+      "add/set: a Resource note.": "add/set: eine Resource-Notiz.",
+      "set: the new type (canonical spelling is written).": "set: der neue Typ (geschrieben wird die kanonische Schreibweise).",
+      "add: tags separated by commas or spaces; a leading # is optional.": "add: durch Kommas oder Leerzeichen getrennte Tags; ein führendes # ist optional.",
+      "add: the iteration to plan the item in.": "add: die Iteration, in der der Eintrag eingeplant wird.",
+      "add: the release the item ships in.": "add: das Release, mit dem der Eintrag ausgeliefert wird.",
+      "depend/undepend: the prerequisite item.": "depend/undepend: der vorausgesetzte Eintrag.",
+      'iteration add: the name instead of "<N> - Iteration".': 'iteration add: der Name statt "<N> - Iteration".',
+      "iteration add: the iteration goal.": "iteration add: das Ziel der Iteration.",
+      "iteration add: the length in days (default iterationLengthDays, 14).": "iteration add: die Länge in Tagen (Standard iterationLengthDays, 14).",
+      "release add: the version (the release view's versionProperty).": "release add: die Version (versionProperty der Release-Ansicht).",
+      "release add: the target date.": "release add: das Zieldatum.",
+      "release add: the release status.": "release add: der Release-Status.",
+      "release add: the description.": "release add: die Beschreibung.",
+      "The revision of the item note the write is planned against.": "Die Revision der Eintragsnotiz, gegen die der Schreibvorgang geplant ist.",
+      "sync: push vault changes, pull remote changes, or both (default).": "sync: Vault-Änderungen übertragen (push), entfernte Änderungen abrufen (pull) oder beides (Standard).",
+      "sync resolve: settle the conflict with the local or the remote value.": "sync resolve: den Konflikt mit dem lokalen oder dem entfernten Wert auflösen.",
+      "sync resolve: comma-separated fields to settle (title, type, state, parent, dependencies, iteration, area, priority, effort, tags, description, property:<key>); default every conflicting field.": "sync resolve: kommagetrennte aufzulösende Felder (title, type, state, parent, dependencies, iteration, area, priority, effort, tags, description, property:<key>); standardmäßig jedes Feld im Konflikt.",
+      "init, list, tree, board, show, check, add, move, ranks, set, depend, undepend, iteration, release, sync": "init, list, tree, board, show, check, add, move, ranks, set, depend, undepend, iteration, release oder sync",
+      "The action's arguments: an item, a type and title, or a sub-action and its arguments.": "Die Argumente der Aktion: ein Eintrag, ein Typ und ein Titel oder eine Unteraktion und ihre Argumente.",
+      "The default .base file of the backlog command, relative to the command scope.": "Die Standard-.base-Datei des Befehls backlog, relativ zum Geltungsbereich des Befehls.",
+      "The default product-backlog view of that base.": "Die Standard-product-backlog-Ansicht dieser Base."
+    }
+  }
+};
 const payload$1 = (keys) => (value2) => isRecord$1(value2) && keys.every((key) => typeof value2[key] === "string");
 const events$1 = [
   { id: "backlog.item-created", description: "A backlog item, iteration or release note was created: {path, title, type, id, parent?, order?}.", validate: payload$1(["path", "title", "type"]) },
@@ -32078,6 +32736,7 @@ const backlogPlugin = {
     author: "The Forge",
     description: "Plan a product backlog compatible with the Obsidian Product Backlog view: hierarchy, ranks, states, iterations, releases and dependencies."
   },
+  strings: backlogStrings,
   create: (host) => {
     const activity = { syncing: false };
     return {
@@ -32862,6 +33521,21 @@ function documentGenerator(templates2) {
     }
   };
 }
+const templatesStrings = {
+  de: {
+    manifest: { name: "Vorlagen", description: "Obsidian-Markdown-Vorlagen zu Dokumenten rendern und das Planungs-Workflow-Paket installieren." },
+    descriptions: {
+      "list (default), inspect or install.": "list (Standard), inspect oder install.",
+      "The template for inspect, or the pack (workflow) for install.": "Die Vorlage für inspect oder das Paket (workflow) für install.",
+      "Markdown template under bin/templates.": "Markdown-Vorlage unter bin/templates.",
+      "Template values as a JSON object.": "Vorlagenwerte als JSON-Objekt.",
+      "Read template values from a JSON file.": "Vorlagenwerte aus einer JSON-Datei lesen.",
+      "ISO date used for template dates; defaults to today.": "ISO-Datum für die Datumsangaben der Vorlage; standardmäßig heute.",
+      "dayjs format of {{date}} placeholders without their own format.": "dayjs-Format von {{date}}-Platzhaltern ohne eigenes Format.",
+      "dayjs format of {{time}} placeholders without their own format.": "dayjs-Format von {{time}}-Platzhaltern ohne eigenes Format."
+    }
+  }
+};
 const installer = { setupTemplates: () => setupTemplates };
 const templatesPlugin = {
   manifest: {
@@ -32873,6 +33547,7 @@ const templatesPlugin = {
     author: "The Forge",
     description: "Render Obsidian Markdown templates into documents and install the planning workflow pack."
   },
+  strings: templatesStrings,
   create: () => {
     const templates2 = (context) => new MarkdownTemplates((text2) => context.workspace.codec.markdownParts(text2));
     return {
@@ -33259,6 +33934,11 @@ Run npm commands from this project directory. Install with npm ci after a lockfi
     ...componentScaffold(name2, "ProjectIdentity", projectsDirectory)
   ];
 }
+const scaffoldsStrings = {
+  de: {
+    manifest: { name: "Gerüste", description: "Getestete TypeScript-Projekte, Komponenten, Domain- und Anwendungscode, typisierte Formulare und Plugin-Ordner generieren." }
+  }
+};
 const projects = { project: projectScaffold, component: componentScaffold };
 const scaffoldsPlugin = {
   manifest: {
@@ -33270,6 +33950,7 @@ const scaffoldsPlugin = {
     author: "The Forge",
     description: "Generate tested TypeScript projects, components, domain and application code, typed forms and plugin folders."
   },
+  strings: scaffoldsStrings,
   create: () => ({
     // Every scaffold is a new file the host writes create-only: a generator never replaces existing content.
     generators: scaffoldGenerators.map((generator) => ({ ...generator, destructive: false })),
@@ -36073,8 +36754,8 @@ const $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
   });
   defineLazyInternal(inst, "pattern", (zod) => {
     if (zod.def.options.every((o) => o._zod.pattern)) {
-      const patterns = zod.def.options.map((o) => o._zod.pattern);
-      return new RegExp(`^(${patterns.map((p) => cleanRegex(p.source)).join("|")})$`);
+      const patterns2 = zod.def.options.map((o) => o._zod.pattern);
+      return new RegExp(`^(${patterns2.map((p) => cleanRegex(p.source)).join("|")})$`);
     }
     return void 0;
   });
@@ -38277,7 +38958,7 @@ const exactPattern = (p) => exactPatterns.get(p) ?? p;
 const stringProcessor = (schema2, ctx, _json, _params) => {
   const json2 = _json;
   json2.type = "string";
-  const { minimum, maximum, format: format2, patterns, contentEncoding, laxFormat } = aggregateChecks(schema2);
+  const { minimum, maximum, format: format2, patterns: patterns2, contentEncoding, laxFormat } = aggregateChecks(schema2);
   if (typeof minimum === "number")
     json2.minLength = minimum;
   if (typeof maximum === "number")
@@ -38292,8 +38973,8 @@ const stringProcessor = (schema2, ctx, _json, _params) => {
   }
   if (contentEncoding)
     json2.contentEncoding = contentEncoding;
-  if (patterns && patterns.size > 0) {
-    const patternList = [...patterns].map(exactPattern);
+  if (patterns2 && patterns2.size > 0) {
+    const patternList = [...patterns2].map(exactPattern);
     if (patternList.length === 1)
       json2.pattern = patternList[0].source;
     else if (patternList.length > 1) {
@@ -38585,14 +39266,14 @@ const recordProcessor = (schema2, ctx, _json, params) => {
   const def = schema2._zod.def;
   json2.type = "object";
   const keyType = def.keyType;
-  const patterns = aggregateChecks(keyType).patterns;
-  if (def.mode === "loose" && patterns && patterns.size > 0) {
+  const patterns2 = aggregateChecks(keyType).patterns;
+  if (def.mode === "loose" && patterns2 && patterns2.size > 0) {
     const valueSchema = processSchema(def.valueType, ctx, {
       ...params,
       path: [...params.path, "patternProperties", "*"]
     });
     json2.patternProperties = {};
-    for (const pattern2 of patterns) {
+    for (const pattern2 of patterns2) {
       assignProp(json2.patternProperties, exactPattern(pattern2).source, valueSchema);
     }
   } else {
@@ -40755,6 +41436,29 @@ const de$1 = {
   },
   messages: { emptyLibrary: "Führen Sie {command} init --library {directory} aus oder fügen Sie eine Markdown-Definition hinzu." }
 };
+const uiStrings = {
+  de: {
+    manifest: { name: "UI-Bibliotheken", description: "Markdown-Bibliotheken für Komponenten und Interaktionen mit deterministischer UI- und Storybook-Generierung für sieben Ziele." },
+    descriptions: {
+      "Root element tag for create.": "Tag des Wurzelelements für create.",
+      "Interaction library directory used to validate component interactions.": "Verzeichnis der Interaktionsbibliothek, mit dem Komponenteninteraktionen geprüft werden.",
+      "Browser event for create.": "Browserereignis für create.",
+      "UI target; defaults to plugins.settings.ui.framework.": "UI-Ziel; standardmäßig plugins.settings.ui.framework.",
+      "Also generate Storybook stories (make ui).": "Zusätzlich Storybook-Stories generieren (make ui).",
+      "Stories output directory; defaults to plugins.settings.ui.stories.": "Ausgabeverzeichnis der Stories; standardmäßig plugins.settings.ui.stories.",
+      "Interaction library directory; defaults to plugins.settings.ui.interactions.": "Verzeichnis der Interaktionsbibliothek; standardmäßig plugins.settings.ui.interactions.",
+      "Default UI target of make ui and make stories.": "Standard-UI-Ziel von make ui und make stories.",
+      "Workspace-relative component library folder.": "Ordner der Komponentenbibliothek, relativ zum Workspace.",
+      "Workspace-relative folder that components import copies definitions from.": "Ordner relativ zum Workspace, aus dem components import Definitionen kopiert.",
+      "Workspace-relative folder that components export copies definitions to.": "Ordner relativ zum Workspace, in den components export Definitionen kopiert.",
+      "Workspace-relative interaction library folder.": "Ordner der Interaktionsbibliothek, relativ zum Workspace.",
+      "Workspace-relative folder that interactions import copies definitions from.": "Ordner relativ zum Workspace, aus dem interactions import Definitionen kopiert.",
+      "Workspace-relative folder that interactions export copies definitions to.": "Ordner relativ zum Workspace, in den interactions export Definitionen kopiert.",
+      "Generated UI folder, relative to the output project (or the workspace without one).": "Ordner der generierten UI, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace).",
+      "Generated Storybook story folder, relative to the output project (or the workspace without one).": "Ordner der generierten Storybook-Stories, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace)."
+    }
+  }
+};
 const renderer = {
   componentPaths: (definitions2, options2) => definitions2.map((definition2) => `${options2.outputDirectory}/${componentArtifact(definition2, options2.framework).fileName}`),
   generate: (definitions2, options2) => [
@@ -40778,6 +41482,7 @@ const uiPlugin = {
     author: "The Forge",
     description: "Markdown component and interaction libraries with deterministic UI and Storybook generation for seven targets."
   },
+  strings: uiStrings,
   create: () => ({
     commands: [componentsCommand(services$1), interactionsCommand(services$1)],
     generators: uiGenerators(services$1),
@@ -41283,6 +41988,20 @@ function dataSourcesCommand(services2) {
     }
   };
 }
+const dataSourcesStrings = {
+  de: {
+    manifest: { name: "Datenquellen", description: "Markdown-Definitionen für REST- und lokale JSON-Datenquellen mit typisierten Adaptern und deterministischen Testdaten." },
+    descriptions: {
+      "Data-source kind for create.": "Art der Datenquelle für create.",
+      "Test-data output directory; defaults to plugins.settings.data-sources.fixtures.": "Ausgabeverzeichnis der Testdaten; standardmäßig plugins.settings.data-sources.fixtures.",
+      "Workspace-relative data-source definition library folder.": "Ordner der Bibliothek mit Datenquellendefinitionen, relativ zum Workspace.",
+      "Workspace-relative folder that data-sources import copies definitions from.": "Ordner relativ zum Workspace, aus dem data-sources import Definitionen kopiert.",
+      "Workspace-relative folder that data-sources export copies definitions to.": "Ordner relativ zum Workspace, in den data-sources export Definitionen kopiert.",
+      "Generated adapter folder, relative to the output project (or the workspace without one).": "Ordner der generierten Adapter, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace).",
+      "Generated test-data folder, relative to the output project (or the workspace without one).": "Ordner der generierten Testdaten, relativ zum Ausgabeprojekt (ohne Projekt zum Workspace)."
+    }
+  }
+};
 const services = (context) => {
   const workspace2 = context.environment;
   return {
@@ -41309,6 +42028,7 @@ const dataSourcesPlugin = {
     author: "The Forge",
     description: "Markdown REST and local-JSON data-source definitions with typed adapters and deterministic test data."
   },
+  strings: dataSourcesStrings,
   create: () => ({
     commands: [dataSourcesCommand(services)],
     generators: [dataSourceGenerator(services)],
@@ -41324,6 +42044,22 @@ const dataSourcesPlugin = {
     }
   })
 };
+const claudeMessages = {
+  componentFileMissing: "Manifest component file was not found among regular plugin files.",
+  componentPathEmpty: "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence.",
+  ignoredAgentField: "Claude ignores {key} in plugin agents; use a project/user agent for per-agent configuration.",
+  noCodeExecuted: "No plugin code, hooks, MCP or LSP servers were executed.",
+  claudeAuthoritative: "Claude Code remains authoritative for runtime compatibility and version-specific fields.",
+  pluginValidation: "Known manifest shapes and contained relative paths; unknown fields are preserved. Referenced files, installed versions and runtime behavior require Claude Code validation.",
+  agentRestrictions: "Other permission rules and managed settings may still restrict this agent.",
+  pluginAgentLimitations: "Claude Code ignores hooks, mcpServers, permissionMode and initialPrompt in plugin agents.",
+  hookValidation: "configuration; hook code is not executed",
+  agentFormat: "Markdown with YAML frontmatter",
+  hookExecution: "Claude Code owns execution; Forge never runs hook handlers.",
+  mutationScope: "project where the native command supports a scope",
+  lifecycleDryRun: "Returns command arguments without starting Claude Code.",
+  notificationFailed: "Claude notification {event}: {diagnostic}"
+};
 const text$a = (value2) => typeof value2 === "string" && value2.length > 0;
 const status = (value2) => Number.isSafeInteger(value2);
 const operation$1 = (value2) => Number.isSafeInteger(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean" && text$a(value2.executable) && text$a(value2.cwd);
@@ -41338,13 +42074,13 @@ const claudeEvents = [
   definition$1("claude.failed", "Claude validation, execution or output processing failed.", (value2) => operation$1(value2) && error(value2.error) && optionalStatus(value2)),
   definition$1("claude.executed", "The Claude process returned an exit status, including nonzero status.", (value2) => text$a(value2.executable) && text$a(value2.cwd) && status(value2.exitCode))
 ];
-async function notifyClaude(events2, id2, payload2) {
+async function notifyClaude(events2, id2, payload2, localize = (text2) => text2) {
   try {
     if (!events2.ids().includes(id2)) return;
     await events2.emit(id2, payload2);
   } catch (failure2) {
     try {
-      events2.warn(`Claude notification ${id2}: ${errorMessage(failure2)}`);
+      events2.warn(localize(fill$1(claudeMessages.notificationFailed, { event: id2, diagnostic: errorMessage(failure2) })));
     } catch {
     }
   }
@@ -41355,18 +42091,20 @@ function nativeResult(stdout, output2) {
   return JSON.parse(output2 === "json-last-line" ? text2.split("\n").at(-1) ?? "" : text2);
 }
 class ClaudeLifecycle {
-  constructor(runtime, scope2, events2, operationId) {
+  constructor(runtime, scope2, events2, operationId, localize = (text2) => text2) {
     this.runtime = runtime;
     this.scope = scope2;
     this.events = events2;
     this.operationId = operationId;
+    this.localize = localize;
   }
   runtime;
   scope;
   events;
   operationId;
+  localize;
   notify(id2, payload2) {
-    return notifyClaude(this.events, id2, payload2);
+    return notifyClaude(this.events, id2, payload2, this.localize);
   }
   async execute(request) {
     let detached = request;
@@ -41482,7 +42220,7 @@ const claudeTarget = (openFiles) => async (context, flags) => {
         root = parent2;
       }
     }
-    const files = await openFiles(root, (message2) => context.events.warn(message2));
+    const files = await openFiles(root);
     const prefix = minpath.relative(root, directory).split("\\").join("/");
     const scoped2 = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
     return {
@@ -41760,7 +42498,7 @@ class ClaudeSettings {
     const result = await this.inspect();
     validateClaudeHooks(result.hooks);
     validateHookPolicy(result.settings);
-    return { ...result, hooks: result.hooks, valid: true, validation: "configuration; hook code is not executed" };
+    return { ...result, hooks: result.hooks, valid: true, validation: claudeMessages.hookValidation };
   }
   async set(hooks2, revision2) {
     validateClaudeHooks(hooks2);
@@ -41811,7 +42549,7 @@ class ClaudeSettings {
     const rule2 = `Agent(${name2})`;
     const next = enabled2 ? deny.filter((item) => item !== rule2) : deny.includes(rule2) ? deny : [...deny, rule2];
     const result = await this.save({ ...current.settings, permissions: { ...permissions, deny: next } }, current.revision, revision2);
-    return { ...result, rule: rule2, enabled: enabled2, note: "Other permission rules and managed settings may still restrict this agent." };
+    return { ...result, rule: rule2, enabled: enabled2, note: claudeMessages.agentRestrictions };
   }
   async save(settings2, actual, expected) {
     ensure(actual === (expected ?? null), "CONFLICT", `Inspect ${this.path} and supply its current --if-match revision before updating existing settings.`, revisionConflict(this.path, expected, actual));
@@ -41893,7 +42631,7 @@ async function agentCommands(args, flags, context, services2) {
   return {
     target: { scope: target.scope, directory: target.directory },
     ...result,
-    ...target.scope === "plugin" ? { limitations: "Claude Code ignores hooks, mcpServers, permissionMode and initialPrompt in plugin agents." } : {}
+    ...target.scope === "plugin" ? { limitations: claudeMessages.pluginAgentLimitations } : {}
   };
 }
 async function hookCommands(args, flags, context, services2) {
@@ -41939,7 +42677,7 @@ const claudePluginCapabilities = {
   manifest: ".claude-plugin/plugin.json",
   manifestRequired: false,
   reference: "https://code.claude.com/docs/en/plugins-reference",
-  validation: "Known manifest shapes and contained relative paths; unknown fields are preserved. Referenced files, installed versions and runtime behavior require Claude Code validation.",
+  validation: claudeMessages.pluginValidation,
   components: [
     { field: "skills", defaultPath: "skills/", forms: ["path", "paths"], loading: "add" },
     { field: "commands", defaultPath: "commands/", forms: ["path", "paths", "command-map"], loading: "replace" },
@@ -42333,7 +43071,7 @@ class ClaudePluginService {
     for (const reference of references) {
       if (reference.path === "") continue;
       const exists2 = reference.file ? inspected.files.includes(reference.path) : inspected.files.some((path2) => path2 === reference.path || path2.startsWith(`${reference.path}/`));
-      if (!exists2) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? "Manifest component file was not found among regular plugin files." : "No regular files found at this declared component path; it may be empty or missing. Claude Code validation checks directory existence." });
+      if (!exists2) diagnostics2.push({ path: reference.path, severity: reference.file ? "error" : "warning", message: reference.file ? claudeMessages.componentFileMissing : claudeMessages.componentPathEmpty });
     }
     for (const path2 of inspected.files) {
       try {
@@ -42349,7 +43087,7 @@ class ClaudePluginService {
       valid: !diagnostics2.some((item) => item.severity === "error"),
       diagnostics: diagnostics2,
       validation: "structure",
-      limitations: ["No plugin code, hooks, MCP or LSP servers were executed.", "Claude Code remains authoritative for runtime compatibility and version-specific fields."]
+      limitations: [claudeMessages.noCodeExecuted, claudeMessages.claudeAuthoritative]
     };
   }
   path(directory, path2) {
@@ -42379,7 +43117,7 @@ class ClaudePluginService {
     if (kinds.has("agent")) {
       const { metadata: metadata2 } = this.agentCodec.parse(decode$3(bytes));
       for (const key of claudePluginCapabilities.ignoredPluginAgentFields) {
-        if (Object.hasOwn(metadata2, key)) warnings.push(`Claude ignores ${key} in plugin agents; use a project/user agent for per-agent configuration.`);
+        if (Object.hasOwn(metadata2, key)) warnings.push(fill$1(claudeMessages.ignoredAgentField, { key }));
       }
     }
     if (kinds.has("hooks")) {
@@ -42594,8 +43332,41 @@ function buildClaudeRuntimeArgs(section2, args, flags) {
   native.push(...options2);
   return native;
 }
-function claudeCommand(adapters) {
+const germanClaudeMessages = {
+  componentFileMissing: "Die Komponentendatei des Manifests wurde unter den regulären Plugin-Dateien nicht gefunden.",
+  componentPathEmpty: "Unter diesem deklarierten Komponentenpfad wurden keine regulären Dateien gefunden; er ist möglicherweise leer oder fehlt. Die Validierung von Claude Code prüft, ob das Verzeichnis existiert.",
+  ignoredAgentField: "Claude ignoriert {key} in Plugin-Agenten; verwenden Sie für agentenspezifische Konfiguration einen Projekt- oder Benutzeragenten.",
+  noCodeExecuted: "Es wurden kein Plugin-Code, keine Hooks und keine MCP- oder LSP-Server ausgeführt.",
+  claudeAuthoritative: "Für Laufzeitkompatibilität und versionsspezifische Felder bleibt Claude Code maßgeblich.",
+  pluginValidation: "Bekannte Manifestformen und enthaltene relative Pfade; unbekannte Felder bleiben erhalten. Referenzierte Dateien, installierte Versionen und das Laufzeitverhalten erfordern die Validierung durch Claude Code.",
+  agentRestrictions: "Andere Berechtigungsregeln und verwaltete Einstellungen können diesen Agenten weiterhin einschränken.",
+  pluginAgentLimitations: "Claude Code ignoriert hooks, mcpServers, permissionMode und initialPrompt in Plugin-Agenten.",
+  hookValidation: "Konfiguration; Hook-Code wird nicht ausgeführt",
+  agentFormat: "Markdown mit YAML-Frontmatter",
+  hookExecution: "Claude Code führt Hooks aus; Forge führt nie Hook-Handler aus.",
+  mutationScope: "project, wo der native Befehl einen Bereich unterstützt",
+  lifecycleDryRun: "Gibt die Befehlsargumente zurück, ohne Claude Code zu starten.",
+  notificationFailed: "Die Claude-Benachrichtigung {event} ist fehlgeschlagen: {diagnostic}"
+};
+function localizedText(text2, language2) {
+  return language2 === "en" ? text2 : retranslate(text2, claudeMessages, germanClaudeMessages);
+}
+function localized(value2) {
+  if (typeof value2 === "string") return retranslate(value2, claudeMessages, germanClaudeMessages);
+  if (Array.isArray(value2)) return value2.map(localized);
+  return isRecord$1(value2) ? Object.fromEntries(Object.entries(value2).map(([key, entry2]) => [key, localized(entry2)])) : value2;
+}
+function withLocalizedResults(command2) {
   return {
+    ...command2,
+    async run(args, flags, context) {
+      const result = await command2.run(args, flags, context);
+      return context.language === "en" ? result : localized(result);
+    }
+  };
+}
+function claudeCommand(adapters) {
+  return withLocalizedResults({
     id: "claude",
     description: "Manage native Claude Code agents, hooks and plugins with guarded writes and installed CLI lifecycle.",
     usage: "claude capabilities | agents list|inspect|create|update|remove|enable|disable|export [id] | hooks inspect|check|set|add|remove|configure|enable|disable [event] | plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory> [path] | plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval [id] | marketplaces add|list|remove|update [source] | runtime version|doctor|install|update",
@@ -42645,10 +43416,10 @@ function claudeCommand(adapters) {
           provider: "Claude Code",
           nativeFormats: true,
           documentation: "https://code.claude.com/docs/en/sub-agents",
-          agents: { scopes: ["project", "user", "plugin"], format: "Markdown with YAML frontmatter", operations: ["list", "inspect", "create", "update", "remove", "enable", "disable", "export"], pluginIgnoredFields: ["hooks", "mcpServers", "permissionMode", "initialPrompt"] },
-          hooks: { scopes: ["project", "local", "user", "plugin"], events: claudeHookEvents, operations: ["inspect", "check", "set", "add", "remove", "configure", "enable", "disable"], execution: "Claude Code owns execution; Forge never runs hook handlers." },
+          agents: { scopes: ["project", "user", "plugin"], format: claudeMessages.agentFormat, operations: ["list", "inspect", "create", "update", "remove", "enable", "disable", "export"], pluginIgnoredFields: ["hooks", "mcpServers", "permissionMode", "initialPrompt"] },
+          hooks: { scopes: ["project", "local", "user", "plugin"], events: claudeHookEvents, operations: ["inspect", "check", "set", "add", "remove", "configure", "enable", "disable"], execution: claudeMessages.hookExecution },
           plugins: claudePluginCapabilities,
-          lifecycle: { executable: "claude", commands: ["plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval", "marketplaces add|list|remove|update", "runtime version|doctor|install|update"], mutationDefaultScope: "project where the native command supports a scope", dryRun: "Returns command arguments without starting Claude Code." }
+          lifecycle: { executable: "claude", commands: ["plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval", "marketplaces add|list|remove|update", "runtime version|doctor|install|update"], mutationDefaultScope: claudeMessages.mutationScope, dryRun: claudeMessages.lifecycleDryRun }
         };
       }
       const services2 = { agentCodec: adapters.agentCodec(context.workspace.codec), target: adapters.target };
@@ -42670,8 +43441,39 @@ function claudeCommand(adapters) {
       }
       return adapters.lifecycle.execute({ args: command2, executable, timeoutMs, stdin: input, output: claudeRuntimeOutput(section2, args.slice(1), flags) });
     }
-  };
+  });
 }
+const passthrough = {
+  list: "Passed to the native Claude Code CLI as --{name} (one string or a JSON array) by {actions}.",
+  flag: "Passed to the native Claude Code CLI as --{name} by {actions}."
+};
+const germanPassthrough = {
+  list: "Von {actions} als --{name} (eine Zeichenkette oder ein JSON-Array) an die native Claude-Code-CLI übergeben.",
+  flag: "Von {actions} als --{name} an die native Claude-Code-CLI übergeben."
+};
+const claudeStrings = {
+  de: {
+    manifest: { name: "Claude-Code-Verwaltung", description: "Native Claude-Code-Agenten, -Hooks und -Plugins verwalten und den Lebenszyklus der installierten Claude-Code-CLI ausführen." },
+    descriptions: {
+      ...Object.fromEntries(Object.values(claudeRuntimeOptions).map(({ description: description2 }) => [description2, retranslate(description2, passthrough, germanPassthrough)])),
+      "Claude configuration scope of the action.": "Claude-Konfigurationsbereich der Aktion.",
+      "Plugin directory for plugin-scoped agents and hooks.": "Plugin-Verzeichnis für Agenten und Hooks im Plugin-Bereich.",
+      "Claude user configuration directory for user scope.": "Claude-Benutzerkonfigurationsverzeichnis für den Benutzerbereich.",
+      "Read native input from a file.": "Native Eingabe aus einer Datei lesen.",
+      "Native input as literal text.": "Native Eingabe als wörtlicher Text.",
+      "Read native input from piped standard input.": "Native Eingabe aus der umgeleiteten Standardeingabe lesen.",
+      "JSON metadata for agent create or update.": "JSON-Metadaten für agent create oder update.",
+      "Agent system prompt for create or update.": "System-Prompt des Agenten für create oder update.",
+      "SHA-256 revision the native file must still have.": "SHA-256-Revision, die die native Datei noch haben muss.",
+      "Destination path for export.": "Zielpfad für export.",
+      "Hook entry index for hooks remove.": "Index des Hook-Eintrags für hooks remove.",
+      "Path of the Claude Code executable; defaults to claude on PATH.": "Pfad der ausführbaren Claude-Code-Datei; standardmäßig claude im PATH.",
+      "Native process timeout in milliseconds (1 to 3600000).": "Zeitlimit des nativen Prozesses in Millisekunden (1 bis 3600000).",
+      "capabilities (default), agents, hooks, plugins, marketplaces or runtime.": "capabilities (Standard), agents, hooks, plugins, marketplaces oder runtime.",
+      "The section action and its operands; see usage.": "Die Aktion des Bereichs und ihre Operanden; siehe usage."
+    }
+  }
+};
 const claudeLifecycleService = "claude.lifecycle";
 const claudePlugin = {
   manifest: {
@@ -42683,6 +43485,7 @@ const claudePlugin = {
     author: "The Forge",
     description: "Manage native Claude Code agents, hooks and plugins, and run the installed Claude Code CLI lifecycle."
   },
+  strings: claudeStrings,
   create: (host) => {
     let lifecycle;
     const client = {
@@ -42696,7 +43499,7 @@ const claudePlugin = {
       events: [...claudeEvents],
       provides: { [claudeLifecycleService]: client },
       onload(context) {
-        lifecycle = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId());
+        lifecycle = new ClaudeLifecycle((executable) => new NodeClaudeRuntime({ executable }), { cwd: context.root, dryRun: context.workspace.dryRun }, context.events, () => host.operationId(), (text2) => localizedText(text2, context.language));
       },
       onunload() {
         lifecycle = void 0;
@@ -42852,7 +43655,7 @@ function tokenSet(connection, environment) {
   return (environment(connection.tokenEnv)?.trim() ?? "") !== "";
 }
 const actions = ["list", "inspect", "test"];
-function connectionJson({ connection, connector }, environment) {
+function connectionJson({ connection, connector }, environment, language2) {
   return {
     id: connection.id,
     platform: connection.platform,
@@ -42862,7 +43665,7 @@ function connectionJson({ connection, connector }, environment) {
     effortProperty: connection.effortProperty,
     areaProperty: connection.areaProperty,
     ...connector.describe().summary(connection),
-    warnings: connector.describe().warnings(connection)
+    warnings: connector.describe(language2).warnings(connection)
   };
 }
 function connectorsCommand(hub, environment) {
@@ -42884,7 +43687,7 @@ function connectorsCommand(hub, environment) {
       { name: "id", description: "The connection id (inspect, test)." }
     ],
     errors: ["CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
-    async run(args) {
+    async run(args, _flags, { language: language2 }) {
       const [action2 = "list", ...rest] = args;
       ensure(actions.includes(action2), "INVALID_ARGUMENT", `Use connectors ${actions.join(", connectors ")}.`);
       if (action2 === "list") {
@@ -42892,7 +43695,7 @@ function connectorsCommand(hub, environment) {
         return {
           platforms: hub.platforms(),
           connections: hub.statuses().map((status2) => ({
-            ...status2.bound ? connectionJson(status2.bound, environment) : { id: status2.profile.id, platform: status2.profile.platform },
+            ...status2.bound ? connectionJson(status2.bound, environment, language2) : { id: status2.profile.id, platform: status2.profile.platform },
             available: status2.connector !== null,
             valid: status2.issues.length === 0,
             issues: status2.issues
@@ -42902,14 +43705,33 @@ function connectorsCommand(hub, environment) {
       arity(rest, 1);
       const bound2 = hub.connection(rest[0]);
       if (action2 === "inspect") {
-        const description2 = bound2.connector.describe();
-        return { connection: connectionJson(bound2, environment), platform: { id: description2.platform, name: description2.name, description: description2.description }, mapping: bound2.connector.mapping(bound2.connection) };
+        const description2 = bound2.connector.describe(language2);
+        return { connection: connectionJson(bound2, environment, language2), platform: { id: description2.platform, name: description2.name, description: description2.description }, mapping: bound2.connector.mapping(bound2.connection) };
       }
       const probe = await bound2.connector.test(bound2.connection);
       return { connection: bound2.connection.id, platform: bound2.connection.platform, ok: probe.ok, target: probe.target };
     }
   };
 }
+const connectorStrings = {
+  de: {
+    manifest: { name: "Connector-Verbindungen", description: "Verbindungsprofile und der gemeinsame Hub für Backlog-Connectors zu externen Work-Trackern." },
+    descriptions: {
+      "list, inspect, test": "list, inspect oder test",
+      "The connection id (inspect, test).": "Die Verbindungs-ID (inspect, test).",
+      "Connection profiles by id (lowercase kebab-case).": "Verbindungsprofile nach ID (kebab-case in Kleinbuchstaben).",
+      "The connector platform, for example azure-devops.": "Die Connector-Plattform, zum Beispiel azure-devops.",
+      "The environment variable holding the access token; the platform default when omitted. Its value is sent to the organization, so review both in shared configuration.": "Die Umgebungsvariable mit dem Zugriffstoken; ohne Angabe der Standard der Plattform. Ihr Wert wird an die Organisation gesendet; prüfen Sie daher beide in gemeinsam genutzter Konfiguration.",
+      "The frontmatter key that links a note to its remote item; the platform default when omitted.": "Der Frontmatter-Schlüssel, der eine Notiz mit ihrem entfernten Eintrag verknüpft; ohne Angabe der Standard der Plattform.",
+      "The frontmatter key of the effort or story points.": "Der Frontmatter-Schlüssel des Aufwands oder der Story Points.",
+      "The frontmatter key of the area path; a note without it uses the connection's default area.": "Der Frontmatter-Schlüssel des Bereichspfads; eine Notiz ohne ihn verwendet den Standardbereich der Verbindung.",
+      "Local backlog type → remote work item type, over the process defaults.": "Lokaler Backlog-Typ → entfernter Work-Item-Typ, vorrangig vor den Prozessstandards.",
+      "Local state (optionally Type:State) → remote state, over the process defaults.": "Lokaler Zustand (optional Typ:Zustand) → entfernter Zustand, vorrangig vor den Prozessstandards.",
+      "Neutral field → remote field reference over the process defaults; an empty string stops syncing the field.": "Neutrales Feld → entfernte Feldreferenz, vorrangig vor den Prozessstandards; eine leere Zeichenkette beendet den Abgleich des Felds.",
+      "Extra frontmatter key → remote field reference, synced as a plain value.": "Zusätzlicher Frontmatter-Schlüssel → entfernte Feldreferenz, als einfacher Wert abgeglichen."
+    }
+  }
+};
 const payload = (value2) => isRecord$1(value2) && ["connection", "platform", "path", "remoteId", "url"].every((key) => typeof value2[key] === "string") && Array.isArray(value2.fields);
 const events = [
   { id: "connector.pushed", description: "A note was pushed to its remote item: {connection, platform, path, remoteId, url, operation: create|update, fields}.", validate: payload },
@@ -42945,6 +43767,7 @@ const connectorPlugin = {
     author: "The Forge",
     description: "Connection profiles and the shared hub for backlog connectors to external work trackers."
   },
+  strings: connectorStrings,
   create: (host) => {
     const hub = new Hub(host.environment);
     return {
@@ -43197,6 +44020,10 @@ function remoteItem(json2, context, url2) {
     fields: Object.fromEntries(Object.values(context.mapping.properties).map((reference) => [reference, values2[reference] ?? null]))
   };
 }
+const connectorMessages = {
+  description: "Work items of one Azure DevOps project through the Work Items REST API 7.1.",
+  unknownHost: "organization host {host} is neither dev.azure.com nor *.visualstudio.com; the token in {tokenEnv} is sent there (expected only for Azure DevOps Server)."
+};
 const API_VERSION = "7.1";
 const BATCH_SIZE = 200;
 const organizationPattern = "^(https://[^\\s/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?)(/[^\\s/?#@]+)*/?$";
@@ -43222,16 +44049,20 @@ function withDefaults(connection, change2) {
 }
 const knownHost = (host) => host === "dev.azure.com" || host.endsWith(".visualstudio.com");
 class AzureDevOpsConnector {
-  constructor(http) {
+  /** `translations` render the self-description in other languages than English. */
+  constructor(http, translations = {}) {
     this.http = http;
+    this.translations = translations;
   }
   http;
+  translations;
   id = "azure-devops";
-  describe() {
+  describe(language2 = "en") {
+    const text2 = this.translations[language2] ?? connectorMessages;
     return {
       platform: this.id,
       name: "Azure DevOps Boards",
-      description: "Work items of one Azure DevOps project through the Work Items REST API 7.1.",
+      description: text2.description,
       defaults: { tokenEnv: "AZURE_DEVOPS_EXT_PAT", linkProperty: "azure-devops" },
       connectionSchema,
       summary: (connection) => ({
@@ -43249,7 +44080,7 @@ class AzureDevOpsConnector {
         } catch {
           return [];
         }
-        return knownHost(host) ? [] : [`organization host ${host} is neither dev.azure.com nor *.visualstudio.com; the token in ${connection.tokenEnv} is sent there (expected only for Azure DevOps Server).`];
+        return knownHost(host) ? [] : [fill$1(text2.unknownHost, { host, tokenEnv: connection.tokenEnv })];
       }
     };
   }
@@ -43365,6 +44196,15 @@ class AzureDevOpsConnector {
     throw failure("CONNECTOR_REQUEST_FAILED", `Azure DevOps ${method} failed for connection ${connection.id}: ${message2}`, { ...details, ...stale ? { reason: "stale-revision" } : {} });
   }
 }
+const azureDevOpsStrings = {
+  de: {
+    manifest: { name: "Azure-DevOps-Boards-Connector", description: "Backlog-Einträge über die REST-API für Work Items mit Work Items in Azure DevOps Boards abgleichen." }
+  }
+};
+const germanConnectorMessages = {
+  description: "Work Items eines Azure-DevOps-Projekts über die REST-API 7.1 für Work Items.",
+  unknownHost: "Der Organisations-Host {host} ist weder dev.azure.com noch *.visualstudio.com; das Token aus {tokenEnv} wird dorthin gesendet (nur für Azure DevOps Server zu erwarten)."
+};
 const azureDevOpsPlugin = {
   manifest: {
     id: "connector-azure-devops",
@@ -43375,8 +44215,9 @@ const azureDevOpsPlugin = {
     author: "The Forge",
     description: "Sync backlog items with Azure DevOps Boards work items through the Work Items REST API."
   },
+  strings: azureDevOpsStrings,
   create: (host) => {
-    const connector = new AzureDevOpsConnector(host.http);
+    const connector = new AzureDevOpsConnector(host.http, { de: germanConnectorMessages });
     return {
       provides: { "connector-azure-devops.connector": connector },
       requires: ["connector.hub"],
@@ -43386,11 +44227,11 @@ const azureDevOpsPlugin = {
     };
   }
 };
-function nodeLockFiles(root, recovered) {
+function nodeLockFiles(root, warn) {
   return async (path2, command2) => {
     const target = await (await NodeFiles.at(root)).resolvePath(path2);
     await promises.mkdir(minpath.dirname(target), { recursive: true });
-    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => recovered(lock, recoveredLockMessage(lock)));
+    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
     return async () => await releaseLock(target, token) === "released";
   };
 }
@@ -64466,14 +65307,466 @@ function generationCommand(registry2) {
     }
   };
 }
-function pluginCatalog(registry2, installed) {
+const germanCommands = {
+  help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
+  schema: "Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.",
+  config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
+  setup: "The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.",
+  project: "TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.",
+  workflows: "Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.",
+  formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
+  list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
+  read: "Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
+  validate: "Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.",
+  create: "Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.",
+  write: "Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.",
+  edit: "Markdown oder UTF-8-Text gezielt bearbeiten: wörtliche Ersetzungen, Anhängen am Ende oder Bearbeiten eines Abschnitts oder Blocks.",
+  apply: "Einen JSON-Plan aus Schreib-, Bearbeitungs-, Frontmatter-, Verschiebe- und Löschvorgängen als einen geschützten Stapel ausführen.",
+  properties: "YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.",
+  patch: "Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.",
+  delete: "Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.",
+  move: "Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.",
+  rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
+  make: "Einen registrierten Generator ausführen oder die Generatoren auflisten.",
+  events: "Ereignisverträge des Aufrufs auflisten.",
+  plugins: "Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten."
+};
+const germanActions = {
+  "project list": "Die verwalteten Projekte auflisten.",
+  "project create": "Ein eigenständiges TypeScript-Projekt erstellen.",
+  "project open": "Ein Projekt für Dateibefehle und Generatoren auswählen.",
+  "project current": "Das ausgewählte Projekt melden.",
+  "project close": "Die Projektauswahl aufheben.",
+  "project inspect": "Ein Projekt oder das ausgewählte Projekt beschreiben.",
+  "project component": "Einem Projekt eine getestete Domain- oder Anwendungskomponente hinzufügen.",
+  "workflows list": "Die erstellten Workflows jedes verwalteten Projekts und ihre generierten Einstiegspunkte auflisten.",
+  "workflows sync": "Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben."
+};
+const germanGuidance = {
+  attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
+  otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
+  textFiles: "UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.",
+  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
+  eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
+  setup: {
+    "node bin/forge.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
+    "node bin/forge.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
+    "node bin/forge.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
+  }
+};
+const germanEvents = {
+  "command.started": "Ein weitergeleiteter Befehl aktiviert gleich Plugins und läuft an.",
+  "command.succeeded": "Ein weitergeleiteter Befehl wurde erfolgreich beendet.",
+  "command.failed": "Ein weitergeleiteter Befehl ist fehlgeschlagen; Fehlercodes enthalten keine Befehlseingaben.",
+  "operation.started": "Ein geschützter Workspace-Vorgang hat begonnen, auch bei Probeläufen.",
+  "operation.succeeded": "Ein geschützter Workspace-Vorgang wurde abgeschlossen, auch bei Probeläufen.",
+  "operation.failed": "Ein geschützter Workspace-Vorgang ist fehlgeschlagen.",
+  "vault.create": "Ein erfolgreicher Schreibvorgang hat eine Datei oder einen Ordner angelegt.",
+  "vault.modify": "Ein erfolgreicher Schreibvorgang hat eine vorhandene Datei ersetzt.",
+  "vault.delete": "Eine Datei oder ein Ordner wurde entfernt; Revision und Bytes einer Datei beschreiben ihren vorherigen Inhalt.",
+  "vault.rename": "Eine Datei oder ein Ordner wurde in einem erfolgreichen Stapel von oldPath nach path verschoben.",
+  "metadataCache.changed": "Eine geschriebene Markdown- oder Canvas-Datei wurde indexiert; cache enthält ihre JSON-Metadaten.",
+  "metadataCache.deleted": "Eine gelöschte Datei hat den Index verlassen; prevCache enthält ihre letzten bekannten Metadaten oder null.",
+  "metadataCache.resolve": "Die aufgelösten und nicht aufgelösten Links einer Datei wurden aktualisiert.",
+  "metadataCache.resolved": "Die Linkauflösung für einen geschriebenen Stapel ist abgeschlossen.",
+  "workspace.file-open": "Ein Befehl hat eine Datei über den Workspace-Lesepfad gelesen.",
+  "workspace.quick-preview": "Ein Probelauf hat eine geplante Dateiänderung angezeigt, ohne sie zu schreiben.",
+  "workspace.layout-ready": "Plugins sind aktiv und der Befehl läuft gleich an.",
+  "workspace.quit": "Der Aufruf endet; danach laufen bestmöglich Beendigungsaufgaben, bevor Plugins entladen werden.",
+  "workspace.project-change": "project open oder project close hat eine andere Projektauswahl gespeichert.",
+  "plugin.registered": "Ein Plugin hat die atomare Registrierung seiner Beiträge bestanden.",
+  "plugin.activating": "Ein registriertes Plugin führt gleich seinen Aktivierungs-Hook aus.",
+  "plugin.activated": "Der Aktivierungs-Hook eines Plugins wurde erfolgreich abgeschlossen.",
+  "plugin.activation-failed": "Die Aktivierung eines Plugins ist fehlgeschlagen; die erfasste Bereinigung bleibt geplant.",
+  "plugin.unloading": "Ein gestartetes Plugin gibt gleich seine Ressourcen für diesen Aufruf frei.",
+  "plugin.unloaded": "Die Bereinigung eines Plugins wurde erfolgreich abgeschlossen.",
+  "plugin.unload-failed": "Die Bereinigung eines Plugins ist fehlgeschlagen; die übrige Bereinigung läuft weiter."
+};
+const germanDescriptions = {
+  // Global options.
+  "Workspace root to load bin/config.json from; must precede the command.": "Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; muss vor dem Befehl stehen.",
+  "Response language for descriptions, hints and summaries.": "Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.",
+  "Events included in the response; delivery to listeners is unaffected.": "Ereignisse in der Antwort; die Zustellung an Listener bleibt unverändert.",
+  "Compact JSON output.": "Kompakte JSON-Ausgabe.",
+  "Indented JSON output.": "Eingerückte JSON-Ausgabe.",
+  "Validate and preview writes without changing files.": "Schreibvorgänge prüfen und als Vorschau zeigen, ohne Dateien zu ändern.",
+  "Write even when settings.dryRun is true.": "Auch dann schreiben, wenn settings.dryRun true ist.",
+  "Skip loading user plugins; core plugins stay. Must precede the command.": "Benutzer-Plugins nicht laden; Kern-Plugins bleiben aktiv. Muss vor dem Befehl stehen.",
+  "Describe the command instead of running it.": "Den Befehl beschreiben, statt ihn auszuführen.",
+  "Report the Forge version; used without a command.": "Die Forge-Version melden; ohne Befehl verwenden.",
+  // Discovery and project commands.
+  "A command id from the catalog.": "Eine Befehls-ID aus dem Katalog.",
+  "Component kind for project component.": "Komponentenart für project component.",
+  "list (default), create, open, current, close, inspect or component.": "list (Standard), create, open, current, close, inspect oder component.",
+  "A project id, or the component name.": "Eine Projekt-ID oder der Komponentenname.",
+  "The component name when a project id precedes it.": "Der Komponentenname, wenn eine Projekt-ID vorangeht.",
+  "With sync: fail with WORKFLOW_DRIFT instead of writing when generated workflows differ.": "Mit sync: mit WORKFLOW_DRIFT fehlschlagen, statt zu schreiben, wenn generierte Workflows abweichen.",
+  "list (default) or sync.": "list (Standard) oder sync.",
+  // File commands.
+  "Only files of this kind.": "Nur Dateien dieser Art.",
+  "Only files whose root-relative path matches this glob (*, **, ?, [abc], {a,b}).": "Nur Dateien, deren Pfad relativ zum Stammverzeichnis diesem Glob entspricht (*, **, ?, [abc], {a,b}).",
+  "Maximum number of files; a truncated page returns nextCursor.": "Höchstzahl der Dateien; eine gekürzte Seite liefert nextCursor.",
+  "Continue after the page that returned this nextCursor, with the same --kind and --path.": "Nach der Seite fortfahren, die diesen nextCursor geliefert hat, mit denselben --kind und --path.",
+  "Comma-separated optional parts of a Markdown read.": "Kommagetrennte optionale Teile eines Markdown-Lesevorgangs.",
+  "Vault path relative to the command scope.": "Vault-Pfad relativ zum Geltungsbereich des Befehls.",
+  "Literal content.": "Wörtlicher Inhalt.",
+  "Copy the bytes of another file in the same scope.": "Die Bytes einer anderen Datei im selben Geltungsbereich kopieren.",
+  "Read the content from piped standard input.": "Den Inhalt aus der umgeleiteten Standardeingabe lesen.",
+  "Decode --content, --from or --stdin input; base64 writes binary content.": "Eingabe aus --content, --from oder --stdin dekodieren; base64 schreibt Binärinhalt.",
+  "New vault path.": "Neuer Vault-Pfad.",
+  "SHA-256 revision the file must still have (from read).": "SHA-256-Revision, die die Datei noch haben muss (aus read).",
+  "Exact literal text that must occur once.": "Exakter wörtlicher Text, der genau einmal vorkommen muss.",
+  "Replacement for the --find match, or the new content of the --section or --block.": "Ersatz für den --find-Treffer oder der neue Inhalt von --section oder --block.",
+  "JSON list of {find, replace, all?} applied in order, @file in the scope, or - for standard input.": "JSON-Liste aus {find, replace, all?}, der Reihe nach angewendet, @Datei im Geltungsbereich oder - für die Standardeingabe.",
+  "Append --content to the end of the file, or after the --section or --block content.": "--content am Dateiende oder nach dem Inhalt von --section oder --block anhängen.",
+  "Insert --content before the --section or --block content.": "--content vor dem Inhalt von --section oder --block einfügen.",
+  "Text for --append or --prepend.": "Text für --append oder --prepend.",
+  'Markdown heading path such as "Plan > Risks"; the section runs to the next heading of the same or a higher level. Write " > " inside a heading as " \\> ".': 'Markdown-Überschriftenpfad wie "Plan > Risks"; der Abschnitt reicht bis zur nächsten Überschrift derselben oder einer höheren Ebene. Schreiben Sie " > " innerhalb einer Überschrift als " \\> ".',
+  "1-based line of the --section heading, from AMBIGUOUS_SECTION details.candidates, when the path matches several headings.": "1-basierte Zeile der --section-Überschrift aus AMBIGUOUS_SECTION details.candidates, wenn der Pfad mehrere Überschriften trifft.",
+  "Markdown block id (^id) of a paragraph, list item or section; a list item keeps its marker and checkbox, and content added next to it must be list items.": "Markdown-Block-ID (^id) eines Absatzes, Listeneintrags oder Abschnitts; ein Listeneintrag behält Aufzählungszeichen und Kontrollkästchen, und daneben eingefügter Inhalt muss aus Listeneinträgen bestehen.",
+  "JSON object of properties to set.": "JSON-Objekt der zu setzenden Eigenschaften.",
+  "Markdown note path.": "Pfad der Markdown-Notiz.",
+  "JSON Pointer to set; /- appends to an existing array.": "Zu setzender JSON Pointer; /- hängt an ein vorhandenes Array an.",
+  "JSON value to set.": "Zu setzender JSON-Wert.",
+  "Canvas or Base path.": "Pfad des Canvas oder der Base.",
+  "Plan file in the command scope, or - to read the plan from standard input.": "Plandatei im Geltungsbereich des Befehls oder -, um den Plan aus der Standardeingabe zu lesen.",
+  "SHA-256 revision of the source file (from read); required unless --dry-run.": "SHA-256-Revision der Quelldatei (aus read); außer bei --dry-run erforderlich.",
+  "Required to delete a folder.": "Zum Löschen eines Ordners erforderlich.",
+  "Remove instead of moving to .trash.": "Entfernen, statt nach .trash zu verschieben.",
+  "Delete even while other files link to it.": "Auch löschen, solange andere Dateien darauf verlinken.",
+  "File or folder to delete.": "Zu löschende Datei oder zu löschender Ordner.",
+  "Move without rewriting links to the moved files.": "Verschieben, ohne Links auf die verschobenen Dateien umzuschreiben.",
+  "File or folder to move.": "Zu verschiebende Datei oder zu verschiebender Ordner.",
+  "New path; it must not exist.": "Neuer Pfad; er darf noch nicht existieren.",
+  "File or folder to rename.": "Umzubenennende Datei oder umzubenennender Ordner.",
+  "New name without slashes; a file keeps its extension.": "Neuer Name ohne Schrägstriche; eine Datei behält ihre Erweiterung.",
+  // Generation and shared library options.
+  "A generator id; without one, make lists the generators.": "Eine Generator-ID; ohne sie listet make die Generatoren auf.",
+  "The name or id the generator creates from.": "Der Name oder die ID, aus der der Generator erzeugt.",
+  "Output directory; each generator documents its default.": "Ausgabeverzeichnis; jeder Generator dokumentiert seinen Standard.",
+  "JSON file mapping generated paths to approved SHA-256 revisions (from --plan-out).": "JSON-Datei, die generierte Pfade freigegebenen SHA-256-Revisionen zuordnet (aus --plan-out).",
+  "Report planned outputs and their status without writing.": "Geplante Ausgaben und ihren Status melden, ohne zu schreiben.",
+  "Write the plan's revision manifest to this path.": "Das Revisionsmanifest des Plans in diesen Pfad schreiben.",
+  "Fail with a drift code when outputs are missing or differ.": "Mit einem Abweichungscode fehlschlagen, wenn Ausgaben fehlen oder abweichen.",
+  "Generate into this project instead of the selected one.": "In dieses Projekt statt in das ausgewählte generieren.",
+  "Definition library directory; defaults to the configured path.": "Verzeichnis der Definitionsbibliothek; standardmäßig der konfigurierte Pfad.",
+  "Library directory, relative to the workspace; defaults to the configured path.": "Bibliotheksverzeichnis relativ zum Workspace; standardmäßig der konfigurierte Pfad.",
+  "Import source directory for import.": "Quellverzeichnis für import.",
+  "Export destination directory for export.": "Zielverzeichnis für export.",
+  "list (default), init, inspect, validate, create, import or export.": "list (Standard), init, inspect, validate, create, import oder export.",
+  "The definition id for inspect and create.": "Die Definitions-ID für inspect und create."
+};
+const germanKernelMessages = {
+  PLUGIN_LISTED_DISABLED: "In plugins.disabled aufgeführt.",
+  PLUGIN_NOT_ENABLED: "Nicht in plugins.enabled aufgeführt.",
+  PLUGIN_SKIPPED: "Durch --no-plugins übersprungen.",
+  PLUGIN_ID_RESERVED: "Die Plugin-ID {plugin} ist für das mitgelieferte Kern-Plugin reserviert; benennen Sie das Benutzer-Plugin um.",
+  PLUGIN_SETTINGS_INVALID: "plugins.settings.{plugin} ist ungültig: {issues}.",
+  PLUGIN_PROVIDER_UNAVAILABLE: "Benötigt den Dienst {service}; sein Anbieter {provider} ist nicht verfügbar.",
+  PLUGIN_PROVIDER_DISABLED: "Benötigt den Dienst {service}; sein Anbieter {provider} ist deaktiviert.",
+  PLUGIN_MISSING: "plugins.enabled nennt {plugin}, aber {path} existiert nicht; installieren Sie das Plugin dort oder entfernen Sie es aus plugins.enabled.",
+  PLUGIN_UNAVAILABLE: "Das Plugin {plugin} ist in diesem Aufruf nicht verfügbar: {reason} Seine Befehle und Generatoren schlagen mit PLUGIN_UNAVAILABLE fehl; korrigieren Sie bin/config.json und führen Sie config aus.",
+  SETTINGS_UNDECLARED: "plugins.settings enthält Abschnitte für Plugins, die keine Einstellungen deklarieren: {plugins}; sie werden ignoriert.",
+  SETTINGS_UNKNOWN_PLUGIN: "plugins.settings nennt kein installiertes Plugin: {plugins}; die Abschnitte bleiben unverändert. Prüfen Sie mit plugins, ob Plugin-IDs falsch geschrieben sind.",
+  DISABLED_UNKNOWN_PLUGIN: "plugins.disabled nennt nur mitgelieferte Kern-Plugins ({core}); ignoriert: {plugins}. Deaktivieren Sie ein Benutzer-Plugin, indem Sie es aus plugins.enabled entfernen.",
+  PLUGIN_MISSING_WARNING: "{reason} Seine Befehle sind in diesem Aufruf nicht verfügbar.",
+  PLUGIN_DIRECTORY_IGNORED: "Plugin-Verzeichnis {directory} ignoriert: {diagnostic}",
+  PLUGIN_STATE_IGNORED: "Ungültige Datei {path} ignoriert; Plugins mit Aktivierungs-Hooks gelten als neu aktiviert.",
+  PLUGIN_STATE_UNSAVED: "Der Aktivierungszustand der Plugins konnte nicht in {path} gespeichert werden: {diagnostic}",
+  SETUP_TEMPLATES_UNAVAILABLE: "Das Kern-Plugin templates ist deaktiviert oder nicht verfügbar; setup hat keine Vorlagen in bin/templates installiert.",
+  METADATA_CACHE_UNSAVED: "Der Metadaten-Cache konnte nicht unter {file} gespeichert werden; der nächste Befehl liest und analysiert den Vault daher erneut: {diagnostic}",
+  LOCK_RECOVERED: "Die verwaiste Sperre {path} von PID {pid} auf {host} (seit {since}{command}) wurde entfernt: {reason}. Prüfen Sie, was dieser Lauf unvollendet hinterlassen hat (zum Beispiel mit git status oder backlog sync status).",
+  LOCK_HOLDER_COMMAND: ", Befehl {command}",
+  LOCK_STALE_DEAD_PROCESS: "ihr Prozess läuft nicht mehr",
+  LOCK_STALE_REUSED_PID: "ihre Prozess-ID gehört inzwischen einem anderen Prozess",
+  LOCK_STALE_REBOOTED: "sie wurde vor dem letzten Neustart dieses Rechners geschrieben",
+  LOCK_LEFT_FOREIGN: "{lock} bleibt bestehen: Die Sperre trägt nicht mehr das Token dieses Schreibvorgangs, daher hält sie möglicherweise ein anderer Schreibvorgang.",
+  LOCK_REMOVED_BY_OTHER: "{lock} wurde von jemand anderem entfernt, während dieser Schreibvorgang sie hielt; prüfen Sie gleichzeitige Änderungen.",
+  LOCK_UNREMOVABLE: "{lock} konnte nicht entfernt werden; prüfen Sie die Sperre vor einem erneuten Versuch: {diagnostic}",
+  POST_COMMIT_FAILED: "{count} Datei(en) geschrieben; die Aktualisierung nach dem Schreiben ist fehlgeschlagen: {diagnostic}",
+  REMOVAL_TEMPORARY_LEFT: "{path} entfernt, aber der temporäre Eintrag {temporary} konnte nicht gelöscht werden: {diagnostic}",
+  REMOVAL_SYNC_FAILED: "Dateien entfernt, aber das Synchronisieren ihrer Ordner ist fehlgeschlagen: {diagnostic}",
+  VAULT_NOTIFICATION_FAILED: "{path} geschrieben; die Vault-Benachrichtigung ist fehlgeschlagen: {diagnostic}",
+  EVENT_HISTORY_FULL: "Der Ereignisverlauf hat 1000 Einträge erreicht; spätere Benachrichtigungen werden zugestellt, aber nicht in Verlauf und replay aufgenommen.",
+  EVENT_LISTENER_FAILED: "Der Listener für {event} ist fehlgeschlagen: {diagnostic}",
+  EVENT_REPLAY_FAILED: "replay ist bei {event} fehlgeschlagen: {diagnostic}",
+  HOST_NOTIFICATION_FAILED: "Host-Benachrichtigung {event}: {diagnostic}",
+  LAYOUT_CALLBACK_FAILED: "Layout bereit: {diagnostic}",
+  QUIT_TASK_FAILED: "Beendigungsaufgabe: {diagnostic}",
+  PLUGIN_CLEANUP_FAILED: "Plugin-Bereinigung: {diagnostic}"
+};
+const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
+const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
+const regenerateHint = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
+const germanErrors = {
+  // Argumente, Optionen und Eingaben
+  UNKNOWN_COMMAND: { summary: "Der Befehl ist nicht registriert.", hint: "Verfügbare Befehle, auch aktivierte Plugin-Befehle, zeigen help oder schema." },
+  UNKNOWN_OPTION: { summary: "Dieser Befehl akzeptiert die Option nicht.", hint: "Die Optionen des Befehls zeigt help <command>." },
+  MISSING_ARGUMENT: { summary: "Ein erforderliches Argument oder ein Optionswert fehlt.", hint: argumentsHint },
+  INVALID_ARGUMENT: { summary: "Die Argumente oder Optionswerte sind für diesen Befehl ungültig.", hint: argumentsHint },
+  INVALID_OPTION_VALUE: { summary: "Der Optionswert gehört nicht zu den Werten, die der Befehl angibt.", hint: "Verwenden Sie einen Wert aus error.details.allowed; die Werte jeder Option zeigt help <command>." },
+  DUPLICATE_OPTION: { summary: "Eine Option wurde wiederholt oder mit ihrer Verneinung kombiniert.", hint: "Geben Sie jede Option nur einmal an." },
+  INVALID_INPUT: { summary: "Die Eingabeoptionen sind ungültig oder widersprüchlich.", hint: "Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination." },
+  INPUT_REQUIRED: { summary: "--stdin wurde ohne weitergeleitete Eingabe angegeben.", hint: "Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from." },
+  INVALID_JSON: { summary: "Die Eingabe ist kein gültiges JSON.", hint: "Übergeben Sie einen gültigen JSON-Wert und maskieren Sie ihn für Ihre Shell." },
+  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text." },
+  INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
+  INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
+  INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
+  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
+  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
+  // Pfade, Dateien und geschützte Schreibvorgänge
+  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
+  UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
+  NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien." },
+  CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Lesen Sie die Datei erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab (error.details.currentRevision) und versuchen Sie es dann mit dem Revisionsschutz des Befehls erneut (--if-match oder --revisions-from); create legt nur neue Pfade an." },
+  NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find." },
+  AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen." },
+  UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
+  SECTION_NOT_FOUND: { summary: "Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.", hint: 'Lesen Sie die Notiz und übernehmen Sie einen Überschriftenpfad aus error.details.headings (Abschnitte mit " > " verbunden) oder eine Block-ID aus error.details.blocks.' },
+  AMBIGUOUS_SECTION: { summary: "Der --section-Pfad passt zu mehreren Überschriften, oder die --block-ID kommt mehrfach vor.", hint: "Ergänzen Sie übergeordnete Überschriften im Pfad (Eltern > Überschrift), bis nur einer der Kandidaten in error.details.candidates bleibt, oder übergeben Sie die Zeile eines Kandidaten als --section-line (sectionLine in einem apply-Plan); geben Sie jedem Block eine eindeutige ID." },
+  INVALID_PLAN: { summary: "Der apply-Plan oder Schreibstapel ist ungültig: Er entspricht nicht dem Planschema, oder seine Schritte enthalten doppelte oder überlappende Pfade.", hint: "Korrigieren Sie den in error.details.operation genannten Vorgang (siehe error.details.issues und das Planschema in help apply); schreiben Sie jeden Pfad nur einmal und verwenden Sie keinen Pfad erneut, den derselbe Plan verschiebt oder löscht." },
+  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.", hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl.' },
+  DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
+  PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
+  INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
+  HAS_BACKLINKS: { summary: "Andere Notizen verlinken noch auf die Datei oder den Ordner.", hint: "Passen Sie zuerst die Links in error.details.backlinks an oder entfernen Sie sie, verschieben Sie die Datei stattdessen oder löschen Sie mit --allow-broken-links trotzdem." },
+  ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },
+  // Dokumente
+  INVALID_FRONTMATTER: { summary: "Das YAML-Frontmatter ist ungültig.", hint: "Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate." },
+  INVALID_YAML: { summary: "Das YAML-Dokument ist ungültig.", hint: "Korrigieren Sie die in der Meldung genannte Syntax, Schlüssel oder Aliase." },
+  INVALID_CANVAS: { summary: "Die Canvas-Struktur ist ungültig.", hint: "Korrigieren Sie die genannten Knoten, Kanten oder IDs; prüfen Sie mit validate <file.canvas>." },
+  INVALID_BASE: { summary: "Die Base-Struktur ist ungültig.", hint: "Korrigieren Sie die genannte Base-Definition; prüfen Sie mit validate <file.base>." },
+  INVALID_POINTER: { summary: "Der JSON Pointer ist ungültig oder verweist auf keine gültige Position.", hint: "Lesen Sie das Dokument und verwenden Sie einen vorhandenen Pointer-Pfad; /- hängt nur an ein vorhandenes Array an." },
+  // Bases-Abfragen
+  INVALID_BASE_QUERY: { summary: "Die Bases-Abfrage ist ungültig.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke." },
+  INVALID_BASE_EXPRESSION: { summary: "Ein Bases-Ausdruck kann nicht geparst werden.", hint: "Korrigieren Sie den in der Meldung genannten Ausdruck." },
+  BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
+  BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
+  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Tresordatei.", hint: "Übergeben Sie eine vorhandene Tresordatei an --context." },
+  INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
+  UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
+  // Konfiguration, Installation und Projekte
+  INVALID_CONFIG: { summary: "Die Konfiguration ist ungültig oder nicht lesbar.", hint: "Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config." },
+  INVALID_SETUP: { summary: "Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.", hint: "Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus." },
+  INVALID_PROJECT: { summary: "Die Projektmetadaten sind ungültig.", hint: "Korrigieren Sie .forge/project.json im Projektverzeichnis." },
+  INVALID_PROJECT_NAME: { summary: "Der Projektname ist ungültig.", hint: "Verwenden Sie einen kleingeschriebenen Kebab-Case-Namen, zum Beispiel billing-service." },
+  INVALID_PROJECT_CONTEXT: { summary: "Die gespeicherte Projektauswahl ist ungültig.", hint: "Verwenden Sie project open <name> oder project close." },
+  INVALID_COMPONENT_KIND: { summary: "Der Komponententyp ist ungültig.", hint: "Verwenden Sie domain oder application." },
+  PROJECT_EXISTS: { summary: "Das Projekt existiert bereits.", hint: "Wählen Sie einen anderen Namen oder öffnen Sie es mit project open <name>." },
+  PROJECT_NOT_FOUND: { summary: "Das Projekt existiert nicht.", hint: "Führen Sie project list aus und öffnen Sie ein vorhandenes Projekt." },
+  PROJECT_REQUIRED: { summary: "Dieser Befehl benötigt ein ausgewähltes Projekt.", hint: "Öffnen Sie zuerst mit project open <name> ein Projekt." },
+  STALE_PROJECT_CONTEXT: { summary: "Das ausgewählte Projekt fehlt oder stimmt nicht mehr mit der Konfiguration überein.", hint: "Wählen Sie mit project open <name> ein gültiges Projekt oder verwenden Sie project close." },
+  // Vorlagen und Generierung
+  INVALID_TEMPLATE: { summary: "Die Markdown-Vorlage ist ungültig.", hint: "Korrigieren Sie das in der Meldung genannte Frontmatter oder die Platzhalter." },
+  INVALID_TEMPLATE_DATE: { summary: "Ein Datum oder Datumsformat der Vorlage ist ungültig.", hint: "Verwenden Sie ein ISO-Datum und ein unterstütztes Datumsformat." },
+  INVALID_TEMPLATE_PACK: { summary: "Das Vorlagenpaket ist ungültig.", hint: "Verwenden Sie eindeutige Vorlagen-IDs und Zielpfade." },
+  INVALID_TEMPLATE_VALUES: { summary: "Vorlagenwerte fehlen oder haben den falschen Typ.", hint: "Führen Sie templates inspect <template.md> aus und geben Sie die Pflichtwerte an." },
+  UNKNOWN_TEMPLATE_VARIABLE: { summary: "Die Vorlage verwendet eine nicht deklarierte Variable.", hint: "Deklarieren Sie die Variable oder entfernen Sie den Platzhalter; prüfen Sie mit templates inspect <template.md>." },
+  UNKNOWN_GENERATOR: { summary: "Der Generator ist nicht registriert.", hint: "Verfügbare Generatoren zeigt make." },
+  INVALID_GENERATION_PLAN: { summary: "Der Generierungsplan hat überlappende Ausgaben oder ungültige Optionen.", hint: "Verwenden Sie getrennte Ausgabe- und Manifestpfade und kombinieren Sie die Planung nicht mit --revisions-from." },
+  INVALID_GENERATION_REVISIONS: { summary: "Die Revisionsfreigabe passt nicht zum geprüften Plan.", hint: "Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from." },
+  UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
+  DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
+  GENERATION_DRIFT: { summary: "Generierte Dateien fehlen oder weichen von der Ausgabe des Generators ab.", hint: "Führen Sie denselben make-Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu." },
+  // Projekt-Workflows
+  INVALID_WORKFLOW: { summary: "Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.", hint: "Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus." },
+  WORKFLOW_DRIFT: { summary: "Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.", hint: "Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen." },
+  // UI, Interaktionen und Datenquellen
+  INVALID_UI: { summary: "Eine Komponentendefinition ist ungültig.", hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate." },
+  INVALID_UI_LIBRARY: { summary: "Die Komponentenbibliothek ist ungültig.", hint: "Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen." },
+  INVALID_UI_FRAMEWORK: { summary: "Das UI-Ziel wird nicht unterstützt.", hint: "Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular." },
+  EMPTY_UI_LIBRARY: { summary: "Die Komponentenbibliothek enthält keine Definitionen.", hint: "Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  DUPLICATE_UI_COMPONENT: { summary: "Zwei Komponentendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Komponente eine eindeutige ID." },
+  UNKNOWN_UI_COMPONENT: { summary: "Die Komponente ist nicht definiert.", hint: "Führen Sie components list aus und verwenden Sie eine vorhandene ID." },
+  CYCLIC_UI_COMPONENT: { summary: "Die Komponentenreferenzen bilden einen Zyklus.", hint: "Entfernen Sie die in der Meldung genannte zyklische Referenz." },
+  UI_RENDERER_UNAVAILABLE: { summary: "Für dieses UI-Ziel ist kein Generator verfügbar.", hint: "Wählen Sie ein unterstütztes --framework." },
+  INVALID_INTERACTION: { summary: "Eine Interaktionsdefinition ist ungültig.", hint: "Korrigieren Sie das genannte Ereignis, die Aktionen oder Bindungen; prüfen Sie mit interactions validate." },
+  DUPLICATE_INTERACTION: { summary: "Zwei Interaktionsdefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Interaktion eine eindeutige ID." },
+  EMPTY_INTERACTION_LIBRARY: { summary: "Die Interaktionsbibliothek enthält keine Definitionen.", hint: "Führen Sie interactions init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  UNKNOWN_INTERACTION: { summary: "Die Interaktion ist nicht definiert.", hint: "Führen Sie interactions list aus und prüfen Sie die Interaktionsreferenzen der Komponente." },
+  INVALID_DATA_SOURCE: { summary: "Eine Datenquellendefinition ist ungültig.", hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate." },
+  DUPLICATE_DATA_SOURCE: { summary: "Zwei Datenquellendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Datenquelle eine eindeutige ID." },
+  EMPTY_DATA_SOURCE_LIBRARY: { summary: "Die Datenquellenbibliothek enthält keine Definitionen.", hint: "Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu." },
+  UNKNOWN_DATA_SOURCE: { summary: "Die Datenquelle ist nicht definiert.", hint: "Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID." },
+  DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: "Für diese Datenquelle ist kein Generator verfügbar.", hint: "Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make." },
+  // Plugins, Skills und Ereignisse
+  INVALID_PLUGIN: { summary: "Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.", hint: "Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins." },
+  INVALID_PLUGIN_CONFIG: { summary: "Die Plugin-Konfiguration ist ungültig.", hint: "Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs installierter Benutzer-Plugins ein; plugins listet sie auf." },
+  INCOMPATIBLE_PLUGIN: { summary: "Das Plugin benötigt eine neuere Forge-Version.", hint: "Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin." },
+  DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
+  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs eines Benutzer-Plugins sowie den Dienst-IDs jedes Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from)." },
+  PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen erforderlichen oder optionalen Dienst, den kein aktiviertes, verfügbares Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt, und machen Sie es verfügbar (plugins zeigt Anbieter und Zustände), oder deklarieren Sie den Dienst in requires oder optional des Plugins." },
+  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
+  PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
+  PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
+  DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
+  UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." },
+  INVALID_EVENT: { summary: "Eine Ereignisdefinition oder der Ereigniszustand ist ungültig.", hint: "Definieren Sie Ereignisse vor der Freigabe mit einer ID mit Punkten und einem Validator." },
+  INVALID_EVENT_LISTENER: { summary: "Ein Ereignisbehandler ist keine Funktion.", hint: "Übergeben Sie eine Funktion als Behandler." },
+  INVALID_EVENT_PAYLOAD: { summary: "Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.", hint: "Prüfen Sie den Vertrag mit events und senden Sie passende Daten." },
+  DUPLICATE_EVENT: { summary: "Die Ereignis-ID ist bereits registriert.", hint: "Verwenden Sie eine eindeutige Ereignis-ID." },
+  UNKNOWN_EVENT: { summary: "Das Ereignis ist nicht registriert.", hint: "Registrierte Ereignis-IDs zeigt events." },
+  EVENT_RECURSION: { summary: "Ereignisbehandler haben die maximale Rekursionstiefe überschritten.", hint: "Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen." },
+  EVENT_OWNERSHIP: { summary: "Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.", hint: "Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*) sendet der Host, die Ereignisse eines anderen Plugins dieses Plugin." },
+  // Claude-Code-Definitionen
+  INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
+  INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
+  INVALID_CLAUDE_PLUGIN: { summary: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.", hint: claudeDefinitionHint },
+  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei." },
+  INVALID_CLAUDE_COMMAND: { summary: "Dieser Claude-Befehl wird nicht unterstützt.", hint: "Unterstützte Befehle zeigt claude capabilities." },
+  INVALID_CLAUDE_ARGUMENT: { summary: "Ein Argument des Claude-Befehls ist ungültig.", hint: argumentsHint },
+  INVALID_CLAUDE_OPTION: { summary: "Diese Option ist für den Claude-Befehl nicht zulässig.", hint: "Prüfen Sie help claude und entfernen Sie die Option." },
+  INVALID_CLAUDE_SCOPE: { summary: "Der Claude-Geltungsbereich ist ungültig.", hint: "Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope." },
+  INVALID_CLAUDE_INPUT: { summary: "Die Claude-Eingabe ist ungültig oder zu groß.", hint: "Übergeben Sie gültige Eingaben innerhalb des Größenlimits." },
+  INVALID_CLAUDE_OUTPUT: { summary: "Das Claude-Ausgabeformat ist ungültig.", hint: "Verwenden Sie text, json oder json-last-line." },
+  INVALID_CLAUDE_OUTPUT_LIMIT: { summary: "Das Claude-Ausgabelimit ist ungültig.", hint: "Verwenden Sie eine positive ganze Zahl von Bytes." },
+  INVALID_CLAUDE_TIMEOUT: { summary: "Das Claude-Zeitlimit ist ungültig.", hint: "Geben Sie das Zeitlimit in Millisekunden innerhalb des in der Meldung genannten Bereichs an." },
+  INVALID_CLAUDE_EXECUTABLE: { summary: "Der Pfad zur Claude-Code-CLI ist ungültig.", hint: "Übergeben Sie einen ausführbaren Pfad an --claude-bin." },
+  // Claude-Code-Prozess
+  CLAUDE_NOT_INSTALLED: { summary: "Die Claude-Code-CLI wurde nicht gefunden.", hint: "Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin." },
+  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Arbeitsbereich existiert und ein Verzeichnis ist." },
+  CLAUDE_COMMAND_FAILED: { summary: "Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.", hint: "Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst." },
+  CLAUDE_COMMAND_TIMEOUT: { summary: "Der Claude-Befehl hat sein Zeitlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde." },
+  CLAUDE_OUTPUT_LIMIT: { summary: "Die Claude-Ausgabe hat das Größenlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit." },
+  CLAUDE_COMMAND_INTERRUPTED: { summary: "Der Claude-Befehl wurde durch ein Signal unterbrochen (Exit 130 bei SIGINT, 143 bei SIGTERM).", hint: "Prüfen Sie den externen Zustand, bevor Sie den Befehl erneut ausführen." },
+  CLAUDE_RUNTIME_FAILED: { summary: "Claude Code wurde mit einem Status ungleich null beendet.", hint: "Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung." },
+  CLAUDE_INVALID_OUTPUT: { summary: "Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.", hint: "Prüfen Sie stdout und den externen Zustand vor einer Wiederholung." }
+};
+function language(value2) {
+  ensure(value2 === "en" || value2 === "de", "INVALID_LANGUAGE", "Unsupported language. Use --lang en or --lang de.");
+  return value2;
+}
+function translated(catalog, id2) {
+  return Object.hasOwn(catalog, id2) ? catalog[id2] : void 0;
+}
+class Localizer {
+  constructor(language2 = "en", plugins) {
+    this.language = language2;
+    this.plugins = plugins;
+  }
+  language;
+  plugins;
+  german(kind2, id2) {
+    const kernel = kind2 === "commands" ? germanCommands : kind2 === "events" ? germanEvents : void 0;
+    return (kernel && translated(kernel, id2)) ?? this.plugins?.text("de", kind2, id2);
+  }
+  /**
+   * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
+   * `<command> <action>` in the kernel and plugin catalogs; `make` actions are generators.
+   */
+  command(command2) {
+    if (this.language !== "de") return command2;
+    const description2 = this.german("commands", command2.id);
+    const options2 = this.options(command2.options), args = command2.args && this.described(command2.args);
+    let translatedActions = false;
+    const actions2 = command2.actions && Object.fromEntries(Object.entries(command2.actions).map(([id2, action2]) => {
+      const key = `${command2.id} ${id2}`;
+      const german = translated(germanActions, key) ?? this.plugins?.text("de", "actions", key) ?? (command2.id === "make" ? this.german("generators", id2) : void 0);
+      const actionOptions = this.options(action2.options);
+      if (german || actionOptions !== action2.options) translatedActions = true;
+      return [id2, { ...action2, ...german ? { description: german } : {}, ...actionOptions ? { options: actionOptions } : {} }];
+    }));
+    if (!description2 && !translatedActions && options2 === command2.options && args === command2.args) return command2;
+    return { ...command2, ...description2 ? { description: description2 } : {}, ...options2 ? { options: options2 } : {}, ...args ? { args } : {}, ...translatedActions ? { actions: actions2 } : {} };
+  }
+  /** An option, argument or settings description in the response language, by its English text. */
+  description(english) {
+    if (this.language !== "de") return english;
+    return translated(germanDescriptions, english) ?? this.plugins?.description("de", english) ?? english;
+  }
+  described(items2) {
+    const localized2 = items2.map((item) => ({ ...item, description: this.description(item.description) }));
+    return localized2.every((item, index2) => item.description === items2[index2].description) ? items2 : localized2;
+  }
+  options(options2) {
+    if (!options2) return options2;
+    const entries2 = Object.entries(options2), values2 = entries2.map(([, option2]) => option2), localized2 = this.described(values2);
+    return localized2 === values2 ? options2 : Object.fromEntries(entries2.map(([name2], index2) => [name2, localized2[index2]]));
+  }
+  /** `description` texts inside a plugin settings schema, as `config` reports it. */
+  schema(value2) {
+    if (Array.isArray(value2)) return value2.map((item) => this.schema(item));
+    if (!isRecord$1(value2)) return value2;
+    return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, key === "description" && typeof item === "string" ? this.description(item) : this.schema(item)]));
+  }
+  /** A host warning or plugin state reason in the response language; plugin warnings keep their own text. */
+  warning(warning2) {
+    return typeof warning2 === "string" ? warning2 : renderKernelMessage(warning2, this.language === "de" ? germanKernelMessages : void 0);
+  }
+  /** A plugin's manifest `name` and `description` in the response language. */
+  manifest(manifest) {
+    const localized2 = this.language === "de" ? this.plugins?.manifest(manifest.id, "de") : void 0;
+    return localized2 ? { ...manifest, ...localized2 } : manifest;
+  }
+  catalogued(kind2, items2) {
+    if (!Array.isArray(items2)) return items2;
+    return items2.map((item) => {
+      if (!isRecord$1(item) || typeof item.id !== "string") return item;
+      const description2 = this.german(kind2, item.id);
+      return description2 ? { ...item, description: description2 } : item;
+    });
+  }
+  errors(items2) {
+    return items2.map((item) => {
+      if (!isRecord$1(item) || typeof item.code !== "string") return item;
+      const summary = errorDefinition(item.code) ? germanErrors[item.code].summary : this.plugins?.localizedError(item.code, "de")?.summary;
+      return summary ? { ...item, summary } : item;
+    });
+  }
+  globalOptions(data) {
+    return isRecord$1(data.globalOptions) ? { globalOptions: this.options(data.globalOptions) } : {};
+  }
+  eventOutput(value2) {
+    return isRecord$1(value2) && typeof value2.changes === "string" ? { ...value2, changes: germanGuidance.eventChanges } : value2;
+  }
+  result(command2, data) {
+    if (this.language === "en" || !isRecord$1(data)) return data;
+    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), ...this.globalOptions(data), generators: this.catalogued("generators", data.generators), errors: this.errors(data.errors) };
+    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, ...this.globalOptions(data), generators: this.catalogued("generators", data.generators) };
+    if (command2 === "help" && isRecord$1(data.globalOptions)) return { ...data, ...this.globalOptions(data) };
+    if (command2 === "config" && Array.isArray(data.sections)) return { ...data, sections: data.sections.map((section2) => isRecord$1(section2) ? { ...section2, schema: this.schema(section2.schema) } : section2) };
+    if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
+    if (command2 === "events") return { ...data, contracts: this.catalogued("events", data.contracts), delivery: germanGuidance.delivery };
+    if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
+      ...data,
+      nextSteps: data.nextSteps.map((step) => {
+        if (!isRecord$1(step) || typeof step.command !== "string") return step;
+        const purpose = translated(germanGuidance.setup, step.command);
+        return purpose ? { ...step, purpose } : step;
+      })
+    };
+    return data;
+  }
+  /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
+  error(error2) {
+    const code2 = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
+    const diagnostic2 = errorMessage(error2);
+    let details = error2 instanceof AppError ? error2.details : void 0;
+    if (details) {
+      try {
+        details = JSON.parse(JSON.stringify(details));
+      } catch {
+        details = { diagnostic: "Error details were not JSON-serializable." };
+      }
+    }
+    const builtIn = errorDefinition(code2), contributed = builtIn ? void 0 : this.plugins?.error(code2);
+    const definition2 = builtIn ?? contributed;
+    if (!definition2) return { code: code2, message: diagnostic2, ...details ? { details } : {} };
+    const retryable2 = error2 instanceof AppError && error2.retryable !== void 0 ? error2.retryable : definition2.retryable;
+    const german = this.language !== "de" ? void 0 : builtIn ? germanErrors[code2] : this.plugins?.localizedError(code2, "de");
+    if (!german) return { code: code2, message: diagnostic2, hint: definition2.hint, retryable: retryable2, ...details ? { details } : {} };
+    return { code: code2, message: german.summary, hint: german.hint, retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
+  }
+}
+function pluginCatalog(registry2, installed, localizer = new Localizer("en", registry2.catalog)) {
   const loaded = registry2.plugins.map((plugin2) => {
     const services2 = { provides: Object.keys(plugin2.provides ?? {}), requires: [...plugin2.requires ?? []], optional: [...plugin2.optional ?? []] };
     const unavailable = registry2.unavailable.get(plugin2.manifest.id);
     return {
-      ...plugin2.manifest,
+      ...localizer.manifest(plugin2.manifest),
       core: registry2.origins.get(plugin2.manifest.id) === "core",
-      ...unavailable ? { state: "unavailable", reason: unavailable.reason } : { state: "enabled", reason: null },
+      ...unavailable ? { state: "unavailable", reason: localizer.warning(unavailable.reason) } : { state: "enabled", reason: null },
       contributions: {
         commands: (plugin2.commands ?? []).map((command2) => command2.id),
         generators: (plugin2.generators ?? []).map((generator) => generator.id),
@@ -64486,15 +65779,15 @@ function pluginCatalog(registry2, installed) {
       }
     };
   });
-  const disabledCore = registry2.disabled.map((manifest) => ({ ...manifest, core: true, state: "disabled", reason: registry2.disabledReason(manifest.id) ?? "Listed in plugins.disabled.", contributions: null }));
+  const disabledCore = registry2.disabled.map((manifest) => ({ ...localizer.manifest(manifest), core: true, state: "disabled", reason: localizer.warning(registry2.disabledReason(manifest.id) ?? kernelMessage("PLUGIN_LISTED_DISABLED")), contributions: null }));
   const coreIds = /* @__PURE__ */ new Set([...registry2.disabled.map((manifest) => manifest.id), ...[...registry2.origins].filter(([, origin]) => origin === "core").map(([id2]) => id2)]);
   const others = installed.filter((entry2) => coreIds.has(entry2.manifest.id) || !registry2.origins.has(entry2.manifest.id)).map((entry2) => ({
     ...entry2.manifest,
     core: false,
-    ...coreIds.has(entry2.manifest.id) ? { state: "rejected", reason: `Plugin id ${entry2.manifest.id} is reserved by the bundled core plugin; rename the user plugin.` } : entry2.skipped ? { state: "skipped", reason: "Skipped by --no-plugins." } : { state: "disabled", reason: "Not listed in plugins.enabled." },
+    ...coreIds.has(entry2.manifest.id) ? { state: "rejected", reason: localizer.warning(kernelMessage("PLUGIN_ID_RESERVED", { plugin: entry2.manifest.id })) } : entry2.skipped ? { state: "skipped", reason: localizer.warning(kernelMessage("PLUGIN_SKIPPED")) } : { state: "disabled", reason: localizer.warning(kernelMessage("PLUGIN_NOT_ENABLED")) },
     contributions: null
   }));
-  const missing2 = [...registry2.missing].map(([id2, reason]) => ({ id: id2, core: false, state: "missing", reason, contributions: null }));
+  const missing2 = [...registry2.missing].map(([id2, reason]) => ({ id: id2, core: false, state: "missing", reason: localizer.warning(reason), contributions: null }));
   return [...loaded.filter((plugin2) => plugin2.core), ...disabledCore, ...loaded.filter((plugin2) => !plugin2.core), ...missing2, ...others];
 }
 const text$3 = { type: "string" };
@@ -64720,9 +66013,9 @@ function extensionCommands(registry2, services2) {
       arity(args, 0);
       return { events: events2.ids(), contracts: events2.catalog(), hostNamespaces, delivery: eventDelivery };
     } },
-    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery$1, async run(args) {
+    { id: "plugins", description: "List core and user plugins with their state and contributions.", usage: "plugins", ...discovery$1, async run(args, _, { language: language2 }) {
       arity(args, 0);
-      return { plugins: pluginCatalog(registry2, await services2.installedPlugins()) };
+      return { plugins: pluginCatalog(registry2, await services2.installedPlugins(), new Localizer(language2, registry2.catalog)) };
     } }
   ];
 }
@@ -65903,331 +67196,6 @@ function invocationPolicy(command2, args, flags) {
     ...requestedProject === void 0 ? {} : { requestedProject }
   };
 }
-const germanCommands = {
-  help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
-  schema: "Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.",
-  config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
-  setup: "The Forge installieren und fehlende Konfiguration, Skills, Vorlagen und Projektanleitungen anlegen.",
-  project: "TypeScript-Projekte verwalten und getestete Domain- oder Anwendungskomponenten hinzufügen.",
-  workflows: "Projekteigene CI-Workflows entdecken und ihre generierten GitHub-Einstiegspunkte synchronisieren; --check meldet Abweichungen.",
-  formats: "Native Obsidian-Formate und unterstützte Vorgänge anzeigen.",
-  list: "Dateien in stabiler Pfadreihenfolge auflisten; symbolische Verknüpfungen, Git und node_modules überspringen.",
-  read: "Ein Dokument, UTF-8-Text oder einen Base64-Anhang mit seiner SHA-256-Revision lesen.",
-  validate: "Markdown-Frontmatter, Canvas-Graphen, Base-Strukturen oder UTF-8-Text prüfen.",
-  create: "Eine Notiz, ein Canvas, eine Base oder eine Datei erstellen. Vorhandene Dateien werden nicht überschrieben.",
-  write: "Eine Datei erstellen oder ersetzen; Ersetzen erfordert die aktuelle Revision.",
-  edit: "Markdown oder UTF-8-Text gezielt bearbeiten: wörtliche Ersetzungen, Anhängen am Ende oder Bearbeiten eines Abschnitts oder Blocks.",
-  apply: "Einen JSON-Plan aus Schreib-, Bearbeitungs-, Frontmatter-, Verschiebe- und Löschvorgängen als einen geschützten Stapel ausführen.",
-  properties: "YAML-Frontmatter-Eigenschaften zusammenführen und den Markdown-Inhalt erhalten.",
-  patch: "Einen Canvas-/Base-Wert über JSON Pointer setzen; - hängt an ein vorhandenes Array an.",
-  delete: "Eine Datei oder einen Ordner nach .trash verschieben oder mit --permanent entfernen; verweigert, solange andere Dateien darauf verlinken.",
-  move: "Eine Datei oder einen Ordner verschieben oder umbenennen und alle Links darauf in einem geschützten Stapel umschreiben.",
-  rename: "Eine Datei oder einen Ordner am selben Ort umbenennen und alle Links darauf umschreiben; eine Datei behält ihre Erweiterung.",
-  make: "Einen registrierten Generator ausführen oder die Generatoren auflisten.",
-  events: "Ereignisverträge des Aufrufs auflisten.",
-  plugins: "Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten."
-};
-const germanActions = {
-  "project list": "Die verwalteten Projekte auflisten.",
-  "project create": "Ein eigenständiges TypeScript-Projekt erstellen.",
-  "project open": "Ein Projekt für Dateibefehle und Generatoren auswählen.",
-  "project current": "Das ausgewählte Projekt melden.",
-  "project close": "Die Projektauswahl aufheben.",
-  "project inspect": "Ein Projekt oder das ausgewählte Projekt beschreiben.",
-  "project component": "Einem Projekt eine getestete Domain- oder Anwendungskomponente hinzufügen.",
-  "workflows list": "Die erstellten Workflows jedes verwalteten Projekts und ihre generierten Einstiegspunkte auflisten.",
-  "workflows sync": "Die generierten .github/workflows-Einstiegspunkte schreiben; mit --check Abweichungen melden, ohne zu schreiben."
-};
-const germanGuidance = {
-  attachments: "Dateien verlustfrei als Bytes lesen, kopieren, ersetzen und einbetten; keine integrierte Konvertierung, Darstellung oder PDF-Inhaltsbearbeitung.",
-  otherFiles: "Uninterpretierte Bytes; Plugins können weitere Verarbeitung bereitstellen.",
-  textFiles: "UTF-8 lesen, wörtlich bearbeiten, ergänzen und vollständig ersetzen, mit Unified-Diffs im Probelauf; ungültiges UTF-8 wird als Base64-Anhang gelesen.",
-  delivery: "Geordnet, abgewartet und mit separaten Snapshots je Behandler; Fehler werden zu Warnungen. Obsidian-artige vault.*-Ereignisse folgen jedem erfolgreichen Schreibvorgang (zuerst neue Ordner, übergeordnete vor untergeordneten, dann Dateien in Stapelreihenfolge); Probeläufe senden stattdessen workspace.quick-preview. Nach den vault.*-Ereignissen eines Stapels folgen metadataCache.changed, metadataCache.deleted, metadataCache.resolve und ein metadataCache.resolved, sobald der Metadaten-Cache in diesem Aufruf geladen wurde. operation.*-, command.*- und plugin.*-Ereignisse sind Lebenszyklusphasen des Hosts, die claude.*-Ereignisse des claude-Kern-Plugins Phasen jedes Claude-Aufrufs; workspace.*-Ereignisse entsprechen Obsidians Workspace (file-open, quick-preview, layout-ready, quit, project-change). Host-Namensräume gehören dem Host: Plugins beobachten sie, senden aber nur eigene Ereignisse. onAny beobachtet alle Ereignisse; replay liest den begrenzten Verlauf dieses Aufrufs. Keine dauerhafte Wiederholung. Die Antwort enthält standardmäßig nur vault.*-Ereignisse; --events none|changes|all oder settings.events wählt die Ausgabe, ohne Zustellung oder replay zu ändern.",
-  eventChanges: "Nur erfolgreich geschriebene vault.*-Ereignisse: vault.create, vault.modify, vault.delete und vault.rename für Dateien und Ordner.",
-  setup: {
-    "node bin/forge.js templates list": "Die installierten, bearbeitbaren Planungsvorlagen entdecken.",
-    "node bin/forge.js templates inspect workflow/prd.md": "Planungseingaben vor dem Generieren eines Anforderungsdokuments prüfen.",
-    "node bin/forge.js project list": "Ein Projekt suchen und vor dem Generieren von Projektdateien ausdrücklich öffnen."
-  }
-};
-const germanRecoveredLock = {
-  message: "Die verwaiste Sperre {path} von PID {pid} auf {host} (seit {since}{command}) wurde entfernt: {reason}. Prüfen Sie, was dieser Lauf unvollendet hinterlassen hat (zum Beispiel mit git status oder backlog sync status).",
-  command: ", Befehl {command}",
-  reasons: { "dead-process": "ihr Prozess läuft nicht mehr", "reused-pid": "ihre Prozess-ID gehört inzwischen einem anderen Prozess", rebooted: "sie wurde vor dem letzten Neustart dieses Rechners geschrieben" }
-};
-const germanEvents = {
-  "command.started": "Ein weitergeleiteter Befehl aktiviert gleich Plugins und läuft an.",
-  "command.succeeded": "Ein weitergeleiteter Befehl wurde erfolgreich beendet.",
-  "command.failed": "Ein weitergeleiteter Befehl ist fehlgeschlagen; Fehlercodes enthalten keine Befehlseingaben.",
-  "operation.started": "Ein geschützter Workspace-Vorgang hat begonnen, auch bei Probeläufen.",
-  "operation.succeeded": "Ein geschützter Workspace-Vorgang wurde abgeschlossen, auch bei Probeläufen.",
-  "operation.failed": "Ein geschützter Workspace-Vorgang ist fehlgeschlagen.",
-  "vault.create": "Ein erfolgreicher Schreibvorgang hat eine Datei oder einen Ordner angelegt.",
-  "vault.modify": "Ein erfolgreicher Schreibvorgang hat eine vorhandene Datei ersetzt.",
-  "vault.delete": "Eine Datei oder ein Ordner wurde entfernt; Revision und Bytes einer Datei beschreiben ihren vorherigen Inhalt.",
-  "vault.rename": "Eine Datei oder ein Ordner wurde in einem erfolgreichen Stapel von oldPath nach path verschoben.",
-  "metadataCache.changed": "Eine geschriebene Markdown- oder Canvas-Datei wurde indexiert; cache enthält ihre JSON-Metadaten.",
-  "metadataCache.deleted": "Eine gelöschte Datei hat den Index verlassen; prevCache enthält ihre letzten bekannten Metadaten oder null.",
-  "metadataCache.resolve": "Die aufgelösten und nicht aufgelösten Links einer Datei wurden aktualisiert.",
-  "metadataCache.resolved": "Die Linkauflösung für einen geschriebenen Stapel ist abgeschlossen.",
-  "workspace.file-open": "Ein Befehl hat eine Datei über den Workspace-Lesepfad gelesen.",
-  "workspace.quick-preview": "Ein Probelauf hat eine geplante Dateiänderung angezeigt, ohne sie zu schreiben.",
-  "workspace.layout-ready": "Plugins sind aktiv und der Befehl läuft gleich an.",
-  "workspace.quit": "Der Aufruf endet; danach laufen bestmöglich Beendigungsaufgaben, bevor Plugins entladen werden.",
-  "workspace.project-change": "project open oder project close hat eine andere Projektauswahl gespeichert.",
-  "plugin.registered": "Ein Plugin hat die atomare Registrierung seiner Beiträge bestanden.",
-  "plugin.activating": "Ein registriertes Plugin führt gleich seinen Aktivierungs-Hook aus.",
-  "plugin.activated": "Der Aktivierungs-Hook eines Plugins wurde erfolgreich abgeschlossen.",
-  "plugin.activation-failed": "Die Aktivierung eines Plugins ist fehlgeschlagen; die erfasste Bereinigung bleibt geplant.",
-  "plugin.unloading": "Ein gestartetes Plugin gibt gleich seine Ressourcen für diesen Aufruf frei.",
-  "plugin.unloaded": "Die Bereinigung eines Plugins wurde erfolgreich abgeschlossen.",
-  "plugin.unload-failed": "Die Bereinigung eines Plugins ist fehlgeschlagen; die übrige Bereinigung läuft weiter."
-};
-const kernelWarnings = {
-  metadataCacheUnsaved: {
-    en: "The metadata cache could not be saved to {file}, so the next command reads and parses the vault again: {detail}",
-    de: "Der Metadaten-Cache konnte nicht unter {file} gespeichert werden; der nächste Befehl liest und analysiert den Vault daher erneut: {detail}"
-  }
-};
-const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld und führen Sie den Befehl erneut aus.";
-const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
-const regenerateHint = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
-const germanErrors = {
-  // Argumente, Optionen und Eingaben
-  UNKNOWN_COMMAND: { summary: "Der Befehl ist nicht registriert.", hint: "Verfügbare Befehle, auch aktivierte Plugin-Befehle, zeigen help oder schema." },
-  UNKNOWN_OPTION: { summary: "Dieser Befehl akzeptiert die Option nicht.", hint: "Die Optionen des Befehls zeigt help <command>." },
-  MISSING_ARGUMENT: { summary: "Ein erforderliches Argument oder ein Optionswert fehlt.", hint: argumentsHint },
-  INVALID_ARGUMENT: { summary: "Die Argumente oder Optionswerte sind für diesen Befehl ungültig.", hint: argumentsHint },
-  INVALID_OPTION_VALUE: { summary: "Der Optionswert gehört nicht zu den Werten, die der Befehl angibt.", hint: "Verwenden Sie einen Wert aus error.details.allowed; die Werte jeder Option zeigt help <command>." },
-  DUPLICATE_OPTION: { summary: "Eine Option wurde wiederholt oder mit ihrer Verneinung kombiniert.", hint: "Geben Sie jede Option nur einmal an." },
-  INVALID_INPUT: { summary: "Die Eingabeoptionen sind ungültig oder widersprüchlich.", hint: "Verwenden Sie genau eine Eingabequelle und die in der Meldung genannte Optionskombination." },
-  INPUT_REQUIRED: { summary: "--stdin wurde ohne weitergeleitete Eingabe angegeben.", hint: "Leiten Sie den Inhalt an den Befehl weiter oder verwenden Sie --content oder --from." },
-  INVALID_JSON: { summary: "Die Eingabe ist kein gültiges JSON.", hint: "Übergeben Sie einen gültigen JSON-Wert und maskieren Sie ihn für Ihre Shell." },
-  INVALID_ENCODING: { summary: "Der Inhalt ist in der erforderlichen Kodierung ungültig.", hint: "Verwenden Sie gültiges UTF-8. Binärinhalte schreiben Sie mit write oder create über --stdin, --from oder --encoding base64; edit und strukturierte Befehle akzeptieren nur UTF-8-Text." },
-  INVALID_LANGUAGE: { summary: "Die Sprache wird nicht unterstützt.", hint: "Verwenden Sie --lang en oder --lang de." },
-  INVALID_NAME: { summary: "Der Name entspricht nicht der erforderlichen Namensregel.", hint: "Verwenden Sie das in der Meldung beschriebene Format, zum Beispiel PascalCase." },
-  INVALID_KEY: { summary: "Der Eigenschaftsschlüssel ist reserviert oder unsicher.", hint: "Verwenden Sie einen anderen Eigenschaftsschlüssel." },
-  INVALID_RESULT: { summary: "Der Befehl lieferte Daten, die nicht als JSON serialisierbar sind.", hint: "Prüfen Sie bestätigte Tresor-Ereignisse und lesen Sie betroffene Dateien erneut, bevor Sie es wieder versuchen; melden Sie den fehlerhaften Plugin-Befehl." },
-  OPERATION_FAILED: { summary: "Ein unerwarteter Laufzeit- oder E/A-Fehler ist aufgetreten.", hint: "Lesen Sie die ursprüngliche Diagnose, prüfen Sie den Arbeitsbereich und lesen Sie betroffene Dateien vor einem erneuten Versuch." },
-  // Pfade, Dateien und geschützte Schreibvorgänge
-  INVALID_PATH: { summary: "Der Pfad ist kein gültiger relativer Pfad im Arbeitsbereich.", hint: "Verwenden Sie einen relativen Pfad im ausgewählten Arbeitsbereich oder Projekt mit Schrägstrichen und ohne ..-Segmente." },
-  UNSAFE_PATH: { summary: "Der Pfad verlässt den Arbeitsbereich oder durchquert eine symbolische Verknüpfung.", hint: "Verwenden Sie einen Pfad innerhalb des Arbeitsbereichs ohne symbolische Verknüpfungen." },
-  NOT_FOUND: { summary: "Die Datei oder Ressource wurde nicht gefunden.", hint: "Prüfen Sie Pfad und ausgewähltes Projekt (project current); list zeigt vorhandene Dateien." },
-  CONFLICT: { summary: "Die Datei existiert bereits oder ihre Revision hat sich seit dem Lesen geändert.", hint: "Lesen Sie die Datei erneut, gleichen Sie Ihre Änderung mit dem aktuellen Inhalt ab (error.details.currentRevision) und versuchen Sie es dann mit dem Revisionsschutz des Befehls erneut (--if-match oder --revisions-from); create legt nur neue Pfade an." },
-  NO_MATCH: { summary: "Der --find-Text kommt in der Datei nicht vor.", hint: "Lesen Sie die Datei erneut und übernehmen Sie den exakten aktuellen Text einschließlich Leerraum und Zeilenenden in --find." },
-  AMBIGUOUS_EDIT: { summary: "Der --find-Text kommt mehrfach vor; überlappende Treffer zählen mit.", hint: "Erweitern Sie --find um umgebenden Text, bis er genau einmal passt; error.details.lines nennt die Trefferzeilen." },
-  UNSUPPORTED_EDIT: { summary: "Diese Bearbeitung wird für den Dateityp nicht unterstützt.", hint: "Verwenden Sie edit für Markdown und Text, properties für Frontmatter, patch für Canvas und Bases und write für Anhänge." },
-  SECTION_NOT_FOUND: { summary: "Keine Überschrift passt zum --section-Pfad, oder kein Block hat die --block-ID.", hint: 'Lesen Sie die Notiz und übernehmen Sie einen Überschriftenpfad aus error.details.headings (Abschnitte mit " > " verbunden) oder eine Block-ID aus error.details.blocks.' },
-  AMBIGUOUS_SECTION: { summary: "Der --section-Pfad passt zu mehreren Überschriften, oder die --block-ID kommt mehrfach vor.", hint: "Ergänzen Sie übergeordnete Überschriften im Pfad (Eltern > Überschrift), bis nur einer der Kandidaten in error.details.candidates bleibt, oder übergeben Sie die Zeile eines Kandidaten als --section-line (sectionLine in einem apply-Plan); geben Sie jedem Block eine eindeutige ID." },
-  INVALID_PLAN: { summary: "Der apply-Plan oder Schreibstapel ist ungültig: Er entspricht nicht dem Planschema, oder seine Schritte enthalten doppelte oder überlappende Pfade.", hint: "Korrigieren Sie den in error.details.operation genannten Vorgang (siehe error.details.issues und das Planschema in help apply); schreiben Sie jeden Pfad nur einmal und verwenden Sie keinen Pfad erneut, den derselbe Plan verschiebt oder löscht." },
-  WORKSPACE_BUSY: { summary: "Ein anderer Forge-Schreibvorgang hält die Sperre .agent-cli.lock oder eine Abgleichsperre .forge/sync/<Verbindung>.lock.", hint: 'error.details.stale nennt den Grund (eine Sperre, deren Halter nachweislich nicht mehr läuft, entfernt Forge automatisch mit einer Warnung). "active": Der Halter läuft; warten Sie und versuchen Sie es erneut. "unknown": Forge kann den Halter nicht prüfen (anderer Rechner, PID-Namensraum oder Systemstart, oder eine unlesbare Sperre), daher ist error.retryable false; stellen Sie anhand von error.details.lock sicher, dass er nicht mehr läuft, prüfen Sie seine unvollendeten Änderungen, löschen Sie dann die in error.details.path genannte Datei (relativ zum Workspace-Stamm) und wiederholen Sie den Befehl.' },
-  DESTINATION_EXISTS: { summary: "Das Ziel des Verschiebens oder Umbenennens existiert bereits.", hint: "Wählen Sie ein Ziel, das nicht existiert (error.details.path), oder verschieben bzw. löschen Sie die vorhandene Datei zuerst; Forge überschreibt nie ein Ziel." },
-  PROTECTED_PATH: { summary: "Der Pfad ist vor Verschieben und Löschen geschützt.", hint: "Forge verschiebt oder löscht niemals .obsidian, .forge oder im Workspace-Bereich bin (in beliebiger Groß- und Kleinschreibung) und keinen Ordner mit einem .git-Repository; endgültig löscht es nur Ordner ohne symbolische Links, node_modules oder Spezialdateien, verschieben Sie einen solchen Ordner daher in den Papierkorb. Die Bereichswurzel und .git-Pfade werden als INVALID_PATH abgelehnt." },
-  INVALID_MOVE: { summary: "Das Verschieben oder Umbenennen ist nicht möglich.", hint: "Verwenden Sie ein Ziel, das sich von der Quelle unterscheidet und nicht in ihr liegt; rename erwartet einen neuen Namen ohne Schrägstriche." },
-  HAS_BACKLINKS: { summary: "Andere Notizen verlinken noch auf die Datei oder den Ordner.", hint: "Passen Sie zuerst die Links in error.details.backlinks an oder entfernen Sie sie, verschieben Sie die Datei stattdessen oder löschen Sie mit --allow-broken-links trotzdem." },
-  ROLLBACK_FAILED: { summary: "Ein fehlgeschlagener Schreibvorgang konnte nicht alle Dateien wiederherstellen.", hint: "Prüfen und reparieren Sie die in der Meldung genannten Dateien vor einem erneuten Versuch." },
-  // Dokumente
-  INVALID_FRONTMATTER: { summary: "Das YAML-Frontmatter ist ungültig.", hint: "Korrigieren Sie das Frontmatter zu einer YAML-Zuordnung und prüfen Sie die Notiz mit validate." },
-  INVALID_YAML: { summary: "Das YAML-Dokument ist ungültig.", hint: "Korrigieren Sie die in der Meldung genannte Syntax, Schlüssel oder Aliase." },
-  INVALID_CANVAS: { summary: "Die Canvas-Struktur ist ungültig.", hint: "Korrigieren Sie die genannten Knoten, Kanten oder IDs; prüfen Sie mit validate <file.canvas>." },
-  INVALID_BASE: { summary: "Die Base-Struktur ist ungültig.", hint: "Korrigieren Sie die genannte Base-Definition; prüfen Sie mit validate <file.base>." },
-  INVALID_POINTER: { summary: "Der JSON Pointer ist ungültig oder verweist auf keine gültige Position.", hint: "Lesen Sie das Dokument und verwenden Sie einen vorhandenen Pointer-Pfad; /- hängt nur an ein vorhandenes Array an." },
-  // Bases-Abfragen
-  INVALID_BASE_QUERY: { summary: "Die Bases-Abfrage ist ungültig.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, den Kontext und die Ausdrücke." },
-  INVALID_BASE_EXPRESSION: { summary: "Ein Bases-Ausdruck kann nicht geparst werden.", hint: "Korrigieren Sie den in der Meldung genannten Ausdruck." },
-  BASE_EVALUATION_ERROR: { summary: "Ein Bases-Ausdruck ist bei der Auswertung einer Datei fehlgeschlagen.", hint: "Prüfen Sie die in der Meldung genannte Ansicht, Datei und den Ausdruck." },
-  BASE_VIEW_NOT_FOUND: { summary: "Die angeforderte Bases-Ansicht existiert nicht.", hint: "Führen Sie bases inspect <file.base> aus und übergeben Sie eine vorhandene --view." },
-  BASE_CONTEXT_NOT_FOUND: { summary: "Die Kontextdatei ist keine indexierte Tresordatei.", hint: "Übergeben Sie eine vorhandene Tresordatei an --context." },
-  INVALID_BASE_PROPERTY_TYPES: { summary: "Das Register der Obsidian-Eigenschaftstypen ist ungültig.", hint: "Korrigieren Sie .obsidian/types.json zu einem JSON-Objekt mit Eigenschaftstypen." },
-  UNSUPPORTED_BASE_PROPERTY_TYPE: { summary: "Ein Obsidian-Eigenschaftstyp wird nicht unterstützt.", hint: "Verwenden Sie in .obsidian/types.json einen unterstützten Typ." },
-  // Konfiguration, Installation und Projekte
-  INVALID_CONFIG: { summary: "Die Konfiguration ist ungültig oder nicht lesbar.", hint: "Korrigieren Sie bin/config.json an der in der Meldung genannten Stelle und prüfen Sie mit config." },
-  INVALID_SETUP: { summary: "Die Installation kann mit den aktuellen Distributionsdateien nicht abgeschlossen werden.", hint: "Reparieren Sie den in der Meldung genannten bin-Pfad und führen Sie setup erneut aus." },
-  INVALID_PROJECT: { summary: "Die Projektmetadaten sind ungültig.", hint: "Korrigieren Sie .forge/project.json im Projektverzeichnis." },
-  INVALID_PROJECT_NAME: { summary: "Der Projektname ist ungültig.", hint: "Verwenden Sie einen kleingeschriebenen Kebab-Case-Namen, zum Beispiel billing-service." },
-  INVALID_PROJECT_CONTEXT: { summary: "Die gespeicherte Projektauswahl ist ungültig.", hint: "Verwenden Sie project open <name> oder project close." },
-  INVALID_COMPONENT_KIND: { summary: "Der Komponententyp ist ungültig.", hint: "Verwenden Sie domain oder application." },
-  PROJECT_EXISTS: { summary: "Das Projekt existiert bereits.", hint: "Wählen Sie einen anderen Namen oder öffnen Sie es mit project open <name>." },
-  PROJECT_NOT_FOUND: { summary: "Das Projekt existiert nicht.", hint: "Führen Sie project list aus und öffnen Sie ein vorhandenes Projekt." },
-  PROJECT_REQUIRED: { summary: "Dieser Befehl benötigt ein ausgewähltes Projekt.", hint: "Öffnen Sie zuerst mit project open <name> ein Projekt." },
-  STALE_PROJECT_CONTEXT: { summary: "Das ausgewählte Projekt fehlt oder stimmt nicht mehr mit der Konfiguration überein.", hint: "Wählen Sie mit project open <name> ein gültiges Projekt oder verwenden Sie project close." },
-  // Vorlagen und Generierung
-  INVALID_TEMPLATE: { summary: "Die Markdown-Vorlage ist ungültig.", hint: "Korrigieren Sie das in der Meldung genannte Frontmatter oder die Platzhalter." },
-  INVALID_TEMPLATE_DATE: { summary: "Ein Datum oder Datumsformat der Vorlage ist ungültig.", hint: "Verwenden Sie ein ISO-Datum und ein unterstütztes Datumsformat." },
-  INVALID_TEMPLATE_PACK: { summary: "Das Vorlagenpaket ist ungültig.", hint: "Verwenden Sie eindeutige Vorlagen-IDs und Zielpfade." },
-  INVALID_TEMPLATE_VALUES: { summary: "Vorlagenwerte fehlen oder haben den falschen Typ.", hint: "Führen Sie templates inspect <template.md> aus und geben Sie die Pflichtwerte an." },
-  UNKNOWN_TEMPLATE_VARIABLE: { summary: "Die Vorlage verwendet eine nicht deklarierte Variable.", hint: "Deklarieren Sie die Variable oder entfernen Sie den Platzhalter; prüfen Sie mit templates inspect <template.md>." },
-  UNKNOWN_GENERATOR: { summary: "Der Generator ist nicht registriert.", hint: "Verfügbare Generatoren zeigt make." },
-  INVALID_GENERATION_PLAN: { summary: "Der Generierungsplan hat überlappende Ausgaben oder ungültige Optionen.", hint: "Verwenden Sie getrennte Ausgabe- und Manifestpfade und kombinieren Sie die Planung nicht mit --revisions-from." },
-  INVALID_GENERATION_REVISIONS: { summary: "Die Revisionsfreigabe passt nicht zum geprüften Plan.", hint: "Erstellen Sie mit --plan-out einen neuen Plan und übergeben Sie diese Datei an --revisions-from." },
-  UI_DRIFT: { summary: "Generierte UI-Dateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
-  DATA_SOURCE_DRIFT: { summary: "Generierte Datenquellendateien fehlen oder weichen von den Definitionen ab.", hint: regenerateHint },
-  GENERATION_DRIFT: { summary: "Generierte Dateien fehlen oder weichen von der Ausgabe des Generators ab.", hint: "Führen Sie denselben make-Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu." },
-  // Projekt-Workflows
-  INVALID_WORKFLOW: { summary: "Ein Projekt-Workflow ist ungültig, oder zwei Workflows erzeugen dieselbe Datei.", hint: "Korrigieren oder benennen Sie den in der Meldung genannten Workflow unter src/infrastructure/workflows/<concern>/ um und führen Sie dann workflows sync aus." },
-  WORKFLOW_DRIFT: { summary: "Generierte GitHub-Workflows fehlen, weichen ab oder sind veraltet.", hint: "Führen Sie workflows sync aus, prüfen Sie die Änderungen in .github/workflows und committen Sie sie zusammen mit ihren Quellen." },
-  // UI, Interaktionen und Datenquellen
-  INVALID_UI: { summary: "Eine Komponentendefinition ist ungültig.", hint: "Korrigieren Sie die genannte Definition; prüfen Sie mit components validate." },
-  INVALID_UI_LIBRARY: { summary: "Die Komponentenbibliothek ist ungültig.", hint: "Führen Sie components validate aus und korrigieren Sie die gemeldeten Definitionen." },
-  INVALID_UI_FRAMEWORK: { summary: "Das UI-Ziel wird nicht unterstützt.", hint: "Verwenden Sie html, htmx, vanilla, vue, svelte, react oder angular." },
-  EMPTY_UI_LIBRARY: { summary: "Die Komponentenbibliothek enthält keine Definitionen.", hint: "Führen Sie components init aus oder fügen Sie eine Markdown-Definition hinzu." },
-  DUPLICATE_UI_COMPONENT: { summary: "Zwei Komponentendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Komponente eine eindeutige ID." },
-  UNKNOWN_UI_COMPONENT: { summary: "Die Komponente ist nicht definiert.", hint: "Führen Sie components list aus und verwenden Sie eine vorhandene ID." },
-  CYCLIC_UI_COMPONENT: { summary: "Die Komponentenreferenzen bilden einen Zyklus.", hint: "Entfernen Sie die in der Meldung genannte zyklische Referenz." },
-  UI_RENDERER_UNAVAILABLE: { summary: "Für dieses UI-Ziel ist kein Generator verfügbar.", hint: "Wählen Sie ein unterstütztes --framework." },
-  INVALID_INTERACTION: { summary: "Eine Interaktionsdefinition ist ungültig.", hint: "Korrigieren Sie das genannte Ereignis, die Aktionen oder Bindungen; prüfen Sie mit interactions validate." },
-  DUPLICATE_INTERACTION: { summary: "Zwei Interaktionsdefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Interaktion eine eindeutige ID." },
-  EMPTY_INTERACTION_LIBRARY: { summary: "Die Interaktionsbibliothek enthält keine Definitionen.", hint: "Führen Sie interactions init aus oder fügen Sie eine Markdown-Definition hinzu." },
-  UNKNOWN_INTERACTION: { summary: "Die Interaktion ist nicht definiert.", hint: "Führen Sie interactions list aus und prüfen Sie die Interaktionsreferenzen der Komponente." },
-  INVALID_DATA_SOURCE: { summary: "Eine Datenquellendefinition ist ungültig.", hint: "Korrigieren Sie die genannten Felder; prüfen Sie mit data-sources validate." },
-  DUPLICATE_DATA_SOURCE: { summary: "Zwei Datenquellendefinitionen haben dieselbe ID.", hint: "Vergeben Sie für jede Datenquelle eine eindeutige ID." },
-  EMPTY_DATA_SOURCE_LIBRARY: { summary: "Die Datenquellenbibliothek enthält keine Definitionen.", hint: "Führen Sie data-sources init aus oder fügen Sie eine Markdown-Definition hinzu." },
-  UNKNOWN_DATA_SOURCE: { summary: "Die Datenquelle ist nicht definiert.", hint: "Führen Sie data-sources list aus und verwenden Sie eine vorhandene ID." },
-  DATA_SOURCE_RENDERER_UNAVAILABLE: { summary: "Für diese Datenquelle ist kein Generator verfügbar.", hint: "Verwenden Sie eine unterstützte Datenquellenart; Hinweise zur Generierung zeigt help make." },
-  // Plugins, Skills und Ereignisse
-  INVALID_PLUGIN: { summary: "Ein Plugin-Manifest oder eine Plugin-Implementierung ist ungültig.", hint: "Korrigieren Sie das genannte Plugin oder deaktivieren Sie Plugins mit --no-plugins." },
-  INVALID_PLUGIN_CONFIG: { summary: "Die Plugin-Konfiguration ist ungültig.", hint: "Tragen Sie in bin/config.json unter plugins.enabled eindeutige Kebab-Case-IDs installierter Benutzer-Plugins ein; plugins listet sie auf." },
-  INCOMPATIBLE_PLUGIN: { summary: "Das Plugin benötigt eine neuere Forge-Version.", hint: "Aktualisieren Sie The Forge oder deaktivieren Sie das Plugin." },
-  DUPLICATE_PLUGIN: { summary: "Das Plugin ist doppelt registriert.", hint: "Aktivieren Sie jedes Plugin nur einmal." },
-  PLUGIN_NAMESPACE: { summary: "Eine Plugin-ID oder ein Plugin-Beitrag liegt außerhalb seines Namensraums.", hint: "Stellen Sie Befehls-, Generator-, Skill- und Ereignis-IDs eines Benutzer-Plugins sowie den Dienst-IDs jedes Plugins die Plugin-ID und einen Punkt und Fehlercodes seine ID in UPPER_SNAKE_CASE voran; verwenden Sie keinen Host-Ereignisnamensraum (command, operation, vault, metadataCache, workspace, plugin) als Plugin-ID beanspruchen Sie core: true nicht außerhalb des Bundles und deklarieren Sie an einem Generator keine Optionen, die make gehören (out, plan, plan-out, check, revisions-from)." },
-  PLUGIN_SERVICE_MISSING: { summary: "Ein Plugin benötigt einen erforderlichen oder optionalen Dienst, den kein aktiviertes, verfügbares Plugin bereitstellt, oder verwendet einen nicht deklarierten Dienst.", hint: "Aktivieren Sie das Plugin, das den in error.details.service genannten Dienst bereitstellt, und machen Sie es verfügbar (plugins zeigt Anbieter und Zustände), oder deklarieren Sie den Dienst in requires oder optional des Plugins." },
-  PLUGIN_UNAVAILABLE: { summary: "Der Befehl oder Generator gehört zu einem Plugin, das deaktiviert oder nicht verfügbar ist, oder benötigt einen Dienst eines solchen Plugins.", hint: "error.details.reason nennt den Grund: Beheben Sie die in error.details.issues aufgeführten Probleme in plugins.settings in bin/config.json oder aktivieren Sie den genannten deaktivierten Anbieter (entfernen Sie ihn aus plugins.disabled) und wiederholen Sie den Befehl. plugins zeigt Zustand und Grund jedes Plugins." },
-  PLUGIN_SERVICE_CYCLE: { summary: "Die Dienstabhängigkeiten der Plugins bilden einen Zyklus.", hint: "Lösen Sie den in error.details.plugins genannten Zyklus auf, sodass ein Plugin keinen Dienst des anderen mehr benötigt." },
-  PLUGIN_LIFECYCLE: { summary: "Ein Plugin hat den Host außerhalb seines Lebenszyklus verwendet.", hint: "Registrieren Sie Beiträge vor der Aktivierung und verwenden Sie den Host nach der Freigabe nicht mehr." },
-  DUPLICATE_OR_INVALID_ID: { summary: "Eine Beitrags-ID ist ungültig oder bereits registriert.", hint: "Verwenden Sie eine eindeutige, kleingeschriebene ID mit Punkten." },
-  UNKNOWN_SKILL: { summary: "Der Skill ist nicht registriert.", hint: "Verfügbare Skills zeigt skills list." },
-  INVALID_EVENT: { summary: "Eine Ereignisdefinition oder der Ereigniszustand ist ungültig.", hint: "Definieren Sie Ereignisse vor der Freigabe mit einer ID mit Punkten und einem Validator." },
-  INVALID_EVENT_LISTENER: { summary: "Ein Ereignisbehandler ist keine Funktion.", hint: "Übergeben Sie eine Funktion als Behandler." },
-  INVALID_EVENT_PAYLOAD: { summary: "Die Ereignisdaten entsprechen nicht dem Ereignisvertrag.", hint: "Prüfen Sie den Vertrag mit events und senden Sie passende Daten." },
-  DUPLICATE_EVENT: { summary: "Die Ereignis-ID ist bereits registriert.", hint: "Verwenden Sie eine eindeutige Ereignis-ID." },
-  UNKNOWN_EVENT: { summary: "Das Ereignis ist nicht registriert.", hint: "Registrierte Ereignis-IDs zeigt events." },
-  EVENT_RECURSION: { summary: "Ereignisbehandler haben die maximale Rekursionstiefe überschritten.", hint: "Verhindern Sie, dass Behandler die Ereignisse auslösen, die sie selbst aufrufen." },
-  EVENT_OWNERSHIP: { summary: "Ein Plugin wollte ein Ereignis senden, das ihm nicht gehört.", hint: "Senden Sie nur Ereignisse im Namensraum Ihres Plugins; Host-Ereignisse (vault.*, metadataCache.*, workspace.*, operation.*, command.*, plugin.*) sendet der Host, die Ereignisse eines anderen Plugins dieses Plugin." },
-  // Claude-Code-Definitionen
-  INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
-  INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
-  INVALID_CLAUDE_PLUGIN: { summary: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.", hint: claudeDefinitionHint },
-  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei." },
-  INVALID_CLAUDE_COMMAND: { summary: "Dieser Claude-Befehl wird nicht unterstützt.", hint: "Unterstützte Befehle zeigt claude capabilities." },
-  INVALID_CLAUDE_ARGUMENT: { summary: "Ein Argument des Claude-Befehls ist ungültig.", hint: argumentsHint },
-  INVALID_CLAUDE_OPTION: { summary: "Diese Option ist für den Claude-Befehl nicht zulässig.", hint: "Prüfen Sie help claude und entfernen Sie die Option." },
-  INVALID_CLAUDE_SCOPE: { summary: "Der Claude-Geltungsbereich ist ungültig.", hint: "Prüfen Sie help claude und übergeben Sie einen für diese Aktion unterstützten --scope." },
-  INVALID_CLAUDE_INPUT: { summary: "Die Claude-Eingabe ist ungültig oder zu groß.", hint: "Übergeben Sie gültige Eingaben innerhalb des Größenlimits." },
-  INVALID_CLAUDE_OUTPUT: { summary: "Das Claude-Ausgabeformat ist ungültig.", hint: "Verwenden Sie text, json oder json-last-line." },
-  INVALID_CLAUDE_OUTPUT_LIMIT: { summary: "Das Claude-Ausgabelimit ist ungültig.", hint: "Verwenden Sie eine positive ganze Zahl von Bytes." },
-  INVALID_CLAUDE_TIMEOUT: { summary: "Das Claude-Zeitlimit ist ungültig.", hint: "Geben Sie das Zeitlimit in Millisekunden innerhalb des in der Meldung genannten Bereichs an." },
-  INVALID_CLAUDE_EXECUTABLE: { summary: "Der Pfad zur Claude-Code-CLI ist ungültig.", hint: "Übergeben Sie einen ausführbaren Pfad an --claude-bin." },
-  // Claude-Code-Prozess
-  CLAUDE_NOT_INSTALLED: { summary: "Die Claude-Code-CLI wurde nicht gefunden.", hint: "Installieren Sie Claude Code und nehmen Sie claude in PATH auf oder verwenden Sie --claude-bin." },
-  CLAUDE_WORKING_DIRECTORY_UNAVAILABLE: { summary: "Das Arbeitsverzeichnis für Claude Code ist nicht verfügbar.", hint: "Prüfen Sie, dass das ausgewählte Projekt oder der Arbeitsbereich existiert und ein Verzeichnis ist." },
-  CLAUDE_COMMAND_FAILED: { summary: "Claude Code konnte nicht gestartet werden oder wurde unerwartet beendet.", hint: "Lesen Sie error.details, prüfen Sie den externen Zustand und wiederholen Sie dann bewusst." },
-  CLAUDE_COMMAND_TIMEOUT: { summary: "Der Claude-Befehl hat sein Zeitlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie mit größerem --timeout nur, wenn die Arbeit nicht abgeschlossen wurde." },
-  CLAUDE_OUTPUT_LIMIT: { summary: "Die Claude-Ausgabe hat das Größenlimit überschritten.", hint: "Prüfen Sie den externen Zustand; wiederholen Sie nur bei Bedarf mit größerem Ausgabelimit." },
-  CLAUDE_COMMAND_INTERRUPTED: { summary: "Der Claude-Befehl wurde durch ein Signal unterbrochen (Exit 130 bei SIGINT, 143 bei SIGTERM).", hint: "Prüfen Sie den externen Zustand, bevor Sie den Befehl erneut ausführen." },
-  CLAUDE_RUNTIME_FAILED: { summary: "Claude Code wurde mit einem Status ungleich null beendet.", hint: "Prüfen Sie error.details (nativer Status, Ausgabe und geparstes Ergebnis) und den externen Zustand vor einer Wiederholung." },
-  CLAUDE_INVALID_OUTPUT: { summary: "Claude Code war erfolgreich, lieferte aber nicht das angeforderte JSON.", hint: "Prüfen Sie stdout und den externen Zustand vor einer Wiederholung." }
-};
-function language(value2) {
-  ensure(value2 === "en" || value2 === "de", "INVALID_LANGUAGE", "Unsupported language. Use --lang en or --lang de.");
-  return value2;
-}
-function translated(catalog, id2) {
-  return Object.hasOwn(catalog, id2) ? catalog[id2] : void 0;
-}
-class Localizer {
-  constructor(language2 = "en", plugins) {
-    this.language = language2;
-    this.plugins = plugins;
-  }
-  language;
-  plugins;
-  german(kind2, id2) {
-    const kernel = kind2 === "commands" ? germanCommands : kind2 === "events" ? germanEvents : void 0;
-    return (kernel && translated(kernel, id2)) ?? this.plugins?.text("de", kind2, id2);
-  }
-  /**
-   * The command with German descriptions of itself and its actions where a catalog has them. Actions are keyed
-   * `<command> <action>` in the kernel and plugin catalogs; `make` actions are generators.
-   */
-  command(command2) {
-    if (this.language !== "de") return command2;
-    const description2 = this.german("commands", command2.id);
-    let translatedActions = false;
-    const actions2 = command2.actions && Object.fromEntries(Object.entries(command2.actions).map(([id2, action2]) => {
-      const key = `${command2.id} ${id2}`;
-      const german = translated(germanActions, key) ?? this.plugins?.text("de", "actions", key) ?? (command2.id === "make" ? this.german("generators", id2) : void 0);
-      if (german) translatedActions = true;
-      return [id2, german ? { ...action2, description: german } : action2];
-    }));
-    if (!description2 && !translatedActions) return command2;
-    return { ...command2, ...description2 ? { description: description2 } : {}, ...translatedActions ? { actions: actions2 } : {} };
-  }
-  described(kind2, items2) {
-    if (!Array.isArray(items2)) return items2;
-    return items2.map((item) => {
-      if (!isRecord$1(item) || typeof item.id !== "string") return item;
-      const description2 = this.german(kind2, item.id);
-      return description2 ? { ...item, description: description2 } : item;
-    });
-  }
-  errors(items2) {
-    return items2.map((item) => {
-      if (!isRecord$1(item) || typeof item.code !== "string") return item;
-      const summary = errorDefinition(item.code) ? germanErrors[item.code].summary : this.plugins?.localizedError(item.code, "de")?.summary;
-      return summary ? { ...item, summary } : item;
-    });
-  }
-  eventOutput(value2) {
-    return isRecord$1(value2) && typeof value2.changes === "string" ? { ...value2, changes: germanGuidance.eventChanges } : value2;
-  }
-  result(command2, data) {
-    if (this.language === "en" || !isRecord$1(data)) return data;
-    if (command2 === "schema" && Array.isArray(data.errors)) return { ...data, eventOutput: this.eventOutput(data.eventOutput), generators: this.described("generators", data.generators), errors: this.errors(data.errors) };
-    if (["help", "schema", "make"].includes(command2) && Array.isArray(data.generators)) return { ...data, ...data.eventOutput === void 0 ? {} : { eventOutput: this.eventOutput(data.eventOutput) }, generators: this.described("generators", data.generators) };
-    if (command2 === "formats") return { ...data, textFiles: germanGuidance.textFiles, attachments: germanGuidance.attachments, otherFiles: germanGuidance.otherFiles };
-    if (command2 === "events") return { ...data, contracts: this.described("events", data.contracts), delivery: germanGuidance.delivery };
-    if (command2 === "setup" && Array.isArray(data.nextSteps)) return {
-      ...data,
-      nextSteps: data.nextSteps.map((step) => {
-        if (!isRecord$1(step) || typeof step.command !== "string") return step;
-        const purpose = translated(germanGuidance.setup, step.command);
-        return purpose ? { ...step, purpose } : step;
-      })
-    };
-    return data;
-  }
-  /** The warning for a stale lock an acquisition removed: `english` as the adapter wrote it, or the German text. */
-  recoveredLock({ path: path2, holder, reason }, english) {
-    if (this.language !== "de") return english;
-    const fill2 = (template, values2) => template.replace(/\{(\w+)\}/g, (_match, key) => String(values2[key]));
-    const command2 = holder.command === void 0 ? "" : fill2(germanRecoveredLock.command, { command: holder.command });
-    return fill2(germanRecoveredLock.message, { path: path2, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command: command2, reason: germanRecoveredLock.reasons[reason] });
-  }
-  /** A kernel warning in the response language with its `{name}` placeholders filled in. */
-  warning(id2, values2) {
-    return kernelWarnings[id2][this.language].replace(/\{(\w+)\}/g, (placeholder, name2) => values2[name2] ?? placeholder);
-  }
-  /** Built-in and plugin-registered codes add a catalog hint and retryability; other plugin codes keep their own shape. */
-  error(error2) {
-    const code2 = error2 instanceof AppError ? error2.code : "OPERATION_FAILED";
-    const diagnostic2 = errorMessage(error2);
-    let details = error2 instanceof AppError ? error2.details : void 0;
-    if (details) {
-      try {
-        details = JSON.parse(JSON.stringify(details));
-      } catch {
-        details = { diagnostic: "Error details were not JSON-serializable." };
-      }
-    }
-    const builtIn = errorDefinition(code2), contributed = builtIn ? void 0 : this.plugins?.error(code2);
-    const definition2 = builtIn ?? contributed;
-    if (!definition2) return { code: code2, message: diagnostic2, ...details ? { details } : {} };
-    const retryable2 = error2 instanceof AppError && error2.retryable !== void 0 ? error2.retryable : definition2.retryable;
-    const german = this.language !== "de" ? void 0 : builtIn ? germanErrors[code2] : this.plugins?.localizedError(code2, "de");
-    if (!german) return { code: code2, message: diagnostic2, hint: definition2.hint, retryable: retryable2, ...details ? { details } : {} };
-    return { code: code2, message: german.summary, hint: german.hint, retryable: retryable2, details: { ...details, localization: { originalMessage: diagnostic2, ...details?.localization !== void 0 ? { originalDetails: details.localization } : {} } } };
-  }
-}
 const corePlugins = [
   templatesPlugin,
   scaffoldsPlugin,
@@ -66274,8 +67242,8 @@ async function run() {
       else eventLevel = config2.settings.events;
       compact = config2.settings.json;
       let lockOwner = {};
-      const recovered = (lock, message2) => events2.warn(localizer.recoveredLock(lock, message2));
-      const files = await NodeFiles.at(loaded.root, (message2) => events2.warn(message2), () => lockOwner, recovered);
+      const warn = (message2) => events2.warn(message2);
+      const files = await NodeFiles.at(loaded.root, warn, () => lockOwner);
       activeContext = { workspaceRoot: files.root, root: files.root, project: null };
       registerHostEvents(events2);
       events2.on("command.started", ({ command: command22, operationId }) => {
@@ -66295,7 +67263,7 @@ async function run() {
         },
         setup: async () => {
           const templates2 = registry2.service(templateInstallerService);
-          if (templates2 === void 0) events2.warn("The templates core plugin is disabled or unavailable; setup did not install templates into bin/templates.");
+          if (templates2 === void 0) events2.warn(kernelMessage("SETUP_TEMPLATES_UNAVAILABLE"));
           return new SetupService(environment, config2, await readSetupArtifacts(__dirname), [...registry2.skills.values()], templates2?.setupTemplates() ?? null).run();
         },
         configSections: () => registry2.settings.sections(),
@@ -66305,9 +67273,9 @@ async function run() {
       registerCorePlugins(registry2, events2, corePlugins, {
         skills: registrySkills(registry2),
         fileDates: nodeFileDates,
-        openFiles: (root, warn) => NodeFiles.at(root, warn),
+        openFiles: (root) => NodeFiles.at(root, warn),
         operationId: () => events2.nextOperationId(),
-        locks: (root) => nodeLockFiles(root, recovered),
+        locks: (root) => nodeLockFiles(root, warn),
         http: new FetchHttpClient(),
         environment: (name2) => process.env[name2]
       }, config2.plugins.disabled);
@@ -66354,7 +67322,7 @@ async function run() {
           save: !config2.settings.dryRun
         }
       });
-      persistMetadata = () => vaultMetadata.persist().catch((error2) => events2.warn(localizer.warning("metadataCacheUnsaved", { file: cacheFile, detail: errorMessage(error2) })));
+      persistMetadata = () => vaultMetadata.persist().catch((error2) => events2.warn(kernelMessage("METADATA_CACHE_UNSAVED", { file: cacheFile, diagnostic: errorMessage(error2) })));
       const metadataEvents = new MetadataCacheEvents(events2, vaultMetadata);
       metadataCommits = project2 ? scopedCommitObserver(metadataEvents, project2.directory) : metadataEvents;
       const workspace2 = project2 ? environment.within(scopedFiles, minpath.resolve(files.root, project2.directory), metadataEvents) : environment;
@@ -66395,10 +67363,10 @@ async function run() {
     await registry2.dispose(events2);
   }
   try {
-    process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warnings }, null, compact ? void 0 : 2) + "\n");
+    process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }, null, compact ? void 0 : 2) + "\n");
   } catch {
     process.exitCode = 1;
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warnings }) + "\n");
+    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n");
   }
 }
 void run();

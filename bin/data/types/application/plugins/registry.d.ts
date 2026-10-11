@@ -12,6 +12,7 @@ import { type PluginOrigin, type SkillFrontmatterReader } from './contributions.
 import { type PluginServices } from './plugin-services.ts';
 import { PluginCatalog, type Language, type PluginErrorDefinition, type PluginStrings } from './plugin-catalog.ts';
 import { PluginSettings } from './plugin-settings.ts';
+import { type KernelMessage } from '../../domain/shared/kernel-messages.ts';
 /**
  * `workspace` is the command's scope (the selected project, or the workspace) and `environment` the workspace-root
  * scope, which workspace-scoped plugins use explicitly. `metadata` is the lazily built metadata index of the same
@@ -137,17 +138,17 @@ export declare class Registry {
     readonly catalog: PluginCatalog;
     readonly settings: PluginSettings;
     /**
-     * Registered plugins that cannot run in this invocation, with a `reason` sentence: an invalid settings section
+     * Registered plugins that cannot run in this invocation, with a `reason` message: an invalid settings section
      * (`issues` lists its problems), or a required service whose provider is disabled or itself unavailable (`issues`
      * are the provider's). They stay listed with their contributions but never activate; their commands and
      * generators fail with PLUGIN_UNAVAILABLE.
      */
     readonly unavailable: Map<string, {
-        reason: string;
+        reason: KernelMessage;
         issues: string[];
     }>;
     /** Enabled user plugins without a manifest in the plugin directory, with the `reason` `plugins` lists. */
-    readonly missing: Map<string, string>;
+    readonly missing: Map<string, KernelMessage>;
     private cleanups;
     private published;
     private state;
@@ -156,14 +157,14 @@ export declare class Registry {
     }>(map: Map<string, T>, item: T): void;
     register(plugin: Plugin, events: EventBus, origin?: PluginOrigin): void;
     /** A bundled core plugin listed in `plugins.disabled`: it contributes nothing and `plugins` lists it with `reason`. */
-    disable(manifest: PluginManifest, reason: string): void;
+    disable(manifest: PluginManifest, reason: KernelMessage): void;
     /**
      * A user plugin that `plugins.enabled` names but whose manifest does not exist: it never loads, `plugins` lists it
      * as `missing`, and every response warns, while every other command keeps working.
      */
     recordMissing(pluginId: string, manifestPath: string, events: EventBus): void;
     /** Why a disabled core plugin contributes nothing. */
-    disabledReason(pluginId: string): string | undefined;
+    disabledReason(pluginId: string): KernelMessage | undefined;
     /** A registered command, including one of an unavailable plugin; any other id fails with UNKNOWN_COMMAND. */
     resolveCommand(commandId: string): Command;
     /**
@@ -175,7 +176,7 @@ export declare class Registry {
      * loaded plugins without settings, and sections naming no registered, disabled or `installed` plugin (misspelled
      * ids), are kept unchanged with a warning.
      */
-    configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string) => void): Promise<Record<string, unknown>>;
+    configure(sections: Readonly<Record<string, unknown>>, installed: () => Promise<readonly string[]>, warn: (message: string | KernelMessage) => void): Promise<Record<string, unknown>>;
     /**
      * A plugin service for a kernel command (`setup` uses `templates.installer`): the provider's read-only view, or
      * undefined when no registered plugin provides it or its provider is unavailable. Call it after `configure`.
