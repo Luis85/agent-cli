@@ -107,8 +107,8 @@ export class ParseResults {
   }
 
   /**
-   * Stores the index's current outcomes unless nothing may or needs to be written: no store, a dry run, or no file
-   * read, changed, added or removed since the previous snapshot. A failed save throws and leaves the state outdated.
+   * Stores the index's current outcomes and `links` unless nothing may or needs to be written: no store, a dry run,
+   * or nothing that differs from the previous snapshot. A failed save throws and leaves the state outdated.
    */
   async persist(outcomeOf: (path: string) => ParseOutcome | undefined, links: () => StoredLinks): Promise<void> {
     if (this.options === undefined || !this.options.save || !this.changed) return;

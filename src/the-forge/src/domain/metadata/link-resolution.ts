@@ -53,7 +53,10 @@ const unnormalized = /(?:^|\/)\.{1,2}(?:\/|$)|\/\/|^\//;
 /** `posix.normalize(posix.join(folder, target))` for relative vault paths. */
 export function joinPath(folder: string, target: string): string {
   // Vault folders are normalized already, so a plain target only needs the separator.
-  if (target !== '' && !unnormalized.test(target) && !unnormalized.test(folder)) return folder === '.' ? target : `${folder}/${target}`;
+  if (target !== '' && !unnormalized.test(target)) {
+    if (folder === '.') return target;
+    if (!unnormalized.test(folder)) return `${folder}/${target}`;
+  }
   const parts: string[] = [];
   for (const part of `${folder}/${target}`.split('/')) {
     if (part === '' || part === '.') continue;
