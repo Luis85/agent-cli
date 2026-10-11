@@ -101,6 +101,20 @@ describe('the Azure DevOps connector against the recorded API', () => {
     expect((await azure.update(connection(), item.id, { parentId: null }, String(Number(updated.rev) + 1))).parentId).toBeNull();
   });
 
+  it('reports an update whose relation removal by index met links changed on the other end', async () => {
+    const azure = connector();
+    const [item, parent, predecessor, other] = [await azure.create(connection(), { type: 'Task', title: 'Pack' }), await azure.create(connection(), { type: 'Feature', title: 'Trip' }), await azure.create(connection(), { type: 'Task', title: 'Book' }), await azure.create(connection(), { type: 'Task', title: 'Other' })];
+    const organization = 'contoso';
+    // Linked from the other item: this item gains the reverse relation and keeps its revision.
+    fake.link(organization, Number(other.id), 'System.LinkTypes.Related', Number(item.id));
+    const depending = await azure.update(connection(), item.id, { dependencies: [predecessor.id] }, item.rev);
+    const linked = await azure.update(connection(), item.id, { parentId: parent.id }, depending.rev);
+    expect(fake.item(organization, Number(item.id)).relations.map(relation => relation.rel)).toEqual(['System.LinkTypes.Related', 'System.LinkTypes.Dependency-Reverse', 'System.LinkTypes.Hierarchy-Reverse']);
+    // The Related link goes away from the other end just before the PATCH, without a new revision of the item.
+    fake.beforeWrite = () => { fake.beforeWrite = null; fake.unlink(organization, Number(other.id), 'System.LinkTypes.Related', Number(item.id)); };
+    await expect(azure.update(connection(), item.id, { dependencies: [] }, linked.rev)).rejects.toMatchObject({ code: 'CONNECTOR_REQUEST_FAILED', details: { reason: 'relations-changed', remoteId: item.id } });
+  });
+
   it('retries throttled requests, honoring Retry-After', async () => {
     sleeps.length = 0;
     fake.throttleNext(2);

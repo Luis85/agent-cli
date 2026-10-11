@@ -29,8 +29,13 @@ export interface ViewReport {
 /** A view's report with the note paths it holds, which decide what left the sync set of its connection. */
 export interface ViewSync { report: ViewReport; members: Set<string> }
 
-/** A field value as reported JSON: its canonical form. */
-const shown = (field: FieldKey, value: FieldValue) => JSON.parse(canonical(field, value)) as unknown;
+/** A remote id, or the path of a note still to be created in place of its internal placeholder. */
+const readable = (id: string) => (id.startsWith(PLACEHOLDER) ? id.slice(PLACEHOLDER.length) : id);
+/** A field value as reported JSON: its canonical form, naming notes still to be created by their path. */
+const shown = (field: FieldKey, value: FieldValue) => {
+  const named = (field === 'parent' || field === 'dependencies') && value !== null ? (Array.isArray(value) ? value.map(readable) : readable(String(value))) : value;
+  return JSON.parse(canonical(field, named)) as unknown;
+};
 
 /**
  * Syncs one product-backlog view with its bound connection: identify each member's remote item, read the linked

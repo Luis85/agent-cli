@@ -4,6 +4,7 @@ import { registerHostEvents } from '../../src/application/plugins/host-events.ts
 import { Registry, type CommandContext } from '../../src/application/plugins/registry.ts';
 import { registerCorePlugins, registrySkills } from '../../src/application/plugins/core-plugins.ts';
 import { Workspace } from '../../src/application/workspace/workspace.ts';
+import { ScopedFiles } from '../../src/application/workspace/scoped-files.ts';
 import { VaultMetadata } from '../../src/application/metadata/vault-metadata.ts';
 import { MetadataCacheEvents } from '../../src/application/metadata/cache-events.ts';
 import { createApp } from '../../src/application/vault/app.ts';
@@ -46,12 +47,15 @@ export async function invocation(root: string, connections: Record<string, unkno
     skills: registrySkills(registry), fileDates: nodeFileDates, locks: lockRoot => nodeLockFiles(lockRoot, message => events.warn(message)), http: new FetchHttpClient({ sleep: async () => {} }), environment: name => env[name],
   }), []);
   registry.settings.configure({ connector: { connections } }, new Set(registry.origins.keys()));
+  // As src/main.ts composes it, a project scope is a view of the workspace-root files, so its writes take the
+  // writer lock at the workspace root.
+  const rootFiles = await NodeFiles.at(root);
   const scope = options.project === undefined ? root : join(root, options.project);
-  const files = await NodeFiles.at(scope);
+  const files = options.project === undefined ? rootFiles : new ScopedFiles(rootFiles, options.project);
   const codec = new ObsidianDocuments();
   const metadata = new VaultMetadata(files, new ObsidianMetadataParser(codec));
   const workspace = new Workspace(files, codec, events, options.dryRun === true, scope, new MetadataCacheEvents(events, metadata));
-  const environment = options.project === undefined ? workspace : new Workspace(await NodeFiles.at(root), codec, events, options.dryRun === true, root);
+  const environment = options.project === undefined ? workspace : new Workspace(rootFiles, codec, events, options.dryRun === true, root);
   const app = createApp({ workspace, metadata, events, project: null });
   const project = options.project === undefined ? null : { schemaVersion: 1, name: options.project, type: 'library', directory: options.project };
   const context = { workspace, environment, events, metadata, app, root: scope, workspaceRoot: root, project, language: 'en', input: async () => new Uint8Array() } as unknown as CommandContext;

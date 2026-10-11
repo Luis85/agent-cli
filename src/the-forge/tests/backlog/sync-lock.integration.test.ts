@@ -5,7 +5,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { backlogVault } from '../support/backlog.ts';
 import { FakeAzureDevOps } from '../support/azure-devops.ts';
-import { TOKEN_ENV, azureConnection, invocation, planningNotes } from '../support/connectors.ts';
+import { TOKEN_ENV, azureConnection, boundBase, invocation, noteText, planningNotes } from '../support/connectors.ts';
 import { hostIdentity } from '../../src/infrastructure/workspace/lock.ts';
 
 /** The per-connection sync lock: recovery after a crash, one lock per connection across scopes, and interruption. */
@@ -16,7 +16,7 @@ let fake: FakeAzureDevOps;
 let vault: Awaited<ReturnType<typeof backlogVault>> | undefined;
 beforeAll(async () => { fake = await new FakeAzureDevOps(PAT, { contoso: 'Trailhead' }).start(); });
 afterAll(async () => { await fake.close(); });
-afterEach(async () => { fake.afterWrite = null; await vault?.dispose(); vault = undefined; });
+afterEach(async () => { fake.afterWrite = null; fake.beforeWrite = null; await vault?.dispose(); vault = undefined; });
 
 const connections = () => ({ contoso: azureConnection(fake, 'contoso', 'Trailhead') });
 const holder = async (fields: Record<string, unknown>) => JSON.stringify({ hostname: hostname(), startedAt: '2026-10-10T08:00:00.000Z', command: 'backlog sync', ...(await hostIdentity()), token: 'crashed', ...fields });
@@ -67,5 +67,50 @@ describe('the backlog sync lock', () => {
     const resumed = await sync();
     expect(resumed).toMatchObject({ data: { counts: { created: 2, failed: 0 } } });
     expect(fake.list('contoso').length).toBe(before + 3);
+  });
+
+  it('stops on SIGTERM with exit 143, writes no note and releases the lock', async () => {
+    vault = await backlogVault(planningNotes());
+    const notes = await Promise.all(['work/Trip planning.md', 'work/Itinerary builder.md', 'work/Draft a trip.md'].map(path => vault!.read(path)));
+    const listeners = process.listenerCount('SIGTERM');
+    fake.afterWrite = (_item, operation) => { if (operation === 'create') process.emit('SIGTERM'); };
+    const interrupted = await sync();
+    expect(interrupted).toMatchObject({ error: { code: 'SYNC_INTERRUPTED', exitCode: 143, details: { signal: 'SIGTERM' } } });
+    expect(await Promise.all(['work/Trip planning.md', 'work/Itinerary builder.md', 'work/Draft a trip.md'].map(path => vault!.read(path)))).toEqual(notes);
+    expect(existsSync(join(vault.root, LOCK))).toBe(false);
+    expect(process.listenerCount('SIGTERM')).toBe(listeners);
+  });
+
+  it('stops between link updates on a signal, and the next sync finishes the links without creating items again', async () => {
+    const base = boundBase('plan', 'Plan', 'contoso').replace('    connection: contoso\n', '    dependsOnProperty: note.dependsOn\n    connection: contoso\n');
+    vault = await backlogVault({
+      'plan/Plan.base': base,
+      'plan/Pack.md': noteText({ type: 'PBI', order: 1000, dependsOn: ['[[Book flights]]'] }),
+      'plan/Book flights.md': noteText({ type: 'PBI', order: 2000, dependsOn: ['[[Pick dates]]'] }),
+      'plan/Pick dates.md': noteText({ type: 'PBI', order: 3000 }),
+    });
+    const before = fake.list('contoso').length;
+    fake.beforeWrite = (operation, operations) => { if (operation === 'update' && operations.some(entry => entry.path === '/relations/-')) { fake.beforeWrite = null; process.emit('SIGINT'); } };
+    const interrupted = await sync();
+    expect(interrupted).toMatchObject({ error: { code: 'SYNC_INTERRUPTED', details: { signal: 'SIGINT' } } });
+    expect(existsSync(join(vault.root, LOCK))).toBe(false);
+    const state = JSON.parse(await vault.read('.forge/sync/contoso.json')) as { items: Record<string, { id: string }> };
+    expect(Object.keys(state.items).sort()).toEqual(['plan/Book flights.md', 'plan/Pack.md', 'plan/Pick dates.md']);
+    // The first link update landed; the second waits for the next sync.
+    const [pack, flights, dates] = ['plan/Pack.md', 'plan/Book flights.md', 'plan/Pick dates.md'].map(path => Number(state.items[path]!.id));
+    expect([fake.predecessors('contoso', pack!), fake.predecessors('contoso', flights!)]).toEqual([[flights], []]);
+    const resumed = await sync();
+    expect(resumed).toMatchObject({ data: { counts: { created: 0, conflicts: 0, failed: 0 } } });
+    expect(fake.list('contoso').length).toBe(before + 3);
+    expect(fake.predecessors('contoso', flights!)).toEqual([dates]);
+    expect(await vault.read('plan/Pack.md')).toContain('azure-devops:');
+  });
+
+  it('runs project-scope writes under the writer lock at the workspace root, as production composes them', async () => {
+    vault = await backlogVault(Object.fromEntries(Object.entries(planningNotes()).map(([path, content]) => [`projects/alpha/${path}`, content])));
+    await vault.write('.agent-cli.lock', await holder({ pid: process.ppid, command: 'write' }));
+    const result = await sync({ project: 'projects/alpha' });
+    expect(result).toMatchObject({ error: { code: 'WORKSPACE_BUSY', details: { stale: 'active', path: '.agent-cli.lock' } } });
+    expect(existsSync(join(vault.root, 'projects/alpha/.agent-cli.lock'))).toBe(false);
   });
 });

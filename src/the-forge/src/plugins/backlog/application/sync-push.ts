@@ -5,7 +5,7 @@ import { backlogError } from '../domain/errors.ts';
 import { canonical, sortedIds, type FieldKey } from '../domain/sync-fields.ts';
 import { UNSETTLED_REV } from '../domain/sync-state.ts';
 import type { SyncStore } from './sync-store.ts';
-import { nextBase, settlePush, type ItemPlan } from './sync-plan.ts';
+import { LINK_FIELDS, nextBase, settlePush, type ItemPlan } from './sync-plan.ts';
 import { localValues, remoteChange, remoteValues, type ValueContext, type Values } from './sync-values.ts';
 import type { ViewReport, ViewSyncOptions } from './sync.ts';
 import { fill } from '../../../domain/shared/messages.ts';
@@ -15,7 +15,8 @@ import { syncMessages } from '../domain/messages.ts';
 export const PLACEHOLDER = 'new:';
 const DEPENDENCIES = 'dependencies';
 const codeOf = (error: unknown) => (isRecord(error) && typeof error.code === 'string' ? error.code : 'OPERATION_FAILED');
-const isStale = (error: unknown) => isRecord(error) && isRecord(error.details) && error.details.reason === 'stale-revision';
+const reasonOf = (error: unknown) => (isRecord(error) && isRecord(error.details) ? error.details.reason : undefined);
+const isStale = (error: unknown) => reasonOf(error) === 'stale-revision';
 const sameValues = (a: Values, b: Values) => a.size === b.size && [...a].every(([field, value]) => b.has(field) && canonical(field, value) === canonical(field, b.get(field)!));
 
 /** What the remote writes left for the vault side: fields pushed per note, and notes whose link update failed. */
@@ -55,7 +56,7 @@ export async function pushAll(context: ValueContext, bound: BoundConnection, pla
         result = plan.create
           ? await bound.connector.create(bound.connection, { ...change, type: String(plan.local.get('type')), title: String(plan.local.get('title') ?? plan.item.title) } as RemoteDraft)
           : await guardedUpdate(run, plan, change);
-      } catch (error) { fail(run, plan, error); continue; }
+      } catch (error) { await fail(run, plan, error); continue; }
       if (plan.create) ids.set(plan.path, result.id);
       // The links land in the second phase: until then the note's dependencies are not pushed.
       const held = plan.push.get(DEPENDENCIES);
@@ -77,7 +78,7 @@ export async function pushAll(context: ValueContext, bound: BoundConnection, pla
     options.checkpoint?.();
     let result: RemoteItem;
     try { result = await guardedUpdate(run, plan, { dependencies: resolved as string[] }); }
-    catch (error) { fail(run, plan, error); outcome.linkFailed.add(plan.path); continue; }
+    catch (error) { await fail(run, plan, error); outcome.linkFailed.add(plan.path); continue; }
     settleLinks(context, plan, result, resolved as string[]);
     outcome.pushed.get(plan.path)!.add(DEPENDENCIES);
     const entry = [...report.created, ...report.updated].find(operation => operation.path === plan.path);
@@ -102,11 +103,34 @@ async function guardedUpdate({ context, bound: { connection, connector } }: Run,
   }
 }
 
-function fail({ report, options }: Run, plan: ItemPlan, error: unknown): void {
+/**
+ * Reports a failed remote write. A stale revision, or links that changed on the other end during the update, is a
+ * `SYNC_CONFLICT`; during a resolution it aborts the run. Links that changed during the update may have been changed
+ * other than planned, so the link fields lose their base (see `unsettleLinks`).
+ */
+async function fail(run: Run, plan: ItemPlan, error: unknown): Promise<void> {
+  const { report, options } = run;
   if (codeOf(error) === 'CONNECTOR_AUTH_FAILED') throw error;
-  const stale = isStale(error);
-  if (stale && options.resolution) throw backlogError('SYNC_CONFLICT', `${plan.path}: the remote item changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
-  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale ? 'SYNC_CONFLICT' : codeOf(error), message: stale ? syncMessages.remoteChanged : String((error as Error).message) });
+  const stale = isStale(error), links = reasonOf(error) === 'relations-changed';
+  if (links) await unsettleLinks(run, plan);
+  if ((stale || links) && options.resolution) throw backlogError('SYNC_CONFLICT', `${plan.path}: the remote ${links ? 'item\'s links' : 'item'} changed while resolving; run backlog sync status and resolve again.`, { path: plan.path, remoteId: plan.id });
+  const message = stale ? syncMessages.remoteChanged
+    : links ? 'The remote item\'s links changed on the other end during the update, so a link may have been removed in place of another. The next sync reports the parent and dependencies as conflicts where the two sides differ; compare them and run backlog sync resolve.'
+      : String((error as Error).message);
+  report.failed.push({ path: plan.path, remoteId: plan.id, code: stale || links ? 'SYNC_CONFLICT' : codeOf(error), message });
+}
+
+/**
+ * After an update whose link changes could not be confirmed, the link fields lose their base, here and in the state
+ * file right away, so no later sync takes the remote links as a change to pull: where the sides differ they are
+ * conflicts until resolved.
+ */
+async function unsettleLinks({ store }: Run, plan: ItemPlan): Promise<void> {
+  for (const field of LINK_FIELDS) plan.baseFrom.set(field, 'none');
+  const entry = store.state.items[plan.path];
+  if (entry === undefined) return;
+  store.set(plan.path, { ...entry, fields: Object.fromEntries(Object.entries(entry.fields).filter(([field]) => !LINK_FIELDS.has(field))) });
+  await store.save();
 }
 
 /** Records a created item (and, after its links landed, their base) in the state file right away. */
@@ -115,13 +139,16 @@ async function record({ store, hash }: Run, plan: ItemPlan): Promise<void> {
   await store.save();
 }
 
-/** A created note's values once its parent's id is known; a parent that could not be created is left out, and links follow later. */
+/**
+ * What a create stored of the note: its values once its parent's id is known, except that a parent not created yet
+ * and the links (which follow in the second phase) are stored empty. That empty value becomes their base, so a parent
+ * or links that do not land in this run are local changes that the next sync pushes.
+ */
 function resolvedLocal(context: ValueContext, plan: ItemPlan): Values {
   const values = localValues(context, plan.item, plan.frontmatter, plan.body);
   const parent = values.get('parent');
-  if (typeof parent === 'string' && parent.startsWith(PLACEHOLDER)) values.delete('parent');
-  const links = values.get(DEPENDENCIES);
-  if (Array.isArray(links) && links.length > 0) values.delete(DEPENDENCIES);
+  if (typeof parent === 'string' && parent.startsWith(PLACEHOLDER)) values.set('parent', null);
+  if (values.has(DEPENDENCIES)) values.set(DEPENDENCIES, []);
   return values;
 }
 
