@@ -20,7 +20,7 @@ node bin/forge.js make ui page --framework react --stories
 
 `components init` creates starter definitions in `plugins.settings.ui.components` (default `components`). It preserves IDs already in the library and adds missing starters. Starter components are semantic HTML building blocks; adding a component file extends the library without a CLI rebuild. `components create notice --tag aside` creates a minimal definition to customize. The library is discovered recursively from `.md` files, so organize it into subdirectories if useful. Each ID must be unique across the entire library. The starters cover page/layout/header/footer/navigation, text and links, form controls, tables/lists, disclosure/dialog and media elements, plus card, container, stack, grid, breadcrumbs, alert, status, badge, avatar, modal, accordion, toolbar, pagination and search. Layout primitives supply class names; the application supplies their CSS. They provide semantic structure. Attach [declarative interactions](../reference/interactions.md) to generate local behavior; styling and complete widget accessibility remain application work.
 
-The generated UI defaults to `src/ui` and stories to `stories` in the open project, or the workspace when no project is open. To target a managed project for one invocation:
+The generated UI defaults to `ui/<framework>/components` and stories to `ui/<framework>/stories` (`ui/react/components` above) in the open project, or the workspace when no project is open. A generated project's checks skip `ui/`, because the UI frameworks are not its dependencies; each target gets its own folder, so `html` and `vanilla` output of one component never collide. To target a managed project for one invocation:
 
 ```sh
 node bin/forge.js project create portal
@@ -120,7 +120,7 @@ Then validate and preview:
 
 ```sh
 node bin/forge.js components validate
-node bin/forge.js make ui dashboard --framework react --out src/dashboard --stories --stories-out stories/dashboard --dry-run
+node bin/forge.js make ui dashboard --framework react --out ui/react/dashboard --stories --stories-out ui/react/stories/dashboard --dry-run
 ```
 
 Generation includes the selected component and its transitive component references. A component with `slot: children` renders content supplied by its caller. The first iteration has one default child slot; it does not define named slots or arbitrary template code.

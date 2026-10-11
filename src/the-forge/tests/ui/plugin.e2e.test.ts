@@ -23,7 +23,7 @@ describe('the ui core plugin', () => {
     const config = (await fixture.cli(['config'])).body.data;
     expect(config.config.plugins.settings.ui).toEqual({
       framework: 'html', components: 'components', componentImports: 'imports/components', componentExports: 'exports/components',
-      interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions', output: 'src/ui', stories: 'stories',
+      interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions', output: 'ui/{framework}/components', stories: 'ui/{framework}/stories',
     });
     expect(config.sections).toContainEqual(expect.objectContaining({ plugin: 'ui', path: 'plugins.settings.ui' }));
   });

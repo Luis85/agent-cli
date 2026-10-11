@@ -45,8 +45,8 @@ UI generation belongs to the `ui` core plugin, whose section `plugins.settings.u
 | `interactions` | `interactions` | Workspace interaction library; management `--library`, UI/component `--interactions-library` |
 | `interactionImports` | `imports/interactions` | Workspace import source; `interactions import --from` |
 | `interactionExports` | `exports/interactions` | Workspace export destination; `interactions export --out` |
-| `output` | `src/ui` | Active project or workspace; `make ui/stories --out` |
-| `stories` | `stories` | Active project or workspace; `--stories-out` |
+| `output` | `ui/{framework}/components` | Active project or workspace; `make ui/stories --out`; `{framework}` stands for the UI target |
+| `stories` | `ui/{framework}/stories` | Active project or workspace; `--stories-out`; `{framework}` stands for the UI target |
 | `componentImports` | `imports/components` | Workspace import source; `components import --from` |
 | `componentExports` | `exports/components` | Workspace export destination; `components export --out` |
 
@@ -78,8 +78,8 @@ Every setting the bundled core plugins declare, by section. `config` reports the
 | `ui` | `interactions` | string | `interactions` | Workspace-relative interaction library folder |
 | `ui` | `interactionImports` | string | `imports/interactions` | Folder that `interactions import` copies definitions from |
 | `ui` | `interactionExports` | string | `exports/interactions` | Folder that `interactions export` copies definitions to |
-| `ui` | `output` | string | `src/ui` | Generated UI folder, relative to the output project or the workspace |
-| `ui` | `stories` | string | `stories` | Generated Storybook story folder, relative to the output project or the workspace |
+| `ui` | `output` | string | `ui/{framework}/components` | Generated UI folder, relative to the output project or the workspace; `{framework}` stands for the UI target |
+| `ui` | `stories` | string | `ui/{framework}/stories` | Generated Storybook story folder, relative to the output project or the workspace; `{framework}` stands for the UI target |
 | `data-sources` | `library` | string | `data-sources` | Workspace-relative [data-source](data-sources.md) definition library folder |
 | `data-sources` | `imports` | string | `imports/data-sources` | Folder that `data-sources import` copies definitions from |
 | `data-sources` | `exports` | string | `exports/data-sources` | Folder that `data-sources export` copies definitions to |

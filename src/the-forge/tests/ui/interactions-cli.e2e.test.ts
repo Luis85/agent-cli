@@ -61,7 +61,7 @@ describe('portable interaction library and executable UI', () => {
       expect(sources, framework).toContain('Request prepared');
     }
     expect((await cli(['make', 'ui', 'contact-request', '--framework', 'vanilla'])).status).toBe(0);
-    const source = await readFile(join(root, 'src/ui/contact-request.js'), 'utf8');
+    const source = await readFile(join(root, 'ui/vanilla/components/contact-request.js'), 'utf8');
     const browser = new JSDOM('<main></main>');
     try {
       const exported: { default?: () => HTMLElement } = {};
@@ -97,7 +97,7 @@ describe('portable interaction library and executable UI', () => {
     expect((await cli([...args, '--plan-out', 'review.json'])).status).toBe(0);
     expect((await cli([...args, '--revisions-from', 'review.json'])).status).toBe(0);
     expect((await cli([...args, '--check'])).status).toBe(0);
-    expect(await readFile(join(root, 'src/ui/contact-request.tsx'), 'utf8')).toContain('Ready now');
+    expect(await readFile(join(root, 'ui/react/components/contact-request.tsx'), 'utf8')).toContain('Ready now');
   });
 
   it('honors configured and overridden shared paths while generated output follows the project', async () => {
@@ -115,7 +115,7 @@ describe('portable interaction library and executable UI', () => {
     const generated = await cli(['make', 'ui', 'contact-request', '--framework', 'vue', '--interactions-library', 'reviewed']);
     expect(generated.status).toBe(0);
     expect(generated.body.context.project.name).toBe('portal');
-    expect(await readFile(join(root, 'apps/portal/src/ui/contact-request.vue'), 'utf8')).toContain('contact:requested');
+    expect(await readFile(join(root, 'apps/portal/ui/vue/components/contact-request.vue'), 'utf8')).toContain('contact:requested');
     expect(await readFile(join(root, 'outgoing/prepare-request.md'), 'utf8')).toContain('prepare-request');
   });
 

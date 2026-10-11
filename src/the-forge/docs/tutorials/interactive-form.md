@@ -64,7 +64,7 @@ Create `projects/interaction-demo/contact.html` with this content:
     <h2>Application event</h2>
     <pre id="result">No request prepared.</pre>
     <script type="module">
-      import createContactRequest from './src/ui/contact-request.js';
+      import createContactRequest from './ui/vanilla/components/contact-request.js';
       const app = document.querySelector('#app');
       app.addEventListener('contact:requested', event => {
         document.querySelector('#result').textContent = JSON.stringify(event.detail, null, 2);
@@ -99,7 +99,7 @@ Return to the workspace root after stopping the server:
 
 ```sh
 cd ../..
-node bin/forge.js make ui contact-request --framework react --project interaction-demo --out src/react-ui --stories --stories-out stories/react --dry-run
+node bin/forge.js make ui contact-request --framework react --project interaction-demo --stories --dry-run
 ```
 
 The same definitions produce React state and handlers. Replace `react` with

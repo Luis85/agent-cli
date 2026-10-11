@@ -30,7 +30,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [quality](quality/) | Lint, analysis, classification, discovery, per-level test budgets, and TypeScript gate behavior |
 | [showcase](showcase/) | The committed showcase's vault links, Canvas/Bases queries and generated UI/adapters, and that `npm run check` ends with its drift check (`npm run showcase:check`) |
 | [templates](templates/) | The `templates` core plugin: template rendering, required inputs, planning-pack installation, its settings section, and disabling it (setup then skips templates) |
-| [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, and CLI workflows |
+| [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, CLI workflows, and every target's default output passing a generated project's static checks |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |

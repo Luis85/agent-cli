@@ -21,13 +21,15 @@ async function makeUi(kind: 'ui' | 'stories', id: string, flags: CommandFlags, c
   ensure(storybook || flags['stories-out'] === undefined, 'INVALID_ARGUMENT', '--stories-out requires --stories or make stories.');
   ensure(kind !== 'stories' || flags.stories === undefined, 'INVALID_ARGUMENT', 'make stories already generates stories; omit --stories.');
   const scoped = (path: string) => generationOutputPath(path, context.project);
+  // `{framework}` in an output folder, from the settings or the flags, names the UI target.
+  const target = (path: string) => scoped(path.replaceAll('{framework}', framework));
   const directory = value(flags, 'library') ?? settings.components;
   const { mode, manifestPath, revisions } = await generationControls(flags, context.workspace.files);
   const options = {
     component: id, framework: framework as UiFramework,
     interactionDirectory: value(flags, 'interactions-library') ?? settings.interactions,
-    outputDirectory: scoped(value(flags, 'out') ?? settings.output),
-    ...(storybook ? { storiesDirectory: scoped(value(flags, 'stories-out') ?? settings.stories) } : {}),
+    outputDirectory: target(value(flags, 'out') ?? settings.output),
+    ...(storybook ? { storiesDirectory: target(value(flags, 'stories-out') ?? settings.stories) } : {}),
     storybook, storiesOnly: kind === 'stories',
     ...(revisions ? { revisions } : {}),
   };

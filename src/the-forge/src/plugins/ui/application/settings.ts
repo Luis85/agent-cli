@@ -4,6 +4,8 @@ import { uiFrameworks, type UiFramework } from '../domain/components/definition.
 /**
  * `plugins.settings.ui`: the default UI target and the workspace-relative library, import and export folders of
  * components and interactions, plus the generated UI and Storybook story folders, which follow the output project.
+ * `{framework}` in those two folders stands for the UI target, so each framework's code gets its own folder: under
+ * `ui/`, outside a generated project's library source and its checks, since the frameworks are not its dependencies.
  */
 export interface UiSettings {
   framework: UiFramework;
@@ -16,7 +18,7 @@ const defaults: UiSettings = {
   framework: 'html',
   components: 'components', componentImports: 'imports/components', componentExports: 'exports/components',
   interactions: 'interactions', interactionImports: 'imports/interactions', interactionExports: 'exports/interactions',
-  output: 'src/ui', stories: 'stories',
+  output: 'ui/{framework}/components', stories: 'ui/{framework}/stories',
 };
 const descriptions: Record<Exclude<keyof UiSettings, 'framework'>, string> = {
   components: 'Workspace-relative component library folder.',
@@ -25,8 +27,8 @@ const descriptions: Record<Exclude<keyof UiSettings, 'framework'>, string> = {
   interactions: 'Workspace-relative interaction library folder.',
   interactionImports: 'Workspace-relative folder that interactions import copies definitions from.',
   interactionExports: 'Workspace-relative folder that interactions export copies definitions to.',
-  output: 'Generated UI folder, relative to the output project (or the workspace without one).',
-  stories: 'Generated Storybook story folder, relative to the output project (or the workspace without one).',
+  output: 'Generated UI folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.',
+  stories: 'Generated Storybook story folder, relative to the output project (or the workspace without one); {framework} stands for the UI target.',
 };
 /** Every folder setting is a contained relative path the host normalizes (`pathSettings`). */
 export const uiPathSettings = Object.keys(descriptions) as Array<keyof typeof descriptions>;
