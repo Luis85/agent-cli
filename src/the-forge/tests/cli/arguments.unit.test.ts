@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { globalOptions } from '../../src/application/plugins/command-input.ts';
-import { ensureDeclaredValues, parseArguments } from '../../src/presentation/cli/arguments.ts';
+import { declaredValues, parseArguments } from '../../src/presentation/cli/arguments.ts';
 import { option } from '../../src/application/plugins/command-metadata.ts';
 describe('Commander integration', () => {
   it('parses aliases, global flags and command values without altering literal values', () => {
@@ -32,18 +32,20 @@ describe('Commander integration', () => {
   });
   it('enforces declared enum and required options with their own codes and details', () => {
     const options = { kind: option.string('Kind.', { enum: ['rest', 'json'] }), template: option.string('Template.', { required: true }), quiet: option.boolean('Quiet.') };
-    expect(() => ensureDeclaredValues(options, { template: 'a.md', kind: 'json', quiet: true })).not.toThrow();
-    expect(() => ensureDeclaredValues(options, { kind: 'rest' })).toThrowError(expect.objectContaining({ code: 'MISSING_ARGUMENT', message: '--template is required.', details: { option: 'template' } }));
-    expect(() => ensureDeclaredValues(options, { template: 'a.md', kind: 'xml' })).toThrowError(expect.objectContaining({
+    expect(() => declaredValues(options, { template: 'a.md', kind: 'json', quiet: true })).not.toThrow();
+    expect(() => declaredValues(options, { kind: 'rest' })).toThrowError(expect.objectContaining({ code: 'MISSING_ARGUMENT', message: '--template is required.', details: { option: 'template' } }));
+    expect(() => declaredValues(options, { template: 'a.md', kind: 'xml' })).toThrowError(expect.objectContaining({
       code: 'INVALID_OPTION_VALUE', message: '--kind must be one of: rest, json.', details: { option: 'kind', value: 'xml', allowed: ['rest', 'json'] },
     }));
   });
   it('checks every item of a comma-separated list option against its enum', () => {
     const options = { parts: option.string('Parts.', { enum: ['body', 'links'], list: true }) };
     // Whitespace around an item is ignored, as in --parts "body, links"; an empty item is not a value.
-    for (const parts of ['links,body,links', 'body, links', ' body ,links ']) expect(() => ensureDeclaredValues(options, { parts }), parts).not.toThrow();
+    for (const [parts, received] of [['links,body,links', 'links,body,links'], ['body, links', 'body,links'], [' body ,links ', 'body,links']] as const) {
+      expect(declaredValues(options, { parts, quiet: true }), parts).toEqual({ parts: received, quiet: true });
+    }
     for (const parts of ['body,', 'body, ,links', 'nope', 'bo dy']) {
-      expect(() => ensureDeclaredValues(options, { parts }), parts).toThrowError(expect.objectContaining({
+      expect(() => declaredValues(options, { parts }), parts).toThrowError(expect.objectContaining({
         code: 'INVALID_OPTION_VALUE', message: '--parts must be a comma-separated list of: body, links.', details: { option: 'parts', value: parts, allowed: ['body', 'links'] },
       }));
     }

@@ -50,7 +50,7 @@ import { ObsidianMetadataParser, metadataParserVersion } from './infrastructure/
 import { NodeMetadataSnapshotStore, snapshotFile } from './infrastructure/metadata/snapshot-store.ts';
 import { createApp } from './application/vault/app.ts';
 import { commands } from './presentation/cli/commands.ts';
-import { ensureDeclaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
+import { declaredValues, parseArguments, parseBootstrap } from './presentation/cli/arguments.ts';
 import { invocationPolicy } from './presentation/cli/invocation-policy.ts';
 import { language, Localizer } from './presentation/localization/localization.ts';
 import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messages.ts';
@@ -154,7 +154,7 @@ async function run(): Promise<void> {
       for (const [commandId, registered] of registry.commands) registry.commands.set(commandId, localizer.command(registered));
       ensure(!parsed.flags.version, 'INVALID_ARGUMENT', '--version must be used without a command.');
       // help describes a command without running it, so its declared constraints do not apply.
-      if (!parsed.flags.help) ensureDeclaredValues(commandOptions(command, parsed.args.slice(1)), parsed.flags);
+      const flags = parsed.flags.help ? parsed.flags : declaredValues(commandOptions(command, parsed.args.slice(1)), parsed.flags);
       for (const option of ['root', 'no-plugins']) ensure(parsed.flags[option] === bootstrap.flags[option], 'INVALID_ARGUMENT', `--${option} must precede the command.`);
       config.settings.json = parsed.flags['no-json'] ? false : parsed.flags.json ? true : config.settings.json;
       config.settings.dryRun = parsed.flags['no-dry-run'] ? false : parsed.flags['dry-run'] ? true : config.settings.dryRun;
@@ -207,7 +207,7 @@ async function run(): Promise<void> {
       }, async () => {
         const output = parsed.flags.help
           ? await registry.commands.get('help')!.run(id === 'help' ? [] : [id], {}, context)
-          : await command.run(parsed.args.slice(1), parsed.flags, context);
+          : await command.run(parsed.args.slice(1), flags, context);
         return localizer.result(commandId, output);
       });
       result = { ok: true, data };

@@ -39,21 +39,26 @@ export function parseBootstrap(tokens: string[]): ParsedArguments {
  * Enforces the option constraints that `help` and `schema` publish, after parsing and before the command runs: a
  * missing `required` option fails with MISSING_ARGUMENT and a value outside a string option's `enum` (for a `list`
  * option, any comma-separated item outside it) with INVALID_OPTION_VALUE, each naming the option in `details`.
- * Commands never repeat these checks.
+ * Returns the flags the command receives: a `list` option's value as its items without surrounding whitespace,
+ * joined by commas. Commands never repeat these checks.
  */
-export function ensureDeclaredValues(options: Readonly<Record<string, CommandOption>>, flags: Readonly<Record<string, string | boolean>>): void {
+export function declaredValues(options: Readonly<Record<string, CommandOption>>, flags: Readonly<Record<string, string | boolean>>): Record<string, string | boolean> {
+  const values: Record<string, string | boolean> = Object.assign(Object.create(null) as Record<string, string | boolean>, flags);
   for (const [key, schema] of Object.entries(options)) {
     const given = Object.hasOwn(flags, key) ? flags[key] : undefined;
     if (given === undefined) {
       if (schema.required) throw forgeError('MISSING_ARGUMENT', `--${key} is required.`, { option: key });
       continue;
     }
-    if (schema.enum === undefined || typeof given !== 'string') continue;
-    if (!(schema.list ? listOptionItems(given) : [given]).every(item => schema.enum!.includes(item))) {
+    if (typeof given !== 'string') continue;
+    const items = schema.list ? listOptionItems(given) : [given];
+    if (schema.enum !== undefined && !items.every(item => schema.enum!.includes(item))) {
       const expected = schema.list ? 'a comma-separated list of' : 'one of';
       throw forgeError('INVALID_OPTION_VALUE', `--${key} must be ${expected}: ${schema.enum.join(', ')}.`, { option: key, value: given, allowed: [...schema.enum] });
     }
+    if (schema.list) values[key] = items.join(',');
   }
+  return values;
 }
 
 /** Commander owns tokenization; normalize its options and errors into the agent protocol. */
