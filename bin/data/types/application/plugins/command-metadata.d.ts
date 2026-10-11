@@ -99,6 +99,8 @@ export declare function hasActionOptions(command: CommandMetadata): boolean;
 export declare function ensureKnownAction(command: CommandMetadata, args: readonly string[]): void;
 /** Option types for the argument parser. */
 export declare function optionTypes(options: CommandMetadata['options']): Record<string, 'string' | 'boolean'>;
+/** The items of a `list` option's value: comma-separated, with whitespace around each item ignored. */
+export declare function listOptionItems(value: string): string[];
 /**
  * JSON Schema 2020-12 of one invocation: `args` are the positional arguments after the command id and `options`
  * the command's own flags (global options are described once in the catalog). A command with actions publishes

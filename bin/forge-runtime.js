@@ -168,7 +168,7 @@ const errorCatalog = {
   INVALID_CLAUDE_AGENT: entry("input", "The Claude agent definition is invalid.", claudeDefinitionHint$1),
   INVALID_CLAUDE_HOOKS: entry("input", "The Claude hook configuration is invalid.", claudeDefinitionHint$1),
   INVALID_CLAUDE_PLUGIN: entry("input", "The Claude plugin manifest or a plugin file is invalid.", claudeDefinitionHint$1),
-  INVALID_CLAUDE_SETTINGS: entry("input", "The Claude settings file is invalid.", "Fix the JSON structure of the settings file named in the message."),
+  INVALID_CLAUDE_SETTINGS: entry("input", "The Claude settings file is invalid.", "Fix the JSON structure of the settings file named in the message. When it names the generation manifest .claude/forge-generated.json, an older Forge wrote it: delete .claude/forge-generated.json and run agents generate again; the rules it listed stay in .claude/settings.json until you remove them."),
   INVALID_CLAUDE_COMMAND: entry("input", "The Claude command is not supported.", "Run claude capabilities."),
   INVALID_CLAUDE_ARGUMENT: entry("input", "A Claude command argument is invalid.", argumentsHint$1),
   INVALID_CLAUDE_OPTION: entry("input", "The option is not allowed for this Claude command.", "Run help claude and remove the option."),
@@ -1328,8 +1328,11 @@ function documentContent(schema2) {
   const { $schema: _dialect, ...document2 } = schema2;
   return { contentMediaType: "application/json", contentSchema: document2 };
 }
+function listOptionItems(value2) {
+  return value2.split(",").map((item) => item.trim());
+}
 function listPattern(values2) {
-  const value2 = `(?:${values2.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`;
+  const value2 = `\\s*(?:${values2.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*`;
   return `^${value2}(?:,${value2})*$`;
 }
 function optionSchema$1(schema2) {
@@ -1940,6 +1943,7 @@ function validatePluginManifest(value2, origin = "user") {
   const firstDifference = minimum.findIndex((part, index2) => part !== appVersion[index2]);
   ensure(firstDifference === -1 || minimum[firstDifference] < appVersion[firstDifference], "INCOMPATIBLE_PLUGIN", `Plugin ${value2.id} requires agent-cli ${value2.minAppVersion} or newer.`);
 }
+const availabilityErrors = (errors2 = []) => errors2.includes("PLUGIN_UNAVAILABLE") ? errors2 : [...errors2, "PLUGIN_UNAVAILABLE"];
 class Registry {
   /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
   constructor(skillFrontmatter2) {
@@ -2192,6 +2196,7 @@ class Registry {
   ownedCommand(plugin2, command2, events2) {
     return {
       ...command2,
+      errors: availabilityErrors(command2.errors),
       run: async (args, flags, context) => {
         this.ensureAvailable(plugin2, { command: command2.id });
         try {
@@ -2214,6 +2219,7 @@ class Registry {
     const { generate, run: run2 } = generator;
     return {
       ...generator,
+      errors: availabilityErrors(generator.errors),
       ...generate ? { generate: owned((request) => generate.call(generator, request)) } : {},
       ...run2 ? { run: owned((request) => run2.call(generator, request)) } : {}
     };
@@ -17974,7 +17980,7 @@ function basesCommand(service) {
       context: option$1.string("Note used as this file in query expressions."),
       limit: option$1.string("Maximum number of rows for query.")
     },
-    errors: ["INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
+    errors: ["NOT_FOUND", "INVALID_BASE", "INVALID_BASE_QUERY", "INVALID_BASE_EXPRESSION", "BASE_EVALUATION_ERROR", "BASE_VIEW_NOT_FOUND", "BASE_CONTEXT_NOT_FOUND", "INVALID_BASE_PROPERTY_TYPES", "UNSUPPORTED_BASE_PROPERTY_TYPE"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       for (const key of Object.keys(flags)) ensure(action2 === "query" || !queryOptions.includes(key), "INVALID_ARGUMENT", `--${key} is not supported by bases ${action2}.`);
@@ -29058,7 +29064,7 @@ function agentsCommand(services2) {
       { name: "target", description: "inspect: file[#agent]; validate: file; create: the agent name; import: a Claude agent name or Markdown path." }
     ],
     options: options$2,
-    errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "AGENT_MERGE_CONFLICT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_PATH", "INVALID_YAML", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
+    errors: ["INVALID_AGENT_DEFINITION", "AGENT_NOT_FOUND", "AGENT_EXISTS", "AGENT_DRIFT", "AGENT_MERGE_CONFLICT", "NOT_FOUND", "CONFLICT", "INVALID_NAME", "INVALID_PATH", "INVALID_YAML", "INVALID_ENCODING", "INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_SETTINGS", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS"],
     async run(args, flags, context) {
       const action2 = args[0] ?? "list";
       ensure(actions$3.includes(action2), "INVALID_ARGUMENT", `Use agents ${actions$3.join(", agents ")}.`);
@@ -32696,7 +32702,7 @@ function backlogCommand(ports2) {
       { name: "arguments", description: "The action's arguments: an item, a type and title, or a sub-action and its arguments.", variadic: true }
     ],
     options: options$1,
-    errors: ["BACKLOG_NOT_FOUND", "BACKLOG_AMBIGUOUS", "BACKLOG_CONFIG_PROBLEM", "BACKLOG_WRITE_REFUSED", "BACKLOG_NO_GAP", "CONFLICT", "SYNC_CONFLICT", "CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
+    errors: ["BACKLOG_NOT_FOUND", "BACKLOG_AMBIGUOUS", "BACKLOG_CONFIG_PROBLEM", "BACKLOG_WRITE_REFUSED", "BACKLOG_NO_GAP", "CONFLICT", "SYNC_CONFLICT", "SYNC_INTERRUPTED", "CONNECTOR_NOT_FOUND", "CONNECTION_INVALID", "CONNECTOR_AUTH_FAILED", "CONNECTOR_REQUEST_FAILED"],
     async run(args, flags, context) {
       const [action2, ...rest] = args;
       ensure(action2 !== void 0 && actions$2.includes(action2), "INVALID_ARGUMENT", `Use backlog ${actions$2.join(", backlog ")}.`);
@@ -33670,6 +33676,7 @@ function documentGenerator(templates2) {
     directory: "notes",
     destructive: false,
     idempotent: true,
+    errors: ["INVALID_TEMPLATE", "INVALID_TEMPLATE_VALUES", "INVALID_TEMPLATE_DATE", "UNKNOWN_TEMPLATE_VARIABLE", "INVALID_INPUT", "INVALID_JSON", "INVALID_ENCODING", "INVALID_NAME", "NOT_FOUND", "CONFLICT"],
     options: {
       template: option$1.string("Markdown template under bin/templates.", { required: true }),
       values: option$1.string("Template values as a JSON object."),
@@ -34126,7 +34133,7 @@ const scaffoldsPlugin = {
   create: () => ({
     // Every scaffold is a new file the host writes create-only: a generator never replaces existing content.
     // Each plan only creates files, so the identical repeat fails with CONFLICT on the existing output.
-    generators: scaffoldGenerators.map((generator) => ({ ...generator, destructive: false, idempotent: true })),
+    generators: scaffoldGenerators.map((generator) => ({ ...generator, destructive: false, idempotent: true, errors: ["INVALID_NAME", "PROJECT_REQUIRED", "NOT_FOUND", "CONFLICT"] })),
     provides: { [projectScaffolderService]: projects },
     strings: {
       de: {
@@ -41430,7 +41437,7 @@ function componentsCommand(services2) {
     usage: "components [list | init | inspect <id> | validate | create <id> [--tag div] | import [--from directory] | export [--out directory]] [--library directory] [--interactions-library directory]",
     ...libraryMetadata("component"),
     options: { ...libraryOptions, tag: option$1.string("Root element tag for create.", { default: "div" }), "interactions-library": option$1.string("Interaction library directory used to validate component interactions.") },
-    errors: ["INVALID_UI", "INVALID_UI_LIBRARY", "DUPLICATE_UI_COMPONENT", "UNKNOWN_UI_COMPONENT", "CYCLIC_UI_COMPONENT", "UNKNOWN_INTERACTION", "CONFLICT"],
+    errors: ["INVALID_UI", "INVALID_UI_LIBRARY", "DUPLICATE_UI_COMPONENT", "UNKNOWN_UI_COMPONENT", "CYCLIC_UI_COMPONENT", "UNKNOWN_INTERACTION", "EMPTY_UI_LIBRARY", "CONFLICT"],
     async run(args, flags, context) {
       const { settings: settings2, components: library } = services2(context);
       const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.components;
@@ -41483,7 +41490,7 @@ function interactionsCommand(services2) {
     usage: "interactions [list | init | inspect <id> | validate | create <id> [--event event] | import [--from directory] | export [--out directory]] [--library directory]",
     ...libraryMetadata("interaction"),
     options: { ...libraryOptions, event: option$1.string("Browser event for create.", { enum: interactionEvents }) },
-    errors: ["INVALID_INTERACTION", "DUPLICATE_INTERACTION", "UNKNOWN_INTERACTION", "CONFLICT"],
+    errors: ["INVALID_INTERACTION", "DUPLICATE_INTERACTION", "UNKNOWN_INTERACTION", "EMPTY_INTERACTION_LIBRARY", "CONFLICT"],
     async run(args, flags, context) {
       const { settings: settings2, interactions: library } = services2(context);
       const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.interactions;
@@ -41538,16 +41545,16 @@ function interactionsCommand(services2) {
 const uiGenerationOptions = {
   ...libraryGenerationOptions,
   framework: option$1.string("UI target; defaults to plugins.settings.ui.framework.", { enum: uiFrameworks }),
-  stories: option$1.boolean("Also generate Storybook stories (make ui)."),
+  stories: option$1.boolean("Also generate Storybook stories."),
   "stories-out": option$1.string("Stories output directory; defaults to plugins.settings.ui.stories."),
   "interactions-library": option$1.string("Interaction library directory; defaults to plugins.settings.ui.interactions.")
 };
+const { stories: _stories, ...storiesOptions } = uiGenerationOptions;
 async function makeUi(kind2, id2, flags, context, services2) {
   const ui = services2(context), settings2 = ui.settings;
   const framework = value$2(flags, "framework") ?? settings2.framework;
   const storybook2 = kind2 === "stories" || flags.stories === true;
   ensure(storybook2 || flags["stories-out"] === void 0, "INVALID_ARGUMENT", "--stories-out requires --stories or make stories.");
-  ensure(kind2 !== "stories" || flags.stories === void 0, "INVALID_ARGUMENT", "make stories already generates stories; omit --stories.");
   const scoped2 = (path2) => generationOutputPath(path2, context.project);
   const target = (path2) => scoped2(path2.replaceAll("{framework}", framework));
   const directory = value$2(flags, "library") ?? settings2.components;
@@ -41568,8 +41575,24 @@ async function makeUi(kind2, id2, flags, context, services2) {
   }
   return { generator: kind2, library: directory, ...await ui.components.generate(directory, options2) };
 }
+const uiGenerationErrors = [
+  "INVALID_UI",
+  "INVALID_UI_LIBRARY",
+  "DUPLICATE_UI_COMPONENT",
+  "UNKNOWN_UI_COMPONENT",
+  "CYCLIC_UI_COMPONENT",
+  "INVALID_INTERACTION",
+  "DUPLICATE_INTERACTION",
+  "UNKNOWN_INTERACTION",
+  "EMPTY_UI_LIBRARY",
+  "INVALID_UI_FRAMEWORK",
+  "UI_RENDERER_UNAVAILABLE",
+  "UI_DRIFT",
+  "INVALID_GENERATION_PLAN",
+  "PROJECT_REQUIRED"
+];
 function uiGenerators(services2) {
-  const library = { projectOption: "project", review: true, idempotent: true, options: uiGenerationOptions };
+  const library = { projectOption: "project", review: true, idempotent: true, options: uiGenerationOptions, errors: uiGenerationErrors };
   return [
     {
       id: "ui",
@@ -41582,7 +41605,9 @@ function uiGenerators(services2) {
       id: "stories",
       description: "Generate native Storybook CSF stories for existing UI components.",
       usage: "make stories <component-id> [--framework target] [--project id] [--stories-out directory]",
+      // make stories always generates stories, so it has no --stories.
       ...library,
+      options: storiesOptions,
       run: ({ name: name2, flags, context }) => makeUi("stories", name2, flags, context, services2)
     }
   ];
@@ -41618,7 +41643,7 @@ const uiStrings = {
       "Interaction library directory used to validate component interactions.": "Verzeichnis der Interaktionsbibliothek, mit dem Komponenteninteraktionen geprüft werden.",
       "Browser event for create.": "Browserereignis für create.",
       "UI target; defaults to plugins.settings.ui.framework.": "UI-Ziel; standardmäßig plugins.settings.ui.framework.",
-      "Also generate Storybook stories (make ui).": "Zusätzlich Storybook-Stories generieren (make ui).",
+      "Also generate Storybook stories.": "Zusätzlich Storybook-Stories generieren.",
       "Stories output directory; defaults to plugins.settings.ui.stories.": "Ausgabeverzeichnis der Stories; standardmäßig plugins.settings.ui.stories.",
       "Interaction library directory; defaults to plugins.settings.ui.interactions.": "Verzeichnis der Interaktionsbibliothek; standardmäßig plugins.settings.ui.interactions.",
       "Default UI target of make ui and make stories.": "Standard-UI-Ziel von make ui und make stories.",
@@ -42105,6 +42130,7 @@ function dataSourceGenerator(services2) {
     projectOption: "project",
     review: true,
     idempotent: true,
+    errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "EMPTY_DATA_SOURCE_LIBRARY", "DATA_SOURCE_RENDERER_UNAVAILABLE", "DATA_SOURCE_DRIFT", "INVALID_GENERATION_PLAN", "PROJECT_REQUIRED"],
     options: { ...libraryGenerationOptions, "test-data-out": option$1.string("Test-data output directory; defaults to plugins.settings.data-sources.fixtures.") },
     run: ({ name: name2, flags, context }) => makeDataSource(name2, flags, context, services2)
   };
@@ -42116,7 +42142,7 @@ function dataSourcesCommand(services2) {
     usage: "data-sources [list | init | inspect <id> | validate | create <id> [--kind rest|json] | import [--from directory] | export [--out directory]] [--library directory]",
     ...libraryMetadata("data-source"),
     options: { ...libraryOptions, kind: option$1.string("Data-source kind for create.", { enum: ["rest", "json"], default: "rest" }) },
-    errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "CONFLICT"],
+    errors: ["INVALID_DATA_SOURCE", "DUPLICATE_DATA_SOURCE", "UNKNOWN_DATA_SOURCE", "EMPTY_DATA_SOURCE_LIBRARY", "CONFLICT"],
     async run(args, flags, context) {
       const { settings: settings2, library } = services2(context);
       const action2 = args[0] ?? "list", directory = value$2(flags, "library") ?? settings2.library;
@@ -42735,7 +42761,7 @@ class ClaudeSettings {
 }
 function claudeOptions(flags, allowed) {
   const unexpected = Object.keys(flags).filter((key) => !Object.hasOwn(globalOptions, key) && !allowed.includes(key));
-  ensure(unexpected.length === 0, "INVALID_ARGUMENT", `Options do not apply to this Claude action: ${unexpected.map((key) => `--${key}`).join(", ")}.`);
+  ensure(unexpected.length === 0, "INVALID_CLAUDE_OPTION", `Options do not apply to this Claude action: ${unexpected.map((key) => `--${key}`).join(", ")}.`);
 }
 async function claudeInput(flags, context) {
   return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await claudeBytes(flags, context));
@@ -43561,7 +43587,30 @@ function claudeCommand(adapters) {
       { name: "section", description: "capabilities (default), agents, hooks, plugins, marketplaces or runtime.", enum: ["capabilities", "agents", "hooks", "plugins", "marketplaces", "runtime"] },
       { name: "operands", description: "The section action and its operands; see usage.", variadic: true }
     ],
-    errors: ["INVALID_CLAUDE_AGENT", "INVALID_CLAUDE_HOOKS", "INVALID_CLAUDE_PLUGIN", "INVALID_CLAUDE_SETTINGS", "INVALID_CLAUDE_COMMAND", "INVALID_CLAUDE_ARGUMENT", "INVALID_CLAUDE_OPTION", "INVALID_CLAUDE_SCOPE", "INVALID_CLAUDE_INPUT", "CLAUDE_NOT_INSTALLED", "CLAUDE_COMMAND_FAILED", "CLAUDE_COMMAND_TIMEOUT", "CLAUDE_RUNTIME_FAILED", "CLAUDE_INVALID_OUTPUT", "CONFLICT"],
+    errors: [
+      "INVALID_CLAUDE_AGENT",
+      "INVALID_CLAUDE_HOOKS",
+      "INVALID_CLAUDE_PLUGIN",
+      "INVALID_CLAUDE_SETTINGS",
+      "INVALID_CLAUDE_COMMAND",
+      "INVALID_CLAUDE_ARGUMENT",
+      "INVALID_CLAUDE_OPTION",
+      "INVALID_CLAUDE_SCOPE",
+      "INVALID_CLAUDE_INPUT",
+      "INVALID_CLAUDE_EXECUTABLE",
+      "CLAUDE_NOT_INSTALLED",
+      "CLAUDE_WORKING_DIRECTORY_UNAVAILABLE",
+      "CLAUDE_COMMAND_FAILED",
+      "CLAUDE_COMMAND_TIMEOUT",
+      "CLAUDE_COMMAND_INTERRUPTED",
+      "CLAUDE_OUTPUT_LIMIT",
+      "CLAUDE_RUNTIME_FAILED",
+      "CLAUDE_INVALID_OUTPUT",
+      "INVALID_INPUT",
+      "INVALID_ENCODING",
+      "NOT_FOUND",
+      "CONFLICT"
+    ],
     options: {
       ...claudeRuntimeOptions,
       directory: option$1.string("Plugin directory for plugin-scoped agents and hooks."),
@@ -65537,7 +65586,7 @@ function ensureDeclaredValues(options2, flags) {
       continue;
     }
     if (schema2.enum === void 0 || typeof given !== "string") continue;
-    if (!(schema2.list ? given.split(",") : [given]).every((item) => schema2.enum.includes(item))) {
+    if (!(schema2.list ? listOptionItems(given) : [given]).every((item) => schema2.enum.includes(item))) {
       const expected = schema2.list ? "a comma-separated list of" : "one of";
       throw forgeError("INVALID_OPTION_VALUE", `--${key} must be ${expected}: ${schema2.enum.join(", ")}.`, { option: key, value: given, allowed: [...schema2.enum] });
     }
@@ -65579,6 +65628,7 @@ function parseArguments(tokens, options2, allowUnknown = false) {
   return { args: command2.args, flags };
 }
 const generatorCatalog = (registry2) => [...registry2.generators.values()].map(({ id: id2, description: description2 }) => ({ id: id2, description: description2 }));
+const makeErrors = ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"];
 const out = { out: option$1.string("Output directory; each generator documents its default.") };
 function generatorOptions(generator) {
   return { ...generator.fixedDirectory ? {} : out, ...generator.options, ...generator.review ? reviewOptions : {} };
@@ -65596,7 +65646,10 @@ function generationCommand(registry2) {
       { name: "name", description: "The name or id the generator creates from." }
     ],
     unknownAction: "UNKNOWN_GENERATOR",
-    errors: ["UNKNOWN_GENERATOR", "INVALID_NAME", "CONFLICT", "GENERATION_DRIFT", "INVALID_GENERATION_PLAN", "INVALID_GENERATION_REVISIONS", "PROJECT_REQUIRED"],
+    // make's own codes, then each registered generator's, so schema make covers every generator.
+    get errors() {
+      return [.../* @__PURE__ */ new Set([...makeErrors, ...[...registry2.generators.values()].flatMap((generator) => generator.errors ?? [])])];
+    },
     get actions() {
       return Object.fromEntries([...registry2.generators.values()].map((generator) => [generator.id, {
         description: generator.description,
@@ -65966,7 +66019,7 @@ const germanErrors = {
   INVALID_CLAUDE_AGENT: { summary: "Die Claude-Agentendefinition ist ungültig.", hint: claudeDefinitionHint },
   INVALID_CLAUDE_HOOKS: { summary: "Die Claude-Hook-Konfiguration ist ungültig.", hint: claudeDefinitionHint },
   INVALID_CLAUDE_PLUGIN: { summary: "Das Claude-Plugin-Manifest oder eine Plugin-Datei ist ungültig.", hint: claudeDefinitionHint },
-  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei." },
+  INVALID_CLAUDE_SETTINGS: { summary: "Die Claude-Einstellungsdatei ist ungültig.", hint: "Korrigieren Sie die JSON-Struktur der in der Meldung genannten Einstellungsdatei. Nennt sie das Generierungsmanifest .claude/forge-generated.json, stammt es von einer älteren Forge-Version: Löschen Sie .claude/forge-generated.json und führen Sie agents generate erneut aus; die darin aufgeführten Regeln bleiben in .claude/settings.json, bis Sie sie entfernen." },
   INVALID_CLAUDE_COMMAND: { summary: "Dieser Claude-Befehl wird nicht unterstützt.", hint: "Unterstützte Befehle zeigt claude capabilities." },
   INVALID_CLAUDE_ARGUMENT: { summary: "Ein Argument des Claude-Befehls ist ungültig.", hint: argumentsHint },
   INVALID_CLAUDE_OPTION: { summary: "Diese Option ist für den Claude-Befehl nicht zulässig.", hint: "Prüfen Sie help claude und entfernen Sie die Option." },
@@ -66427,7 +66480,7 @@ function workflowCommands(services2) {
       discovery: false,
       mutating: true,
       defaultAction: "list",
-      errors: ["INVALID_PROJECT", "INVALID_PROJECT_NAME", "INVALID_PROJECT_CONTEXT", "PROJECT_EXISTS", "PROJECT_NOT_FOUND", "PROJECT_REQUIRED", "STALE_PROJECT_CONTEXT", "INVALID_NAME", "PLUGIN_UNAVAILABLE"],
+      errors: ["INVALID_PROJECT", "INVALID_PROJECT_NAME", "INVALID_PROJECT_CONTEXT", "PROJECT_EXISTS", "PROJECT_NOT_FOUND", "PROJECT_REQUIRED", "STALE_PROJECT_CONTEXT", "INVALID_NAME", "INVALID_COMPONENT_KIND", "PLUGIN_UNAVAILABLE"],
       actions: {
         list: { description: "List managed projects.", mutating: false, output: { type: "object", required: ["directory", "projects"], properties: { directory: { type: "string" }, projects: { type: "array", items: projectInfoSchema } } } },
         create: { description: "Create a self-contained TypeScript project.", ...additive },
@@ -67345,7 +67398,7 @@ const readParts = ["body"];
 function selectedParts(flags, kind2) {
   const requested = value$2(flags, "parts");
   if (requested === void 0) return /* @__PURE__ */ new Set();
-  const parts = requested.split(",");
+  const parts = listOptionItems(requested);
   ensure(kind2 === "markdown", "INVALID_ARGUMENT", "--parts body requires a Markdown file.");
   return new Set(parts);
 }
@@ -67579,8 +67632,10 @@ async function run() {
     const requestedLanguage = value$2(bootstrap.flags, "lang");
     if (requestedLanguage !== void 0) localizer = new Localizer(language(requestedLanguage));
     const requestedEvents = value$2(bootstrap.flags, "events");
-    if (requestedEvents !== void 0) eventLevel = eventOutput(requestedEvents);
+    const validLevel = (level) => eventOutputLevels.includes(level);
+    if (requestedEvents !== void 0 && validLevel(requestedEvents)) eventLevel = requestedEvents;
     if (bootstrap.flags.version) {
+      if (requestedEvents !== void 0) eventOutput(requestedEvents);
       const parsed2 = parseArguments(tokens, globalOptions);
       ensure(parsed2.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
       result = { ok: true, data: { name: "The Forge", version: metadata$2.version, apiVersion: 1 } };
@@ -67651,7 +67706,7 @@ async function run() {
       localizer = new Localizer(parsedLanguage !== void 0 ? language(parsedLanguage) : localizer.language, registry2.catalog);
       config2.settings.language = localizer.language;
       const parsedEvents = value$2(parsed2.flags, "events");
-      if (parsedEvents !== void 0) eventLevel = config2.settings.events = eventOutput(parsedEvents);
+      if (parsedEvents !== void 0 && (!parsed2.flags.help || validLevel(parsedEvents))) eventLevel = config2.settings.events = eventOutput(parsedEvents);
       for (const [commandId2, registered] of registry2.commands) registry2.commands.set(commandId2, localizer.command(registered));
       ensure(!parsed2.flags.version, "INVALID_ARGUMENT", "--version must be used without a command.");
       if (!parsed2.flags.help) ensureDeclaredValues(commandOptions(command2, parsed2.args.slice(1)), parsed2.flags);
@@ -67723,5 +67778,11 @@ async function run() {
     process.exitCode = 1;
     process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n");
   }
+}
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (error2) => {
+    if (error2.code !== "EPIPE" && error2.code !== "EOF") throw error2;
+    process.exit(process.exitCode ?? 0);
+  });
 }
 void run();

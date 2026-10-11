@@ -63,6 +63,8 @@ export interface Generator extends CommandMode {
     directory?: string;
     fixedDirectory?: boolean;
     review?: boolean;
+    /** Failure codes the generator reports itself; `make` publishes them with its own. */
+    errors?: readonly string[];
     generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
     run?(request: GeneratorRequest): unknown | Promise<unknown>;
 }
