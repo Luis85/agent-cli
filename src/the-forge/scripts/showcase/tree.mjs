@@ -3,8 +3,13 @@ import { join } from 'node:path';
 
 /** Untracked outputs of the showcase's own toolchain; never part of the generated tree. */
 const toolchainOutputs = new Set(['node_modules', 'dist', 'demo-dist', 'coverage', '.fallow', '.quality-reports']);
+/**
+ * Derived data that Forge commands store in the project they run on: the metadata cache ignores itself in Git and
+ * is rebuilt whenever it is missing, so running a command against the showcase never makes it drift.
+ */
+const derivedFolders = new Set(['.forge/cache']);
 
-/** Sorted POSIX paths of every file below root, skipping toolchain outputs. @param {string} root */
+/** Sorted POSIX paths of every file below root, skipping toolchain outputs and derived caches. @param {string} root */
 export function listFiles(root) {
   /** @type {string[]} */
   const files = [];
@@ -13,6 +18,7 @@ export function listFiles(root) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       if (toolchainOutputs.has(entry.name)) continue;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (derivedFolders.has(path)) continue;
       if (entry.isDirectory()) visit(join(directory, entry.name), path);
       else if (entry.isFile()) files.push(path);
       else throw new Error(`Unexpected non-regular file in the showcase: ${path}`);
