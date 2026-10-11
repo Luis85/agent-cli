@@ -13,7 +13,7 @@ export function templatesCommand(templates: (context: CommandContext) => Documen
     actions: {
       list: { description: 'List the editable Markdown templates in bin/templates.', mutating: false },
       inspect: { description: 'Report a template\'s required and optional values.', mutating: false },
-      install: { description: 'Install the planning workflow template pack into bin/templates.' },
+      install: { description: 'Install the planning workflow template pack into bin/templates; existing templates are skipped.', destructive: false, idempotent: true },
     },
     args: [{ name: 'action', description: 'list (default), inspect or install.', enum: ['list', 'inspect', 'install'] }, { name: 'target', description: 'The template for inspect, or the pack (workflow) for install.' }],
     async run(args, _flags, context) {

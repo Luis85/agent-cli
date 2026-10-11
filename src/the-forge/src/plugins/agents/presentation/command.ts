@@ -47,10 +47,9 @@ const accepted: Record<Action, readonly string[]> = {
   generate: ['target', 'file', 'agent', 'mcp', 'hooks', 'settings', 'allow-broad-permissions', 'rename-conflicts', 'commands', 'model-style', ...Object.keys(reviewOptions)],
 };
 
-function choice<T extends string>(flags: CommandFlags, key: string, allowed: readonly T[], fallback: T): T {
-  const selected = value(flags, key) ?? fallback;
-  ensure((allowed as readonly string[]).includes(selected), 'INVALID_ARGUMENT', `--${key} must be one of: ${allowed.join(', ')}.`);
-  return selected as T;
+/** An option value, or the fallback; `_declared` is the option's `enum`, which types it and which the host enforces. */
+function choice<T extends string>(flags: CommandFlags, key: string, _declared: readonly T[], fallback: T): T {
+  return (value(flags, key) ?? fallback) as T;
 }
 
 function toolsets(flags: CommandFlags): string[] | undefined {
@@ -72,7 +71,7 @@ export function agentsCommand(services: (context: CommandContext) => AgentServic
       // Idempotent although --if-match is optional: it is required once the team file exists, so a repeat fails.
       create: { description: 'Add a docker-agent agent, or a bundled template\'s agents, to a new or existing team file, preserving comments.', mutating: true, idempotent: true },
       import: { description: 'Convert a Claude agent (.claude/agents/<name>.md) into a docker-agent agent, with diagnostics for approximations.', mutating: true, idempotent: true },
-      generate: { description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true },
+      generate: { description: 'Generate .claude/agents/<name>.md (and opt-in .mcp.json, settings and skills) from the definitions; --plan and --check never write.', mutating: true, idempotent: true },
     },
     args: [
       { name: 'action', description: 'list (default), inspect, validate, create, import or generate.', enum: actions },

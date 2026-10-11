@@ -51,8 +51,6 @@ export function searchCommand(service: (context: CommandContext) => (query: Sear
     async run(args, flags, context) {
       arity(args, 1);
       const scope = value(flags, 'in') ?? 'all', kind = value(flags, 'kind'), property = value(flags, 'property');
-      ensure(searchScopes.includes(scope as SearchScope), 'INVALID_ARGUMENT', `--in must be one of: ${searchScopes.join(', ')}.`);
-      ensure(kind === undefined || (searchKinds as readonly string[]).includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${searchKinds.join(', ')}; search never reads attachments.`);
       const filter = property === undefined ? undefined : propertyFilter(property);
       ensure(property === undefined || filter, 'INVALID_ARGUMENT', '--property must be key or key=value with a nonempty key.');
       const contextLines = integer(flags, 'context') ?? 0;

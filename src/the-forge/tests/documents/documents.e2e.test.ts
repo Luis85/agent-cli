@@ -13,7 +13,7 @@ it('rejects unsupported file kinds instead of reporting an empty workspace', asy
     await writeFile(join(project, 'kind-filter.md'), '# Discoverable note\n');
     const invalid = cli(['list', '--kind', 'markdon']);
     expect(invalid.status).toBe(2);
-    expect(invalid.body.error).toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('markdown') });
+    expect(invalid.body.error).toMatchObject({ code: 'INVALID_OPTION_VALUE', message: expect.stringContaining('markdown') });
     const valid = cli(['list', '--kind', 'markdown']);
     expect(valid.status).toBe(0);
     expect(valid.body.data.files).toContainEqual({ path: 'kind-filter.md', kind: 'markdown' });

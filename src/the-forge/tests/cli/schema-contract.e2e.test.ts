@@ -63,7 +63,7 @@ describe('the published schema contract', () => {
     expect(annotations.read).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
     expect(annotations.create).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     for (const id of ['write', 'edit', 'properties', 'patch', 'delete', 'move', 'rename']) expect(annotations[id], id).toMatchObject({ destructiveHint: true, idempotentHint: true });
-    expect(annotations.make).toMatchObject({ destructiveHint: true, idempotentHint: false });
+    expect(annotations.make).toMatchObject({ destructiveHint: true, idempotentHint: true });
     expect(annotations.apply).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
     expect(annotations.vault).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, defaultAction: 'check' });
     expect(annotations.project).toMatchObject({ mutating: true, destructiveHint: false, actions: { current: { readOnlyHint: true }, open: { destructiveHint: false, idempotentHint: true } } });
@@ -78,16 +78,20 @@ describe('the published schema contract', () => {
     const expected: [string, string | undefined, boolean, boolean][] = [
       ['setup', undefined, false, true], ['project', 'create', false, true], ['project', 'component', false, true], ['create', undefined, false, true],
       ['write', undefined, true, true], ['edit', undefined, true, true], ['delete', undefined, true, true], ['move', undefined, true, true], ['rename', undefined, true, true],
-      ['apply', undefined, true, false], ['make', 'document', true, false], ['templates', 'install', true, false], ['skills', 'install', false, true],
-      // An optional --if-match does not make these repeatable: backlog init, add and iteration add create another
-      // note, and the claude plugins, marketplaces and runtime sections run the installed CLI.
+      ['apply', undefined, true, false], ['make', 'document', false, true], ['make', 'entity', false, true], ['make', 'ui', true, true], ['templates', 'install', false, true], ['skills', 'install', false, true],
+      ['components', 'init', false, true], ['data-sources', 'export', false, true], ['workflows', 'sync', true, true], ['agents', 'generate', true, true],
+      ['backlog', 'set', true, true], ['backlog', 'move', true, true], ['backlog', 'depend', true, true], ['backlog', 'undepend', true, true], ['backlog', 'ranks', true, true],
+      // An optional --if-match does not make these repeatable: backlog init, add, iteration add and release add create
+      // another note, backlog sync talks to a remote tracker, and the claude plugins, marketplaces and runtime
+      // sections run the installed CLI. tests/cli/idempotency.e2e.test.ts runs every mutating mode twice.
       ['backlog', 'init', true, false], ['backlog', 'add', true, false], ['backlog', 'iteration', true, false], ['backlog', 'release', true, false], ['backlog', 'sync', true, false],
-      ['claude', 'plugins', true, false], ['claude', 'marketplaces', true, false], ['claude', 'runtime', true, false], ['agents', 'generate', true, false], ['workflows', 'sync', true, false],
+      ['claude', 'plugins', true, false], ['claude', 'marketplaces', true, false], ['claude', 'runtime', true, false],
       // These require --if-match once their file exists, so a repeat fails with CONFLICT.
       ['claude', 'hooks', true, true], ['claude', 'agents', true, true], ['agents', 'create', true, true], ['agents', 'import', true, true],
     ];
     for (const [id, action, destructive, idempotent] of expected) expect(hints(id, action), `${id} ${action ?? ''}`).toEqual([destructive, idempotent]);
-    for (const id of ['backlog', 'claude', 'agents']) expect(hints(id), id).toEqual([true, false]);
+    for (const id of ['backlog', 'claude']) expect(hints(id), id).toEqual([true, false]);
+    expect(hints('agents')).toEqual([true, true]);
   });
 
   it('describes one command with its contract and the error codes it can report', () => {

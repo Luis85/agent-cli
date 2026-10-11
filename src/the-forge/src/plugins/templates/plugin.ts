@@ -39,7 +39,7 @@ export const templatesPlugin: CorePlugin = {
           actions: {
             'templates list': 'Die bearbeitbaren Markdown-Vorlagen in bin/templates auflisten.',
             'templates inspect': 'Die erforderlichen und optionalen Werte einer Vorlage melden.',
-            'templates install': 'Das Vorlagenpaket für den Planungsablauf in bin/templates installieren.',
+            'templates install': 'Das Vorlagenpaket für den Planungsablauf in bin/templates installieren; vorhandene Vorlagen werden übersprungen.',
           },
           generators: { document: 'Obsidian-Markdown-/Frontmatter-Vorlagen mit typisierten Werten rendern.' },
         },

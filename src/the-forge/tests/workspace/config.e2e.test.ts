@@ -35,3 +35,22 @@ it('loads fixed workspace configuration and allows invocation overrides', async 
     expect(cli(['config'], undefined, invocation).body.data.path).toBeNull();
     expect(cli(['--config', config, 'config']).body.error.code).toBe('UNKNOWN_OPTION');
   });
+
+it('reports the effective plugin folder settings and contains every one of them', async () => {
+  const config = join(project, 'bin/config.json');
+  await mkdir(join(project, 'bin'), { recursive: true });
+  await writeFile(config, JSON.stringify({ plugins: { settings: { agents: { directory: 'agents/' }, ui: { components: 'components/' }, 'data-sources': { library: 'data-sources//' } } } }));
+  try {
+    const shown = cli(['config']);
+    expect(shown.status, shown.stdout).toBe(0);
+    expect(shown.body.data.config.plugins.settings).toMatchObject({ agents: { directory: 'agents' }, ui: { components: 'components' }, 'data-sources': { library: 'data-sources' } });
+    expect(shown.body.warnings).toEqual([]);
+    const listed = cli(['agents', 'list']);
+    expect(listed.status, listed.stdout).toBe(0);
+
+    await writeFile(config, JSON.stringify({ plugins: { settings: { agents: { directory: '../outside' } } } }));
+    const issue = 'plugins.settings.agents.directory: must be a contained workspace-relative path';
+    expect(cli(['config']).body.warnings).toEqual([expect.stringContaining(issue)]);
+    expect(cli(['agents', 'list']).body.error).toMatchObject({ code: 'PLUGIN_UNAVAILABLE', details: { plugin: 'agents', issues: [issue] } });
+  } finally { await rm(config, { force: true }); }
+});

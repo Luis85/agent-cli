@@ -51,6 +51,9 @@ export function validateContributions(plugin: Record<string, unknown>, pluginId:
     ensure(inNamespace(service), 'PLUGIN_NAMESPACE', `Service ${service} must start with ${pluginId}.`);
   }
   ensure(plugin.validateSettings === undefined || plugin.settings !== undefined, 'INVALID_PLUGIN', 'validateSettings requires settings.');
+  const properties = isRecord(plugin.settings) && isRecord(plugin.settings.properties) ? plugin.settings.properties : {};
+  ensure(plugin.pathSettings === undefined || (Array.isArray(plugin.pathSettings) && plugin.pathSettings.every(key => typeof key === 'string' && isRecord(properties[key]) && properties[key].type === 'string')),
+    'INVALID_PLUGIN', 'pathSettings must list string properties of settings.');
   ensure(plugin.settings === undefined || (isRecord(plugin.settings) && plugin.settings.type === 'object' && schemaIssues(plugin.settings).length === 0), 'INVALID_PLUGIN', `settings must be a supported JSON Schema of type object: ${schemaIssues(plugin.settings).join('; ')}`);
   const defaults = plugin.settings === undefined ? [] : defaultIssues(plugin.settings as JsonSchema, 'settings');
   ensure(defaults.length === 0, 'INVALID_PLUGIN', `settings defaults must satisfy their own schemas: ${defaults.join('; ')}`);

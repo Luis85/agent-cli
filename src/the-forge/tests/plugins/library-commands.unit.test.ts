@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { localizedLibraryResult } from '../../src/application/plugins/library-commands.ts';
-import { relativePathIssues, relativePathSetting } from '../../src/application/plugins/plugin-settings.ts';
 import type { CommandContext } from '../../src/application/plugins/registry.ts';
 
 const context = (language: 'en' | 'de', messages: Record<string, string>) =>
@@ -19,14 +18,5 @@ describe('definition library command helpers for core plugins', () => {
     const ready = { directory: 'library', status: 'ready', count: 1 };
     expect(localizedLibraryResult('things', german, ready)).toBe(ready);
     expect(localizedLibraryResult('things', context('de', {}), empty)).toBe(empty);
-  });
-
-  it('accepts contained relative path settings, dropping trailing slashes, and names every escaping one', () => {
-    expect(relativePathSetting('library//')).toBe('library');
-    expect(relativePathIssues('things', { library: 'library/', output: 'src/things' }, ['library', 'output'])).toEqual([]);
-    expect(relativePathIssues('things', { library: '../escape', output: '/absolute' }, ['library', 'output'])).toEqual([
-      'plugins.settings.things.library: must be a contained workspace-relative path',
-      'plugins.settings.things.output: must be a contained workspace-relative path',
-    ]);
   });
 });

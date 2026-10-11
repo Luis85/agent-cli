@@ -61,6 +61,8 @@ const options: Readonly<Record<string, CommandOption>> = {
 };
 
 const read = { mutating: false };
+/** Writes that converge: repeating the identical invocation finds the target state and changes nothing. */
+const settled = { idempotent: true };
 
 function date(flags: CommandFlags, key: string) {
   const text = value(flags, key);
@@ -93,11 +95,11 @@ export function backlogCommand(ports: (context: CommandContext) => { bases: Base
       board: { description: 'Board columns by state with WIP limits and the no-state column.', ...read },
       show: { description: 'One item with its ancestors, children, prerequisites and dependents.', ...read },
       add: { description: 'Create an item note exactly as the plugin does: sanitized name, type folder, pbl-id, key order and end-of-siblings rank.' },
-      move: { description: 'Reparent or reorder one item with the plugin\'s rank arithmetic; writes only its parent and order.' },
-      ranks: { description: 'seed (tree preorder) or respace (current rank order) ranks 1000 apart.' },
-      set: { description: 'Set state (with started/finished stamps), horizon, priority, risk, dates, assignee or type; an empty value clears.' },
-      depend: { description: 'Add a dependsOn link unless it closes a dependency loop.' },
-      undepend: { description: 'Remove a dependsOn entry; the key is deleted when the list empties.' },
+      move: { description: 'Reparent or reorder one item with the plugin\'s rank arithmetic; writes only its parent and order.', ...settled },
+      ranks: { description: 'seed (tree preorder) or respace (current rank order) ranks 1000 apart.', ...settled },
+      set: { description: 'Set state (with started/finished stamps), horizon, priority, risk, dates, assignee or type; an empty value clears.', ...settled },
+      depend: { description: 'Add a dependsOn link unless it closes a dependency loop.', ...settled },
+      undepend: { description: 'Remove a dependsOn entry; the key is deleted when the list empties.', ...settled },
       iteration: { description: 'add an iteration with the plugin\'s name and date defaults, or assign <item> <iteration>.' },
       release: { description: 'add, join <item> <release>, mark-released, readiness, notes (generated release notes) or list releases.' },
       check: { description: 'Report parent and dependency cycles, broken links, unresolved memberships, configuration and field problems, rank ties.', ...read },

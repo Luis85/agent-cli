@@ -15,6 +15,7 @@ it('lists every plugin with one state and a reason for each state but enabled, a
   const plugins = [core('bases', { provides: { 'bases.query': {} } }), core('search'), core('backlog', { requires: ['bases.query'] })];
   registerCorePlugins(registry, events, plugins, testHost({ skills: registrySkills(registry), fileDates: () => () => Promise.reject(new Error('unused')) }), ['bases']);
   registry.register({ manifest: manifest('quality') }, events);
+  registry.recordMissing('absent', 'bin/plugins/absent/manifest.json', events);
   await registry.configure({}, async () => [], () => { throw new Error('A cascade from a disabled provider must not warn'); });
   const installed = [...['bases', 'search', 'quality', 'drafts'].map(id => ({ manifest: manifest(id), skipped: false })), { manifest: manifest('later'), skipped: true }];
   const listed = pluginCatalog(registry, installed).map(({ id, core: bundled, state, reason }) => ({ id, core: bundled, state, reason }));
@@ -23,6 +24,7 @@ it('lists every plugin with one state and a reason for each state but enabled, a
     { id: 'backlog', core: true, state: 'unavailable', reason: 'Requires service bases.query; its provider bases is disabled.' },
     { id: 'bases', core: true, state: 'disabled', reason: 'Listed in plugins.disabled.' },
     { id: 'quality', core: false, state: 'enabled', reason: null },
+    { id: 'absent', core: false, state: 'missing', reason: 'plugins.enabled names absent, but bin/plugins/absent/manifest.json does not exist; install the plugin there, or remove it from plugins.enabled.' },
     { id: 'bases', core: false, state: 'rejected', reason: 'Plugin id bases is reserved by the bundled core plugin; rename the user plugin.' },
     { id: 'search', core: false, state: 'rejected', reason: 'Plugin id search is reserved by the bundled core plugin; rename the user plugin.' },
     { id: 'drafts', core: false, state: 'disabled', reason: 'Not listed in plugins.enabled.' },

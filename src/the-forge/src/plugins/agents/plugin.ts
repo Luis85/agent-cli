@@ -53,6 +53,7 @@ export const agentsPlugin: CorePlugin = {
         defaultModel: { type: 'string', minLength: 1, default: defaults.defaultModel, description: 'Model reference for agents create and agents import when none is given.' },
       },
     },
+    pathSettings: ['directory'],
     errors: [
       { code: 'INVALID_AGENT_DEFINITION', category: 'input', summary: 'An agent definition fails docker-agent schema or semantic validation.', hint: 'Fix each error in details.files[].diagnostics (JSON pointer, line and column), then run agents validate.' },
       { code: 'AGENT_NOT_FOUND', category: 'not-found', summary: 'No definition file defines the named agent.', hint: 'Run agents list for the defined agents, or create it with agents create.' },

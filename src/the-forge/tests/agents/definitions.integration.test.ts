@@ -98,7 +98,6 @@ describe('creating and importing agents', () => {
     const current = ((await scope.run(['inspect', 'basic.yaml'])).data as { revision: string }).revision;
     expect(await failure(scope.run(['create', 'basic'], { 'from-template': 'team', file: 'basic.yaml', 'if-match': current }))).toMatchObject({ code: 'AGENT_EXISTS', details: { agent: 'basic' } });
     expect(await failure(scope.run(['create', 'x'], { 'from-template': 'basic', toolset: 'shell' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(await failure(scope.run(['create', 'x'], { 'from-template': 'huge' }))).toMatchObject({ code: 'INVALID_ARGUMENT' });
     const generated = (await scope.run(['generate'], { target: 'claude', file: 'mcp.yaml', plan: true })).data as { diagnostics: Array<{ code: string }> };
     expect(generated.diagnostics.map(entry => entry.code)).toContain('mcp-not-generated');
   });

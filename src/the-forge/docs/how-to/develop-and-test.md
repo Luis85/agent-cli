@@ -121,7 +121,7 @@ Keep tests portable:
 - Pass `-c core.autocrlf=false` when a test lets Git write files. Git for Windows enables `core.autocrlf` globally and would write CRLF.
 - Remove temporary directories that a terminated child process used with `rm(..., { maxRetries })`. Windows can keep the working directory busy (`EBUSY`) for a moment after termination.
 - A child that closes its input early fails the parent's write with `EPIPE` on POSIX but `EOF` on Windows.
-- Do not assume POSIX permission bits, signals or process groups. Windows reports writable files as `0o666`. Skip a test on `win32` only when the behavior it checks cannot exist there, and give the reason in a comment. The current skips are the Claude runtime signal and process-group cases and the installed-lifecycle fixture that executes a script through its shebang.
+- Do not assume POSIX permission bits, signals or process groups. Windows reports writable files as `0o666`. Skip a test on `win32` only when the behavior it checks cannot exist there, and give the reason in a comment. The current skips are the Claude runtime signal and process-group cases the installed-lifecycle fixture that executes a script through its shebang, and the eval claude driver cases, which start a fake `claude` through its shebang and check that a timeout ends its process group.
 - macOS and Windows file systems are case-insensitive by default. Detect case sensitivity at runtime when a test depends on it, as `tests/workspace/portability.integration.test.ts` does.
 
 `npm test` raises Vitest's default test and hook timeouts to 30 seconds, because creating processes on Windows runners is much slower than on Linux.

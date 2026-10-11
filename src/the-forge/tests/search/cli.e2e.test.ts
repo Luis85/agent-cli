@@ -41,7 +41,9 @@ describe('the search core plugin through the portable CLI', () => {
     expect(invalid.status).toBe(2);
     expect(invalid.body.error).toMatchObject({ code: 'INVALID_SEARCH_PATTERN', retryable: false, hint: expect.stringContaining('without --regex') });
     expect(cli(['--lang', 'de', 'search', '(', '--regex']).body.error).toMatchObject({ code: 'INVALID_SEARCH_PATTERN', message: 'Das Suchmuster ist ungültig.' });
-    for (const args of [['--kind', 'image'], ['--in', 'code'], ['--context', '51'], ['--limit', '0'], ['--property', '=x'], ['--cursor', 'bogus']]) {
+    // Declared enums are the host's: search never reads attachments, so image is not one of its kinds.
+    for (const args of [['--kind', 'image'], ['--in', 'code']]) expect(cli(['search', 'plan', ...args]).body.error.code, args.join(' ')).toBe('INVALID_OPTION_VALUE');
+    for (const args of [['--context', '51'], ['--limit', '0'], ['--property', '=x'], ['--cursor', 'bogus']]) {
       expect(cli(['search', 'plan', ...args]).body.error.code, args.join(' ')).toBe('INVALID_ARGUMENT');
     }
     const schema = cli(['schema']).body.data;

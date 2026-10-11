@@ -110,7 +110,6 @@ export function vaultCommand(service: (context: CommandContext) => VaultService)
       const scope = { include, ignored: (path: string) => ignores.some(ignored => ignored(path)) };
       if (action === 'tags') {
         const sort = value(flags, 'sort') ?? 'name';
-        ensure((tagSorts as readonly string[]).includes(sort), 'INVALID_ARGUMENT', `--sort must be one of: ${tagSorts.join(', ')}.`);
         return vaultTags(vault.sources, scope, sort as TagSort);
       }
       if (action === 'properties') {

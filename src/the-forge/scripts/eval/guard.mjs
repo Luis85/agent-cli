@@ -51,13 +51,32 @@ async function distributionDigest(root) {
   return hash.digest('hex');
 }
 
+/**
+ * Environment variables Forge may see: the executable search path, locale, time zone, temporary folders and the
+ * Windows system variables Node needs. Everything else, tokens and keys included, stays with the agent process.
+ */
+const forwarded = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|TMPDIR|LANG|LANGUAGE|LC_[A-Z_]+|TZ|TERM)$/i;
+
+/**
+ * The environment of the guarded Forge process: the forwarded variables of `env` and a home, configuration, data
+ * and cache directory inside the guard folder.
+ * @param {NodeJS.ProcessEnv} env @param {string} home @returns {NodeJS.ProcessEnv}
+ */
+export function forgeEnvironment(env, home) {
+  return {
+    ...Object.fromEntries(Object.entries(env).filter(([name]) => forwarded.test(name))),
+    HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_DATA_HOME: join(home, '.local/share'),
+    XDG_CACHE_HOME: join(home, '.cache'), XDG_STATE_HOME: join(home, '.local/state'), CLAUDE_CONFIG_DIR: join(home, '.claude'),
+  };
+}
+
 /** @param {string} message */
 const refused = message => JSON.stringify({ ok: false, error: { code: 'EVAL_REFUSED', message, hint: 'Run Forge commands on files inside this workspace, without the refused option.', retryable: false } });
 
 /**
  * Runs Forge for the wrapper: refusals and a changed distribution print a failure envelope and exit 2; otherwise
- * `node bin/forge.js --root <workspace> ...args` runs with standard input and output passed through and a home
- * directory inside the guard folder.
+ * `node bin/forge.js --root <workspace> ...args` runs with standard input and output passed through, a home
+ * directory inside the guard folder and only the forwarded environment variables.
  * @param {{ root: string, digest: string, home: string }} guard @param {string[]} args
  */
 async function runGuarded(guard, args) {
@@ -67,8 +86,7 @@ async function runGuarded(guard, args) {
     process.exitCode = 2;
     return;
   }
-  const home = { HOME: guard.home, USERPROFILE: guard.home, XDG_CONFIG_HOME: join(guard.home, '.config'), CLAUDE_CONFIG_DIR: join(guard.home, '.claude') };
-  const result = spawnSync(process.execPath, [join(guard.root, 'bin/forge.js'), '--root', guard.root, ...args], { cwd: guard.root, stdio: 'inherit', env: { ...process.env, ...home } });
+  const result = spawnSync(process.execPath, [join(guard.root, 'bin/forge.js'), '--root', guard.root, ...args], { cwd: guard.root, stdio: 'inherit', env: forgeEnvironment(process.env, guard.home) });
   process.exitCode = result.status ?? 1;
 }
 

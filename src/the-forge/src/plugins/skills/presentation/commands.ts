@@ -43,7 +43,6 @@ export function skillsCommand(skills: SkillCatalog): Command {
       ensure(action === 'install', 'INVALID_ARGUMENT', 'Use skills list, show, or install.'); arity(args, 1);
       const out = value(flags, 'out'), target = value(flags, 'target');
       ensure(out === undefined || target === undefined, 'INVALID_ARGUMENT', 'Use either --target or --out.');
-      ensure(target === undefined || (skillTargetChoices as readonly string[]).includes(target), 'INVALID_ARGUMENT', `--target must be one of: ${skillTargetChoices.join(', ')}.`);
       const roots = out === undefined ? targetRoots(target ?? 'both') : [out];
       return workspace.write(skills.list().flatMap(skill => skillPaths(skill.id, roots).map(path => ({ path, bytes: new TextEncoder().encode(skill.content) }))));
     },

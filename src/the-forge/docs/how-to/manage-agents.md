@@ -64,7 +64,7 @@ Generated Claude files can run commands and grant permissions, so Forge writes n
 
 Review the plan before you opt in: each written MCP server or hook command is an `executes-command` warning with the full command line, and each permission rule a `grants-permission` warning with the exact rule.
 
-Merges change only entries Forge wrote, which it records in `.claude/forge-generated.json`. A generated MCP server whose name `.mcp.json` already uses for another server, or a main agent you set yourself, fails with `AGENT_MERGE_CONFLICT`; rename the toolset's server, pass `--rename-conflicts` to give the generated server a numbered name, or remove your entry. Merged files keep their indentation and key order.
+Merges change only entries Forge wrote, which it records in `.claude/forge-generated.json`. A generated MCP server whose name `.mcp.json` already uses for another server, or a main agent you set yourself, fails with `AGENT_MERGE_CONFLICT`; rename the toolset's server, pass `--rename-conflicts` to give the generated server a numbered name, or remove your entry. Permission rules Forge added are recorded there too, so when a definition stops granting one, the next `--settings` generation removes it; rules you wrote yourself are never removed. Merged files keep their indentation and key order.
 
 ## Regenerate after a change
 

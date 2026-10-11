@@ -1,7 +1,7 @@
 import type { CorePlugin } from '../../application/plugins/core-plugins.ts';
 import type { PluginContext } from '../../application/plugins/registry.ts';
 import { DataSourceLibrary } from './application/library.ts';
-import { dataSourceSettings, dataSourceSettingsIssues, dataSourceSettingsSchema } from './application/settings.ts';
+import { dataSourceSettings, dataSourcePathSettings, dataSourceSettingsSchema } from './application/settings.ts';
 import { MarkdownDataSourceDefinitions } from './infrastructure/definitions.ts';
 import { TypeScriptDataSourceRenderer } from './infrastructure/generator.ts';
 import { dataSourceGenerator, dataSourcesCommand, type DataSourceServicesFactory } from './presentation/commands.ts';
@@ -40,7 +40,7 @@ export const dataSourcesPlugin: CorePlugin = {
     commands: [dataSourcesCommand(services)],
     generators: [dataSourceGenerator(services)],
     settings: dataSourceSettingsSchema,
-    validateSettings: dataSourceSettingsIssues,
+    pathSettings: dataSourcePathSettings,
     strings: {
       de: {
         commands: { 'data-sources': 'Markdown-Datenquellen verwalten, prüfen, importieren und exportieren.' },

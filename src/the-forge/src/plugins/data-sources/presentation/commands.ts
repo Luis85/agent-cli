@@ -32,7 +32,7 @@ async function makeDataSource(id: string, flags: CommandFlags, context: CommandC
 export function dataSourceGenerator(services: DataSourceServicesFactory): Generator {
   return {
     id: 'data-source', description: 'Generate a typed REST or local-JSON adapter and deterministic test data from Markdown.', usage: 'make data-source <id> [--project id] [--out directory] [--test-data-out directory]',
-    projectOption: 'project', review: true,
+    projectOption: 'project', review: true, idempotent: true,
     options: { ...libraryGenerationOptions, 'test-data-out': option.string('Test-data output directory; defaults to plugins.settings.data-sources.fixtures.') },
     run: ({ name, flags, context }) => makeDataSource(name, flags, context, services),
   };

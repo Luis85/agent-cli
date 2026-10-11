@@ -2,6 +2,9 @@ import { isRecord } from '../../domain/shared/errors.ts';
 import { option, type CommandAction, type CommandArgument, type CommandMetadata } from './command-metadata.ts';
 import type { CommandContext, PluginContext } from './registry.ts';
 
+/** The writing actions only add files: existing definitions are skipped (init) or refused as duplicates. */
+const createOnly = { destructive: false, idempotent: true } as const;
+
 /**
  * Shared metadata of Markdown definition library commands (the `ui` plugin's `components` and `interactions`, the
  * `data-sources` plugin's `data-sources`): the same actions at workspace scope, where list/inspect/validate read and
@@ -10,12 +13,12 @@ import type { CommandContext, PluginContext } from './registry.ts';
 export function libraryMetadata(noun: string): Pick<CommandMetadata, 'scope' | 'discovery' | 'mutating' | 'defaultAction' | 'actions' | 'args'> {
   const actions: Record<string, CommandAction> = {
     list: { description: `List the ${noun} definitions in the library.`, mutating: false },
-    init: { description: `Create the library with starter ${noun} definitions.` },
+    init: { description: `Create the library with starter ${noun} definitions.`, ...createOnly },
     inspect: { description: `Return one parsed ${noun} definition.`, mutating: false },
     validate: { description: `Validate every ${noun} definition.`, mutating: false },
-    create: { description: `Create a new ${noun} definition.` },
-    import: { description: `Copy ${noun} definitions from the import directory into the library.` },
-    export: { description: `Copy the library's ${noun} definitions to the export directory.` },
+    create: { description: `Create a new ${noun} definition.`, ...createOnly },
+    import: { description: `Copy ${noun} definitions from the import directory into the library.`, ...createOnly },
+    export: { description: `Copy the library's ${noun} definitions to the export directory.`, ...createOnly },
   };
   const args: CommandArgument[] = [
     { name: 'action', description: 'list (default), init, inspect, validate, create, import or export.', enum: Object.keys(actions) },

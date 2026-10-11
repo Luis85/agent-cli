@@ -20,7 +20,7 @@ describe('lean agent responses', () => {
     expect(cli(['read', 'note.md', '--parts', 'body']).body.data.document.body).toBe('# Note\n');
     const invalid = cli(['read', 'note.md', '--parts', 'outline']);
     expect(invalid.status).toBe(2);
-    expect(invalid.body.error.code).toBe('INVALID_ARGUMENT');
+    expect(invalid.body.error.code).toBe('INVALID_OPTION_VALUE');
   }, workflowTimeout);
 
   it('selects envelope events with --events and settings.events', async () => {

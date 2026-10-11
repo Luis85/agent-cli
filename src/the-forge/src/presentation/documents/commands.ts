@@ -12,7 +12,6 @@ import { listOutput, readOutput, validateOutput } from './output.ts';
 async function content(flags: Record<string, string | boolean>, context: CommandContext): Promise<Uint8Array> {
   const bytes = await readInputBytes(flags, context, 'Choose exactly one of --content, --from, or --stdin.');
   const encoding = value(flags, 'encoding') ?? 'utf8';
-  ensure(['utf8', 'base64'].includes(encoding), 'INVALID_ENCODING', 'Use utf8 or base64. --from copies raw bytes by default.');
   if (encoding === 'base64') {
     const text = Buffer.from(bytes).toString('utf8').trim();
     ensure(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text), 'INVALID_ENCODING', 'Invalid base64 input.');
@@ -59,7 +58,6 @@ export function documentCommands(): Command[] {
         cursor: option.string('Continue after the page that returned this nextCursor, with the same --kind and --path.'),
       }, output: listOutput, async run(args, flags, { workspace }) {
       arity(args, 0); const kind = value(flags, 'kind'), glob = value(flags, 'path');
-      ensure(kind === undefined || fileKinds.includes(kind), 'INVALID_ARGUMENT', `--kind must be one of: ${fileKinds.join(', ')}.`);
       const matches = glob === undefined ? () => true : pathGlob(glob);
       const pager = new Pager<string>({ limit: integer(flags, 'limit', 1), cursor: value(flags, 'cursor') }, { command: 'list', kind: kind ?? null, path: glob ?? null }, path => [path]);
       for (const path of await workspace.files.list()) if ((!kind || fileKind(path) === kind) && matches(path)) pager.offer(path);

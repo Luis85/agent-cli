@@ -1,5 +1,4 @@
 import type { JsonSchema } from '../../../domain/schema/json-schema.ts';
-import { relativePathIssues, relativePathSetting } from '../../../application/plugins/plugin-settings.ts';
 import { uiFrameworks, type UiFramework } from '../domain/components/definition.ts';
 
 /**
@@ -29,21 +28,18 @@ const descriptions: Record<Exclude<keyof UiSettings, 'framework'>, string> = {
   output: 'Generated UI folder, relative to the output project (or the workspace without one).',
   stories: 'Generated Storybook story folder, relative to the output project (or the workspace without one).',
 };
-const paths = Object.keys(descriptions) as Array<keyof typeof descriptions>;
+/** Every folder setting is a contained relative path the host normalizes (`pathSettings`). */
+export const uiPathSettings = Object.keys(descriptions) as Array<keyof typeof descriptions>;
 
 export const uiSettingsSchema: JsonSchema = {
   type: 'object', additionalProperties: false,
   properties: {
     framework: { type: 'string', enum: [...uiFrameworks], default: defaults.framework, description: 'Default UI target of make ui and make stories.' },
-    ...Object.fromEntries(paths.map(key => [key, { type: 'string', minLength: 1, default: defaults[key], description: descriptions[key] }])),
+    ...Object.fromEntries(uiPathSettings.map(key => [key, { type: 'string', minLength: 1, default: defaults[key], description: descriptions[key] }])),
   },
 };
 
-/** Every folder setting must be a contained workspace-relative path. */
-export const uiSettingsIssues = (settings: Readonly<Record<string, unknown>>) => relativePathIssues('ui', settings, paths);
-
-/** The effective settings: the validated section with defaults, and folders without trailing slashes. */
+/** The effective settings: the host's validated and normalized section, or the defaults without one. */
 export function uiSettings(section: Readonly<Record<string, unknown>> | null): UiSettings {
-  const value = { ...defaults, ...section } as Record<string, unknown>;
-  return { ...defaults, framework: value.framework as UiFramework, ...Object.fromEntries(paths.map(key => [key, relativePathSetting(value[key])])) };
+  return { ...defaults, ...section } as UiSettings;
 }

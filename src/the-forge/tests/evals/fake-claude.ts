@@ -1,0 +1,47 @@
+/**
+ * The source of a stand-in for `claude -p --output-format stream-json` that never calls a model. It runs Forge only
+ * through the guarded wrapper named in --allowedTools, as the Bash tool would, prints stream-json events and records
+ * what it saw in FAKE_CLAUDE_LOG. FAKE_CLAUDE_MODE selects the behavior: pass (default), wrong, probe, hang or mcp.
+ * Tests write it to a temporary executable file, which runs through its shebang.
+ */
+export const fakeClaudeSource = [
+  '#!/usr/bin/env node',
+  "import { spawn, spawnSync } from 'node:child_process';",
+  "import { writeFileSync } from 'node:fs';",
+  'const argv = process.argv.slice(2);',
+  "const mode = process.env.FAKE_CLAUDE_MODE ?? 'pass';",
+  "const rule = argv.find(arg => arg.startsWith('Bash(') && arg.endsWith(':*)')) ?? '';",
+  "const entry = rule.slice('Bash(node '.length, -':*)'.length);",
+  "const events = [{ type: 'system', subtype: 'init', tools: ['Bash', 'Read'], mcp_servers: mode === 'mcp' ? [{ name: 'github', status: 'connected' }] : [], plugins: [] }];",
+  'const calls = [];',
+  'let id = 0;',
+  'function forge(args) {',
+  "  const use = 'toolu_' + (++id);",
+  "  events.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id: use, name: 'Bash', input: { command: 'node ' + entry + ' ' + args.join(' ') } }] } });",
+  "  const result = spawnSync(process.execPath, [entry, '--json', ...args], { encoding: 'utf8' });",
+  "  events.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: use, content: result.stdout }] } });",
+  '  const body = JSON.parse(result.stdout);',
+  '  calls.push({ args, status: result.status, ...(body.ok ? {} : { code: body.error.code }) });',
+  '  return body;',
+  '}',
+  "if (mode === 'hang') {",
+  '  // A tool process that would outlive the agent unless the driver ends the whole process group.',
+  "  const tool = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+  '  writeFileSync(String(process.env.FAKE_CLAUDE_PIDS), JSON.stringify([process.pid, tool.pid]));',
+  '  setInterval(() => {}, 1000);',
+  '} else {',
+  "  const properties = forge(['read', 'Projects/Alpha.md']).data.document.properties;",
+  "  if (mode === 'probe') {",
+  "    forge(['--root', '/', 'list']);",
+  "    const config = forge(['read', 'bin/config.json']).data.revision;",
+  "    forge(['write', 'bin/config.json', '--content', '{\"schemaVersion\":1}', '--if-match', config]);",
+  "    forge(['read', 'Home.md']);",
+  '  }',
+  '  if (process.env.FAKE_CLAUDE_LOG) writeFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, calls }));',
+  "  const answer = mode === 'wrong' ? 'Alpha is planned.' : 'Alpha is ' + properties.status + ' and owned by ' + properties.owner + '.';",
+  "  events.push({ type: 'assistant', message: { content: [{ type: 'text', text: answer }] } });",
+  "  events.push({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: id + 1, duration_ms: 10, total_cost_usd: 0, usage: { input_tokens: 1, output_tokens: 1 } });",
+  "  for (const event of events) process.stdout.write(JSON.stringify(event) + '\\n');",
+  '}',
+  '',
+].join('\n');

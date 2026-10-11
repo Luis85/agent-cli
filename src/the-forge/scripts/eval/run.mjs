@@ -12,15 +12,16 @@ import { distributionPath } from './workspace.mjs';
  * task or check is invalid. The claude driver runs Claude Code headless (`claude -p`) on each task, `--repeat k`
  * times, and writes evals/results/<timestamp>.json; it needs an authenticated local `claude` and never runs in CI.
  * The agent may run only a guarded Forge wrapper pinned to the task's workspace (scripts/eval/guard.mjs) and the
- * native tools of `--allowed-tool` (default: Read, Glob and Grep).
+ * native tools of `--allowed-tool` (default: Read, Glob and Grep). Both drivers exit 1 when any task or attempt
+ * fails, so scripts and CI notice.
  */
-const usage = 'npm run eval -- [--driver reference|claude] [--task id]... [--category name]... [--concurrency n] [--repeat k] [--model id] [--max-turns n] [--timeout seconds] [--allowed-tool rule]... [--claude path]';
+const usage = 'npm run eval -- [--driver reference|claude] [--task id]... [--category name]... [--concurrency n] [--repeat k] [--model id] [--max-turns n] [--timeout seconds] [--allowed-tool rule]... [--claude path] [--results directory]';
 const { values } = parseArgs({
   options: {
     driver: { type: 'string', default: 'reference' }, task: { type: 'string', multiple: true }, category: { type: 'string', multiple: true },
     concurrency: { type: 'string', default: '4' }, repeat: { type: 'string', default: '1' }, model: { type: 'string' },
     'max-turns': { type: 'string', default: '30' }, timeout: { type: 'string', default: '600' }, 'allowed-tool': { type: 'string', multiple: true },
-    claude: { type: 'string', default: 'claude' }, help: { type: 'boolean' },
+    claude: { type: 'string', default: 'claude' }, results: { type: 'string', default: join(evalsRoot, 'results') }, help: { type: 'boolean' },
   },
 });
 if (values.help) { process.stdout.write(`${usage}\n`); process.exit(0); }
@@ -80,12 +81,14 @@ async function main() {
     tokens: Object.fromEntries((/** @type {const} */ (['input', 'output', 'cacheRead', 'cacheCreation'])).map(kind => [kind, sum(results.map(result => result.transcript.tokens?.[kind] ?? null))])),
     toolCalls: { forge: sum(results.map(result => result.transcript.toolCalls.forge)), otherBash: sum(results.map(result => result.transcript.toolCalls.otherBash)), native: sum(results.map(result => sum(Object.values(result.transcript.toolCalls.native)))) },
     forgeErrors: results.flatMap(result => result.transcript.forgeErrors).length,
+    timedOut: results.filter(result => result.timedOut).length,
   };
-  const directory = join(evalsRoot, 'results');
+  const directory = values.results;
   await mkdir(directory, { recursive: true });
   const file = join(directory, `${new Date().toISOString().replaceAll(':', '-')}.json`);
   await writeFile(file, `${JSON.stringify({ summary, tasks, results }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ ...summary, results: file, tasks }, null, 2)}\n`);
+  process.exitCode = results.every(result => result.passed) ? 0 : 1;
 }
 
 main().catch(error => {

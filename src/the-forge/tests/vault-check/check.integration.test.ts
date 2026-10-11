@@ -84,7 +84,7 @@ describe('vault check', () => {
     expect(selected.rules.map(rule => rule.id)).toEqual(['unresolved-link', 'empty-file']);
     expect(brief(selected.findings).map(([rule, , at]) => `${rule} ${at}`)).toEqual(['unresolved-link Home.md:6:6', 'unresolved-link notes/b.md:5:6', 'empty-file notes/empty.md:null:null']);
     expect(await run([])).toMatchObject({ summary: { findings: 13 } });
-    for (const [args, flags] of [[['check'], { rule: 'nope' }], [['check'], { rule: ',' }], [['lint'], {}], [['check', 'x'], {}], [['tags'], { sort: 'size' }], [['properties'], { name: ' ' }], [['check'], { path: '[z-a]' }]] as const) {
+    for (const [args, flags] of [[['check'], { rule: 'nope' }], [['check'], { rule: ',' }], [['lint'], {}], [['check', 'x'], {}], [['properties'], { name: ' ' }], [['check'], { path: '[z-a]' }]] as const) {
       await expect(run([...args], { ...flags }), JSON.stringify([args, flags])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     }
   });

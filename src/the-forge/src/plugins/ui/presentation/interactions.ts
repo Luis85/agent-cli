@@ -38,7 +38,6 @@ export function interactionsCommand(services: UiServicesFactory): Command {
       if (action === 'create') {
         arity(args, 2);
         const event = value(flags, 'event');
-        ensure(event === undefined || interactionEvents.includes(event as InteractionEvent), 'INVALID_ARGUMENT', `--event must be one of: ${interactionEvents.join(', ')}.`);
         return library.create(directory, args[1]!, event as InteractionEvent | undefined);
       }
       if (action === 'import') { arity(args, 1); return library.import(value(flags, 'from') ?? settings.interactionImports, directory); }
