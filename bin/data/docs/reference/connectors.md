@@ -97,7 +97,7 @@ interface BacklogConnector {
 - `RemoteItem` is `{id, rev, url, type, title, state, parentId?, dependencies?, iteration?, area?, priority?, effort?, tags, description?, descriptionMarkdown?, fields}` in the remote vocabulary. `area` is null in the connection's default area. `description` is the remote text exactly as read, Markdown or HTML (absent when the field is not mapped); `descriptionMarkdown` is true only when the platform declared the text as Markdown on that read. `dependencies` lists the remote ids of the item's predecessors (absent when the connection does not map dependencies); in a `RemoteDraft` or `RemotePatch` it is the complete new set, so links to other ids are removed; `fields` holds `mappings.properties` values by remote field reference.
 - `RemoteDraft` and `RemotePatch` carry the same neutral fields (`parentId`, `dependencies`, …); `null` clears a field (an iteration or area falls back to the connection's default).
 - `create` returns the item as stored, so the sync engine takes defaults and rules the platform applied from it. A platform that creates items in an initial state follows up with an update to the drafted state; if that fails, `create` still returns the created item rather than failing, so its id is never lost.
-- `update` must apply the patch only while the item is still at `expectedRev` and otherwise fail with `details.reason: "stale-revision"`.
+- `update` must apply the patch only while the item is still at `expectedRev` and otherwise fail with `details.reason: "stale-revision"`. When it cannot confirm that its link changes landed as planned (links changed on the other end without a new revision), it fails with `details.reason: "relations-changed"` although the patch was applied; the backlog then treats the item's `parent` and `dependencies` as unconfirmed.
 - Errors carry the codes `CONNECTOR_AUTH_FAILED` (with `details.tokenEnv`) and `CONNECTOR_REQUEST_FAILED` (with `details.status`) and never the token.
 - Core connectors use the kernel `HttpClient` port: global `fetch` with a per-attempt timeout (30 s) and up to three retries of 429 and 503 responses, waiting for `Retry-After` (seconds or an HTTP date, capped at 60 s) or backing off from one second. Only repeatable requests are retried: `GET`, and requests the connector marks `retry: true` (a read-only `POST` or a `PATCH` guarded by the item's revision); a create is never retried, so throttling cannot create a duplicate. Redirects are not followed, so the token only reaches the configured host.
 
@@ -110,7 +110,7 @@ The neutral fields are `title`, `type`, `state`, `parent`, `dependencies`, `iter
 | `CONNECTOR_NOT_FOUND` | No such connection, or no enabled connector for its platform |
 | `CONNECTION_INVALID` | The profile fails its platform schema or names unknown mapping fields |
 | `CONNECTOR_AUTH_FAILED` | The token variable is unset or the service refused the token |
-| `CONNECTOR_REQUEST_FAILED` | A request failed; `details.reason: "stale-revision"` marks a revision guard |
+| `CONNECTOR_REQUEST_FAILED` | A request failed; `details.reason: "stale-revision"` marks a revision guard, `"relations-changed"` an applied update whose link changes could not be confirmed |
 | `SYNC_CONFLICT` | (backlog) A remote item changed while a sync or resolution wrote it |
 
 See the [error catalog](errors.md#core-plugin-codes) for exit statuses and hints.

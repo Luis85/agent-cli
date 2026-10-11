@@ -65,7 +65,11 @@ export interface BacklogConnector {
      * state), so the caller never loses the new id.
      */
     create(connection: Connection, item: RemoteDraft): Promise<RemoteItem>;
-    /** Applies `patch` only while the remote item is still at `expectedRev`; otherwise fails with `details.reason: 'stale-revision'`. */
+    /**
+     * Applies `patch` only while the remote item is still at `expectedRev`; otherwise fails with `details.reason:
+     * 'stale-revision'`. Fails with `details.reason: 'relations-changed'` after applying a patch whose link changes it
+     * cannot confirm (links changed on the other end without a new revision).
+     */
     update(connection: Connection, id: string, patch: RemotePatch, expectedRev: string): Promise<RemoteItem>;
 }
 /** A connection bound to its platform connector. */
