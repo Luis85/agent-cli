@@ -60,7 +60,8 @@ export interface VaultMetadataOptions { workspaceRoot?: boolean; snapshots?: Sna
  * A per-invocation metadata index over a file repository. It reads and parses Markdown and Canvas files once,
  * on first load, and resolves every reference through hash lookups, so building is linear in vault size.
  * With a snapshot store, the load reuses the parse results of unchanged files and of known content revisions
- * instead of reading or parsing them, and `persist()` stores the current results; resolution is always recomputed.
+ * instead of reading or parsing them, and the stored resolutions of unchanged sources while the vault's paths and
+ * aliases are unchanged; `persist()` stores the current results and resolutions.
  * Updates re-parse only changed files; they re-resolve every source only when the set of paths or aliases changes.
  */
 export class VaultMetadata implements MetadataIndex, MetadataCache {
