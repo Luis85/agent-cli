@@ -35,7 +35,7 @@ node bin/forge.js quality.hello
 
 Only IDs in `plugins.enabled` execute; directory scanning never enables unreviewed code, and `plugins` lists an installed but unlisted plugin as `disabled` without running it. Put `--no-plugins` before the command to skip user plugins for one invocation, including when an enabled plugin fails to load. IDs must match their directory and manifest. Plugins load from workspace `bin/plugins` and are shared across its projects. Symlink modules are rejected. Plugins are trusted Node code with the process's permissions and can bypass workspace guards; review modules and dependencies before enabling them.
 
-To disable a user plugin, remove its id from `plugins.enabled`.
+To disable a user plugin, remove its id from `plugins.enabled`. An id whose folder `bin/plugins/<id>` has no `manifest.json` never blocks the CLI: `plugins` lists it as `missing` and every response warns until you install the plugin or remove the id.
 
 ## Configure a plugin's settings
 

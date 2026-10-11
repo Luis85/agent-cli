@@ -125,6 +125,8 @@ export class Registry {
    * generators fail with PLUGIN_UNAVAILABLE.
    */
   readonly unavailable = new Map<string, { reason: string; issues: string[] }>();
+  /** Enabled user plugins without a manifest in the plugin directory, with the `reason` `plugins` lists. */
+  readonly missing = new Map<string, string>();
   private cleanups: Array<{ pluginId: string; run: () => void | Promise<void> }> = [];
   private published = new Set<string>();
   private state: 'registering' | 'activating' | 'active' | 'failed' | 'disposed' = 'registering';
@@ -169,6 +171,15 @@ export class Registry {
     ensure(!this.origins.has(manifest.id) && !this.disabled.some(entry => entry.id === manifest.id), 'DUPLICATE_PLUGIN', manifest.id);
     this.disabled.push(manifest);
     this.disabledReasons.set(manifest.id, reason);
+  }
+  /**
+   * A user plugin that `plugins.enabled` names but whose manifest does not exist: it never loads, `plugins` lists it
+   * as `missing`, and every response warns, while every other command keeps working.
+   */
+  recordMissing(pluginId: string, manifestPath: string, events: EventBus): void {
+    const reason = `plugins.enabled names ${pluginId}, but ${manifestPath} does not exist; install the plugin there, or remove it from plugins.enabled.`;
+    this.missing.set(pluginId, reason);
+    events.warn(`${reason} Its commands are unavailable in this invocation.`);
   }
   /** Why a disabled core plugin contributes nothing. */
   disabledReason(pluginId: string): string | undefined { return this.disabledReasons.get(pluginId); }

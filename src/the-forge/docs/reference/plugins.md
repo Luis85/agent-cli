@@ -78,8 +78,9 @@ Each declares German strings for its command, actions, events and codes. Disabli
 | `disabled` | A core plugin in `plugins.disabled`, or an installed user plugin that `plugins.enabled` does not name | "Listed in plugins.disabled." or "Not listed in plugins.enabled." |
 | `skipped` | An enabled user plugin that `--no-plugins` left unloaded | "Skipped by --no-plugins." |
 | `rejected` | An installed user plugin whose id a bundled core plugin owns, enabled or disabled; it never loads and is listed besides the core entry | "Plugin id &lt;id&gt; is reserved by the bundled core plugin; rename the user plugin." |
+| `missing` | A user plugin that `plugins.enabled` names but `bin/plugins/<id>/manifest.json` does not exist; it never loads, the entry has only `id`, `core`, `state`, `reason` and `contributions`, and every response warns. Other commands, including `help`, `setup` and `plugins`, keep working, and the missing plugin's commands are unknown (`UNKNOWN_COMMAND`) | "plugins.enabled names &lt;id&gt;, but bin/plugins/&lt;id&gt;/manifest.json does not exist; install the plugin there, or remove it from plugins.enabled." |
 
-`contributions` lists command, generator, event and skill ids, `services.provides`, `services.requires` and `services.optional`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run (`disabled`, `skipped`, `rejected`). Invalid manifests in `bin/plugins` are skipped with a warning.
+`contributions` lists command, generator, event and skill ids, `services.provides`, `services.requires` and `services.optional`, the `settings` config path or `null`, the languages of contributed `strings` and registered error codes; it is `null` for plugins whose code did not run (`disabled`, `skipped`, `rejected`, `missing`). Invalid manifests in `bin/plugins` are skipped with a warning.
 
 ## Contract
 

@@ -58,13 +58,23 @@ export async function installedPlugins(directory: string, enabled: readonly stri
   return installed;
 }
 
-/** Only IDs explicitly enabled in project configuration execute code. */
+/**
+ * Only IDs explicitly enabled in project configuration execute code. An enabled id without a manifest in the plugin
+ * directory is not installed: the registry records it as missing instead of failing the invocation.
+ */
 export async function loadEnabledPlugins(directory: string, ids: readonly string[], files: NodeFiles, registry: Registry, events: EventBus): Promise<void> {
   ensure(Array.isArray(ids) && ids.every(id => typeof id === 'string' && /^[a-z][a-z0-9-]*$/.test(id)) && new Set(ids).size === ids.length, 'INVALID_PLUGIN_CONFIG', 'Enabled plugins must contain unique lowercase kebab-case IDs.');
   // Validate every enabled manifest before executing the first plugin module.
   const manifests: PluginManifest[] = [];
   for (const id of ids) {
-    const manifest = await readManifest(`${directory}/${id}/manifest.json`, files);
+    const path = `${directory}/${id}/manifest.json`;
+    let manifest: PluginManifest;
+    try { manifest = await readManifest(path, files); }
+    catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'NOT_FOUND') throw error;
+      registry.recordMissing(id, path, events);
+      continue;
+    }
     ensure(manifest.id === id, 'INVALID_PLUGIN', `Manifest id must match plugin directory ${id}.`);
     manifests.push(manifest);
   }

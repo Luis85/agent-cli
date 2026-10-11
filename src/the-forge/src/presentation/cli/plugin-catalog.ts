@@ -43,5 +43,7 @@ export function pluginCatalog(registry: Registry, installed: readonly InstalledP
         : { state: 'disabled' as const, reason: 'Not listed in plugins.enabled.' }),
     contributions: null,
   }));
-  return [...loaded.filter(plugin => plugin.core), ...disabledCore, ...loaded.filter(plugin => !plugin.core), ...others];
+  // An enabled plugin without a manifest has no manifest fields to list; its id and reason say what to fix.
+  const missing = [...registry.missing].map(([id, reason]) => ({ id, core: false, state: 'missing' as const, reason, contributions: null }));
+  return [...loaded.filter(plugin => plugin.core), ...disabledCore, ...loaded.filter(plugin => !plugin.core), ...missing, ...others];
 }
