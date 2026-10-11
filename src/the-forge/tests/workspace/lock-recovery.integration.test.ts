@@ -21,6 +21,8 @@ afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const write = (path: string) => ({ path, bytes: encodeText('Hello') });
 const exitedPid = () => spawnSync(process.execPath, ['-e', '']).pid!;
 const holder = (fields: Record<string, unknown>) => JSON.stringify({ hostname: hostname(), startedAt: '2026-10-10T08:00:00.000Z', command: 'create', operationId: 2, forgeVersion: '0.1.0', ...identity, token: 'left-behind', ...fields });
+// Process start times, pid namespaces and boot ids come from /proc, which only Linux has: elsewhere a lock records
+// none of them, so pid reuse and a restart cannot be told apart from a live holder, and these cases cannot exist.
 const linux = (await hostIdentity()).bootId !== undefined;
 
 describe('breaking a stale writer lock', () => {
