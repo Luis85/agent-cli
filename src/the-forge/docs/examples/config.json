@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "paths": {
+    "projects": "projects"
+  },
+  "plugins": {
+    "enabled": [
+      "quality"
+    ]
+  }
+}

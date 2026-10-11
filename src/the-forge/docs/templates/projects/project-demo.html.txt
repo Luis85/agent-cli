@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project forms · The Forge</title>
+  </head>
+  <body>
+    <main>
+      <header class="page-heading">
+        <h1>Project forms</h1>
+        <p>Try your form, check its validation, and inspect the values it produces.</p>
+      </header>
+      <div class="preview-layout">
+        <section aria-label="Form preview">
+          <div class="form-picker">
+            <label for="form-choice">Choose a form</label>
+            <select id="form-choice"></select>
+          </div>
+          <div id="form-preview"></div>
+        </section>
+        <section class="result-panel" aria-labelledby="result-heading">
+          <h2 id="result-heading">Validated values</h2>
+          <p>Values stay in this preview. Nothing is sent or saved.</p>
+          <p id="result-status" role="status">Complete the form to see its validated values.</p>
+          <pre id="form-result" aria-label="Validated form values" tabindex="0" hidden></pre>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/src/presentation/demo.ts"></script>
+  </body>
+</html>

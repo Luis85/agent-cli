@@ -1,0 +1,38 @@
+filters:
+  and:
+    - file.ext == "md"
+    - file.inFolder("docs")
+    - stage > 0
+formulas:
+  outgoing: file.links.length
+views:
+  - type: table
+    name: By stage
+    order:
+      - file.name
+      - stage
+      - type
+      - status
+      - formula.outgoing
+    sort:
+      - property: stage
+        direction: ASC
+  - type: table
+    name: Needs review
+    filters:
+      and:
+        - status != "approved"
+        - status != "accepted"
+    order:
+      - file.name
+      - status
+      - owner
+    sort:
+      - property: stage
+        direction: ASC
+  - type: table
+    name: Linked to PRD
+    filters: file.hasLink(link("docs/product/Trailhead PRD.md"))
+    order:
+      - file.name
+      - type

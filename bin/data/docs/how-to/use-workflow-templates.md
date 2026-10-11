@@ -9,10 +9,10 @@ Use this guide to create PRDs, use cases, build specifications, designs and deli
 New workspace setup installs the pack. To add missing templates to an existing workspace:
 
 ```sh
-node bin/app.js templates install workflow --dry-run
-node bin/app.js templates install workflow
-node bin/app.js templates list --json
-node bin/app.js templates inspect workflow/prd.md --json
+node bin/forge.js templates install workflow --dry-run
+node bin/forge.js templates install workflow
+node bin/forge.js templates list --json
+node bin/forge.js templates inspect workflow/prd.md --json
 ```
 
 Inspect `requiredVariables` before rendering. All seven built-in workflow templates require `owner`; `title` and `date` are supplied by the command. Existing template files are preserved, so teams can edit `bin/templates/workflow/*.md` without losing their conventions on installation.
@@ -22,9 +22,9 @@ Inspect `requiredVariables` before rendering. All seven built-in workflow templa
 Confirm the project selection, then preview and create a document:
 
 ```sh
-node bin/app.js project current --json
-node bin/app.js make document 'Purchase approvals PRD' --template workflow/prd.md --values '{"owner":"Product team"}' --out docs/planning --date 2026-10-07 --dry-run
-node bin/app.js make document 'Purchase approvals PRD' --template workflow/prd.md --values '{"owner":"Product team"}' --out docs/planning --date 2026-10-07
+node bin/forge.js project current --json
+node bin/forge.js make document 'Purchase approvals PRD' --template workflow/prd.md --values '{"owner":"Product team"}' --out docs/planning --date 2026-10-07 --dry-run
+node bin/forge.js make document 'Purchase approvals PRD' --template workflow/prd.md --values '{"owner":"Product team"}' --out docs/planning --date 2026-10-07
 ```
 
 Verify `context.root` in the response. The output is `docs/planning/Purchase approvals PRD.md` within that scope. An existing destination causes a conflict. `--date` makes the template's date substitutions reproducible; omit it when the current date is intended. For longer inputs, use a scope-relative `--values-from inputs.json` file instead of inline JSON.

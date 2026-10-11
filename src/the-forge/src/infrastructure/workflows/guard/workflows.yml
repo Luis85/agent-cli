@@ -1,0 +1,29 @@
+# Fails a pull request whose generated .github/workflows entrypoints drift from the workflows that
+# managed projects author under src/infrastructure/workflows/<concern>/. The committed bundle needs
+# only Node, so no install step runs. The leading / makes the path filter workspace-relative.
+name: Workflow drift
+on:
+  pull_request:
+    paths: ['/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: workflows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  workflows:
+    name: workflows sync --check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Actions are pinned to full commit SHAs; the comment names the release.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.12.0'
+      # The executable resolves the workspace from its own location, independent of the working directory.
+      - name: Check generated workflows
+        run: node "$GITHUB_WORKSPACE/bin/forge.js" workflows sync --check

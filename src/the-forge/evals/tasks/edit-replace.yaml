@@ -1,0 +1,14 @@
+id: edit-replace
+title: Replace one passage in a note
+category: editing
+prompt: |
+  In Projects/Alpha.md, mark the vendor risk as mitigated: the line
+  "- Vendor delay on the map tiles." must read "- Vendor delay on the map tiles (mitigated)."
+fixture: vault
+reference:
+  - [edit, Projects/Alpha.md, --if-match, "{{revision:Projects/Alpha.md}}", --find, "on the map tiles.", --replace, "on the map tiles (mitigated)."]
+checks:
+  - file: Projects/Alpha.md
+    contains: ["- Vendor delay on the map tiles (mitigated).\n", "- GPS accuracy in valleys.\n"]
+    frontmatter: { status: active, owner: "[[People/Ada]]" }
+  - unchanged: Projects/Beta.md

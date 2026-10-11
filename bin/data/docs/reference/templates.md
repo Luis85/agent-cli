@@ -2,19 +2,19 @@
 
 [Documentation](../index.md) · Reference
 
-Templates are Markdown files with optional YAML frontmatter in the workspace's shared `bin/templates` directory. They produce ordinary Obsidian-compatible `.md` files without requiring Obsidian. Inspect the configuration and available inputs before generating:
+Templates are Markdown files with optional YAML frontmatter in the workspace's shared `bin/templates` directory. The bundled `templates` [core plugin](plugins.md#bundled-core-plugins) delivers the `templates` command, `make document` and the planning workflow pack; `setup` installs its starter templates. With `{"plugins": {"disabled": ["templates"]}}` the command and generator are gone and `setup` skips `bin/templates` with a warning. They produce ordinary Obsidian-compatible `.md` files without requiring Obsidian. Inspect the configuration and available inputs before generating:
 
 ```sh
-node bin/app.js config --json
-node bin/app.js templates list --json
-node bin/app.js templates inspect feature.md --json
-node bin/app.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}' --dry-run
-node bin/app.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}'
+node bin/forge.js config --json
+node bin/forge.js templates list --json
+node bin/forge.js templates inspect feature.md --json
+node bin/forge.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}' --dry-run
+node bin/forge.js make document 'Feature proposal' --template feature.md --values '{"owner":"Engineering"}'
 ```
 
-`templates inspect` and `make document` both require a `.md` template (case insensitive); other extensions fail with `INVALID_TEMPLATE` before parsing. `--template` is relative to workspace `bin/templates`; output defaults to `notes` inside the active project, or workspace when none is selected. `--out` overrides that output directory within the same scope. The title becomes the output filename, so path separators and unsafe names are rejected. New documents never overwrite existing files. Dry-run validates the rendered document and returns the complete text plus planned revision without writing or emitting file events.
+`templates inspect` and `make document` both require a `.md` template (case insensitive); other extensions fail with `INVALID_TEMPLATE` before parsing. `--template` is relative to workspace `bin/templates`; output defaults to `notes` inside the active project, or workspace when none is selected. `--out` overrides that output directory within the same scope. The title becomes the output filename, so path separators and unsafe names are rejected. New documents never overwrite existing files. Dry-run validates the rendered document and returns the complete text plus planned revision without writing or emitting `vault.*` events.
 
-Use `--values-from inputs/feature.json` instead of `--values` for large or shell-sensitive JSON input; the input path is relative to the active project, or workspace when none is selected. The two options are mutually exclusive. `--date <ISO timestamp>` supplies a reproducible clock for date/time substitutions. Configuration controls default date and time formats.
+Use `--values-from inputs/feature.json` instead of `--values` for large or shell-sensitive JSON input; the input path is relative to the active project, or workspace when none is selected. The two options are mutually exclusive. `--date <ISO timestamp>` supplies a reproducible clock for date/time substitutions. `plugins.settings.templates.dateFormat` and `timeFormat` in `bin/config.json` set the default date and time formats (`YYYY-MM-DD` and `HH:mm`); an invalid section makes the `templates` plugin unavailable with a warning.
 
 ## Syntax and safe frontmatter
 

@@ -1,0 +1,22 @@
+id: backlog-rank
+title: Add ranked backlog items under a feature
+category: backlog
+prompt: |
+  The backlog already has the Feature "Route sharing". Add two PBIs under it,
+  "Share link" and "Revoke link", with "Share link" ranked before "Revoke link".
+fixture: vault
+setup:
+  - [backlog, init, --folder, backlog]
+  - [backlog, add, Epic, Trip planning]
+  - [backlog, add, Feature, Route sharing, --parent, Trip planning]
+reference:
+  - [backlog, tree]
+  - [backlog, add, PBI, Share link, --parent, Route sharing]
+  - [backlog, add, PBI, Revoke link, --parent, Route sharing]
+checks:
+  - command: [backlog, show, Route sharing]
+    data: { pointer: /childItems, length: 2 }
+  - command: [backlog, show, Route sharing]
+    data: { pointer: /childItems/0/title, equals: Share link }
+  - command: [backlog, show, Revoke link]
+    data: { pointer: /item/type, equals: PBI }

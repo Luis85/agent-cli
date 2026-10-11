@@ -1,0 +1,117 @@
+filters:
+  and:
+    - file.inFolder("docs")
+    - file.ext == "md"
+    - file.name != "README"
+views:
+  - type: product-backlog
+    name: Backlog
+    order:
+      - horizon
+      - assignee
+      - status
+      - release
+      - priority
+      - area
+      - tags
+    sort:
+      - property: order
+        direction: ASC
+    homeFolder: docs
+    stateProperty: note.status
+    stateValues: Open, Active, Done
+    doneValues: Done, Dropped
+    targetProperty: note.due
+    startProperty: note.start
+    horizonProperty: note.horizon
+    deliverableStateValues: Open, Active, Done
+    startedDateProperty: note.started
+    finishedDateProperty: note.finished
+    openIn: split
+    riskProperty: note.risk
+    priorityProperty: note.priority
+    priorityValues: P1, P2, P3
+    assigneeProperty: note.assignee
+    dependsOnProperty: note.dependsOn
+    typeFolder.absence: docs/absences
+    iterationProperty: note.iteration
+    iterationGoalProperty: note.goal
+    releaseProperty: note.release
+  - type: product-estimation
+    name: Estimation Board
+    filters:
+      and:
+        - type == "Epic"
+    dimensions: strategic-alignment, customer-value, business-impact, reach, risk-reduction, compliance, time-criticality, enablement
+    dimProperty.strategic-alignment: note.strategic-alignment
+    dimProperty.customer-value: note.customer-value
+    dimProperty.business-impact: note.business-impact
+    dimProperty.reach: note.reach
+    dimProperty.risk-reduction: note.risk-reduction
+    dimProperty.compliance: note.compliance
+    dimProperty.time-criticality: note.time-criticality
+    dimProperty.enablement: note.enablement
+    confidenceProperty: note.confidence
+    effortProperty: note.effort
+    complexityProperty: note.complexity
+    valueProperty: note.business-value
+    stampProperty: note.business-value-model
+  - type: product-release
+    name: Release Management
+    membershipProperty: note.release
+    versionProperty: note.version
+    targetDateProperty: note.target-date
+    releaseStatusProperty: note.status
+    stateProperty: note.status
+    deliverableStateProperty: note.status
+    releasedDateProperty: note.released
+    descriptionProperty: note.description
+    estimateProperty: note.effort
+    capacityProperty: note.capacity
+    capacityUnit: points
+    releaseNotesFolder: docs/release-notes
+    releasedStatusValues: Released
+    releasedTransitionValue: Released
+    dependsOnProperty: note.dependsOn
+    riskProperty: note.risk
+  - type: product-my-work
+    name: My Work
+  - type: table
+    name: ADRs
+    filters:
+      and:
+        - file.inFolder("docs/adrs")
+    groupBy:
+      property: area
+      direction: ASC
+    order:
+      - adr
+      - file.name
+      - status
+      - area
+      - superseded-by
+    columnSize:
+      file.name: 422
+      note.status: 122
+      note.area: 152
+      note.superseded-by: 126
+  - type: table
+    name: Implementation Plans
+    filters:
+      and:
+        - file.inFolder("docs/superpowers/plans")
+  - type: table
+    name: Data Quality
+    groupBy:
+      property: type
+      direction: ASC
+    order:
+      - type
+      - parent
+      - file.name
+      - status
+      - area
+      - tags
+      - order
+    columnSize:
+      note.area: 152

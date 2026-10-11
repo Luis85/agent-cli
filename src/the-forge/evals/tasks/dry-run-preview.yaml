@@ -1,0 +1,17 @@
+id: dry-run-preview
+title: Preview a change without writing it
+category: projects
+prompt: |
+  Show what renaming People/Ada.md to People/Ada Lovelace.md would change, including the
+  notes whose links would be rewritten, but do not change any file. Answer with the
+  paths of the notes whose links would change.
+fixture: vault
+reference:
+  - [rename, People/Ada.md, Ada Lovelace, --dry-run]
+answer: Meetings/2026-10-01.md and Projects/Alpha.md would be rewritten.
+checks:
+  - answer: { items: [Meetings/2026-10-01.md, Projects/Alpha.md], ignore: [People/Ada.md] }
+  - unchanged: People/Ada.md
+  - unchanged: Projects/Alpha.md
+  - file: People/Ada Lovelace.md
+    exists: false

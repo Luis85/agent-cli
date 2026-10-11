@@ -1,0 +1,4 @@
+{
+  "sourceRoot": "src",
+  "additionalRoots": ["docs/examples", "docs/templates"]
+}

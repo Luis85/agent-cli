@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
+import { yamlDefinitions } from '../../src/plugins/agents/infrastructure/yaml-definitions.ts';
+import { ajvDefinitionSchema } from '../../src/plugins/agents/infrastructure/schema.ts';
+import { markdownFrontmatter } from '../../src/plugins/agents/infrastructure/frontmatter.ts';
+import { foreignEntries, mergeMcpServers, mergeSettings, nextManifest, parseManifest } from '../../src/plugins/agents/domain/claude-merge.ts';
+
+const team = [
+  '# Team header comment',
+  'models:',
+  '    claude: {provider: anthropic, model: claude-sonnet-5}  # inline flow map',
+  '',
+  'agents:',
+  '    root:',
+  '        model: claude',
+  "        description: 'Leads'   # keep me",
+  '        instruction: |',
+  '            Lead the team.',
+  '        toolsets:',
+  '            - type: shell',
+  '',
+  '# trailing comment',
+  'permissions:',
+  '    allow: [shell]',
+  '',
+].join('\n');
+
+describe('docker-agent YAML codec', () => {
+  it('adds an agent after the last one and leaves every other byte, comment and style unchanged', () => {
+    const edited = yamlDefinitions.addAgent(team, 'helper', { model: 'claude', description: 'Helps', instruction: 'Help.\nThen stop.\n', toolsets: [{ type: 'filesystem' }] });
+    const at = team.indexOf('\n# trailing comment');
+    expect(edited.startsWith(team.slice(0, at))).toBe(true);
+    expect(edited.endsWith(team.slice(at))).toBe(true);
+    // A blank line separates the new agent from the previous one, like the agents above it.
+    expect(edited.slice(at, edited.length - team.length + at)).toBe([
+      '',
+      '    helper:', '        model: claude', '        description: Helps', '        instruction: |', '            Help.', '            Then stop.', '        toolsets:', '            - type: filesystem', '',
+    ].join('\n'));
+    expect(Object.keys(parse(edited).agents)).toEqual(['root', 'helper']);
+  });
+
+  it('keeps CRLF line endings when adding an agent', () => {
+    const crlf = team.replaceAll('\n', '\r\n');
+    const edited = yamlDefinitions.addAgent(crlf, 'helper', { model: 'claude', instruction: 'Help.\nThen stop.\n' });
+    expect(edited.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(parse(edited).agents.helper).toEqual({ model: 'claude', instruction: 'Help.\nThen stop.\n' });
+    const flow = yamlDefinitions.addAgent('# keep\r\nagents: {root: {model: auto}}\r\n', 'b', { model: 'auto' });
+    expect(flow.replaceAll('\r\n', '')).not.toContain('\n');
+  });
+
+  it('reports YAML whose aliases expand too far as a diagnostic of that file', () => {
+    const bomb = ['a: &a [x, x, x, x, x, x, x, x, x]', ...['b', 'c', 'd', 'e', 'f', 'g'].map((key, index) => `${key}: &${key} [${Array(9).fill(`*${'abcdef'[index]}`).join(', ')}]`), 'agents: {root: {model: auto}}', ''].join('\n');
+    const parsed = yamlDefinitions.parse(bomb);
+    expect(parsed.value).toBeUndefined();
+    expect(parsed.diagnostics).toEqual([expect.objectContaining({ severity: 'error', code: 'yaml-syntax', message: expect.stringContaining('cannot be expanded') })]);
+    expect(() => yamlDefinitions.addAgent(bomb, 'x', { model: 'auto' })).toThrow(expect.objectContaining({ code: 'INVALID_YAML' }));
+  });
+
+  it('rewrites flow-style agents maps through the Document API and keeps comments', () => {
+    const edited = yamlDefinitions.addAgent('# keep\nagents: {root: {model: auto}}\n', 'b', { model: 'auto' });
+    expect(edited).toContain('# keep');
+    expect(parse(edited)).toEqual({ agents: { root: { model: 'auto' }, b: { model: 'auto' } } });
+  });
+
+  it('reports YAML errors with positions and locates JSON pointers', () => {
+    const broken = yamlDefinitions.parse('agents:\n  root: [\n');
+    expect(broken.value).toBeUndefined();
+    expect(broken.diagnostics[0]).toMatchObject({ severity: 'error', code: 'yaml-syntax', line: expect.any(Number) });
+    const parsed = yamlDefinitions.parse(team);
+    expect(parsed.locate('/agents/root/toolsets/0/type')).toEqual({ line: 12, column: 21 });
+    expect(parsed.locate('/agents/root/missing')).toEqual({ line: 7, column: 9 });
+    expect(() => yamlDefinitions.addAgent('agents: [\n', 'x', {})).toThrow(expect.objectContaining({ code: 'INVALID_YAML' }));
+  });
+
+  it('renders new files with a header and the version', () => {
+    const text = yamlDefinitions.render({ version: '16', agents: { a: { model: 'auto', instruction: 'One.\nTwo.\n' } } });
+    expect(text).toMatch(/^# docker-agent configuration/);
+    expect(text).toContain('version: "16"');
+    expect(text).toContain('instruction: |\n      One.\n      Two.\n');
+  });
+});
+
+describe('vendored JSON Schema', () => {
+  it('reports unknown keys, wrong types and enums with JSON pointers', () => {
+    const diagnostics = ajvDefinitionSchema.validate({ agents: { root: { model: 'auto', colour: 'red', toolsets: [{ type: 'teleport' }], max_iterations: 'many' } }, version: 7 });
+    expect(diagnostics.map(entry => entry.pointer)).toEqual(expect.arrayContaining(['/agents/root/colour', '/agents/root/toolsets/0/type', '/agents/root/max_iterations', '/version']));
+    expect(diagnostics.every(entry => entry.severity === 'error' && entry.code === 'schema')).toBe(true);
+    expect(ajvDefinitionSchema.validate({})).toEqual([expect.objectContaining({ pointer: '', message: expect.stringContaining('agents') })]);
+  });
+});
+
+describe('Claude file codecs and merges', () => {
+  it('round-trips frontmatter without folding long lines and rejects files without it', () => {
+    const metadata = { name: 'a', description: 'x '.repeat(80).trim(), 'x-forge-source': { path: 'agents/t.yaml', sha256: '0'.repeat(64), agent: 'a' } };
+    const text = markdownFrontmatter.render(metadata, 'Body\n');
+    expect(text.split('\n')[2]).toBe(`description: ${metadata.description}`);
+    expect(markdownFrontmatter.parse(text)).toEqual({ metadata, body: 'Body\n' });
+    expect(markdownFrontmatter.parse('---\r\nname: a\r\n---\r\nBody')).toEqual({ metadata: { name: 'a' }, body: 'Body' });
+    expect(() => markdownFrontmatter.parse('No frontmatter')).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_AGENT' }));
+  });
+
+  it('merges MCP servers and settings without clobbering unrelated keys, in the file\'s style', () => {
+    const empty = parseManifest(undefined);
+    const mcp = mergeMcpServers('{\n    "mcpServers": {\n        "mine": {"command": "x"},\n        "tools": {"command": "old"}\n    },\n    "other": true\n}', { tools: { type: 'stdio', command: 'old' } }, { mcpServers: { tools: { command: 'old' } }, settings: {} });
+    expect(mcp).toBe('{\n    "mcpServers": {\n        "mine": {\n            "command": "x"\n        },\n        "tools": {\n            "type": "stdio",\n            "command": "old"\n        }\n    },\n    "other": true\n}');
+    const settings = mergeSettings('{\r\n\t"model": "opus",\r\n\t"permissions": {"allow": ["Read"], "defaultMode": "plan"}\r\n}\r\n', { permissions: { allow: ['Read', 'Bash(ls*)'], ask: [], deny: ['WebFetch'] }, agent: 'root' }, empty);
+    expect(settings).toBe('{\r\n\t"model": "opus",\r\n\t"permissions": {\r\n\t\t"allow": [\r\n\t\t\t"Read",\r\n\t\t\t"Bash(ls*)"\r\n\t\t],\r\n\t\t"defaultMode": "plan",\r\n\t\t"deny": [\r\n\t\t\t"WebFetch"\r\n\t\t]\r\n\t},\r\n\t"agent": "root"\r\n}\r\n');
+    expect(JSON.parse(mergeSettings(undefined, { permissions: { allow: [], ask: [], deny: [] } }, empty))).toEqual({});
+    expect(() => mergeMcpServers('{', {}, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
+    expect(() => mergeSettings('{"permissions": {"allow": "Read"}}', { permissions: { allow: ['x'], ask: [], deny: [] } }, empty)).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
+  });
+
+  it('replaces only entries the manifest records with their current content', () => {
+    const manifest = parseManifest(JSON.stringify({ mcpServers: { owned: { command: 'a' }, edited: { command: 'b' } }, settings: { agent: 'lead' } }));
+    const mcp = JSON.stringify({ mcpServers: { owned: { command: 'a' }, edited: { command: 'hand' }, mine: { command: 'm' } } });
+    expect(foreignEntries(mcp, JSON.stringify({ agent: 'lead' }), manifest)).toEqual({ servers: { edited: { command: 'hand' }, mine: { command: 'm' } } });
+    expect(foreignEntries(undefined, JSON.stringify({ agent: 'mine' }), manifest)).toEqual({ servers: {}, agent: 'mine' });
+    expect(JSON.parse(mergeMcpServers(mcp, { owned: { command: 'new' } }, manifest)).mcpServers.owned).toEqual({ command: 'new' });
+    expect(() => mergeMcpServers(mcp, { mine: { command: 'other' } }, manifest)).toThrow(expect.objectContaining({ code: 'AGENT_MERGE_CONFLICT' }));
+    expect(() => mergeSettings(JSON.stringify({ agent: 'mine' }), { permissions: { allow: [], ask: [], deny: [] }, agent: 'root' }, manifest)).toThrow(expect.objectContaining({ code: 'AGENT_MERGE_CONFLICT' }));
+    expect(JSON.parse(mergeSettings(JSON.stringify({ agent: 'lead' }), { permissions: { allow: [], ask: [], deny: [] }, agent: 'root' }, manifest))).toEqual({ agent: 'root' });
+    expect(JSON.parse(nextManifest(manifest, undefined, { mcp }, { servers: { tools: { command: 't' } } }))).toMatchObject({ mcpServers: { owned: { command: 'a' }, tools: { command: 't' } }, settings: {} });
+    expect(() => parseManifest('[]')).toThrow(expect.objectContaining({ code: 'INVALID_CLAUDE_SETTINGS' }));
+  });
+});

@@ -1,0 +1,14 @@
+id: bases-add-view
+title: Add a filtered view to a Base
+category: canvas-bases
+prompt: |
+  Add a second table view named "Active" to projects.base that lists only the notes
+  whose status property is "active". Keep the existing view.
+fixture: vault
+reference:
+  - [patch, projects.base, --pointer, /views/-, --value, '{"type":"table","name":"Active","filters":"status == \"active\""}', --if-match, "{{revision:projects.base}}"]
+checks:
+  - file: projects.base
+    data: { pointer: /views/0/name, equals: Projects }
+  - command: [bases, query, projects.base, --view, Active]
+    data: { pointer: /files, equals: [Projects/Alpha.md] }

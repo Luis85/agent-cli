@@ -1,0 +1,18 @@
+id: make-entity
+title: Generate an entity in the selected project
+category: generation
+prompt: |
+  Generate a domain entity named Trip in the project "demo" under src/domain, then
+  return the workspace to workspace scope (no project selected).
+fixture: vault
+reference:
+  - [project, open, demo]
+  - [make, entity, Trip, --out, src/domain]
+  - [project, close]
+checks:
+  - file: projects/demo/src/domain/trip.ts
+    contains: [export class Trip]
+  - file: src/domain/trip.ts
+    exists: false
+  - command: [project, current]
+    data: { pointer: /project, equals: null }

@@ -1,0 +1,5 @@
+{
+  "service": "trailhead-api",
+  "retries": 3,
+  "timeoutMs": 2000
+}

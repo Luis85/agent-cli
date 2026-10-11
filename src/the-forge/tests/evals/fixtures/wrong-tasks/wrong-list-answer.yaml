@@ -1,0 +1,13 @@
+id: wrong-list-answer
+title: A list task whose reference answer is wrong
+category: reading
+prompt: |
+  Which notes are in the Projects folder of this vault? Answer with their paths.
+fixture: vault
+reference:
+  - [list, --path, "Projects/**"]
+# Wrong on purpose: there is no Projects/Gamma.md. The answer passes its own check, so only the reference
+# output can reject it.
+answer: Projects/Alpha.md and Projects/Gamma.md
+checks:
+  - answer: { items: [Projects/Alpha.md, Projects/Gamma.md] }

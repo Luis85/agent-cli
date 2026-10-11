@@ -1,0 +1,19 @@
+id: recover-stale-revision
+title: Recover from a stale revision without losing a concurrent change
+category: error-recovery
+prompt: |
+  Earlier you read Projects/Alpha.md at revision {{initial:Projects/Alpha.md}}.
+  Using that revision as --if-match, change "1. Prototype the share link." to
+  "1. Prototype the share link with expiry.". Another agent may have edited the note
+  since; keep their changes.
+fixture: vault
+setup:
+  - [edit, Projects/Alpha.md, --if-match, "{{initial:Projects/Alpha.md}}", --find, "- GPS accuracy in valleys.", --replace, "- GPS accuracy in valleys and canyons."]
+reference:
+  - run: [edit, Projects/Alpha.md, --if-match, "{{initial:Projects/Alpha.md}}", --find, "1. Prototype the share link.", --replace, "1. Prototype the share link with expiry."]
+    expect: { code: CONFLICT }
+  - [read, Projects/Alpha.md]
+  - [edit, Projects/Alpha.md, --if-match, "{{revision:Projects/Alpha.md}}", --find, "1. Prototype the share link.", --replace, "1. Prototype the share link with expiry."]
+checks:
+  - file: Projects/Alpha.md
+    contains: ["1. Prototype the share link with expiry.\n", "- GPS accuracy in valleys and canyons.\n"]

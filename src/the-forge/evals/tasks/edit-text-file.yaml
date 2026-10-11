@@ -1,0 +1,16 @@
+id: edit-text-file
+title: Edit a JSON configuration file as text
+category: editing
+prompt: |
+  Raise the retry count in src/config.json from 3 to 5. Keep the rest of the file as it is.
+fixture: vault
+reference:
+  - [read, src/config.json]
+  - [edit, src/config.json, --if-match, "{{revision:src/config.json}}", --find, '"retries": 3', --replace, '"retries": 5']
+checks:
+  - file: src/config.json
+    data: { pointer: /retries, equals: 5 }
+  - file: src/config.json
+    data: { pointer: /timeoutMs, equals: 2000 }
+  - file: src/config.json
+    contains: ['"service": "trailhead-api"']

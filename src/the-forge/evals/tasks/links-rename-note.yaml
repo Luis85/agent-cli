@@ -1,0 +1,18 @@
+id: links-rename-note
+title: Rename a note without breaking links
+category: linking
+prompt: |
+  Rename Ideas.md to "Idea Backlog.md" in the same folder. Every link to the note
+  must keep working.
+fixture: vault
+reference:
+  - [rename, Ideas.md, Idea Backlog, --if-match, "{{revision:Ideas.md}}"]
+checks:
+  - file: Ideas.md
+    exists: false
+  - file: Idea Backlog.md
+    contains: [Weather alerts along a route.]
+  - file: Home.md
+    contains: ["- [[Idea Backlog]]"]
+  - command: [links, unresolved]
+    data: { pointer: /links, length: 1 }

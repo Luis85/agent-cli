@@ -1,0 +1,63 @@
+filters:
+  and:
+    - file.ext == "md"
+    - file.inFolder("docs")
+    - file.hasProperty("requirements")
+formulas:
+  coverage: requirements.length
+views:
+  - type: table
+    name: REQ-001
+    filters: requirements.contains("REQ-001")
+    order:
+      - file.name
+      - type
+      - status
+      - formula.coverage
+    sort:
+      - property: stage
+        direction: ASC
+  - type: table
+    name: REQ-002
+    filters: requirements.contains("REQ-002")
+    order:
+      - file.name
+      - type
+      - status
+      - formula.coverage
+    sort:
+      - property: stage
+        direction: ASC
+  - type: table
+    name: REQ-003
+    filters: requirements.contains("REQ-003")
+    order:
+      - file.name
+      - type
+      - status
+      - formula.coverage
+    sort:
+      - property: stage
+        direction: ASC
+  - type: table
+    name: REQ-004
+    filters: requirements.contains("REQ-004")
+    order:
+      - file.name
+      - type
+      - status
+      - formula.coverage
+    sort:
+      - property: stage
+        direction: ASC
+  - type: table
+    name: REQ-005
+    filters: requirements.contains("REQ-005")
+    order:
+      - file.name
+      - type
+      - status
+      - formula.coverage
+    sort:
+      - property: stage
+        direction: ASC

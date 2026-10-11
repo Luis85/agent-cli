@@ -1,0 +1,17 @@
+id: links-fix-unresolved
+title: Repair an unresolved wikilink
+category: linking
+prompt: |
+  One note has a wikilink that points to a note that does not exist. Point it at the
+  existing ideas note instead and keep the rest of the sentence.
+fixture: vault
+reference:
+  - [links, unresolved]
+  - [edit, Projects/Beta.md, --if-match, "{{revision:Projects/Beta.md}}", --find, "[[Idea List]]", --replace, "[[Ideas]]"]
+checks:
+  - command: [links, unresolved]
+    data: { pointer: /links, length: 0 }
+  - file: Projects/Beta.md
+    contains: ["Related thinking lives in [[Ideas]]."]
+  - command: [links, back, Ideas.md]
+    data: { pointer: /backlinks, contains: { source: Projects/Beta.md } }

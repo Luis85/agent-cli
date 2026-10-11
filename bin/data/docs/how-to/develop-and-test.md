@@ -2,9 +2,10 @@
 
 [Documentation](../index.md) · How-to guide
 
-Use Node >=22.12, npm and GNU tar (needed by archive tests and release packaging). `npm ci` installs locked development dependencies, including Oxlint 1.86.0 and the Rust-based fallow 3.31.0 analyzer. Their platform-specific native binaries are development tools; installation requires a supported OS/architecture and npm optional dependencies. Do not use `--omit=optional`. No Rust toolchain is needed for the prebuilt npm packages. Runtime libraries include Commander for CLI parsing, Zod for configuration, unified/remark for Markdown structure, YAML for document codecs, and Day.js for template dates. Vite includes them in the executable; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because `bin/package.json` sets `type: commonjs` for `bin/app.js`; keep both files together. Packaging copies direct and transitive runtime dependency licenses and generates `THIRD-PARTY-NOTICES.md` from the lockfile.
+Use Node >=22.12, npm and GNU tar (needed by archive tests and release packaging). `npm ci` installs locked development dependencies, including Oxlint 1.86.0 and the Rust-based fallow 3.31.0 analyzer. Their platform-specific native binaries are development tools; installation requires a supported OS/architecture and npm optional dependencies. Do not use `--omit=optional`. No Rust toolchain is needed for the prebuilt npm packages. Runtime libraries include Commander for CLI parsing, Zod for configuration, unified/remark for Markdown structure, YAML for document codecs, and Day.js for template dates. Vite includes them in the executable; Node standard-library modules remain external. The release runs in both ESM and CommonJS parent projects because `bin/package.json` sets `type: commonjs` for `bin/forge.js`; keep both files together. Packaging copies direct and transitive runtime dependency licenses and generates `THIRD-PARTY-NOTICES.md` from the lockfile.
 
 ```sh
+cd src/the-forge
 npm ci
 # quick feedback while changing code
 npm run check:fast
@@ -14,22 +15,36 @@ npm run check
 npm run release
 ```
 
-`npm test` expects `bin/app.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
+Run npm from the Forge project directory `src/the-forge`; it owns `package.json`, the lockfile and `node_modules`. The workspace root has no npm toolchain. `npm test` expects the workspace `bin/forge.js` to have been built. After changing CLI source, run `npm run build` before focused bundle/integration tests; source-level unit tests can run directly. `npm run dev` watches and rebuilds the executable with Vite while retaining other bundle files; it does not refresh packaged documentation, SDK declarations, licenses, skills or configuration. `npm run build` refreshes the complete distribution. Use the full build before testing release behavior, distributing or committing artifacts.
+
+The build writes into the workspace `bin/` that `config.distribution` in `package.json` names (`../../bin`, relative to the project). Vite, `scripts/package.mjs`, `scripts/release.mjs`, the showcase script and the test support module `tests/support/workspace.ts` all read that one setting, so no script assumes the repository layout implicitly.
 
 ## Develop the selected source project
 
-Run the commands above from the repository root. Runtime source lives in `src/the-forge`; package/build configuration, tests, `scripts/` and `configs/` remain at the root. The checkout's tracked `bin/config.json` uses `paths.projects: "src"`, its `src/the-forge/.forge/project.json` marker registers the source project, and tracked `bin/data/context.json` selects `the-forge`. Confirm scope before using the bundled CLI:
+The checkout's tracked `bin/config.json` uses `paths.projects: "src"`, its `src/the-forge/.forge/project.json` marker registers the Forge project, and tracked `bin/data/context.json` selects `the-forge`. Confirm scope from the workspace root before using the bundled CLI:
 
 ```sh
-node bin/app.js project current --json
-node bin/app.js project open the-forge
-node bin/app.js read README.md --json
-node bin/app.js make entity SourceProbe --out domain/example --dry-run
+node bin/forge.js project current --json
+node bin/forge.js project open the-forge
+node bin/forge.js read src/main.ts --json
+node bin/forge.js make entity SourceProbe --out src/domain/example --dry-run
 ```
 
-These file paths resolve under `src/the-forge`. Specify a layer/concern output for self-generation: the normal `src/domain` generator default would create `src/the-forge/src/domain`. `project close` explicitly returns file commands to the repository root; reopen `the-forge` to resume source work. Setup and builds preserve the saved selection, including an intentional closed selection. Release packaging restores generic configuration and omits the checkout selection in the archive.
+These file paths resolve relative to the project root `src/the-forge`, the same way they resolve in any generated project: `read README.md` reads the project README, `read src/main.ts` the runtime entry, and `--out src/domain/<concern>` targets a source layer concern. `project close` explicitly returns file commands to the workspace root; reopen `the-forge` to resume project work. Setup and builds preserve the saved selection, including an intentional closed selection. Release packaging restores generic configuration and omits the checkout selection in the archive.
 
-The repository's `configs/quality/source.json` declares `sourceRoot: "src/the-forge"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source and authored asset code rather than all sibling managed projects in `src`. This quality policy is independent of the CLI's selected project. Run another project's own checks from its directory. Portable generated projects without this policy continue to use their ordinary `src` source root.
+The project's `configs/quality/source.json` declares `sourceRoot: "src"` and `additionalRoots: ["docs/examples", "docs/templates"]`. Source inventory, lint and analysis include Forge source, `tests`, `scripts`, root configuration files and authored asset code. Sibling managed projects such as `src/forge-showcase` live outside the project directory, so they are never part of Forge's checks; run each project's own checks from its directory. This quality policy is independent of the CLI's selected project. Portable generated projects without this policy continue to use their ordinary `src` source root.
+
+## Documentation vault check
+
+The project's documentation is an Obsidian-compatible vault. The checkout's tracked workspace `bin/config.json` sets `plugins.settings.vault-check.ignore` to `src/README.md`, `tests/**` and `evals/fixtures/**`; the globs are relative to the selected project, so from the workspace root, with `the-forge` selected, `node bin/forge.js vault check --strict` passes. They match no vault file of `src/forge-showcase`, which stays fully checked when it is selected, and with no project selected they match nothing, so `project close` checks everything. `tests/vault-check/docs-vault.integration.test.ts` reads the same settings from `bin/config.json` and runs the check over the whole project in the full gate, and once more over `README.md`, `docs/**` and `skills/**`. Builds keep the checkout's `bin/config.json`; release archives replace it with the generic defaults. Three kinds of files stay outside the check on purpose: `src/README.md` and `tests/README.md` link folders (`[cli](cli/)`) for navigation on GitHub, which Obsidian cannot resolve; `tests/` holds fixture vaults whose links are broken deliberately; and `evals/fixtures/` is the [agent evaluation](evaluate-agents.md) vault, whose unresolved `[[Idea List]]` link and unlinked `Scratch.md` are what its tasks ask agents to repair. An error finding anywhere else is a real defect: fix the link rather than adding an exclusion.
+
+## Showcase drift check
+
+`src/forge-showcase` is a committed, fully generated example project; see [explore the showcase](explore-the-showcase.md). `npm run showcase:check` regenerates it into a temporary workspace through the current `bin/forge.js` and lists every differing path; it never modifies the checkout. The end-to-end test `tests/showcase/showcase.e2e.test.ts` runs the same check (about 45 seconds alone, up to about 90 seconds under the full parallel suite) and also queries its Bases, validates its Canvas and checks UI and adapter drift through the CLI. When a change alters generated output, rebuild, run `npm run showcase`, review the showcase diff and commit it with the change. Forge's quality inventory excludes the showcase; run its own `npm ci` and `npm run check` from `src/forge-showcase` when its toolchain or generated code changes.
+
+## Agent evaluation tasks
+
+`evals/tasks/*.yaml` are agent tasks with fixtures and deterministic checks. `npm run eval` replays their reference commands, and `tests/evals/reference.e2e.test.ts` does the same inside `npm run check`, so a change that breaks a task's reference sequence or makes a check vacuous fails the gate. When a command's behavior or output changes, update the affected tasks; measure agents with the opt-in `claude` driver as described in [evaluate agents](evaluate-agents.md).
 
 ## Agent feedback loop
 
@@ -52,7 +67,7 @@ After the targeted checks pass, run `npm run check` once as the final gate. It r
 
 ## Verification
 
-Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, forms, generation, plugins, projects, quality, templates, UI and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
+Tests are grouped by concern under `tests/<concern>/`: architecture, CLI, data sources, distribution, documentation, documents, evals, forms, generation, plugins, projects, quality, showcase, skills, templates, UI, workflows and workspace. The repository's `tests/README.md` indexes those boundaries. Keep helpers shared across concerns in `tests/support`; place concern-specific fixtures near their consumers. Directory grouping describes ownership; filename suffixes describe verification scope.
 
 Every test has an explicit pyramid rank in its filename and runs in the matching named Vitest project:
 
@@ -64,9 +79,9 @@ Every test has an explicit pyramid rank in its filename and runs in the matching
 
 Put most behavioral cases in focused unit tests, test real boundaries with integration tests, and keep end-to-end cases for complete workflows. Choose the layer by what a test exercises, including when splitting pure parser/graph assertions away from filesystem or lifecycle integration tests. A concern folder can contain multiple ranks. Run `npm run build` before tests that execute the bundle; the full `check` does this automatically.
 
-`npm run lint` uses Oxlint's `max-lines` rule with `skipBlankLines` and `skipComments` to enforce **400 code-bearing lines per authored source file** and **450 per test file or test-support file under `tests/`**. Blank and comment-only lines are excluded; lines containing both code and comments count. The inventory covers authored JavaScript/TypeScript in configured `src/the-forge`, `docs/examples` and `docs/templates`, plus `scripts`, `tests` and root configuration files. Generated `bin` artifacts are excluded. When approaching a limit, extract a cohesive responsibility or split tests by behavior; do not compress statements, remove useful comments or rename files just to evade a limit. Line-limit findings appear in `.quality-reports/oxlint.json`.
+`npm run lint` uses Oxlint's `max-lines` rule with `skipBlankLines` and `skipComments` to enforce **400 code-bearing lines per authored source file** and **450 per test file or test-support file under `tests/`**. Blank and comment-only lines are excluded; lines containing both code and comments count. The inventory covers authored JavaScript/TypeScript in the configured project `src`, `docs/examples` and `docs/templates`, plus `scripts`, `tests` and root configuration files. Generated `bin` artifacts are excluded. When approaching a limit, extract a cohesive responsibility or split tests by behavior; do not compress statements, remove useful comments or rename files just to evade a limit. Line-limit findings appear in `.quality-reports/oxlint.json`.
 
-`npm run check:structure` checks test-pyramid suffixes, requires tests under `tests/`, and enforces Forge's `src/the-forge/<layer>/<concern>/` layout. It saves `.quality-reports/structure.json` using the same diagnostic envelope as lint/analysis. Use `node scripts/quality/structure.mjs --source-layout forge` for JSON stdout without npm's banner. The generated-project copy runs without that switch and keeps its own scaffold layout. See the source repository’s `src/the-forge/README.md` for placement rules. The TypeScript gate uses the official `tsc` compiler for application source and an explicit inventory of all test/support files, including hidden paths and JavaScript with `allowJs`/`checkJs`. This avoids files being silently omitted by compiler globs. Passing Vitest execution alone does not replace type checking.
+`npm run check:structure` checks test-pyramid suffixes, requires tests under `tests/`, and enforces Forge's `src/<layer>/<concern>/` layout. It saves `.quality-reports/structure.json` using the same diagnostic envelope as lint/analysis. Use `node scripts/quality/structure.mjs --source-layout forge` for JSON stdout without npm's banner. The generated-project copy runs without that switch and keeps its own scaffold layout. See the project's `src/README.md` for placement rules. The TypeScript gate uses the official `tsc` compiler for application source and an explicit inventory of all test/support files, including hidden paths and JavaScript with `allowJs`/`checkJs`. This avoids files being silently omitted by compiler globs. Passing Vitest execution alone does not replace type checking.
 
 Vitest exercises Canvas invariants, YAML/frontmatter preservation, optimistic revisions, no-write previews, path and symlink rejection, batch collision preflight, event delivery/lifecycle, and the standalone JSON protocol. End-to-end tests copy the bundle to a temporary directory without `node_modules` and invoke it through Node. Every accepted attachment extension gets a binary round-trip test; these tests establish byte fidelity, not media codec validity. Tests also load an external runtime plugin from the copied bundle. An architecture test rejects infrastructure or Node imports in domain/application code.
 
@@ -81,5 +96,34 @@ Generated boilerplate must be reviewed and tested in its destination project. Do
 5. Diagnose and fix failed checks, rerun the failed stage, then run `npm run check`. Review the source and rebuilt artifact diff and commit both.
 
 No global dependency container, Obsidian process or npm runtime installation is required. Prefer explicit collaborators and domain terms over generic helper layers.
+
+## Platform matrix
+
+GitHub Actions runs the full gate (`npm ci`, then `npm run check`, both in `src/the-forge`) for manual dispatches and for every pull request and push to `main` that touches the Forge project, the workspace `bin/` or the generated workflow itself. Pushes to other branches run only through their pull request, so each change runs the matrix once. The workflow is authored in `src/infrastructure/workflows/check/check.yml` and synchronized to `.github/workflows/the-forge--check.yml` by `node bin/forge.js workflows sync`; a separate guard workflow runs `workflows sync --check` on every pull request. See [workflows](../reference/workflows.md).
+
+| Runner | Node | Additional steps |
+| --- | --- | --- |
+| `ubuntu-latest` | 22.12.0, 24 | Verifies that the committed `bin/` matches the fresh build, then builds and uploads the release archive |
+| `windows-latest` | 22.12.0, 24 | Runs steps in Git Bash and puts Git's GNU tar first on `PATH` |
+| `macos-latest` | 22.12.0, 24 | Puts Homebrew's GNU tar (`gnubin`) first on `PATH` |
+
+The committed bundle is the Linux build. Windows and macOS verify behavior, not identical bundle bytes. Workflow actions are pinned to full commit SHAs.
+
+`.gitattributes` checks out text files with LF line endings on every platform, regardless of `core.autocrlf`, and marks media and archive types as binary. Revisions hash raw bytes, so a checkout that converted line endings would change every revision and break byte comparisons between packaged and source files.
+
+Keep tests portable:
+
+- Build expected OS paths with `node:path` (`join`, `basename`), and pass POSIX workspace paths (`notes/a.md`) to the CLI and repository ports.
+- The CLI reports canonical roots (`realpath`). Canonicalize temporary directories before comparing them or running toolchains such as Vite in them, because macOS `/var` links to `/private/var` and Windows can report 8.3 short names. `tests/support/portable-cli.ts` already does this.
+- Start npm through a shell (`exec('npm run ...')`). On Windows, npm is a `.cmd` shim that Node only starts through a shell.
+- Use `'junction'` when linking `node_modules` into fixtures. Junctions need no symlink privilege on Windows, and other platforms ignore the type. Symlink-rejection tests still create real symlinks, which the Windows runners allow.
+- Run `tar` with relative paths from a working directory. GNU tar reads `C:\...` as a remote host name.
+- Pass `-c core.autocrlf=false` when a test lets Git write files. Git for Windows enables `core.autocrlf` globally and would write CRLF.
+- Remove temporary directories that a terminated child process used with `rm(..., { maxRetries })`. Windows can keep the working directory busy (`EBUSY`) for a moment after termination.
+- A child that closes its input early fails the parent's write with `EPIPE` on POSIX but `EOF` on Windows.
+- Do not assume POSIX permission bits, signals or process groups. Windows reports writable files as `0o666`. Skip a test on `win32` only when the behavior it checks cannot exist there, and give the reason in a comment. The current skips are the Claude runtime signal and process-group cases and the installed-lifecycle fixture that executes a script through its shebang.
+- macOS and Windows file systems are case-insensitive by default. Detect case sensitivity at runtime when a test depends on it, as `tests/workspace/portability.integration.test.ts` does.
+
+`npm test` raises Vitest's default test and hook timeouts to 30 seconds, because creating processes on Windows runners is much slower than on Linux.
 
 For publishing a validated distribution archive, see [build a release](release.md).
