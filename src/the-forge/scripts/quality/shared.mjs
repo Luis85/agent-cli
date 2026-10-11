@@ -99,8 +99,11 @@ export function runTool(name, args) {
 /** @param {string} tool @param {string[]} errors @param {unknown} report @param {string[] | undefined} scope */
 export function finish(tool, errors, report, scope) {
   const result = { tool, ok: errors.length === 0, errors, scope, report };
+  const saved = `.quality-reports/${tool}.json`;
   mkdirSync('.quality-reports', { recursive: true });
-  writeFileSync(`.quality-reports/${tool}.json`, `${JSON.stringify(result, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  writeFileSync(saved, `${JSON.stringify(result, null, 2)}\n`);
+  // A failure prints everything. A pass prints a summary; the saved report keeps the scope and the tool's report.
+  const printed = result.ok ? { tool, ok: true, errors, files: scope?.length ?? null, report: saved } : result;
+  process.stdout.write(`${JSON.stringify(printed, null, 2)}\n`);
   process.exitCode = result.ok ? 0 : 1;
 }

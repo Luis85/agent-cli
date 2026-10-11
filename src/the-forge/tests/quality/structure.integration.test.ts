@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -18,10 +19,12 @@ async function fixture() {
   return root;
 }
 
+/** Run a quality script; `output` is the full evidence it saved, `printed` what it wrote to standard output. */
 function check(root: string, task = 'structure', args: string[] = []) {
   const result = spawnSync(process.execPath, [`scripts/quality/${task}.mjs`, ...args], { cwd: root, encoding: 'utf8' });
   if (result.error) throw result.error;
-  return { status: result.status, output: JSON.parse(result.stdout) };
+  const saved = join(root, `.quality-reports/${task === 'lint' ? 'oxlint' : task}.json`);
+  return { status: result.status, printed: JSON.parse(result.stdout), output: JSON.parse(readFileSync(saved, 'utf8')) };
 }
 
 describe('structure quality gate', () => {
@@ -32,7 +35,8 @@ describe('structure quality gate', () => {
     await writeFile(join(root, 'tests/fixture.ts'), 'void 0;\n'.repeat(450) + '\n'.repeat(450));
     const result = check(root);
     expect(result.status).toBe(0);
-    expect(JSON.parse(await readFile(join(root, '.quality-reports/structure.json'), 'utf8'))).toEqual(result.output);
+    // A pass prints a summary of the saved evidence; a failure prints the evidence itself.
+    expect(result.printed).toEqual({ tool: 'structure', ok: true, errors: [], files: result.output.scope.length, report: '.quality-reports/structure.json' });
     const lint = check(root, 'lint');
     expect(lint.output.report.diagnostics).toEqual([]);
     expect(lint.status).toBe(0);

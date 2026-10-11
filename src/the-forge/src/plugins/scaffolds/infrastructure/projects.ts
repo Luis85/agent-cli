@@ -50,6 +50,8 @@ export function projectScaffold(name: string, projectsDirectory: string): WriteR
       },
       dependencies: { zod: '4.6.5' },
       devDependencies: { '@types/node': '22.20.5', fallow: '3.31.0', oxlint: '1.86.0', typescript: '5.9.3', vite: '7.3.7', vitest: '5.0.3' },
+      // npm 11 runs only approved dependency install scripts: esbuild's verifies its binary; fsevents ships prebuilt.
+      allowScripts: { esbuild: true, fsevents: false },
     }),
     'scripts/quality/typecheck.mjs': typecheckScript,
     'scripts/quality/structure.mjs': structureScript,
@@ -64,7 +66,8 @@ export function projectScaffold(name: string, projectsDirectory: string): WriteR
       // ui/ holds framework UI generated for downstream applications; their frameworks are not this library's dependencies.
       ignorePatterns: ['demo-dist/**', 'ui/**'],
       failOnParseError: true,
-      rules: { 'unused-dev-dependencies': 'error', 'unused-optional-dependencies': 'error', 'boundary-violation': 'error' },
+      // No policy rule packs: state it, so fallow does not report an unmeasured policy check.
+      rules: { 'unused-dev-dependencies': 'error', 'unused-optional-dependencies': 'error', 'boundary-violation': 'error', 'policy-violation': 'off' },
       boundaries: {
         zones: [
           { name: 'domain', patterns: ['src/domain/**'] },
