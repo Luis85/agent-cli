@@ -15,6 +15,19 @@ The Forge is a terminal project companion for AI-assisted project and product de
 
 ## Use the CLI
 
+Install **0.1.0** in another repository or a new workspace from [GitHub Releases](https://github.com/Luis85/agent-cli/releases/tag/v0.1.0):
+
+```sh
+curl -fL https://github.com/Luis85/agent-cli/releases/download/v0.1.0/install-forge.mjs -o install-forge.mjs
+node install-forge.mjs --version 0.1.0 --workspace ./my-workspace
+cd my-workspace
+node bin/forge.js project create my-project --dry-run
+node bin/forge.js project create my-project
+node bin/forge.js project open my-project
+```
+
+The installer verifies the archive checksum, uses generic defaults and refuses an existing `bin/`. See the [agent installation workflow](src/the-forge/docs/how-to/install.md) for Windows and offline installation. Installation needs Node >=22.12, curl and tar; no npm dependencies or repository source are required.
+
 Requires **Node 22.12 or newer**. The committed `bin/` needs no installation. This checkout manages its own source: tracked `bin/config.json` sets `paths.projects` to `src`, and tracked `bin/data/context.json` selects `the-forge`, so file commands resolve inside `src/the-forge` until you select another project.
 
 ```sh

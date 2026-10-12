@@ -65,4 +65,6 @@ try {
 } finally { await rm(staging, { recursive: true, force: true }); }
 const hash = createHash('sha256').update(await readFile(archive)).digest('hex');
 await writeFile(`${archive}.sha256`, `${hash}  forge-${version}.tar.gz\n`);
+await copyFile('scripts/install-forge.mjs', 'release/install-forge.mjs');
+await copyFile(`docs/releases/${version}.md`, 'release/release-notes.md');
 console.log(archive);

@@ -19,6 +19,8 @@
     "test": "vitest run",
     "check": "npm run check:fast && npm run build && npm test && npm run showcase:check",
     "release": "npm run check && node scripts/release.mjs",
+    "release:smoke": "node scripts/release-smoke.mjs",
+    "install:release": "node scripts/install-forge.mjs",
     "lint": "node scripts/quality/lint.mjs",
     "analyze": "node scripts/quality/analyze.mjs",
     "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
