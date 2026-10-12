@@ -1433,6 +1433,7 @@ const textExtensions = [
   "csv",
   "tsv",
   "sh",
+  "ps1",
   "py",
   "sql"
 ];

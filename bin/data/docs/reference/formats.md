@@ -67,9 +67,9 @@ Known limit: parsing one note takes time quadratic in the number of separate lis
 
 ## UTF-8 text
 
-`.ts .tsx .mts .cts .js .jsx .mjs .cjs .json .jsonc .yaml .yml .toml .ini .css .scss .less .html .htm .xml .vue .svelte .txt .log .csv .tsv .sh .py .sql` files have kind `text`. `read` returns `{kind:"text",content}` with the exact decoded text, including any BOM and line endings. `list --kind text` selects them. `edit` appends or replaces exactly one literal match with the same revision guard as Markdown, and `write`/`create` replace or create them. `properties` stays Markdown-only and `patch` stays Canvas/Bases-only.
+`.ts .tsx .mts .cts .js .jsx .mjs .cjs .json .jsonc .yaml .yml .toml .ini .css .scss .less .html .htm .xml .vue .svelte .txt .log .csv .tsv .sh .ps1 .py .sql` files have kind `text`. `read` returns `{kind:"text",content}` with the exact decoded text, including any BOM and line endings. `list --kind text` selects them. `edit` appends or replaces exactly one literal match with the same revision guard as Markdown, and `write`/`create` replace or create them. `properties` stays Markdown-only and `patch` stays Canvas/Bases-only.
 
-Classification uses the extension; the content decides the representation. Bytes that are not valid UTF-8 read as `{kind:"attachment",encoding:"base64",content}`, `validate` fails with `INVALID_ENCODING`, and `edit` refuses them, while `write` still stores the bytes losslessly. `validate` reports valid text as `validation:"utf8"`; it does not parse JSON, YAML or source syntax, so a `tsconfig.json` with comments is accepted. SVG remains an image.
+Classification uses the extension; the content decides the representation. Bytes that are not valid UTF-8 read as `{kind:"attachment",encoding:"base64",content}`, `validate` fails with `INVALID_ENCODING`, and `edit` refuses them, while `write` still stores the bytes losslessly. `validate` reports valid text as `validation:"utf8"`; it does not parse JSON, YAML or source syntax, so a `tsconfig.json` with comments is accepted. PowerShell `.ps1` files follow the same UTF-8 contract: a UTF-8 BOM and line endings are preserved, while UTF-16 files with a BOM remain base64 attachments and cannot be edited as text. These commands do not execute scripts or convert their encoding. SVG remains an image.
 
 ## Canvas
 

@@ -37,7 +37,7 @@ export const nativeFormats = {
 /** Source, data and configuration files read and edited as UTF-8 text. Extensionless names and dotfiles stay attachments. */
 export const textExtensions = [
   'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini',
-  'css', 'scss', 'less', 'html', 'htm', 'xml', 'vue', 'svelte', 'txt', 'log', 'csv', 'tsv', 'sh', 'py', 'sql',
+  'css', 'scss', 'less', 'html', 'htm', 'xml', 'vue', 'svelte', 'txt', 'log', 'csv', 'tsv', 'sh', 'ps1', 'py', 'sql',
 ] as const;
 export const fileKinds = [...Object.keys(nativeFormats), 'text', 'attachment'];
 export function fileKind(path: string): string {

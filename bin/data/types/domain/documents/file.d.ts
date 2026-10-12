@@ -17,7 +17,7 @@ export declare const nativeFormats: {
     readonly pdf: readonly ["pdf"];
 };
 /** Source, data and configuration files read and edited as UTF-8 text. Extensionless names and dotfiles stay attachments. */
-export declare const textExtensions: readonly ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "yaml", "yml", "toml", "ini", "css", "scss", "less", "html", "htm", "xml", "vue", "svelte", "txt", "log", "csv", "tsv", "sh", "py", "sql"];
+export declare const textExtensions: readonly ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "yaml", "yml", "toml", "ini", "css", "scss", "less", "html", "htm", "xml", "vue", "svelte", "txt", "log", "csv", "tsv", "sh", "ps1", "py", "sql"];
 export declare const fileKinds: string[];
 export declare function fileKind(path: string): string;
 export declare const isStructured: (path: string) => boolean;
