@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
+import { chromium } from 'playwright-core';
 import { createBrowserRuntime } from '../../src/plugins/browser/infrastructure/runtime.ts';
 import { tutorialPlan } from '../../src/plugins/browser/domain/tutorial.ts';
 
@@ -68,7 +69,9 @@ console.log('private installer progress');`);
   });
 });
 
-const executable = process.env.FORGE_BROWSER_EXECUTABLE ?? (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+const executable = process.env.FORGE_BROWSER_EXECUTABLE ?? (process.env.FORGE_BROWSER_TESTS === '1'
+  ? chromium.executablePath()
+  : process.env.FORGE_BROWSER_TESTS !== '0' && existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
 describe.skipIf(!executable)('real isolated Chromium capture', () => {
   async function pageFixture() {
     const installed = await fixture(true);

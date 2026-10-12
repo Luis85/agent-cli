@@ -958,7 +958,7 @@ class NodeServerController {
         });
         if (!response.ok) throw new Error("Shutdown rejected.");
         const deadline = Date.now() + 5e3;
-        while (processAlive(state2.pid)) {
+        while (process.platform === "win32" ? processAlive(state2.pid) : await healthy(state2)) {
           if (Date.now() >= deadline) throw new Error("Shutdown timed out.");
           await new Promise((resolve2) => setTimeout(resolve2, 75));
         }

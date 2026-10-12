@@ -106,7 +106,7 @@ export class NodeServerController implements ServerController {
         const deadline = Date.now() + 5000;
         // A closed listener does not mean the daemon has released its workspace.
         // Windows keeps the working directory locked until the process exits.
-        while (processAlive(state.pid)) {
+        while (process.platform === 'win32' ? processAlive(state.pid) : await healthy(state)) {
           if (Date.now() >= deadline) throw new Error('Shutdown timed out.');
           await new Promise(resolve => setTimeout(resolve, 75));
         }
