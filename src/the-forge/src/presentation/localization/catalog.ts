@@ -1,6 +1,7 @@
 import { germanServerActions, germanServerCommands } from '../server/messages.ts';
 
 export const germanCommands = {
+  'read-many': 'Bis zu 32 Dateien nacheinander mit Revisionen und einer Gesamtgrenze von 8 MiB Rohdaten lesen.',
   ...germanServerCommands,
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
   schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',

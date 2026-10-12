@@ -58,6 +58,8 @@ node bin/forge.js project inspect idea-board --json
 
 A webview owns its Vue 3/Nuxt UI source, local sample data, build configuration, package and Playwright tests. Creation does not install dependencies or change selection. Build and test from the returned directory, then use `node bin/forge.js webview publish --project idea-board` and `server start --webview idea-board` for the packaged preview. See [prototype a webview](prototype-webviews.md) for installation, screenshots, guarded publication and repeat iterations. `project component` is for library projects; edit a webview's ordinary Vue source directly.
 
+For parallel reads and edits, [target a project for one invocation](target-projects.md) with `read`, `read-many` or `apply --project <id>`. This leaves saved selection unchanged. Read related files with [bounded batch reads](read-many.md).
+
 ## Persistent project context
 
 `project open <id>` selects a managed project for subsequent invocations. It persists in workspace `bin/data/context.json`; there is no interactive shell or long-running process. Check `project current` and its `data.project` before a series of edits. Read target files and verify those responses' `context.root` before applying changes. With `knowledge-core` open:

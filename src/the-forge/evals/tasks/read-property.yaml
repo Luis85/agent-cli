@@ -1,13 +1,24 @@
 id: read-property
-title: Read frontmatter properties of a note
+title: Read note properties and revisions in a batch
 category: reading
 prompt: |
-  What is the status of the project note Projects/Alpha.md, and who owns it?
-  Answer with both values.
+  Read Projects/Alpha.md and Projects/Beta.md together with read-many in that order,
+  retaining their current revisions. What is the status of Projects/Alpha.md, and
+  who owns it? Answer with both values. Leave both notes unchanged.
 fixture: vault
 reference:
+  - [read-many, Projects/Alpha.md, Projects/Beta.md]
   - [read, Projects/Alpha.md]
 answer: Alpha is active and owned by People/Ada.
 checks:
   - answer: { contains: [active, Ada], notContains: [planned] }
   - unchanged: Projects/Alpha.md
+  - unchanged: Projects/Beta.md
+  - command: [read-many, Projects/Alpha.md, Projects/Beta.md]
+    data: { pointer: /files/0/path, equals: Projects/Alpha.md }
+  - command: [read-many, Projects/Alpha.md, Projects/Beta.md]
+    data: { pointer: /files/1/path, equals: Projects/Beta.md }
+  - command: [read-many, Projects/Alpha.md, Projects/Beta.md]
+    data: { pointer: /files/0/revision, length: 64 }
+  - command: [read-many, Projects/Alpha.md, Projects/Beta.md]
+    data: { pointer: /files/1/revision, length: 64 }
