@@ -15,6 +15,32 @@ const node_vm = require("node:vm");
 const node_util = require("node:util");
 const process$1 = require("node:process");
 const node_events = require("node:events");
+function standardOutput() {
+  let reportedFailure = false;
+  function failed(error2) {
+    const value2 = error2 !== null && typeof error2 === "object" && "code" in error2 ? error2.code : void 0;
+    const code2 = typeof value2 === "string" && /^[A-Z][A-Z0-9_]{0,31}$/.test(value2) ? value2 : "UNKNOWN";
+    if (code2 === "EPIPE" || code2 === "EOF") process.exit(process.exitCode ?? 0);
+    process.exitCode ||= 1;
+    if (reportedFailure) return;
+    reportedFailure = true;
+    try {
+      process.stderr.write(`The Forge could not write standard output (${code2}). Check the output destination and available storage. Command effects may already be committed; inspect state before retrying.
+`);
+    } catch {
+    }
+  }
+  process.stdout.on("error", failed);
+  process.stderr.on("error", () => {
+  });
+  return (text2) => {
+    try {
+      process.stdout.write(text2);
+    } catch (error2) {
+      failed(error2);
+    }
+  };
+}
 const categoryExitCodes = {
   input: 2,
   conflict: 2,
@@ -19051,7 +19077,7 @@ function vmSearchBudget(milliseconds) {
 const defaultSearchLimit = 100;
 const text$i = { type: "string" };
 const lines = { type: "array", items: text$i };
-const output = {
+const output$1 = {
   type: "object",
   required: ["hits", "total"],
   properties: {
@@ -19095,7 +19121,7 @@ function searchCommand(service) {
       limit: option$1.string("Maximum hits per page; a truncated page returns nextCursor.", { default: String(defaultSearchLimit) }),
       cursor: option$1.string("Continue after the page that returned this nextCursor, with the same pattern and filters.")
     },
-    output,
+    output: output$1,
     errors: ["INVALID_SEARCH_PATTERN", "SEARCH_TIMEOUT"],
     async run(args, flags, context) {
       arity(args, 1);
@@ -69946,17 +69972,14 @@ async function run() {
     await quitInvocation(events2);
     await registry2.dispose(events2);
   }
+  let response;
   try {
-    process.stdout.write(JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }, null, compact ? void 0 : 2) + "\n");
+    response = JSON.stringify({ ...result, ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }, null, compact ? void 0 : 2) + "\n";
   } catch {
     process.exitCode = 1;
-    process.stdout.write(JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n");
+    response = JSON.stringify({ ok: false, error: localizer.error(forgeError("INVALID_RESULT", "Command returned non-serializable data. Inspect committed events before retrying.")), ...activeContext ? { context: activeContext } : {}, events: selectEventOutput(events2.history, eventLevel), warnings: events2.warningRecords.map((warning2) => localizer.warning(warning2)) }) + "\n";
   }
+  output(response);
 }
-process.stdout.on("error", (error2) => {
-  if (error2.code !== "EPIPE" && error2.code !== "EOF") throw error2;
-  process.exit(process.exitCode ?? 0);
-});
-process.stderr.on("error", () => {
-});
+const output = standardOutput();
 void run();
