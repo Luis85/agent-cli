@@ -9,13 +9,16 @@ const commands = {
   skill: ['skills', 'show', 'forge-backlog'],
   serverStatus: ['server', 'status'],
   serverHelp: ['help', 'server'],
+  webviewHelp: ['help', 'webview'],
+  webviewSkill: ['skills', 'show', 'forge-webviews'],
+  browserHelp: ['help', 'browser'],
 };
 
 /**
  * @typedef {{ annotations: Record<string, unknown>, operations: string[] }} ApplyContract
  * @typedef {{ description: string, actions: [string, string][] }} LocalizedHelp
  * @typedef {{ running: boolean, stale: boolean, server: null, url: null, webviews: unknown[] }} InactiveServer
- * @typedef {{ apply: ApplyContract, help: LocalizedHelp, skills: string[], skill: { id: string, description: string }, server: { status: InactiveServer, description: string, actions: string[] } }} Contract
+ * @typedef {{ apply: ApplyContract, help: LocalizedHelp, skills: string[], skill: { id: string, description: string }, server: { status: InactiveServer, description: string, actions: string[] }, webview: { description: string, actions: string[], skill: string }, browser: { description: string, actions: string[] } }} Contract
  */
 
 /**
@@ -24,7 +27,7 @@ const commands = {
  */
 export async function readContract(cli) {
   cli.begin('Contract and skills');
-  const [schema, help, skills, skill, serverStatus, serverHelp] = await cli.runConcurrently([commands.schema, commands.help, commands.skills, commands.skill, commands.serverStatus, commands.serverHelp]);
+  const [schema, help, skills, skill, serverStatus, serverHelp, webviewHelp, webviewSkill, browserHelp] = await cli.runConcurrently([commands.schema, commands.help, commands.skills, commands.skill, commands.serverStatus, commands.serverHelp, commands.webviewHelp, commands.webviewSkill, commands.browserHelp]);
   if (serverStatus.data.running || serverStatus.data.stale) throw new Error('The showcase temporary workspace must not have a running or stale server.');
   const apply = schema.data.commands.find((/** @type {any} */ command) => command.id === 'apply');
   const plan = apply.args[0].schema.properties.operations.items.oneOf;
@@ -37,6 +40,8 @@ export async function readContract(cli) {
     skills: skills.data.skills,
     skill: { id: skill.data.id, description },
     server: { status: serverStatus.data, description: serverHelp.data.description, actions: Object.keys(serverHelp.data.annotations.actions) },
+    webview: { description: webviewHelp.data.description, actions: Object.keys(webviewHelp.data.annotations.actions), skill: webviewSkill.data.id },
+    browser: { description: browserHelp.data.description, actions: Object.keys(browserHelp.data.annotations.actions) },
   };
 }
 
@@ -92,6 +97,26 @@ export function contractSection(contract) {
     `Available actions: ${contract.server.actions.map(action => '`' + action + '`').join(', ')}.`,
     '',
     'To inspect the containing workspace yourself, run `node bin/forge.js server start --webview admin --json` from its root and open `data.url`. The read-only view reports context, projects, plugins, counts and runtime health. End the session with `node bin/forge.js server stop`. The server uses localhost and preserves project selection; the launch link includes a local session token.',
+    '',
+    '### Self-contained webview prototypes',
+    '',
+    `> ${contract.webview.description}`,
+    '',
+    `Available actions: ${contract.webview.actions.map(action => '`' + action + '`').join(', ')}. The \`${contract.webview.skill}\` skill guides the creation, review, publication and browser verification loop.`,
+    '',
+    'Create a separate Vue 3 + Nuxt UI project with `node bin/forge.js project create product-preview --type webview --dry-run`, review the files, then repeat without `--dry-run`. The generated project owns its local sample data, dependencies, build, tests and Playwright screenshots. Install dependencies and run its checks inside the returned project directory.',
+    '',
+    'After building, run `node bin/forge.js webview inspect --project product-preview`, preview publication with `webview publish --project product-preview --dry-run`, then publish and launch with `server start --webview product-preview`. For changed publications, pass the installed revision from inspection as `--if-match`. Custom views remain user-owned across core rebuilds and are excluded from Forge releases. Generation of this showcase only reads the contract; it does not install dependencies, publish a prototype or start a server.',
+    '',
+    '### Screenshots and illustrated tutorials',
+    '',
+    `> ${contract.browser.description}`,
+    '',
+    `Available actions: ${contract.browser.actions.map(action => '`' + action + '`').join(', ')}. The \`forge-browser\` skill connects browser evidence with the Markdown documentation workflow.`,
+    '',
+    'Use `browser screenshot <url> --out docs/screenshots/page.png --dry-run` to preview an image destination, then capture it after explicitly installing or selecting Chromium. The command returns capture metadata and a Markdown image reference. Existing screenshots require their inspected revision before replacement.',
+    '',
+    'For a manual, the agent translates the supplied Markdown or Canvas into a reviewable versioned flow. `browser validate <source> --out docs/manual` checks the flow without opening a browser; `browser tutorial <source> --out docs/manual --dry-run` previews publication. Running the tutorial writes `index.md`, step screenshots and `flow.json` together after successful playback. Dry runs never interact with the website. This showcase reads only the contract and does not install or launch a browser.',
     '',
     '### Agent Skills',
     '',

@@ -52,6 +52,8 @@ export const isStructured = (path: string) => ['markdown', 'canvas', 'base'].inc
 export const isTextLike = (path: string) => isStructured(path) || fileKind(path) === 'text';
 
 export interface FileSnapshot { path: string; bytes: Uint8Array; revision: string }
+/** A check-only file or folder condition; an omitted revision requires the path to be absent. */
+export interface GuardRequest { path: string; expectedRevision?: string }
 export interface WriteRequest { path: string; bytes: Uint8Array; expectedRevision?: string }
 export interface FileChange { path: string; revision: string; operation: 'created' | 'updated' | 'deleted'; bytes: number }
 /** A guarded move of a file or folder. A folder's `expectedRevision` is its folder revision (see `FileStat`). */

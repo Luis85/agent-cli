@@ -50,7 +50,7 @@ The server binds only to IPv4 loopback, `127.0.0.1`. There is no public bind/hos
 
 The admin view reports workspace context, selected project, managed projects, plugin availability, contribution counts and server runtime details. It does not edit configuration, change project selection, enable plugins or execute arbitrary CLI commands. Read-only describes the webview and inspection API; `server start` and `server stop` explicitly control a process and local lifecycle state.
 
-The core API works without an admin bundle. Static webviews are separate distribution assets discovered by the server and served under `/views/<id>/`. A future view can use the same inspection contract without replacing the server implementation. See [use the admin webview](../how-to/use-admin-webview.md) for the user workflow.
+The core API works without an admin bundle. Static webviews are separate distribution assets discovered by the server and served under `/views/<id>/`. Generated webview projects can optionally use the same inspection contract without replacing the server implementation. See [use the admin webview](../how-to/use-admin-webview.md) for the user workflow.
 
 ## Snapshot semantics
 
@@ -84,6 +84,8 @@ HTTP failures use `{ok:false,error:{code,message}}`: 400 `SERVER_BAD_REQUEST`, 4
 
 ## Package another webview
 
+Use `project create <id> --type webview` for an independent Vue/Nuxt UI starter, then build it and run `node bin/forge.js webview publish --project <id> --dry-run` before publication. See [prototype a webview](../how-to/prototype-webviews.md) and [the guarded publication contract](webviews.md). The server remains framework-independent; custom static projects can also follow the asset contract below.
+
 Build each webview in its own project and export only static output into `bin/webviews/<id>/`. That directory must include a readable `index.html` and a `manifest.json`:
 
 ```json
@@ -94,7 +96,7 @@ The lowercase kebab-case `id` must match its directory name. The display name mu
 
 Build asset URLs relative to `/views/<id>/` or use relative asset paths. The server serves explicit files only: it provides no SPA history fallback, directory listing, workspace-file mount or framework development middleware. Use client-side hash routing or package explicit HTML entry files. Dotfiles, the manifest and symlinked assets are not served. The same-origin content policy requires locally packaged scripts, styles, fonts and images; external CDNs are not available.
 
-Launch the installed view with `node bin/forge.js server start --webview example-view --json`. This selects its authenticated URL without coupling the core server to its framework or introducing additional CLI commands.
+Launch the installed view with `node bin/forge.js server start --webview example-view --json`. This selects its authenticated URL without coupling the core server to its framework.
 
 ## Errors and recovery
 

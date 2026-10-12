@@ -26,6 +26,8 @@ import { dataSourcesPlugin } from '../../src/plugins/data-sources/plugin.ts';
 import { claudePlugin } from '../../src/plugins/claude/plugin.ts';
 import { connectorPlugin } from '../../src/plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from '../../src/plugins/connector-azure-devops/plugin.ts';
+import { webviewsPlugin } from '../../src/plugins/webviews/plugin.ts';
+import { browserPlugin } from '../../src/plugins/browser/plugin.ts';
 import { bundledCorePlugins, offlineHost, testHost } from '../support/core-plugins.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 
@@ -65,7 +67,7 @@ describe('built-in localization catalog coverage', () => {
     registerHostEvents(bus);
     const plugins = [
       templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin,
+      basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin, webviewsPlugin, browserPlugin('/unused-browser-distribution'),
     ];
     expect(plugins.map(plugin => plugin.manifest.id)).toEqual([...bundledCorePlugins]);
     registerCorePlugins(registry, bus, plugins, testHost({ skills: registrySkills(registry), fileDates: () => { throw new Error('Catalog must not read files'); }, ...offlineHost }), []);

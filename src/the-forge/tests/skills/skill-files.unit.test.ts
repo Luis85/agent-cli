@@ -4,6 +4,8 @@ import { parse } from 'yaml';
 import { bundledSkills } from '../../src/plugins/skills/infrastructure/bundled-skills.ts';
 import { agentsSkill } from '../../src/plugins/agents/infrastructure/skill.ts';
 import { backlogSkill } from '../../src/plugins/backlog/infrastructure/skill.ts';
+import { webviewsSkill } from '../../src/plugins/webviews/infrastructure/skill.ts';
+import { browserSkill } from '../../src/plugins/browser/infrastructure/skill.ts';
 import { skillIssues } from '../../src/domain/skills/skill.ts';
 import { skillFrontmatter } from '../../src/infrastructure/plugins/skill-frontmatter.ts';
 import { resolve } from 'node:path';
@@ -34,7 +36,7 @@ function specificationIssues(folder: string, content: string): string[] {
 describe('authored Agent Skills', () => {
   it('keeps one SKILL.md per skill folder and nothing else at the skills root', () => {
     expect(folders.every(entry => entry.isDirectory()), folders.map(entry => entry.name).join(', ')).toBe(true);
-    expect(folders.map(entry => entry.name).sort()).toEqual(['forge-agents', 'forge-backlog', 'forge-development', 'forge-vault', 'forge-workflow']);
+    expect(folders.map(entry => entry.name).sort()).toEqual(['forge-agents', 'forge-backlog', 'forge-browser', 'forge-development', 'forge-vault', 'forge-webviews', 'forge-workflow']);
   });
 
   it.each(folders.map(entry => entry.name))('%s follows the Agent Skills specification', folder => {
@@ -46,7 +48,7 @@ describe('authored Agent Skills', () => {
   it('registers each authored folder under its own name, as plugins contribute skills in the same shape', async () => {
     // Loaded by URL: the example plugin is runnable JavaScript, not part of the typed test program.
     const examplePlugin = (await import(pathToFileURL(resolve('docs/examples/plugins/quality/main.mjs')).href)).default as { skills: Array<{ id: string; content: string }> };
-    const registered = [...bundledSkills, agentsSkill, backlogSkill];
+    const registered = [...bundledSkills, agentsSkill, backlogSkill, webviewsSkill, browserSkill];
     expect(registered.map(skill => skill.id).sort()).toEqual(folders.map(entry => entry.name).sort());
     for (const skill of registered) expect(skill.content).toBe(readFileSync(`skills/${skill.id}/SKILL.md`, 'utf8'));
     for (const skill of examplePlugin.skills) expect(specificationIssues(skill.id, skill.content)).toEqual([]);

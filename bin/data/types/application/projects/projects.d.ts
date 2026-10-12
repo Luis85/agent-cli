@@ -3,10 +3,11 @@ import type { FileRepository } from '../workspace/ports.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { EventBus } from '../plugins/events.ts';
 export type ComponentKind = 'domain' | 'application';
+export type ProjectType = 'library' | 'webview';
 export interface ProjectMetadata {
     schemaVersion: 1;
     name: string;
-    type: 'library';
+    type: ProjectType;
 }
 export interface ProjectInfo extends ProjectMetadata {
     directory: string;
@@ -16,13 +17,13 @@ export interface ProjectInfo extends ProjectMetadata {
  * `scaffolds.projects`; `project create` and `project component` fail with PLUGIN_UNAVAILABLE without it.
  */
 export interface ProjectScaffolder {
-    project(name: string, projectsDirectory: string): readonly WriteRequest[];
+    project(name: string, projectsDirectory: string, type?: ProjectType): readonly WriteRequest[];
     component(projectName: string, componentName: string, projectsDirectory: string, kind: ComponentKind): readonly WriteRequest[];
 }
 export declare const projectScaffolderService = "scaffolds.projects";
 /** Resolves the scaffolder when a `project create` or `project component` action needs it. */
 export type ProjectScaffolderLookup = (action: 'create' | 'component') => ProjectScaffolder;
-export declare function projectName(name: string): string;
+export declare function projectName(name: string, type?: ProjectType): string;
 /** Owns project discovery and mutation policy; scaffolding and persistence are injected. */
 export declare class ProjectService {
     private readonly files;
@@ -63,7 +64,7 @@ export declare class ProjectService {
         changes: Array<import("../../sdk.ts").FileChange | import("../../sdk.ts").PlannedChange>;
         project: ProjectInfo | null;
     }>;
-    create(name: string): Promise<{
+    create(name: string, type?: ProjectType): Promise<{
         nextSteps: ({
             scope: string;
             command: string;
@@ -82,7 +83,7 @@ export declare class ProjectService {
         project: {
             schemaVersion: number;
             name: string;
-            type: string;
+            type: "library" | "webview";
             directory: string;
         };
     } | {
@@ -101,7 +102,7 @@ export declare class ProjectService {
         project: {
             schemaVersion: number;
             name: string;
-            type: string;
+            type: "library" | "webview";
             directory: string;
         };
     }>;

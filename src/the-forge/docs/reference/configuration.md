@@ -71,6 +71,8 @@ Every setting the bundled core plugins declare, by section. `config` reports the
 | `templates` | `dateFormat` | string | `YYYY-MM-DD` | dayjs format of [template](templates.md) `{{date}}` placeholders without their own format |
 | `templates` | `timeFormat` | string | `HH:mm` | dayjs format of `{{time}}` placeholders without their own format |
 | `scaffolds` | none | | | |
+| `webviews` | none | | | Build and publication use the selected project's fixed `dist/` and workspace `bin/webviews/<id>/`; see [webviews](webviews.md) |
+| `browser` | none | | | Use command options for capture/tutorial settings; browser selection uses `--browser-executable`, `FORGE_BROWSER_EXECUTABLE` or managed Chromium; see [browser](browser.md) |
 | `ui` | `framework` | `html`, `htmx`, `vanilla`, `vue`, `svelte`, `react` or `angular` | `html` | Default target of `make ui` and `make stories`; see the `ui` section above |
 | `ui` | `components` | string | `components` | Workspace-relative component library folder |
 | `ui` | `componentImports` | string | `imports/components` | Folder that `components import` copies definitions from |

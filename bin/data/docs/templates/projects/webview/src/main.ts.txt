@@ -1,0 +1,17 @@
+import { createApp } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
+import ui from '@nuxt/ui/vue-plugin';
+import App from './App.vue';
+import './style.css';
+
+// This sample needs no authenticated API. Discard the launch credential before
+// rendering so copying the address never shares it. Preserve unrelated fragments.
+const fragment = new URLSearchParams(window.location.hash.slice(1));
+if (fragment.has('token')) {
+  fragment.delete('token');
+  const remaining = fragment.toString();
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${remaining ? `#${remaining}` : ''}`);
+}
+// Memory routing works under a static mount without SPA history fallback.
+const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: App }] });
+createApp(App).use(router).use(ui).mount('#app');

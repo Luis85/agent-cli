@@ -1,0 +1,51 @@
+import { execFile } from 'node:child_process';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { test as base, expect } from '@playwright/test';
+
+const exec = promisify(execFile);
+const project = fileURLToPath(new URL('../../../', import.meta.url));
+const id = '__FORGE_WEBVIEW_ID__';
+
+/** Test the built project through the public CLI, never a sibling project's sources. */
+export const test = base.extend<{}, { webview: { url: string } }>({
+  webview: [async ({}, use) => {
+    const distribution = dirname(resolve(process.env.FORGE_CLI ?? join(project, '__FORGE_WORKSPACE_RELATIVE__', 'bin/forge.js')));
+    const workspace = await mkdtemp(join(tmpdir(), 'forge-webview-e2e-'));
+    const cli = async (args: string[]) => {
+      const { stdout } = await exec(process.execPath, [join(workspace, 'bin/forge.js'), ...args, '--json'], { cwd: workspace, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
+      const response = JSON.parse(stdout);
+      if (!response.ok) throw new Error(`Forge ${args.join(' ')}: ${response.error?.code}`);
+      return response.data;
+    };
+    let startupAttempted = false;
+    try {
+      await cp(distribution, join(workspace, 'bin'), { recursive: true });
+      const config = JSON.parse(await readFile(join(workspace, 'bin/config/default.json'), 'utf8'));
+      config.plugins.disabled = ['claude'];
+      await writeFile(join(workspace, 'bin/config.json'), JSON.stringify(config));
+      await rm(join(workspace, 'bin/data/context.json'), { force: true });
+      // A previously published workspace bundle must not mask this build.
+      await rm(join(workspace, 'bin/webviews', id), { recursive: true, force: true });
+      const fixture = join(workspace, config.paths.projects, id);
+      await mkdir(join(fixture, '.forge'), { recursive: true });
+      await writeFile(join(fixture, '.forge/project.json'), JSON.stringify({ schemaVersion: 1, name: id, type: 'webview' }));
+      await cp(join(project, 'dist'), join(fixture, 'dist'), { recursive: true });
+      await cli(['webview', 'publish', '--project', id]);
+      startupAttempted = true;
+      const status = await cli(['server', 'start', '--port', '0', '--webview', id]);
+      if (!status.running || !status.url) throw new Error('Forge did not return a running webview URL.');
+      await use({ url: status.url });
+    } finally {
+      if (startupAttempted) {
+        try { await cli(['server', 'stop']); }
+        catch (error) { throw new Error(`Server cleanup failed; workspace retained for CLI recovery: ${workspace}`, { cause: error }); }
+      }
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, { scope: 'worker', timeout: 60_000 }],
+});
+export { expect };

@@ -6,7 +6,7 @@ const text: JsonSchema = { type: 'string' };
 export const projectInfoSchema: JsonSchema = {
   type: 'object', required: ['schemaVersion', 'name', 'type', 'directory'],
   properties: {
-    schemaVersion: { type: 'integer', const: 1 }, name: text, type: { type: 'string', enum: ['library'] },
+    schemaVersion: { type: 'integer', const: 1 }, name: text, type: { type: 'string', enum: ['library', 'webview'] },
     directory: { type: 'string', description: 'Workspace-relative project directory with / separators.' },
   },
 };

@@ -24,8 +24,15 @@ it('sets up a portable installation idempotently while preserving user-owned fil
     expect(JSON.parse(await readFile(join(installation, 'bin/config.json'), 'utf8')).paths).toEqual({ projects: 'projects' });
     for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(installation, skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('CONFLICT');
     expect(await readFile(join(installation, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
+    const prototype = join(installation, 'bin/webviews/private');
+    await mkdir(prototype, { recursive: true });
+    const customManifest = JSON.stringify({ id: 'private', name: 'Private prototype', entry: 'index.html' });
+    await writeFile(join(prototype, 'manifest.json'), customManifest);
+    await writeFile(join(prototype, 'index.html'), '<h1>Keep my prototype</h1>');
     const repeated = await cli(['setup'], undefined, invocation);
     expect(repeated.status).toBe(0); expect(repeated.body.data.changes).toEqual([]); expect(committedEvents(repeated.body.events)).toEqual([]);
+    expect(await readFile(join(prototype, 'manifest.json'), 'utf8')).toBe(customManifest);
+    expect(await readFile(join(prototype, 'index.html'), 'utf8')).toBe('<h1>Keep my prototype</h1>');
     const installed = { entry: join(installation, 'bin/forge.js'), root: null, cwd: bundle };
     const config = await cli(['config'], undefined, installed);
     expect(config.status).toBe(0); expect(config.body.data.root).toBe(installation);

@@ -45,12 +45,15 @@ describe('release distribution', () => {
     await mkdir(bin(root, 'webviews/private'), { recursive: true });
     const privateFiles = ['config.json', 'data/context.json', 'data/private.json', 'plugins/private.mjs', 'templates/private.md', 'webviews/private/index.html'];
     for (const path of privateFiles) await writeFile(bin(root, path), `preserve ${path}\n`);
+    const customManifest = JSON.stringify({ id: 'private', name: 'Private prototype', entry: 'index.html' });
+    await writeFile(bin(root, 'webviews/private/manifest.json'), customManifest);
     await writeFile(bin(root, 'data/docs/obsolete.md'), '# Stale generated documentation');
     await writeFile(bin(root, 'skills/obsolete.md'), '# Stale packaged skill');
     await mkdir(join(root, 'docs/research'), { recursive: true });
     await writeFile(join(root, 'docs/research/notes.md'), '# Maintainer research');
     execFileSync(process.execPath, ['scripts/package.mjs'], { cwd: root, stdio: 'pipe' });
     for (const path of privateFiles) expect(await readFile(bin(root, path), 'utf8')).toBe(`preserve ${path}\n`);
+    expect(await readFile(bin(root, 'webviews/private/manifest.json'), 'utf8')).toBe(customManifest);
     await expect(readFile(bin(root, 'data/docs/obsolete.md'))).rejects.toThrow();
     await expect(readFile(bin(root, 'skills/obsolete.md'))).rejects.toThrow();
     await expect(readFile(bin(root, 'data/docs/research/notes.md'))).rejects.toThrow();
@@ -102,6 +105,13 @@ describe('release distribution', () => {
     for (const name of ['PlannedChange', 'WriteOptions', 'WriteRequest', 'FileChange', 'ClaudeLifecycleClient', 'ClaudeLifecycleRequest', 'ClaudeLifecycleResult', 'ClaudeLifecyclePlan', 'ClaudeOutput']) expect(sdk).toMatch(new RegExp(`\\b${name}\\b`));
     const listed = entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
+    expect(listed).toContain('bin/browser-runtime/playwright-core/index.js');
+    expect(listed).toContain('bin/browser-runtime/playwright-core/lib/coreBundle.js');
+    expect(listed).toContain('bin/browser-runtime/playwright-core/lib/webp_codec.wasm');
+    expect(listed).toContain('bin/browser-runtime/playwright-core/LICENSE');
+    expect(listed).toContain('bin/browser-runtime/playwright-core/NOTICE');
+    const browserRuntime = execFileSync(process.execPath, ['-e', "console.log(typeof require('./bin/browser-runtime/playwright-core').chromium.launch)"], { cwd: project, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } });
+    expect(browserRuntime.trim()).toBe('function');
     expect(listed).toContain('bin/forge.js');
     expect(listed).toContain('bin/forge-server.cjs');
     expect(listed).toContain('bin/webviews/admin/index.html');
@@ -136,11 +146,27 @@ describe('release distribution', () => {
     await writeFile(bin(root, 'data/private.json'), '{"token":"local-only"}');
     await writeFile(bin(root, 'plugins/private-plugin.mjs'), 'export default {};');
     await writeFile(bin(root, 'templates/private-template.md'), '# Private');
+    await mkdir(bin(root, 'webviews/private'), { recursive: true });
+    const prototype = '<h1>Private prototype</h1>';
+    await writeFile(bin(root, 'webviews/private/index.html'), prototype);
+    await writeFile(bin(root, 'webviews/private/manifest.json'), JSON.stringify({ id: 'private', name: 'Private prototype', entry: 'index.html' }));
     const archive = release(root);
     expect(entries(root, archive).some(path => /context|private/.test(path))).toBe(false);
     const config = tar(root, ['-xOzf', archive, 'bin/config.json']);
     expect(config).toBe(await readFile(bin(root, 'config/default.json'), 'utf8'));
     expect(await readFile(bin(root, 'data/context.json'), 'utf8')).toContain('private-project');
+    expect(await readFile(bin(root, 'webviews/private/index.html'), 'utf8')).toBe(prototype);
+  });
+
+  it('rejects a manifest that attempts to ship a locally published webview', async () => {
+    const root = await checkout();
+    await mkdir(bin(root, 'webviews/prototype'), { recursive: true });
+    await writeFile(bin(root, 'webviews/prototype/index.html'), '<h1>Local prototype</h1>');
+    const path = bin(root, 'data/distribution.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.files.push('webviews/prototype/index.html');
+    await writeFile(path, JSON.stringify(manifest));
+    expect(() => release(root)).toThrow('Invalid distribution asset: webviews/prototype/index.html');
   });
 
   it('rejects a manifest that attempts to publish mutable workspace data', async () => {
@@ -152,13 +178,14 @@ describe('release distribution', () => {
     await writeFile(path, JSON.stringify(manifest));
     expect(() => release(root)).toThrow('Invalid distribution asset: data/context.json');
   });
-  it.each(['missing-defaults', 'missing-server', 'missing-webview', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
+  it.each(['missing-defaults', 'missing-server', 'missing-webview', 'missing-browser', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
     const root = await checkout();
     const path = bin(root, 'data/distribution.json');
     const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
     if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
     else if (invalid === 'missing-server') manifest.files = manifest.files.filter(file => file !== 'forge-server.cjs');
     else if (invalid === 'missing-webview') manifest.files = manifest.files.filter(file => file !== 'webviews/admin/index.html');
+    else if (invalid === 'missing-browser') manifest.files = manifest.files.filter(file => file !== 'browser-runtime/playwright-core/index.js');
     else manifest.files.push('forge.js');
     await writeFile(path, JSON.stringify(manifest));
     expect(() => release(root)).toThrow('Missing or invalid distribution manifest');

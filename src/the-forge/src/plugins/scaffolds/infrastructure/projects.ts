@@ -13,7 +13,8 @@ import qualityShared from '../../../../scripts/quality/shared.mjs?raw';
 import lintConfig from '../../../../configs/lint/oxlintrc.json?raw';
 import { ensure } from '../../../domain/shared/errors.ts';
 import { vaultPath, type WriteRequest } from '../../../domain/documents/file.ts';
-import { projectName, type ComponentKind } from '../../../application/projects/projects.ts';
+import { webviewScaffold } from './webviews.ts';
+import { projectName, type ComponentKind, type ProjectType } from '../../../application/projects/projects.ts';
 
 const textFile = (path: string, text: string): WriteRequest => ({ path, bytes: new TextEncoder().encode(text) });
 const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
@@ -33,7 +34,9 @@ export function componentScaffold(project: string, name: string, projectsDirecto
   return [textFile(`${directory}/src/${kind}/${file}.ts`, source), textFile(`${directory}/tests/${file}.${kind}.unit.test.ts`, test)];
 }
 
-export function projectScaffold(name: string, projectsDirectory: string): WriteRequest[] {
+export function projectScaffold(name: string, projectsDirectory: string, type: ProjectType = 'library'): WriteRequest[] {
+  ensure(type === 'library' || type === 'webview', 'INVALID_ARGUMENT', 'Project type must be library or webview.');
+  if (type === 'webview') return webviewScaffold(name, projectsDirectory);
   const directory = `${vaultPath(projectsDirectory)}/${projectName(name)}`;
   const files: Record<string, string> = {
     '.forge/project.json': json({ schemaVersion: 1, name, type: 'library' }),

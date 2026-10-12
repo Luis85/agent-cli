@@ -21,6 +21,8 @@ For users who already know their goal. Each guide states the needed context and 
 
 | Goal | Guide |
 | --- | --- |
+| Capture a webpage or turn an explicit flow into an illustrated document | [Capture browser evidence](how-to/capture-browser-evidence.md) |
+| Create and iterate a self-contained Vue and Nuxt UI prototype | [Prototype a webview](how-to/prototype-webviews.md) |
 | Inspect workspace context, plugins and runtime health in a browser | [Use the admin webview](how-to/use-admin-webview.md) |
 | Select a project and control file scope | [Set up and manage projects](how-to/manage-projects.md) |
 | Edit one section, block or several literals of a note, or change several files as one unit | [Make precise edits](how-to/make-precise-edits.md) |
@@ -47,6 +49,8 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | Reference | Contents |
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
+| [Browser evidence](reference/browser.md) | On-demand PNG screenshots, explicit tutorial plans and guarded illustrated documents |
+| [Webview projects](reference/webviews.md) | Independent Vue/Nuxt UI starters, guarded static publication and drift checks |
 | [Localhost server](reference/server.md) | CLI-managed server lifecycle, read-only inspection, authenticated launch links and independent webviews |
 | [Schema contract](reference/schema.md) | JSON Schema 2020-12 input and output schemas, behavior annotations and the response envelope that `schema` publishes |
 | [Error catalog](reference/errors.md) | Every error code with its exit status, hint, retryability and recovery details |
@@ -83,4 +87,4 @@ For contributors and teams deciding how to use The Forge within their architectu
 - [Current agent-first polishing review](https://github.com/Luis85/agent-cli/blob/main/src/the-forge/docs/research/12-agent-first-polish-review.md): current workflow findings, resolved gaps, research and verification evidence; maintainer material hosted in the repository.
 - [Historical product review](explanation/product-review.md): the 2026-10-07 findings and verification limits, some superseded by later work.
 
-Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../../skills/forge-workflow/SKILL.md), [development skill](../../skills/forge-development/SKILL.md), [file-editing skill](../../skills/forge-vault/SKILL.md), [agent definitions skill](../../skills/forge-agents/SKILL.md) and [backlog skill](../../skills/forge-backlog/SKILL.md); [install them](how-to/install-agent-skills.md) into `.claude/skills` and `.agents/skills`.
+Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../../skills/forge-workflow/SKILL.md), [development skill](../../skills/forge-development/SKILL.md), [webview prototyping skill](../../skills/forge-webviews/SKILL.md), [browser evidence skill](../../skills/forge-browser/SKILL.md), [file-editing skill](../../skills/forge-vault/SKILL.md), [agent definitions skill](../../skills/forge-agents/SKILL.md) and [backlog skill](../../skills/forge-backlog/SKILL.md); [install them](how-to/install-agent-skills.md) into `.claude/skills` and `.agents/skills`.

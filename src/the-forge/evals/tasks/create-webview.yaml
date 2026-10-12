@@ -1,0 +1,33 @@
+id: create-webview
+title: Scaffold an independent webview without changing project selection
+category: generation
+prompt: |
+  Create a self-contained Vue and Nuxt UI prototype project named "idea-board" with
+  the Forge starter. Preview the files before creating it. Keep local sample data and
+  include its own build configuration and browser tests. Leave the workspace's selected
+  project unchanged. Do not install dependencies, build assets or start a server yet.
+fixture: vault
+reference:
+  - [project, current]
+  - [project, create, idea-board, --type, webview, --dry-run]
+  - [project, create, idea-board, --type, webview]
+  - [project, inspect, idea-board]
+checks:
+  - file: projects/idea-board/.forge/project.json
+    data: { pointer: /type, equals: webview }
+  - file: projects/idea-board/package.json
+    data: { pointer: /dependencies/vue, contains: "3." }
+  - file: projects/idea-board/package.json
+    data: { pointer: /dependencies/@nuxt~1ui, contains: "4." }
+  - file: projects/idea-board/src/prototype.ts
+    exists: true
+  - file: projects/idea-board/playwright.config.ts
+    contains: ["@playwright/test"]
+  - file: projects/idea-board/public/manifest.json
+    data: { pointer: /id, equals: idea-board }
+  - file: projects/idea-board/node_modules
+    exists: false
+  - file: bin/webviews/idea-board/index.html
+    exists: false
+  - command: [project, current]
+    data: { pointer: /project, equals: null }

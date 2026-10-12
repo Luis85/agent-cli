@@ -1,0 +1,18 @@
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import ui from '@nuxt/ui/vite';
+import { config } from './package.json';
+import { notices } from './scripts/notices';
+
+export default defineConfig({
+  base: `/views/${config.webview.id}/`,
+  plugins: [vue(), ui({
+    dts: false,
+    colorMode: false,
+    ui: { colors: { primary: 'emerald', neutral: 'slate' } },
+    // Dynamic icon names are not always found by scanning. Bundle them locally:
+    // the portable server deliberately blocks remote icon requests.
+    icon: { clientBundle: { icons: ['lucide:bookmark', 'lucide:check', 'lucide:search'] } },
+  }), notices()],
+  build: { outDir: 'dist', sourcemap: false },
+});

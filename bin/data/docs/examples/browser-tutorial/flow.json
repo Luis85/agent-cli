@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "title": "Explore the prototype",
+  "description": "A short walkthrough captured from the generated Vue and Nuxt UI starter. The sample data stays in this browser tab.",
+  "startUrl": "http://127.0.0.1:44559/views/launch-preview/",
+  "viewport": {
+    "width": 1200,
+    "height": 900
+  },
+  "steps": [
+    {
+      "id": "overview",
+      "title": "Start with the sample",
+      "text": "The starter labels its sample data and presents three ideas. Saving only changes this tab; reloading restores the sample.",
+      "actions": [],
+      "screenshot": true,
+      "fullPage": true
+    },
+    {
+      "id": "search",
+      "title": "Find an idea",
+      "text": "Enter “interaction” in Find an idea to narrow the list to one matching result.",
+      "actions": [
+        {
+          "type": "fill",
+          "locator": {
+            "label": "Find an idea"
+          },
+          "value": "interaction"
+        },
+        {
+          "type": "wait",
+          "locator": {
+            "role": "button",
+            "name": "Save Try the interaction"
+          },
+          "state": "visible"
+        }
+      ],
+      "screenshot": true,
+      "fullPage": true
+    },
+    {
+      "id": "save",
+      "title": "Save the matching idea",
+      "text": "Choose Save. The button changes to Saved and exposes its pressed state to assistive technology.",
+      "actions": [
+        {
+          "type": "click",
+          "locator": {
+            "role": "button",
+            "name": "Save Try the interaction"
+          }
+        },
+        {
+          "type": "wait",
+          "locator": {
+            "role": "button",
+            "name": "Unsave Try the interaction"
+          },
+          "state": "visible"
+        }
+      ],
+      "screenshot": true,
+      "fullPage": true
+    }
+  ]
+}

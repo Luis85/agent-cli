@@ -34,3 +34,6 @@ bin/forge.js linguist-generated=true
 bin/data/** linguist-generated=true
 # Preserve upstream license notices verbatim, including whitespace and Markdown rulers.
 bin/data/licenses/** -diff
+
+# Ship the pinned Playwright package verbatim, including upstream line endings.
+bin/browser-runtime/** -text -diff linguist-vendored=true

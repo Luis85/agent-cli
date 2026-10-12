@@ -4,7 +4,7 @@ import { link, lstat, mkdir, rename, rm, rmdir, unlink } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path';
 import { forgeError, ensure } from '../../domain/shared/errors.ts';
 import { kernelMessage, type KernelMessage } from '../../domain/shared/kernel-messages.ts';
-import type { FileChange, FileRename, RemoveRequest, RenameRequest, WriteRequest } from '../../domain/documents/file.ts';
+import type { FileChange, FileRename, GuardRequest, RemoveRequest, RenameRequest, WriteRequest } from '../../domain/documents/file.ts';
 import { revisionConflict, type RevisionConflict } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch } from '../../application/workspace/ports.ts';
 import { snapshotBatch } from '../../application/workspace/batch-plan.ts';
@@ -68,8 +68,8 @@ function checkOverlap(outer: Claim, inner: Claim): void {
  * Claims are sorted by path segments, so every claim's ancestors precede it and its descendants follow it
  * directly; one pass with a stack of ancestors compares each claim only with the claims that contain it.
  */
-function validatePlan(renames: readonly RenameRequest[], writes: readonly WriteRequest[], removes: readonly RemoveRequest[]): void {
-  ensure(renames.length + writes.length + removes.length > 0, 'INVALID_PLAN', 'Plan must contain at least one change.');
+function validatePlan(renames: readonly RenameRequest[], writes: readonly WriteRequest[], removes: readonly RemoveRequest[], guards: readonly GuardRequest[]): void {
+  ensure(guards.length + renames.length + writes.length + removes.length > 0, 'INVALID_PLAN', 'Plan must contain at least one guard or change.');
   ensure(new Set(writes.map(w => w.path)).size === writes.length, 'INVALID_PLAN', 'Plan must contain unique file paths.');
   for (const rename of renames) ensure(!inside(rename.to, rename.from) && !inside(rename.from, rename.to), 'INVALID_PLAN', `Cannot move ${rename.from} into itself or its parent path ${rename.to}.`);
   // Paths never hold control characters, so NUL as the separator sorts a folder's descendants right after it.
@@ -92,6 +92,7 @@ function validatePlan(renames: readonly RenameRequest[], writes: readonly WriteR
  * durably before the first rename, so a staging failure changes no file.
  */
 export class Transaction {
+  private readonly guards: GuardRequest[];
   private readonly renames: RenameRequest[];
   private readonly writes: WriteRequest[];
   private readonly removes: RemoveRequest[];
@@ -107,13 +108,15 @@ export class Transaction {
 
   constructor(private readonly host: BatchHost, batch: FileBatch) {
     const snapshot = snapshotBatch(batch);
+    this.guards = [...snapshot.guards];
     this.renames = [...snapshot.renames];
     this.writes = [...snapshot.writes];
     this.removes = [...snapshot.removes];
-    validatePlan(this.renames, this.writes, this.removes);
+    validatePlan(this.renames, this.writes, this.removes, this.guards);
   }
 
   async run(dryRun: boolean): Promise<BatchResult> {
+    await this.checkGuards();
     const conflicts: RevisionConflict[] = [];
     const renames = await this.planRenames(conflicts);
     const writes = await this.planWrites(conflicts);
@@ -131,13 +134,24 @@ export class Transaction {
     return this.result(renames, writes, removes);
   }
 
-  private async entry(path: string): Promise<Entry | undefined> {
+  /** Checks observe initial state under the writer lock, before staging creates any directories or files. */
+  private async checkGuards(): Promise<void> {
+    const conflicts: RevisionConflict[] = [];
+    for (const guard of this.guards) {
+      const entry = await this.entry(guard.path, false), current = entry && entryRevision(entry);
+      if (current !== guard.expectedRevision) conflicts.push(revisionConflict(guard.path, guard.expectedRevision, current));
+    }
+    const [conflict] = conflicts;
+    ensure(!conflict, 'CONFLICT', `Guarded paths changed; read again before modifying: ${conflicts.map(item => item.path).join(', ')}`, conflict && { ...conflict, ...(conflicts.length > 1 ? { conflicts } : {}) });
+  }
+
+  private async entry(path: string, protectGit = true): Promise<Entry | undefined> {
     const target = await this.host.resolvePath(path, true);
     const info = await exists(target);
     if (!info) return undefined;
     if ((await lstat(target)).isDirectory()) {
       const snapshot = (await this.host.folder(path))!;
-      ensure(!snapshot.git, 'PROTECTED_PATH', `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
+      ensure(!protectGit || !snapshot.git, 'PROTECTED_PATH', `Folder ${path} contains a Git repository; Forge never moves or removes .git.`);
       return { kind: 'folder', snapshot };
     }
     return { kind: 'file', stored: (await this.host.stored(path))! };

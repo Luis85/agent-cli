@@ -28,6 +28,11 @@ export interface FileSnapshot {
     bytes: Uint8Array;
     revision: string;
 }
+/** A check-only file or folder condition; an omitted revision requires the path to be absent. */
+export interface GuardRequest {
+    path: string;
+    expectedRevision?: string;
+}
 export interface WriteRequest {
     path: string;
     bytes: Uint8Array;

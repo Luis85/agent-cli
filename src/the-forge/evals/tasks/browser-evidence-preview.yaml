@@ -1,0 +1,31 @@
+id: browser-evidence-preview
+title: Validate and preview a browser evidence workflow without launching a browser
+category: generation
+prompt: |
+  Review the explicit browser flow in docs/browser-flow.json and validate it for an
+  illustrated manual at docs/manual. Preview generating that manual and an independent
+  desktop screenshot of https://example.com/ at docs/assets/page.png. Do not visit the
+  website, launch or install a browser, or create the manual or screenshot yet. Preserve
+  the source plan and the workspace's project selection. Report the normalized first
+  step identifier, viewport dimensions and dryRun flag.
+fixture: vault
+setup:
+  - [write, docs/browser-flow.json, --content, '{"version":1,"title":"Page overview","startUrl":"https://example.com/","steps":[{"id":"overview","title":"Review the page","actions":[]}]}']
+reference:
+  - [browser, validate, docs/browser-flow.json, --out, docs/manual]
+  - [browser, tutorial, docs/browser-flow.json, --out, docs/manual, --dry-run]
+  - [browser, screenshot, "https://example.com/", --out, docs/assets/page.png, --width, "1440", --height, "900", --dry-run]
+answer: "Step overview uses a 1440 × 900 viewport. The preview reports dryRun: true."
+checks:
+  - answer: { contains: ["overview", "1440", "900", "dryRun"] }
+  - unchanged: docs/browser-flow.json
+  - file: docs/manual/index.md
+    exists: false
+  - file: docs/manual/flow.json
+    exists: false
+  - file: docs/assets/page.png
+    exists: false
+  - command: [browser, screenshot, "https://example.com/", --out, docs/assets/page.png, --dry-run]
+    data: { pointer: /captured, equals: false }
+  - command: [project, current]
+    data: { pointer: /project, equals: null }

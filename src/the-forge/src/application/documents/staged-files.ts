@@ -1,5 +1,6 @@
 import { AppError, ensure, forgeError } from '../../domain/shared/errors.ts';
 import { vaultPath, type FileChange, type FileRename, type FileSnapshot, type FileStat, type RenameRequest, type WriteRequest } from '../../domain/documents/file.ts';
+import { snapshotBatch } from '../workspace/batch-plan.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import type { BatchResult, FileBatch, FileRepository, WriteBatchResult } from '../workspace/ports.ts';
 
@@ -121,6 +122,11 @@ export class StagedFiles implements FileRepository {
 
   /** Applies renames, then writes, in order; each is checked against the planned state at that point. */
   async commit(batch: FileBatch): Promise<BatchResult> {
+    batch = snapshotBatch(batch);
+    for (const guard of batch.guards ?? []) {
+      const current = await this.stat(guard.path).then(entry => entry.revision, (error: unknown) => { if (notFound(error)) return undefined; throw error; });
+      ensure(current === guard.expectedRevision, 'CONFLICT', `Guarded path changed: ${guard.path}`, revisionConflict(guard.path, guard.expectedRevision, current));
+    }
     ensure((batch.removes ?? []).length === 0, 'INVALID_PLAN', 'Plans move files to .trash; they never remove files permanently.');
     const renames: FileRename[] = [], changes: FileChange[] = [];
     for (const rename of batch.renames ?? []) renames.push(...await this.rename(rename));

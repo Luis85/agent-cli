@@ -45,6 +45,19 @@ node bin/forge.js server stop --json
 
 The core server is independent of the webview and can serve other packaged views. See [use the admin webview](src/the-forge/docs/how-to/use-admin-webview.md) and the [server contract](src/the-forge/docs/reference/server.md). The [admin project](src/forge-admin/README.md) owns its Vue/Nuxt UI toolchain and Playwright tests.
 
+## Prototype a new webview
+
+```sh
+node bin/forge.js project create idea-board --type webview --dry-run
+node bin/forge.js project create idea-board --type webview
+```
+
+The generated project owns its Vue 3/Nuxt UI source, sample data, build scripts and Playwright tests. Build and test inside that project, then publish with `node bin/forge.js webview publish --project idea-board` and start it with `server start --webview idea-board`. The [prototyping guide](src/the-forge/docs/how-to/prototype-webviews.md) covers the complete loop; the bundled [forge-webviews skill](src/the-forge/skills/forge-webviews/SKILL.md) guides agents through creation, iteration, screenshots and guarded updates.
+
+## Explain a page or flow with screenshots
+
+`browser screenshot <url> --out docs/assets/page.png` captures on-demand webpage evidence. `browser validate <source>` and `browser tutorial <source> --out docs/manual` turn an explicit JSON, Markdown or Canvas flow plan into an illustrated document. The agent reviews the flow, inspects the actual images and explains the observed situation in Markdown. See [capture browser evidence](src/the-forge/docs/how-to/capture-browser-evidence.md) and the bundled [forge-browser skill](src/the-forge/skills/forge-browser/SKILL.md).
+
 ## Develop a project
 
 Each managed project installs, checks and tests itself from its own directory:

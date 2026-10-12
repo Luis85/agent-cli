@@ -74,6 +74,10 @@ await copyFile('scripts/licenses/docker-agent-LICENSE', join(bin, 'data/licenses
 notices.push('# Vendored asset notices', '', `## docker-agent ${dockerAgent.files.join(', ')}`, '',
   `Copied unchanged from ${dockerAgent.repository} at commit ${dockerAgent.commit}. License: ${dockerAgent.license}.`, '', '- [LICENSE](licenses/docker-agent-LICENSE)', '');
 await writeFile(join(bin, 'data/THIRD-PARTY-NOTICES.md'), notices.join('\n'));
+// Playwright resolves browser descriptors, helpers and wasm relative to its own
+// package. Preserve the upstream layout; the portable CLI loads it explicitly.
+await rm(join(bin, 'browser-runtime/playwright-core'), { recursive: true, force: true });
+await cp('node_modules/playwright-core', join(bin, 'browser-runtime/playwright-core'), { recursive: true });
 // Ship type-only SDK declarations; runtime plugins need no package imports.
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.sdk.json', '--outDir', join(bin, 'data/types')], { stdio: 'inherit' });
 const files = [...distributionPolicy.requiredAssets, 'data/LICENSE', 'data/README.md', 'data/THIRD-PARTY-NOTICES.md'];
@@ -89,6 +93,7 @@ async function collect(directory) {
 }
 for (const directory of ownedDirectories) await collect(`data/${directory}`);
 await collect('skills');
+await collect('browser-runtime/playwright-core');
 // The independent admin project publishes its own prebuilt assets. Preserve that
 // bundle while rebuilding Forge; never package other locally installed webviews.
 await collect('webviews/admin');

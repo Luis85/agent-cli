@@ -1,12 +1,14 @@
-import type { FileSnapshot, WriteRequest, FileChange, FileRename, FileStat, RemoveRequest, RenameRequest } from '../../domain/documents/file.ts';
+import type { FileSnapshot, WriteRequest, FileChange, FileRename, FileStat, RemoveRequest, RenameRequest, GuardRequest } from '../../domain/documents/file.ts';
 
 /** A batch outcome: file changes in request order and the folders it created, parent before child. */
 export interface WriteBatchResult { changes: FileChange[]; folders: string[] }
 /**
- * One guarded, locked batch. Renames apply first, in order; writes then see the renamed files, so a write to a
- * rename destination (or into a moved folder) is guarded by the moved file's revision; removals apply last.
+ * One guarded, locked batch. Check-only guards assert the initial file/folder revision (or absence) without
+ * reporting changes; they may overlap mutation paths. A guard-only batch is valid. Renames apply first, in
+ * order; writes then see the renamed files, so a write to a rename destination (or into a moved folder) is
+ * guarded by the moved file's revision; removals apply last.
  */
-export interface FileBatch { renames?: readonly RenameRequest[]; writes?: readonly WriteRequest[]; removes?: readonly RemoveRequest[] }
+export interface FileBatch { guards?: readonly GuardRequest[]; renames?: readonly RenameRequest[]; writes?: readonly WriteRequest[]; removes?: readonly RemoveRequest[] }
 /**
  * `renames` in request order (folders expanded to their descendants), `changes` for writes in request order and
  * then one `deleted` change per removed file, `folders` the folders the batch created (parent before child) and
