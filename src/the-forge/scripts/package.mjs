@@ -1,4 +1,4 @@
-import { mkdir, copyFile, writeFile, readFile, readdir, chmod, cp, rm } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, readFile, readdir, chmod, cp, rm, lstat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
@@ -78,6 +78,8 @@ await writeFile(join(bin, 'data/THIRD-PARTY-NOTICES.md'), notices.join('\n'));
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.sdk.json', '--outDir', join(bin, 'data/types')], { stdio: 'inherit' });
 const files = [...distributionPolicy.requiredAssets, 'data/LICENSE', 'data/README.md', 'data/THIRD-PARTY-NOTICES.md'];
 async function collect(directory) {
+  const parent = await lstat(join(bin, directory));
+  if (!parent.isDirectory() || parent.isSymbolicLink()) throw new Error(`Distribution asset is not a regular directory: ${directory}`);
   for (const entry of await readdir(join(bin, directory), { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) await collect(path);
@@ -87,6 +89,13 @@ async function collect(directory) {
 }
 for (const directory of ownedDirectories) await collect(`data/${directory}`);
 await collect('skills');
-await writeFile(join(bin, 'data/distribution.json'), JSON.stringify({ schemaVersion: distributionPolicy.schemaVersion, files: files.sort() }, null, 2) + '\n');
+// The independent admin project publishes its own prebuilt assets. Preserve that
+// bundle while rebuilding Forge; never package other locally installed webviews.
+await collect('webviews/admin');
+for (const path of distributionPolicy.requiredAssets.filter(path => path !== 'data/distribution.json')) {
+  const entry = await lstat(join(bin, path));
+  if (!entry.isFile() || entry.isSymbolicLink()) throw new Error(`Required distribution asset is not a regular file: ${path}`);
+}
+await writeFile(join(bin, 'data/distribution.json'), JSON.stringify({ schemaVersion: distributionPolicy.schemaVersion, files: [...new Set(files)].sort() }, null, 2) + '\n');
 const bundle = await readFile(join(bin, 'forge-runtime.js'), 'utf8');
 if (/require\(["']yaml["']\)/.test(bundle)) throw new Error('YAML was not bundled');

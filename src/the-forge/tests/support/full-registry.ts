@@ -43,6 +43,7 @@ export async function fullRegistry(): Promise<Registry> {
     const registry = new Registry(skillFrontmatter);
     const services: WorkflowServices = {
       loaded,
+      server: { async start() { throw new Error('Catalog must not start servers'); }, async status() { throw new Error('Catalog must not inspect servers'); }, async stop() { throw new Error('Catalog must not stop servers'); } },
       get files(): never { throw new Error('The catalog registry does not access files'); },
       get projects(): never { throw new Error('The catalog registry does not access projects'); },
       get workflows(): never { throw new Error('The catalog registry does not access workflows'); },

@@ -7,6 +7,10 @@ const regenerateHint = 'Führen Sie denselben Befehl mit --plan aus, prüfen Sie
 
 /** German summaries and next steps for every built-in code; original diagnostics remain in error.details.localization. */
 export const germanErrors = {
+  SERVER_START_FAILED: { summary: 'Der lokale Server konnte nicht starten.', hint: 'Prüfen Sie den angeforderten Port und das installierte Server-Bundle und wiederholen Sie server start.' },
+  SERVER_STOP_FAILED: { summary: 'Der verifizierte lokale Server konnte nicht beendet werden.', hint: 'Führen Sie server status aus und wiederholen Sie server stop.' },
+  SERVER_STATE_INVALID: { summary: 'Der gespeicherte lokale Serverzustand ist ungültig oder unsicher.', hint: 'Prüfen Sie .forge/server.json und das übergeordnete Verzeichnis; beenden Sie keinen unverifizierten Prozess.' },
+  SERVER_BUSY: { summary: 'Ein anderer Befehl ändert gerade den lokalen Serverzustand.', hint: 'Warten Sie, bis der andere Serverbefehl abgeschlossen ist, und versuchen Sie es erneut.' },
   // Argumente, Optionen und Eingaben
   UNKNOWN_COMMAND: { summary: 'Der Befehl ist nicht registriert.', hint: 'Verfügbare Befehle, auch aktivierte Plugin-Befehle, zeigen help oder schema.' },
   UNKNOWN_OPTION: { summary: 'Dieser Befehl akzeptiert die Option nicht.', hint: 'Die Optionen des Befehls zeigt help <command>.' },

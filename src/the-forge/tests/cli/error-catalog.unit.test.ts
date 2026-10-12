@@ -14,7 +14,7 @@ describe('error catalog contract', () => {
       expect(definition.hint.trim().length, code).toBeGreaterThan(0);
       expect(definition.hint, code).not.toBe(definition.summary);
     }
-    expect(errorCodes.filter(code => errorCatalog[code].retryable)).toEqual(['WORKSPACE_BUSY']);
+    expect(errorCodes.filter(code => errorCatalog[code].retryable)).toEqual(['SERVER_STOP_FAILED', 'SERVER_BUSY', 'WORKSPACE_BUSY']);
     expect(errorDefinition('PLUGIN_CUSTOM')).toBeUndefined();
     expect(errorDefinition('constructor')).toBeUndefined();
   });
@@ -22,6 +22,10 @@ describe('error catalog contract', () => {
   it('fixes exit statuses through the helpers, keeping only signal overrides', () => {
     expect(forgeError('NOT_FOUND', 'File not found: a.md')).toMatchObject({ code: 'NOT_FOUND', exitCode: 3 });
     expect(forgeError('WORKSPACE_BUSY', 'busy')).toMatchObject({ exitCode: 4 });
+    expect(forgeError('SERVER_BUSY', 'lifecycle busy')).toMatchObject({ exitCode: 4 });
+    expect(forgeError('SERVER_STATE_INVALID', 'unsafe state')).toMatchObject({ exitCode: 2 });
+    expect(forgeError('SERVER_START_FAILED', 'startup failed')).toMatchObject({ exitCode: 1 });
+    expect(forgeError('SERVER_STOP_FAILED', 'shutdown failed')).toMatchObject({ exitCode: 1 });
     expect(forgeError('UI_DRIFT', 'drift', { outputs: [] })).toMatchObject({ exitCode: 5, details: { outputs: [] } });
     expect(forgeError('CLAUDE_COMMAND_INTERRUPTED', 'SIGTERM', undefined, 143).exitCode).toBe(143);
     expect(() => ensure(false, 'CLAUDE_RUNTIME_FAILED', 'no status')).toThrow(expect.objectContaining({ exitCode: 1 }));

@@ -23,6 +23,10 @@ export declare const categoryExitCodes: {
     readonly interrupted: 130;
 };
 export declare const errorCatalog: {
+    readonly SERVER_START_FAILED: ErrorDefinition;
+    readonly SERVER_STOP_FAILED: ErrorDefinition;
+    readonly SERVER_STATE_INVALID: ErrorDefinition;
+    readonly SERVER_BUSY: ErrorDefinition;
     readonly UNKNOWN_COMMAND: ErrorDefinition;
     readonly UNKNOWN_OPTION: ErrorDefinition;
     readonly MISSING_ARGUMENT: ErrorDefinition;

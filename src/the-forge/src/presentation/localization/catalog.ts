@@ -1,4 +1,7 @@
+import { germanServerActions, germanServerCommands } from '../server/messages.ts';
+
 export const germanCommands = {
+  ...germanServerCommands,
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
   schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',
@@ -25,6 +28,7 @@ export const germanCommands = {
 
 /** German descriptions of kernel command actions, keyed `<command> <action>`; `make` actions use the generator catalog. */
 export const germanActions: Record<string, string> = {
+  ...germanServerActions,
   'project list': 'Die verwalteten Projekte auflisten.',
   'project create': 'Ein eigenständiges TypeScript-Projekt erstellen.',
   'project open': 'Ein Projekt für Dateibefehle und Generatoren auswählen.',

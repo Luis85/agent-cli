@@ -30,6 +30,7 @@ beforeEach(async () => {
   const loaded = await loadConfig({ defaultPath: join(root, 'bin/config.json'), cwd: root });
   for (const command of commands(registry, {
     loaded, files,
+    server: { async start() { throw new Error('Document commands must not start servers'); }, async status() { throw new Error('Document commands must not inspect servers'); }, async stop() { throw new Error('Document commands must not stop servers'); } },
     projects: new ProjectService(files, workspace, 'projects', () => ({ project: projectScaffold, component: componentScaffold }), events),
     get workflows(): never { throw new Error('Document commands must not access workflows'); },
     setup: async () => undefined,
@@ -40,7 +41,7 @@ beforeEach(async () => {
 
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
-    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'project', 'workflows',
+    expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'project', 'workflows', 'server',
       'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });

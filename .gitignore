@@ -3,3 +3,8 @@ coverage/
 release/
 *.tsbuildinfo
 .quality-reports/
+
+# Local CLI server credentials and lifecycle state; project markers remain tracked.
+.forge/server.json
+.forge/server.lock
+.forge/.server-*.tmp

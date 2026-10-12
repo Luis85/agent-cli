@@ -19,12 +19,17 @@ async function fixture(dryRun = false) {
   await mkdir(root); await mkdir(bundle);
   await writeFile(join(bundle, 'forge.js'), 'require("./forge-runtime.js")');
   await writeFile(join(bundle, 'forge-runtime.js'), 'console.log("portable")');
+  await writeFile(join(bundle, 'forge-server.cjs'), 'process.send?.({ ready: true })');
+  await mkdir(join(bundle, 'webviews/admin'), { recursive: true });
+  await writeFile(join(bundle, 'webviews/admin/index.html'), '<html><body>Admin</body></html>');
+  await writeFile(join(bundle, 'webviews/admin/manifest.json'), '{"id":"admin","name":"Developer admin","entry":"index.html"}');
+  await writeFile(join(bundle, 'webviews/admin/THIRD-PARTY-NOTICES.md'), '# Third-party notices\n');
   await writeFile(join(bundle, 'package.json'), '{"type":"commonjs","main":"forge.js"}');
   await mkdir(join(bundle, 'config'));
   await writeFile(join(bundle, 'config/default.json'), '{}\n');
   await mkdir(join(bundle, 'data/docs/reference'), { recursive: true });
   await writeFile(join(bundle, 'data/docs/reference/cli.md'), '# Commands\n');
-  await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['forge.js', 'forge-runtime.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json'] }));
+  await writeFile(join(bundle, 'data/distribution.json'), JSON.stringify({ schemaVersion: 1, files: ['forge.js', 'forge-runtime.js', 'forge-server.cjs', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json', 'webviews/admin/index.html', 'webviews/admin/manifest.json', 'webviews/admin/THIRD-PARTY-NOTICES.md'] }));
   const config: AppConfig = {
     schemaVersion: 1,
     paths: { projects: 'work/projects' },
@@ -42,21 +47,23 @@ async function fixture(dryRun = false) {
 it('installs fixed environment directories and configured projects through workspace writes', async () => {
   const { root, setup, events, config } = await fixture();
   const result = await setup.run();
-  expect(result.dryRun).toBe(false); expect(result.skipped).toEqual([]); expect(result.changes).toHaveLength(13);
+  expect(result.dryRun).toBe(false); expect(result.skipped).toEqual([]); expect(result.changes).toHaveLength(17);
   const installed = JSON.parse(await readFile(join(root, 'bin/config.json'), 'utf8'));
   expect(installed).toEqual(config);
   expect(installed.paths).toEqual(config.paths);
   expect(await readFile(join(root, 'bin/forge-runtime.js'), 'utf8')).toContain('portable');
+  expect(await readFile(join(root, 'bin/forge-server.cjs'), 'utf8')).toContain('ready');
+  expect(await readFile(join(root, 'bin/webviews/admin/index.html'), 'utf8')).toContain('Admin');
   expect(await readFile(join(root, 'bin/data/docs/reference/cli.md'), 'utf8')).toBe('# Commands\n');
   expect(await readFile(join(root, 'bin/templates/entity.md'), 'utf8')).toContain('{{title}}');
   expect(await readFile(join(root, 'bin/plugins/.gitkeep'))).toHaveLength(0);
   for (const skills of ['.claude/skills', '.agents/skills']) expect(await readFile(join(root, skills, 'forge-workflow/SKILL.md'), 'utf8')).toContain('name: forge-workflow');
   const guidance = await readFile(join(root, 'AGENTS.md'), 'utf8');
   for (const command of ['--if-match', 'node bin/forge.js', 'project open', 'project current', 'project close']) expect(guidance).toContain(command);
-  expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge-runtime.js', 'forge.js', 'package.json', 'plugins', 'templates']);
+  expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge-runtime.js', 'forge-server.cjs', 'forge.js', 'package.json', 'plugins', 'templates', 'webviews']);
   expect(await readFile(join(root, 'work/projects/.gitkeep'))).toHaveLength(0);
-  expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(13);
-  expect(events.history).toHaveLength(28);
+  expect(events.history.filter(record => (record.payload as { kind: string }).kind === 'file')).toHaveLength(17);
+  expect(events.history).toHaveLength(34);
 });
 it('preserves existing configuration, bundle, template, skill and agent instructions on repeated setup', async () => {
   const { root, setup, events } = await fixture();
@@ -65,21 +72,21 @@ it('preserves existing configuration, bundle, template, skill and agent instruct
   for (const path of edited) await writeFile(join(root, path), `User content for ${path}`);
   const count = events.history.length;
   const result = await setup.run();
-  expect(result.changes).toEqual([]); expect(result.skipped).toHaveLength(13);
+  expect(result.changes).toEqual([]); expect(result.skipped).toHaveLength(17);
   expect(events.history).toHaveLength(count);
   for (const path of edited) expect(await readFile(join(root, path), 'utf8')).toBe(`User content for ${path}`);
 });
 it('previews every new destination without creating directories or publishing events', async () => {
   const { root, setup, events } = await fixture(true);
   const result = await setup.run();
-  expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(13);
+  expect(result.dryRun).toBe(true); expect(result.changes).toHaveLength(17);
   expect(await readdir(root)).toEqual([]); expect(events.history).toEqual([]);
 });
 it('fills missing setup files while retaining an existing AGENTS.md', async () => {
   const { root, setup } = await fixture();
   await writeFile(join(root, 'AGENTS.md'), 'Existing project instructions');
   const result = await setup.run();
-  expect(result.skipped).toEqual(['AGENTS.md']); expect(result.changes).toHaveLength(12);
+  expect(result.skipped).toEqual(['AGENTS.md']); expect(result.changes).toHaveLength(16);
   expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe('Existing project instructions');
 });
 it('copies only distribution assets and excludes environment data from its fixed snapshot', async () => {
@@ -90,7 +97,7 @@ it('copies only distribution assets and excludes environment data from its fixed
   await writeFile(join(bundle, 'config.json'), '{"private":"configuration"}');
   await writeFile(join(bundle, 'data/context.json'), '{"activeProject":"private-project"}');
   const artifacts = await readSetupArtifacts(bundle);
-  expect(artifacts.map(artifact => artifact.path)).toEqual(['forge.js', 'forge-runtime.js', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json']);
+  expect(artifacts.map(artifact => artifact.path)).toEqual(['forge.js', 'forge-runtime.js', 'forge-server.cjs', 'config/default.json', 'data/distribution.json', 'data/docs/reference/cli.md', 'package.json', 'webviews/admin/index.html', 'webviews/admin/manifest.json', 'webviews/admin/THIRD-PARTY-NOTICES.md']);
   await writeFile(join(bundle, 'forge-runtime.js'), 'changed after snapshot');
   expect(new TextDecoder().decode(artifacts.find(artifact => artifact.path === 'forge-runtime.js')!.bytes)).toContain('portable');
 });
@@ -105,6 +112,8 @@ it('rejects a distribution asset replaced by a symlink before planning installat
 it.each([
   ['the distribution manifest', 'data/distribution.json', 'bin/data/distribution.json is missing'],
   ['a listed asset', 'data/docs/reference/cli.md', 'bin/data/docs/reference/cli.md is missing'],
+  ['the server bundle', 'forge-server.cjs', 'bin/forge-server.cjs is missing'],
+  ['the admin application', 'webviews/admin/index.html', 'bin/webviews/admin/index.html is missing'],
   ['the whole data folder', 'data', 'bin/data/distribution.json is missing'],
 ])('names the missing file of an incomplete bin folder: %s', async (_case, removed, message) => {
   const { bundle } = await fixture();
@@ -116,11 +125,13 @@ it('rejects a distribution manifest that is not JSON with INVALID_SETUP', async 
   await writeFile(join(bundle, 'data/distribution.json'), '{');
   await expect(readSetupArtifacts(bundle)).rejects.toMatchObject({ code: 'INVALID_SETUP', message: expect.stringContaining('bin/data/distribution.json') });
 });
-it.each(['missing-defaults', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
+it.each(['missing-defaults', 'missing-server', 'missing-webview', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
   const { bundle } = await fixture();
   const path = join(bundle, 'data/distribution.json');
   const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
   if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
+  else if (invalid === 'missing-server') manifest.files = manifest.files.filter(file => file !== 'forge-server.cjs');
+  else if (invalid === 'missing-webview') manifest.files = manifest.files.filter(file => file !== 'webviews/admin/index.html');
   else manifest.files.push('forge.js');
   await writeFile(path, JSON.stringify(manifest));
   await expect(readSetupArtifacts(bundle)).rejects.toMatchObject({ code: 'INVALID_SETUP' });
@@ -142,6 +153,6 @@ it('installs no templates and omits the template next steps without the template
   const { root, workspace, config, artifacts, skills } = await fixture();
   const result = await new SetupService(workspace, config, artifacts, skills, null).run();
   expect(result.changes.map(change => change.path)).not.toContain('bin/templates/entity.md');
-  expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge-runtime.js', 'forge.js', 'package.json', 'plugins']);
+  expect(await readdir(join(root, 'bin'))).toEqual(['config', 'config.json', 'data', 'forge-runtime.js', 'forge-server.cjs', 'forge.js', 'package.json', 'plugins', 'webviews']);
   expect(result.nextSteps.map(step => step.command)).toEqual(['node bin/forge.js project list']);
 });

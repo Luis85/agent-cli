@@ -2,6 +2,8 @@
 
 Historical research baseline: 2026-10-10 · Maintainer material, not packaged into `bin/data/docs`; it does not define runtime contracts.
 
+For the localhost server and read-only admin UI, see the [developer admin polishing review](13-admin-webview-polish-review.md).
+
 Start with the [current agent-first polishing review](12-agent-first-polish-review.md) for the 2026-10-11 assessment and verified improvements. The synthesis below preserves the earlier research baseline and roadmap candidates. Many listed gaps have since closed, including search and link-aware file operations, command schemas, Agent Skills installation, response formatting and stale-lock recovery. Its command counts, measurements and missing-capability statements describe that earlier snapshot; they are not current acceptance criteria. Use the installed `help` and `schema <command>` plus the [product documentation](../index.md) to establish what exists now.
 
 This research asks four questions about The Forge at v0.1.0. What can it help with today? Where is it lacking? What should improve? What should be added? Seven research passes each took one product perspective and surveyed the 2025–2026 landscape on the web. Each pass then compared The Forge against that landscape and proposed prioritized recommendations. This page synthesizes the passes for planning the next iteration. The perspective reports hold the evidence and sources. The maintainer then set the direction: The Forge is a terminal project companion, the agent's independent interface to an Obsidian-compatible vault. The [next iteration plan](10-next-iteration-plan.md) turns that direction into milestones. It supersedes the positioning options and roadmap candidates below wherever they differ.

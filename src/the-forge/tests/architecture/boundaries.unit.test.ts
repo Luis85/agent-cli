@@ -11,6 +11,7 @@ it.each([
   "import files = require('../infrastructure/files.ts');",
   "const files = require('../infrastructure/files.ts');",
   "import('../main.ts');",
+  "import('../server-main.ts');",
   "import(path);",
   "import './nested/../../../infrastructure/files.ts';",
 ])('rejects outward dependency syntax: %s', source => {
@@ -36,6 +37,7 @@ it.each([
   "import { parseDocument } from 'yaml';",
   "import type { Buffer } from 'node:buffer';",
   "import '../../main.ts';",
+  "import '../../server-main.ts';",
   "import(path);",
 ])('rejects presentation dependencies on concrete adapters: %s', source => {
   expect(boundaryViolations(resolve('src/presentation/cli/example.ts'), source)).toHaveLength(1);
@@ -55,7 +57,7 @@ it('allows the CLI parser, package metadata, and deeply nested inward dependenci
 it('lets infrastructure use libraries and approved asset roots while rejecting presentation and composition dependencies', () => {
   const file = resolve('src/infrastructure/plugins/loader.ts');
   expect(boundaryViolations(file, "import 'node:fs'; import 'yaml'; import asset from '../../../docs/templates/note.md?raw'; import config from '../../../configs/lint/oxlintrc.json?raw'; const module = import(path);")).toEqual([]);
-  expect(boundaryViolations(file, "import '../../presentation/cli/commands.ts'; import '../../main.ts'; import '../../sdk.ts';")).toHaveLength(3);
+  expect(boundaryViolations(file, "import '../../presentation/cli/commands.ts'; import '../../main.ts'; import '../../server-main.ts'; import '../../sdk.ts';")).toHaveLength(4);
 });
 
 it.each([
@@ -116,10 +118,10 @@ describe('core plugin boundaries', () => {
     expect(boundaryViolations(resolve('src/plugins/search/plugin.ts'), "import '../../application/plugins/core-plugins.ts'; import './infrastructure/index.ts'; import './presentation/commands.ts';")).toEqual([]);
   });
 
-  it('keeps the kernel independent of plugins and the composition root on plugin factories', () => {
+  it.each(['src/main.ts', 'src/server-main.ts'])('keeps the kernel independent of plugins and composition entry %s on plugin factories', entry => {
     expect(boundaryViolations(resolve('src/application/plugins/example.ts'), "import { skillsPlugin } from '../../plugins/skills/plugin.ts';")).toHaveLength(1);
-    expect(compositionViolations(resolve('src/main.ts'), "import { skillsPlugin } from './plugins/skills/plugin.ts';")).toEqual([]);
-    expect(compositionViolations(resolve('src/main.ts'), "import { skillsCommand } from './plugins/skills/presentation/commands.ts';")).toHaveLength(1);
+    expect(compositionViolations(resolve(entry), "import { skillsPlugin } from './plugins/skills/plugin.ts';")).toEqual([]);
+    expect(compositionViolations(resolve(entry), "import { skillsCommand } from './plugins/skills/presentation/commands.ts';")).toHaveLength(1);
   });
 });
 

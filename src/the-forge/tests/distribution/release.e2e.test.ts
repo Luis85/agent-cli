@@ -42,7 +42,8 @@ describe('release distribution', () => {
     await cp(join(workspaceRoot, 'LICENSE'), join(root, '../../LICENSE'));
     // A junction needs no symlink privilege on Windows; other platforms ignore the type.
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'junction');
-    const privateFiles = ['config.json', 'data/context.json', 'data/private.json', 'plugins/private.mjs', 'templates/private.md'];
+    await mkdir(bin(root, 'webviews/private'), { recursive: true });
+    const privateFiles = ['config.json', 'data/context.json', 'data/private.json', 'plugins/private.mjs', 'templates/private.md', 'webviews/private/index.html'];
     for (const path of privateFiles) await writeFile(bin(root, path), `preserve ${path}\n`);
     await writeFile(bin(root, 'data/docs/obsolete.md'), '# Stale generated documentation');
     await writeFile(bin(root, 'skills/obsolete.md'), '# Stale packaged skill');
@@ -56,6 +57,10 @@ describe('release distribution', () => {
     expect(await readFile(bin(root, 'skills/forge-workflow/SKILL.md'), 'utf8')).toBe(await readFile(resolve('skills/forge-workflow/SKILL.md'), 'utf8'));
     const manifest = JSON.parse(await readFile(bin(root, 'data/distribution.json'), 'utf8'));
     expect(manifest.files).toContain('forge.js');
+    expect(manifest.files).toContain('forge-server.cjs');
+    expect(manifest.files).toContain('webviews/admin/index.html');
+    expect(manifest.files).toContain('webviews/admin/THIRD-PARTY-NOTICES.md');
+    expect(manifest.files.filter((path: string) => path === 'webviews/admin/index.html')).toHaveLength(1);
     expect(manifest.files).toContain('data/types/sdk.d.ts');
     expect(manifest.files.some((path: string) => /context|private|obsolete/.test(path))).toBe(false);
   }, 60_000);
@@ -98,6 +103,10 @@ describe('release distribution', () => {
     const listed = entries(root, archive);
     expect(listed.every(path => path.startsWith('bin/'))).toBe(true);
     expect(listed).toContain('bin/forge.js');
+    expect(listed).toContain('bin/forge-server.cjs');
+    expect(listed).toContain('bin/webviews/admin/index.html');
+    expect(listed).toContain('bin/webviews/admin/manifest.json');
+    expect(listed).toContain('bin/webviews/admin/THIRD-PARTY-NOTICES.md');
     expect(listed).toContain('bin/package.json');
     expect(listed).toContain('bin/data/distribution.json');
     expect(listed).toContain('bin/plugins/.gitkeep');
@@ -143,11 +152,13 @@ describe('release distribution', () => {
     await writeFile(path, JSON.stringify(manifest));
     expect(() => release(root)).toThrow('Invalid distribution asset: data/context.json');
   });
-  it.each(['missing-defaults', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
+  it.each(['missing-defaults', 'missing-server', 'missing-webview', 'duplicate-assets'])('rejects an invalid distribution manifest: %s', async invalid => {
     const root = await checkout();
     const path = bin(root, 'data/distribution.json');
     const manifest = JSON.parse(await readFile(path, 'utf8')) as { schemaVersion: number; files: string[] };
     if (invalid === 'missing-defaults') manifest.files = manifest.files.filter(file => file !== 'config/default.json');
+    else if (invalid === 'missing-server') manifest.files = manifest.files.filter(file => file !== 'forge-server.cjs');
+    else if (invalid === 'missing-webview') manifest.files = manifest.files.filter(file => file !== 'webviews/admin/index.html');
     else manifest.files.push('forge.js');
     await writeFile(path, JSON.stringify(manifest));
     expect(() => release(root)).toThrow('Missing or invalid distribution manifest');

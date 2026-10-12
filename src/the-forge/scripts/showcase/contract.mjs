@@ -7,12 +7,15 @@ const commands = {
   help: ['help', 'backlog', '--lang', 'de'],
   skills: ['skills', 'list'],
   skill: ['skills', 'show', 'forge-backlog'],
+  serverStatus: ['server', 'status'],
+  serverHelp: ['help', 'server'],
 };
 
 /**
  * @typedef {{ annotations: Record<string, unknown>, operations: string[] }} ApplyContract
  * @typedef {{ description: string, actions: [string, string][] }} LocalizedHelp
- * @typedef {{ apply: ApplyContract, help: LocalizedHelp, skills: string[], skill: { id: string, description: string } }} Contract
+ * @typedef {{ running: boolean, stale: boolean, server: null, url: null, webviews: unknown[] }} InactiveServer
+ * @typedef {{ apply: ApplyContract, help: LocalizedHelp, skills: string[], skill: { id: string, description: string }, server: { status: InactiveServer, description: string, actions: string[] } }} Contract
  */
 
 /**
@@ -21,7 +24,8 @@ const commands = {
  */
 export async function readContract(cli) {
   cli.begin('Contract and skills');
-  const [schema, help, skills, skill] = await cli.runConcurrently([commands.schema, commands.help, commands.skills, commands.skill]);
+  const [schema, help, skills, skill, serverStatus, serverHelp] = await cli.runConcurrently([commands.schema, commands.help, commands.skills, commands.skill, commands.serverStatus, commands.serverHelp]);
+  if (serverStatus.data.running || serverStatus.data.stale) throw new Error('The showcase temporary workspace must not have a running or stale server.');
   const apply = schema.data.commands.find((/** @type {any} */ command) => command.id === 'apply');
   const plan = apply.args[0].schema.properties.operations.items.oneOf;
   const { mutating, readOnlyHint, destructiveHint, idempotentHint } = apply.annotations;
@@ -32,6 +36,7 @@ export async function readContract(cli) {
     help: { description: help.data.description, actions: Object.entries(help.data.annotations.actions).map(([name, action]) => [name, String(/** @type {any} */ (action).description)]) },
     skills: skills.data.skills,
     skill: { id: skill.data.id, description },
+    server: { status: serverStatus.data, description: serverHelp.data.description, actions: Object.keys(serverHelp.data.annotations.actions) },
   };
 }
 
@@ -68,6 +73,25 @@ export function contractSection(contract) {
     '| Action | Description |',
     '| --- | --- |',
     ...contract.help.actions.map(([name, description]) => `| \`${name}\` | ${description.replaceAll('|', '\\|')} |`),
+    '',
+    '### Localhost admin inspection',
+    '',
+    'The core server is independent of the Vue/Nuxt UI admin view. Generation records only read-only discovery and never starts a background process:',
+    '',
+    '```sh',
+    command(commands.serverStatus),
+    command(commands.serverHelp),
+    '```',
+    '',
+    '```json',
+    JSON.stringify(contract.server.status, null, 2),
+    '```',
+    '',
+    `> ${contract.server.description}`,
+    '',
+    `Available actions: ${contract.server.actions.map(action => '`' + action + '`').join(', ')}.`,
+    '',
+    'To inspect the containing workspace yourself, run `node bin/forge.js server start --webview admin --json` from its root and open `data.url`. The read-only view reports context, projects, plugins, counts and runtime health. End the session with `node bin/forge.js server stop`. The server uses localhost and preserves project selection; the launch link includes a local session token.',
     '',
     '### Agent Skills',
     '',

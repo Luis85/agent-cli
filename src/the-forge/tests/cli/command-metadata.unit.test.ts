@@ -21,11 +21,19 @@ describe('built-in command metadata', () => {
   });
 
   it('marks exactly the discovery commands and derives annotations from metadata', () => {
-    expect([...commands.values()].filter(command => command.discovery).map(command => command.id).sort()).toEqual(['config', 'events', 'formats', 'help', 'plugins', 'schema', 'setup']);
+    expect([...commands.values()].filter(command => command.discovery).map(command => command.id).sort()).toEqual(['config', 'events', 'formats', 'help', 'plugins', 'schema', 'server', 'setup']);
     expect(commandAnnotations(commands.get('read')!)).toEqual({ scope: 'project', discovery: false, mutating: false, readOnlyHint: true, destructiveHint: false, idempotentHint: true });
     // A command is read-only only when no action mutates; each action keeps its own mode.
     expect(commandAnnotations(commands.get('skills')!)).toMatchObject({ scope: 'workspace', mutating: true, readOnlyHint: false, defaultAction: 'list', actions: { list: { mutating: false, readOnlyHint: true }, install: { scope: 'project', mutating: true, readOnlyHint: false } } });
     expect(commandAnnotations(commands.get('bases')!)).toMatchObject({ mutating: false, readOnlyHint: true });
+    expect(commandAnnotations(commands.get('server')!)).toMatchObject({
+      scope: 'workspace', discovery: true, mutating: true, readOnlyHint: false, defaultAction: 'status',
+      actions: {
+        status: { scope: 'workspace', discovery: true, mutating: false, readOnlyHint: true },
+        start: { scope: 'workspace', discovery: true, mutating: true, destructiveHint: false, idempotentHint: true },
+        stop: { scope: 'workspace', discovery: true, mutating: true, destructiveHint: false, idempotentHint: true },
+      },
+    });
     expect(commandAnnotations(commands.get('make')!)).toMatchObject({ mutating: true, readOnlyHint: false });
     // The kernel make command stays generic; each generator documents its own usage.
     expect(commands.get('make')).toMatchObject({ description: 'Run a registered generator, or list the generators.', usage: 'make [generator Name] [--out directory]' });

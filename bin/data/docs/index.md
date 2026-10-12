@@ -21,6 +21,7 @@ For users who already know their goal. Each guide states the needed context and 
 
 | Goal | Guide |
 | --- | --- |
+| Inspect workspace context, plugins and runtime health in a browser | [Use the admin webview](how-to/use-admin-webview.md) |
 | Select a project and control file scope | [Set up and manage projects](how-to/manage-projects.md) |
 | Edit one section, block or several literals of a note, or change several files as one unit | [Make precise edits](how-to/make-precise-edits.md) |
 | Change paths, transfer definitions or update generated UI | [Maintain and regenerate components](how-to/manage-components.md) |
@@ -46,6 +47,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | Reference | Contents |
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
+| [Localhost server](reference/server.md) | CLI-managed server lifecycle, read-only inspection, authenticated launch links and independent webviews |
 | [Schema contract](reference/schema.md) | JSON Schema 2020-12 input and output schemas, behavior annotations and the response envelope that `schema` publishes |
 | [Error catalog](reference/errors.md) | Every error code with its exit status, hint, retryability and recovery details |
 | [CLI language](reference/language.md) | English/German selection, translated guidance and stable machine output |

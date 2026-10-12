@@ -1,45 +1,20 @@
 "use strict";
-const minpath = require("node:path");
-const node_crypto = require("node:crypto");
-const node_async_hooks = require("node:async_hooks");
-const require$$0 = require("process");
-const require$$0$1 = require("buffer");
+const childProcess = require("node:child_process");
 const promises$1 = require("node:fs/promises");
+const path$3 = require("node:path");
+const node_crypto = require("node:crypto");
 const fs = require("node:fs");
 const node_os = require("node:os");
 const promises = require("node:timers/promises");
+const node_async_hooks = require("node:async_hooks");
+const require$$0 = require("process");
+const require$$0$1 = require("buffer");
 const node_url = require("node:url");
 const node_module = require("node:module");
 const node_vm = require("node:vm");
-const childProcess = require("node:child_process");
 const process$1 = require("node:process");
 const node_events = require("node:events");
 const node_util = require("node:util");
-const name = "@luis85/forge";
-const version$1 = "0.1.0";
-const description$2 = "The Forge: portable tools for high-quality AI-assisted TypeScript engineering";
-const type$3 = "module";
-const license = "MIT";
-const engines = { "node": ">=22.12.0" };
-const config$1 = { "distribution": "../../bin" };
-const scripts = { "dev": "vite build --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs" };
-const dependencies$1 = { "ajv": "^8.20.0", "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
-const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
-const allowScripts = { "esbuild": true, "fsevents": false };
-const metadata$2 = {
-  name,
-  version: version$1,
-  "private": true,
-  description: description$2,
-  type: type$3,
-  license,
-  engines,
-  config: config$1,
-  scripts,
-  dependencies: dependencies$1,
-  devDependencies,
-  allowScripts
-};
 const categoryExitCodes = {
   input: 2,
   conflict: 2,
@@ -54,6 +29,10 @@ const entry = (category, summary, hint, retryable2 = false) => ({ exitCode: cate
 const claudeDefinitionHint$1 = "Fix the field named in the message, then rerun the command.";
 const argumentsHint$1 = "Correct the arguments named in the message; run help <command> for usage.";
 const errorCatalog = {
+  SERVER_START_FAILED: entry("runtime", "The localhost server could not start.", "Check the requested port and installed server bundle, then retry server start."),
+  SERVER_STOP_FAILED: entry("runtime", "The verified localhost server could not stop.", "Run server status, then retry server stop.", true),
+  SERVER_STATE_INVALID: entry("conflict", "The saved localhost server state is invalid or unsafe.", "Inspect .forge/server.json and its parent directory; do not stop an unverified process."),
+  SERVER_BUSY: entry("busy", "Another command is changing the localhost server state.", "Wait for the other server command to finish, then retry.", true),
   // Arguments, options and input
   UNKNOWN_COMMAND: entry("input", "The command is not registered.", "Run help or schema to list available commands, including enabled plugin commands."),
   UNKNOWN_OPTION: entry("input", "The option is not accepted by this command.", "Run help <command> to list its options."),
@@ -228,6 +207,31 @@ function ensure(condition, code2, message2, details) {
   if (!condition) throw forgeError(code2, message2, details);
 }
 const isRecord$1 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+const name = "@luis85/forge";
+const version$1 = "0.1.0";
+const description$2 = "The Forge: portable tools for high-quality AI-assisted TypeScript engineering";
+const type$3 = "module";
+const license = "MIT";
+const engines = { "node": ">=22.12.0" };
+const config$1 = { "distribution": "../../bin" };
+const scripts = { "dev": "vite build --watch --emptyOutDir=false", "dev:server": "vite build --mode server --watch --emptyOutDir=false", "typecheck": "node scripts/quality/typecheck.mjs", "build": "vite build && vite build --mode server && node scripts/package.mjs", "test": "vitest run", "check": "npm run check:fast && npm run build && npm test && npm run showcase:check", "release": "npm run check && node scripts/release.mjs", "lint": "node scripts/quality/lint.mjs", "analyze": "node scripts/quality/analyze.mjs", "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck", "check:structure": "node scripts/quality/structure.mjs --source-layout forge", "eval": "node scripts/eval/run.mjs", "bench": "node scripts/bench/metadata.mjs", "showcase": "node scripts/showcase.mjs", "showcase:check": "node scripts/showcase.mjs --check", "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs" };
+const dependencies$1 = { "ajv": "^8.20.0", "commander": "^15.0.0", "dayjs": "^1.11.23", "obsidian-bases-expression": "0.2.0", "parse5": "7.3.0", "remark-parse": "^11.0.0", "unified": "^11.0.5", "yaml": "^2.8.1", "zod": "^4.6.5" };
+const devDependencies = { "@angular/common": "21.2.25", "@angular/compiler": "21.2.25", "@angular/core": "21.2.25", "@angular/platform-browser": "21.2.25", "@types/jsdom": "27.0.0", "@types/node": "^22.18.0", "@types/react": "19.3.0", "@types/react-dom": "19.3.0", "@vue/compiler-sfc": "3.5.43", "fallow": "3.31.0", "jsdom": "27.4.0", "oxlint": "1.86.0", "react": "19.3.0", "react-dom": "19.3.0", "remark-frontmatter": "^5.0.0", "svelte": "5.57.2", "typescript": "~5.9.3", "vite": "^7.1.9", "vitest": "^5.0.3", "vue": "3.5.43" };
+const allowScripts = { "esbuild": true, "fsevents": false };
+const metadata$2 = {
+  name,
+  version: version$1,
+  "private": true,
+  description: description$2,
+  type: type$3,
+  license,
+  engines,
+  config: config$1,
+  scripts,
+  dependencies: dependencies$1,
+  devDependencies,
+  allowScripts
+};
 const placeholder = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 function fill$1(template, params = {}) {
   return template.replace(placeholder, (match, name2) => Object.hasOwn(params, name2) ? String(params[name2]) : match);
@@ -358,6 +362,613 @@ function warningText(value2) {
     }) ?? String(value2);
   } catch {
     return "Operation failed with an unreadable error.";
+  }
+}
+const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
+const lockedFileDelays = [10, 20, 40, 80, 160, 320];
+const errorCode$2 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
+async function retryTransient(operation2, options2 = {}) {
+  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options2;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation2();
+    } catch (error2) {
+      const code2 = errorCode$2(error2);
+      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
+      await sleep(delays[attempt]);
+    }
+  }
+}
+const writingWindowMs = 5e3;
+const heldTokens = /* @__PURE__ */ new Set();
+const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
+const text$l = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
+const errorCode$1 = (error2) => error2.code ?? "";
+let identity$1;
+function hostIdentity() {
+  identity$1 ??= (async () => {
+    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
+    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
+    return { ...text$l(pidNamespace) ? { pidNamespace } : {}, ...text$l(bootId) ? { bootId } : {} };
+  })();
+  return identity$1;
+}
+async function processStart(pid) {
+  const stat = await promises$1.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
+  const fields2 = stat?.slice(stat.lastIndexOf(")") + 2).split(" ");
+  const start2 = fields2?.[19];
+  return start2 !== void 0 && /^\d+$/.test(start2) ? start2 : void 0;
+}
+async function ownHolder() {
+  const start2 = await processStart(process.pid);
+  return { pid: process.pid, hostname: node_os.hostname(), startedAt: (/* @__PURE__ */ new Date()).toISOString(), ...await hostIdentity(), ...start2 ? { processStart: start2 } : {} };
+}
+function parseHolder(content2) {
+  let value2;
+  try {
+    value2 = JSON.parse(content2);
+  } catch {
+    return null;
+  }
+  if (!isRecord$1(value2) || !positiveInteger(value2.pid) || !text$l(value2.hostname) || !text$l(value2.startedAt)) return null;
+  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId, processStart: start2 } = value2;
+  return {
+    pid,
+    hostname: host,
+    startedAt,
+    ...text$l(command2) ? { command: command2 } : {},
+    ...positiveInteger(operationId) ? { operationId } : {},
+    ...text$l(forgeVersion) ? { forgeVersion } : {},
+    ...text$l(pidNamespace) ? { pidNamespace } : {},
+    ...text$l(bootId) ? { bootId } : {},
+    ...text$l(start2) ? { processStart: start2 } : {}
+  };
+}
+async function readLock(path2) {
+  try {
+    return await retryTransient(async () => {
+      const entry2 = await promises$1.lstat(path2);
+      if (!entry2.isFile()) return { content: null, young: false };
+      const young = Date.now() - entry2.mtimeMs < writingWindowMs;
+      const handle = await promises$1.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+      try {
+        const buffer = Buffer.alloc(4096);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        return { content: buffer.subarray(0, bytesRead).toString("utf8"), young };
+      } finally {
+        await handle.close();
+      }
+    });
+  } catch (error2) {
+    return { content: null, young: false, ...errorCode$1(error2) === "ENOENT" ? { missing: true } : {} };
+  }
+}
+function tokenOf(content2) {
+  try {
+    return content2 === null ? void 0 : JSON.parse(content2)?.token;
+  } catch {
+    return void 0;
+  }
+}
+function processAlive$1(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error2) {
+    return errorCode$1(error2) === "ESRCH" ? false : errorCode$1(error2) === "EPERM" ? true : void 0;
+  }
+}
+const bootedAt = () => Date.now() - node_os.uptime() * 1e3;
+async function inspectLock(path2) {
+  const { content: content2, young, missing: missing2 } = await readLock(path2);
+  const lock = content2 === null ? null : parseHolder(content2);
+  if (lock === null) return { lock, stale: young ? "active" : "unknown", ...missing2 ? { missing: missing2 } : {} };
+  const stale = (reason) => ({ lock, stale: "stale", reason, content: content2 });
+  const current = await hostIdentity();
+  if (lock.hostname !== node_os.hostname() || lock.pidNamespace !== current.pidNamespace) return { lock, stale: "unknown" };
+  if (lock.bootId !== current.bootId) {
+    return lock.bootId !== void 0 && current.bootId !== void 0 && Date.parse(lock.startedAt) < bootedAt() ? stale("rebooted") : { lock, stale: "unknown" };
+  }
+  if (lock.pid === process.pid) {
+    const token = tokenOf(content2);
+    if (typeof token === "string" && heldTokens.has(token)) return { lock, stale: "active" };
+    if ((await readLock(path2)).content !== content2) return inspectLock(path2);
+    return stale("reused-pid");
+  }
+  const alive = processAlive$1(lock.pid);
+  if (alive === void 0) return { lock, stale: "unknown" };
+  if (!alive) return stale("dead-process");
+  const start2 = lock.processStart === void 0 ? void 0 : await processStart(lock.pid);
+  return start2 !== void 0 && start2 !== lock.processStart ? stale("reused-pid") : { lock, stale: "active" };
+}
+const lockName = ".agent-cli.lock";
+const staleReasons = {
+  "dead-process": "LOCK_STALE_DEAD_PROCESS",
+  "reused-pid": "LOCK_STALE_REUSED_PID",
+  rebooted: "LOCK_STALE_REBOOTED"
+};
+function recoveredLockMessage({ path: path2, holder, reason }) {
+  const command2 = holder.command ? kernelMessage("LOCK_HOLDER_COMMAND", { command: holder.command }) : "";
+  return kernelMessage("LOCK_RECOVERED", { path: path2, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command: command2, reason: kernelMessage(staleReasons[reason]) });
+}
+const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
+const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
+const acquireAttempts = 3;
+const temporaryName = (path2, kind2) => path$3.join(path$3.dirname(path2), `.agent-cli-tmp-${kind2}-${node_crypto.randomUUID()}`);
+function ownerDetails(owner) {
+  try {
+    const { command: command2, operationId } = owner();
+    return { ...text$l(command2) ? { command: command2 } : {}, ...Number.isSafeInteger(operationId) && operationId > 0 ? { operationId } : {} };
+  } catch {
+    return {};
+  }
+}
+async function acquireLock(path2, owner, display = lockName, recovered = () => {
+}) {
+  const token = node_crypto.randomUUID();
+  const record2 = { ...await ownHolder(), ...ownerDetails(owner), forgeVersion: metadata$2.version, token };
+  const content2 = JSON.stringify(record2) + "\n";
+  let breaker2;
+  for (let attempt = 1; ; attempt++) {
+    if (await createHeld(path2, content2, token)) return token;
+    const found = await inspectLock(path2);
+    if (found.missing) {
+      if (attempt < acquireAttempts) continue;
+      throw busy(display, { lock: null, stale: "active" });
+    }
+    if (found.stale !== "stale") throw busy(display, found);
+    if (attempt === acquireAttempts) throw recovering(display, found, breaker2);
+    let outcome;
+    try {
+      outcome = await breakStale(path2, found.content);
+    } catch (error2) {
+      throw busy(display, found, `Forge could not remove it (${errorCode$1(error2) || String(error2)})`);
+    }
+    if (outcome.broken) recovered({ path: display, holder: found.lock, reason: found.reason });
+    if (outcome.guard?.stale === "unknown") throw busy(guardDisplay(display), outcome.guard);
+    breaker2 = outcome.guard;
+  }
+}
+async function createHeld(path2, content2, token) {
+  heldTokens.add(token);
+  let created = false;
+  try {
+    created = await create(path2, content2);
+    return created;
+  } finally {
+    if (!created) heldTokens.delete(token);
+  }
+}
+async function create(path2, content2) {
+  const temporary2 = temporaryName(path2, "lock");
+  try {
+    await writeDurably(temporary2, content2);
+    await retryTransient(() => promises$1.link(temporary2, path2), { codes: ["EBUSY"] });
+    return true;
+  } catch (error2) {
+    if (errorCode$1(error2) === "EEXIST") return false;
+    if (!linkUnsupported.has(errorCode$1(error2))) throw error2;
+  } finally {
+    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
+    });
+  }
+  return createExclusively(path2, content2);
+}
+const guardName = (path2) => `.agent-cli-tmp-break-${path$3.basename(path2)}`;
+const guardPath = (path2) => path$3.join(path$3.dirname(path2), guardName(path2));
+const guardDisplay = (display) => `${display.slice(0, display.lastIndexOf("/") + 1)}${guardName(display)}`;
+async function removeUnchanged(path2, expected) {
+  const current = await promises$1.readFile(path2, "utf8").catch(() => null);
+  if (current !== expected) return false;
+  try {
+    await retryTransient(() => promises$1.unlink(path2));
+    return true;
+  } catch (error2) {
+    if (errorCode$1(error2) === "ENOENT") return false;
+    throw error2;
+  }
+}
+async function breakStale(path2, diagnosed) {
+  const guard2 = guardPath(path2), token = node_crypto.randomUUID();
+  const content2 = JSON.stringify({ ...await ownHolder(), command: "break stale lock", forgeVersion: metadata$2.version, token }) + "\n";
+  if (!await createHeld(guard2, content2, token)) {
+    const left = await inspectLock(guard2);
+    if (left.missing) return { broken: false };
+    if (left.stale !== "stale") return { broken: false, guard: left };
+    if (!await removeUnchanged(guard2, left.content) || !await createHeld(guard2, content2, token)) return { broken: false };
+  }
+  try {
+    return { broken: await removeUnchanged(path2, diagnosed) };
+  } finally {
+    await releaseLock(guard2, token).catch(() => {
+    });
+  }
+}
+async function record$5(handle, content2) {
+  try {
+    await handle.writeFile(content2);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function writeDurably(path2, content2) {
+  await record$5(await retryTransient(() => promises$1.open(path2, "wx")), content2);
+}
+async function createExclusively(path2, content2) {
+  let handle;
+  try {
+    handle = await retryTransient(() => promises$1.open(path2, "wx"));
+  } catch (error2) {
+    if (errorCode$1(error2) === "EEXIST" || deniedCodes.has(errorCode$1(error2))) return false;
+    throw error2;
+  }
+  try {
+    await record$5(handle, content2);
+  } catch (error2) {
+    await retryTransient(() => promises$1.rm(path2, { force: true })).catch(() => {
+    });
+    throw error2;
+  }
+  return true;
+}
+async function releaseLock(path2, token) {
+  try {
+    let content2;
+    try {
+      content2 = await retryTransient(() => promises$1.readFile(path2, "utf8"));
+    } catch (error2) {
+      if (errorCode$1(error2) === "ENOENT") return "missing";
+      throw error2;
+    }
+    if (tokenOf(content2) !== token) return "foreign";
+    await retryTransient(() => promises$1.unlink(path2));
+    return "released";
+  } finally {
+    heldTokens.delete(token);
+  }
+}
+const describeHolder = (lock) => lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
+function busy(display, inspection, failure2) {
+  const { lock, stale, reason } = inspection;
+  const holder = describeHolder(lock);
+  const details = { lock, stale, path: display, ...reason ? { reason } : {} };
+  const message2 = stale === "active" ? `Lock ${display} is held${holder} by a running Forge process or one still writing it. Wait for it to finish and retry.` : stale === "stale" ? `Lock ${display}${holder} is stale (${reason}), but ${failure2 ?? "it could not be removed"}. Confirm no Forge process uses it, delete ${display} and retry.` : `Lock ${display} exists${holder}; Forge cannot tell whether its holder still runs (another host, pid namespace or boot, or an unreadable lock), so it never removes it. Verify the holder in error.details.lock; once it no longer runs, inspect its unfinished changes (for example git status), delete ${display} and retry.`;
+  return forgeError("WORKSPACE_BUSY", message2, details, void 0, stale === "active");
+}
+function recovering(display, inspection, breaker2) {
+  const { lock, reason } = inspection;
+  const details = { lock, stale: "active", path: display, ...reason ? { reason } : {}, ...breaker2?.lock ? { breaker: breaker2.lock } : {} };
+  return forgeError("WORKSPACE_BUSY", `Lock ${display}${describeHolder(lock)} is stale (${reason}), and another Forge process${describeHolder(breaker2?.lock ?? null)} is removing it. Retry in a moment.`, details, void 0, true);
+}
+const missing$3 = (error2) => error2.code === "ENOENT";
+const invalid$1 = () => forgeError("SERVER_STATE_INVALID", "Server state is unsafe or invalid. Inspect .forge/server.json and its permissions.");
+async function stateDirectory(root, create2 = false) {
+  const path2 = path$3.join(root, ".forge");
+  if (create2) await promises$1.mkdir(path2, { recursive: true, mode: 448 });
+  try {
+    const info = await promises$1.lstat(path2);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw invalid$1();
+  } catch (error2) {
+    if (!missing$3(error2)) throw error2;
+  }
+  return path2;
+}
+async function readState$1(root) {
+  const path2 = path$3.join(await stateDirectory(root), "server.json");
+  let handle;
+  try {
+    if (!(await promises$1.lstat(path2)).isFile()) throw invalid$1();
+    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 64 * 1024 || process.platform !== "win32" && ((info.mode & 63) !== 0 || info.uid !== process.getuid?.())) throw invalid$1();
+    const value2 = JSON.parse(await handle.readFile("utf8"));
+    if (!isRecord$1(value2) || value2.schemaVersion !== 1 || value2.workspaceRoot !== root || typeof value2.instanceId !== "string" || !/^[a-f0-9-]{36}$/.test(value2.instanceId) || typeof value2.token !== "string" || !/^[a-f0-9]{64}$/.test(value2.token) || !Number.isInteger(value2.pid) || Number(value2.pid) < 1 || !Number.isInteger(value2.port) || Number(value2.port) < 1 || Number(value2.port) > 65535 || typeof value2.startedAt !== "string" || !Number.isFinite(Date.parse(value2.startedAt)) || typeof value2.version !== "string" || typeof value2.nodeVersion !== "string" || !Array.isArray(value2.webviews) || !value2.webviews.every((view) => isRecord$1(view) && typeof view.id === "string" && /^[a-z][a-z0-9-]*$/.test(view.id) && typeof view.name === "string" && view.path === `/views/${view.id}/`)) throw invalid$1();
+    return value2;
+  } catch (error2) {
+    if (missing$3(error2)) return null;
+    if (error2 instanceof AppError) throw error2;
+    throw invalid$1();
+  } finally {
+    await handle?.close();
+  }
+}
+async function ensureStateIgnored(root) {
+  const directory = await stateDirectory(root, true);
+  const path2 = path$3.join(directory, ".gitignore");
+  let original = Buffer.alloc(0);
+  let mode = 420;
+  let handle;
+  try {
+    if (!(await promises$1.lstat(path2)).isFile()) throw invalid$1();
+    handle = await promises$1.open(path2, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 1024 * 1024) throw invalid$1();
+    original = await handle.readFile();
+    mode = info.mode & 511;
+  } catch (error2) {
+    if (!missing$3(error2)) throw invalid$1();
+  } finally {
+    await handle?.close();
+  }
+  const lines2 = original.toString("utf8").trimEnd().split(/\r?\n/);
+  const entries2 = ["/server.json", "/server.lock", "/.server-*.tmp", "/.agent-cli-tmp-*"];
+  if (entries2.every((entry2, index2) => lines2.at(index2 - entries2.length) === entry2)) return;
+  const newline = original.includes(Buffer.from("\r\n")) ? "\r\n" : "\n";
+  const separator = original.length && original.at(-1) !== 10 ? newline : "";
+  const bytes = Buffer.concat([original, Buffer.from(separator + entries2.join(newline) + newline)]);
+  const temporary2 = path$3.join(directory, `.server-${node_crypto.randomUUID()}.tmp`);
+  const target = await promises$1.open(temporary2, "wx", mode);
+  try {
+    await target.writeFile(bytes);
+    await target.sync();
+    await target.close();
+    await promises$1.rename(temporary2, path2);
+  } finally {
+    await target.close();
+    await promises$1.unlink(temporary2).catch(() => void 0);
+  }
+}
+async function removeState(root, instanceId) {
+  const state2 = await readState$1(root);
+  if (state2?.instanceId === instanceId) await promises$1.unlink(path$3.join(root, ".forge/server.json")).catch((error2) => {
+    if (!missing$3(error2)) throw error2;
+  });
+}
+async function withServerLock(root, action2) {
+  const path2 = path$3.join(await stateDirectory(root, true), "server.lock");
+  const deadline = Date.now() + 1e4;
+  let token;
+  while (true) {
+    const info = await promises$1.lstat(path2).catch((error2) => {
+      if (missing$3(error2)) return null;
+      throw error2;
+    });
+    if (info && (!info.isFile() || info.isSymbolicLink())) throw invalid$1();
+    try {
+      token = await acquireLock(path2, () => ({ command: "server lifecycle" }), ".forge/server.lock");
+      break;
+    } catch (error2) {
+      if (!(error2 instanceof AppError) || error2.code !== "WORKSPACE_BUSY") throw error2;
+      if (Date.now() >= deadline) throw forgeError("SERVER_BUSY", "Another server lifecycle command holds the startup lock. Retry shortly.");
+      await new Promise((resolve2) => setTimeout(resolve2, 75));
+    }
+  }
+  try {
+    return await action2();
+  } finally {
+    await releaseLock(path2, token);
+  }
+}
+function hasUnsafePathCharacters(value2) {
+  return value2.includes("\\") || value2.includes(":") || [...value2].some((character) => {
+    const code2 = character.charCodeAt(0);
+    return code2 < 32 || code2 === 127;
+  });
+}
+async function discoverWebviews(distributionPath) {
+  const root = path$3.join(distributionPath, "webviews");
+  try {
+    if ((await promises$1.lstat(root)).isSymbolicLink()) return [];
+    const assets = [];
+    for (const entry2 of await promises$1.readdir(root, { withFileTypes: true })) {
+      if (!entry2.isDirectory() || !/^[a-z][a-z0-9-]*$/.test(entry2.name)) continue;
+      const directory = path$3.join(root, entry2.name);
+      const manifestPath2 = path$3.join(directory, "manifest.json");
+      try {
+        if (!(await promises$1.lstat(manifestPath2)).isFile()) continue;
+        const manifest = JSON.parse(await promises$1.readFile(manifestPath2, "utf8"));
+        if (!manifest || typeof manifest !== "object" || !("id" in manifest) || manifest.id !== entry2.name || !("name" in manifest) || typeof manifest.name !== "string" || !manifest.name.trim() || !("entry" in manifest) || manifest.entry !== "index.html") continue;
+        const asset = { id: entry2.name, name: manifest.name, directory };
+        if (await readAsset([asset], `/views/${entry2.name}/`)) assets.push(asset);
+      } catch (error2) {
+        if (error2 instanceof SyntaxError || missingAsset(error2)) continue;
+        throw error2;
+      }
+    }
+    return assets.sort((left, right) => left.id.localeCompare(right.id));
+  } catch (error2) {
+    if (missingAsset(error2)) return [];
+    throw error2;
+  }
+}
+function missingAsset(error2) {
+  return !!error2 && typeof error2 === "object" && "code" in error2 && ["ENOENT", "ENOTDIR", "EACCES", "ELOOP"].includes(String(error2.code));
+}
+const mimeTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2"
+};
+async function readAsset(assets, pathname) {
+  const [, prefix, id2, ...segments2] = pathname.split("/");
+  if (prefix !== "views") return void 0;
+  const asset = assets.find((candidate) => candidate.id === id2);
+  if (!asset) return void 0;
+  if (segments2.length === 0 || segments2.at(-1) === "") segments2.push("index.html");
+  const parts = segments2.filter((segment2) => segment2 !== "");
+  if (parts.some((part) => part.startsWith(".") || hasUnsafePathCharacters(part)) || parts[0]?.toLowerCase() === "manifest.json") return void 0;
+  try {
+    if ((await promises$1.lstat(asset.directory)).isSymbolicLink()) return void 0;
+    const root = await promises$1.realpath(asset.directory);
+    let target = root;
+    for (const part of parts) {
+      target = path$3.join(target, part);
+      if ((await promises$1.lstat(target)).isSymbolicLink()) return void 0;
+    }
+    const resolved = await promises$1.realpath(target);
+    const relative = path$3.relative(root, resolved);
+    if (relative.startsWith("..") || path$3.isAbsolute(relative) || !(await promises$1.lstat(resolved)).isFile()) return void 0;
+    const extension2 = path$3.extname(resolved).toLowerCase();
+    const contentType = mimeTypes[extension2];
+    if (!contentType) return void 0;
+    return {
+      bytes: await promises$1.readFile(resolved),
+      contentType,
+      // A filename cannot prove content addressing. Revalidate local assets so
+      // repackaging a view never leaves the browser using a stale script or style.
+      cacheControl: extension2 === ".html" ? "no-store" : "no-cache"
+    };
+  } catch (error2) {
+    if (missingAsset(error2)) return void 0;
+    throw error2;
+  }
+}
+function serverInfo(state2) {
+  return {
+    pid: state2.pid,
+    startedAt: state2.startedAt,
+    host: "127.0.0.1",
+    port: state2.port,
+    version: state2.version,
+    nodeVersion: state2.nodeVersion,
+    uptimeSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(state2.startedAt)) / 1e3))
+  };
+}
+async function healthy(state2) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${state2.port}/api/health`, {
+      headers: { authorization: `Bearer ${state2.token}` },
+      signal: AbortSignal.timeout(1200),
+      redirect: "error"
+    });
+    if (!response.ok) return false;
+    const body = await response.json();
+    const health = isRecord$1(body) && isRecord$1(body.data) ? body.data : body;
+    return isRecord$1(health) && health.instanceId === state2.instanceId && health.pid === state2.pid;
+  } catch {
+    return false;
+  }
+}
+const stopped = (stale = false) => ({ running: false, stale, server: null, url: null, webviews: [] });
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function running(state2, webview) {
+  const selected2 = webview ? state2.webviews.find((view) => view.id === webview) : void 0;
+  if (webview && !selected2) throw forgeError("INVALID_ARGUMENT", `Webview '${webview}' is not installed.`);
+  return {
+    running: true,
+    stale: false,
+    server: serverInfo(state2),
+    url: `http://127.0.0.1:${state2.port}${selected2?.path ?? "/"}#token=${state2.token}`,
+    webviews: state2.webviews
+  };
+}
+class NodeServerController {
+  constructor(options2) {
+    this.options = options2;
+  }
+  options;
+  async root() {
+    return promises$1.realpath(this.options.workspaceRoot);
+  }
+  async status() {
+    const state2 = await readState$1(await this.root());
+    if (state2 && await healthy(state2)) return running(state2);
+    const assets = await discoverWebviews(await promises$1.realpath(this.options.distributionPath));
+    return { ...stopped(Boolean(state2)), webviews: assets.map((asset) => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` })) };
+  }
+  async start(options2) {
+    const port = options2.port ?? 0;
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw forgeError("INVALID_ARGUMENT", "Port must be an integer from 0 to 65535.");
+    const workspaceRoot = await this.root();
+    const distributionPath = await promises$1.realpath(this.options.distributionPath);
+    const assets = await discoverWebviews(distributionPath);
+    if (options2.webview && !assets.some((asset) => asset.id === options2.webview)) throw forgeError("INVALID_ARGUMENT", `Webview '${options2.webview}' is not installed.`);
+    const existing = await readState$1(workspaceRoot);
+    if (existing && await healthy(existing)) return { ...running(existing, options2.webview), changed: false, ...options2.dryRun ? { dryRun: true } : {} };
+    if (options2.dryRun) return { ...stopped(Boolean(existing)), dryRun: true, changed: true, webviews: assets.map((asset) => ({ id: asset.id, name: asset.name, path: `/views/${asset.id}/` })) };
+    return withServerLock(workspaceRoot, async () => {
+      const latest = await readState$1(workspaceRoot);
+      if (latest && await healthy(latest)) return { ...running(latest, options2.webview), changed: false };
+      const entry2 = path$3.join(distributionPath, "forge-server.cjs");
+      try {
+        await promises$1.access(entry2);
+      } catch {
+        throw forgeError("SERVER_START_FAILED", "The server runtime is missing. Rebuild or reinstall the Forge distribution.");
+      }
+      await ensureStateIgnored(workspaceRoot);
+      const configuration = { ...this.options, workspaceRoot, distributionPath, port, instanceId: node_crypto.randomUUID(), token: node_crypto.randomBytes(32).toString("hex") };
+      await this.launch(entry2, configuration);
+      const state2 = await readState$1(workspaceRoot);
+      if (!state2 || state2.instanceId !== configuration.instanceId || !await healthy(state2)) throw forgeError("SERVER_START_FAILED", "The server did not pass its readiness check.");
+      return { ...running(state2, options2.webview), changed: true };
+    });
+  }
+  launch(entry2, configuration) {
+    return new Promise((resolve2, reject) => {
+      const child = childProcess.spawn(process.execPath, [entry2], { cwd: configuration.workspaceRoot, detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"], windowsHide: true });
+      let settled2 = false;
+      const finish = (error2) => {
+        if (settled2) return;
+        settled2 = true;
+        clearTimeout(timeout);
+        if (child.connected) child.disconnect();
+        if (error2) {
+          if (child.exitCode !== null || child.signalCode !== null || !child.pid) reject(error2);
+          else {
+            child.once("exit", () => reject(error2));
+            child.kill("SIGTERM");
+          }
+        } else {
+          child.unref();
+          resolve2();
+        }
+      };
+      const timeout = setTimeout(() => finish(forgeError("SERVER_START_FAILED", "Server startup timed out.")), 12e3);
+      child.once("error", () => finish(forgeError("SERVER_START_FAILED", "Could not launch the server process.")));
+      child.once("exit", () => finish(forgeError("SERVER_START_FAILED", "The server exited before becoming ready.")));
+      child.on("message", (message2) => {
+        if (!isRecord$1(message2)) return;
+        if (message2.type === "ready" && message2.instanceId === configuration.instanceId) finish();
+        else if (message2.type === "error") finish(forgeError("SERVER_START_FAILED", message2.code === "EADDRINUSE" ? "The requested port is already in use. Choose another port or use --port 0." : "The server could not initialize. Check the runtime files and workspace permissions."));
+      });
+      child.send(configuration, (error2) => {
+        if (error2) finish(forgeError("SERVER_START_FAILED", "Could not configure the server process."));
+      });
+    });
+  }
+  async stop(options2) {
+    const workspaceRoot = await this.root();
+    const stop = async () => {
+      const state2 = await readState$1(workspaceRoot);
+      if (!state2 || !await healthy(state2)) return { ...stopped(Boolean(state2)), changed: false, ...options2.dryRun ? { dryRun: true } : {} };
+      if (options2.dryRun) return { ...running(state2), dryRun: true, changed: true };
+      try {
+        const response = await fetch(`http://127.0.0.1:${state2.port}/api/shutdown`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${state2.token}` },
+          signal: AbortSignal.timeout(2e3),
+          redirect: "error"
+        });
+        if (!response.ok) throw new Error("Shutdown rejected.");
+        const deadline = Date.now() + 5e3;
+        while (process.platform === "win32" ? processAlive(state2.pid) : await healthy(state2)) {
+          if (Date.now() >= deadline) throw new Error("Shutdown timed out.");
+          await new Promise((resolve2) => setTimeout(resolve2, 75));
+        }
+        await removeState(workspaceRoot, state2.instanceId);
+        return { ...stopped(), changed: true };
+      } catch {
+        throw forgeError("SERVER_STOP_FAILED", "The verified server did not stop. Retry server status and server stop.");
+      }
+    };
+    return options2.dryRun || !await readState$1(workspaceRoot) ? stop() : withServerLock(workspaceRoot, stop);
   }
 }
 function isJsonValue(value2, ancestors = /* @__PURE__ */ new Set()) {
@@ -503,9 +1114,9 @@ class EventBus {
       this.layoutCallbacks.push(callback);
       return;
     }
-    const running = this.settle("LAYOUT_CALLBACK_FAILED", callback);
-    this.settling.add(running);
-    void running.then(() => this.settling.delete(running));
+    const running2 = this.settle("LAYOUT_CALLBACK_FAILED", callback);
+    this.settling.add(running2);
+    void running2.then(() => this.settling.delete(running2));
   }
   onQuit(task2) {
     this.ensureCallback(task2);
@@ -544,21 +1155,21 @@ class EventBus {
   }
 }
 const hostEventNamespaces = ["command", "operation", "vault", "metadataCache", "workspace", "plugin"];
-const text$l = (value2) => typeof value2 === "string" && value2.length > 0;
+const text$k = (value2) => typeof value2 === "string" && value2.length > 0;
 const count$3 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const status$1 = (value2) => Number.isSafeInteger(value2);
 const empty$1 = (value2) => Object.keys(value2).length === 0;
 const operation$3 = (value2) => count$3(value2.operationId) && Number(value2.operationId) > 0 && typeof value2.dryRun === "boolean";
-const error$3 = (value2) => isRecord$1(value2) && text$l(value2.code) && status$1(value2.exitCode);
-const command = (value2) => operation$3(value2) && text$l(value2.command) && text$l(value2.root) && text$l(value2.workspaceRoot);
-const workspace = (value2) => operation$3(value2) && ["read", "write", "edit", "remove", "move", "delete", "apply"].includes(String(value2.operation)) && (value2.root === null || text$l(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$l);
-const plugin = (value2) => text$l(value2.pluginId);
+const error$3 = (value2) => isRecord$1(value2) && text$k(value2.code) && status$1(value2.exitCode);
+const command = (value2) => operation$3(value2) && text$k(value2.command) && text$k(value2.root) && text$k(value2.workspaceRoot);
+const workspace = (value2) => operation$3(value2) && ["read", "write", "edit", "remove", "move", "delete", "apply"].includes(String(value2.operation)) && (value2.root === null || text$k(value2.root)) && Array.isArray(value2.paths) && value2.paths.every(text$k);
+const plugin = (value2) => text$k(value2.pluginId);
 const changeOperations = ["created", "updated", "deleted"];
-const change$1 = (value2) => isRecord$1(value2) && text$l(value2.path) && text$l(value2.revision) && count$3(value2.bytes) && changeOperations.includes(String(value2.operation));
-const moved = (value2) => isRecord$1(value2) && text$l(value2.from) && text$l(value2.to) && ["file", "folder"].includes(String(value2.kind));
-const project = (value2) => value2 === null || text$l(value2);
-const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change$1(value2) && Object.keys(value2).length === 5 : text$l(value2.path) && Object.keys(value2).length === 3);
-const rename$1 = (value2) => text$l(value2.path) && text$l(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$l(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
+const change$1 = (value2) => isRecord$1(value2) && text$k(value2.path) && text$k(value2.revision) && count$3(value2.bytes) && changeOperations.includes(String(value2.operation));
+const moved = (value2) => isRecord$1(value2) && text$k(value2.from) && text$k(value2.to) && ["file", "folder"].includes(String(value2.kind));
+const project = (value2) => value2 === null || text$k(value2);
+const vault$1 = (expected, kinds) => (value2) => value2.operation === expected && kinds.includes(String(value2.kind)) && (value2.kind === "file" ? change$1(value2) && Object.keys(value2).length === 5 : text$k(value2.path) && Object.keys(value2).length === 3);
+const rename$1 = (value2) => text$k(value2.path) && text$k(value2.oldPath) && value2.path !== value2.oldPath && (value2.kind === "file" ? value2.revision === void 0 || text$k(value2.revision) : value2.kind === "folder" && value2.revision === void 0);
 function definition$2(id2, description2, validate2) {
   return { id: id2, description: description2, validate: (value2) => isRecord$1(value2) && validate2(value2) };
 }
@@ -573,12 +1184,12 @@ const hostEventDefinitions = [
   definition$2("vault.modify", "An existing file was replaced by a committed write.", vault$1("updated", ["file"])),
   definition$2("vault.delete", "A file or folder was removed; a file's revision and bytes describe its prior content.", vault$1("deleted", ["file", "folder"])),
   definition$2("vault.rename", "A file or folder moved from oldPath to path in a committed batch.", rename$1),
-  definition$2("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$l(value2.path) && isRecord$1(value2.cache)),
-  definition$2("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$l(value2.path) && (value2.prevCache === null || isRecord$1(value2.prevCache))),
-  definition$2("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$l(value2.path) && Object.keys(value2).length === 1),
+  definition$2("metadataCache.changed", "A committed Markdown or Canvas file was indexed; cache is its JSON metadata.", (value2) => text$k(value2.path) && isRecord$1(value2.cache)),
+  definition$2("metadataCache.deleted", "A deleted file left the index; prevCache is its best-effort previous metadata or null.", (value2) => text$k(value2.path) && (value2.prevCache === null || isRecord$1(value2.prevCache))),
+  definition$2("metadataCache.resolve", "A file's resolved and unresolved links were updated.", (value2) => text$k(value2.path) && Object.keys(value2).length === 1),
   definition$2("metadataCache.resolved", "Link resolution finished for a committed batch.", empty$1),
-  definition$2("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$l(value2.path) && Object.keys(value2).length === 1),
-  definition$2("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$l(value2.path) && changeOperations.includes(String(value2.operation)) && count$3(value2.bytes) && Object.keys(value2).length === 3),
+  definition$2("workspace.file-open", "A command read a file through the workspace read path.", (value2) => text$k(value2.path) && Object.keys(value2).length === 1),
+  definition$2("workspace.quick-preview", "A dry run previewed a planned file change without writing it.", (value2) => text$k(value2.path) && changeOperations.includes(String(value2.operation)) && count$3(value2.bytes) && Object.keys(value2).length === 3),
   definition$2("workspace.layout-ready", "Plugins are active and the command is about to run.", empty$1),
   definition$2("workspace.quit", "The invocation is ending; best-effort quit tasks follow before plugins unload.", empty$1),
   definition$2("workspace.project-change", "project open or project close committed a different project selection.", (value2) => project(value2.from) && project(value2.to) && value2.from !== value2.to && Object.keys(value2).length === 2),
@@ -1216,14 +1827,14 @@ function pluginEvents(bus, pluginId) {
 }
 const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
 const types$2 = ["object", "array", "string", "number", "integer", "boolean", "null"];
-const record$5 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
+const record$4 = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 const count$2 = (value2) => Number.isSafeInteger(value2) && Number(value2) >= 0;
 const keywords = {
   $schema: (value2, path2) => value2 === jsonSchemaDialect ? [] : [`${path2}.$schema must be ${jsonSchemaDialect}`],
   title: (value2, path2) => typeof value2 === "string" ? [] : [`${path2}.title must be a string`],
   description: (value2, path2) => typeof value2 === "string" ? [] : [`${path2}.description must be a string`],
   type: (value2, path2) => types$2.includes(value2) ? [] : [`${path2}.type must be one of ${types$2.join(", ")}`],
-  properties: (value2, path2) => record$5(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path2}.properties.${key}`)) : [`${path2}.properties must be an object`],
+  properties: (value2, path2) => record$4(value2) ? Object.entries(value2).flatMap(([key, schema2]) => schemaIssues(schema2, `${path2}.properties.${key}`)) : [`${path2}.properties must be an object`],
   required: (value2, path2) => Array.isArray(value2) && value2.every((item) => typeof item === "string") && new Set(value2).size === value2.length ? [] : [`${path2}.required must list unique property names`],
   additionalProperties: (value2, path2) => typeof value2 === "boolean" ? [] : schemaIssues(value2, `${path2}.additionalProperties`),
   items: (value2, path2) => schemaIssues(value2, `${path2}.items`),
@@ -1251,11 +1862,11 @@ const keywords = {
   }
 };
 function schemaIssues(schema2, path2 = "schema") {
-  if (!record$5(schema2)) return [`${path2} must be a schema object`];
+  if (!record$4(schema2)) return [`${path2} must be a schema object`];
   return Object.entries(schema2).flatMap(([key, value2]) => Object.hasOwn(keywords, key) ? keywords[key](value2, path2) : [`${path2} uses unsupported keyword ${key}`]);
 }
 function typeMatches(type2, value2) {
-  if (type2 === "object") return record$5(value2);
+  if (type2 === "object") return record$4(value2);
   if (type2 === "array") return Array.isArray(value2);
   if (type2 === "integer") return Number.isSafeInteger(value2);
   if (type2 === "number") return typeof value2 === "number" && Number.isFinite(value2);
@@ -1317,7 +1928,7 @@ function validateJsonValue(schema2, value2, path2) {
         return itemSchema ? visit2(itemSchema, item, `${at}[${index2}]`) : item;
       });
     }
-    if (!record$5(current)) return current;
+    if (!record$4(current)) return current;
     const result = {};
     for (const key of node2.required ?? []) if (!Object.hasOwn(current, key) && node2.properties?.[key]?.default === void 0) issues2.push(`${at}.${key}: is required`);
     for (const [key, child] of Object.entries(node2.properties ?? {})) {
@@ -1487,11 +2098,11 @@ function commandAnnotations(command2) {
 }
 const reservedOptions = ["root", "lang", "events", "json", "no-json", "dry-run", "no-dry-run", "no-plugins", "help", "version"];
 const flag$1 = /^[a-z][a-z0-9-]*$/;
-const text$k = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const text$j = (value2) => typeof value2 === "string" && value2.trim().length > 0;
 function validateOptions(options2, shared = {}) {
   for (const [key, schema2] of Object.entries(options2)) {
     ensure(flag$1.test(key) && !reservedOptions.includes(key) && !Object.hasOwn(shared, key), "INVALID_PLUGIN", `Invalid command option ${key}.`);
-    ensure(isRecord$1(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$k(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
+    ensure(isRecord$1(schema2) && (schema2.type === "string" || schema2.type === "boolean") && text$j(schema2.description), "INVALID_PLUGIN", `Command option ${key} requires type string or boolean and a description.`);
     ensure(schema2.enum === void 0 || Array.isArray(schema2.enum) && schema2.enum.length > 0 && schema2.enum.every((item) => typeof item === "string"), "INVALID_PLUGIN", `Command option ${key} enum must list strings.`);
     ensure(schema2.list === void 0 || typeof schema2.list === "boolean" && (!schema2.list || schema2.type === "string" && schema2.enum !== void 0 && schema2.enum.every((item) => item.length > 0 && !item.includes(","))), "INVALID_PLUGIN", `Command option ${key} list must be a boolean, and a list option needs an enum of values without commas.`);
     ensure(schema2.default === void 0 || typeof schema2.default === schema2.type, "INVALID_PLUGIN", `Command option ${key} default must match its type.`);
@@ -1507,15 +2118,15 @@ function validateMode(mode, where2, options2) {
 }
 function validateCommandMetadata(command2) {
   const where2 = `Command ${String(command2.id)}`;
-  ensure(text$k(command2.description) && text$k(command2.usage), "INVALID_PLUGIN", `${where2} requires a description and usage.`);
+  ensure(text$j(command2.description) && text$j(command2.usage), "INVALID_PLUGIN", `${where2} requires a description and usage.`);
   ensure(command2.options === void 0 || isRecord$1(command2.options), "INVALID_PLUGIN", `${where2} options must be an object.`);
   const options2 = command2.options ?? {};
   validateOptions(options2);
   validateMode(command2, where2, options2);
-  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$k(arg.name) && text$k(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema)), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas; only the last may be variadic.`);
+  ensure(command2.args === void 0 || Array.isArray(command2.args) && command2.args.every((arg, index2, all2) => isRecord$1(arg) && text$j(arg.name) && text$j(arg.description) && (arg.variadic === void 0 || arg.variadic === true && index2 === all2.length - 1) && documentSchema(arg.schema)), "INVALID_PLUGIN", `${where2} args must list named, described arguments with supported schemas; only the last may be variadic.`);
   ensure(command2.actions === void 0 || isRecord$1(command2.actions), "INVALID_PLUGIN", `${where2} actions must be an object.`);
   for (const [id2, action2] of Object.entries(command2.actions ?? {})) {
-    ensure(isRecord$1(action2) && text$k(action2.description) && (action2.usage === void 0 || text$k(action2.usage)), "INVALID_PLUGIN", `${where2} action ${id2} requires a description.`);
+    ensure(isRecord$1(action2) && text$j(action2.description) && (action2.usage === void 0 || text$j(action2.usage)), "INVALID_PLUGIN", `${where2} action ${id2} requires a description.`);
     ensure(action2.options === void 0 || isRecord$1(action2.options), "INVALID_PLUGIN", `${where2} action ${id2} options must be an object.`);
     validateOptions(action2.options ?? {}, options2);
     validateMode(action2, `${where2} action ${id2}`, { ...options2, ...action2.options });
@@ -1525,8 +2136,8 @@ function validateCommandMetadata(command2) {
   ensure(command2.errors === void 0 || Array.isArray(command2.errors) && command2.errors.every((code2) => typeof code2 === "string" && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code2)), "INVALID_PLUGIN", `${where2} errors must list UPPER_SNAKE_CASE codes.`);
 }
 const languages = ["en", "de"];
-const text$j = (value2) => typeof value2 === "string" && value2.trim().length > 0;
-const errorCode$2 = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+const text$i = (value2) => typeof value2 === "string" && value2.trim().length > 0;
+const errorCode = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const errorPrefix = (pluginId) => `${pluginId.replaceAll("-", "_").toUpperCase()}_`;
 class PluginCatalog {
   tables = /* @__PURE__ */ new Map();
@@ -1538,10 +2149,10 @@ class PluginCatalog {
     ensure(errors2 === void 0 || Array.isArray(errors2), "INVALID_PLUGIN", "errors must be an array.");
     const codes = /* @__PURE__ */ new Set();
     for (const entry2 of errors2 ?? []) {
-      ensure(isRecord$1(entry2) && typeof entry2.code === "string" && errorCode$2.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
+      ensure(isRecord$1(entry2) && typeof entry2.code === "string" && errorCode.test(entry2.code), "INVALID_PLUGIN", "Plugin error codes must be UPPER_SNAKE_CASE.");
       ensure(prefix === null || entry2.code.startsWith(prefix), "PLUGIN_NAMESPACE", `Error code ${entry2.code} must start with ${prefix}.`);
       ensure(!errorDefinition(entry2.code) && !codes.has(entry2.code), "DUPLICATE_OR_INVALID_ID", entry2.code);
-      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$j(entry2.summary) && text$j(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
+      ensure(Object.hasOwn(categoryExitCodes, String(entry2.category)) && text$i(entry2.summary) && text$i(entry2.hint), "INVALID_PLUGIN", `Error ${entry2.code} requires a known category, a summary and a hint.`);
       ensure(entry2.retryable === void 0 || typeof entry2.retryable === "boolean", "INVALID_PLUGIN", `Error ${entry2.code} retryable must be a boolean.`);
       codes.add(entry2.code);
     }
@@ -1553,7 +2164,7 @@ class PluginCatalog {
         for (const [id2, entry2] of Object.entries(entries2)) {
           const known2 = kind2 === "messages" || kind2 === "descriptions" || (kind2 === "manifest" ? ["name", "description"].includes(id2) : kind2 === "errors" ? codes.has(id2) : owned[kind2].includes(id2));
           ensure(known2, "PLUGIN_NAMESPACE", `strings.${language2}.${kind2}.${id2} does not name a contribution of plugin ${pluginId}.`);
-          ensure(kind2 === "errors" ? isRecord$1(entry2) && text$j(entry2.summary) && text$j(entry2.hint) : text$j(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind2}.${id2} must be ${kind2 === "errors" ? "a summary and hint" : "nonempty text"}.`);
+          ensure(kind2 === "errors" ? isRecord$1(entry2) && text$i(entry2.summary) && text$i(entry2.hint) : text$i(entry2), "INVALID_PLUGIN", `strings.${language2}.${kind2}.${id2} must be ${kind2 === "errors" ? "a summary and hint" : "nonempty text"}.`);
         }
       }
     }
@@ -1670,12 +2281,12 @@ function targetRoots(target) {
   return target === "both" ? Object.values(skillTargets) : [skillTargets[target]];
 }
 const isRecord = (value2) => value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
-const text$i = (value2, maximum) => typeof value2 === "string" && value2.trim().length > 0 && value2.length <= maximum;
+const text$h = (value2, maximum) => typeof value2 === "string" && value2.trim().length > 0 && value2.length <= maximum;
 function optionalIssues(id2, frontmatter) {
   const { license: license2, compatibility, metadata: metadata2 } = frontmatter, tools = frontmatter["allowed-tools"];
   const issues2 = [];
   if (license2 !== void 0 && typeof license2 !== "string") issues2.push(`Skill ${id2} frontmatter license must be a string.`);
-  if (compatibility !== void 0 && !text$i(compatibility, 500)) issues2.push(`Skill ${id2} frontmatter compatibility must have 1-500 characters.`);
+  if (compatibility !== void 0 && !text$h(compatibility, 500)) issues2.push(`Skill ${id2} frontmatter compatibility must have 1-500 characters.`);
   if (metadata2 !== void 0 && !(isRecord(metadata2) && Object.values(metadata2).every((value2) => typeof value2 === "string"))) issues2.push(`Skill ${id2} frontmatter metadata must map names to string values.`);
   if (tools !== void 0 && typeof tools !== "string" && !(Array.isArray(tools) && tools.every((tool) => typeof tool === "string"))) issues2.push(`Skill ${id2} frontmatter allowed-tools must be a space-separated string or a list of tool names.`);
   return issues2;
@@ -2297,10 +2908,10 @@ function getDefaultExportFromCjs(x) {
 var dist = {};
 var composer = {};
 var directives = {};
-var identity$1 = {};
+var identity = {};
 var hasRequiredIdentity;
 function requireIdentity() {
-  if (hasRequiredIdentity) return identity$1;
+  if (hasRequiredIdentity) return identity;
   hasRequiredIdentity = 1;
   const ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
   const DOC = /* @__PURE__ */ Symbol.for("yaml.document");
@@ -2336,23 +2947,23 @@ function requireIdentity() {
     return false;
   }
   const hasAnchor = (node2) => (isScalar(node2) || isCollection(node2)) && !!node2.anchor;
-  identity$1.ALIAS = ALIAS;
-  identity$1.DOC = DOC;
-  identity$1.MAP = MAP;
-  identity$1.NODE_TYPE = NODE_TYPE;
-  identity$1.PAIR = PAIR;
-  identity$1.SCALAR = SCALAR;
-  identity$1.SEQ = SEQ;
-  identity$1.hasAnchor = hasAnchor;
-  identity$1.isAlias = isAlias;
-  identity$1.isCollection = isCollection;
-  identity$1.isDocument = isDocument;
-  identity$1.isMap = isMap;
-  identity$1.isNode = isNode;
-  identity$1.isPair = isPair;
-  identity$1.isScalar = isScalar;
-  identity$1.isSeq = isSeq;
-  return identity$1;
+  identity.ALIAS = ALIAS;
+  identity.DOC = DOC;
+  identity.MAP = MAP;
+  identity.NODE_TYPE = NODE_TYPE;
+  identity.PAIR = PAIR;
+  identity.SCALAR = SCALAR;
+  identity.SEQ = SEQ;
+  identity.hasAnchor = hasAnchor;
+  identity.isAlias = isAlias;
+  identity.isCollection = isCollection;
+  identity.isDocument = isDocument;
+  identity.isMap = isMap;
+  identity.isNode = isNode;
+  identity.isPair = isPair;
+  identity.isScalar = isScalar;
+  identity.isSeq = isSeq;
+  return identity;
 }
 var visit$1 = {};
 var hasRequiredVisit;
@@ -10075,285 +10686,8 @@ const yamlWorkflowRenderer = {
 ${document2.toString({ lineWidth: 0 })}`);
   }
 };
-const lockedFileCodes = ["EPERM", "EACCES", "EBUSY"];
-const lockedFileDelays = [10, 20, 40, 80, 160, 320];
-const errorCode$1 = (error2) => error2 !== null && typeof error2 === "object" ? error2.code : void 0;
-async function retryTransient(operation2, options2 = {}) {
-  const { codes = lockedFileCodes, delays = lockedFileDelays, sleep = promises.setTimeout } = options2;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await operation2();
-    } catch (error2) {
-      const code2 = errorCode$1(error2);
-      if (attempt >= delays.length || typeof code2 !== "string" || !codes.includes(code2)) throw error2;
-      await sleep(delays[attempt]);
-    }
-  }
-}
-const writingWindowMs = 5e3;
-const heldTokens = /* @__PURE__ */ new Set();
-const positiveInteger = (value2) => Number.isSafeInteger(value2) && value2 > 0;
-const text$h = (value2) => typeof value2 === "string" && value2.length > 0 && value2.length <= 256;
-const errorCode = (error2) => error2.code ?? "";
-let identity;
-function hostIdentity() {
-  identity ??= (async () => {
-    const pidNamespace = await promises$1.readlink("/proc/self/ns/pid").catch(() => void 0);
-    const bootId = (await promises$1.readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => void 0))?.trim();
-    return { ...text$h(pidNamespace) ? { pidNamespace } : {}, ...text$h(bootId) ? { bootId } : {} };
-  })();
-  return identity;
-}
-async function processStart(pid) {
-  const stat = await promises$1.readFile(`/proc/${pid}/stat`, "utf8").catch(() => void 0);
-  const fields2 = stat?.slice(stat.lastIndexOf(")") + 2).split(" ");
-  const start2 = fields2?.[19];
-  return start2 !== void 0 && /^\d+$/.test(start2) ? start2 : void 0;
-}
-async function ownHolder() {
-  const start2 = await processStart(process.pid);
-  return { pid: process.pid, hostname: node_os.hostname(), startedAt: (/* @__PURE__ */ new Date()).toISOString(), ...await hostIdentity(), ...start2 ? { processStart: start2 } : {} };
-}
-function parseHolder(content2) {
-  let value2;
-  try {
-    value2 = JSON.parse(content2);
-  } catch {
-    return null;
-  }
-  if (!isRecord$1(value2) || !positiveInteger(value2.pid) || !text$h(value2.hostname) || !text$h(value2.startedAt)) return null;
-  const { pid, hostname: host, startedAt, command: command2, operationId, forgeVersion, pidNamespace, bootId, processStart: start2 } = value2;
-  return {
-    pid,
-    hostname: host,
-    startedAt,
-    ...text$h(command2) ? { command: command2 } : {},
-    ...positiveInteger(operationId) ? { operationId } : {},
-    ...text$h(forgeVersion) ? { forgeVersion } : {},
-    ...text$h(pidNamespace) ? { pidNamespace } : {},
-    ...text$h(bootId) ? { bootId } : {},
-    ...text$h(start2) ? { processStart: start2 } : {}
-  };
-}
-async function readLock(path2) {
-  try {
-    return await retryTransient(async () => {
-      const entry2 = await promises$1.lstat(path2);
-      if (!entry2.isFile()) return { content: null, young: false };
-      const young = Date.now() - entry2.mtimeMs < writingWindowMs;
-      const handle = await promises$1.open(path2, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
-      try {
-        const buffer = Buffer.alloc(4096);
-        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-        return { content: buffer.subarray(0, bytesRead).toString("utf8"), young };
-      } finally {
-        await handle.close();
-      }
-    });
-  } catch (error2) {
-    return { content: null, young: false, ...errorCode(error2) === "ENOENT" ? { missing: true } : {} };
-  }
-}
-function tokenOf(content2) {
-  try {
-    return content2 === null ? void 0 : JSON.parse(content2)?.token;
-  } catch {
-    return void 0;
-  }
-}
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error2) {
-    return errorCode(error2) === "ESRCH" ? false : errorCode(error2) === "EPERM" ? true : void 0;
-  }
-}
-const bootedAt = () => Date.now() - node_os.uptime() * 1e3;
-async function inspectLock(path2) {
-  const { content: content2, young, missing: missing2 } = await readLock(path2);
-  const lock = content2 === null ? null : parseHolder(content2);
-  if (lock === null) return { lock, stale: young ? "active" : "unknown", ...missing2 ? { missing: missing2 } : {} };
-  const stale = (reason) => ({ lock, stale: "stale", reason, content: content2 });
-  const current = await hostIdentity();
-  if (lock.hostname !== node_os.hostname() || lock.pidNamespace !== current.pidNamespace) return { lock, stale: "unknown" };
-  if (lock.bootId !== current.bootId) {
-    return lock.bootId !== void 0 && current.bootId !== void 0 && Date.parse(lock.startedAt) < bootedAt() ? stale("rebooted") : { lock, stale: "unknown" };
-  }
-  if (lock.pid === process.pid) {
-    const token = tokenOf(content2);
-    if (typeof token === "string" && heldTokens.has(token)) return { lock, stale: "active" };
-    if ((await readLock(path2)).content !== content2) return inspectLock(path2);
-    return stale("reused-pid");
-  }
-  const alive = processAlive(lock.pid);
-  if (alive === void 0) return { lock, stale: "unknown" };
-  if (!alive) return stale("dead-process");
-  const start2 = lock.processStart === void 0 ? void 0 : await processStart(lock.pid);
-  return start2 !== void 0 && start2 !== lock.processStart ? stale("reused-pid") : { lock, stale: "active" };
-}
-const lockName = ".agent-cli.lock";
-const staleReasons = {
-  "dead-process": "LOCK_STALE_DEAD_PROCESS",
-  "reused-pid": "LOCK_STALE_REUSED_PID",
-  rebooted: "LOCK_STALE_REBOOTED"
-};
-function recoveredLockMessage({ path: path2, holder, reason }) {
-  const command2 = holder.command ? kernelMessage("LOCK_HOLDER_COMMAND", { command: holder.command }) : "";
-  return kernelMessage("LOCK_RECOVERED", { path: path2, pid: holder.pid, host: holder.hostname, since: holder.startedAt, command: command2, reason: kernelMessage(staleReasons[reason]) });
-}
-const linkUnsupported = /* @__PURE__ */ new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EPERM", "EACCES", "EMLINK"]);
-const deniedCodes = /* @__PURE__ */ new Set(["EPERM", "EACCES"]);
-const acquireAttempts = 3;
-const temporaryName = (path2, kind2) => minpath.join(minpath.dirname(path2), `.agent-cli-tmp-${kind2}-${node_crypto.randomUUID()}`);
-function ownerDetails(owner) {
-  try {
-    const { command: command2, operationId } = owner();
-    return { ...text$h(command2) ? { command: command2 } : {}, ...Number.isSafeInteger(operationId) && operationId > 0 ? { operationId } : {} };
-  } catch {
-    return {};
-  }
-}
-async function acquireLock(path2, owner, display = lockName, recovered = () => {
-}) {
-  const token = node_crypto.randomUUID();
-  const record2 = { ...await ownHolder(), ...ownerDetails(owner), forgeVersion: metadata$2.version, token };
-  const content2 = JSON.stringify(record2) + "\n";
-  let breaker2;
-  for (let attempt = 1; ; attempt++) {
-    if (await createHeld(path2, content2, token)) return token;
-    const found = await inspectLock(path2);
-    if (found.missing) {
-      if (attempt < acquireAttempts) continue;
-      throw busy(display, { lock: null, stale: "active" });
-    }
-    if (found.stale !== "stale") throw busy(display, found);
-    if (attempt === acquireAttempts) throw recovering(display, found, breaker2);
-    let outcome;
-    try {
-      outcome = await breakStale(path2, found.content);
-    } catch (error2) {
-      throw busy(display, found, `Forge could not remove it (${errorCode(error2) || String(error2)})`);
-    }
-    if (outcome.broken) recovered({ path: display, holder: found.lock, reason: found.reason });
-    if (outcome.guard?.stale === "unknown") throw busy(guardDisplay(display), outcome.guard);
-    breaker2 = outcome.guard;
-  }
-}
-async function createHeld(path2, content2, token) {
-  heldTokens.add(token);
-  let created = false;
-  try {
-    created = await create(path2, content2);
-    return created;
-  } finally {
-    if (!created) heldTokens.delete(token);
-  }
-}
-async function create(path2, content2) {
-  const temporary2 = temporaryName(path2, "lock");
-  try {
-    await writeDurably(temporary2, content2);
-    await retryTransient(() => promises$1.link(temporary2, path2), { codes: ["EBUSY"] });
-    return true;
-  } catch (error2) {
-    if (errorCode(error2) === "EEXIST") return false;
-    if (!linkUnsupported.has(errorCode(error2))) throw error2;
-  } finally {
-    await retryTransient(() => promises$1.rm(temporary2, { force: true })).catch(() => {
-    });
-  }
-  return createExclusively(path2, content2);
-}
-const guardName = (path2) => `.agent-cli-tmp-break-${minpath.basename(path2)}`;
-const guardPath = (path2) => minpath.join(minpath.dirname(path2), guardName(path2));
-const guardDisplay = (display) => `${display.slice(0, display.lastIndexOf("/") + 1)}${guardName(display)}`;
-async function removeUnchanged(path2, expected) {
-  const current = await promises$1.readFile(path2, "utf8").catch(() => null);
-  if (current !== expected) return false;
-  try {
-    await retryTransient(() => promises$1.unlink(path2));
-    return true;
-  } catch (error2) {
-    if (errorCode(error2) === "ENOENT") return false;
-    throw error2;
-  }
-}
-async function breakStale(path2, diagnosed) {
-  const guard2 = guardPath(path2), token = node_crypto.randomUUID();
-  const content2 = JSON.stringify({ ...await ownHolder(), command: "break stale lock", forgeVersion: metadata$2.version, token }) + "\n";
-  if (!await createHeld(guard2, content2, token)) {
-    const left = await inspectLock(guard2);
-    if (left.missing) return { broken: false };
-    if (left.stale !== "stale") return { broken: false, guard: left };
-    if (!await removeUnchanged(guard2, left.content) || !await createHeld(guard2, content2, token)) return { broken: false };
-  }
-  try {
-    return { broken: await removeUnchanged(path2, diagnosed) };
-  } finally {
-    await releaseLock(guard2, token).catch(() => {
-    });
-  }
-}
-async function record$4(handle, content2) {
-  try {
-    await handle.writeFile(content2);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-async function writeDurably(path2, content2) {
-  await record$4(await retryTransient(() => promises$1.open(path2, "wx")), content2);
-}
-async function createExclusively(path2, content2) {
-  let handle;
-  try {
-    handle = await retryTransient(() => promises$1.open(path2, "wx"));
-  } catch (error2) {
-    if (errorCode(error2) === "EEXIST" || deniedCodes.has(errorCode(error2))) return false;
-    throw error2;
-  }
-  try {
-    await record$4(handle, content2);
-  } catch (error2) {
-    await retryTransient(() => promises$1.rm(path2, { force: true })).catch(() => {
-    });
-    throw error2;
-  }
-  return true;
-}
-async function releaseLock(path2, token) {
-  try {
-    let content2;
-    try {
-      content2 = await retryTransient(() => promises$1.readFile(path2, "utf8"));
-    } catch (error2) {
-      if (errorCode(error2) === "ENOENT") return "missing";
-      throw error2;
-    }
-    if (tokenOf(content2) !== token) return "foreign";
-    await retryTransient(() => promises$1.unlink(path2));
-    return "released";
-  } finally {
-    heldTokens.delete(token);
-  }
-}
-const describeHolder = (lock) => lock ? ` (pid ${lock.pid} on ${lock.hostname} since ${lock.startedAt}${lock.command ? `, command ${lock.command}` : ""})` : "";
-function busy(display, inspection, failure2) {
-  const { lock, stale, reason } = inspection;
-  const holder = describeHolder(lock);
-  const details = { lock, stale, path: display, ...reason ? { reason } : {} };
-  const message2 = stale === "active" ? `Lock ${display} is held${holder} by a running Forge process or one still writing it. Wait for it to finish and retry.` : stale === "stale" ? `Lock ${display}${holder} is stale (${reason}), but ${failure2 ?? "it could not be removed"}. Confirm no Forge process uses it, delete ${display} and retry.` : `Lock ${display} exists${holder}; Forge cannot tell whether its holder still runs (another host, pid namespace or boot, or an unreadable lock), so it never removes it. Verify the holder in error.details.lock; once it no longer runs, inspect its unfinished changes (for example git status), delete ${display} and retry.`;
-  return forgeError("WORKSPACE_BUSY", message2, details, void 0, stale === "active");
-}
-function recovering(display, inspection, breaker2) {
-  const { lock, reason } = inspection;
-  const details = { lock, stale: "active", path: display, ...reason ? { reason } : {}, ...breaker2?.lock ? { breaker: breaker2.lock } : {} };
-  return forgeError("WORKSPACE_BUSY", `Lock ${display}${describeHolder(lock)} is stale (${reason}), and another Forge process${describeHolder(breaker2?.lock ?? null)} is removing it. Retry in a moment.`, details, void 0, true);
-}
 const missing$2 = (error2) => error2.code === "ENOENT";
-const temporary = (target) => minpath.join(minpath.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+const temporary = (target) => path$3.join(path$3.dirname(target), `.agent-cli-tmp-${node_crypto.randomUUID()}`);
 const inside$1 = (path2, folder) => path2 === folder || path2.startsWith(`${folder}/`);
 const entryRevision = (entry2) => entry2.kind === "file" ? entry2.stored.revision : entry2.snapshot.revision;
 async function exists(target) {
@@ -10495,12 +10829,12 @@ class Transaction {
     let directory = this.host.root;
     const parts = path2.split("/");
     for (const [index2, part] of parts.slice(0, -1).entries()) {
-      directory = minpath.join(directory, part);
+      directory = path$3.join(directory, part);
       try {
         await promises$1.mkdir(directory);
         this.createdDirectories.push(directory);
         this.folders.push(parts.slice(0, index2 + 1).join("/"));
-        this.touched.add(minpath.dirname(directory));
+        this.touched.add(path$3.dirname(directory));
       } catch (error2) {
         if (error2.code !== "EEXIST") throw error2;
       }
@@ -10526,16 +10860,16 @@ class Transaction {
     this.carriers[index2] = carrier;
     if (!carrier) {
       await this.makeParents(plan.write.path);
-      return minpath.dirname(plan.target);
+      return path$3.dirname(plan.target);
     }
-    let directory = minpath.dirname(minpath.join(carrier.source, plan.write.path.slice(carrier.request.to.length + 1)));
-    while (directory !== carrier.source && !(await exists(directory))?.isDirectory()) directory = minpath.dirname(directory);
+    let directory = path$3.dirname(path$3.join(carrier.source, plan.write.path.slice(carrier.request.to.length + 1)));
+    while (directory !== carrier.source && !(await exists(directory))?.isDirectory()) directory = path$3.dirname(directory);
     return directory;
   }
   /** The staged temporary file's current location: a folder rename carries files staged inside it. */
   stagedAt(index2) {
     const temp = this.staged[index2], carrier = this.carriers[index2];
-    return carrier && this.committedRenames.includes(carrier) ? minpath.join(carrier.target, minpath.relative(carrier.source, temp)) : temp;
+    return carrier && this.committedRenames.includes(carrier) ? path$3.join(carrier.target, path$3.relative(carrier.source, temp)) : temp;
   }
   async apply(renames, writes, removes) {
     for (const plan of renames) await this.makeParents(plan.request.to);
@@ -10545,7 +10879,7 @@ class Transaction {
       await this.verify(plan.request.from, plan.entry, plan.request.expectedRevision);
       await this.move(plan, plan.source, plan.target);
       this.committedRenames.push(plan);
-      this.touched.add(minpath.dirname(plan.source)).add(minpath.dirname(plan.target));
+      this.touched.add(path$3.dirname(plan.source)).add(path$3.dirname(plan.target));
     }
     for (const [index2, plan] of writes.entries()) {
       await this.makeParents(plan.write.path);
@@ -10553,7 +10887,7 @@ class Transaction {
       const temp = this.stagedAt(index2);
       await this.host.replace(plan.target, plan.write.bytes, plan.before?.mode, () => this.host.assertRevision(plan.write.path, plan.before?.revision), temp);
       this.committedWrites.push(plan);
-      this.touched.add(minpath.dirname(plan.target)).add(minpath.dirname(temp));
+      this.touched.add(path$3.dirname(plan.target)).add(path$3.dirname(temp));
     }
     for (const plan of removes) {
       await this.verify(plan.request.path, plan.entry, plan.request.expectedRevision);
@@ -10561,7 +10895,7 @@ class Transaction {
       await retryTransient(() => promises$1.rename(plan.target, temp));
       plan.temp = temp;
       this.committedRemoves.push(plan);
-      this.touched.add(minpath.dirname(plan.target));
+      this.touched.add(path$3.dirname(plan.target));
     }
     await this.host.syncDirectories(this.touched);
   }
@@ -10620,7 +10954,7 @@ class Transaction {
     }
     if (this.committedRemoves.length === 0) return;
     try {
-      await this.host.syncDirectories(this.committedRemoves.map((plan) => minpath.dirname(plan.target)));
+      await this.host.syncDirectories(this.committedRemoves.map((plan) => path$3.dirname(plan.target)));
     } catch (error2) {
       this.host.warn(kernelMessage("REMOVAL_SYNC_FAILED", { diagnostic: String(error2) }));
     }
@@ -10731,14 +11065,14 @@ class NodeFiles {
    */
   static async at(root, warn = () => {
   }, owner = () => ({})) {
-    return new NodeFiles(await promises$1.realpath(minpath.resolve(root)), warn, owner);
+    return new NodeFiles(await promises$1.realpath(path$3.resolve(root)), warn, owner);
   }
   /** The absolute path, refusing symlinks and parents that are not folders; the final segment may be a folder only when `allowFolder` is set. */
   async resolvePath(path2, allowFolder = false) {
     const parts = vaultPath(path2).split("/");
     let current = this.root;
     for (const [index2, part] of parts.entries()) {
-      current = minpath.join(current, part);
+      current = path$3.join(current, part);
       try {
         const info = await promises$1.lstat(current);
         ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path2}`);
@@ -10764,7 +11098,7 @@ class NodeFiles {
       for (const entry2 of await promises$1.readdir(directory, { withFileTypes: true })) {
         if (unlisted(entry2.name, prefix + entry2.name)) continue;
         const path2 = prefix + entry2.name;
-        if (entry2.isDirectory()) await walk(minpath.join(directory, entry2.name), path2 + "/");
+        if (entry2.isDirectory()) await walk(path$3.join(directory, entry2.name), path2 + "/");
         else if (entry2.isFile()) result.push(path2);
       }
     };
@@ -10802,7 +11136,7 @@ class NodeFiles {
   async commit(batch, dryRun2) {
     ensure(batch !== null && typeof batch === "object", "INVALID_PLAN", "A batch must be an object.");
     const transaction = new Transaction(this, batch);
-    const lock = minpath.join(this.root, lockName);
+    const lock = path$3.join(this.root, lockName);
     let token;
     try {
       if (!dryRun2) token = await acquireLock(lock, this.owner, lockName, (recovered) => this.report(recovered));
@@ -10844,7 +11178,7 @@ class NodeFiles {
           continue;
         }
         if (reserved2 === "internal") continue;
-        const relative = prefix + entry2.name, absolute = minpath.join(directory, entry2.name);
+        const relative = prefix + entry2.name, absolute = path$3.join(directory, entry2.name);
         if (entry2.isSymbolicLink()) special.push({ path: relative, kind: "symlink", target: await promises$1.readlink(absolute) });
         else if (entry2.isDirectory() && entry2.name.toLowerCase() === "node_modules") special.push({ path: relative, kind: "node_modules" });
         else if (entry2.isDirectory()) {
@@ -10926,8 +11260,8 @@ class NodeFiles {
     if (failures.length) throw failures[0];
   }
   /** Write a temporary file for `target`, in its folder unless `directory` is given, whose data is durable before any rename publishes it. */
-  async stage(target, bytes, mode, directory = minpath.dirname(target)) {
-    const temp = minpath.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
+  async stage(target, bytes, mode, directory = path$3.dirname(target)) {
+    const temp = path$3.join(directory, `.agent-cli-tmp-${node_crypto.randomUUID()}`);
     const handle = await promises$1.open(temp, "wx", mode ?? 438);
     try {
       try {
@@ -10967,11 +11301,11 @@ async function stampedFiles(files, directory, stamped = () => true) {
     for (const entry2 of fs.readdirSync(folder, { withFileTypes: true })) {
       const path2 = prefix + entry2.name;
       if (unlisted(entry2.name, scope2 + path2)) continue;
-      if (entry2.isDirectory()) walk(minpath.join(folder, entry2.name), `${path2}/`);
+      if (entry2.isDirectory()) walk(path$3.join(folder, entry2.name), `${path2}/`);
       else if (!entry2.isFile()) continue;
       else if (!stamped(path2)) listed.push({ path: path2 });
       else {
-        const info = fs.lstatSync(minpath.join(folder, entry2.name), { bigint: true, throwIfNoEntry: false });
+        const info = fs.lstatSync(path$3.join(folder, entry2.name), { bigint: true, throwIfNoEntry: false });
         if (info === void 0) continue;
         const changed = info.mtimeNs > info.ctimeNs ? info.mtimeNs : info.ctimeNs;
         listed.push({ path: path2, stamp: `${info.size}:${info.mtimeNs}:${info.ctimeNs}:${info.ino}`, changedMs: Number(changed / 1000000n) });
@@ -11000,7 +11334,7 @@ function nodeFileDates(root) {
   };
   return async (path2) => {
     const name2 = vaultPath(path2).slice(path2.lastIndexOf("/") + 1);
-    const info = fs.lstatSync(minpath.join(await folder(path2.slice(0, Math.max(0, path2.lastIndexOf("/")))), name2));
+    const info = fs.lstatSync(path$3.join(await folder(path2.slice(0, Math.max(0, path2.lastIndexOf("/")))), name2));
     ensure(!info.isSymbolicLink(), "UNSAFE_PATH", `Symlinks are not supported: ${path2}`);
     ensure(info.isFile(), "INVALID_PATH", `Not a regular file path: ${path2}`);
     return { size: info.size, ctime: info.birthtime, mtime: info.mtime };
@@ -11324,7 +11658,7 @@ async function loadModule(directory, files) {
     const filename = await files.resolvePath(commonjs);
     const module = { exports: {} };
     const execute = node_vm.compileFunction(source2, ["exports", "require", "module", "__filename", "__dirname"], { filename });
-    execute.call(module.exports, module.exports, node_module.createRequire(filename), module, filename, minpath.dirname(filename));
+    execute.call(module.exports, module.exports, node_module.createRequire(filename), module, filename, path$3.dirname(filename));
     return module.exports;
   }
   const loaded = await import(
@@ -18174,7 +18508,7 @@ const basesPlugin = {
     };
   }
 };
-const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. Reserve the complete `schema --json` for discovering the entire API; do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` (`WORKSPACE_BUSY`) permits an unchanged retry. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
+const workflow = "---\nname: forge-workflow\ndescription: Drive the portable Forge CLI (node bin/forge.js) safely. Discover commands and their JSON Schema contract with schema, select projects, preview with --dry-run, guard writes with --if-match revisions and recover from CONFLICT and other error codes. Use when a workspace has bin/forge.js, when starting any Forge task, or when a Forge command fails.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Locate the complete `bin` distribution: `forge.js`, `forge-runtime.js`, `package.json`, `config.json`, shared `plugins`/`templates`, and packaged assets in `data`. Run `node bin/forge.js config --json` to confirm the projects path, defaults, enabled plugins and their effective `plugins.settings.<plugin-id>` sections, then use `node bin/forge.js help --json` to discover the installed command catalog if needed. For a known task, start with `help <command>` and request `schema <command> --json` for its machine-readable contract. Reserve the complete `schema --json` for discovering the entire API; do not load it again on every task. `schema <command>` returns one command's contract: its JSON Schema 2020-12 `inputSchema`, its `outputSchema` (or `annotations.actions.<action>.outputSchema`) for `data`, the error codes it can report, and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `scope`); `data.envelope` is the response schema. Prefer read-only commands for discovery and treat `destructiveHint: true` commands as needing a reviewed `--dry-run` first. If the bundle is elsewhere, use its absolute path. Put routing options before the command: `node bin/forge.js --root <workspace> schema --json`. The selected workspace always uses its own `bin/config.json`; the same routing rule applies to `--no-plugins`; dry-run and formatting flags may appear on either side of the command.\n2. Read workspace/project AGENTS.md and acceptance criteria. Run `project list`, then `project open <id>` and `project current` to select and verify a managed project. Selection persists in workspace `bin/data/context.json` across invocations. File paths and generator output now resolve inside that project; verify the returned `context.root`. Use `project close` to restore workspace scope. Keep shared selection fixed while parallel agents use file commands: checking the context does not lock it for the next invocation. Coordinate selection changes first; use separate workspaces when agents need different selections. Only commands that declare `--project` support a per-invocation target. Inspect existing files with `list` and `read`; do not assume a vault layout.\n3. Propose the smallest change that meets the acceptance criteria. Use `--dry-run` on mutations. Review `changes` (document commands include a unified `diff` per text file) and generator `preview` before applying. Edit only what changes: `edit --section \"A > B\"` or `--block <id>` for one part of a note, `edit --edits <list>` for several replacements in one file. When several files must change together (a move plus edits and property changes), write one plan for `apply <plan.json|->` and review `apply --dry-run`: it commits as one guarded batch or not at all. The plan's JSON Schema is the `contentSchema` of `apply`'s argument in `schema apply`. `apply` reports `idempotentHint: false`: an operation without `ifMatch` applies again on a repeat, so give each operation the `ifMatch` from your reads.\n4. Existing files require `--if-match` with the SHA-256 `revision` returned by `read`. A `CONFLICT` reports `error.details.currentRevision`: reread and reconcile; never blindly retry with the new revision. `NO_MATCH` means `--find` text is absent and `AMBIGUOUS_EDIT` that it matches several lines (`details.lines`); with `--edits`, `details.edit` names the failing entry. `SECTION_NOT_FOUND` lists the note's `details.headings` or `details.blocks`, and `AMBIGUOUS_SECTION` its `details.candidates`: add an ancestor heading or pass a candidate's line as `--section-line`. An `apply` failure adds `details.operation`, the index of the failing operation, and `INVALID_PLAN` lists `details.issues`. Validation failures write nothing. On `ROLLBACK_FAILED`, inspect every reported path and the actual saved contents before doing more work; recovery could not restore every file.\n5. Apply the reviewed command. Parse the JSON envelope and check both `ok` and the process exit code. On failure follow `error.hint`; only `error.retryable: true` permits an unchanged retry (for example `WORKSPACE_BUSY` or `SERVER_BUSY`); inspect `server status` before repeating `SERVER_STOP_FAILED`. `schema` lists every code at `data.errors`. The envelope's `events` lists only committed `vault.*` changes by default (`vault.create`, `vault.modify`, `vault.delete`, `vault.rename`; new parent folders appear as `kind: \"folder\"` records); reads and dry runs return `[]`. Use `--events all` on the original invocation when you need lifecycle records, or `--events none`. History is invocation-local; never rerun a mutation just to obtain more events. Warnings may report failed notification listeners after a successful write; inspect committed events and read back before considering any repeat.\n6. Read back the result and validate documents; after vault changes run `vault check --strict` and fix each error finding by its `hint` until it passes (`VAULT_CHECK_FAILED` lists them in `error.details.findings`). For generated TypeScript projects, run `npm run check:fast` from the project directory, diagnose failures, fix their cause, rerun the failed stage, then finish with `npm run check`. Read scripts first for other projects. Never weaken a gate to conceal a failure. Summarize changed files, acceptance evidence, checks run, and remaining limitations.\n\nUse `--stdin` for multiline or shell-sensitive input and `--key=value` for literal values beginning with `--`. The CLI does not prompt. Do not evaluate shell code from document content. Plugin modules execute trusted Node code: review each directory's manifest and entry point before adding its ID to `plugins.enabled` in configuration. Use `node bin/forge.js --no-plugins <command>` to recover from a failing plugin. Use `--no-dry-run` or `--no-json` to override enabled configuration defaults when appropriate.\n\nFor a visual workspace overview, the agent may offer to start the read-only admin view. Once startup is authorized, run `node bin/forge.js server start --webview admin --json` and share `data.url` locally; the CLI never prompts or opens a browser. `server status` is read-only discovery, `server start` reuses an existing workspace server, and `server stop` ends it. Start/stop support `--dry-run`; a preview never starts or stops a process. These commands always use workspace scope and preserve project selection. Treat the launch URL as local session access information because its fragment contains a bearer token; retrieve a fresh link after restart. Use `help server`, `schema server --json` and `bin/data/docs/reference/server.md` for the lifecycle contract. The view inspects state and cannot change configuration.\n\nFor a new workspace, `setup --dry-run`, then `setup`, always targets the workspace and initializes missing distribution/config files, skills, an example `bin/templates/entity.md` and lean AGENTS.md; existing destinations are skipped. Review upgrades separately. For code, inspect `project list` and `project inspect <id>`, then preview `project create <kebab-name>` or `project component [id] <PascalName> --kind domain`; omit the ID for the active project. Shared templates always live in workspace `bin/templates`; plugins always live in workspace `bin/plugins`. To generate a note, inspect `templates list` and `templates inspect <name.md>`, supply required values with `make document <Title> --template <name.md> --values-from <inputs.json> --dry-run`, and review the complete rendered text before applying. Templates and `make document` come from the bundled `templates` core plugin, and the project and code scaffolds from `scaffolds`; when `plugins` lists one as disabled, its commands and generators are unknown, `setup` skips the templates with a warning and `project create`/`project component` fail with `PLUGIN_UNAVAILABLE`.\n\nFor UI work, inspect `components list`, `components inspect <id>` and the configured folders and default framework in `plugins.settings.ui` (`framework`, `components`, `interactions`, `output`, `stories` and their import/export folders; `config --json` shows the effective values). The `ui` core plugin owns `components`, `interactions`, `make ui` and `make stories`; the `data-sources` core plugin owns `data-sources` and `make data-source`, with its folders in `plugins.settings.data-sources`. Feature folders never live under `paths`, which holds only `projects`. Component management is workspace-scoped; generated UI and stories use the active project. `make ui/stories --project <id>` selects a project for one invocation without changing shared selection. Initialize starter definitions with `components init --dry-run`, then `components init` if needed. Add or revise frontmatter+Markdown definitions and run `components validate`. Preview `make ui <id> --framework <target> --project <id> --stories --dry-run`, verify `context.root`, and review generated text before applying. Explicit `--out` and `--stories-out` are relative to that output scope; `--library` and extension paths remain workspace-relative. Use `--plan` to compare proposed/current output and `--check` for read-only drift detection (exit 5 with `UI_DRIFT`). `--plan-out <file.json>` writes only a new revision map and supports dry-run. Review destination conflicts and reconcile handwritten code. Intentional regeneration accepts `--revisions-from <file.json>` with inspected current hashes keyed by workspace-relative generated paths; the JSON file is read in the active output scope. Preview the guarded replacement before applying. Generic file commands follow the open project, so close it before revision-guarded edits to the shared workspace library. Read `bin/data/docs/reference/ui-components.md` for schema and Storybook extensions; verify generated code with the consuming project's framework and Storybook toolchain. CLI generation alone does not prove browser behavior, accessibility or compatibility with every installed addon.\n\nFor agent definitions, follow the forge-agents skill: definitions are docker-agent YAML in `agents/*.yaml`, `agents validate` checks them, and `agents generate --target claude` (with `--plan`, `--check` or `--revisions-from`) maintains `.claude/agents/`; never hand-edit generated agents.\n\nFor agent skills, `skills list` names the skills of the enabled plugins, `skills show <id>` returns one `SKILL.md`, and `skills install [--target both|claude|agents | --out <directory>]` writes them into the selected project's `.claude/skills` and `.agents/skills`; existing files are refused, so a repeat never overwrites an edited skill.\n\nFor native Claude Code configuration, use the `claude` command instead of hand-written JSON. `claude capabilities` lists the supported hook events, handler types, plugin components and runtime operations. `claude hooks inspect` returns the settings document (`--scope project|local|user|plugin`, default `project`) with its `revision`; `claude hooks check` validates it without running handlers; `hooks add <event> --stdin`, `set`, `remove <event> [--index n]`, `enable`, `disable` and `configure` edit it and need `--if-match <revision>` once the file exists. `claude agents list|inspect|create|update|remove|enable|disable|export` manages `.claude/agents/*.md`. `claude plugins create|inspect|manifest|check|asset|write-asset|remove-asset <directory>` authors a plugin folder without running Claude. `claude plugins list|details|install|update|uninstall|enable|disable|validate|configure|prune|init|tag|test|eval`, `claude marketplaces add|list|remove|update` and `claude runtime version|doctor|install|update` run the installed `claude` executable (`--claude-bin`, `--timeout`) and can change the user's Claude Code installation: preview them with `--dry-run`, keep `--scope project` unless the user asks otherwise, never pass `--scope user` without their consent, and expect `idempotentHint: false`. Hooks and plugins run commands; review them like code.\n\nAdd `--lang de` for German descriptions, hints, warnings and findings; commands, options, ids, codes and JSON keys stay the same, so match codes rather than message text.\n\nFor workflow documents, inspect `templates inspect workflow/prd.md` and its required variables. `templates install workflow --dry-run` previews missing editable stage templates without replacing custom templates. Render with `make document <Title> --template workflow/<kind>.md --values '{\"owner\":\"Team\"}' --dry-run`. Use the bundled `bin/data/docs/tutorials/idea-to-production.md` and example pack for stage prompts and evidence expectations; drafted documents are not completed requirements or verified production readiness.\n";
 const vault = '---\nname: forge-vault\ndescription: Read, search, link-check, create and edit Obsidian Markdown notes, frontmatter properties, Canvas, Bases and attachments through Forge with revision guards, link-preserving moves and trash deletes. Use when working with notes, wikilinks, backlinks, tags, .canvas or .base files, or any vault file edit in a Forge workspace.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: "0.1.0"\n---\n\nRun `node bin/forge.js formats --json` for the format inventory. Run `project current` to confirm `data.project`, then verify `context.root` on file reads and mutations. File paths are relative to the active project, or the workspace when none is selected, with `/` separators. `--root` chooses the workspace; `project open <id>` persists a project selection and `project close` clears it. Symlinks, traversal, and Git internals are rejected.\n\nInspect `config --json` for the workspace and projects directory. Templates are shared in workspace `bin/templates`; document output defaults to active-scope `notes`, or use `--out`. Use `templates inspect <template.md>` before `make document <Title> --template <template.md> --values-from <inputs.json> --dry-run`. Supply all non-built-in placeholders; use `--date <ISO>` for repeatable date/time output. Whole frontmatter placeholders preserve JSON value types. Templates cannot execute code.\n\n- Markdown: `create notes/idea.md --content \'# Idea\'`. Read the revision, then use `properties notes/idea.md --set \'{"status":"draft"}\' --if-match <revision>`. Use `edit` for an exact single literal replacement or append; see precise edits below for sections, blocks and several replacements. Wikilinks, embeds, callouts, math and code blocks remain text and are preserved. For an attachment embed append `![[assets/diagram.png]]` to a note.\n- Canvas: `create planning.canvas`, then read its revision. Add a node with `patch planning.canvas --pointer /nodes/- --value \'{"id":"idea","type":"text","x":0,"y":0,"width":320,"height":180,"text":"Idea"}\' --if-match <revision>`. Edge endpoints must already exist. For a coordinated graph change, write a complete valid Canvas with its revision.\n- Bases: `create tasks.base` produces a table view. Use JSON Pointer edits such as `/views/0/name`. Run `bases query tasks.base --view "Table"` to return a saved view\'s matching files without Obsidian installed. Inspect `bases capabilities` for the standalone evaluator\'s compatibility profile; the native `.base` file and named view are the repository definition.\n- Text files (`.ts`, `.json`, `.yaml`, `.css`, `.html`, `.txt`, `.csv`, `.py` and similar; see `formats`): `read src/x.ts` returns `document:{kind:"text",content}`. Edit them with `edit src/x.ts --find <text> --replace <text> --if-match <revision>` or `--append`, or replace them with `write --stdin --if-match <revision>`. Invalid UTF-8 reads as base64 and cannot be edited.\n- Attachments: `write assets/image.png --from incoming/image.png` copies bytes inside the root. Pipe external bytes to `write assets/image.png --stdin`, or use `--encoding base64`. Replacement requires the current revision. `read` returns attachment content as base64, with size and hash; decode it using a standard base64 decoder. No media/PDF transformation is implied.\n\nPrecise edits change only what you address, in memory, with one guarded write:\n- Section: `edit notes/plan.md --section "Plan > Risks" --append --content "- Staffing" --if-match <revision>`; also `--prepend --content` or `--replace <text>`. The path lists headings outermost first, separated by ` > `; the section runs to the next heading of the same or a higher level, its heading line and the blank lines around its content stay. `SECTION_NOT_FOUND` lists `details.headings`; `AMBIGUOUS_SECTION` lists `details.candidates`: add an ancestor heading, or pass the candidate\'s `line` as `--section-line <n>` (`sectionLine` in a plan), the only way to pick between headings with the same full path. Write a ` > ` inside a heading as ` \\> `.\n- Block: `edit notes/plan.md --block ship --replace "New text" --if-match <revision>` addresses `^ship`; replacing keeps the marker so block links keep working. A list item or task keeps its indentation, marker and checkbox and its nested items: pass only the new text, or start it with a marker (`- [x] Done`) to change the checkbox. `--append`/`--prepend --content` add a separate block (blank lines around it) next to a paragraph or section; next to a list item the content must start with a list marker and becomes sibling items, else `INVALID_INPUT`.\n- Several literal replacements: `edit <file> --edits \'[{"find":"a","replace":"b"},{"find":"x","replace":"y","all":true}]\' --if-match <revision>` (or `--edits @edits.json`, `--edits -`). They apply in order; a failure names `details.edit` and writes nothing.\n- Several files as one unit: write a plan `{"version":1,"operations":[...]}` with `write`, `edit` (`edits`, `append`, or `section`/`block` with `replace`/`append`/`prepend`), `frontmatter` (`set`, `unset`), `move` (`from`, `to`) and `delete` (to `.trash`) operations, each with an optional `ifMatch` from your reads, and run `apply plan.json --dry-run`, then `apply plan.json` (or pipe it to `apply -`). Operations see the effects of earlier ones (edit a note after moving it by its new path); the plan commits as one batch or not at all. A failure keeps its code and adds `details.operation`; `INVALID_PLAN` lists schema `details.issues`. `help apply` shows the plan\'s JSON Schema, and `schema apply` publishes it as the argument\'s `contentSchema` with the result\'s `outputSchema`. Split a plan that writes to a path it also moves or deletes.\n\nFind before you edit: `search "release plan"` returns `data.hits` (`path`, 1-based `line` and `column`, `match`, `snippet`, `revision`) in path, line and column order, plus `total`. Narrow with `--path "notes/**"`, `--kind markdown`, `--tag project`, `--property status=active`, `--in body` (skip frontmatter) or `--skip-code`; add `--context 2` for surrounding lines. Literal matching ignores case unless `--case-sensitive`; `--regex` takes a JavaScript regular expression matched per line. A hit\'s `revision` is the `--if-match` for an `edit` of that file. Pages hold 100 hits: repeat the same command with `--cursor <nextCursor>` until `nextCursor` is absent. `SEARCH_TIMEOUT` means the expression backtracks too much: simplify it or search literally. `list --path "notes/**" --kind markdown` lists files the same way.\n\nCheck the link graph before restructuring: `links back notes/plan.md` lists every file that links to it (`source`, 1-based `line`/`column`, `original`); `links out notes/plan.md` lists its own links with `status` and `target`. `links unresolved --path "notes/**"` reports broken links with `reason` `missing`, or `ambiguous` with `candidates` (use a longer link path that names one candidate). `links orphans` lists notes nothing links to and `links deadends` notes that link nowhere; list deliberate entry notes in `plugins.settings.links.roots`. Every report has `issues`: files whose metadata could not be parsed, whose links are missing from the report, so fix those first.\n\nVerify the vault before you finish: `vault check` returns `data.findings` (`rule`, `severity` `error`/`warning`/`info`, `path`, 1-based `line`/`column` or `null`, `message`, `hint`, and for a missing target `suggestion`, the closest existing file) in path and line order, plus `summary` counts. Rules: `unresolved-link`, `unresolved-embed`, `ambiguous-link`, `unresolved-anchor` (a missing `#Heading` or `#^block`), `invalid-frontmatter`, `invalid-canvas`, `invalid-base`, `property-type-mismatch` (against `.obsidian/types.json`, else the type most notes use), `duplicate-block-id`, `empty-file` and `orphan-attachment`. Narrow with `--path "notes/**"` and `--rule unresolved-link,invalid-frontmatter`. `vault check --strict` fails with `VAULT_CHECK_FAILED` (exit 2) while an `error` finding remains and lists them in `error.details.findings`: fix each by its `hint` and run it again until it passes. Before setting a property, run `vault properties --name <property>` to see its inferred and declared type, so values keep one type; `vault tags --sort count` lists tags with their files (nested tags count for their parents). Rule severities and ignore globs live in `plugins.settings.vault-check`.\n\nMove, rename and delete with the link-aware commands, never by writing a copy and removing the original:\n- Move or rename: `move notes/plan.md specs/plan.md --dry-run` (or `rename notes/plan.md Roadmap --dry-run`; a file keeps its extension) returns `data.revision` and a `diff` for every file whose links change: wikilinks and embeds keep `#Heading`, `#^block` and `|display` text, relative Markdown links are recomputed, frontmatter links and Canvas `file` nodes follow. Review `data.links.unrewritten`, then repeat without `--dry-run` and with `--if-match <revision>`. One batch commits the move and every rewritten file. `DESTINATION_EXISTS` means the target exists: Forge never overwrites it. A folder moves the same way; its `--if-match` is the folder revision the dry run reports.\n- Delete: `delete notes/scratch.md --if-match <revision>` moves the file to `.trash/` (numbered ` 1`, ` 2`… if taken); `--permanent` removes it; a folder needs `--recursive`. `HAS_BACKLINKS` lists the files still linking to it in `details.backlinks` (`source`, 1-based `line`, `original`): rewrite or remove those links first, or move the note instead. Pass `--allow-broken-links` only when broken links are intended. `.obsidian`, `.forge` and, at workspace scope, `bin` are protected in any letter case (`PROTECTED_PATH`). `--permanent` also refuses folders holding symlinks or `node_modules` (`PROTECTED_PATH`): trash them instead. `data.deleted` lists every removed file (`kind: "file"`) and folder (`kind: "folder"`).\n\nMarkdown `read` returns `content` and `properties`; add `--parts body` only when you need the body separately. Always preview edits with `--dry-run` and review `data.changes[].diff`, a unified diff (`null` for binary files); a stale `--if-match` fails with `CONFLICT` already in the preview. Then apply, inspect `ok`, read back, and run `validate`. YAML structure is validated without executing formulas, HTML, scripts, or expressions. Unknown Canvas/Base keys are retained. A successful structural validation does not prove that an Obsidian formula or media codec works.\n\nEvery failure carries `error.code`, `error.hint` (the next step) and `error.retryable`; match on the code, never on the message. Edit recovery:\n- `NO_MATCH` (`details.matches: 0`): reread the file and copy the exact current text, including whitespace and CRLF/LF line endings, into `--find`.\n- `AMBIGUOUS_EDIT`: `details.matches` counts every match, including overlapping ones, and `details.lines` lists their lines; extend `--find` with surrounding text until it matches once.\n- `CONFLICT`: `details.currentRevision` is the stored revision (`null` when the file is absent). Reread the file, reapply your change to its current content, then retry with that revision; never resend the old change unchanged.\n\nForge removes a lock whose holder provably no longer runs (same host, container and boot; pid gone or reused; or written before the last restart) by itself and returns a warning: then inspect the interrupted changes with `git status` and read-back before continuing. On `WORKSPACE_BUSY` (exit 4), read `error.details`: `lock` names the holder (pid, hostname, startedAt, command, and on Linux pidNamespace, bootId and processStart), `path` the lock file and `stale` is `active`, `unknown` or `stale`. Wait and retry while it is `active` (`retryable: true`), also when `details.breaker` shows another writer removing a stale lock; never delete an `active` lock. `unknown` (`retryable: false`) covers another host, container or boot and unreadable locks: do not retry in a loop and never delete the lock blindly; delete the file in `details.path` only after verifying that the recorded pid on the recorded host and container is not a running Forge writer and inspecting its changes, then retry. `stale` (`retryable: false`) means the holder provably no longer runs but Forge could not remove the file: confirm no Forge process uses it, then delete the file in `details.path` and retry. On `ROLLBACK_FAILED`, inspect every listed path before retrying.\n';
 const development = "---\nname: forge-development\ndescription: Generate and extend TypeScript projects with Forge scaffolds (project create, project component, make entity, make use-case, make form, make plugin) and prove them with acceptance tests and quality gates. Use when adding domain or application code, forms or Forge plugins, or when running npm run check in a Forge-managed project.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer and The Forge distribution in the workspace bin folder.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Define the domain language, acceptance examples, invariants, and dependencies before generating code.\n   Run `project list` and `project inspect <id>`, then `project open <id>` to persist the selection. Verify it with `project current` (`data.project`) and file-command responses' `context.root`. Create independent TypeScript libraries with `project create <kebab-name> --dry-run`; add domain/application files with `project component [id] <PascalName> --kind domain|application --dry-run` (omit the ID for the open project). The configured projects directory can be `projects`, `src`, or another contained path. Keep generated AGENTS.md lean and project-specific.\n2. Discover available generators with `node bin/forge.js make --json`. Outputs are relative to the open project, or workspace when none is selected. Use PascalCase names and explicit destinations, for example `make entity WorkItem --out src/domain --dry-run` or `make use-case FindWorkItem --out src/application --dry-run`. These code generators belong to the bundled `scaffolds` core plugin and `make document` to `templates`; `plugins` shows whether they are enabled.\n3. For forms, first `project open <id>`, then preview `make form <PascalName> --dry-run`. This writes a typed definition and unit test; adapt the example fields and Zod rules to acceptance criteria. The project's `npm run dev` showcase renders the same definitions as real HTML. Keep DOM code in presentation and invoke application use cases from the submission callback. See the bundled bin/data/docs/reference/forms.md for model and renderer contracts. Review the generated source, apply the command, and replace generic behavior with the actual domain rules. Scaffolds are starting points, not completed features.\n4. Keep domain code independent of Node, plugins, CLI parsing and storage. Application services orchestrate injected ports. Infrastructure implements ports. The composition root owns wiring and lifecycle.\n5. Test observable behavior: invalid state, success, failure, stale writes, and important edge cases. In a newly generated project, run `npm install` once, review and commit its lockfile, then use `npm ci` for repeat installations. Run `npm run check:fast` during iteration (test classification, Oxlint, fallow, TypeScript). Diagnose findings, fix their cause, rerun the failed stage, and finish with `npm run check` for build and tests. Use `npm run check:structure`, `npm run lint` or `npm run analyze` for structured findings; npm may print a script banner before the JSON. Do not suppress findings or remove tests just to pass. Use `.unit.test.ts` for isolated behavior, `.integration.test.ts` for real boundaries and `.e2e.test.ts` for complete workflows. Focus a layer with `npm test -- --project unit` (or `integration` / `e2e`). Oxlint enforces source within 400 code-bearing lines and tests/support within 450; exclude blank/comment-only lines (including multiline comments), but count mixed code/comment lines; split cohesive responsibilities rather than compressing code. Add integration tests where serialization or filesystem behavior matters. For existing projects, read their scripts and follow their actual quality gates.\n6. For a plugin, run `make plugin MyTools`; review its `manifest.json` and `main.mjs` in workspace `bin/plugins` (shared across projects; `--out` is not supported), then add `my-tools` to `plugins.enabled` in `bin/config.json`. Namespace commands, generators, skills, events and services under the plugin ID and error codes under its UPPER_SNAKE_CASE prefix. Declare each command's metadata (`scope`, `mutating`, described `options` and `args`, `errors`, and `destructive` or `idempotent` where the derived hints are wrong) so `help`, `schema` and the invocation policy describe it; declare `output`, the JSON Schema of `data`, on the command or per action, and `schema` on a string option or argument that holds or names a JSON document; declare settings as a JSON Schema read from `plugins.settings.<id>` via `context.settings`, German text in `strings.de` (descriptions of commands, actions, options, arguments and settings, the manifest name and description, error summaries and hints, and messages read with `context.t`), and shared capabilities through `provides`/`requires` instead of imports. Use `context.workspace.write` so guards, dry-run and events apply. Implement `onload(context)` and `onunload()` to acquire and release resources, including partial loading failures; use `onUserEnable(context)` for idempotent one-time setup after enabling (it runs at least once, not exactly once) and `context.events.onLayoutReady`/`onQuit` for work that needs active plugins or invocation-end cleanup. Plugins may emit only `<plugin-id>.*` events; host events (`vault.*`, `metadataCache.*`, `workspace.*`, `operation.*`, `command.*`, `plugin.*`) and other plugins' events (such as `claude.*`) fail with `EVENT_OWNERSHIP`. To run the installed Claude Code CLI, require the `claude.lifecycle` service of the `claude` core plugin. Never log to stdout; return JSON data and emit only JSON-safe event payloads.\n7. Each project owns its CI: author GitHub workflows in the project's `src/infrastructure/workflows/<concern>/*.yml`, then run `node bin/forge.js workflows sync --dry-run`, review, and `workflows sync` from the workspace to generate the prefixed `.github/workflows/<project>--<concern>.yml` entrypoints. Never edit generated entrypoints; `workflows sync --check` exits 5 with `WORKFLOW_DRIFT` when they differ from their sources.\n8. For changes to The Forge itself, work in its project directory (`src/the-forge` in the source checkout): run `npm ci`, iterate with `npm run check:fast`, update docs and skills, then run `npm run check` and commit the rebuilt workspace executable and packaged assets with the source. `npm run check` also replays every agent evaluation task in `evals/tasks` with the reference driver; when you add an agent-facing command, add a task with reference steps and deterministic checks and validate it with `npm run eval -- --task <id>`. Measure an agent with the opt-in `npm run eval -- --driver claude`. Preserve local configuration, shared plugins/templates and project selection. Use `npm run release` for a downloadable archive. Do not ship a stale bundle.\n\nShared templates are authored in workspace `bin/templates`; `make document` reads them there and writes to the active project. Finish with `project close` when returning to workspace work. Do not assume a concurrent agent has left the selection unchanged.\n";
 const bundledSkills = [
@@ -33915,10 +34249,10 @@ const scaffoldGenerators = [
     ensure(context.project, "PROJECT_REQUIRED", "Open a Forge project with project open <name> before making a form.");
     await context.workspace.files.read("src/presentation/forms/form-model.ts");
     const { name: name2, directory, file } = names$1(input, dir);
-    const relative = minpath.posix.relative(directory, "src/presentation/forms/form-model.js");
+    const relative = path$3.posix.relative(directory, "src/presentation/forms/form-model.js");
     const runtimeImport = relative.startsWith(".") ? relative : `./${relative}`;
     const definition2 = `${directory}/${file}.form.ts`;
-    const testImport = minpath.posix.relative("tests", definition2).replace(/\.ts$/, ".js");
+    const testImport = path$3.posix.relative("tests", definition2).replace(/\.ts$/, ".js");
     return [
       { path: definition2, bytes: encodeText$1(formDefinitionSource(name2, runtimeImport)) },
       { path: `tests/${file}.form.unit.test.ts`, bytes: encodeText$1(formDefinitionTestSource(name2, testImport.startsWith(".") ? testImport : `./${testImport}`, "../src/presentation/forms/form-model.js")) }
@@ -34009,7 +34343,7 @@ const formView = "import { validateForm, type FormDefinition } from './form-mode
 const demoHtml = '<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1" />\n    <title>Project forms · The Forge</title>\n  </head>\n  <body>\n    <main>\n      <header class="page-heading">\n        <h1>Project forms</h1>\n        <p>Try your form, check its validation, and inspect the values it produces.</p>\n      </header>\n      <div class="preview-layout">\n        <section aria-label="Form preview">\n          <div class="form-picker">\n            <label for="form-choice">Choose a form</label>\n            <select id="form-choice"></select>\n          </div>\n          <div id="form-preview"></div>\n        </section>\n        <section class="result-panel" aria-labelledby="result-heading">\n          <h2 id="result-heading">Validated values</h2>\n          <p>Values stay in this preview. Nothing is sent or saved.</p>\n          <p id="result-status" role="status">Complete the form to see its validated values.</p>\n          <pre id="form-result" aria-label="Validated form values" tabindex="0" hidden></pre>\n        </section>\n      </div>\n    </main>\n    <script type="module" src="/src/presentation/demo.ts"><\/script>\n  </body>\n</html>\n';
 const demoStyle = ':root {\n  color-scheme: light;\n  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;\n  color: #24332c;\n  background: #f4f6f3;\n  font-synthesis: none;\n  line-height: 1.55;\n  --accent: #216341;\n  --muted: #516259;\n  --line: #b9c6bd;\n  --control-line: #718579;\n  --error: #a02729;\n}\n* { box-sizing: border-box; }\nbody { margin: 0; }\nmain { width: min(1040px, 100%); margin: 0 auto; padding: 48px 32px 64px; overflow-wrap: anywhere; }\nh1, h2 { line-height: 1.2; text-wrap: balance; }\nh1 { margin: 0 0 12px; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.03em; }\nh2 { margin: 0 0 12px; font-size: 1.5rem; letter-spacing: -0.015em; }\np { max-width: 65ch; margin: 0 0 20px; color: var(--muted); }\n.page-heading { margin-bottom: 36px; }\n.preview-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 48px; align-items: start; }\n.form-picker { margin-bottom: 32px; }\nlabel { display: block; font-weight: 600; margin-bottom: 7px; }\ninput, textarea, select, button { font: inherit; }\ninput, textarea, select {\n  display: block; width: 100%; min-width: 0; padding: 11px 12px;\n  border: 1px solid var(--control-line); border-radius: 6px; background: white; color: inherit;\n  caret-color: var(--accent);\n}\ntextarea { min-height: 116px; resize: vertical; }\ninput::placeholder, textarea::placeholder { color: #627268; opacity: 1; }\ninput:hover, textarea:hover, select:hover { border-color: var(--accent); }\n:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }\n[aria-invalid="true"] { border-color: var(--error); }\nbutton {\n  min-height: 46px; padding: 10px 20px; border: 1px solid var(--accent); border-radius: 6px;\n  background: var(--accent); color: white; font-weight: 600; cursor: pointer;\n}\nbutton:hover { background: #164d30; }\nbutton:disabled { opacity: 0.6; cursor: wait; }\nform { display: grid; gap: 20px; }\nform > * { min-width: 0; }\nform h2, form p { margin-bottom: 0; }\nform button { justify-self: start; }\nform [role="alert"] { color: var(--error); }\n.result-panel { border-top: 1px solid var(--line); padding-top: 24px; }\n#result-status { font-size: 0.95rem; }\npre {\n  overflow: auto; max-height: 480px; margin: 0; padding: 18px;\n  background: #e5ece6; border-radius: 6px; font-size: 0.875rem; line-height: 1.6;\n  white-space: pre-wrap; overflow-wrap: anywhere;\n}\n::selection { background: #c5dec9; color: #163c27; }\n@media (max-width: 680px) {\n  main { padding: 28px 20px 40px; }\n  .preview-layout { grid-template-columns: minmax(0, 1fr); gap: 36px; }\n  .page-heading { margin-bottom: 28px; }\n}\n.forge-form-actions { display: flex; flex-wrap: wrap; gap: 12px; }\n.forge-form-actions button[type="reset"] { background: transparent; color: var(--accent); }\n.forge-form-actions button[type="reset"]:hover { background: #e5ece6; }\n.forge-form-help, .forge-form-error { margin-top: 7px; font-size: 0.9rem; }\n.forge-form-error, .forge-form-summary, .forge-form-summary a { color: var(--error); }\n.forge-form-summary { padding: 14px; border: 1px solid currentColor; border-radius: 6px; }\n.forge-form-summary a { text-underline-offset: 3px; }\n.forge-form-summary ul { margin-bottom: 0; padding-left: 22px; }\n';
 const demoScript = "import type { FormDefinition } from './forms/form-model.js';\nimport { renderForm } from './forms/form-view.js';\nimport './demo.css';\n\n// Eager discovery makes new `make form` definitions visible on the next reload.\nconst modules = import.meta.glob<Record<string, unknown>>('./forms/**/*.form.ts', { eager: true });\nconst forms = Object.values(modules).flatMap(module => Object.entries(module)\n  .filter(([name]) => name.endsWith('Form'))\n  .map(([, value]) => value as FormDefinition<Record<string, string>>));\nconst container = document.querySelector<HTMLElement>('#form-preview')!;\nconst choice = document.querySelector<HTMLSelectElement>('#form-choice')!;\nconst output = document.querySelector<HTMLElement>('#form-result')!;\nconst status = document.querySelector<HTMLElement>('#result-status')!;\nlet mounted: ReturnType<typeof renderForm> | undefined;\n\nfor (const [index, definition] of forms.entries()) {\n  const option = document.createElement('option');\n  option.value = String(index);\n  option.textContent = definition.title;\n  choice.append(option);\n}\nfunction clearResult() {\n  output.hidden = true;\n  output.textContent = '';\n  status.textContent = 'Complete the form to see its validated values.';\n}\nfunction showForm() {\n  mounted?.destroy();\n  container.replaceChildren();\n  clearResult();\n  const definition = forms[Number(choice.value)];\n  if (!definition) {\n    container.textContent = 'No form definitions found. Add a form with The Forge to preview it here.';\n    const empty = document.createElement('option');\n    empty.textContent = 'No forms available';\n    choice.replaceChildren(empty);\n    choice.disabled = true;\n    status.textContent = 'Add a form to inspect its validated values.';\n    return;\n  }\n  mounted = renderForm(definition, container, values => {\n    output.textContent = JSON.stringify(values, null, 2);\n    output.hidden = false;\n    status.textContent = 'Validation passed. These values are ready to use in your application.';\n  });\n  mounted.form.addEventListener('input', clearResult);\n  mounted.form.addEventListener('reset', clearResult);\n  mounted.form.addEventListener('submit', clearResult, { capture: true });\n}\nchoice.addEventListener('change', showForm);\nshowForm();\n";
-const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {\n      // Kernel source is grouped by layer, then concern; a bundled core plugin owns its layers under src/plugins/<id>/.\n      const kernel = /^src\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path);\n      const corePlugin = /^src\\/plugins\\/[a-z][a-z0-9-]*\\/(?:plugin\\.ts|(?:domain|application|infrastructure|presentation)\\/.+)$/.test(path);\n      if (!kernel && !corePlugin) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/... for the kernel and src/plugins/<id>/plugin.ts or src/plugins/<id>/<layer>/... for core plugins; only main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
+const structureScript = "import { sourceFiles, finish } from './shared.mjs';\n\nconst errors = [];\nconst report = { violations: [] };\nlet scope;\ntry {\n  const args = process.argv.slice(2);\n  const forgeLayout = args.length === 2 && args[0] === '--source-layout' && args[1] === 'forge';\n  if (args.length > 0 && !forgeLayout) throw new Error('Use no arguments for portable test checks, or --source-layout forge for this repository layout.');\n  scope = sourceFiles();\n  for (const path of scope) {\n    const isTest = /\\.(?:test|spec)\\.[^.]+$/.test(path);\n    if (isTest && !/\\.(?:unit|integration|e2e)\\.test\\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) {\n      report.violations.push({ path, rule: 'test-pyramid', expected: '*.unit.test.ts, *.integration.test.ts, or *.e2e.test.ts' });\n    }\n    if (isTest && !path.startsWith('tests/')) report.violations.push({ path, rule: 'test-location', expected: 'Place tests under tests/ so every test is discovered by Vitest' });\n    if (forgeLayout && path.startsWith('src/') && !['src/main.ts', 'src/server-main.ts', 'src/sdk.ts', 'src/vite-env.d.ts'].includes(path)) {\n      // Kernel source is grouped by layer, then concern; a bundled core plugin owns its layers under src/plugins/<id>/.\n      const kernel = /^src\\/(?:domain|application|infrastructure|presentation)\\/[^/]+\\/.+/.test(path);\n      const corePlugin = /^src\\/plugins\\/[a-z][a-z0-9-]*\\/(?:plugin\\.ts|(?:domain|application|infrastructure|presentation)\\/.+)$/.test(path);\n      if (!kernel && !corePlugin) {\n        report.violations.push({ path, rule: 'source-location', expected: 'Use src/<layer>/<concern>/... for the kernel and src/plugins/<id>/plugin.ts or src/plugins/<id>/<layer>/... for core plugins; only main.ts, server-main.ts, sdk.ts and vite-env.d.ts belong at the project source root' });\n      }\n    }\n  }\n  if (report.violations.length > 0) errors.push('Resolve source organization and test-pyramid violations before continuing');\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('structure', errors, report, scope);\n";
 const testConfig = "import { defineConfig } from 'vitest/config';\n\nconst extensions = '{ts,mts,cts,tsx,js,mjs,cjs,jsx}';\n\n/**\n * Each pyramid level states its own budgets, so a focused `vitest run <file>` behaves exactly like `npm test`.\n * Integration and end-to-end tests start real processes and toolchains, which Windows runners create much more\n * slowly than Linux; a test that needs more declares it next to its workflow.\n */\nconst levels = [\n  { name: 'unit', testTimeout: 30_000, hookTimeout: 30_000 },\n  { name: 'integration', testTimeout: 30_000, hookTimeout: 30_000 },\n  { name: 'e2e', testTimeout: 30_000, hookTimeout: 30_000 },\n];\n\nexport default defineConfig({\n  test: {\n    // Classification patterns define the full scope; Vitest defaults hide cypress/dist directories.\n    projects: levels.map(({ name, testTimeout, hookTimeout }) => ({\n      test: { name, environment: 'node', exclude: [], include: [`tests/**/*.${name}.test.${extensions}`], testTimeout, hookTimeout },\n    })),\n  },\n});\n";
 const lintScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  // Oxlint does not lint declarations; TypeScript and fallow validate those files.\n  scope = sourceFiles().filter(file => !/\\.d\\.[cm]?ts$/.test(file));\n  const result = runTool('oxlint', ['--config', 'configs/lint/oxlintrc.json', '--no-ignore', '--deny-warnings', '--format', 'json', ...scope]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Oxlint exited ${result.status}`);\n  if (!Array.isArray(report.diagnostics)) errors.push('Missing lint diagnostics');\n  else if (report.diagnostics.length > 0) errors.push('Lint findings must be resolved');\n  if (report.number_of_files !== scope.length) errors.push(`Incomplete lint scope: expected ${scope.length} files, received ${report.number_of_files}`);\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('oxlint', errors, report, scope);\n";
 const analyzeScript = "import { sourceFiles, runTool, finish } from './shared.mjs';\n\nconst errors = [];\nlet report;\nlet scope;\ntry {\n  scope = sourceFiles();\n  const config = ['--config', 'configs/quality/fallow.json'];\n  const discovery = runTool('fallow', ['--format', 'json', 'list', '--files', ...config]);\n  if (discovery.status !== 0 || !Array.isArray(discovery.report.files)) throw new Error('Fallow source discovery failed');\n  // The inventory uses POSIX separators on every platform; compare Windows reports the same way.\n  const discovered = new Set(discovery.report.files.map(file => String(file).replaceAll('\\\\', '/')));\n  const omitted = scope.filter(file => !discovered.has(file));\n  if (omitted.length > 0) errors.push(`Fallow skipped source files: ${omitted.join(', ')}`);\n  const result = runTool('fallow', ['--format', 'json', '--no-cache', '--max-file-size', '0', 'dead-code', ...config]);\n  report = result.report;\n  if (result.status !== 0) errors.push(`Fallow exited ${result.status}`);\n  if (report.kind !== 'dead-code' || report.version !== '3.31.0' || report.schema_version !== 9) errors.push('Unsupported fallow report contract; review the wrapper when upgrading');\n  for (const name of ['parse-error', 'error-severity-findings']) {\n    const gate = report.gate_outcomes?.[name];\n    if (gate?.enforced !== true || gate.status !== 'pass') errors.push(`Required gate ${name} is missing, unenforced, or failing`);\n  }\n  for (const [name, gate] of Object.entries(report.gate_outcomes ?? {})) {\n    if (gate.enforced && gate.status !== 'pass') errors.push(`Enforced gate ${name} did not pass`);\n  }\n} catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }\nfinish('fallow', errors, report, scope);\n";
@@ -41413,7 +41747,7 @@ function renderUiComponents(input, framework, outputDirectory, interactions = []
   return writes.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }
 function modulePath(directory, target) {
-  const relative = minpath.posix.relative(directory, target).replace(/\.tsx?$/, "");
+  const relative = path$3.posix.relative(directory, target).replace(/\.tsx?$/, "");
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 function literal(value2, indent2 = 0) {
@@ -42570,9 +42904,9 @@ const claudeTarget = (openFiles) => async (context, flags) => {
   ensure(flags["claude-dir"] === void 0 || scope2 === "user", "INVALID_ARGUMENT", "--claude-dir is only valid with --scope user.");
   ensure(flags.directory === void 0 || scope2 === "plugin", "INVALID_ARGUMENT", "--directory is only valid with --scope plugin.");
   if (scope2 === "user") {
-    const configured = flags["claude-dir"] ?? process.env.CLAUDE_CONFIG_DIR ?? minpath.resolve(node_os.homedir(), ".claude");
+    const configured = flags["claude-dir"] ?? process.env.CLAUDE_CONFIG_DIR ?? path$3.resolve(node_os.homedir(), ".claude");
     ensure(typeof configured === "string" && configured.trim().length > 0 && !configured.includes("\0"), "INVALID_PATH", "Claude user directory must be a nonempty path without null bytes.");
-    const directory = minpath.resolve(flags["claude-dir"] === void 0 ? process.cwd() : context.root, configured);
+    const directory = path$3.resolve(flags["claude-dir"] === void 0 ? process.cwd() : context.root, configured);
     let root = directory;
     while (true) {
       try {
@@ -42580,13 +42914,13 @@ const claudeTarget = (openFiles) => async (context, flags) => {
         break;
       } catch (error2) {
         if (error2.code !== "ENOENT") throw error2;
-        const parent2 = minpath.dirname(root);
+        const parent2 = path$3.dirname(root);
         ensure(parent2 !== root, "INVALID_PATH", "Cannot resolve Claude user directory.");
         root = parent2;
       }
     }
     const files = await openFiles(root);
-    const prefix = minpath.relative(root, directory).split("\\").join("/");
+    const prefix = path$3.relative(root, directory).split("\\").join("/");
     const scoped2 = prefix ? new ScopedFiles(files, vaultPath(prefix)) : files;
     return {
       workspace: context.workspace.within(scoped2, directory),
@@ -42599,12 +42933,12 @@ const claudeTarget = (openFiles) => async (context, flags) => {
   if (scope2 === "plugin") {
     ensure(typeof flags.directory === "string" && flags.directory.length > 0, "INVALID_ARGUMENT", "--scope plugin requires --directory <plugin-root>.");
     const directory = vaultPath(flags.directory);
-    return { workspace: context.workspace, scope: scope2, directory: minpath.resolve(context.root, directory), agentsDirectory: `${directory}/agents`, settingsPath: `${directory}/hooks/hooks.json` };
+    return { workspace: context.workspace, scope: scope2, directory: path$3.resolve(context.root, directory), agentsDirectory: `${directory}/agents`, settingsPath: `${directory}/hooks/hooks.json` };
   }
   return {
     workspace: context.workspace,
     scope: scope2,
-    directory: minpath.resolve(context.root, ".claude"),
+    directory: path$3.resolve(context.root, ".claude"),
     agentsDirectory: ".claude/agents",
     settingsPath: scope2 === "local" ? ".claude/settings.local.json" : ".claude/settings.json"
   };
@@ -44647,7 +44981,7 @@ const azureDevOpsPlugin = {
 function nodeLockFiles(root, warn) {
   return async (path2, command2) => {
     const target = await (await NodeFiles.at(root)).resolvePath(path2);
-    await promises$1.mkdir(minpath.dirname(target), { recursive: true });
+    await promises$1.mkdir(path$3.dirname(target), { recursive: true });
     const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
     return async () => await releaseLock(target, token) === "released";
   };
@@ -44729,8 +45063,8 @@ const configSchema = strictObject({
   }).prefault({})
 });
 async function loadConfig(options2) {
-  const root = options2.root !== void 0 ? minpath.resolve(options2.cwd, options2.root) : minpath.resolve(minpath.dirname(options2.defaultPath), "..");
-  const path2 = minpath.resolve(root, "bin/config.json");
+  const root = options2.root !== void 0 ? path$3.resolve(options2.cwd, options2.root) : path$3.resolve(path$3.dirname(options2.defaultPath), "..");
+  const path2 = path$3.resolve(root, "bin/config.json");
   let content2;
   let exists2 = true;
   try {
@@ -44747,8 +45081,8 @@ async function loadConfig(options2) {
   return { path: exists2 ? path2 : null, root, config: config2 };
 }
 const schemaVersion = 1;
-const requiredAssets = ["forge.js", "forge-runtime.js", "package.json", "config/default.json", "data/distribution.json"];
-const ownedAssetPattern = "^(?:forge(?:-runtime)?\\.js|package\\.json|config/default\\.json|skills/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
+const requiredAssets = ["forge.js", "forge-runtime.js", "forge-server.cjs", "package.json", "config/default.json", "data/distribution.json", "webviews/admin/index.html", "webviews/admin/manifest.json", "webviews/admin/THIRD-PARTY-NOTICES.md"];
+const ownedAssetPattern = "^(?:forge(?:-runtime)?\\.js|forge-server\\.cjs|package\\.json|config/default\\.json|skills/.+|webviews/admin/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
 const distributionPolicy = {
   schemaVersion,
   requiredAssets,
@@ -44758,13 +45092,13 @@ const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
 async function readSetupArtifacts(bundleDir) {
   const root = await promises$1.lstat(bundleDir);
   ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
-  const readAsset = async (path2) => {
+  const readAsset2 = async (path2) => {
     vaultPath(path2);
     ensure(ownedAsset.test(path2), "INVALID_SETUP", `Not a distribution asset: ${path2}`);
     const segments2 = path2.split("/");
     let current = bundleDir;
     for (const [index2, segment2] of segments2.entries()) {
-      current = minpath.join(current, segment2);
+      current = path$3.join(current, segment2);
       const entry2 = await promises$1.lstat(current).catch((error2) => {
         if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
         throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
@@ -44775,7 +45109,7 @@ async function readSetupArtifacts(bundleDir) {
   };
   let manifest;
   try {
-    manifest = JSON.parse(new TextDecoder().decode(await readAsset("data/distribution.json")));
+    manifest = JSON.parse(new TextDecoder().decode(await readAsset2("data/distribution.json")));
   } catch (error2) {
     if (!(error2 instanceof SyntaxError)) throw error2;
     throw forgeError("INVALID_SETUP", "bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.", { path: "bin/data/distribution.json" });
@@ -44785,7 +45119,7 @@ async function readSetupArtifacts(bundleDir) {
   ensure(files.every((path2) => typeof path2 === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
   ensure(distributionPolicy.requiredAssets.every((path2) => files.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
   const artifacts = [];
-  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset(path2) });
+  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
   return artifacts;
 }
 const snapshotFormat = 2;
@@ -45783,7 +46117,7 @@ class VFile {
    *   Basename.
    */
   get basename() {
-    return typeof this.path === "string" ? minpath.basename(this.path) : void 0;
+    return typeof this.path === "string" ? path$3.basename(this.path) : void 0;
   }
   /**
    * Set basename (including extname) (`'index.min.js'`).
@@ -45800,7 +46134,7 @@ class VFile {
   set basename(basename2) {
     assertNonEmpty(basename2, "basename");
     assertPart(basename2, "basename");
-    this.path = minpath.join(this.dirname || "", basename2);
+    this.path = path$3.join(this.dirname || "", basename2);
   }
   /**
    * Get the parent path (example: `'~'`).
@@ -45809,7 +46143,7 @@ class VFile {
    *   Dirname.
    */
   get dirname() {
-    return typeof this.path === "string" ? minpath.dirname(this.path) : void 0;
+    return typeof this.path === "string" ? path$3.dirname(this.path) : void 0;
   }
   /**
    * Set the parent path (example: `'~'`).
@@ -45823,7 +46157,7 @@ class VFile {
    */
   set dirname(dirname) {
     assertPath(this.basename, "dirname");
-    this.path = minpath.join(dirname || "", this.basename);
+    this.path = path$3.join(dirname || "", this.basename);
   }
   /**
    * Get the extname (including dot) (example: `'.js'`).
@@ -45832,7 +46166,7 @@ class VFile {
    *   Extname.
    */
   get extname() {
-    return typeof this.path === "string" ? minpath.extname(this.path) : void 0;
+    return typeof this.path === "string" ? path$3.extname(this.path) : void 0;
   }
   /**
    * Set the extname (including dot) (example: `'.js'`).
@@ -45857,7 +46191,7 @@ class VFile {
         throw new Error("`extname` cannot contain multiple dots");
       }
     }
-    this.path = minpath.join(this.dirname, this.stem + (extname || ""));
+    this.path = path$3.join(this.dirname, this.stem + (extname || ""));
   }
   /**
    * Get the full path (example: `'~/index.min.js'`).
@@ -45896,7 +46230,7 @@ class VFile {
    *   Stem.
    */
   get stem() {
-    return typeof this.path === "string" ? minpath.basename(this.path, this.extname) : void 0;
+    return typeof this.path === "string" ? path$3.basename(this.path, this.extname) : void 0;
   }
   /**
    * Set the stem (basename w/o extname) (example: `'index.min'`).
@@ -45913,7 +46247,7 @@ class VFile {
   set stem(stem) {
     assertNonEmpty(stem, "stem");
     assertPart(stem, "stem");
-    this.path = minpath.join(this.dirname || "", stem + (this.extname || ""));
+    this.path = path$3.join(this.dirname || "", stem + (this.extname || ""));
   }
   // Normal prototypal methods.
   /**
@@ -46142,9 +46476,9 @@ class VFile {
   }
 }
 function assertPart(part, name2) {
-  if (part && part.includes(minpath.sep)) {
+  if (part && part.includes(path$3.sep)) {
     throw new Error(
-      "`" + name2 + "` cannot be a path: did not expect `" + minpath.sep + "`"
+      "`" + name2 + "` cannot be a path: did not expect `" + path$3.sep + "`"
     );
   }
 }
@@ -61902,7 +62236,7 @@ class NodeMetadataSnapshotStore {
   }
   async load() {
     try {
-      const bytes = await promises$1.readFile(await this.folder(false).then((folder) => minpath.join(folder, this.name)));
+      const bytes = await promises$1.readFile(await this.folder(false).then((folder) => path$3.join(folder, this.name)));
       const end2 = bytes.indexOf(10);
       if (end2 < 0) return null;
       const header2 = JSON.parse(bytes.toString("utf8", 0, end2));
@@ -61917,14 +62251,14 @@ class NodeMetadataSnapshotStore {
     const body = Buffer.from(JSON.stringify(snapshot));
     const header2 = JSON.stringify({ type: documentType, build: await this.identity(), digest: sha256(body) });
     const folder = await this.folder(true);
-    await promises$1.writeFile(minpath.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
+    await promises$1.writeFile(path$3.join(folder, ".gitignore"), "*\n", { flag: "wx" }).catch((error2) => {
       if (error2.code !== "EEXIST") throw error2;
     });
-    const temp = minpath.join(folder, `.${this.name}.${node_crypto.randomUUID()}.tmp`);
+    const temp = path$3.join(folder, `.${this.name}.${node_crypto.randomUUID()}.tmp`);
     try {
       await promises$1.writeFile(temp, Buffer.concat([Buffer.from(`${header2}
 `), body]));
-      await retryTransient(() => promises$1.rename(temp, minpath.join(folder, this.name)));
+      await retryTransient(() => promises$1.rename(temp, path$3.join(folder, this.name)));
     } catch (error2) {
       await promises$1.rm(temp, { force: true }).catch(() => {
       });
@@ -61938,7 +62272,7 @@ class NodeMetadataSnapshotStore {
   async folder(create2) {
     let current = this.root;
     for (const part of this.file.split("/").slice(0, -1)) {
-      current = minpath.join(current, part);
+      current = path$3.join(current, part);
       const info = await promises$1.lstat(current).catch((error2) => {
         if (error2.code === "ENOENT" && create2) return null;
         throw error2;
@@ -62388,6 +62722,83 @@ function createApp({ workspace: workspace2, metadata: metadata2, events: events2
     getActiveProject: () => project2 === null ? null : copy(project2)
   };
   return { vault: vault2, metadataCache, fileManager, workspace: workspaceFacade };
+}
+const statusOutput = {
+  type: "object",
+  required: ["running", "stale", "server", "url", "webviews"],
+  additionalProperties: false,
+  properties: {
+    running: { type: "boolean", description: "The saved server passed its authenticated identity check." },
+    stale: { type: "boolean", description: "Saved state exists, but its server could not be verified as running." },
+    server: { oneOf: [{ type: "null" }, {
+      type: "object",
+      required: ["pid", "startedAt", "host", "port", "version", "nodeVersion", "uptimeSeconds"],
+      additionalProperties: false,
+      properties: {
+        pid: { type: "integer", minimum: 1 },
+        startedAt: { type: "string" },
+        host: { const: "127.0.0.1" },
+        port: { type: "integer", minimum: 1, maximum: 65535 },
+        version: { type: "string" },
+        nodeVersion: { type: "string" },
+        uptimeSeconds: { type: "number", minimum: 0 }
+      }
+    }] },
+    url: { description: "Local launch link containing an access token; null when stopped. Use start --webview <id> for a view-specific link.", oneOf: [{ type: "string" }, { type: "null" }] },
+    webviews: { type: "array", items: {
+      type: "object",
+      required: ["id", "name", "path"],
+      additionalProperties: false,
+      properties: { id: { type: "string" }, name: { type: "string" }, path: { type: "string" } }
+    } },
+    dryRun: { const: true, description: "Lifecycle preview only; no process or saved state changes." },
+    changed: { type: "boolean", description: "Whether lifecycle state changed, or would change during a dry run." }
+  }
+};
+const lifecycleOutput = { ...statusOutput, required: [...statusOutput.required, "changed"] };
+function serverCommands(controller) {
+  return [{
+    id: "server",
+    description: "Manage the workspace localhost server and discover its installed webviews.",
+    usage: "server [status | start [--port 0..65535] [--webview <id>] [--dry-run] | stop [--dry-run]]",
+    scope: "workspace",
+    discovery: true,
+    mutating: false,
+    defaultAction: "status",
+    unknownAction: "INVALID_ARGUMENT",
+    args: [{ name: "action", description: "status (default), start or stop.", enum: ["status", "start", "stop"] }],
+    output: statusOutput,
+    actions: {
+      status: { description: "Inspect the workspace server and discover installed webviews, including while stopped.", mutating: false },
+      start: {
+        description: "Start or reuse the localhost server and return its authenticated URL; no browser opens.",
+        mutating: true,
+        destructive: false,
+        idempotent: true,
+        output: lifecycleOutput,
+        options: {
+          port: option$1.string("TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.", { default: "0" }),
+          webview: option$1.string("Installed webview id to include in the launch URL, such as admin.")
+        }
+      },
+      stop: { description: "Stop the verified workspace server; repeated stops have no further effect.", mutating: true, destructive: false, idempotent: true, output: lifecycleOutput }
+    },
+    errors: ["SERVER_START_FAILED", "SERVER_STOP_FAILED", "SERVER_STATE_INVALID", "SERVER_BUSY"],
+    async run(args, flags, context) {
+      arity(args, 0, 1);
+      const action2 = args[0] ?? "status";
+      ensure(action2 === "start" || action2 === "stop" || action2 === "status", "INVALID_ARGUMENT", "Use server status, server start or server stop.");
+      ensure(action2 === "start" || flags.port === void 0 && flags.webview === void 0, "INVALID_ARGUMENT", "--port and --webview require server start.");
+      if (action2 === "status") return controller.status();
+      const dryRun2 = context.workspace.dryRun;
+      if (action2 === "stop") return controller.stop({ dryRun: dryRun2 });
+      const port = integer$1(flags, "port");
+      ensure(port === void 0 || port <= 65535, "INVALID_ARGUMENT", "--port must be an integer from 0 to 65535.");
+      const webview = value$2(flags, "webview");
+      ensure(webview === void 0 || /^[a-z][a-z0-9-]*$/.test(webview), "INVALID_ARGUMENT", "--webview must be a lowercase kebab-case installed webview id.");
+      return controller.start({ dryRun: dryRun2, ...port === void 0 ? {} : { port }, ...webview === void 0 ? {} : { webview } });
+    }
+  }];
 }
 class CommanderError extends Error {
   /**
@@ -64507,9 +64918,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
     args = args.slice();
     const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
     function findFile(baseDir, baseName2) {
-      const localBin = minpath.resolve(baseDir, baseName2);
+      const localBin = path$3.resolve(baseDir, baseName2);
       if (fs.existsSync(localBin)) return localBin;
-      if (sourceExt.includes(minpath.extname(baseName2))) return void 0;
+      if (sourceExt.includes(path$3.extname(baseName2))) return void 0;
       const foundExt = sourceExt.find(
         (ext) => fs.existsSync(`${localBin}${ext}`)
       );
@@ -64527,17 +64938,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
       } catch {
         resolvedScriptPath = this._scriptPath;
       }
-      executableDir = minpath.resolve(
-        minpath.dirname(resolvedScriptPath),
+      executableDir = path$3.resolve(
+        path$3.dirname(resolvedScriptPath),
         executableDir
       );
     }
     if (executableDir) {
       let localFile2 = findFile(executableDir, executableFile);
       if (!localFile2 && !subcommand._executableFile && this._scriptPath) {
-        const legacyName = minpath.basename(
+        const legacyName = path$3.basename(
           this._scriptPath,
-          minpath.extname(this._scriptPath)
+          path$3.extname(this._scriptPath)
         );
         if (legacyName !== this._name) {
           localFile2 = findFile(
@@ -64548,7 +64959,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
       }
       executableFile = localFile2 || executableFile;
     }
-    const launchWithNode = sourceExt.includes(minpath.extname(executableFile));
+    const launchWithNode = sourceExt.includes(path$3.extname(executableFile));
     let proc;
     if (process$1.platform !== "win32") {
       if (launchWithNode) {
@@ -65465,7 +65876,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @return {Command}
    */
   nameFromFilename(filename) {
-    this._name = minpath.basename(filename, minpath.extname(filename));
+    this._name = path$3.basename(filename, path$3.extname(filename));
     return this;
   }
   /**
@@ -65876,7 +66287,21 @@ function generationCommand(registry2) {
     }
   };
 }
+const germanServerCommands = {
+  server: "Den lokalen Workspace-Server verwalten und seine installierten Webviews entdecken."
+};
+const germanServerActions = {
+  "server status": "Den Workspace-Server prüfen und installierte Webviews auch bei beendetem Server entdecken.",
+  "server start": "Den lokalen Server starten oder wiederverwenden und seine authentifizierte URL zurückgeben; kein Browser wird geöffnet.",
+  "server stop": "Den verifizierten Workspace-Server beenden; wiederholtes Beenden hat keine weitere Wirkung."
+};
+const germanServerDescriptions = {
+  "status (default), start or stop.": "status (Standard), start oder stop.",
+  "TCP port from 0 to 65535; 0 chooses an available port. A running server keeps its current port.": "TCP-Port von 0 bis 65535; 0 wählt einen verfügbaren Port. Ein laufender Server behält seinen aktuellen Port.",
+  "Installed webview id to include in the launch URL, such as admin.": "ID einer installierten Webview für die Start-URL, zum Beispiel admin."
+};
 const germanCommands = {
+  ...germanServerCommands,
   help: "Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.",
   schema: "Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.",
   config: "Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.",
@@ -65901,6 +66326,7 @@ const germanCommands = {
   plugins: "Kern- und Benutzer-Plugins mit Zustand und Beiträgen auflisten."
 };
 const germanActions = {
+  ...germanServerActions,
   "project list": "Die verwalteten Projekte auflisten.",
   "project create": "Ein eigenständiges TypeScript-Projekt erstellen.",
   "project open": "Ein Projekt für Dateibefehle und Generatoren auswählen.",
@@ -65952,6 +66378,7 @@ const germanEvents = {
   "plugin.unload-failed": "Die Bereinigung eines Plugins ist fehlgeschlagen; die übrige Bereinigung läuft weiter."
 };
 const germanDescriptions = {
+  ...germanServerDescriptions,
   // Global options.
   "Workspace root to load bin/config.json from; must precede the command.": "Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; muss vor dem Befehl stehen.",
   "Response language for descriptions, hints and summaries.": "Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.",
@@ -66091,6 +66518,10 @@ const claudeDefinitionHint = "Korrigieren Sie das in der Meldung genannte Feld u
 const argumentsHint = "Korrigieren Sie die in der Meldung genannten Argumente; die Verwendung zeigt help <command>.";
 const regenerateHint = "Führen Sie denselben Befehl mit --plan aus, prüfen Sie die Änderungen und generieren Sie dann neu.";
 const germanErrors = {
+  SERVER_START_FAILED: { summary: "Der lokale Server konnte nicht starten.", hint: "Prüfen Sie den angeforderten Port und das installierte Server-Bundle und wiederholen Sie server start." },
+  SERVER_STOP_FAILED: { summary: "Der verifizierte lokale Server konnte nicht beendet werden.", hint: "Führen Sie server status aus und wiederholen Sie server stop." },
+  SERVER_STATE_INVALID: { summary: "Der gespeicherte lokale Serverzustand ist ungültig oder unsicher.", hint: "Prüfen Sie .forge/server.json und das übergeordnete Verzeichnis; beenden Sie keinen unverifizierten Prozess." },
+  SERVER_BUSY: { summary: "Ein anderer Befehl ändert gerade den lokalen Serverzustand.", hint: "Warten Sie, bis der andere Serverbefehl abgeschlossen ist, und versuchen Sie es erneut." },
   // Argumente, Optionen und Eingaben
   UNKNOWN_COMMAND: { summary: "Der Befehl ist nicht registriert.", hint: "Verfügbare Befehle, auch aktivierte Plugin-Befehle, zeigen help oder schema." },
   UNKNOWN_OPTION: { summary: "Dieser Befehl akzeptiert die Option nicht.", hint: "Die Optionen des Befehls zeigt help <command>." },
@@ -67788,6 +68219,7 @@ function commands(registry2, services2) {
   return [
     ...workflowCommands(services2),
     ...workflowsCommands(services2),
+    ...serverCommands(services2.server),
     ...catalogCommands(registry2),
     ...documentCommands(),
     ...vaultCommands(),
@@ -67843,7 +68275,7 @@ async function run() {
       ensure(parsed2.args.length === 0, "INVALID_ARGUMENT", "--version does not accept a command.");
       result = { ok: true, data: { name: "The Forge", version: metadata$2.version, apiVersion: 1 } };
     } else {
-      const loaded = await loadConfig({ defaultPath: minpath.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$2(bootstrap.flags, "root") });
+      const loaded = await loadConfig({ defaultPath: path$3.resolve(__dirname, "config.json"), cwd: process.cwd(), root: value$2(bootstrap.flags, "root") });
       const config2 = loaded.config;
       localizer = new Localizer(requestedLanguage !== void 0 ? language(requestedLanguage) : config2.settings.language);
       config2.settings.language = localizer.language;
@@ -67866,6 +68298,7 @@ async function run() {
       const services2 = {
         loaded,
         files,
+        server: new NodeServerController({ workspaceRoot: files.root, distributionPath: __dirname, version: metadata$2.version }),
         get projects() {
           return new ProjectService(files, environment, config2.paths.projects, scaffolder, events2);
         },
@@ -67938,8 +68371,8 @@ async function run() {
       persistMetadata = () => vaultMetadata.persist().catch((error2) => events2.warn(kernelMessage("METADATA_CACHE_UNSAVED", { file: cacheFile, diagnostic: errorMessage(error2) })));
       const metadataEvents = new MetadataCacheEvents(events2, vaultMetadata);
       metadataCommits = project2 ? scopedCommitObserver(metadataEvents, project2.directory) : metadataEvents;
-      const workspace2 = project2 ? environment.within(scopedFiles, minpath.resolve(files.root, project2.directory), metadataEvents) : environment;
-      activeContext = { workspaceRoot: files.root, root: project2 ? minpath.resolve(files.root, project2.directory) : files.root, project: project2 };
+      const workspace2 = project2 ? environment.within(scopedFiles, path$3.resolve(files.root, project2.directory), metadataEvents) : environment;
+      activeContext = { workspaceRoot: files.root, root: project2 ? path$3.resolve(files.root, project2.directory) : files.root, project: project2 };
       const app = createApp({ workspace: workspace2, metadata: vaultMetadata, events: events2, project: project2 });
       const context = { workspace: workspace2, environment, events: events2, metadata: vaultMetadata, app, ...activeContext, language: localizer.language, input: async () => {
         ensure(!process.stdin.isTTY, "INPUT_REQUIRED", "--stdin needs piped input.");

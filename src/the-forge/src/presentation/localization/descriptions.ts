@@ -1,9 +1,11 @@
+import { germanServerDescriptions } from '../server/messages.ts';
 /**
  * German option and argument descriptions of the kernel commands, the global options and the shared option sets
  * that core plugins reuse (generation review controls, library options), keyed by their English text. Core plugins
  * translate the texts they declare themselves through `strings.de.descriptions`.
  */
 export const germanDescriptions: Record<string, string> = {
+  ...germanServerDescriptions,
   // Global options.
   'Workspace root to load bin/config.json from; must precede the command.': 'Workspace-Stammverzeichnis, aus dem bin/config.json geladen wird; muss vor dem Befehl stehen.',
   'Response language for descriptions, hints and summaries.': 'Antwortsprache für Beschreibungen, Hinweise und Zusammenfassungen.',
