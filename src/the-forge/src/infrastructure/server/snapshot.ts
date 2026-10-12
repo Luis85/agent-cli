@@ -14,9 +14,14 @@ interface Inspection { args: string[]; valid: (data: Record<string, unknown>) =>
 interface InspectionResult { data: Record<string, unknown>; warned: boolean }
 function command(options: SnapshotOptions, inspection: Inspection): Promise<InspectionResult> {
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [join(options.distributionPath, 'forge.js'), '--root', options.workspaceRoot, '--json', '--events', 'none', '--dry-run', ...inspection.args],
+    const child = execFile(process.execPath, [join(options.distributionPath, 'forge.js'), '--root', options.workspaceRoot, '--json', '--events', 'none', '--dry-run', ...inspection.args],
       { cwd: options.workspaceRoot, timeout: 15_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, signal: options.signal }, (error, stdout) => {
-        if (error) { reject(new Error('Inspection command failed.')); return; }
+        if (error) {
+          // Abort callbacks can run before the child releases its cwd on Windows.
+          if (child.exitCode !== null || child.signalCode !== null || !child.pid) reject(new Error('Inspection command failed.'));
+          else child.once('close', () => reject(new Error('Inspection command failed.')));
+          return;
+        }
         try {
           const response: unknown = JSON.parse(stdout);
           if (!isRecord(response) || response.ok !== true || !isRecord(response.data) || !inspection.valid(response.data)) throw new Error('Invalid inspection response.');

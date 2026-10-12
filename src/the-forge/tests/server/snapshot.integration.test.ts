@@ -10,7 +10,7 @@ const info: ServerInfo = { pid: 12, port: 3456, host: '127.0.0.1', startedAt: '2
 describe('read-only system snapshot', () => {
   let root: string;
   beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'forge-snapshot-'))); });
-  afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+  afterEach(async () => { await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); });
 
   it('executes fixed discovery commands, whitelists state, and coalesces concurrent refreshes', async () => {
     await writeFile(join(root, 'forge.js'), `

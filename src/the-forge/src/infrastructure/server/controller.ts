@@ -25,6 +25,9 @@ async function healthy(state: ServerState): Promise<boolean> {
   } catch { return false; }
 }
 const stopped = (stale = false): ServerStatus => ({ running: false, stale, server: null, url: null, webviews: [] });
+function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
 function running(state: ServerState, webview?: string): ServerStatus {
   const selected = webview ? state.webviews.find(view => view.id === webview) : undefined;
   if (webview && !selected) throw forgeError('INVALID_ARGUMENT', `Webview '${webview}' is not installed.`);
@@ -73,7 +76,10 @@ export class NodeServerController implements ServerController {
         settled = true;
         clearTimeout(timeout);
         if (child.connected) child.disconnect();
-        if (error) { child.kill('SIGTERM'); reject(error); } else { child.unref(); resolve(); }
+        if (error) {
+          if (child.exitCode !== null || child.signalCode !== null || !child.pid) reject(error);
+          else { child.once('exit', () => reject(error)); child.kill('SIGTERM'); }
+        } else { child.unref(); resolve(); }
       };
       const timeout = setTimeout(() => finish(forgeError('SERVER_START_FAILED', 'Server startup timed out.')), 12_000);
       child.once('error', () => finish(forgeError('SERVER_START_FAILED', 'Could not launch the server process.')));
@@ -98,7 +104,9 @@ export class NodeServerController implements ServerController {
         });
         if (!response.ok) throw new Error('Shutdown rejected.');
         const deadline = Date.now() + 5000;
-        while (await healthy(state)) {
+        // A closed listener does not mean the daemon has released its workspace.
+        // Windows keeps the working directory locked until the process exits.
+        while (processAlive(state.pid)) {
           if (Date.now() >= deadline) throw new Error('Shutdown timed out.');
           await new Promise(resolve => setTimeout(resolve, 75));
         }

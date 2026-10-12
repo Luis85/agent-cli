@@ -450,7 +450,7 @@ function tokenOf(content2) {
     return void 0;
   }
 }
-function processAlive(pid) {
+function processAlive$1(pid) {
   try {
     process.kill(pid, 0);
     return true;
@@ -475,7 +475,7 @@ async function inspectLock(path2) {
     if ((await readLock(path2)).content !== content2) return inspectLock(path2);
     return stale("reused-pid");
   }
-  const alive = processAlive(lock.pid);
+  const alive = processAlive$1(lock.pid);
   if (alive === void 0) return { lock, stale: "unknown" };
   if (!alive) return stale("dead-process");
   const start2 = lock.processStart === void 0 ? void 0 : await processStart(lock.pid);
@@ -850,6 +850,14 @@ async function healthy(state2) {
   }
 }
 const stopped = (stale = false) => ({ running: false, stale, server: null, url: null, webviews: [] });
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 function running(state2, webview) {
   const selected2 = webview ? state2.webviews.find((view) => view.id === webview) : void 0;
   if (webview && !selected2) throw forgeError("INVALID_ARGUMENT", `Webview '${webview}' is not installed.`);
@@ -912,8 +920,11 @@ class NodeServerController {
         clearTimeout(timeout2);
         if (child.connected) child.disconnect();
         if (error2) {
-          child.kill("SIGTERM");
-          reject(error2);
+          if (child.exitCode !== null || child.signalCode !== null || !child.pid) reject(error2);
+          else {
+            child.once("exit", () => reject(error2));
+            child.kill("SIGTERM");
+          }
         } else {
           child.unref();
           resolve2();
@@ -947,7 +958,7 @@ class NodeServerController {
         });
         if (!response.ok) throw new Error("Shutdown rejected.");
         const deadline = Date.now() + 5e3;
-        while (await healthy(state2)) {
+        while (processAlive(state2.pid)) {
           if (Date.now() >= deadline) throw new Error("Shutdown timed out.");
           await new Promise((resolve2) => setTimeout(resolve2, 75));
         }
