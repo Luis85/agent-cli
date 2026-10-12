@@ -21,6 +21,7 @@ For users who already know their goal. Each guide states the needed context and 
 
 | Goal | Guide |
 | --- | --- |
+| Download a pinned GitHub release and start a fresh project | [Install The Forge](how-to/install.md) |
 | Capture a webpage or turn an explicit flow into an illustrated document | [Capture browser evidence](how-to/capture-browser-evidence.md) |
 | Create and iterate a self-contained Vue and Nuxt UI prototype | [Prototype a webview](how-to/prototype-webviews.md) |
 | Inspect workspace context, plugins and runtime health in a browser | [Use the admin webview](how-to/use-admin-webview.md) |
@@ -40,7 +41,7 @@ For users who already know their goal. Each guide states the needed context and 
 | Keep backlog notes and Azure DevOps Boards work items in sync | [Sync a backlog with Azure DevOps](how-to/sync-backlog-with-azure-devops.md) |
 | Browse the committed example project, regenerate it and check drift | [Explore the showcase](how-to/explore-the-showcase.md) |
 | Diagnose checks and deliver a verified repository change | [Develop and test](how-to/develop-and-test.md) |
-| Package or upgrade the portable executable | [Build a release](how-to/release.md) |
+| Test, publish or upgrade the portable executable | [Build and publish a release](how-to/release.md) |
 
 ## Reference — look up the contract
 
@@ -50,6 +51,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
 | [Browser evidence](reference/browser.md) | On-demand PNG screenshots, explicit tutorial plans and guarded illustrated documents |
+| [App updates](reference/updates.md) | Stable GitHub release discovery, guarded self-upgrades and preservation of workspace data |
 | [Webview projects](reference/webviews.md) | Independent Vue/Nuxt UI starters, guarded static publication and drift checks |
 | [Localhost server](reference/server.md) | CLI-managed server lifecycle, read-only inspection, authenticated launch links and independent webviews |
 | [Schema contract](reference/schema.md) | JSON Schema 2020-12 input and output schemas, behavior annotations and the response envelope that `schema` publishes |

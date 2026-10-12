@@ -16,6 +16,8 @@ async function checkout() {
   const root = join(workspace, 'src/the-forge');
   await mkdir(join(root, 'scripts'), { recursive: true });
   await cp(resolve('scripts/release.mjs'), join(root, 'scripts/release.mjs'));
+  await cp(resolve('scripts/install-forge.mjs'), join(root, 'scripts/install-forge.mjs'));
+  await cp(resolve('docs/releases'), join(root, 'docs/releases'), { recursive: true });
   await cp(resolve('configs/distribution-policy.json'), join(root, 'configs/distribution-policy.json'));
   await cp(resolve('package.json'), join(root, 'package.json'));
   await cp(distribution, join(workspace, 'bin'), { recursive: true });

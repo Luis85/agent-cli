@@ -35,6 +35,7 @@ Tests live under the concern they verify. Every executable test file declares it
 | [ui](ui/) | The `ui` core plugin: component definitions, composition, renderers, Storybook, real framework compilation, declarative interactions (`interactions-*`: event/action schemas, component attachment, generated behavior), settings, disabling, CLI workflows, and every target's default output passing a generated project's static checks |
 | [vault](vault/) | Link rewriting for moves, guarded move/rename/delete through the kernel file manager, the `app` facade and portable move/delete workflows |
 | [workflows](workflows/) | Project workflow discovery, YAML scoping, guarded synchronization, drift checks and the checkout's generated workflows |
+| [updates](updates/) | Stable GitHub release downloads, checksum and distribution validation, dry-run upgrades, guarded replacement, obsolete-asset removal and preservation of workspace data |
 | [workspace](workspace/) | Configuration, filesystem boundaries, revision guards, scoping, and installation |
 | [support](support/) | Shared fixtures, including the copied portable CLI harness and the workspace distribution location |
 

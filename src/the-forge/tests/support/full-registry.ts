@@ -19,6 +19,8 @@ import { agentsPlugin } from '../../src/plugins/agents/plugin.ts';
 import { backlogPlugin } from '../../src/plugins/backlog/plugin.ts';
 import { webviewsPlugin } from '../../src/plugins/webviews/plugin.ts';
 import { browserPlugin } from '../../src/plugins/browser/plugin.ts';
+import { updatesPlugin } from '../../src/plugins/updates/plugin.ts';
+import distributionPolicy from '../../configs/distribution-policy.json';
 import { templatesPlugin } from '../../src/plugins/templates/plugin.ts';
 import { scaffoldsPlugin } from '../../src/plugins/scaffolds/plugin.ts';
 import { uiPlugin } from '../../src/plugins/ui/plugin.ts';
@@ -31,7 +33,7 @@ import { offlineHost, testHost } from './core-plugins.ts';
 /** The bundled core plugins in bundle order, as `src/main.ts` registers them. */
 export const corePlugins: readonly CorePlugin[] = [
   templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin, webviewsPlugin, browserPlugin('/unused-browser-distribution'),
+  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin, webviewsPlugin, browserPlugin('/unused-browser-distribution'), updatesPlugin(distributionPolicy),
 ];
 
 /**

@@ -66,6 +66,7 @@ In bundle order, which is also their registration and activation order:
 | `backlog` | `backlog` command for backlog-view compatible product backlogs, including `backlog sync`; `backlog.*` events; the `forge-backlog` skill; `BACKLOG_*` and `SYNC_CONFLICT` codes; requires `bases.query`, optionally uses `connector.hub` | `base`, `view` | [Backlog](backlog.md) |
 | `webviews` | `webview` command for inspecting and publishing project assets; the `forge-webviews` skill; `WEBVIEW_*` codes | none | [Webviews](webviews.md) |
 | `browser` | `browser` command for screenshots and illustrated tutorials; the `forge-browser` skill; `BROWSER_*` codes | none | [Browser](browser.md) |
+| `updates` | `update` command for stable GitHub release checks and guarded app upgrades; `UPDATE_*` codes | none | [App updates](updates.md) |
 
 Two kernel commands use core plugin services and keep working without them. `setup` installs the starter templates from `templates.installer`; with `templates` disabled or unavailable it installs no templates, omits the template next steps and warns. `project create` and `project component` write the files of `scaffolds.projects`; with `scaffolds` disabled or unavailable they fail with `PLUGIN_UNAVAILABLE` (`details`: `command`, `plugin`, `service`, `reason`, `issues`), while `project list`, `open`, `current`, `close` and `inspect` keep working.
 

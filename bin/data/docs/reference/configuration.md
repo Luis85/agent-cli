@@ -73,6 +73,7 @@ Every setting the bundled core plugins declare, by section. `config` reports the
 | `scaffolds` | none | | | |
 | `webviews` | none | | | Build and publication use the selected project's fixed `dist/` and workspace `bin/webviews/<id>/`; see [webviews](webviews.md) |
 | `browser` | none | | | Use command options for capture/tutorial settings; browser selection uses `--browser-executable`, `FORGE_BROWSER_EXECUTABLE` or managed Chromium; see [browser](browser.md) |
+| `updates` | none | | | Use `update check` and pinned `update apply` with revision guards; see [app updates](updates.md) |
 | `ui` | `framework` | `html`, `htmx`, `vanilla`, `vue`, `svelte`, `react` or `angular` | `html` | Default target of `make ui` and `make stories`; see the `ui` section above |
 | `ui` | `components` | string | `components` | Workspace-relative component library folder |
 | `ui` | `componentImports` | string | `imports/components` | Folder that `components import` copies definitions from |
