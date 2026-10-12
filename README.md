@@ -41,6 +41,10 @@ For an agent, start with `help <command>` for usage and `schema <command> --json
 
 To start a new, empty workspace instead, follow the quickstart in [The Forge README](src/the-forge/README.md#use-the-committed-bundle).
 
+## Upgrade the app
+
+The installed app can upgrade itself with `node bin/forge.js update check --json`, followed by a reviewed pinned `update apply --release-version <version> --if-match <revision> --dry-run`. Apply the same command without `--dry-run` after reviewing the changes. It preserves configuration, project selection, plugins, templates and custom webviews; see [app updates](src/the-forge/docs/reference/updates.md).
+
 ## Inspect the workspace in a browser
 
 Start the packaged read-only admin view through the CLI:

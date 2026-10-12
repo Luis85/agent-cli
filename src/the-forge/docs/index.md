@@ -51,6 +51,7 @@ For developers integrating the CLI, agents checking an option, and authors writi
 | --- | --- |
 | [CLI and agent protocol](reference/cli.md) | Commands, arguments, JSON responses, errors and writes |
 | [Browser evidence](reference/browser.md) | On-demand PNG screenshots, explicit tutorial plans and guarded illustrated documents |
+| [App updates](reference/updates.md) | Stable GitHub release discovery, guarded self-upgrades and preservation of workspace data |
 | [Webview projects](reference/webviews.md) | Independent Vue/Nuxt UI starters, guarded static publication and drift checks |
 | [Localhost server](reference/server.md) | CLI-managed server lifecycle, read-only inspection, authenticated launch links and independent webviews |
 | [Schema contract](reference/schema.md) | JSON Schema 2020-12 input and output schemas, behavior annotations and the response envelope that `schema` publishes |

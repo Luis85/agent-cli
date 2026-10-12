@@ -6,7 +6,7 @@ import type { CorePluginHost } from '../../src/application/plugins/core-plugins.
  */
 export const bundledCorePlugins = [
   'templates', 'scaffolds', 'ui', 'data-sources', 'claude',
-  'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser',
+  'bases', 'skills', 'search', 'links', 'vault-check', 'agents', 'connector', 'connector-azure-devops', 'backlog', 'webviews', 'browser', 'updates',
 ] as const;
 
 /**

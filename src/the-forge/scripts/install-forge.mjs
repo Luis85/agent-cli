@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const execute = promisify(execFile);
@@ -43,13 +43,17 @@ try {
   const archive = join(assets, archiveName);
   const checksum = (await readFile(`${archive}.sha256`, 'utf8')).trim();
   const match = /^([a-f0-9]{64})  (forge-\d+\.\d+\.\d+\.tar\.gz)$/.exec(checksum);
-  if (!match || match[2] !== archiveName || createHash('sha256').update(await readFile(archive)).digest('hex') !== match[1]) throw new Error('Release checksum verification failed. Nothing was installed.');
-  const { stdout: listing } = await execute('tar', ['-tzf', archive], { maxBuffer: 8 * 1024 * 1024 });
+  const archiveBytes = await readFile(archive);
+  if (!match || match[2] !== archiveName || createHash('sha256').update(archiveBytes).digest('hex') !== match[1]) throw new Error('Release checksum verification failed. Nothing was installed.');
+  // GNU tar interprets Windows drive-letter archive paths as remote hosts.
+  // Extract the verified bytes from a relative filename in the staging cwd.
+  await writeFile(join(staging, archiveName), archiveBytes);
+  const { stdout: listing } = await execute('tar', ['-tzf', archiveName], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
   const paths = listing.trim().split(/\r?\n/);
   if (!paths.length || paths.some(path => !path.startsWith('bin/') || path.includes('\\') || path.includes(':') || path.split('/').some(part => part === '.' || part === '..'))) throw new Error('Release archive contains an unsafe path.');
-  const { stdout: detailed } = await execute('tar', ['-tvzf', archive], { maxBuffer: 8 * 1024 * 1024 });
+  const { stdout: detailed } = await execute('tar', ['-tvzf', archiveName], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
   if (detailed.trim().split(/\r?\n/).some(line => !['-', 'd'].includes(line[0]))) throw new Error('Release archive contains a link or special file.');
-  await execute('tar', ['-xzf', archive, '--no-same-owner', '--no-same-permissions', '-C', staging]);
+  await execute('tar', ['-xzf', archiveName, '--no-same-owner', '--no-same-permissions'], { cwd: staging });
   const manifest = JSON.parse(await readFile(join(staging, 'bin/package.json'), 'utf8'));
   if (manifest.version !== version || (await invoke(staging, ['--version'])).version !== version) throw new Error('Release executable version differs from the requested version.');
   if (!await absent(join(staging, 'bin/data/context.json'))) throw new Error('Release contains a saved project selection.');

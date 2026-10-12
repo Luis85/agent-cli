@@ -49,6 +49,8 @@ This URL serves the latest `main` branch. For a fixed version, use a reviewed co
 
 ## Capabilities
 
+- `update check`, `update apply`: discover stable GitHub releases and apply checksum-verified upgrades with previews and revision guards, preserving local configuration and projects. See [app updates](docs/reference/updates.md).
+
 - `make`: TypeScript entity, value object, use case and event scaffolds; typed form definitions with validation and HTML rendering; Obsidian-inspired plugin directories; Markdown documents from frontmatter-aware templates. The code, form and plugin scaffolds come from the bundled `scaffolds` core plugin (which also provides the `project create` and `project component` files) and `make document` from `templates`. Plugins contribute more generators without rebuilding the CLI.
 - `components`, `interactions`, `make ui`, `make stories`: maintain Markdown/frontmatter component libraries and generate deterministic HTML, HTMX, vanilla JS, Vue, Svelte, React or Angular boilerplate with Storybook CSF stories and native extension modules. Shared interaction definitions generate typed local state and executable browser-event actions across all seven targets. Delivered by the bundled `ui` core plugin; see [interactions](docs/reference/interactions.md) and [UI components](docs/reference/ui-components.md).
 - `templates`, `config`: inspect template inputs and effective configuration; install editable PRD, use-case, build-spec, design, implementation, test and release templates. `templates` is delivered by the bundled `templates` core plugin; see [templates](docs/reference/templates.md).

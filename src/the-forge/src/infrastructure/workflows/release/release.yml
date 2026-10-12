@@ -130,3 +130,7 @@ jobs:
           cmp release/install-forge.mjs release/public/install-forge.mjs
           node release/public/install-forge.mjs --version "$RELEASE_VERSION" --workspace "$RUNNER_TEMP/forge-public-download"
           node "$RUNNER_TEMP/forge-public-download/bin/forge.js" --version
+          node "$RUNNER_TEMP/forge-public-download/bin/forge.js" --json update check --release-version "$RELEASE_VERSION" > release/public/update.json
+          REVISION=$(node -p "require('./release/public/update.json').data.revision")
+          node "$RUNNER_TEMP/forge-public-download/bin/forge.js" update apply --release-version "$RELEASE_VERSION" --if-match "$REVISION" --dry-run --json
+          node "$RUNNER_TEMP/forge-public-download/bin/forge.js" update apply --release-version "$RELEASE_VERSION" --if-match "$REVISION" --json

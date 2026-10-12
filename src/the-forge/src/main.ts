@@ -42,6 +42,8 @@ import { connectorPlugin } from './plugins/connector/plugin.ts';
 import { azureDevOpsPlugin } from './plugins/connector-azure-devops/plugin.ts';
 import { webviewsPlugin } from './plugins/webviews/plugin.ts';
 import { browserPlugin } from './plugins/browser/plugin.ts';
+import { updatesPlugin } from './plugins/updates/plugin.ts';
+import distributionPolicy from '../configs/distribution-policy.json';
 import { nodeLockFiles } from './infrastructure/workspace/lock-files.ts';
 import { FetchHttpClient } from './infrastructure/connectors/http-client.ts';
 import type { WorkflowServices } from './presentation/cli/services.ts';
@@ -61,7 +63,7 @@ import { kernelMessage, type KernelMessage } from './domain/shared/kernel-messag
 /** Bundled core plugins in registration order; each `src/plugins/<id>/plugin.ts` wires its own layers. */
 const corePlugins = [
   templatesPlugin, scaffoldsPlugin, uiPlugin, dataSourcesPlugin, claudePlugin,
-  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin, webviewsPlugin, browserPlugin(__dirname),
+  basesPlugin, skillsPlugin, searchPlugin, linksPlugin, vaultCheckPlugin, agentsPlugin, connectorPlugin, azureDevOpsPlugin, backlogPlugin, webviewsPlugin, browserPlugin(__dirname), updatesPlugin(distributionPolicy),
 ];
 
 async function run(): Promise<void> {

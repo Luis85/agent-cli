@@ -116,7 +116,8 @@ const unprobed: Record<string, string> = {
 /** Browser modes require explicit opt-in runtime setup; never download a browser in this general CLI suite.
  * The browser acceptance suite checks screenshot/tutorial repeats; runtime adapter tests cover installation.
  */
-const browserProbes = ['browser install', 'browser screenshot', 'browser tutorial'];
+// Update repetition is tested with a local release source in tests/updates; never contact GitHub here.
+const browserProbes = ['browser install', 'browser screenshot', 'browser tutorial', 'update apply'];
 
 /**
  * Every workspace file with its digest. The derived metadata cache is left out, as `list`, revisions and events leave

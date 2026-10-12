@@ -20,7 +20,7 @@ In PowerShell, download the installer with `Invoke-WebRequest https://github.com
 
 The installer downloads the archive and checksum from the pinned GitHub release, verifies SHA-256, checks archive paths and file types, verifies the executable version and generic defaults, installs the complete `bin/`, and runs setup. It prints JSON with `ok`, `version`, `workspace`, `checksum` and next commands. A failure exits nonzero. Keep the downloaded installer outside the destination workspace.
 
-For an existing repository without `bin/`, pass its path as `--workspace`. Setup preserves existing files and AGENTS.md. The installer refuses an existing `bin/`; follow the [upgrade guide](release.md#artifact-policy) instead of resetting settings. It never adopts this source checkout's `src` project path or saved project selection.
+For an existing repository without `bin/`, pass its path as `--workspace`. Setup preserves existing files and AGENTS.md. The installer refuses an existing `bin/`; use the CLI [self-update workflow](../reference/updates.md) instead of resetting settings. It never adopts this source checkout's `src` project path or saved project selection.
 
 An agent checks exit status and JSON `ok`, reviews the project preview, then verifies `project current` before file operations. Read the installed `.agents/skills/forge-workflow/SKILL.md` and workspace AGENTS.md. File paths follow the selected project. Run `npm ci` and `npm run check` inside `projects/my-project` for development; these dependencies belong to the generated project.
 

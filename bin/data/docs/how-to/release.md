@@ -14,6 +14,10 @@ npm run release
 
 `release` runs the full quality gate, rebuilds the distribution and creates the archive and checksum. Inspect the generated source/distribution diff before committing. It does not publish the archive or create a GitHub release. For individual diagnostic commands, see [develop and verify a change](develop-and-test.md).
 
+## Upgrade an installed app
+
+The bundled CLI can update itself from GitHub Releases without cloning source or installing npm dependencies. Follow [app updates](../reference/updates.md): inspect `update check`, preview `update apply --release-version <version> --if-match <revision> --dry-run`, then apply the reviewed pinned version. Configuration, project selection, plugins, templates and custom webviews are preserved. Restart a running server after an upgrade.
+
 ## Artifact policy
 
 
