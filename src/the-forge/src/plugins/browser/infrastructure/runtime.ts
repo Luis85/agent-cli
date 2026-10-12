@@ -53,13 +53,32 @@ export function createBrowserRuntime(distributionPath: string): BrowserRuntime {
     const api = await playwright();
     const configured = managed ? undefined : executablePath ?? process.env.FORGE_BROWSER_EXECUTABLE;
     const path = configured === undefined ? api.chromium.executablePath() : resolve(configured);
-    let available = false;
-    try { available = (await stat(path)).isFile(); await access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK); }
-    catch { available = false; }
+    const source = configured === undefined ? 'managed' : executablePath === undefined ? 'environment' : 'explicit';
+    let reason: BrowserStatus['reason'] = 'available';
+    try {
+      if (!(await stat(path)).isFile()) reason = 'not-file';
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      reason = code === 'ENOENT' || code === 'ENOTDIR' ? 'missing' : 'inaccessible';
+    }
+    if (reason === 'available') {
+      try { await access(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK); }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        reason = code === 'ENOENT' || code === 'ENOTDIR' ? 'missing'
+          : process.platform !== 'win32' && (code === 'EACCES' || code === 'EPERM') ? 'not-executable' : 'inaccessible';
+      }
+    }
+    const selection = source === 'managed' ? 'Run browser install or pass --browser-executable for an installed Chromium.'
+      : source === 'environment' ? 'Update FORGE_BROWSER_EXECUTABLE or pass --browser-executable for an installed Chromium.'
+        : 'Pass --browser-executable with the path to an installed Chromium.';
+    const nextStep = reason === 'available' ? null : reason === 'not-executable'
+      ? 'Check execution permissions on the selected file. ' + selection
+      : reason === 'inaccessible' ? 'Check access to the selected path and its parent directories. ' + selection : selection;
     let version: string;
     try { version = (JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { version: string }).version; }
     catch { throw browserError('BROWSER_UNAVAILABLE', 'The packaged browser runtime metadata is missing. Replace the complete Forge distribution.'); }
-    return { available, executablePath: path, source: configured === undefined ? 'managed' : executablePath === undefined ? 'environment' : 'explicit', version };
+    return { available: reason === 'available', executablePath: path, source, version, verification: 'executable-only', reason, nextStep };
   }
 
   async function session(options: BrowserOptions): Promise<Session> {

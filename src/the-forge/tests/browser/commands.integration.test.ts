@@ -17,9 +17,9 @@ import { ObsidianDocuments } from '../../src/infrastructure/documents/codec.ts';
 import { scopeServices } from '../support/metadata.ts';
 
 let root: string, context: CommandContext;
-const status: BrowserStatus = { available: false, executablePath: null, source: 'managed', version: '1.64.0' };
+const status: BrowserStatus = { available: false, executablePath: null, source: 'managed', version: '1.64.0', verification: 'executable-only', reason: 'missing', nextStep: 'Run browser install.' };
 const runtime: BrowserRuntime = {
-  status: vi.fn(async () => status), install: vi.fn(async () => ({ ...status, available: true })),
+  status: vi.fn(async () => status), install: vi.fn(async () => ({ ...status, available: true, reason: 'available' as const, nextStep: null })),
   screenshot: vi.fn(async () => { throw new Error('No capture expected'); }),
   flow: vi.fn(async () => { throw new Error('No flow expected'); }),
 };

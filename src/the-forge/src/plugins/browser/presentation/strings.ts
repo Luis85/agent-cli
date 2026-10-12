@@ -4,7 +4,7 @@ export const browserStrings: PluginStrings = { de: {
   manifest: { name: 'Browser-Werkzeuge', description: 'Geschützte Webseiten-Screenshots und wiederholbare bebilderte Anleitungen mit einem verwalteten Browser erstellen.' },
   commands: { browser: 'Webseiten-Screenshots und wiederholbare bebilderte Anleitungen über das portable CLI erstellen.' },
   actions: {
-    'browser status': 'Die Browser-Verfügbarkeit ohne Browserstart oder Netzwerkzugriff prüfen.',
+    'browser status': 'Die Verfügbarkeit der ausführbaren Datei ohne Browserstart oder Prüfung der Browser-Kompatibilität prüfen.',
     'browser install': 'Den verwalteten Chromium-Browser ausdrücklich herunterladen; ein Probelauf startet keine Installation.',
     'browser screenshot': 'Einen Webseiten-Screenshot als geschützte PNG-Datei speichern und eine Markdown-Bildreferenz zurückgeben.',
     'browser validate': 'Einen deklarierten Anleitungsablauf ohne Browser prüfen und die Ausgaberevision anzeigen.',

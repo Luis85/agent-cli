@@ -23,7 +23,7 @@ export function browserCommand(runtime: BrowserRuntime): Command {
     args: [{ name: 'action', description: 'status (default), install, screenshot, validate or tutorial.', enum: ['status', 'install', 'screenshot', 'validate', 'tutorial'] },
       { name: 'source', description: 'Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.' }],
     actions: {
-      status: { description: 'Inspect browser availability without launching a browser or accessing the network.', discovery: true, output: browserStatusSchema,
+      status: { description: 'Inspect executable-file availability without launching a browser or verifying browser compatibility.', discovery: true, output: browserStatusSchema,
         options: { 'browser-executable': executable } },
       install: { description: 'Download the managed Chromium browser explicitly; a dry run does not start the installer.', discovery: true,
         mutating: true, destructive: false, idempotent: true, output: installSchema },

@@ -38,7 +38,11 @@ A capture preview returns `captured: false`, `dryRun: true`, `changes: []` and `
 
 Browser selection prefers `--browser-executable`, then `FORGE_BROWSER_EXECUTABLE`, then the installed managed Chromium.
 
-`browser status` returns `{available, executablePath, source, version}`. `source` identifies `explicit`, `environment` or `managed` browser selection; `version` identifies the Playwright runtime. Installation reports `dryRun`, `executed` and the resulting status or preview plan. Browser installation is an explicit runtime operation, separate from npm dependencies in a webview project.
+`browser status` returns `{available, executablePath, source, version, verification, reason, nextStep}`. `source` identifies `explicit`, `environment` or `managed` browser selection; `version` identifies the packaged Playwright runtime, not the Chromium executable. `verification: "executable-only"` means filesystem checks only: `available: true` confirms a regular executable file (existence/access only on Windows), not browser compatibility, successful launch or installed operating-system dependencies. Status never launches the selected file, installs a browser, contacts the network or searches for another executable.
+
+`reason` is `available`, `missing`, `not-file`, `not-executable` (POSIX execution permission), or `inaccessible` (other filesystem access failure). Missing includes a missing parent or a non-directory parent. Unavailable results include English `nextStep` guidance appropriate to the selected source; `reason` codes are language-independent; available results have `nextStep: null`. An explicit or environment override is never silently replaced with managed Chromium. To inspect a known system installation, pass `browser status --browser-executable /path/to/chromium`.
+
+Installation reports `dryRun`, `executed` and the resulting status or preview plan. Browser installation is an explicit runtime operation, separate from npm dependencies in a webview project.
 
 ## Tutorial plans
 
