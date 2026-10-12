@@ -107,7 +107,10 @@ const secretName = name => /TOKEN|KEY|SECRET|PASSWORD|(^|_)PAT($|_)|CREDENTIAL/i
  */
 export function redact(text, env = process.env) {
   let result = text;
-  for (const [name, value] of Object.entries(env)) if (secretName(name) && value !== undefined && value.length >= 4) result = result.replaceAll(value, '***');
+  // Redact longer credentials first so a shorter shared prefix cannot expose their suffixes.
+  const secrets = Object.entries(env).filter(([name, value]) => secretName(name) && value !== undefined && value.length >= 4)
+    .map(([, value]) => /** @type {string} */ (value)).sort((a, b) => b.length - a.length);
+  for (const value of secrets) result = result.replaceAll(value, '***');
   return result;
 }
 

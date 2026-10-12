@@ -99,6 +99,12 @@ describe('cursor paging', () => {
     expect(compareKeys(['B.md', 1], ['a.md', 1])).toBeLessThan(0);
     expect(compareKeys(['a.md', 3], ['a.md', 3])).toBe(0);
   });
+
+  it('binds cursors to the complete Unicode query, including supplementary characters', () => {
+    const first = page(1, undefined, undefined, { q: '😀' });
+    expect(page(1, first.next, undefined, { q: '😀' }).items).toEqual(['b']);
+    expect(() => page(1, first.next, undefined, { q: '😁' })).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+  });
 });
 
 describe('list with --path, --limit and --cursor', () => {

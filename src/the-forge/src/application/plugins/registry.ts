@@ -35,25 +35,25 @@ export interface PluginContext extends CommandContext {
   /** The plugin's `strings.<language>.messages[key]`, falling back to English and then to the key. */
   t(key: string): string;
 }
-export interface Command extends CommandMetadata {
-  run(args: string[], flags: CommandFlags, context: CommandContext): unknown | Promise<unknown>;
+export interface Command<Context extends CommandContext = CommandContext> extends CommandMetadata {
+  run(args: string[], flags: CommandFlags, context: Context): unknown | Promise<unknown>;
 }
 /** `directory` is the resolved output directory; `generation` plans, checks and commits reviewed output. */
-export interface GeneratorRequest { name: string; directory: string; flags: CommandFlags; context: CommandContext; generation: GenerationService }
+export interface GeneratorRequest<Context extends CommandContext = CommandContext> { name: string; directory: string; flags: CommandFlags; context: Context; generation: GenerationService }
 /**
  * `make <id> <Name>`. A `generate` generator returns a write plan the host previews or writes (with `review`, the
  * host also offers --plan, --plan-out, --check and --revisions-from); a `run` generator returns its own result.
  * `idempotent` defaults to false for both: a plan whose `expectedRevision` is the current revision applies again.
  */
-export interface Generator extends CommandMode {
+export interface Generator<Context extends CommandContext = CommandContext> extends CommandMode {
   id: string; description: string; usage?: string;
   options?: Readonly<Record<string, CommandOption>>;
   /** Default output directory; with `fixedDirectory`, --out is rejected. */
   directory?: string; fixedDirectory?: boolean; review?: boolean;
   /** Failure codes the generator reports itself; `make` publishes them with its own. */
   errors?: readonly string[];
-  generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
-  run?(request: GeneratorRequest): unknown | Promise<unknown>;
+  generate?(request: GeneratorRequest<Context>): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
+  run?(request: GeneratorRequest<Context>): unknown | Promise<unknown>;
 }
 /**
  * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
@@ -67,7 +67,7 @@ export interface PluginManifest {
   id: string; name: string; version: string; minAppVersion: string; description: string; author: string; core?: true;
 }
 export interface PluginContributions {
-  commands?: Command[]; generators?: Generator[]; events?: EventDefinition[]; skills?: Skill[];
+  commands?: Command<PluginContext>[]; generators?: Generator<PluginContext>[]; events?: EventDefinition[]; skills?: Skill[];
   /** Services this plugin offers to plugins that require them, by service id. */
   provides?: Record<string, unknown>;
   /** Service ids this plugin needs; it activates after their providers. */

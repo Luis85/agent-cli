@@ -39,6 +39,21 @@ describe('plugins with invalid settings', () => {
     await registry.dispose(events);
   });
 
+  it('isolates a throwing custom validator and its dependents while discovery and healthy commands remain usable', async () => {
+    const { registry, events } = setup(), activated: string[] = [];
+    registry.register({ manifest: manifest('catalog'), settings: limit, provides: { 'catalog.items': {} }, validateSettings() { throw new Error('invalid filter'); }, onload() { activated.push('catalog'); } }, events);
+    registry.register({ manifest: manifest('board'), requires: ['catalog.items'], onload() { activated.push('board'); } }, events);
+    registry.register({ manifest: manifest('notes'), onload() { activated.push('notes'); }, commands: [{ id: 'notes.count', description: 'Count', usage: 'notes.count', run: () => 1 }] }, events);
+    await registry.configure({}, async () => [], message => events.warn(message));
+    expect(registry.plugins.map(plugin => plugin.manifest.id)).toEqual(['catalog', 'board', 'notes']);
+    expect([...registry.unavailable.keys()]).toEqual(['catalog', 'board']);
+    expect(registry.unavailable.get('catalog')!.issues).toEqual(['plugins.settings.catalog: validateSettings failed: invalid filter']);
+    await registry.activate(events, context);
+    expect(activated).toEqual(['notes']);
+    expect(await registry.commands.get('notes.count')!.run([], {}, context)).toBe(1);
+    await registry.dispose(events);
+  });
+
   it('keep plugins that only optionally use their services available, without those services', async () => {
     const { registry, events } = setup();
     let available: boolean | undefined;

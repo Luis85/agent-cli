@@ -2,6 +2,7 @@ import { ensure, summarizeError, errorMessage } from '../../domain/shared/errors
 import { isInTrash, isStructured, isTextLike, type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
 import { revisionConflict, snapshotWriteRequests } from '../../domain/documents/write-plan.ts';
 import { unifiedDiff } from '../../domain/documents/diff.ts';
+import { snapshotBatch } from './batch-plan.ts';
 import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 import { publishHostEvent, type HostEventMap } from '../plugins/host-events.ts';
@@ -95,15 +96,19 @@ export class Workspace {
    * validated first; dry runs return each write's diff when `options.previous` is given.
    */
   async commit(batch: FileBatch, options: CommitOptions) {
-    const paths = [...(batch.renames ?? []).flatMap(rename => [rename.from, rename.to]), ...(batch.writes ?? []).map(write => write.path), ...(batch.removes ?? []).map(remove => remove.path)];
+    let snapshot: Required<FileBatch>;
+    try { snapshot = snapshotBatch(batch); }
+    catch (error) { return this.observe(options.operation, [], async (): Promise<BatchResult & { dryRun: boolean }> => { throw error; }, changeSummary); }
+    const paths = [...snapshot.renames.flatMap(rename => [rename.from, rename.to]), ...snapshot.writes.map(write => write.path), ...snapshot.removes.map(remove => remove.path)];
+    const trash = [...(options.trash ?? [])];
+    const previous = options.previous && new Map([...options.previous].map(([path, file]) => [path, { ...file, bytes: Uint8Array.from(file.bytes) }]));
     return this.observe(options.operation, paths, async () => {
-      const requests = snapshotWriteRequests(batch.writes ?? []);
+      const requests = [...snapshot.writes];
       for (const write of requests) if (isStructured(write.path)) this.codec.validate(write.path, write.bytes);
-      const trash = options.trash ?? [];
-      const committed = await this.files.commit({ ...batch, writes: requests }, this.dryRun);
+      const committed = await this.files.commit(snapshot, this.dryRun);
       const result = { ...committed, changes: committed.changes.filter(change => !trash.some(destination => into(change.path, destination))) };
       await this.committed(result, trash);
-      const changes = this.dryRun && options.previous ? await this.preview(result.changes, requests, options.previous) : result.changes;
+      const changes = this.dryRun && previous ? await this.preview(result.changes, requests, previous) : result.changes;
       return { dryRun: this.dryRun, renames: result.renames, changes, folders: result.folders, removedFolders: result.removedFolders };
     }, changeSummary);
   }
@@ -147,7 +152,7 @@ export class Workspace {
     return this.observe('edit', [path], async () => {
       const file = await this.files.read(path);
       ensure(file.revision === revision, 'CONFLICT', `File changed; read again before editing: ${path}`, revisionConflict(path, revision, file.revision));
-      return this.guardedWrite([{ path, bytes: transform(file.bytes), expectedRevision: revision }], new Map([[path, file]]));
+      return this.guardedWrite([{ path, bytes: transform(Uint8Array.from(file.bytes)), expectedRevision: revision }], new Map([[path, file]]));
     }, changeSummary);
   }
   private async observe<T>(operation: Operation, paths: string[], action: () => Promise<T>, summarize: (result: T) => { changes?: FileChange[]; bytes?: number }) {

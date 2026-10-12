@@ -38,6 +38,20 @@ describe('dry-run unified diffs', () => {
     expect(applyUnifiedDiff(note, change!.diff!)).toBe(await readFile(join(root, 'note.md'), 'utf8'));
   });
 
+  it('preserves the original snapshot when a transform edits its bytes in place', async () => {
+    const revision = revisionOf(encodeText(note));
+    const transform = (bytes: Uint8Array) => {
+      bytes.set(encodeText('Vier'), note.indexOf('Four'));
+      return bytes;
+    };
+    const preview = await workspace(true).workspace.edit('note.md', revision, transform);
+    const [change] = preview.changes as Array<{ diff: string }>;
+    expect(change!.diff).toContain('-Four\n+Vier\n');
+    expect(await readFile(join(root, 'note.md'), 'utf8')).toBe(note);
+    await workspace(false).workspace.edit('note.md', revision, transform);
+    expect(applyUnifiedDiff(note, change!.diff)).toBe(await readFile(join(root, 'note.md'), 'utf8'));
+  });
+
   it('produces patches that Git applies to the previewed files', async () => {
     const created = 'export const value = 1;\n';
     const result = await workspace(true).workspace.write([

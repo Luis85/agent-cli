@@ -85,6 +85,44 @@ describe('workspace lifecycle notifications', () => {
     expect(new TextDecoder().decode((await files.read('note.md')).bytes)).toBe('Private contents');
   });
 
+  it('snapshots every batch step before awaiting operation listeners', async () => {
+    await files.writeBatch([write('old.md', 'Old'), write('remove.md', 'Remove')], false);
+    const renamed = await files.read('old.md'), removed = await files.read('remove.md');
+    const batch = {
+      renames: [{ from: 'old.md', to: 'new.md', expectedRevision: renamed.revision }],
+      writes: [write('created.md', 'Created')],
+      removes: [{ path: 'remove.md', expectedRevision: removed.revision }],
+    };
+    events.on('operation.started', async () => {
+      await Promise.resolve();
+      batch.renames[0]!.to = 'redirected.md';
+      batch.writes[0]!.path = 'redirected-write.md';
+      batch.writes[0]!.bytes.fill(0);
+      batch.removes.length = 0;
+    });
+    const result = await workspace.commit(batch, { operation: 'apply' });
+    expect(await files.list()).toEqual(['created.md', 'new.md']);
+    expect(new TextDecoder().decode((await files.read('created.md')).bytes)).toBe('Created');
+    expect(result.renames).toMatchObject([{ from: 'old.md', to: 'new.md' }]);
+    expect(result.changes).toMatchObject([{ path: 'created.md', operation: 'created' }, { path: 'remove.md', operation: 'deleted' }]);
+  });
+
+  it('keeps batch preview snapshots and trash filtering stable across listeners', async () => {
+    await files.writeBatch([write('note.md', 'Before')], false);
+    const file = await files.read('note.md');
+    const options = { operation: 'apply' as const, trash: [] as string[], previous: new Map([['note.md', file]]) };
+    const preview = new Workspace(files, new ObsidianDocuments(), events, true, root);
+    events.on('operation.started', () => {
+      file.bytes.fill(0);
+      options.previous.clear();
+      options.trash.push('note.md');
+    });
+    const result = await preview.commit({ writes: [{ ...write('note.md', 'After'), expectedRevision: file.revision }] }, options);
+    expect(result.changes).toEqual([expect.objectContaining({ path: 'note.md', diff: expect.stringContaining('-Before') })]);
+    expect(events.history.filter(record => record.id === 'workspace.quick-preview')).toHaveLength(1);
+    expect(new TextDecoder().decode((await files.read('note.md')).bytes)).toBe('Before');
+  });
+
   it('reports snapshot and document-validation failures without writes', async () => {
     await expect(workspace.write([write('../outside.md')])).rejects.toMatchObject({ code: 'INVALID_PATH' });
     await expect(workspace.write([write('invalid.canvas', '{')])).rejects.toBeInstanceOf(AppError);

@@ -78,6 +78,7 @@ For contributors and teams deciding how to use The Forge within their architectu
 - [Product vision](explanation/product-vision.md): the terminal project companion, the two interfaces to one vault, the knowledge graph, core plugins and the roadmap.
 - [Architecture and boundaries](explanation/architecture.md): domain/application ports, storage ownership, project scope and extension lifecycle.
 - [Deterministic UI generation](explanation/deterministic-ui.md): why definitions are declarative, what reproducibility means, and where application code begins.
-- [Product review](explanation/product-review.md): existing workflow findings, polishing changes, research and verification limits.
+- [Current agent-first polishing review](https://github.com/Luis85/agent-cli/blob/main/src/the-forge/docs/research/12-agent-first-polish-review.md): current workflow findings, resolved gaps, research and verification evidence; maintainer material hosted in the repository.
+- [Historical product review](explanation/product-review.md): the 2026-10-07 findings and verification limits, some superseded by later work.
 
 Repository contributors should also read `AGENTS.md` and the [development guide](how-to/develop-and-test.md). Agent operators can use the [Forge workflow skill](../skills/forge-workflow/SKILL.md), [development skill](../skills/forge-development/SKILL.md), [file-editing skill](../skills/forge-vault/SKILL.md), [agent definitions skill](../skills/forge-agents/SKILL.md) and [backlog skill](../skills/forge-backlog/SKILL.md); [install them](how-to/install-agent-skills.md) into `.claude/skills` and `.agents/skills`.

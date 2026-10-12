@@ -1,5 +1,5 @@
-import { type WriteRequest, type FileChange, type FileRename, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
-import type { FileRepository, DocumentCodec, CommitObserver, FileBatch } from './ports.ts';
+import { type WriteRequest, type FileChange, type FileSnapshot, type PlannedChange } from '../../domain/documents/file.ts';
+import type { FileRepository, DocumentCodec, CommitObserver, FileBatch, BatchResult } from './ports.ts';
 import type { EventBus } from '../plugins/events.ts';
 /** Dry-run result options; `diff` adds a unified diff to each planned change. */
 export interface WriteOptions {
@@ -54,12 +54,8 @@ export declare class Workspace {
      * One guarded batch of renames, writes and removals (see `FileRepository.commit`). Structured writes are
      * validated first; dry runs return each write's diff when `options.previous` is given.
      */
-    commit(batch: FileBatch, options: CommitOptions): Promise<{
+    commit(batch: FileBatch, options: CommitOptions): Promise<BatchResult & {
         dryRun: boolean;
-        renames: FileRename[];
-        changes: FileChange[];
-        folders: string[];
-        removedFolders: string[];
     }>;
     /**
      * Dry runs emit one `workspace.quick-preview` per planned file change. Commits emit `vault.create` for each new

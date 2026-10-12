@@ -51,6 +51,35 @@ describe('extracted command boundaries', () => {
     expect(await registry.commands.get('make')!.run([], {}, context)).toMatchObject({ generators: expect.arrayContaining([{ id: 'custom.fixture', description: 'Late generator' }]) });
   });
 
+  it('keeps entry help concise while targeted help and schema retain their own contracts', async () => {
+    registry.add(registry.commands, {
+      id: 'custom.inspect', description: 'Inspect a result', usage: 'custom.inspect [show]', mutating: false,
+      args: [{ name: 'action', description: 'The operation.' }],
+      options: { input: { type: 'string', description: 'JSON input.', schema: { type: 'object' } } },
+      output: { type: 'object', properties: { result: { type: 'string' } } },
+      actions: { show: { description: 'Show the result.', output: { type: 'string' } } }, run: () => null,
+    });
+    const help = registry.commands.get('help')!;
+    const catalog = await help.run([], {}, context) as { commands: Array<Record<string, unknown>> };
+    expect(catalog).not.toHaveProperty('envelope');
+    expect(catalog.commands.find(command => command.id === 'custom.inspect')).toEqual({
+      id: 'custom.inspect', description: 'Inspect a result', usage: 'custom.inspect [show]',
+      annotations: { scope: 'project', discovery: false, mutating: false, readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+    });
+    const targeted = await help.run(['custom.inspect'], {}, context);
+    expect(targeted).toMatchObject({
+      args: [{ name: 'action' }], options: { input: { schema: { type: 'object' } } }, errors: [],
+      annotations: { actions: { show: { description: 'Show the result.' } } }, globalOptions: { json: { type: 'boolean' } },
+    });
+    expect(JSON.stringify(targeted)).not.toContain('outputSchema');
+    expect(await registry.commands.get('schema')!.run(['custom.inspect'], {}, context)).toMatchObject({
+      envelope: { title: 'Forge response envelope' }, commands: [{
+        inputSchema: { oneOf: expect.any(Array) }, outputSchema: { type: 'object' },
+        annotations: { actions: { show: { outputSchema: { type: 'string' } } } },
+      }],
+    });
+  });
+
   it.each([
     ['Empty.md', ''],
     ['Empty.canvas', '{"nodes":[],"edges":[]}\n'],

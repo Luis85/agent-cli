@@ -20,6 +20,12 @@ describe('batch plan validation', () => {
     ]) expect(() => plan(batch), JSON.stringify(batch)).toThrow(expect.objectContaining({ code: 'INVALID_PLAN' }));
   });
 
+  it('rejects sparse rename and removal arrays as invalid plans', () => {
+    for (const key of ['renames', 'removes'] as const) {
+      expect(() => plan({ [key]: Array(1) })).toThrow(expect.objectContaining({ code: 'INVALID_PLAN' }));
+    }
+  });
+
   it('finds nested steps even when sibling names sort between a folder and its contents', () => {
     // `p b` and `p.md` sort between `p` and `p/c.md` by code unit; nesting must still be found.
     const batch = { removes: [{ path: 'p', expectedRevision: 'r' }], writes: [{ path: 'p b', bytes }, { path: 'p.md', bytes }, { path: 'p/c.md', bytes }] };

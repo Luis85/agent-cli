@@ -38,15 +38,15 @@ export interface PluginContext extends CommandContext {
     /** The plugin's `strings.<language>.messages[key]`, falling back to English and then to the key. */
     t(key: string): string;
 }
-export interface Command extends CommandMetadata {
-    run(args: string[], flags: CommandFlags, context: CommandContext): unknown | Promise<unknown>;
+export interface Command<Context extends CommandContext = CommandContext> extends CommandMetadata {
+    run(args: string[], flags: CommandFlags, context: Context): unknown | Promise<unknown>;
 }
 /** `directory` is the resolved output directory; `generation` plans, checks and commits reviewed output. */
-export interface GeneratorRequest {
+export interface GeneratorRequest<Context extends CommandContext = CommandContext> {
     name: string;
     directory: string;
     flags: CommandFlags;
-    context: CommandContext;
+    context: Context;
     generation: GenerationService;
 }
 /**
@@ -54,7 +54,7 @@ export interface GeneratorRequest {
  * host also offers --plan, --plan-out, --check and --revisions-from); a `run` generator returns its own result.
  * `idempotent` defaults to false for both: a plan whose `expectedRevision` is the current revision applies again.
  */
-export interface Generator extends CommandMode {
+export interface Generator<Context extends CommandContext = CommandContext> extends CommandMode {
     id: string;
     description: string;
     usage?: string;
@@ -65,8 +65,8 @@ export interface Generator extends CommandMode {
     review?: boolean;
     /** Failure codes the generator reports itself; `make` publishes them with its own. */
     errors?: readonly string[];
-    generate?(request: GeneratorRequest): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
-    run?(request: GeneratorRequest): unknown | Promise<unknown>;
+    generate?(request: GeneratorRequest<Context>): readonly WriteRequest[] | Promise<readonly WriteRequest[]>;
+    run?(request: GeneratorRequest<Context>): unknown | Promise<unknown>;
 }
 /**
  * Options `make` owns for every generator: the output directory and the review controls of reviewed generators.
@@ -89,8 +89,8 @@ export interface PluginManifest {
     core?: true;
 }
 export interface PluginContributions {
-    commands?: Command[];
-    generators?: Generator[];
+    commands?: Command<PluginContext>[];
+    generators?: Generator<PluginContext>[];
     events?: EventDefinition[];
     skills?: Skill[];
     /** Services this plugin offers to plugins that require them, by service id. */
@@ -129,8 +129,8 @@ export declare class Registry {
     private readonly skillFrontmatter;
     /** `skillFrontmatter` reads the frontmatter of contributed SKILL.md files for their specification checks. */
     constructor(skillFrontmatter: SkillFrontmatterReader);
-    readonly commands: Map<string, Command>;
-    readonly generators: Map<string, Generator>;
+    readonly commands: Map<string, Command<CommandContext>>;
+    readonly generators: Map<string, Generator<CommandContext>>;
     readonly skills: Map<string, Skill>;
     readonly plugins: Plugin[];
     /** Registered plugins with their origin. */

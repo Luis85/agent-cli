@@ -1,3 +1,5 @@
+/** Reserved names also cover case-insensitive filesystems and Windows trailing-dot/space aliases. */
+export declare function reservedPathSegment(segment: string): 'git' | 'internal' | undefined;
 export declare function vaultPath(input: string): string;
 /** Obsidian's vault trash: `delete` moves files here unless `--permanent` is passed. It is hidden from the metadata cache. */
 export declare const trashFolder = ".trash";

@@ -6,7 +6,7 @@ By the end of this exercise you will have a managed TypeScript project, a planni
 
 ## 1. Install the portable distribution
 
-Create an empty workspace directory and extract a reviewed release into it. Keep `bin/forge.js` and `bin/package.json` together. If you copy the complete `bin` folder from a source checkout instead, reset its checkout-specific settings only in this new destination:
+Create an empty workspace directory and extract a reviewed release into it. Keep the complete `bin` folder together, including the launcher `bin/forge.js`, runtime bundle `bin/forge-runtime.js`, `bin/package.json` and packaged assets. If you copy the complete `bin` folder from a source checkout instead, reset its checkout-specific settings only in this new destination:
 
 ```sh
 cp bin/config/default.json bin/config.json
@@ -24,7 +24,7 @@ node bin/forge.js config --json
 
 The dry run reports files that would be written. The real setup creates missing configuration, shared templates/plugins, packaged guidance and agent skills. Existing files are preserved. Each command returns a JSON envelope; continue only when `ok` is `true` and the process exits successfully.
 
-Your workspace now contains `bin/forge.js`, `bin/config.json`, shared `bin/templates` and `bin/plugins`, and packaged assets in `bin/data`. The default managed-project directory is `projects`.
+Your workspace now contains `bin/forge.js`, `bin/forge-runtime.js`, `bin/config.json`, shared `bin/templates` and `bin/plugins`, and packaged assets in `bin/data`. The default managed-project directory is `projects`.
 
 ## 2. Create and select a project
 
@@ -55,7 +55,16 @@ node bin/forge.js properties notes/plan.md --set '{"status":"draft"}' --if-match
 node bin/forge.js read notes/plan.md --json
 ```
 
-The final read shows the new frontmatter and a new revision. A stale revision produces `CONFLICT`; reread and reconcile before retrying. Dry runs emit no `vault.*` events and reserve no files.
+The final read shows `status: draft` in `data.document.properties` and a new revision. A stale revision produces `CONFLICT`; reread and reconcile before retrying. Dry runs emit no `vault.*` events and reserve no files.
+
+Verify the note's structure and check its links:
+
+```sh
+node bin/forge.js validate notes/plan.md
+node bin/forge.js vault check --path notes/plan.md --strict
+```
+
+Both responses should have `ok: true`. This verifies the saved note; the preview alone did not prove a write happened. For the next edit, use the new revision from the final read. Discover a command with `help edit`, then use `schema edit --json` when you need its machine-readable contract; a full schema dump is unnecessary for this task.
 
 ## 4. Preview a scaffold and return to workspace scope
 

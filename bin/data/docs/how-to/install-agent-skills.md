@@ -19,7 +19,16 @@ node bin/forge.js skills install
 | `.claude/skills/<id>/SKILL.md` | Claude Code |
 | `.agents/skills/<id>/SKILL.md` | Agents that read the cross-agent `.agents/skills` root |
 
-`setup` installs the same files at workspace scope. Existing files are never overwritten: `skills install` fails with `CONFLICT` and `setup` reports them as skipped, so edited skills stay yours. To refresh a skill, read it, then replace it with `write <path> --from ... --if-match <revision>` or delete it and install again.
+`setup` installs the same files at workspace scope. Existing files are never overwritten: `skills install` fails with `CONFLICT` and `setup` reports them as skipped, so edited skills stay yours. Refresh skills after upgrading the distribution by comparing the installed file with `skills show <id>` and preserving your local changes. To replace an unmodified installed skill with the packaged version, run from the workspace root with the intended project selected:
+
+```sh
+node bin/forge.js project current --json
+node bin/forge.js read .agents/skills/forge-workflow/SKILL.md --json
+node bin/forge.js write .agents/skills/forge-workflow/SKILL.md --stdin --if-match YOUR_REVISION --dry-run < bin/skills/forge-workflow/SKILL.md
+node bin/forge.js write .agents/skills/forge-workflow/SKILL.md --stdin --if-match YOUR_REVISION < bin/skills/forge-workflow/SKILL.md
+```
+
+Replace `YOUR_REVISION` with that read's `data.revision`. The shell reads the packaged source from workspace `bin/skills`, while Forge writes into the selected project's skill root. Read back the result. Repeat for `.claude/skills` using its own current revision when you maintain both roots. This preserves the selection and avoids deleting a skill before its replacement is verified.
 
 ## Install into one root or a custom folder
 

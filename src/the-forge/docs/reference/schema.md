@@ -9,7 +9,7 @@ node bin/forge.js schema --json          # the complete contract
 node bin/forge.js schema read --json     # one command, with only the error codes it can report
 ```
 
-`help` and `help <command>` return the same command descriptions without `inputSchema`; see [command metadata](plugins.md#command-metadata) for how a command declares them.
+Start with `help` for a concise catalog of command ids, descriptions, usage and behavior hints. It also lists global options, generators and skills. Use `help <command>` for that command's options, positional arguments, errors and action details, including JSON input document schemas where declared. Help omits response schemas and the envelope; use `schema <command>` when you need those contracts, or `schema` for the complete installed inventory. See [command metadata](plugins.md#command-metadata) for how a command declares them.
 
 ## Document
 
@@ -30,7 +30,7 @@ node bin/forge.js schema read --json     # one command, with only the error code
 | Field | Contents |
 | --- | --- |
 | `id`, `description`, `usage` | The command id, what it does and its usage line |
-| `options`, `args` | The declared options and positional arguments, as `help` shows them |
+| `options`, `args` | The declared options and positional arguments, as `help <command>` shows them |
 | `inputSchema` | JSON Schema of one invocation `{args, options}`: positional arguments after the command id and the command's own options. A command with actions publishes one `oneOf` branch per action; see [command metadata](plugins.md#command-metadata). A string option or argument that holds or names a JSON document carries that document's schema as `contentMediaType: "application/json"` and `contentSchema`: the `edit --edits` list and the `apply` plan. The host enforces each option's `required` and `enum` before the command runs: a missing option fails with `MISSING_ARGUMENT`, another value with `INVALID_OPTION_VALUE` (`details` `{option, value, allowed}`). An option with `list: true` (`read --parts`) takes a comma-separated list of its `enum` values, with optional whitespace around each item; its `inputSchema` property carries the equivalent `pattern` instead of the `enum`, and any item outside the `enum` fails with `INVALID_OPTION_VALUE` |
 | `outputSchema` | JSON Schema of `data` in a successful response, when the command declares one. An action may declare its own, published as `annotations.actions.<action>.outputSchema`; it replaces the command's for that action |
 | `errors` | Codes the command reports itself, besides `commonErrors`: `make` lists its own and every registered generator's, and each plugin command lists `PLUGIN_UNAVAILABLE` |
