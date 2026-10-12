@@ -2,6 +2,7 @@ import { germanServerActions, germanServerCommands } from '../server/messages.ts
 
 export const germanCommands = {
   ...germanServerCommands,
+  stat: 'Die Revision einer Datei oder eines Ordners mit Größe oder Anzahl der enthaltenen Einträge ohne Inhalt prüfen.',
   help: 'Befehle und ihre Verwendung ohne interaktive Abfragen entdecken.',
   schema: 'Maschinenlesbarer Vertrag: JSON-Schema-2020-12-Eingabe- und -Ausgabeschemas, Annotationen und Fehlercodes aller Befehle oder eines Befehls.',
   config: 'Die geprüfte wirksame Konfiguration und ihren Quellpfad anzeigen.',

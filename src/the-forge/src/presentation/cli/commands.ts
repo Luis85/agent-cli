@@ -5,6 +5,7 @@ import { catalogCommands, extensionCommands } from './catalog-commands.ts';
 import { workflowCommands } from '../workspace/commands.ts';
 import { workflowsCommands } from '../workflows/commands.ts';
 import { documentCommands } from '../documents/commands.ts';
+import { statCommand } from '../documents/stat-command.ts';
 import { vaultCommands } from '../documents/vault-commands.ts';
 import { generationCommand } from '../generation/commands.ts';
 
@@ -16,6 +17,7 @@ export function commands(registry: Registry, services: WorkflowServices): Comman
     ...serverCommands(services.server),
     ...catalogCommands(registry),
     ...documentCommands(),
+    statCommand(),
     ...vaultCommands(),
     generationCommand(registry),
     ...extensionCommands(registry, services),

@@ -61,7 +61,7 @@ npm run bench -- --forge /path/to/other/bin/forge.js
 
 ## Agent feedback loop
 
-Read `AGENTS.md`, establish acceptance examples and inspect the affected boundary. After a focused edit, run the relevant behavioral test and `npm run check:fast`. This gate runs structure validation first, then Oxlint, fallow and the TypeScript compiler without rebuilding the distribution. Static analysis complements tests; a clean report does not prove business behavior or filesystem integrity. Analysis includes test entry points, so code referenced only by tests counts as used; this is not proof of production reachability.
+Read `AGENTS.md`, establish acceptance examples and inspect the affected boundary. After a focused edit, run the relevant behavioral test and `npm run check:fast`. This gate runs structure validation first, then Oxlint, fallow, the TypeScript compiler and source contract tests without rebuilding the distribution. Static analysis complements tests; a clean report does not prove business behavior or filesystem integrity. Analysis includes test entry points, so code referenced only by tests counts as used; this is not proof of production reachability.
 
 | Stage | Purpose | Focused command |
 | --- | --- | --- |
@@ -69,11 +69,28 @@ Read `AGENTS.md`, establish acceptance examples and inspect the affected boundar
 | Lint | Correctness, source conventions and code-line limits | `npm run lint` |
 | Analyze | Unused code/dependencies and architecture boundaries | `npm run analyze` |
 | Typecheck | Strict TypeScript contracts in source and tests | `npm run typecheck` |
+| Contracts | Source command discovery, metadata/schema, German localization, documentation consistency and evaluation budget | `npm run check:contracts` |
 | Build | Bundle runtime dependencies, declarations and assets | `npm run build` |
 | Test | Behavioral, integration and portable distribution checks | `npm test` |
 | Showcase | The committed showcase regenerates without drift | `npm run showcase:check` |
 
 `npm run check:structure`, `npm run lint` and `npm run analyze` save JSON diagnostic envelopes with `tool`, `ok` and `errors`, plus `scope` and the underlying tool `report` when available, to `.quality-reports/structure.json`, `.quality-reports/oxlint.json` and `.quality-reports/fallow.json` (ignored by Git). A failing stage prints the whole envelope; a passing stage prints only `tool`, `ok`, `errors`, the number of `files` in scope and the path of the saved `report`, which keeps CI logs short. fallow's policy detector is switched off (`policy-violation: off`) because the project configures no rule packs. Reports identify the configured scope; the wrappers reject mismatched file inventories; fallow also rejects an unexpected report version/schema or missing required checks so an accidentally empty scan cannot pass. When consuming the output programmatically, invoke the wrapper directly (`node scripts/quality/lint.mjs`, `node scripts/quality/analyze.mjs`) to avoid npm's script banner. Read the report from the command just executed; later stages may not have run after an earlier failure. A nonzero exit status requires investigation; an empty or malformed report is not evidence of success.
+
+`npm run check:contracts` runs seven existing source suites: CLI command discovery,
+localization parity and localization integration, command metadata and input
+schemas, reference documentation consistency, and the evaluation harness. It
+needs `npm ci` dependencies but no built `bin/`, browser, external credentials or
+portable distribution. It reports failures through Vitest and exits nonzero when
+any selected assertion fails. `check:fast` includes it, so `npm run check` stops
+before building when a source contract is broken. Keep the selected suites free
+of distribution prerequisites when extending their coverage.
+
+This gate catches stale source discovery expectations, missing German command
+entries, undocumented options and the existing 35-task evaluation budget early.
+It does not execute every evaluation reference workflow or verify packaged help,
+portable invocation behavior, artifact contents or showcase output. Those checks
+remain in the complete test suite after `npm run build`; passing the source gate
+never replaces `npm run check`. No assertion or evaluation limit is relaxed.
 
 Fix the cause of each failure and rerun its stage before proceeding. Keep changes focused; do not suppress findings, widen analyzer entry points or delete tests just to make a command green. If a dynamic plugin contract creates a real false positive, document the specific contract and use the narrowest justified configuration. The plugin SDK is a public entry point even when the CLI itself does not import every SDK export.
 

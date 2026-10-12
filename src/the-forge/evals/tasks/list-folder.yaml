@@ -2,10 +2,22 @@ id: list-folder
 title: List the notes of one folder
 category: reading
 prompt: |
-  Which notes are in the Projects folder of this vault? Answer with their paths.
+  Inspect the Projects folder with stat to obtain its current revision and counts.
+  Which notes are in that folder? Answer with their paths and leave them unchanged.
 fixture: vault
 reference:
+  - [stat, Projects]
   - [list, --path, "Projects/**"]
 answer: Projects/Alpha.md and Projects/Beta.md
 checks:
   - answer: { items: [Projects/Alpha.md, Projects/Beta.md] }
+  - unchanged: Projects/Alpha.md
+  - unchanged: Projects/Beta.md
+  - command: [stat, Projects]
+    data: { pointer: /kind, equals: folder }
+  - command: [stat, Projects]
+    data: { pointer: /fileCount, equals: 2 }
+  - command: [stat, Projects]
+    data: { pointer: /folderCount, equals: 0 }
+  - command: [stat, Projects]
+    data: { pointer: /revision, length: 64 }
