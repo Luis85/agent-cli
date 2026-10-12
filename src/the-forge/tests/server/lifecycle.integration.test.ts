@@ -22,7 +22,7 @@ describe('detached server lifecycle', () => {
   });
   afterEach(async () => {
     await controller.stop({ dryRun: false }).catch(() => undefined);
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it('starts a detached API without a webview and stops only its verified instance', async () => {

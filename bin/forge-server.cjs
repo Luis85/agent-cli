@@ -455,13 +455,14 @@ function serverInfo(state) {
 }
 function command(options, inspection) {
   return new Promise((resolve, reject) => {
-    node_child_process.execFile(
+    const child = node_child_process.execFile(
       process.execPath,
       [path.join(options.distributionPath, "forge.js"), "--root", options.workspaceRoot, "--json", "--events", "none", "--dry-run", ...inspection.args],
       { cwd: options.workspaceRoot, timeout: 15e3, maxBuffer: 4 * 1024 * 1024, windowsHide: true, signal: options.signal },
       (error, stdout) => {
         if (error) {
-          reject(new Error("Inspection command failed."));
+          if (child.exitCode !== null || child.signalCode !== null || !child.pid) reject(new Error("Inspection command failed."));
+          else child.once("close", () => reject(new Error("Inspection command failed.")));
           return;
         }
         try {
