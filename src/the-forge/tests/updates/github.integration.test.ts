@@ -1,14 +1,17 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { githubReleases, type ReleaseTool } from '../../src/plugins/updates/infrastructure/github.ts';
 import policy from '../../configs/distribution-policy.json';
 import metadata from '../../package.json';
+import { releaseFixture } from '../support/release.ts';
 
 const execute = promisify(execFile);
-beforeAll(async () => { await execute(process.execPath, ['scripts/release.mjs'], { timeout: 30_000 }); }, 60_000);
+let assets: string, releaseRoot: string;
+beforeAll(async () => { const fixture = await releaseFixture(); assets = fixture.assets; releaseRoot = fixture.root; }, 60_000);
+afterAll(async () => { if (releaseRoot) await rm(releaseRoot, { recursive: true, force: true, maxRetries: 10 }); });
 function transport(corrupt = false, latest = `https://github.com/Luis85/agent-cli/releases/tag/v${metadata.version}`): ReleaseTool {
   return async (file, args, options) => {
     if (file !== 'curl') {
@@ -21,7 +24,7 @@ function transport(corrupt = false, latest = `https://github.com/Luis85/agent-cl
     const destination = args[args.indexOf('--output') + 1]!;
     const name = basename(destination);
     expect(args).toContain(`https://github.com/Luis85/agent-cli/releases/download/v${metadata.version}/${name}`);
-    const bytes = corrupt && name.endsWith('.tar.gz') ? Buffer.from('bad archive') : await readFile(join('release', name));
+    const bytes = corrupt && name.endsWith('.tar.gz') ? Buffer.from('bad archive') : await readFile(join(assets, name));
     await writeFile(destination, bytes);
     return { stdout: '' };
   };

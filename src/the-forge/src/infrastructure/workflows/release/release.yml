@@ -9,7 +9,8 @@ permissions:
   contents: read
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  # Superseded candidates can be cancelled; a tag publication must run to completion.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 defaults:
   run:
     shell: bash

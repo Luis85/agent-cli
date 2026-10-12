@@ -7,17 +7,19 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import metadata from '../../package.json';
+import { releaseFixture } from '../support/release.ts';
 
 const execute = promisify(execFile);
 const roots: string[] = [];
 let assets: string;
+let releaseRoot: string;
 const archiveName = `forge-${metadata.version}.tar.gz`;
 beforeAll(async () => {
-  await execute(process.execPath, ['scripts/release.mjs'], { timeout: 30_000 });
-  assets = await mkdtemp(join(tmpdir(), 'forge-install-assets-'));
-  for (const file of [archiveName, `${archiveName}.sha256`, 'install-forge.mjs']) await copyFile(join('release', file), join(assets, file));
+  const fixture = await releaseFixture();
+  assets = fixture.assets;
+  releaseRoot = fixture.root;
 }, 60_000);
-afterAll(async () => { await rm(assets, { recursive: true, force: true, maxRetries: 10 }); });
+afterAll(async () => { if (releaseRoot) await rm(releaseRoot, { recursive: true, force: true, maxRetries: 10 }); });
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true, maxRetries: 10 }))); });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'forge-install-'));
