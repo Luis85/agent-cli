@@ -1,0 +1,132 @@
+name: Release The Forge
+on:
+  pull_request:
+    paths: ['**', '/bin/**', '/README.md', '/.gitattributes']
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ env.FORGE_PROJECT_PATH }}/package-lock.json
+      - name: Verify release identity
+        id: version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          test -f "docs/releases/$VERSION.md"
+          if [[ "$RELEASE_REF" == refs/tags/* ]]; then
+            test "$RELEASE_REF" = "refs/tags/v$VERSION"
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - name: Install native browser acceptance runtime
+        run: npx playwright-core install chromium --no-shell --with-deps
+      - name: Check and package the release
+        env:
+          FORGE_BROWSER_TESTS: '1'
+        run: npm run release
+      - name: Verify generated assets and workflows
+        run: |
+          node "$GITHUB_WORKSPACE/bin/forge.js" workflows sync --check
+          git -C "$GITHUB_WORKSPACE" diff --exit-code -- bin
+          test -z "$(git -C "$GITHUB_WORKSPACE" ls-files --others --exclude-standard bin)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-candidate
+          path: ${{ env.FORGE_PROJECT_PATH }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+  install:
+    name: Fresh installation (${{ matrix.os }}, Node ${{ matrix.node }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22.12.0', 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-candidate
+          path: ${{ env.FORGE_PROJECT_PATH }}/release
+      # This uses only Node and the runner's tar, without npm or source dependencies.
+      - name: Install and use the exact release archive in a fresh workspace
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: node scripts/release-smoke.mjs release "$RELEASE_VERSION"
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, install]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-candidate
+          path: ${{ env.FORGE_PROJECT_PATH }}/release
+      - name: Upload, download and test draft assets before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          TAG="v$RELEASE_VERSION"
+          if gh release view "$TAG" --json isDraft > release/existing.json 2>/dev/null; then
+            node -e "if (!require('./release/existing.json').isDraft) process.exit(1)"
+          else
+            gh release create "$TAG" --verify-tag --draft --title "The Forge $RELEASE_VERSION" --notes-file release/release-notes.md
+          fi
+          gh release upload "$TAG" "release/forge-$RELEASE_VERSION.tar.gz" "release/forge-$RELEASE_VERSION.tar.gz.sha256" release/install-forge.mjs --clobber
+          gh release download "$TAG" --dir release/downloaded --pattern "forge-$RELEASE_VERSION.tar.gz*" --pattern install-forge.mjs
+          cmp release/install-forge.mjs release/downloaded/install-forge.mjs
+          cmp "release/forge-$RELEASE_VERSION.tar.gz" "release/downloaded/forge-$RELEASE_VERSION.tar.gz"
+          node scripts/release-smoke.mjs release/downloaded "$RELEASE_VERSION"
+          gh release edit "$TAG" --draft=false --latest
+      - name: Verify public download and agent installation workflow
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          mkdir release/public
+          curl --fail --location --retry 5 --retry-all-errors "https://github.com/${{ github.repository }}/releases/download/v$RELEASE_VERSION/install-forge.mjs" --output release/public/install-forge.mjs
+          cmp release/install-forge.mjs release/public/install-forge.mjs
+          node release/public/install-forge.mjs --version "$RELEASE_VERSION" --workspace "$RUNNER_TEMP/forge-public-download"
+          node "$RUNNER_TEMP/forge-public-download/bin/forge.js" --version

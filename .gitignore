@@ -1,6 +1,7 @@
 node_modules
 coverage/
 release/
+!src/the-forge/src/infrastructure/workflows/release/
 *.tsbuildinfo
 .quality-reports/
 
