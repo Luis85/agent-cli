@@ -9,7 +9,7 @@ const cli = fixture.cli;
 const workflowTimeout = 30_000;
 
 describe('container build files through the portable CLI', () => {
-  it.each(['Dockerfile', 'deploy/cOnTaInErFiLe'])('reads, previews and edits %s without changing its encoding or line endings', async path => {
+  it.each(['Dockerfile', 'deploy/cOnTaInErFiLe', 'Dockerfile.release', 'deploy/Containerfile.prod'])('reads, previews and edits %s without changing its encoding or line endings', async path => {
     const source = '\uFEFFFROM node:22\r\n# café\r\n';
     expect((await cli(['create', path, '--stdin'], source)).status).toBe(0);
     const read = await cli(['read', path]);
@@ -32,32 +32,32 @@ describe('container build files through the portable CLI', () => {
     expect((await cli(['validate', path])).body.data).toMatchObject({ valid: true, kind: 'text', validation: 'utf8' });
   }, workflowTimeout);
 
-  it('discovers the exact basenames and lists and searches them while keeping unknown names opaque', async () => {
+  it('discovers the basenames and lists and searches their variants while keeping unknown names opaque', async () => {
     const formats = await cli(['formats']);
     expect(formats.status).toBe(0);
     expect(formats.body.data.textFilenames).toEqual(['Dockerfile', 'Containerfile']);
     expect(formats.body.data.text).toContain('ts');
     const content = 'FROM unique-container-image\n';
-    for (const path of ['images/DOCKERFILE', 'images/Containerfile', 'images/Dockerfile.prod', 'images/Makefile', 'images/.Dockerfile']) {
+    for (const path of ['images/DOCKERFILE', 'images/Containerfile', 'images/Dockerfile.release', 'images/Containerfile.dev', 'images/Makefile', 'images/.Dockerfile']) {
       expect((await cli(['create', path, '--stdin'], content)).status).toBe(0);
     }
     const listed = await cli(['list', '--path', 'images/**', '--kind', 'text']);
     expect(listed.status).toBe(0);
     expect(listed.body.data.files).toEqual([
-      { path: 'images/Containerfile', kind: 'text' }, { path: 'images/DOCKERFILE', kind: 'text' },
+      { path: 'images/Containerfile', kind: 'text' }, { path: 'images/Containerfile.dev', kind: 'text' },
+      { path: 'images/DOCKERFILE', kind: 'text' }, { path: 'images/Dockerfile.release', kind: 'text' },
     ]);
     const search = await cli(['search', 'unique-container-image', '--kind', 'text']);
     expect(search.status).toBe(0);
-    expect(search.body.data.hits.map((hit: { path: string }) => hit.path)).toEqual(['images/Containerfile', 'images/DOCKERFILE']);
-    const opaque = await cli(['read', 'images/Dockerfile.prod']);
+    expect(search.body.data.hits.map((hit: { path: string }) => hit.path)).toEqual(['images/Containerfile', 'images/Containerfile.dev', 'images/DOCKERFILE', 'images/Dockerfile.release']);
+    const opaque = await cli(['read', 'images/Makefile']);
     expect(opaque.body.data.document).toEqual({ kind: 'attachment', encoding: 'base64', content: Buffer.from(content).toString('base64') });
-    const edit = await cli(['edit', 'images/Dockerfile.prod', '--append', '--content', '# comment\n', '--if-match', opaque.body.data.revision]);
+    const edit = await cli(['edit', 'images/Makefile', '--append', '--content', '# comment\n', '--if-match', opaque.body.data.revision]);
     expect(edit.status).toBe(2);
     expect(edit.body.error.code).toBe('UNSUPPORTED_EDIT');
   }, workflowTimeout);
 
-  it('reads malformed UTF-8 losslessly and refuses literal edits without modifying its bytes', async () => {
-    const path = 'invalid/Containerfile';
+  it.each(['invalid/Containerfile', 'invalid/Dockerfile.release', 'invalid/Containerfile.dev'])('reads malformed UTF-8 in %s losslessly and refuses literal edits without modifying its bytes', async path => {
     const bytes = Buffer.from([0x46, 0x52, 0x4f, 0x4d, 0x20, 0xff, 0x0a]);
     expect((await cli(['write', path, '--stdin'], bytes)).status).toBe(0);
     const read = await cli(['read', path]);

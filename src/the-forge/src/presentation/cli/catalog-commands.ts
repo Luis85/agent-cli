@@ -79,7 +79,7 @@ export function catalogCommands(registry: Registry): Command[] {
       return { ...head, commands: [contract(command)], commonErrors, errors: errors.filter(entry => codes.has(entry.code)) };
     } },
     { id: 'formats', description: 'Native Obsidian formats and supported operations.', usage: 'formats', ...discovery, run(args) {
-      arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFilenames, textFiles: 'UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
+      arity(args, 0); return { nativeFormats, structured: ['md', 'canvas', 'base'], text: textExtensions, textFilenames, textFiles: 'textFilenames match case-insensitively, including nonempty dot suffixes; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.', attachments: 'Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.', otherFiles: 'Opaque bytes; plugins can provide additional processing.' };
     } },
   ];
 }

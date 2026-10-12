@@ -39,15 +39,19 @@ export const textExtensions = [
   'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini',
   'css', 'scss', 'less', 'html', 'htm', 'xml', 'vue', 'svelte', 'txt', 'log', 'csv', 'tsv', 'sh', 'py', 'sql',
 ] as const;
-/** Exact basenames read as UTF-8 text, matched case-insensitively; other extensionless names stay attachments. */
+/** Basenames and their nonempty dot-suffix variants read as UTF-8 text, case-insensitively; native extensions win. */
 export const textFilenames = ['Dockerfile', 'Containerfile'] as const;
 export const fileKinds = [...Object.keys(nativeFormats), 'text', 'attachment'];
 export function fileKind(path: string): string {
-  const basename = path.slice(path.lastIndexOf('/') + 1);
+  const basename = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
   const dot = basename.lastIndexOf('.');
   const ext = dot < 0 ? '' : basename.slice(dot + 1).toLowerCase();
   const native = Object.entries(nativeFormats).find(([, extensions]) => (extensions as readonly string[]).includes(ext))?.[0];
-  return native ?? ((textExtensions as readonly string[]).includes(ext) || textFilenames.some(name => name.toLowerCase() === basename.toLowerCase()) ? 'text' : 'attachment');
+  const namedText = textFilenames.some(name => {
+    const lower = name.toLowerCase();
+    return basename === lower || (basename.startsWith(`${lower}.`) && basename.length > lower.length + 1);
+  });
+  return native ?? ((textExtensions as readonly string[]).includes(ext) || namedText ? 'text' : 'attachment');
 }
 export const isStructured = (path: string) => ['markdown', 'canvas', 'base'].includes(fileKind(path));
 /** Kinds whose UTF-8 content can be edited literally and previewed as a line diff. */

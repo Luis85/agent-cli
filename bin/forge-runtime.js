@@ -1439,11 +1439,15 @@ const textExtensions = [
 const textFilenames = ["Dockerfile", "Containerfile"];
 const fileKinds = [...Object.keys(nativeFormats), "text", "attachment"];
 function fileKind(path2) {
-  const basename2 = path2.slice(path2.lastIndexOf("/") + 1);
+  const basename2 = path2.slice(path2.lastIndexOf("/") + 1).toLowerCase();
   const dot = basename2.lastIndexOf(".");
   const ext = dot < 0 ? "" : basename2.slice(dot + 1).toLowerCase();
   const native = Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0];
-  return native ?? (textExtensions.includes(ext) || textFilenames.some((name2) => name2.toLowerCase() === basename2.toLowerCase()) ? "text" : "attachment");
+  const namedText = textFilenames.some((name2) => {
+    const lower = name2.toLowerCase();
+    return basename2 === lower || basename2.startsWith(`${lower}.`) && basename2.length > lower.length + 1;
+  });
+  return native ?? (textExtensions.includes(ext) || namedText ? "text" : "attachment");
 }
 const isStructured = (path2) => ["markdown", "canvas", "base"].includes(fileKind(path2));
 const isTextLike = (path2) => isStructured(path2) || fileKind(path2) === "text";
@@ -68576,7 +68580,7 @@ function catalogCommands(registry2) {
     } },
     { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery$1, run(args) {
       arity(args, 0);
-      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
+      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "textFilenames match case-insensitively, including nonempty dot suffixes; native extensions take precedence. UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } }
   ];
 }

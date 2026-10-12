@@ -18,7 +18,7 @@ export declare const nativeFormats: {
 };
 /** Source, data and configuration extensions read and edited as UTF-8 text. */
 export declare const textExtensions: readonly ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "yaml", "yml", "toml", "ini", "css", "scss", "less", "html", "htm", "xml", "vue", "svelte", "txt", "log", "csv", "tsv", "sh", "py", "sql"];
-/** Exact basenames read as UTF-8 text, matched case-insensitively; other extensionless names stay attachments. */
+/** Basenames and their nonempty dot-suffix variants read as UTF-8 text, case-insensitively; native extensions win. */
 export declare const textFilenames: readonly ["Dockerfile", "Containerfile"];
 export declare const fileKinds: string[];
 export declare function fileKind(path: string): string;
