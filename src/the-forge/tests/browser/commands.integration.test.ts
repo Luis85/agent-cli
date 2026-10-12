@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tutorialBlocks } from '../../src/plugins/browser/infrastructure/tutorial-markdown.ts';
 import { browserCommand } from '../../src/plugins/browser/presentation/commands.ts';
 import { commandInputSchema, commandOptions, commandOutputSchema, optionTypes, validateCommandMetadata } from '../../src/application/plugins/command-metadata.ts';
 import { validateJsonValue } from '../../src/domain/schema/json-schema.ts';
@@ -23,7 +24,7 @@ const runtime: BrowserRuntime = {
   screenshot: vi.fn(async () => { throw new Error('No capture expected'); }),
   flow: vi.fn(async () => { throw new Error('No flow expected'); }),
 };
-const command = browserCommand(runtime);
+const command = browserCommand(runtime, tutorialBlocks);
 beforeEach(async () => {
   vi.clearAllMocks();
   root = await mkdtemp(join(tmpdir(), 'forge-browser-command-'));

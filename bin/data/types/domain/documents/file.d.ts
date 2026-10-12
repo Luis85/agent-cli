@@ -16,8 +16,10 @@ export declare const nativeFormats: {
     readonly video: readonly ["mkv", "mov", "mp4", "ogv", "webm"];
     readonly pdf: readonly ["pdf"];
 };
-/** Source, data and configuration files read and edited as UTF-8 text. Extensionless names and dotfiles stay attachments. */
+/** Source, data and configuration extensions read and edited as UTF-8 text. */
 export declare const textExtensions: readonly ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "yaml", "yml", "toml", "ini", "css", "scss", "less", "html", "htm", "xml", "vue", "svelte", "txt", "log", "csv", "tsv", "sh", "py", "sql"];
+/** Exact basenames read as UTF-8 text, matched case-insensitively; other extensionless names stay attachments. */
+export declare const textFilenames: readonly ["Dockerfile", "Containerfile"];
 export declare const fileKinds: string[];
 export declare function fileKind(path: string): string;
 export declare const isStructured: (path: string) => boolean;

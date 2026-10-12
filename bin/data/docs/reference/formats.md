@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · Reference
 
-The native inventory follows [Obsidian accepted file formats](https://help.obsidian.md/Files+and+folders/Accepted+file+formats), checked on 2026-10-07. Common source, data and configuration extensions are additionally handled as [UTF-8 text](#utf-8-text). Other extensions, extensionless files, dotfiles such as `.gitignore` and `.obsidian` configuration files can be copied/replaced as opaque bytes; community-plugin semantics are not inferred.
+The native inventory follows [Obsidian accepted file formats](https://help.obsidian.md/Files+and+folders/Accepted+file+formats), checked on 2026-10-07. Common source, data and configuration extensions and the exact basenames `Dockerfile` and `Containerfile` are additionally handled as [UTF-8 text](#utf-8-text). Other extensions, unknown extensionless files, dotfiles such as `.gitignore` and `.obsidian` configuration files can be copied/replaced as opaque bytes; community-plugin semantics are not inferred.
 
 | Format | Extensions | Processing |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ The native inventory follows [Obsidian accepted file formats](https://help.obsid
 | PDF | `.pdf` | Same byte operations |
 | Text | See [UTF-8 text](#utf-8-text) | UTF-8 read, literal edits, append, full replacement; not a native Obsidian format |
 
-`.webm` belongs to both audio and video; the simple list/read classifier reports `audio`. Extension matching is case insensitive. Attachment validation does not decode or verify a media container, and no embedded HTML/SVG/script is executed. Audio/video playback, image transformations, PDF editing, OCR, indexing and extracted text require a plugin or an external tool.
+`.webm` belongs to both audio and video; the simple list/read classifier reports `audio`. Extension and supported basename matching are case insensitive. Attachment validation does not decode or verify a media container, and no embedded HTML/SVG/script is executed. Audio/video playback, image transformations, PDF editing, OCR, indexing and extracted text require a plugin or an external tool.
 
 ## Markdown
 
@@ -67,9 +67,9 @@ Known limit: parsing one note takes time quadratic in the number of separate lis
 
 ## UTF-8 text
 
-`.ts .tsx .mts .cts .js .jsx .mjs .cjs .json .jsonc .yaml .yml .toml .ini .css .scss .less .html .htm .xml .vue .svelte .txt .log .csv .tsv .sh .py .sql` files have kind `text`. `read` returns `{kind:"text",content}` with the exact decoded text, including any BOM and line endings. `list --kind text` selects them. `edit` appends or replaces exactly one literal match with the same revision guard as Markdown, and `write`/`create` replace or create them. `properties` stays Markdown-only and `patch` stays Canvas/Bases-only.
+`.ts .tsx .mts .cts .js .jsx .mjs .cjs .json .jsonc .yaml .yml .toml .ini .css .scss .less .html .htm .xml .vue .svelte .txt .log .csv .tsv .sh .py .sql` files and the exact basenames `Dockerfile` and `Containerfile` have kind `text`. The basename whitelist also applies in subdirectories and ignores letter case. Variants such as `Dockerfile.prod`, `Containerfile.dev`, `.Dockerfile` and other extensionless names stay attachments unless their extension is supported independently. `formats` enumerates supported extensions in `text` and exact basenames in `textFilenames`. `read` returns `{kind:"text",content}` with the exact decoded text, including any BOM and line endings. `list --kind text` selects them. `edit` appends or replaces exactly one literal match with the same revision guard as Markdown, and `write`/`create` replace or create them. `properties` stays Markdown-only and `patch` stays Canvas/Bases-only.
 
-Classification uses the extension; the content decides the representation. Bytes that are not valid UTF-8 read as `{kind:"attachment",encoding:"base64",content}`, `validate` fails with `INVALID_ENCODING`, and `edit` refuses them, while `write` still stores the bytes losslessly. `validate` reports valid text as `validation:"utf8"`; it does not parse JSON, YAML or source syntax, so a `tsconfig.json` with comments is accepted. SVG remains an image.
+Classification uses the extension or exact basename whitelist; the content decides the representation. Bytes that are not valid UTF-8 read as `{kind:"attachment",encoding:"base64",content}`, `validate` fails with `INVALID_ENCODING`, and `edit` refuses them, while `write` still stores the bytes losslessly. `validate` reports valid text as `validation:"utf8"`; it does not parse JSON, YAML or source syntax, so a `tsconfig.json` with comments is accepted. SVG remains an image.
 
 ## Canvas
 

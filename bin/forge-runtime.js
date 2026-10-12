@@ -1436,13 +1436,14 @@ const textExtensions = [
   "py",
   "sql"
 ];
+const textFilenames = ["Dockerfile", "Containerfile"];
 const fileKinds = [...Object.keys(nativeFormats), "text", "attachment"];
 function fileKind(path2) {
   const basename2 = path2.slice(path2.lastIndexOf("/") + 1);
   const dot = basename2.lastIndexOf(".");
   const ext = dot < 0 ? "" : basename2.slice(dot + 1).toLowerCase();
   const native = Object.entries(nativeFormats).find(([, extensions]) => extensions.includes(ext))?.[0];
-  return native ?? (textExtensions.includes(ext) ? "text" : "attachment");
+  return native ?? (textExtensions.includes(ext) || textFilenames.some((name2) => name2.toLowerCase() === basename2.toLowerCase()) ? "text" : "attachment");
 }
 const isStructured = (path2) => ["markdown", "canvas", "base"].includes(fileKind(path2));
 const isTextLike = (path2) => isStructured(path2) || fileKind(path2) === "text";
@@ -9217,10 +9218,10 @@ function requireLineCounter() {
   lineCounter.LineCounter = LineCounter;
   return lineCounter;
 }
-var parser$1 = {};
+var parser$2 = {};
 var hasRequiredParser;
 function requireParser() {
-  if (hasRequiredParser) return parser$1;
+  if (hasRequiredParser) return parser$2;
   hasRequiredParser = 1;
   var node_process = require$$0;
   var cst2 = requireCst();
@@ -10088,8 +10089,8 @@ function requireParser() {
       }
     }
   }
-  parser$1.Parser = Parser3;
-  return parser$1;
+  parser$2.Parser = Parser3;
+  return parser$2;
 }
 var publicApi = {};
 var hasRequiredPublicApi;
@@ -45605,1616 +45606,6 @@ function createBrowserRuntime(distributionPath) {
     }
   };
 }
-const content$3 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming the environment variable rather than a literal credential; inspect the resulting image because this does not hide page content. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
-const browserSkill = { id: "forge-browser", content: content$3 };
-function reportedUrl(input) {
-  const url2 = new URL(input);
-  url2.hash = "";
-  url2.username = "";
-  url2.password = "";
-  return url2.href;
-}
-function browserUrl(input) {
-  let url2;
-  try {
-    url2 = new URL(input);
-  } catch {
-  }
-  ensure(
-    url2 && ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password,
-    "INVALID_ARGUMENT",
-    "Use an absolute HTTP or HTTPS URL without embedded credentials."
-  );
-  return url2.href;
-}
-function screenshotOutput(path2) {
-  vaultPath(path2);
-  ensure(/\.png$/i.test(path2), "INVALID_ARGUMENT", "--out must name a project-relative PNG file.");
-  return path2;
-}
-function browserViewport(width = 1440, height = 900) {
-  ensure(
-    Number.isSafeInteger(width) && width >= 1 && width <= 7680 && Number.isSafeInteger(height) && height >= 1 && height <= 7680,
-    "INVALID_ARGUMENT",
-    "Viewport width and height must be integers from 1 to 7680 pixels."
-  );
-  return { width, height };
-}
-function browserTimeout(timeoutMs = 3e4) {
-  ensure(
-    Number.isSafeInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 12e4,
-    "INVALID_ARGUMENT",
-    "--timeout-ms must be an integer from 1 to 120000."
-  );
-  return timeoutMs;
-}
-function browserExecutable(executablePath) {
-  ensure(
-    executablePath === void 0 || typeof executablePath === "string" && executablePath.trim().length > 0 && !executablePath.includes("\0"),
-    "INVALID_ARGUMENT",
-    "--browser-executable must name a browser executable."
-  );
-  return executablePath;
-}
-function validateScreenshot(request) {
-  ensure(typeof request.fullPage === "boolean", "INVALID_ARGUMENT", "--full-page must be boolean.");
-  ensure(
-    request.waitForSelector === void 0 || typeof request.waitForSelector === "string" && request.waitForSelector.trim().length > 0 && request.waitForSelector.length <= 2048,
-    "INVALID_ARGUMENT",
-    "--wait-for-selector must be a nonempty selector of at most 2048 characters."
-  );
-  browserExecutable(request.executablePath);
-  return { ...request, url: browserUrl(request.url), viewport: browserViewport(request.viewport.width, request.viewport.height), timeoutMs: browserTimeout(request.timeoutMs) };
-}
-function expectedRevision(revision2) {
-  ensure(revision2 === void 0 || /^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be a SHA-256 revision from read or browser validate.");
-  return revision2;
-}
-function imageMarkdown(path2, title2 = "Screenshot") {
-  const destination2 = path2.split("/").map((segment2) => encodeURIComponent(segment2).replaceAll("(", "%28").replaceAll(")", "%29")).join("/");
-  const label2 = title2.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]").replaceAll("\n", " ");
-  return `![${label2}](<${destination2}>)`;
-}
-function imageDimensions(image) {
-  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
-  ensureBrowser(
-    image.bytes instanceof Uint8Array && image.bytes.length >= 24 && signature.every((byte, index2) => image.bytes[index2] === byte),
-    "BROWSER_CAPTURE_FAILED",
-    "The browser did not return a PNG screenshot."
-  );
-  const header2 = new DataView(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength);
-  const width = header2.getUint32(16), height = header2.getUint32(20);
-  ensureBrowser(
-    width > 0 && height > 0 && image.width === width && image.height === height && Number.isFinite(Date.parse(image.capturedAt)),
-    "BROWSER_CAPTURE_FAILED",
-    "The browser returned invalid screenshot metadata."
-  );
-  return { width, height };
-}
-class BrowserScreenshot {
-  constructor(runtime) {
-    this.runtime = runtime;
-  }
-  runtime;
-  async run(context, input) {
-    const request = validateScreenshot(input);
-    const path2 = screenshotOutput(input.out), revision2 = expectedRevision(input.ifMatch);
-    await context.workspace.files.commit({ guards: [{ path: path2, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }] }, true);
-    const target = await context.workspace.files.stat(path2).catch((error2) => {
-      if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
-      throw error2;
-    });
-    ensure(target === null || target.kind === "file", "INVALID_PATH", "Screenshot output must name a regular file, not a directory.");
-    const plan = {
-      requestedUrl: reportedUrl(request.url),
-      out: path2,
-      viewport: request.viewport,
-      fullPage: request.fullPage,
-      ...request.waitForSelector === void 0 ? {} : { waitForSelector: request.waitForSelector },
-      timeoutMs: request.timeoutMs
-    };
-    if (context.workspace.dryRun) return { dryRun: true, captured: false, plan, changes: [] };
-    const image = await this.runtime.screenshot(request);
-    const dimensions = imageDimensions(image);
-    const finalUrl = reportedUrl(image.url);
-    const result = await context.workspace.write([{ path: path2, bytes: image.bytes, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }]);
-    const change2 = result.changes[0];
-    return {
-      ...result,
-      captured: true,
-      path: path2,
-      revision: change2.revision,
-      bytes: change2.bytes,
-      ...dimensions,
-      requestedUrl: plan.requestedUrl,
-      finalUrl,
-      capturedAt: new Date(image.capturedAt).toISOString(),
-      markdown: imageMarkdown(path2)
-    };
-  }
-}
-function valid(condition, message2) {
-  ensureBrowser(condition, "BROWSER_FLOW_INVALID", message2);
-}
-function record$1(value2, keys, location2) {
-  valid(isRecord$1(value2), `${location2} must be an object.`);
-  valid(Object.keys(value2).every((key) => keys.includes(key)), `${location2} contains an unknown field.`);
-  return value2;
-}
-function text$8(value2, location2, allowEmpty = false) {
-  valid(typeof value2 === "string" && value2.length <= 2e4 && (allowEmpty || value2.trim().length > 0), `${location2} must be ${allowEmpty ? "a" : "a nonempty"} string of at most 20000 characters.`);
-  return value2;
-}
-function url(value2) {
-  const input = text$8(value2, "URL");
-  let parsed2;
-  try {
-    parsed2 = new URL(input);
-  } catch {
-    throw browserError("BROWSER_FLOW_INVALID", "Tutorial URLs must be absolute HTTP or HTTPS URLs.");
-  }
-  valid(
-    ["http:", "https:"].includes(parsed2.protocol) && !parsed2.username && !parsed2.password && ![...new URLSearchParams(parsed2.hash.slice(1)).keys()].some((key) => key.toLowerCase() === "token"),
-    "Tutorial URLs must use HTTP or HTTPS without embedded credentials or launch-token fragments; keep secrets outside saved plans."
-  );
-  return parsed2.href;
-}
-function locator(value2) {
-  const item = record$1(value2, ["role", "name", "label", "testId", "css"], "Locator");
-  const kinds = ["role", "label", "testId", "css"].filter((key) => item[key] !== void 0);
-  valid(kinds.length === 1 && (item.name === void 0 || kinds[0] === "role"), "A locator must specify exactly one of role, label, testId or css; only role accepts name.");
-  const kind2 = kinds[0];
-  const result = { [kind2]: text$8(item[kind2], `Locator ${kind2}`), ...item.name === void 0 ? {} : { name: text$8(item.name, "Locator name") } };
-  return result;
-}
-function action(value2) {
-  valid(isRecord$1(value2), "Every action must be an object.");
-  const type2 = value2.type;
-  const fields2 = { goto: ["url"], click: ["locator"], fill: ["locator", "value", "valueFromEnv"], select: ["locator", "value"], check: ["locator", "checked"], press: ["locator", "key"], wait: ["locator", "state"] };
-  valid(typeof type2 === "string" && Object.hasOwn(fields2, type2), "Unknown tutorial action; use goto, click, fill, select, check, press or wait.");
-  record$1(value2, ["type", ...fields2[type2]], `Action ${type2}`);
-  if (type2 === "goto") return { type: type2, url: url(value2.url) };
-  const target = locator(value2.locator);
-  switch (type2) {
-    case "click":
-      return { type: type2, locator: target };
-    case "fill": {
-      valid(value2.value === void 0 !== (value2.valueFromEnv === void 0), "fill requires exactly one of value or valueFromEnv.");
-      if (value2.valueFromEnv !== void 0) {
-        const variable = text$8(value2.valueFromEnv, "Environment variable");
-        valid(/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable), "valueFromEnv must name an environment variable.");
-        return { type: type2, locator: target, valueFromEnv: variable };
-      }
-      return { type: type2, locator: target, value: text$8(value2.value, "Fill value", true) };
-    }
-    case "select":
-      return { type: type2, locator: target, value: text$8(value2.value, "Select value", true) };
-    case "check":
-      valid(typeof value2.checked === "boolean", "check requires checked: true or false.");
-      return { type: type2, locator: target, checked: value2.checked };
-    case "press":
-      return { type: type2, locator: target, key: text$8(value2.key, "Key") };
-    default: {
-      const state2 = value2.state ?? "visible";
-      valid(["visible", "hidden", "attached", "detached"].includes(state2), "wait state must be visible, hidden, attached or detached.");
-      return { type: "wait", locator: target, state: state2 };
-    }
-  }
-}
-function tutorialPlan(value2) {
-  const plan = record$1(value2, ["version", "title", "description", "startUrl", "viewport", "steps"], "Plan");
-  valid(plan.version === 1, "Tutorial plan version must be 1.");
-  const viewport2 = plan.viewport === void 0 ? { width: 1440, height: 900 } : record$1(plan.viewport, ["width", "height"], "Viewport");
-  valid(Number.isSafeInteger(viewport2.width) && Number(viewport2.width) >= 1 && Number(viewport2.width) <= 4096 && Number.isSafeInteger(viewport2.height) && Number(viewport2.height) >= 1 && Number(viewport2.height) <= 4096, "Viewport dimensions must be integers from 1 to 4096.");
-  valid(Array.isArray(plan.steps) && plan.steps.length > 0 && plan.steps.length <= 100, "A tutorial needs 1 to 100 steps.");
-  const ids = /* @__PURE__ */ new Set();
-  let count2 = 0;
-  const steps = plan.steps.map((value22, index2) => {
-    const step = record$1(value22, ["id", "title", "text", "actions", "screenshot", "fullPage"], `Step ${index2 + 1}`);
-    const id2 = text$8(step.id, "Step id");
-    valid(/^[a-z][a-z0-9-]{0,63}$/.test(id2) && !ids.has(id2), "Step ids must be unique lowercase kebab-case names of at most 64 characters.");
-    ids.add(id2);
-    valid(Array.isArray(step.actions) && (count2 += step.actions.length) <= 500, "Steps require an actions array, with at most 500 actions per tutorial.");
-    valid(step.screenshot === void 0 || typeof step.screenshot === "boolean", "screenshot must be boolean.");
-    valid(step.fullPage === void 0 || typeof step.fullPage === "boolean", "fullPage must be boolean.");
-    return {
-      id: id2,
-      title: text$8(step.title, "Step title"),
-      ...step.text === void 0 ? {} : { text: text$8(step.text, "Step text", true) },
-      actions: step.actions.map(action),
-      screenshot: step.screenshot !== false,
-      fullPage: step.fullPage !== false
-    };
-  });
-  return {
-    version: 1,
-    title: text$8(plan.title, "Title"),
-    ...plan.description === void 0 ? {} : { description: text$8(plan.description, "Description", true) },
-    startUrl: url(plan.startUrl),
-    viewport: { width: Number(viewport2.width), height: Number(viewport2.height) },
-    steps
-  };
-}
-function json$1(text2) {
-  try {
-    return JSON.parse(text2);
-  } catch {
-    throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must contain valid JSON.");
-  }
-}
-function blocks(text2) {
-  return [...text2.matchAll(/^ {0,3}(`{3,}|~{3,})forge-tutorial[ \t]*\r?\n([\s\S]*?)^ {0,3}\1[ \t]*\r?$/gm)].map((match) => match[2]);
-}
-function extractTutorial(source2, path2) {
-  valid(source2.length <= 2e6, "Tutorial source exceeds the 2 MB limit.");
-  if (/\.json$/i.test(path2)) return tutorialPlan(json$1(source2));
-  let candidates2;
-  if (/\.canvas$/i.test(path2)) {
-    const canvas = json$1(source2);
-    valid(isRecord$1(canvas) && Array.isArray(canvas.nodes), "Canvas must contain a nodes array.");
-    candidates2 = canvas.nodes.flatMap((node2) => isRecord$1(node2) && node2.type === "text" && typeof node2.text === "string" ? blocks(node2.text) : []);
-  } else {
-    valid(/\.md$/i.test(path2), "Use a JSON plan, Markdown document or Canvas document.");
-    candidates2 = blocks(source2);
-  }
-  valid(candidates2.length === 1, "Markdown or Canvas must contain exactly one fenced forge-tutorial JSON block. Ask the agent to translate the intended flow into a reviewed plan first.");
-  return tutorialPlan(json$1(candidates2[0]));
-}
-async function optionalStat(context, path2) {
-  try {
-    return await context.workspace.files.stat(path2);
-  } catch (error2) {
-    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
-    throw error2;
-  }
-}
-function plannedFiles(plan) {
-  return ["index.md", "flow.json", ...plan.steps.filter((step) => step.screenshot).map((step) => `screenshots/${step.id}.png`)];
-}
-function publicUrl(value2) {
-  const url2 = new URL(value2);
-  url2.hash = "";
-  url2.search = "";
-  url2.username = "";
-  url2.password = "";
-  return url2.href;
-}
-function heading(value2) {
-  return value2.replaceAll("\r", " ").replaceAll("\n", " ").replaceAll("#", "\\#");
-}
-function manual(plan, result) {
-  const lines2 = [
-    `# ${heading(plan.title)}`,
-    "",
-    ...plan.description ? [plan.description, ""] : [],
-    `[Replay plan](<flow.json>) · Viewport: ${plan.viewport.width} × ${plan.viewport.height}`,
-    ""
-  ];
-  for (const [index2, step] of plan.steps.entries()) {
-    lines2.push(`## ${index2 + 1}. ${heading(step.title)}`, "");
-    if (step.text) lines2.push(step.text, "");
-    const image = result.screenshots.find((image2) => image2.stepId === step.id);
-    if (image) lines2.push(
-      imageMarkdown(`screenshots/${step.id}.png`, step.title),
-      "",
-      `Page: <${publicUrl(image.url)}> · Captured: ${image.capturedAt} · ${image.width} × ${image.height}`,
-      ""
-    );
-  }
-  return lines2.join("\n");
-}
-class BrowserTutorial {
-  constructor(runtime) {
-    this.runtime = runtime;
-  }
-  runtime;
-  async inspect(context, source2, out2) {
-    vaultPath(source2);
-    const snapshot = await context.workspace.files.read(source2);
-    let text2;
-    try {
-      text2 = new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes);
-    } catch {
-      throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must be valid UTF-8.");
-    }
-    const plan = extractTutorial(text2, source2);
-    let current = null;
-    if (out2 !== void 0) {
-      vaultPath(out2);
-      ensure(source2 === `${out2}/flow.json` || source2 !== out2 && !source2.startsWith(`${out2}/`), "INVALID_ARGUMENT", "Keep source documents outside the output directory, or replay its generated flow.json.");
-      current = await optionalStat(context, out2);
-      for (const path2 of plannedFiles(plan)) {
-        const destination2 = await optionalStat(context, `${out2}/${path2}`);
-        ensure(destination2 === null || destination2.kind === "file", "INVALID_ARGUMENT", `Tutorial output must be a regular file: ${out2}/${path2}`);
-      }
-      ensure(current === null || current.kind === "folder", "INVALID_ARGUMENT", "--out must name a directory.");
-      if (current?.kind === "folder") {
-        ensureBrowser(current.files.includes("index.md") && current.files.includes("flow.json") && current.files.every((path2) => ["index.md", "flow.json"].includes(path2) || /^screenshots\/[a-z][a-z0-9-]{0,63}\.png$/.test(path2)) && current.folders.every((path2) => path2 === "screenshots"), "BROWSER_FLOW_INVALID", "Output contains unrelated files or is not a generated tutorial. Choose a dedicated output directory.");
-      }
-    }
-    return { snapshot, plan, current, report: {
-      source: source2,
-      sourceRevision: snapshot.revision,
-      plan,
-      output: out2 ?? null,
-      revision: current?.revision ?? null,
-      files: plannedFiles(plan)
-    } };
-  }
-  async validate(context, source2, out2) {
-    return (await this.inspect(context, source2, out2)).report;
-  }
-  async run(context, input) {
-    const { source: source2, out: out2 } = input;
-    const timeoutMs = browserTimeout(input.timeoutMs), ifMatch2 = expectedRevision(input.ifMatch);
-    ensure(input.executablePath === void 0 || input.executablePath.trim().length > 0 && !input.executablePath.includes("\0"), "INVALID_ARGUMENT", "--browser-executable must name a browser executable.");
-    const { snapshot, plan, current, report: report2 } = await this.inspect(context, source2, out2);
-    ensure(
-      ifMatch2 === (current?.revision ?? void 0),
-      "CONFLICT",
-      current ? "Validate the existing tutorial and pass its folder revision with --if-match before replacing it." : "The output no longer exists; omit --if-match to create it.",
-      { path: out2, expectedRevision: ifMatch2 ?? null, currentRevision: current?.revision ?? null }
-    );
-    const guards = [{ path: source2, expectedRevision: snapshot.revision }, { path: out2, ...current ? { expectedRevision: current.revision } : {} }];
-    if (context.workspace.dryRun) {
-      await context.workspace.commit({ guards }, { operation: "apply" });
-      return { ...report2, dryRun: true, executed: false, changes: [], browserVersion: null };
-    }
-    const previous2 = /* @__PURE__ */ new Map();
-    if (current?.kind === "folder") for (const path2 of current.files) previous2.set(path2, await context.workspace.files.read(`${out2}/${path2}`));
-    const captured = await this.runtime.flow({ plan, viewport: plan.viewport, timeoutMs, ...input.executablePath ? { executablePath: input.executablePath } : {} });
-    const required2 = new Set(plan.steps.filter((step) => step.screenshot).map((step) => step.id));
-    ensureBrowser(
-      captured.screenshots.length === required2.size && captured.screenshots.every((image) => required2.delete(image.stepId) && image.bytes.length > 0),
-      "BROWSER_FLOW_FAILED",
-      "Browser did not return exactly one screenshot for every requested tutorial step. No output was published."
-    );
-    const encode2 = (value2) => new TextEncoder().encode(value2);
-    const contents = new Map([
-      ["index.md", encode2(manual(plan, captured))],
-      ["flow.json", encode2(`${JSON.stringify(plan, null, 2)}
-`)],
-      ...captured.screenshots.map((image) => [`screenshots/${image.stepId}.png`, image.bytes])
-    ]);
-    const writes = [...contents].map(([path2, bytes]) => ({
-      path: `${out2}/${path2}`,
-      bytes,
-      ...previous2.has(path2) ? { expectedRevision: previous2.get(path2).revision } : {}
-    }));
-    const removes = [...previous2].filter(([path2]) => !contents.has(path2)).map(([, file]) => ({ path: file.path, expectedRevision: file.revision }));
-    const result = await context.workspace.commit({ guards, writes, removes }, { operation: "apply" });
-    return {
-      ...report2,
-      revision: (await context.workspace.files.stat(out2)).revision,
-      dryRun: false,
-      executed: true,
-      changes: result.changes,
-      browserVersion: captured.browserVersion
-    };
-  }
-}
-const text$7 = { type: "string" };
-const integer = { type: "integer", minimum: 1 };
-const changes$1 = { type: "array", items: { type: "object" } };
-const viewport = { type: "object", additionalProperties: false, required: ["width", "height"], properties: { width: integer, height: integer } };
-const browserStatusSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["available", "executablePath", "source", "version"],
-  properties: { available: { type: "boolean" }, executablePath: { oneOf: [text$7, { type: "null" }] }, source: { enum: ["explicit", "environment", "managed"] }, version: text$7 }
-};
-const installSchema = { oneOf: [
-  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "plan"], properties: {
-    dryRun: { const: true },
-    executed: { const: false },
-    plan: { type: "object", additionalProperties: false, required: ["browser", "operation"], properties: { browser: { const: "chromium" }, operation: { const: "install" } } }
-  } },
-  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "status"], properties: {
-    dryRun: { const: false },
-    executed: { const: true },
-    status: browserStatusSchema
-  } }
-] };
-const screenshotSchema = { oneOf: [
-  { type: "object", additionalProperties: false, required: ["dryRun", "captured", "plan", "changes"], properties: {
-    dryRun: { const: true },
-    captured: { const: false },
-    changes: { type: "array", maxItems: 0 },
-    plan: { type: "object", additionalProperties: false, required: ["requestedUrl", "out", "viewport", "fullPage", "timeoutMs"], properties: {
-      requestedUrl: { ...text$7, description: "Requested URL without its fragment." },
-      out: text$7,
-      viewport,
-      fullPage: { type: "boolean" },
-      waitForSelector: text$7,
-      timeoutMs: integer
-    } }
-  } },
-  {
-    type: "object",
-    additionalProperties: false,
-    required: ["dryRun", "captured", "path", "revision", "bytes", "width", "height", "requestedUrl", "finalUrl", "capturedAt", "markdown", "changes"],
-    properties: {
-      dryRun: { const: false },
-      captured: { const: true },
-      path: text$7,
-      revision: text$7,
-      bytes: integer,
-      width: integer,
-      height: integer,
-      requestedUrl: text$7,
-      finalUrl: text$7,
-      capturedAt: { ...text$7, description: "Capture timestamp in UTC ISO 8601 form." },
-      markdown: text$7,
-      changes: changes$1
-    }
-  }
-] };
-const tutorialProperties = {
-  source: text$7,
-  sourceRevision: text$7,
-  plan: { type: "object", description: "Normalized version 1 tutorial flow with explicit steps and browser actions." },
-  output: { oneOf: [text$7, { type: "null" }] },
-  revision: { oneOf: [text$7, { type: "null" }] },
-  files: { type: "array", items: text$7 }
-};
-const tutorialValidationSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["source", "sourceRevision", "plan", "output", "revision", "files"],
-  properties: tutorialProperties
-};
-const tutorialSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["source", "sourceRevision", "plan", "output", "revision", "files", "dryRun", "executed", "changes", "browserVersion"],
-  properties: { ...tutorialProperties, dryRun: { type: "boolean" }, executed: { type: "boolean" }, changes: changes$1, browserVersion: { oneOf: [text$7, { type: "null" }] } }
-};
-const project = option$1.string("Use this project instead of the selected project.");
-const executable = option$1.string("Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.");
-const timeout = option$1.string("Browser operation timeout in milliseconds, from 1 to 120000.", { default: "30000" });
-const revision$1 = option$1.string("Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.");
-const projectMode = { scope: "project", projectOption: "project", discovery: false };
-function browserCommand(runtime) {
-  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime);
-  return {
-    id: "browser",
-    description: "Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.",
-    usage: "browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]",
-    scope: "workspace",
-    discovery: false,
-    mutating: false,
-    defaultAction: "status",
-    unknownAction: "INVALID_ARGUMENT",
-    args: [
-      { name: "action", description: "status (default), install, screenshot, validate or tutorial.", enum: ["status", "install", "screenshot", "validate", "tutorial"] },
-      { name: "source", description: "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source." }
-    ],
-    actions: {
-      status: {
-        description: "Inspect browser availability without launching a browser or accessing the network.",
-        discovery: true,
-        output: browserStatusSchema,
-        options: { "browser-executable": executable }
-      },
-      install: {
-        description: "Download the managed Chromium browser explicitly; a dry run does not start the installer.",
-        discovery: true,
-        mutating: true,
-        destructive: false,
-        idempotent: true,
-        output: installSchema
-      },
-      screenshot: {
-        description: "Save a webpage screenshot as a guarded PNG and return a Markdown image reference.",
-        ...projectMode,
-        mutating: true,
-        destructive: true,
-        idempotent: true,
-        output: screenshotSchema,
-        usage: "browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]",
-        options: {
-          project,
-          out: option$1.string("Project-relative PNG output path.", { required: true }),
-          width: option$1.string("Viewport width in pixels, from 1 to 7680.", { default: "1440" }),
-          height: option$1.string("Viewport height in pixels, from 1 to 7680.", { default: "900" }),
-          "full-page": option$1.boolean("Capture the full page instead of only the viewport."),
-          "wait-for-selector": option$1.string("Wait for this selector to become visible before capturing the page."),
-          "timeout-ms": timeout,
-          "browser-executable": executable,
-          "if-match": revision$1
-        }
-      },
-      validate: {
-        description: "Validate a declared tutorial flow without opening a browser and inspect its output revision.",
-        ...projectMode,
-        options: { project, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
-        output: tutorialValidationSchema
-      },
-      tutorial: {
-        description: "Replay a declared flow and atomically save its manual, screenshots and repeatable plan.",
-        ...projectMode,
-        mutating: true,
-        destructive: true,
-        idempotent: true,
-        options: {
-          project,
-          out: option$1.string("Project-relative tutorial directory for index.md, screenshots and flow.json.", { required: true }),
-          "timeout-ms": timeout,
-          "browser-executable": executable,
-          "if-match": revision$1
-        },
-        output: tutorialSchema
-      }
-    },
-    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "UNSAFE_PATH", "CONFLICT", "NOT_FOUND", "BROWSER_UNAVAILABLE", "BROWSER_CAPTURE_FAILED", "BROWSER_INSTALL_FAILED", "BROWSER_FLOW_INVALID", "BROWSER_FLOW_FAILED"],
-    async run(args, flags, context) {
-      const action2 = args[0] ?? "status";
-      ensure(["status", "install", "screenshot", "validate", "tutorial"].includes(action2), "INVALID_ARGUMENT", "Use browser status, install, screenshot, validate or tutorial.");
-      if (action2 === "status") {
-        arity(args, 0, 1);
-        return runtime.status(browserExecutable(value$2(flags, "browser-executable")));
-      }
-      if (action2 === "install") {
-        arity(args, 1);
-        if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: "chromium", operation: "install" } };
-        return { dryRun: false, executed: true, status: await runtime.install() };
-      }
-      arity(args, 2);
-      if (action2 === "validate") return tutorial.validate(context, args[1], value$2(flags, "out"));
-      const out2 = value$2(flags, "out", true);
-      const timeoutMs = browserTimeout(integer$2(flags, "timeout-ms", 1));
-      const executablePath = browserExecutable(value$2(flags, "browser-executable")), ifMatch2 = expectedRevision(value$2(flags, "if-match"));
-      if (action2 === "tutorial") return tutorial.run(context, { source: args[1], out: out2, timeoutMs, executablePath, ifMatch: ifMatch2 });
-      return screenshot.run(context, {
-        url: args[1],
-        out: out2,
-        viewport: browserViewport(integer$2(flags, "width", 1), integer$2(flags, "height", 1)),
-        fullPage: flags["full-page"] === true,
-        waitForSelector: value$2(flags, "wait-for-selector"),
-        timeoutMs,
-        executablePath,
-        ifMatch: ifMatch2
-      });
-    }
-  };
-}
-const browserStrings = { de: {
-  manifest: { name: "Browser-Werkzeuge", description: "Geschützte Webseiten-Screenshots und wiederholbare bebilderte Anleitungen mit einem verwalteten Browser erstellen." },
-  commands: { browser: "Webseiten-Screenshots und wiederholbare bebilderte Anleitungen über das portable CLI erstellen." },
-  actions: {
-    "browser status": "Die Browser-Verfügbarkeit ohne Browserstart oder Netzwerkzugriff prüfen.",
-    "browser install": "Den verwalteten Chromium-Browser ausdrücklich herunterladen; ein Probelauf startet keine Installation.",
-    "browser screenshot": "Einen Webseiten-Screenshot als geschützte PNG-Datei speichern und eine Markdown-Bildreferenz zurückgeben.",
-    "browser validate": "Einen deklarierten Anleitungsablauf ohne Browser prüfen und die Ausgaberevision anzeigen.",
-    "browser tutorial": "Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern."
-  },
-  descriptions: {
-    "status (default), install, screenshot, validate or tutorial.": "status (Standard), install, screenshot, validate oder tutorial.",
-    "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.": "Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.",
-    "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
-    "Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.": "Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.",
-    "Browser operation timeout in milliseconds, from 1 to 120000.": "Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.",
-    "Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.": "Aktuelle Ausgaberevision aus read (Screenshot) oder browser validate (Anleitung); zum Ersetzen vorhandener Ausgaben erforderlich.",
-    "Project-relative PNG output path.": "Projektrelativer PNG-Ausgabepfad.",
-    "Viewport width in pixels, from 1 to 7680.": "Ansichtsbreite in Pixeln von 1 bis 7680.",
-    "Viewport height in pixels, from 1 to 7680.": "Ansichtshöhe in Pixeln von 1 bis 7680.",
-    "Capture the full page instead of only the viewport.": "Die vollständige Seite statt nur des sichtbaren Ausschnitts erfassen.",
-    "Wait for this selector to become visible before capturing the page.": "Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.",
-    "Optional project-relative tutorial directory whose current revision should be inspected.": "Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.",
-    "Project-relative tutorial directory for index.md, screenshots and flow.json.": "Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json."
-  },
-  errors: {
-    BROWSER_UNAVAILABLE: { summary: "Browser-Laufzeit oder ausführbare Datei fehlen.", hint: "Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable." },
-    BROWSER_CAPTURE_FAILED: { summary: "Die Webseite konnte nicht aufgenommen werden.", hint: "Prüfen Sie URL, Browser-Verfügbarkeit und Bereitschaftsselektor; es wurde kein Screenshot geschrieben." },
-    BROWSER_INSTALL_FAILED: { summary: "Die Installation des verwalteten Browsers ist fehlgeschlagen.", hint: "Prüfen Sie Netzwerkzugriff und Schreibrechte; wiederholen Sie browser install oder verwenden Sie --browser-executable." },
-    BROWSER_FLOW_INVALID: { summary: "Der deklarierte Anleitungsablauf ist ungültig.", hint: "Prüfen Sie browser validate und korrigieren Sie die genannte Quelle, Aktion, Auswahl oder den Ausgabepfad." },
-    BROWSER_FLOW_FAILED: { summary: "Der Anleitungsablauf konnte nicht abgeschlossen werden.", hint: "Prüfen Sie den fehlgeschlagenen Schritt und korrigieren Sie den Ablauf; vorhandene Anleitungen wurden erhalten." }
-  }
-} };
-function browserPlugin(distributionPath) {
-  return {
-    manifest: {
-      id: "browser",
-      name: "Browser",
-      version: "0.1.0",
-      minAppVersion: "0.1.0",
-      core: true,
-      author: "The Forge",
-      description: "Capture guarded webpage screenshots and repeatable illustrated tutorials with a managed browser."
-    },
-    strings: browserStrings,
-    create: () => ({
-      commands: [browserCommand(createBrowserRuntime(distributionPath))],
-      skills: [browserSkill],
-      errors: [
-        { code: "BROWSER_UNAVAILABLE", category: "runtime", summary: "The browser runtime or executable is unavailable.", hint: "Run browser status, then browser install, or pass --browser-executable for an installed Chromium browser." },
-        { code: "BROWSER_CAPTURE_FAILED", category: "runtime", summary: "The webpage could not be captured.", hint: "Check the URL, browser availability and readiness selector; no screenshot was written." },
-        { code: "BROWSER_INSTALL_FAILED", category: "external", summary: "The managed browser installation failed.", hint: "Check network access and disk permissions, then retry browser install or use --browser-executable." },
-        { code: "BROWSER_FLOW_INVALID", category: "input", summary: "The declared tutorial flow is invalid.", hint: "Run browser validate and correct the source, action, locator or output path named in the diagnostic." },
-        { code: "BROWSER_FLOW_FAILED", category: "runtime", summary: "The tutorial flow could not complete.", hint: "Inspect the failing step, repair the declared flow and retry; existing tutorial output was preserved." }
-      ]
-    })
-  };
-}
-function updateError(code2, message2) {
-  return codedError(code2, message2, code2 === "UPDATE_DOWNLOAD_FAILED" ? 1 : 2);
-}
-function requireUpdate(condition, message2) {
-  if (!condition) throw updateError("UPDATE_INVALID", message2);
-}
-function releaseJson(bytes) {
-  try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch {
-    throw updateError("UPDATE_INVALID", "A release package or distribution manifest is not valid UTF-8 JSON.");
-  }
-}
-function releaseVersion(value2) {
-  requireUpdate(/^\d+\.\d+\.\d+$/.test(value2), "Use a stable release version such as 0.1.0.");
-  return value2;
-}
-function compareVersions(left, right) {
-  const a = releaseVersion(left).split(".").map(Number), b = releaseVersion(right).split(".").map(Number);
-  for (let index2 = 0; index2 < 3; index2++) if (a[index2] !== b[index2]) return a[index2] > b[index2] ? 1 : -1;
-  return 0;
-}
-function distributionFiles(value2, policy) {
-  requireUpdate(value2 !== null && typeof value2 === "object" && "schemaVersion" in value2 && value2.schemaVersion === policy.schemaVersion && "files" in value2 && Array.isArray(value2.files), "The distribution manifest is invalid.");
-  const files = value2.files;
-  const owned = new RegExp(policy.ownedAssetPattern);
-  requireUpdate(files.every((path2) => typeof path2 === "string" && owned.test(path2)), "The distribution manifest includes mutable or unowned files.");
-  const paths2 = files;
-  for (const path2 of paths2) vaultPath(path2);
-  requireUpdate(new Set(paths2).size === paths2.length && policy.requiredAssets.every((path2) => paths2.includes(path2)), "The distribution manifest omits required assets or contains duplicates.");
-  return [...paths2].sort();
-}
-class AppUpdate {
-  constructor(source2, policy) {
-    this.source = source2;
-    this.policy = policy;
-  }
-  source;
-  policy;
-  async installed(context) {
-    let pkg;
-    try {
-      pkg = await context.environment.files.read("bin/package.json");
-    } catch {
-      throw updateError("UPDATE_SCOPE_INVALID", "The target workspace has no installed Forge app. Install a release first.");
-    }
-    const data = releaseJson(pkg.bytes);
-    requireUpdate(data !== null && typeof data === "object" && "name" in data && data.name === "forge-bundle" && "version" in data && typeof data.version === "string", "bin/package.json does not identify a Forge distribution.");
-    const version2 = releaseVersion(data.version);
-    const manifest = await context.environment.files.read("bin/data/distribution.json");
-    const owned = distributionFiles(releaseJson(manifest.bytes), this.policy);
-    const stat = await context.environment.files.stat("bin");
-    ensure(stat.kind === "folder", "INVALID_PATH", "bin must be a regular folder.");
-    return { version: version2, revision: stat.revision, owned };
-  }
-  async check(context, target) {
-    const installed = await this.installed(context);
-    const version2 = releaseVersion(target ?? await this.source.latest());
-    return {
-      installedVersion: installed.version,
-      releaseVersion: version2,
-      available: compareVersions(version2, installed.version) > 0,
-      revision: installed.revision,
-      releaseUrl: `https://github.com/Luis85/agent-cli/releases/tag/v${version2}`
-    };
-  }
-  async apply(context, version2, ifMatch2) {
-    const installed = await this.installed(context);
-    ensure(ifMatch2 === installed.revision, "CONFLICT", "The app or workspace settings changed; run update check again.", { currentRevision: installed.revision });
-    requireUpdate(compareVersions(version2, installed.version) >= 0, "Downgrading the installed app is not supported.");
-    const release2 = await this.source.download(releaseVersion(version2));
-    requireUpdate(release2.version === version2, "Downloaded release version differs from the requested version.");
-    const desired = new Map(release2.files.map((file) => [file.path, file]));
-    const manifest = desired.get("data/distribution.json");
-    requireUpdate(manifest, "Downloaded release has no distribution manifest.");
-    const paths2 = distributionFiles(releaseJson(manifest.bytes), this.policy);
-    requireUpdate(paths2.length === desired.size && paths2.every((path2) => desired.has(path2)), "Downloaded release assets disagree with its manifest.");
-    const writes = [], removes = [];
-    const previous2 = /* @__PURE__ */ new Map();
-    for (const path2 of [.../* @__PURE__ */ new Set([...paths2, ...installed.owned])].sort()) {
-      const destination2 = `bin/${path2}`;
-      let current;
-      try {
-        current = await context.environment.files.read(destination2);
-      } catch (error2) {
-        if (!(error2 instanceof AppError && error2.code === "NOT_FOUND")) throw error2;
-      }
-      if (current) previous2.set(destination2, current);
-      const next = desired.get(path2);
-      if (!next && current) removes.push({ path: destination2, expectedRevision: current.revision });
-      else if (next && next.revision !== current?.revision) writes.push({ path: destination2, bytes: next.bytes, ...current ? { expectedRevision: current.revision } : {} });
-    }
-    const result = await context.environment.commit({ guards: [{ path: "bin", expectedRevision: installed.revision }], writes, removes }, { operation: "apply", previous: previous2 });
-    return {
-      installedVersion: installed.version,
-      releaseVersion: version2,
-      checksum: release2.checksum,
-      changed: writes.length + removes.length > 0,
-      dryRun: result.dryRun,
-      changes: result.changes,
-      revision: result.dryRun ? installed.revision : (await context.environment.files.stat("bin")).revision,
-      restartRequired: !result.dryRun && writes.length + removes.length > 0
-    };
-  }
-}
-const execute = node_util.promisify(childProcess.execFile);
-const runTool = async (file, args, options2) => {
-  const { stdout } = await execute(file, args, { ...options2, encoding: "utf8" });
-  return { stdout };
-};
-const base = "https://github.com/Luis85/agent-cli/releases";
-const curl = ["--fail", "--location", "--silent", "--show-error", "--proto", "=https", "--max-time", "180", "--max-filesize", "67108864"];
-function githubReleases(policy, run2 = runTool) {
-  return {
-    async latest() {
-      try {
-        const { stdout } = await run2("curl", [...curl, `${base}/latest`, "--output", node_os.devNull, "--write-out", "%{url_effective}"], { timeout: 19e4 });
-        const version2 = /^https:\/\/github\.com\/Luis85\/agent-cli\/releases\/tag\/v(\d+\.\d+\.\d+)$/.exec(stdout)?.[1];
-        requireUpdate(version2, "GitHub did not return a stable Forge release.");
-        return releaseVersion(version2);
-      } catch (error2) {
-        if (error2 instanceof AppError) throw error2;
-        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not check GitHub Releases. Check network access and curl, then retry.");
-      }
-    },
-    async download(version2) {
-      releaseVersion(version2);
-      const staging = await promises$1.mkdtemp(path$3.join(node_os.tmpdir(), "forge-update-"));
-      try {
-        const name2 = `forge-${version2}.tar.gz`, archive = path$3.join(staging, name2);
-        for (const filename of [name2, `${name2}.sha256`]) await run2("curl", [...curl, `${base}/download/v${version2}/${filename}`, "--output", path$3.join(staging, filename)], { timeout: 19e4 });
-        const bytes = await promises$1.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
-        requireUpdate((await promises$1.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
-        const { stdout: listing } = await run2("tar", ["-tzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(listing.trim().split(/\r?\n/).every((path2) => path2.startsWith("bin/") && !path2.includes("\\") && !path2.includes(":") && !path2.split("/").some((part) => part === "." || part === "..")), "Release archive contains an unsafe path.");
-        const { stdout: detailed } = await run2("tar", ["-tvzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
-        requireUpdate(detailed.trim().split(/\r?\n/).every((line) => ["-", "d"].includes(line[0])), "Release archive contains a link or special file.");
-        await run2("tar", ["-xzf", name2, "--no-same-owner", "--no-same-permissions"], { cwd: staging });
-        const root = path$3.join(staging, "bin");
-        const pkg = JSON.parse(await promises$1.readFile(path$3.join(root, "package.json"), "utf8"));
-        requireUpdate(pkg !== null && typeof pkg === "object" && "name" in pkg && pkg.name === "forge-bundle" && "version" in pkg && pkg.version === version2, "Release package version differs from the requested version.");
-        const { stdout } = await run2(process.execPath, [path$3.join(root, "forge.js"), "--version"], { timeout: 3e4 });
-        requireUpdate(JSON.parse(stdout).data?.version === version2, "The downloaded app cannot execute on this Node version.");
-        const paths2 = distributionFiles(JSON.parse(await promises$1.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
-        const files = [];
-        for (const path2 of paths2) {
-          const entry2 = await promises$1.lstat(path$3.join(root, path2));
-          requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
-          const bytes2 = await promises$1.readFile(path$3.join(root, path2));
-          files.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
-        }
-        return { version: version2, checksum, files };
-      } catch (error2) {
-        if (error2 instanceof AppError) throw error2;
-        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.");
-      } finally {
-        await promises$1.rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-      }
-    }
-  };
-}
-const updateCheckSchema = {
-  type: "object",
-  required: ["installedVersion", "releaseVersion", "available", "revision", "releaseUrl"],
-  additionalProperties: false,
-  properties: { installedVersion: { type: "string" }, releaseVersion: { type: "string" }, available: { type: "boolean" }, revision: { type: "string" }, releaseUrl: { type: "string" } }
-};
-const updateApplySchema = {
-  type: "object",
-  required: ["installedVersion", "releaseVersion", "checksum", "changed", "dryRun", "changes", "revision", "restartRequired"],
-  additionalProperties: false,
-  properties: {
-    installedVersion: { type: "string" },
-    releaseVersion: { type: "string" },
-    checksum: { type: "string" },
-    changed: { type: "boolean" },
-    dryRun: { type: "boolean" },
-    changes: { type: "array", items: { type: "object" } },
-    revision: { type: "string" },
-    restartRequired: { type: "boolean" }
-  }
-};
-function updateCommand(updater) {
-  return {
-    id: "update",
-    description: "Check GitHub Releases and upgrade this workspace app while preserving local settings.",
-    usage: "update [check [--release-version <version>] | apply --release-version <version> --if-match <revision>]",
-    scope: "workspace",
-    discovery: true,
-    mutating: false,
-    defaultAction: "check",
-    unknownAction: "INVALID_ARGUMENT",
-    args: [{ name: "action", description: "check (default) or apply.", enum: ["check", "apply"] }],
-    actions: {
-      check: {
-        description: "Inspect the installed revision and latest stable GitHub release without changing the app.",
-        output: updateCheckSchema,
-        options: { "release-version": option$1.string("Check this pinned stable release instead of resolving latest.") }
-      },
-      apply: {
-        description: "Download, verify and apply a pinned release as one guarded batch; preserve mutable workspace data.",
-        mutating: true,
-        destructive: true,
-        idempotent: true,
-        output: updateApplySchema,
-        options: {
-          "release-version": option$1.string("Stable GitHub release version to install, such as 0.1.0.", { required: true }),
-          "if-match": option$1.string("Installed bin folder revision returned by update check; required before upgrading.", { required: true })
-        }
-      }
-    },
-    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "NOT_FOUND", "CONFLICT", "UNSAFE_PATH", "DESTINATION_EXISTS", "UPDATE_INVALID", "UPDATE_DOWNLOAD_FAILED", "UPDATE_SCOPE_INVALID"],
-    async run(args, flags, context) {
-      arity(args, 0, 1);
-      const action2 = args[0] ?? "check";
-      ensure(action2 === "check" || action2 === "apply", "INVALID_ARGUMENT", "Use update check or update apply.");
-      if (action2 === "check") return updater.check(context, value$2(flags, "release-version"));
-      const version2 = releaseVersion(value$2(flags, "release-version", true));
-      const revision2 = value$2(flags, "if-match", true);
-      ensure(/^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be the SHA-256 folder revision from update check.");
-      return updater.apply(context, version2, revision2);
-    }
-  };
-}
-const updatesStrings = { de: {
-  manifest: { name: "App-Aktualisierungen", description: "Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Arbeitsbereichsdaten erhalten." },
-  commands: { update: "GitHub Releases prüfen und das Programm dieses Arbeitsbereichs aktualisieren; lokale Einstellungen bleiben erhalten." },
-  actions: {
-    "update check": "Installierte Revision und neueste stabile GitHub-Version ohne Änderungen am Programm prüfen.",
-    "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Arbeitsbereichsdaten erhalten."
-  },
-  descriptions: {
-    "check (default) or apply.": "check (Standard) oder apply.",
-    "Check this pinned stable release instead of resolving latest.": "Diese feste stabile Version statt der neuesten Version prüfen.",
-    "Stable GitHub release version to install, such as 0.1.0.": "Zu installierende stabile GitHub-Version, etwa 0.1.0.",
-    "Installed bin folder revision returned by update check; required before upgrading.": "Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich."
-  },
-  errors: {
-    UPDATE_DOWNLOAD_FAILED: { summary: "Die GitHub-Version konnte nicht abgerufen werden.", hint: "Netzwerkzugriff, curl, tar und Speicherplatz prüfen; anschließend erneut versuchen." },
-    UPDATE_INVALID: { summary: "Die Version oder das Archiv ist ungültig.", hint: "Stabile Version, Prüfsumme und Verteilungsmanifest prüfen; das bestehende Programm bleibt erhalten." },
-    UPDATE_SCOPE_INVALID: { summary: "Der Zielarbeitsbereich hat keine installierte Forge-Verteilung.", hint: "Zuerst eine Version installieren oder --root auf den richtigen Arbeitsbereich setzen." }
-  }
-} };
-function updatesPlugin(policy) {
-  return {
-    manifest: {
-      id: "updates",
-      name: "App updates",
-      version: "0.1.0",
-      minAppVersion: "0.1.0",
-      core: true,
-      author: "The Forge",
-      description: "Upgrade the portable app from GitHub Releases with revision guards while preserving workspace data."
-    },
-    strings: updatesStrings,
-    create: () => ({
-      commands: [updateCommand(new AppUpdate(githubReleases(policy), policy))],
-      errors: [
-        { code: "UPDATE_DOWNLOAD_FAILED", category: "external", summary: "The GitHub release could not be fetched.", hint: "Check network access, curl, tar and disk space, then retry." },
-        { code: "UPDATE_INVALID", category: "input", summary: "The release version or archive is invalid.", hint: "Inspect the stable release version, checksum and distribution manifest; the existing app was preserved." },
-        { code: "UPDATE_SCOPE_INVALID", category: "input", summary: "The target workspace has no installed Forge distribution.", hint: "Install a release first or use --root to select the correct workspace." }
-      ]
-    })
-  };
-}
-const schemaVersion = 1;
-const requiredAssets = ["forge.js", "forge-runtime.js", "forge-server.cjs", "package.json", "config/default.json", "data/distribution.json", "webviews/admin/index.html", "webviews/admin/manifest.json", "webviews/admin/THIRD-PARTY-NOTICES.md", "browser-runtime/playwright-core/index.js", "browser-runtime/playwright-core/package.json", "browser-runtime/playwright-core/browsers.json", "browser-runtime/playwright-core/lib/coreBundle.js"];
-const ownedAssetPattern = "^(?:forge(?:-runtime)?\\.js|forge-server\\.cjs|package\\.json|config/default\\.json|skills/.+|webviews/admin/.+|browser-runtime/playwright-core/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
-const distributionPolicy = {
-  schemaVersion,
-  requiredAssets,
-  ownedAssetPattern
-};
-function nodeLockFiles(root, warn) {
-  return async (path2, command2) => {
-    const target = await (await NodeFiles.at(root)).resolvePath(path2);
-    await promises$1.mkdir(path$3.dirname(target), { recursive: true });
-    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
-    return async () => await releaseLock(target, token) === "released";
-  };
-}
-const retryable = /* @__PURE__ */ new Set([429, 503]);
-function retryAfter(value2, now = Date.now()) {
-  if (value2 === null || value2.trim() === "") return null;
-  const seconds = Number(value2.trim());
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
-  const date2 = Date.parse(value2);
-  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
-}
-class FetchHttpClient {
-  fetch;
-  sleep;
-  retries;
-  timeoutMs;
-  maxDelayMs;
-  constructor(options2 = {}) {
-    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
-    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
-      setTimeout(resolve2, milliseconds);
-    }));
-    this.retries = options2.retries ?? 3;
-    this.timeoutMs = options2.timeoutMs ?? 3e4;
-    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
-  }
-  async request(request) {
-    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
-    for (let attempt = 0; ; attempt++) {
-      const response = await this.attempt(request);
-      if (!retryable.has(response.status) || attempt >= retries) return response;
-      const asked = retryAfter(response.headers["retry-after"] ?? null);
-      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
-    }
-  }
-  async attempt(request) {
-    const timeout2 = request.timeoutMs ?? this.timeoutMs;
-    let response;
-    try {
-      response = await this.fetch(request.url, {
-        method: request.method,
-        ...request.headers ? { headers: { ...request.headers } } : {},
-        ...request.body === void 0 ? {} : { body: request.body },
-        signal: AbortSignal.timeout(timeout2),
-        redirect: "manual"
-      });
-    } catch (error2) {
-      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout2} ms` : "could not connect";
-      throw new Error(`${request.method} ${request.url} ${reason}.`);
-    }
-    const headers = {};
-    response.headers.forEach((value2, name2) => {
-      headers[name2.toLowerCase()] = value2;
-    });
-    return { status: response.status, headers, body: await response.text() };
-  }
-}
-const relativePath$1 = string$3().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
-  try {
-    vaultPath(value2);
-    return true;
-  } catch {
-    return false;
-  }
-}, "Must be a contained workspace-relative path.");
-const pluginIds = array(string$3().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
-const configSchema = strictObject({
-  schemaVersion: literal$1(1).default(1),
-  paths: strictObject({
-    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects")
-  }).prefault({}),
-  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
-  // Plugin sections are validated against the schemas that registered plugins declare once they load.
-  plugins: strictObject({
-    enabled: pluginIds,
-    disabled: pluginIds,
-    settings: record$2(string$3().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
-  }).prefault({})
-});
-async function loadConfig(options2) {
-  const root = options2.root !== void 0 ? path$3.resolve(options2.cwd, options2.root) : path$3.resolve(path$3.dirname(options2.defaultPath), "..");
-  const path2 = path$3.resolve(root, "bin/config.json");
-  let content2;
-  let exists2 = true;
-  try {
-    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
-  } catch (error2) {
-    if (error2.code === "ENOENT") {
-      content2 = {};
-      exists2 = false;
-    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path2}: ${errorMessage(error2)}`);
-  }
-  const parsed2 = configSchema.safeParse(content2);
-  if (!parsed2.success) throw forgeError("INVALID_CONFIG", parsed2.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
-  const config2 = parsed2.data;
-  return { path: exists2 ? path2 : null, root, config: config2 };
-}
-const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
-async function readSetupArtifacts(bundleDir) {
-  const root = await promises$1.lstat(bundleDir);
-  ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
-  const readAsset2 = async (path2) => {
-    vaultPath(path2);
-    ensure(ownedAsset.test(path2), "INVALID_SETUP", `Not a distribution asset: ${path2}`);
-    const segments2 = path2.split("/");
-    let current = bundleDir;
-    for (const [index2, segment2] of segments2.entries()) {
-      current = path$3.join(current, segment2);
-      const entry2 = await promises$1.lstat(current).catch((error2) => {
-        if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
-        throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
-      });
-      ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
-    }
-    return promises$1.readFile(current);
-  };
-  let manifest;
-  try {
-    manifest = JSON.parse(new TextDecoder().decode(await readAsset2("data/distribution.json")));
-  } catch (error2) {
-    if (!(error2 instanceof SyntaxError)) throw error2;
-    throw forgeError("INVALID_SETUP", "bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.", { path: "bin/data/distribution.json" });
-  }
-  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
-  const files = manifest.files;
-  ensure(files.every((path2) => typeof path2 === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
-  ensure(distributionPolicy.requiredAssets.every((path2) => files.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
-  const artifacts = [];
-  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
-  return artifacts;
-}
-const snapshotFormat = 2;
-const racyWindowMs = 2e3;
-const aliasesKey = (aliases) => JSON.stringify([...aliases]);
-const outcomeKey = (path2, revision2) => `${fileKind(path2)}:${revision2}`;
-function unchangedFile(stored, current, checkedAtMs) {
-  return stored !== void 0 && current !== void 0 && stored.stamp !== null && stored.stamp === current.stamp && current.changedMs < checkedAtMs - racyWindowMs;
-}
-const text$6 = (value2) => typeof value2 === "string";
-function storedLinks(value2) {
-  return isRecord$1(value2) && Array.isArray(value2.paths) && value2.paths.every(text$6) && text$6(value2.aliases) && isRecord$1(value2.sources) && Object.values(value2.sources).every(Array.isArray);
-}
-function snapshotFile$1(value2) {
-  return isRecord$1(value2) && (value2.stamp === null || text$6(value2.stamp)) && text$6(value2.revision);
-}
-function storedOutcome(value2) {
-  if (!isRecord$1(value2)) return false;
-  if (isRecord$1(value2.metadata)) return Array.isArray(value2.positions) && Object.keys(value2).length === 2;
-  return isRecord$1(value2.issue) && text$6(value2.issue.code) && text$6(value2.issue.message) && Object.keys(value2).length === 1;
-}
-function readSnapshot(value2, key) {
-  if (!isRecord$1(value2) || value2.format !== snapshotFormat || value2.key !== key) return null;
-  if (typeof value2.checkedAtMs !== "number" || !Number.isFinite(value2.checkedAtMs)) return null;
-  if (!isRecord$1(value2.files) || !Object.values(value2.files).every(snapshotFile$1)) return null;
-  if (!isRecord$1(value2.outcomes) || !Object.values(value2.outcomes).every(storedOutcome)) return null;
-  if (value2.links !== null && !storedLinks(value2.links)) return null;
-  return value2;
-}
-const positioned = ["links", "embeds", "referenceLinks", "tags", "headings", "sections", "listItems"];
-function encodeOutcome(outcome) {
-  if (!("metadata" in outcome)) return outcome;
-  const positions2 = [];
-  const index2 = ({ start: start2, end: end2 }) => positions2.push(start2.line, start2.col, start2.offset, end2.line, end2.col, end2.offset) / 6 - 1;
-  const source2 = outcome.metadata, metadata2 = { ...source2 };
-  for (const key of positioned) {
-    const items2 = source2[key];
-    if (items2) metadata2[key] = items2.map((item) => ({ ...item, position: index2(item.position) }));
-  }
-  if (source2.blocks) metadata2.blocks = Object.fromEntries(Object.entries(source2.blocks).map(([id2, block]) => [id2, { ...block, position: index2(block.position) }]));
-  if (source2.frontmatterPosition) metadata2.frontmatterPosition = index2(source2.frontmatterPosition);
-  return { metadata: metadata2, positions: positions2 };
-}
-function decodeOutcome(stored) {
-  if (!("metadata" in stored)) return stored;
-  const { metadata: metadata2, positions: positions2 } = stored;
-  if (!Array.isArray(positions2) || positions2.length % 6 !== 0) return void 0;
-  const count2 = positions2.length / 6;
-  const position2 = (value2) => {
-    if (typeof value2 !== "number" || !Number.isInteger(value2) || value2 < 0 || value2 >= count2) return void 0;
-    const at = value2 * 6;
-    return { start: { line: positions2[at], col: positions2[at + 1], offset: positions2[at + 2] }, end: { line: positions2[at + 3], col: positions2[at + 4], offset: positions2[at + 5] } };
-  };
-  const decode2 = (item) => {
-    const value2 = position2(item.position);
-    if (value2 === void 0) return false;
-    item.position = value2;
-    return true;
-  };
-  for (const key of positioned) {
-    const items2 = metadata2[key];
-    if (items2 !== void 0 && !(Array.isArray(items2) && items2.every(decode2))) return void 0;
-  }
-  const blocks2 = metadata2.blocks;
-  if (blocks2 !== void 0 && !Object.values(blocks2).every(decode2)) return void 0;
-  if (metadata2.frontmatterPosition !== void 0) {
-    const value2 = position2(metadata2.frontmatterPosition);
-    if (value2 === void 0) return void 0;
-    metadata2.frontmatterPosition = value2;
-  }
-  return { metadata: metadata2 };
-}
-function encodeResolution(resolution, index2) {
-  if (resolution.status === "external") return null;
-  if (resolution.status === "resolved") return resolution.via === "path" ? index2(resolution.path) : -1 - index2(resolution.path);
-  if (resolution.reason === "missing") return ["missing", resolution.linkpath];
-  return [resolution.via, resolution.linkpath, ...resolution.candidates.map(index2)];
-}
-function decodeResolution(stored, paths2) {
-  const path2 = (value2) => typeof value2 === "number" && Number.isInteger(value2) && value2 >= 0 && value2 < paths2.length ? paths2[value2] : void 0;
-  if (stored === null) return { status: "external" };
-  if (typeof stored === "number") {
-    const resolved = path2(stored < 0 ? -1 - stored : stored);
-    return resolved === void 0 ? void 0 : { status: "resolved", path: resolved, via: stored < 0 ? "alias" : "path" };
-  }
-  if (!Array.isArray(stored) || typeof stored[1] !== "string") return void 0;
-  const [reason, linkpath, ...indexes2] = stored;
-  if (reason === "missing") return stored.length === 2 ? { status: "unresolved", linkpath, reason } : void 0;
-  if (reason !== "path" && reason !== "alias") return void 0;
-  const candidates2 = indexes2.map(path2);
-  return candidates2.length > 1 && candidates2.every((item) => item !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
-}
-class ParseResults {
-  constructor(options2) {
-    this.options = options2;
-  }
-  options;
-  previous;
-  /** The previous snapshot once `previous` settled; undefined before. */
-  loaded;
-  records = /* @__PURE__ */ new Map();
-  /** Stored outcomes decoded so far, by outcome key; undefined for one that could not be decoded. */
-  decoded = /* @__PURE__ */ new Map();
-  checkedAtMs = 0;
-  changed = false;
-  /** The scope's files with stamps from the store for those `stamped` accepts, or the repository listing without stamps. */
-  async listing(list2, stamped) {
-    if (this.options === void 0) return { checkedAtMs: null, files: (await list2()).map((path2) => ({ path: path2 })) };
-    const listing = await this.options.store.listing(stamped);
-    this.checkedAtMs = listing.checkedAtMs;
-    return listing;
-  }
-  /** The previous snapshot, loaded once; null without a store or when it is missing, unreadable or for another key. */
-  stored() {
-    const options2 = this.options;
-    this.previous ??= (options2 === void 0 ? Promise.resolve(null) : options2.store.load().then((value2) => readSnapshot(value2, options2.key), () => null)).then((snapshot) => {
-      this.loaded = snapshot;
-      return snapshot;
-    });
-    return this.previous;
-  }
-  /**
-   * The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. Answers
-   * from the loaded snapshot without waiting, so call it once `stored()` has settled; before that it reuses nothing.
-   */
-  unchanged(path2, stamp) {
-    const previous2 = this.loaded;
-    const stored = previous2 && Object.hasOwn(previous2.files, path2) ? previous2.files[path2] : void 0;
-    if (!previous2 || !unchangedFile(stored, stamp, previous2.checkedAtMs)) return void 0;
-    const outcome = this.outcome(previous2, outcomeKey(path2, stored.revision));
-    if (outcome !== void 0) this.records.set(path2, { stamp: stamp.stamp, revision: stored.revision });
-    return outcome;
-  }
-  /** The stored outcome for content of `revision` at `path`, or undefined when it must be parsed. */
-  async reusable(path2, revision2) {
-    const previous2 = await this.stored();
-    return previous2 ? this.outcome(previous2, outcomeKey(path2, revision2)) : void 0;
-  }
-  /**
-   * Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). The snapshot
-   * becomes outdated when the record differs from the stored one, or when storing it would let the next load trust
-   * the stamp. A file that stays inside the racy window, such as one with a future timestamp, is read again on every
-   * load but does not rewrite an otherwise unchanged snapshot.
-   */
-  read(path2, revision2, stamp) {
-    if (this.options === void 0) return;
-    const record2 = { stamp: stamp?.stamp ?? null, revision: revision2 };
-    this.records.set(path2, record2);
-    const before = this.loaded && Object.hasOwn(this.loaded.files, path2) ? this.loaded.files[path2] : void 0;
-    const same2 = before !== void 0 && before.stamp === record2.stamp && before.revision === revision2;
-    const undecodable = this.decoded.has(outcomeKey(path2, revision2)) && this.decoded.get(outcomeKey(path2, revision2)) === void 0;
-    if (!same2 || undecodable || stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs) this.changed = true;
-  }
-  /** The recorded revision of an indexed path, if any. */
-  revision(path2) {
-    return this.records.get(path2)?.revision;
-  }
-  forget(path2) {
-    if (this.records.delete(path2)) this.changed = true;
-  }
-  /** The vault's paths or aliases changed, so the stored link resolutions no longer match. */
-  outdated() {
-    this.changed = true;
-  }
-  /**
-   * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
-   * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
-   * outdated and nothing is reused.
-   */
-  async links(paths2, aliases) {
-    const previous2 = await this.stored(), links2 = previous2?.links;
-    if (!previous2 || !links2 || links2.aliases !== aliases || links2.paths.length !== paths2.length || links2.paths.some((path2, position2) => path2 !== paths2[position2])) {
-      this.changed = true;
-      return () => void 0;
-    }
-    return (source2) => Object.hasOwn(links2.sources, source2) && Object.hasOwn(previous2.files, source2) && previous2.files[source2].revision === this.revision(source2) ? links2.sources[source2] : void 0;
-  }
-  /** After a build: a missing previous snapshot or a file that left the vault makes the snapshot outdated. */
-  async built() {
-    const previous2 = await this.stored();
-    if (previous2 === null || Object.keys(previous2.files).some((path2) => !this.records.has(path2))) this.changed = true;
-  }
-  /**
-   * Stores the index's current outcomes and `links` unless nothing may or needs to be written: no store, a dry run,
-   * or nothing that differs from the previous snapshot. A failed save throws and leaves the state outdated.
-   */
-  async persist(outcomeOf, links2) {
-    if (this.options === void 0 || !this.options.save || !this.changed) return;
-    await this.options.store.save(this.next(this.options.key, outcomeOf, links2()));
-    this.changed = false;
-  }
-  next(key, outcomeOf, links2) {
-    const files = [], outcomes = /* @__PURE__ */ new Map();
-    for (const [path2, record2] of this.records) {
-      const outcome = outcomeOf(path2);
-      if (outcome === void 0) continue;
-      files.push([path2, record2]);
-      const stored = outcomeKey(path2, record2.revision);
-      if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
-    }
-    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links: links2 };
-  }
-  /** A stored outcome, decoded once per key: files with the same content share it. */
-  outcome(previous2, key) {
-    if (!Object.hasOwn(previous2.outcomes, key)) return void 0;
-    if (!this.decoded.has(key)) this.decoded.set(key, decodeOutcome(previous2.outcomes[key]));
-    return this.decoded.get(key);
-  }
-}
-const pendingFileReads = 16;
-const workspaceDistribution = "bin";
-function vaultMember(path2, workspaceRoot) {
-  const segments2 = path2.split("/");
-  return !segments2.some((part) => part.startsWith(".")) && !(workspaceRoot && segments2.length > 1 && segments2[0].toLowerCase() === workspaceDistribution);
-}
-const missing = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
-const counts = () => /* @__PURE__ */ Object.create(null);
-const vaultOrder = (paths2) => [...paths2].sort();
-async function eachConcurrently(items2, limit, work) {
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items2.length) }, async () => {
-    while (next < items2.length) await work(items2[next++]);
-  }));
-}
-function orderedReferences(cache) {
-  const body = [
-    ...(cache.links ?? []).map((reference) => ({ kind: "link", reference })),
-    ...(cache.embeds ?? []).map((reference) => ({ kind: "embed", reference }))
-  ].sort((a, b) => a.reference.position.start.offset - b.reference.position.start.offset);
-  return [
-    ...body,
-    ...(cache.frontmatterLinks ?? []).map((reference) => ({ kind: "frontmatter", reference })),
-    ...(cache.canvasLinks ?? []).map((reference) => ({ kind: "canvas", reference }))
-  ];
-}
-class VaultMetadata {
-  constructor(repository, parser2, options2 = {}) {
-    this.repository = repository;
-    this.parser = parser2;
-    const workspaceRoot = options2.workspaceRoot ?? false;
-    this.workspaceRoot = workspaceRoot;
-    this.revisionOf = options2.revisionOf;
-    this.member = (path2) => vaultMember(path2, workspaceRoot);
-    this.results = new ParseResults(options2.snapshots);
-  }
-  repository;
-  parser;
-  resolvedLinks = /* @__PURE__ */ Object.create(null);
-  unresolvedLinks = /* @__PURE__ */ Object.create(null);
-  paths = [];
-  caches = /* @__PURE__ */ new Map();
-  problems = /* @__PURE__ */ new Map();
-  outgoing = /* @__PURE__ */ new Map();
-  incoming = /* @__PURE__ */ new Map();
-  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
-  builtIndex;
-  aliasMap = /* @__PURE__ */ new Map();
-  /** `aliasesKey` of `aliasMap`. */
-  aliases = aliasesKey(/* @__PURE__ */ new Map());
-  loading;
-  pending = Promise.resolve();
-  member;
-  workspaceRoot;
-  results;
-  revisionOf;
-  load() {
-    this.loading ??= this.build();
-    return this.loading.then(() => this);
-  }
-  async vaultFiles() {
-    if (this.loading) return (await this.load()).files();
-    return (await this.repository.list()).filter(this.member);
-  }
-  async parseFile(file) {
-    if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
-    const revision2 = this.revisionOf?.(file.bytes);
-    if (revision2 !== void 0 && this.loading) {
-      await this.load();
-      if (this.results.revision(file.path) === revision2) return this.caches.get(file.path) ?? null;
-    }
-    const outcome = (revision2 === void 0 ? void 0 : await this.results.reusable(file.path, revision2)) ?? this.outcome(file.path, file.bytes);
-    return "metadata" in outcome ? outcome.metadata : null;
-  }
-  /**
-   * Stores the parse results of a loaded index when anything was read or changed since the stored snapshot; does
-   * nothing without a store, during a dry run, before the first load or after a failed load (the command reports
-   * that failure). A failed save throws and stores nothing.
-   */
-  async persist() {
-    if (!this.loading) return;
-    try {
-      await this.loading;
-    } catch {
-      return;
-    }
-    await this.pending;
-    await this.results.persist((path2) => {
-      const metadata2 = this.caches.get(path2), issue2 = this.problems.get(path2);
-      return metadata2 ? { metadata: metadata2 } : issue2 ? { issue: { code: issue2.code, message: issue2.message } } : void 0;
-    }, () => this.storedLinks());
-  }
-  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
-  storedLinks() {
-    const positions2 = new Map(this.paths.map((path2, position2) => [path2, position2]));
-    const sources = this.sources().map((source2) => {
-      const references = this.outgoing.get(source2) ?? [];
-      let next = 0;
-      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references[next]?.reference === item.reference ? encodeResolution(references[next++].resolution, (path2) => positions2.get(path2)) : null)];
-    });
-    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
-  }
-  parseContent(path2, bytes) {
-    return this.parser.indexes(path2) ? this.parser.parse(path2, bytes) : null;
-  }
-  async fork(repository) {
-    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...this.revisionOf ? { revisionOf: this.revisionOf } : {} });
-    if (!this.loading) return fork;
-    await this.load();
-    await this.pending;
-    fork.paths = [...this.paths];
-    for (const [path2, cache] of this.caches) fork.caches.set(path2, cache);
-    for (const [path2, issue2] of this.problems) fork.problems.set(path2, issue2);
-    for (const [path2, references] of this.outgoing) fork.outgoing.set(path2, references);
-    for (const [path2, sources] of this.incoming) fork.incoming.set(path2, new Set(sources));
-    Object.assign(fork.resolvedLinks, this.resolvedLinks);
-    Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
-    fork.builtIndex = this.builtIndex;
-    fork.aliasMap = this.aliasMap;
-    fork.aliases = this.aliases;
-    fork.loading = Promise.resolve();
-    return fork;
-  }
-  update(changes2) {
-    if (!this.loading) return Promise.resolve(null);
-    const result = this.pending.then(() => this.loading).then(() => this.apply(changes2));
-    this.pending = result.catch(() => void 0);
-    return result;
-  }
-  invalidate(paths2) {
-    return this.update(paths2.map((path2) => ({ path: path2, operation: "updated" })));
-  }
-  files() {
-    return this.paths;
-  }
-  getFileCache(path2) {
-    return this.caches.get(path2) ?? null;
-  }
-  issues() {
-    return vaultOrder(this.problems.keys()).map((path2) => this.problems.get(path2));
-  }
-  references(sourcePath) {
-    return this.outgoing.get(sourcePath) ?? [];
-  }
-  getFirstLinkpathDest(linkpath, sourcePath) {
-    const result = resolveLinkpath(this.index, linkpath, sourcePath);
-    return result.status === "resolved" ? result.path : null;
-  }
-  getClosestLinkpathDest(linkpath, sourcePath) {
-    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
-  }
-  fileToLinktext(path2, sourcePath, omitMdExtension = true) {
-    return fileToLinktext(this.index, path2, sourcePath, omitMdExtension);
-  }
-  backlinks(path2) {
-    return vaultOrder(this.incoming.get(path2) ?? []).filter((source2) => source2 !== path2).flatMap((source2) => this.references(source2).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path2).map((item) => ({ ...item, source: source2 })));
-  }
-  /**
-   * Lists the vault, then takes each indexed file's parse result from the stored snapshot when its stamp is
-   * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
-   */
-  async build() {
-    const listing = await this.results.listing(() => this.repository.list(), (path2) => this.member(path2) && this.parser.indexes(path2));
-    const stamps = /* @__PURE__ */ new Map();
-    for (const file of listing.files) if ("stamp" in file) stamps.set(file.path, file);
-    this.paths = listing.files.map((file) => file.path).filter(this.member);
-    await this.results.stored();
-    const changed = this.paths.filter((path2) => {
-      if (!this.parser.indexes(path2)) return false;
-      const unchanged = this.results.unchanged(path2, stamps.get(path2));
-      if (unchanged !== void 0) this.adopt(path2, unchanged);
-      return unchanged === void 0;
-    });
-    await eachConcurrently(changed, pendingFileReads, async (path2) => {
-      const stamp = stamps.get(path2);
-      const file = await this.repository.read(path2);
-      this.adopt(path2, await this.results.reusable(path2, file.revision) ?? this.outcome(path2, file.bytes));
-      this.results.read(path2, file.revision, stamp ?? null);
-    });
-    await this.results.built();
-    this.reindex();
-    const stored = await this.results.links(this.paths, this.aliases);
-    for (const source2 of this.sources()) this.resolve(source2, stored(source2));
-  }
-  outcome(path2, bytes) {
-    try {
-      return { metadata: this.parser.parse(path2, bytes) };
-    } catch (error2) {
-      return { issue: { code: error2 instanceof AppError ? error2.code : "INVALID_FILE", message: errorMessage(error2) } };
-    }
-  }
-  adopt(path2, outcome) {
-    if ("metadata" in outcome) {
-      this.caches.set(path2, outcome.metadata);
-      this.problems.delete(path2);
-    } else {
-      this.caches.delete(path2);
-      this.problems.set(path2, { path: path2, ...outcome.issue });
-    }
-  }
-  async apply(changes2) {
-    const touched = /* @__PURE__ */ new Set(), removed = /* @__PURE__ */ new Set();
-    for (const change2 of changes2) {
-      if (change2.operation === "renamed") {
-        removed.add(change2.oldPath);
-        touched.add(change2.path);
-      } else if (change2.operation === "deleted") removed.add(change2.path);
-      else touched.add(change2.path);
-    }
-    for (const path2 of touched) removed.delete(path2);
-    const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map((path2) => [path2, this.aliasKey(path2)]));
-    const contents = /* @__PURE__ */ new Map();
-    await eachConcurrently([...touched].filter(this.member), pendingFileReads, async (path2) => {
-      try {
-        contents.set(path2, await this.repository.read(path2));
-      } catch (error2) {
-        if (!missing(error2)) throw error2;
-        removed.add(path2);
-      }
-    });
-    const changed = [], deleted = [];
-    const prevCaches = /* @__PURE__ */ Object.create(null);
-    for (const path2 of removed) {
-      if (!before.has(path2)) continue;
-      prevCaches[path2] = this.caches.get(path2) ?? null;
-      this.caches.delete(path2);
-      this.problems.delete(path2);
-      this.forget(path2);
-      this.results.forget(path2);
-      deleted.push(path2);
-    }
-    for (const [path2, file] of contents) {
-      if (!this.parser.indexes(path2)) continue;
-      this.adopt(path2, this.outcome(path2, file.bytes));
-      this.results.read(path2, file.revision, null);
-      changed.push(path2);
-    }
-    const paths2 = vaultOrder(/* @__PURE__ */ new Set([...this.paths.filter((path2) => !removed.has(path2)), ...contents.keys()]));
-    const pathsChanged = paths2.length !== this.paths.length || paths2.some((path2, position2) => path2 !== this.paths[position2]);
-    const aliasesChanged = [...aliasesBefore].some(([path2, key]) => key !== this.aliasKey(path2));
-    this.paths = paths2;
-    for (const path2 of changed) if (!this.caches.has(path2)) this.forget(path2);
-    let resolved;
-    if (pathsChanged || aliasesChanged) {
-      this.results.outdated();
-      this.reindex();
-      const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
-      for (const source2 of this.sources()) this.resolve(source2);
-      resolved = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
-    } else {
-      resolved = vaultOrder(changed.filter((path2) => this.caches.has(path2)));
-      for (const source2 of resolved) this.resolve(source2);
-    }
-    this.reorder();
-    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
-  }
-  aliasKey(path2) {
-    return JSON.stringify(this.caches.get(path2)?.aliases ?? []);
-  }
-  resolutionKey(source2) {
-    const references = this.outgoing.get(source2);
-    return references && JSON.stringify(references.map((item) => item.resolution));
-  }
-  sources() {
-    return this.paths.filter((path2) => this.caches.has(path2));
-  }
-  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
-  reindex() {
-    this.aliasMap = new Map(this.sources().flatMap((path2) => {
-      const names2 = this.caches.get(path2).aliases;
-      return names2?.length ? [[path2, names2]] : [];
-    }));
-    this.aliases = aliasesKey(this.aliasMap);
-    this.builtIndex = void 0;
-  }
-  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
-  get index() {
-    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
-    return this.builtIndex;
-  }
-  /**
-   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
-   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
-   */
-  resolve(source2, stored) {
-    this.unlink(source2);
-    const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
-    const references = [];
-    for (const [place, item] of ordered2.entries()) {
-      const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
-      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
-      if (resolution.status !== "external") references.push({ ...item, resolution });
-    }
-    const resolved = counts(), unresolved = counts();
-    for (const { resolution } of references) {
-      if (resolution.status === "resolved") {
-        resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
-        const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
-        this.incoming.set(resolution.path, sources.add(source2));
-      } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
-    }
-    this.outgoing.set(source2, references);
-    this.resolvedLinks[source2] = resolved;
-    this.unresolvedLinks[source2] = unresolved;
-  }
-  unlink(source2) {
-    for (const item of this.outgoing.get(source2) ?? []) {
-      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source2);
-    }
-  }
-  /** Removes a source's outgoing references and link counts. */
-  forget(source2) {
-    this.unlink(source2);
-    this.outgoing.delete(source2);
-    delete this.resolvedLinks[source2];
-    delete this.unresolvedLinks[source2];
-  }
-  /** Keeps the link maps' key order equal to a fresh build after sources were added. */
-  reorder() {
-    for (const maps of [this.resolvedLinks, this.unresolvedLinks]) {
-      const entries2 = this.sources().map((source2) => [source2, maps[source2]]);
-      for (const [source2, value2] of entries2) {
-        delete maps[source2];
-        maps[source2] = value2;
-      }
-    }
-  }
-}
-const record = (cache) => JSON.parse(JSON.stringify(cache));
-function metadataChanges({ renames, changes: changes2 }) {
-  return [
-    ...renames.map(({ from, to }) => ({ path: to, oldPath: from, operation: "renamed" })),
-    ...changes2.map(({ path: path2, operation: operation2 }) => ({ path: path2, operation: operation2 }))
-  ];
-}
-class MetadataCacheEvents {
-  constructor(events2, index2) {
-    this.events = events2;
-    this.index = index2;
-  }
-  events;
-  index;
-  async committed({ renames, changes: changes2 }) {
-    const update = await this.index.update(metadataChanges({ renames, changes: changes2 }));
-    if (!update) return;
-    const cache = await this.index.load();
-    const written = new Set(changes2.map((change2) => change2.path)), indexed2 = new Set(cache.files());
-    const movedOnly = new Set(renames.filter((rename2) => !written.has(rename2.to)).map((rename2) => rename2.to));
-    const movedAway = new Set(renames.filter((rename2) => indexed2.has(rename2.to)).map((rename2) => rename2.from));
-    for (const path2 of update.changed) {
-      if (movedOnly.has(path2)) continue;
-      const metadata2 = cache.getFileCache(path2);
-      if (metadata2) await publishHostEvent(this.events, "metadataCache.changed", { path: path2, cache: record(metadata2) });
-    }
-    for (const path2 of update.deleted) {
-      if (movedAway.has(path2)) continue;
-      const previous2 = update.prevCaches[path2] ?? null;
-      await publishHostEvent(this.events, "metadataCache.deleted", { path: path2, prevCache: previous2 && record(previous2) });
-    }
-    for (const path2 of update.resolved) await publishHostEvent(this.events, "metadataCache.resolve", { path: path2 });
-    await publishHostEvent(this.events, "metadataCache.resolved", {});
-  }
-}
 function bail(error2) {
   if (error2) {
     throw error2;
@@ -51000,7 +49391,7 @@ function factorySpaceMinMax(effects, ok, nok, type2, min, max) {
     return size >= min ? ok(code2) : nok(code2);
   }
 }
-const content$2 = {
+const content$3 = {
   tokenize: initializeContent
 };
 function initializeContent(effects) {
@@ -52423,7 +50814,7 @@ function subcontent(events2, eventIndex) {
   }
   return gaps;
 }
-const content$1 = {
+const content$2 = {
   resolve: resolveContent,
   tokenize: tokenizeContent
 };
@@ -54199,7 +52590,7 @@ function initializeFlow(effects) {
     blankLine$1,
     atBlankEnding,
     // Try to parse initial flow (essentially, only code).
-    effects.attempt(this.parser.constructs.flowInitial, afterConstruct, factorySpace(effects, effects.attempt(this.parser.constructs.flow, afterConstruct, effects.attempt(content$1, afterConstruct)), "linePrefix"))
+    effects.attempt(this.parser.constructs.flowInitial, afterConstruct, factorySpace(effects, effects.attempt(this.parser.constructs.flow, afterConstruct, effects.attempt(content$2, afterConstruct)), "linePrefix"))
   );
   return initial;
   function atBlankEnding(code2) {
@@ -54229,7 +52620,7 @@ const resolver = {
   resolveAll: createResolver()
 };
 const string$1 = initializeFactory("string");
-const text$5 = initializeFactory("text");
+const text$8 = initializeFactory("text");
 function initializeFactory(field2) {
   return {
     resolveAll: createResolver(field2 === "text" ? resolveAllLineSuffixes : void 0),
@@ -54403,7 +52794,7 @@ const string = {
   [38]: characterReference,
   [92]: characterEscape
 };
-const text$4 = {
+const text$7 = {
   [-5]: lineEnding,
   [-4]: lineEnding,
   [-3]: lineEnding,
@@ -54436,7 +52827,7 @@ const defaultConstructs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.d
   flowInitial,
   insideSpan,
   string,
-  text: text$4
+  text: text$7
 }, Symbol.toStringTag, { value: "Module" }));
 function createTokenizer(parser2, initialize, from) {
   let point2 = {
@@ -54763,13 +53154,13 @@ function parse(options2) {
   );
   const parser2 = {
     constructs: constructs2,
-    content: create2(content$2),
+    content: create2(content$3),
     defined: [],
     document: create2(document$1),
     flow: create2(flow$1),
     lazy: {},
     string: create2(string$1),
-    text: create2(text$5)
+    text: create2(text$8)
   };
   return parser2;
   function create2(initial) {
@@ -55659,6 +54050,1625 @@ function remarkParse(options2) {
       extensions: self.data("micromarkExtensions") || [],
       mdastExtensions: self.data("fromMarkdownExtensions") || []
     });
+  }
+}
+const parser$1 = unified().use(remarkParse);
+const tutorialBlocks = (source2) => {
+  const blocks = [];
+  const visit2 = (node2) => {
+    if (node2.type === "code" && node2.lang === "forge-tutorial" && !node2.meta) blocks.push(node2.value);
+    if ("children" in node2) node2.children.forEach(visit2);
+  };
+  visit2(parser$1.parse(source2));
+  return blocks;
+};
+const content$1 = "---\nname: forge-browser\ndescription: Capture webpage evidence and create illustrated walkthroughs with Forge browser commands, then explain observations in guarded Markdown documents. Use when documenting a UI problem or situation, taking on-demand screenshots, or turning a reviewed flow into a screenshot tutorial from JSON, Markdown or Canvas.\nlicense: MIT\ncompatibility: Requires Node.js 22.12 or newer, the complete Forge bin distribution and Chromium. Run browser status to inspect browser availability; browser install downloads the managed browser.\nmetadata:\n  author: The Forge\n  version: \"0.1.0\"\n---\n\n1. Identify the question, situation or workflow the document should explain. Read workspace/project AGENTS.md and inspect `project current`; verify `context.root` before writing. Discover `schema browser --json` for exact installed contracts. Use the command's `--project <id>` option when an explicit target avoids changing shared selection. Capture tools are independent of the webview scaffold and work with HTTP(S) pages.\n2. Run `node bin/forge.js browser status`. Use `browser install --dry-run` then `browser install` when the managed Chromium download is needed, or an available browser through `--browser-executable`. Browser installation is separate from project npm dependencies. Inspect/capture tasks do not require an approval ritual: proceed within the user's request. Running a tutorial can operate the target website; confirm that its intended actions fall within the user's authorization before executing a reviewed plan. Do not infer permission to submit purchases, upload files or make unrelated account changes from a request to document a page.\n3. For one image, choose a useful viewport and an explicit PNG destination. Preview `node bin/forge.js browser screenshot <url> --out docs/assets/problem.png --project <id> --dry-run`, then capture with the same options. Add `--full-page` for the complete page and `--wait-for-selector <selector>` when a known visible element indicates readiness. Dry runs do not launch a browser or visit the URL. Each capture uses a fresh browser context; saved browser logins and cookies are not inherited. Do not embed credentials in URLs or author secrets into a tutorial plan. Local launch fragments can carry access information: keep them out of published documents and logs.\n4. Capture creates a new file by default. To replace an existing image, read it through Forge and pass its current revision as `--if-match` to both preview and capture. Reread and reconcile a conflict; never substitute a newer revision blindly. Inspect the returned requested/final URLs, capture time and image dimensions; record the viewport from the request. A successful write proves that an image was saved, not that the expected page finished loading or the UI works correctly.\n5. Open the actual saved image using the agent's image inspection capability. Check whether it shows the intended state rather than a login, error, consent or loading screen. State what is visibly observed and separate hypotheses about the cause. Unexpected access or navigation requires adjusting the plan or documenting the limitation; never invent what the page should have shown. Use Playwright regression tests for assertions about application behavior; screenshots are evidence for the document.\n6. For a multi-step tutorial, translate the user's prose, Markdown or Canvas into an explicit supported flow before execution. Preserve the original brief; a separate plan file is appropriate. JSON sources contain the plan directly. Markdown must have exactly one fenced `forge-tutorial` JSON block; Canvas must have exactly one such block in a text node. The CLI parses that block, not the meaning of arbitrary prose, arrows or node positions. Keep a title, starting URL, clear step titles, observable instructions, supported actions and explicit screenshots. Use semantic locators when supported and avoid fragile selectors that merely happen to match today's layout.\n7. Run `browser validate <source> --out docs/manual` to inspect the normalized plan and destination state. Review every navigation, input and click against the user's intended flow, especially actions that submit data or change site state. Keep credentials and sensitive sample content out of plans and screenshots. When an authorized flow needs a secret input, use a supported `fill` action with `valueFromEnv` naming the environment variable rather than a literal credential; inspect the resulting image because this does not hide page content. Preview `browser tutorial <source> --out docs/manual --dry-run`; it does not visit the site. Execute the same reviewed command when within scope. An existing output folder requires validation's `data.revision` as `--if-match`; the guard covers the generated folder. Browser-side effects are separate from guarded file writes and cannot be rolled back by a document conflict.\n8. Review the generated `index.md`, `screenshots/` and `flow.json` as one document package. Inspect the actual screenshots, check image links and verify that captions explain the observed flow. Keep the input plan as the editable source; rerunning a tutorial replaces its generated output only with the inspected folder revision. Add authored analysis to a separate document or preserve it deliberately before regeneration.\n9. To explain a problem or situation, create or edit an ordinary Markdown note through `write`/`edit` with `--dry-run` and revisions. Use a descriptive relative embed such as `![Save action remains disabled](assets/problem.png)`, a clean source link, the capture's actual UTC timestamp and viewport, the observed result, the expected result when known, and the next useful verification. The returned `markdown` uses the image's scope-relative path; adjust it relative to the note's directory rather than copying it blindly into nested documents. Remove launch fragments from source citations and do not publish private URL parameters or secrets visible in the page.\n10. Read back and validate the document, check its relative links/embeds and resolve new broken links. Return accessible links or attachments for both the document and screenshots: a file path in a tool log is not a delivered picture. Report which states were captured and any unresolved limitations. See `bin/data/docs/how-to/capture-browser-evidence.md` and `bin/data/docs/reference/browser.md`; use `forge-webviews` for prototype implementation and `forge-vault` for guarded document editing.\n";
+const browserSkill = { id: "forge-browser", content: content$1 };
+function reportedUrl(input) {
+  const url2 = new URL(input);
+  url2.hash = "";
+  url2.username = "";
+  url2.password = "";
+  return url2.href;
+}
+function browserUrl(input) {
+  let url2;
+  try {
+    url2 = new URL(input);
+  } catch {
+  }
+  ensure(
+    url2 && ["http:", "https:"].includes(url2.protocol) && !url2.username && !url2.password,
+    "INVALID_ARGUMENT",
+    "Use an absolute HTTP or HTTPS URL without embedded credentials."
+  );
+  return url2.href;
+}
+function screenshotOutput(path2) {
+  vaultPath(path2);
+  ensure(/\.png$/i.test(path2), "INVALID_ARGUMENT", "--out must name a project-relative PNG file.");
+  return path2;
+}
+function browserViewport(width = 1440, height = 900) {
+  ensure(
+    Number.isSafeInteger(width) && width >= 1 && width <= 7680 && Number.isSafeInteger(height) && height >= 1 && height <= 7680,
+    "INVALID_ARGUMENT",
+    "Viewport width and height must be integers from 1 to 7680 pixels."
+  );
+  return { width, height };
+}
+function browserTimeout(timeoutMs = 3e4) {
+  ensure(
+    Number.isSafeInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 12e4,
+    "INVALID_ARGUMENT",
+    "--timeout-ms must be an integer from 1 to 120000."
+  );
+  return timeoutMs;
+}
+function browserExecutable(executablePath) {
+  ensure(
+    executablePath === void 0 || typeof executablePath === "string" && executablePath.trim().length > 0 && !executablePath.includes("\0"),
+    "INVALID_ARGUMENT",
+    "--browser-executable must name a browser executable."
+  );
+  return executablePath;
+}
+function validateScreenshot(request) {
+  ensure(typeof request.fullPage === "boolean", "INVALID_ARGUMENT", "--full-page must be boolean.");
+  ensure(
+    request.waitForSelector === void 0 || typeof request.waitForSelector === "string" && request.waitForSelector.trim().length > 0 && request.waitForSelector.length <= 2048,
+    "INVALID_ARGUMENT",
+    "--wait-for-selector must be a nonempty selector of at most 2048 characters."
+  );
+  browserExecutable(request.executablePath);
+  return { ...request, url: browserUrl(request.url), viewport: browserViewport(request.viewport.width, request.viewport.height), timeoutMs: browserTimeout(request.timeoutMs) };
+}
+function expectedRevision(revision2) {
+  ensure(revision2 === void 0 || /^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be a SHA-256 revision from read or browser validate.");
+  return revision2;
+}
+function imageMarkdown(path2, title2 = "Screenshot") {
+  const destination2 = path2.split("/").map((segment2) => encodeURIComponent(segment2).replaceAll("(", "%28").replaceAll(")", "%29")).join("/");
+  const label2 = title2.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]").replaceAll("\n", " ");
+  return `![${label2}](<${destination2}>)`;
+}
+function imageDimensions(image) {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  ensureBrowser(
+    image.bytes instanceof Uint8Array && image.bytes.length >= 24 && signature.every((byte, index2) => image.bytes[index2] === byte),
+    "BROWSER_CAPTURE_FAILED",
+    "The browser did not return a PNG screenshot."
+  );
+  const header2 = new DataView(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength);
+  const width = header2.getUint32(16), height = header2.getUint32(20);
+  ensureBrowser(
+    width > 0 && height > 0 && image.width === width && image.height === height && Number.isFinite(Date.parse(image.capturedAt)),
+    "BROWSER_CAPTURE_FAILED",
+    "The browser returned invalid screenshot metadata."
+  );
+  return { width, height };
+}
+class BrowserScreenshot {
+  constructor(runtime) {
+    this.runtime = runtime;
+  }
+  runtime;
+  async run(context, input) {
+    const request = validateScreenshot(input);
+    const path2 = screenshotOutput(input.out), revision2 = expectedRevision(input.ifMatch);
+    await context.workspace.files.commit({ guards: [{ path: path2, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }] }, true);
+    const target = await context.workspace.files.stat(path2).catch((error2) => {
+      if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
+      throw error2;
+    });
+    ensure(target === null || target.kind === "file", "INVALID_PATH", "Screenshot output must name a regular file, not a directory.");
+    const plan = {
+      requestedUrl: reportedUrl(request.url),
+      out: path2,
+      viewport: request.viewport,
+      fullPage: request.fullPage,
+      ...request.waitForSelector === void 0 ? {} : { waitForSelector: request.waitForSelector },
+      timeoutMs: request.timeoutMs
+    };
+    if (context.workspace.dryRun) return { dryRun: true, captured: false, plan, changes: [] };
+    const image = await this.runtime.screenshot(request);
+    const dimensions = imageDimensions(image);
+    const finalUrl = reportedUrl(image.url);
+    const result = await context.workspace.write([{ path: path2, bytes: image.bytes, ...revision2 === void 0 ? {} : { expectedRevision: revision2 } }]);
+    const change2 = result.changes[0];
+    return {
+      ...result,
+      captured: true,
+      path: path2,
+      revision: change2.revision,
+      bytes: change2.bytes,
+      ...dimensions,
+      requestedUrl: plan.requestedUrl,
+      finalUrl,
+      capturedAt: new Date(image.capturedAt).toISOString(),
+      markdown: imageMarkdown(path2)
+    };
+  }
+}
+function valid(condition, message2) {
+  ensureBrowser(condition, "BROWSER_FLOW_INVALID", message2);
+}
+function record$1(value2, keys, location2) {
+  valid(isRecord$1(value2), `${location2} must be an object.`);
+  valid(Object.keys(value2).every((key) => keys.includes(key)), `${location2} contains an unknown field.`);
+  return value2;
+}
+function text$6(value2, location2, allowEmpty = false) {
+  valid(typeof value2 === "string" && value2.length <= 2e4 && (allowEmpty || value2.trim().length > 0), `${location2} must be ${allowEmpty ? "a" : "a nonempty"} string of at most 20000 characters.`);
+  return value2;
+}
+function url(value2) {
+  const input = text$6(value2, "URL");
+  let parsed2;
+  try {
+    parsed2 = new URL(input);
+  } catch {
+    throw browserError("BROWSER_FLOW_INVALID", "Tutorial URLs must be absolute HTTP or HTTPS URLs.");
+  }
+  valid(
+    ["http:", "https:"].includes(parsed2.protocol) && !parsed2.username && !parsed2.password && ![...new URLSearchParams(parsed2.hash.slice(1)).keys()].some((key) => key.toLowerCase() === "token"),
+    "Tutorial URLs must use HTTP or HTTPS without embedded credentials or launch-token fragments; keep secrets outside saved plans."
+  );
+  return parsed2.href;
+}
+function locator(value2) {
+  const item = record$1(value2, ["role", "name", "label", "testId", "css"], "Locator");
+  const kinds = ["role", "label", "testId", "css"].filter((key) => item[key] !== void 0);
+  valid(kinds.length === 1 && (item.name === void 0 || kinds[0] === "role"), "A locator must specify exactly one of role, label, testId or css; only role accepts name.");
+  const kind2 = kinds[0];
+  const result = { [kind2]: text$6(item[kind2], `Locator ${kind2}`), ...item.name === void 0 ? {} : { name: text$6(item.name, "Locator name") } };
+  return result;
+}
+function action(value2) {
+  valid(isRecord$1(value2), "Every action must be an object.");
+  const type2 = value2.type;
+  const fields2 = { goto: ["url"], click: ["locator"], fill: ["locator", "value", "valueFromEnv"], select: ["locator", "value"], check: ["locator", "checked"], press: ["locator", "key"], wait: ["locator", "state"] };
+  valid(typeof type2 === "string" && Object.hasOwn(fields2, type2), "Unknown tutorial action; use goto, click, fill, select, check, press or wait.");
+  record$1(value2, ["type", ...fields2[type2]], `Action ${type2}`);
+  if (type2 === "goto") return { type: type2, url: url(value2.url) };
+  const target = locator(value2.locator);
+  switch (type2) {
+    case "click":
+      return { type: type2, locator: target };
+    case "fill": {
+      valid(value2.value === void 0 !== (value2.valueFromEnv === void 0), "fill requires exactly one of value or valueFromEnv.");
+      if (value2.valueFromEnv !== void 0) {
+        const variable = text$6(value2.valueFromEnv, "Environment variable");
+        valid(/^[A-Za-z_][A-Za-z0-9_]*$/.test(variable), "valueFromEnv must name an environment variable.");
+        return { type: type2, locator: target, valueFromEnv: variable };
+      }
+      return { type: type2, locator: target, value: text$6(value2.value, "Fill value", true) };
+    }
+    case "select":
+      return { type: type2, locator: target, value: text$6(value2.value, "Select value", true) };
+    case "check":
+      valid(typeof value2.checked === "boolean", "check requires checked: true or false.");
+      return { type: type2, locator: target, checked: value2.checked };
+    case "press":
+      return { type: type2, locator: target, key: text$6(value2.key, "Key") };
+    default: {
+      const state2 = value2.state ?? "visible";
+      valid(["visible", "hidden", "attached", "detached"].includes(state2), "wait state must be visible, hidden, attached or detached.");
+      return { type: "wait", locator: target, state: state2 };
+    }
+  }
+}
+function tutorialPlan(value2) {
+  const plan = record$1(value2, ["version", "title", "description", "startUrl", "viewport", "steps"], "Plan");
+  valid(plan.version === 1, "Tutorial plan version must be 1.");
+  const viewport2 = plan.viewport === void 0 ? { width: 1440, height: 900 } : record$1(plan.viewport, ["width", "height"], "Viewport");
+  valid(Number.isSafeInteger(viewport2.width) && Number(viewport2.width) >= 1 && Number(viewport2.width) <= 4096 && Number.isSafeInteger(viewport2.height) && Number(viewport2.height) >= 1 && Number(viewport2.height) <= 4096, "Viewport dimensions must be integers from 1 to 4096.");
+  valid(Array.isArray(plan.steps) && plan.steps.length > 0 && plan.steps.length <= 100, "A tutorial needs 1 to 100 steps.");
+  const ids = /* @__PURE__ */ new Set();
+  let count2 = 0;
+  const steps = plan.steps.map((value22, index2) => {
+    const step = record$1(value22, ["id", "title", "text", "actions", "screenshot", "fullPage"], `Step ${index2 + 1}`);
+    const id2 = text$6(step.id, "Step id");
+    valid(/^[a-z][a-z0-9-]{0,63}$/.test(id2) && !ids.has(id2), "Step ids must be unique lowercase kebab-case names of at most 64 characters.");
+    ids.add(id2);
+    valid(Array.isArray(step.actions) && (count2 += step.actions.length) <= 500, "Steps require an actions array, with at most 500 actions per tutorial.");
+    valid(step.screenshot === void 0 || typeof step.screenshot === "boolean", "screenshot must be boolean.");
+    valid(step.fullPage === void 0 || typeof step.fullPage === "boolean", "fullPage must be boolean.");
+    return {
+      id: id2,
+      title: text$6(step.title, "Step title"),
+      ...step.text === void 0 ? {} : { text: text$6(step.text, "Step text", true) },
+      actions: step.actions.map(action),
+      screenshot: step.screenshot !== false,
+      fullPage: step.fullPage !== false
+    };
+  });
+  return {
+    version: 1,
+    title: text$6(plan.title, "Title"),
+    ...plan.description === void 0 ? {} : { description: text$6(plan.description, "Description", true) },
+    startUrl: url(plan.startUrl),
+    viewport: { width: Number(viewport2.width), height: Number(viewport2.height) },
+    steps
+  };
+}
+function json$1(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must contain valid JSON.");
+  }
+}
+function extractTutorial(source2, path2, blocks) {
+  valid(source2.length <= 2e6, "Tutorial source exceeds the 2 MB limit.");
+  if (/\.json$/i.test(path2)) return tutorialPlan(json$1(source2));
+  let candidates2;
+  if (/\.canvas$/i.test(path2)) {
+    const canvas = json$1(source2);
+    valid(isRecord$1(canvas) && Array.isArray(canvas.nodes), "Canvas must contain a nodes array.");
+    candidates2 = canvas.nodes.flatMap((node2) => isRecord$1(node2) && node2.type === "text" && typeof node2.text === "string" ? blocks(node2.text) : []);
+  } else {
+    valid(/\.md$/i.test(path2), "Use a JSON plan, Markdown document or Canvas document.");
+    candidates2 = blocks(source2);
+  }
+  valid(candidates2.length === 1, "Markdown or Canvas must contain exactly one fenced forge-tutorial JSON block. Ask the agent to translate the intended flow into a reviewed plan first.");
+  return tutorialPlan(json$1(candidates2[0]));
+}
+async function optionalStat(context, path2) {
+  try {
+    return await context.workspace.files.stat(path2);
+  } catch (error2) {
+    if (error2 instanceof AppError && error2.code === "NOT_FOUND") return null;
+    throw error2;
+  }
+}
+function plannedFiles(plan) {
+  return ["index.md", "flow.json", ...plan.steps.filter((step) => step.screenshot).map((step) => `screenshots/${step.id}.png`)];
+}
+function publicUrl(value2) {
+  const url2 = new URL(value2);
+  url2.hash = "";
+  url2.search = "";
+  url2.username = "";
+  url2.password = "";
+  return url2.href;
+}
+function heading(value2) {
+  return value2.replaceAll("\r", " ").replaceAll("\n", " ").replaceAll("#", "\\#");
+}
+function manual(plan, result) {
+  const lines2 = [
+    `# ${heading(plan.title)}`,
+    "",
+    ...plan.description ? [plan.description, ""] : [],
+    `[Replay plan](<flow.json>) · Viewport: ${plan.viewport.width} × ${plan.viewport.height}`,
+    ""
+  ];
+  for (const [index2, step] of plan.steps.entries()) {
+    lines2.push(`## ${index2 + 1}. ${heading(step.title)}`, "");
+    if (step.text) lines2.push(step.text, "");
+    const image = result.screenshots.find((image2) => image2.stepId === step.id);
+    if (image) lines2.push(
+      imageMarkdown(`screenshots/${step.id}.png`, step.title),
+      "",
+      `Page: <${publicUrl(image.url)}> · Captured: ${image.capturedAt} · ${image.width} × ${image.height}`,
+      ""
+    );
+  }
+  return lines2.join("\n");
+}
+class BrowserTutorial {
+  constructor(runtime, blocks) {
+    this.runtime = runtime;
+    this.blocks = blocks;
+  }
+  runtime;
+  blocks;
+  async inspect(context, source2, out2) {
+    vaultPath(source2);
+    const snapshot = await context.workspace.files.read(source2);
+    let text2;
+    try {
+      text2 = new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes);
+    } catch {
+      throw browserError("BROWSER_FLOW_INVALID", "Tutorial source must be valid UTF-8.");
+    }
+    const plan = extractTutorial(text2, source2, this.blocks);
+    let current = null;
+    if (out2 !== void 0) {
+      vaultPath(out2);
+      ensure(source2 === `${out2}/flow.json` || source2 !== out2 && !source2.startsWith(`${out2}/`), "INVALID_ARGUMENT", "Keep source documents outside the output directory, or replay its generated flow.json.");
+      current = await optionalStat(context, out2);
+      for (const path2 of plannedFiles(plan)) {
+        const destination2 = await optionalStat(context, `${out2}/${path2}`);
+        ensure(destination2 === null || destination2.kind === "file", "INVALID_ARGUMENT", `Tutorial output must be a regular file: ${out2}/${path2}`);
+      }
+      ensure(current === null || current.kind === "folder", "INVALID_ARGUMENT", "--out must name a directory.");
+      if (current?.kind === "folder") {
+        ensureBrowser(current.files.includes("index.md") && current.files.includes("flow.json") && current.files.every((path2) => ["index.md", "flow.json"].includes(path2) || /^screenshots\/[a-z][a-z0-9-]{0,63}\.png$/.test(path2)) && current.folders.every((path2) => path2 === "screenshots"), "BROWSER_FLOW_INVALID", "Output contains unrelated files or is not a generated tutorial. Choose a dedicated output directory.");
+      }
+    }
+    return { snapshot, plan, current, report: {
+      source: source2,
+      sourceRevision: snapshot.revision,
+      plan,
+      output: out2 ?? null,
+      revision: current?.revision ?? null,
+      files: plannedFiles(plan)
+    } };
+  }
+  async validate(context, source2, out2) {
+    return (await this.inspect(context, source2, out2)).report;
+  }
+  async run(context, input) {
+    const { source: source2, out: out2 } = input;
+    const timeoutMs = browserTimeout(input.timeoutMs), ifMatch2 = expectedRevision(input.ifMatch);
+    ensure(input.executablePath === void 0 || input.executablePath.trim().length > 0 && !input.executablePath.includes("\0"), "INVALID_ARGUMENT", "--browser-executable must name a browser executable.");
+    const { snapshot, plan, current, report: report2 } = await this.inspect(context, source2, out2);
+    ensure(
+      ifMatch2 === (current?.revision ?? void 0),
+      "CONFLICT",
+      current ? "Validate the existing tutorial and pass its folder revision with --if-match before replacing it." : "The output no longer exists; omit --if-match to create it.",
+      { path: out2, expectedRevision: ifMatch2 ?? null, currentRevision: current?.revision ?? null }
+    );
+    const guards = [{ path: source2, expectedRevision: snapshot.revision }, { path: out2, ...current ? { expectedRevision: current.revision } : {} }];
+    if (context.workspace.dryRun) {
+      await context.workspace.commit({ guards }, { operation: "apply" });
+      return { ...report2, dryRun: true, executed: false, changes: [], browserVersion: null };
+    }
+    const previous2 = /* @__PURE__ */ new Map();
+    if (current?.kind === "folder") for (const path2 of current.files) previous2.set(path2, await context.workspace.files.read(`${out2}/${path2}`));
+    const captured = await this.runtime.flow({ plan, viewport: plan.viewport, timeoutMs, ...input.executablePath ? { executablePath: input.executablePath } : {} });
+    const required2 = new Set(plan.steps.filter((step) => step.screenshot).map((step) => step.id));
+    ensureBrowser(
+      captured.screenshots.length === required2.size && captured.screenshots.every((image) => required2.delete(image.stepId) && image.bytes.length > 0),
+      "BROWSER_FLOW_FAILED",
+      "Browser did not return exactly one screenshot for every requested tutorial step. No output was published."
+    );
+    const encode2 = (value2) => new TextEncoder().encode(value2);
+    const contents = new Map([
+      ["index.md", encode2(manual(plan, captured))],
+      ["flow.json", encode2(`${JSON.stringify(plan, null, 2)}
+`)],
+      ...captured.screenshots.map((image) => [`screenshots/${image.stepId}.png`, image.bytes])
+    ]);
+    const writes = [...contents].map(([path2, bytes]) => ({
+      path: `${out2}/${path2}`,
+      bytes,
+      ...previous2.has(path2) ? { expectedRevision: previous2.get(path2).revision } : {}
+    }));
+    const removes = [...previous2].filter(([path2]) => !contents.has(path2)).map(([, file]) => ({ path: file.path, expectedRevision: file.revision }));
+    const result = await context.workspace.commit({ guards, writes, removes }, { operation: "apply" });
+    return {
+      ...report2,
+      revision: (await context.workspace.files.stat(out2)).revision,
+      dryRun: false,
+      executed: true,
+      changes: result.changes,
+      browserVersion: captured.browserVersion
+    };
+  }
+}
+const text$5 = { type: "string" };
+const integer = { type: "integer", minimum: 1 };
+const changes$1 = { type: "array", items: { type: "object" } };
+const viewport = { type: "object", additionalProperties: false, required: ["width", "height"], properties: { width: integer, height: integer } };
+const browserStatusSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["available", "executablePath", "source", "version"],
+  properties: { available: { type: "boolean" }, executablePath: { oneOf: [text$5, { type: "null" }] }, source: { enum: ["explicit", "environment", "managed"] }, version: text$5 }
+};
+const installSchema = { oneOf: [
+  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "plan"], properties: {
+    dryRun: { const: true },
+    executed: { const: false },
+    plan: { type: "object", additionalProperties: false, required: ["browser", "operation"], properties: { browser: { const: "chromium" }, operation: { const: "install" } } }
+  } },
+  { type: "object", additionalProperties: false, required: ["dryRun", "executed", "status"], properties: {
+    dryRun: { const: false },
+    executed: { const: true },
+    status: browserStatusSchema
+  } }
+] };
+const screenshotSchema = { oneOf: [
+  { type: "object", additionalProperties: false, required: ["dryRun", "captured", "plan", "changes"], properties: {
+    dryRun: { const: true },
+    captured: { const: false },
+    changes: { type: "array", maxItems: 0 },
+    plan: { type: "object", additionalProperties: false, required: ["requestedUrl", "out", "viewport", "fullPage", "timeoutMs"], properties: {
+      requestedUrl: { ...text$5, description: "Requested URL without its fragment." },
+      out: text$5,
+      viewport,
+      fullPage: { type: "boolean" },
+      waitForSelector: text$5,
+      timeoutMs: integer
+    } }
+  } },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["dryRun", "captured", "path", "revision", "bytes", "width", "height", "requestedUrl", "finalUrl", "capturedAt", "markdown", "changes"],
+    properties: {
+      dryRun: { const: false },
+      captured: { const: true },
+      path: text$5,
+      revision: text$5,
+      bytes: integer,
+      width: integer,
+      height: integer,
+      requestedUrl: text$5,
+      finalUrl: text$5,
+      capturedAt: { ...text$5, description: "Capture timestamp in UTC ISO 8601 form." },
+      markdown: text$5,
+      changes: changes$1
+    }
+  }
+] };
+const tutorialProperties = {
+  source: text$5,
+  sourceRevision: text$5,
+  plan: { type: "object", description: "Normalized version 1 tutorial flow with explicit steps and browser actions." },
+  output: { oneOf: [text$5, { type: "null" }] },
+  revision: { oneOf: [text$5, { type: "null" }] },
+  files: { type: "array", items: text$5 }
+};
+const tutorialValidationSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["source", "sourceRevision", "plan", "output", "revision", "files"],
+  properties: tutorialProperties
+};
+const tutorialSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["source", "sourceRevision", "plan", "output", "revision", "files", "dryRun", "executed", "changes", "browserVersion"],
+  properties: { ...tutorialProperties, dryRun: { type: "boolean" }, executed: { type: "boolean" }, changes: changes$1, browserVersion: { oneOf: [text$5, { type: "null" }] } }
+};
+const project = option$1.string("Use this project instead of the selected project.");
+const executable = option$1.string("Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.");
+const timeout = option$1.string("Browser operation timeout in milliseconds, from 1 to 120000.", { default: "30000" });
+const revision$1 = option$1.string("Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.");
+const projectMode = { scope: "project", projectOption: "project", discovery: false };
+function browserCommand(runtime, blocks) {
+  const screenshot = new BrowserScreenshot(runtime), tutorial = new BrowserTutorial(runtime, blocks);
+  return {
+    id: "browser",
+    description: "Capture webpage screenshots and repeatable illustrated tutorials through the portable CLI.",
+    usage: "browser [status | install | screenshot <url> --out <image.png> | validate <source> | tutorial <source> --out <directory>]",
+    scope: "workspace",
+    discovery: false,
+    mutating: false,
+    defaultAction: "status",
+    unknownAction: "INVALID_ARGUMENT",
+    args: [
+      { name: "action", description: "status (default), install, screenshot, validate or tutorial.", enum: ["status", "install", "screenshot", "validate", "tutorial"] },
+      { name: "source", description: "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source." }
+    ],
+    actions: {
+      status: {
+        description: "Inspect browser availability without launching a browser or accessing the network.",
+        discovery: true,
+        output: browserStatusSchema,
+        options: { "browser-executable": executable }
+      },
+      install: {
+        description: "Download the managed Chromium browser explicitly; a dry run does not start the installer.",
+        discovery: true,
+        mutating: true,
+        destructive: false,
+        idempotent: true,
+        output: installSchema
+      },
+      screenshot: {
+        description: "Save a webpage screenshot as a guarded PNG and return a Markdown image reference.",
+        ...projectMode,
+        mutating: true,
+        destructive: true,
+        idempotent: true,
+        output: screenshotSchema,
+        usage: "browser screenshot <url> --out <image.png> [--width <pixels>] [--height <pixels>] [--full-page] [--wait-for-selector <selector>] [--timeout-ms <milliseconds>] [--browser-executable <path>] [--if-match <revision>] [--project <id>]",
+        options: {
+          project,
+          out: option$1.string("Project-relative PNG output path.", { required: true }),
+          width: option$1.string("Viewport width in pixels, from 1 to 7680.", { default: "1440" }),
+          height: option$1.string("Viewport height in pixels, from 1 to 7680.", { default: "900" }),
+          "full-page": option$1.boolean("Capture the full page instead of only the viewport."),
+          "wait-for-selector": option$1.string("Wait for this selector to become visible before capturing the page."),
+          "timeout-ms": timeout,
+          "browser-executable": executable,
+          "if-match": revision$1
+        }
+      },
+      validate: {
+        description: "Validate a declared tutorial flow without opening a browser and inspect its output revision.",
+        ...projectMode,
+        options: { project, out: option$1.string("Optional project-relative tutorial directory whose current revision should be inspected.") },
+        output: tutorialValidationSchema
+      },
+      tutorial: {
+        description: "Replay a declared flow and atomically save its manual, screenshots and repeatable plan.",
+        ...projectMode,
+        mutating: true,
+        destructive: true,
+        idempotent: true,
+        options: {
+          project,
+          out: option$1.string("Project-relative tutorial directory for index.md, screenshots and flow.json.", { required: true }),
+          "timeout-ms": timeout,
+          "browser-executable": executable,
+          "if-match": revision$1
+        },
+        output: tutorialSchema
+      }
+    },
+    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "UNSAFE_PATH", "CONFLICT", "NOT_FOUND", "BROWSER_UNAVAILABLE", "BROWSER_CAPTURE_FAILED", "BROWSER_INSTALL_FAILED", "BROWSER_FLOW_INVALID", "BROWSER_FLOW_FAILED"],
+    async run(args, flags, context) {
+      const action2 = args[0] ?? "status";
+      ensure(["status", "install", "screenshot", "validate", "tutorial"].includes(action2), "INVALID_ARGUMENT", "Use browser status, install, screenshot, validate or tutorial.");
+      if (action2 === "status") {
+        arity(args, 0, 1);
+        return runtime.status(browserExecutable(value$2(flags, "browser-executable")));
+      }
+      if (action2 === "install") {
+        arity(args, 1);
+        if (context.workspace.dryRun) return { dryRun: true, executed: false, plan: { browser: "chromium", operation: "install" } };
+        return { dryRun: false, executed: true, status: await runtime.install() };
+      }
+      arity(args, 2);
+      if (action2 === "validate") return tutorial.validate(context, args[1], value$2(flags, "out"));
+      const out2 = value$2(flags, "out", true);
+      const timeoutMs = browserTimeout(integer$2(flags, "timeout-ms", 1));
+      const executablePath = browserExecutable(value$2(flags, "browser-executable")), ifMatch2 = expectedRevision(value$2(flags, "if-match"));
+      if (action2 === "tutorial") return tutorial.run(context, { source: args[1], out: out2, timeoutMs, executablePath, ifMatch: ifMatch2 });
+      return screenshot.run(context, {
+        url: args[1],
+        out: out2,
+        viewport: browserViewport(integer$2(flags, "width", 1), integer$2(flags, "height", 1)),
+        fullPage: flags["full-page"] === true,
+        waitForSelector: value$2(flags, "wait-for-selector"),
+        timeoutMs,
+        executablePath,
+        ifMatch: ifMatch2
+      });
+    }
+  };
+}
+const browserStrings = { de: {
+  manifest: { name: "Browser-Werkzeuge", description: "Geschützte Webseiten-Screenshots und wiederholbare bebilderte Anleitungen mit einem verwalteten Browser erstellen." },
+  commands: { browser: "Webseiten-Screenshots und wiederholbare bebilderte Anleitungen über das portable CLI erstellen." },
+  actions: {
+    "browser status": "Die Browser-Verfügbarkeit ohne Browserstart oder Netzwerkzugriff prüfen.",
+    "browser install": "Den verwalteten Chromium-Browser ausdrücklich herunterladen; ein Probelauf startet keine Installation.",
+    "browser screenshot": "Einen Webseiten-Screenshot als geschützte PNG-Datei speichern und eine Markdown-Bildreferenz zurückgeben.",
+    "browser validate": "Einen deklarierten Anleitungsablauf ohne Browser prüfen und die Ausgaberevision anzeigen.",
+    "browser tutorial": "Einen deklarierten Ablauf ausführen und Anleitung, Screenshots und wiederholbaren Plan atomar speichern."
+  },
+  descriptions: {
+    "status (default), install, screenshot, validate or tutorial.": "status (Standard), install, screenshot, validate oder tutorial.",
+    "Absolute HTTP(S) URL for screenshot, or a project-relative flow JSON, Markdown or Canvas source.": "Absolute HTTP(S)-URL für screenshot oder projektrelative JSON-, Markdown- oder Canvas-Ablaufquelle.",
+    "Use this project instead of the selected project.": "Dieses Projekt statt des ausgewählten Projekts verwenden.",
+    "Use this Chromium executable; otherwise use FORGE_BROWSER_EXECUTABLE or the installed managed browser.": "Diese Chromium-Datei verwenden; sonst FORGE_BROWSER_EXECUTABLE oder den installierten verwalteten Browser verwenden.",
+    "Browser operation timeout in milliseconds, from 1 to 120000.": "Zeitlimit für Browser-Vorgänge in Millisekunden von 1 bis 120000.",
+    "Current output revision from read (screenshot) or browser validate (tutorial); required before replacing existing output.": "Aktuelle Ausgaberevision aus read (Screenshot) oder browser validate (Anleitung); zum Ersetzen vorhandener Ausgaben erforderlich.",
+    "Project-relative PNG output path.": "Projektrelativer PNG-Ausgabepfad.",
+    "Viewport width in pixels, from 1 to 7680.": "Ansichtsbreite in Pixeln von 1 bis 7680.",
+    "Viewport height in pixels, from 1 to 7680.": "Ansichtshöhe in Pixeln von 1 bis 7680.",
+    "Capture the full page instead of only the viewport.": "Die vollständige Seite statt nur des sichtbaren Ausschnitts erfassen.",
+    "Wait for this selector to become visible before capturing the page.": "Vor der Aufnahme warten, bis dieser Selektor sichtbar ist.",
+    "Optional project-relative tutorial directory whose current revision should be inspected.": "Optionaler projektrelativer Anleitungsordner, dessen aktuelle Revision geprüft werden soll.",
+    "Project-relative tutorial directory for index.md, screenshots and flow.json.": "Projektrelativer Anleitungsordner für index.md, Screenshots und flow.json."
+  },
+  errors: {
+    BROWSER_UNAVAILABLE: { summary: "Browser-Laufzeit oder ausführbare Datei fehlen.", hint: "Prüfen Sie browser status und führen Sie browser install aus oder übergeben Sie einen installierten Chromium-Browser mit --browser-executable." },
+    BROWSER_CAPTURE_FAILED: { summary: "Die Webseite konnte nicht aufgenommen werden.", hint: "Prüfen Sie URL, Browser-Verfügbarkeit und Bereitschaftsselektor; es wurde kein Screenshot geschrieben." },
+    BROWSER_INSTALL_FAILED: { summary: "Die Installation des verwalteten Browsers ist fehlgeschlagen.", hint: "Prüfen Sie Netzwerkzugriff und Schreibrechte; wiederholen Sie browser install oder verwenden Sie --browser-executable." },
+    BROWSER_FLOW_INVALID: { summary: "Der deklarierte Anleitungsablauf ist ungültig.", hint: "Prüfen Sie browser validate und korrigieren Sie die genannte Quelle, Aktion, Auswahl oder den Ausgabepfad." },
+    BROWSER_FLOW_FAILED: { summary: "Der Anleitungsablauf konnte nicht abgeschlossen werden.", hint: "Prüfen Sie den fehlgeschlagenen Schritt und korrigieren Sie den Ablauf; vorhandene Anleitungen wurden erhalten." }
+  }
+} };
+function browserPlugin(distributionPath) {
+  return {
+    manifest: {
+      id: "browser",
+      name: "Browser",
+      version: "0.1.0",
+      minAppVersion: "0.1.0",
+      core: true,
+      author: "The Forge",
+      description: "Capture guarded webpage screenshots and repeatable illustrated tutorials with a managed browser."
+    },
+    strings: browserStrings,
+    create: () => ({
+      commands: [browserCommand(createBrowserRuntime(distributionPath), tutorialBlocks)],
+      skills: [browserSkill],
+      errors: [
+        { code: "BROWSER_UNAVAILABLE", category: "runtime", summary: "The browser runtime or executable is unavailable.", hint: "Run browser status, then browser install, or pass --browser-executable for an installed Chromium browser." },
+        { code: "BROWSER_CAPTURE_FAILED", category: "runtime", summary: "The webpage could not be captured.", hint: "Check the URL, browser availability and readiness selector; no screenshot was written." },
+        { code: "BROWSER_INSTALL_FAILED", category: "external", summary: "The managed browser installation failed.", hint: "Check network access and disk permissions, then retry browser install or use --browser-executable." },
+        { code: "BROWSER_FLOW_INVALID", category: "input", summary: "The declared tutorial flow is invalid.", hint: "Run browser validate and correct the source, action, locator or output path named in the diagnostic." },
+        { code: "BROWSER_FLOW_FAILED", category: "runtime", summary: "The tutorial flow could not complete.", hint: "Inspect the failing step, repair the declared flow and retry; existing tutorial output was preserved." }
+      ]
+    })
+  };
+}
+function updateError(code2, message2) {
+  return codedError(code2, message2, code2 === "UPDATE_DOWNLOAD_FAILED" ? 1 : 2);
+}
+function requireUpdate(condition, message2) {
+  if (!condition) throw updateError("UPDATE_INVALID", message2);
+}
+function releaseJson(bytes) {
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw updateError("UPDATE_INVALID", "A release package or distribution manifest is not valid UTF-8 JSON.");
+  }
+}
+function releaseVersion(value2) {
+  requireUpdate(/^\d+\.\d+\.\d+$/.test(value2), "Use a stable release version such as 0.1.0.");
+  return value2;
+}
+function compareVersions(left, right) {
+  const a = releaseVersion(left).split(".").map(Number), b = releaseVersion(right).split(".").map(Number);
+  for (let index2 = 0; index2 < 3; index2++) if (a[index2] !== b[index2]) return a[index2] > b[index2] ? 1 : -1;
+  return 0;
+}
+function distributionFiles(value2, policy) {
+  requireUpdate(value2 !== null && typeof value2 === "object" && "schemaVersion" in value2 && value2.schemaVersion === policy.schemaVersion && "files" in value2 && Array.isArray(value2.files), "The distribution manifest is invalid.");
+  const files = value2.files;
+  const owned = new RegExp(policy.ownedAssetPattern);
+  requireUpdate(files.every((path2) => typeof path2 === "string" && owned.test(path2)), "The distribution manifest includes mutable or unowned files.");
+  const paths2 = files;
+  for (const path2 of paths2) vaultPath(path2);
+  requireUpdate(new Set(paths2).size === paths2.length && policy.requiredAssets.every((path2) => paths2.includes(path2)), "The distribution manifest omits required assets or contains duplicates.");
+  return [...paths2].sort();
+}
+class AppUpdate {
+  constructor(source2, policy) {
+    this.source = source2;
+    this.policy = policy;
+  }
+  source;
+  policy;
+  async installed(context) {
+    let pkg;
+    try {
+      pkg = await context.environment.files.read("bin/package.json");
+    } catch {
+      throw updateError("UPDATE_SCOPE_INVALID", "The target workspace has no installed Forge app. Install a release first.");
+    }
+    const data = releaseJson(pkg.bytes);
+    requireUpdate(data !== null && typeof data === "object" && "name" in data && data.name === "forge-bundle" && "version" in data && typeof data.version === "string", "bin/package.json does not identify a Forge distribution.");
+    const version2 = releaseVersion(data.version);
+    const manifest = await context.environment.files.read("bin/data/distribution.json");
+    const owned = distributionFiles(releaseJson(manifest.bytes), this.policy);
+    const stat = await context.environment.files.stat("bin");
+    ensure(stat.kind === "folder", "INVALID_PATH", "bin must be a regular folder.");
+    return { version: version2, revision: stat.revision, owned };
+  }
+  async check(context, target) {
+    const installed = await this.installed(context);
+    const version2 = releaseVersion(target ?? await this.source.latest());
+    return {
+      installedVersion: installed.version,
+      releaseVersion: version2,
+      available: compareVersions(version2, installed.version) > 0,
+      revision: installed.revision,
+      releaseUrl: `https://github.com/Luis85/agent-cli/releases/tag/v${version2}`
+    };
+  }
+  async apply(context, version2, ifMatch2) {
+    const installed = await this.installed(context);
+    ensure(ifMatch2 === installed.revision, "CONFLICT", "The app or workspace settings changed; run update check again.", { currentRevision: installed.revision });
+    requireUpdate(compareVersions(version2, installed.version) >= 0, "Downgrading the installed app is not supported.");
+    const release2 = await this.source.download(releaseVersion(version2));
+    requireUpdate(release2.version === version2, "Downloaded release version differs from the requested version.");
+    const desired = new Map(release2.files.map((file) => [file.path, file]));
+    const manifest = desired.get("data/distribution.json");
+    requireUpdate(manifest, "Downloaded release has no distribution manifest.");
+    const paths2 = distributionFiles(releaseJson(manifest.bytes), this.policy);
+    requireUpdate(paths2.length === desired.size && paths2.every((path2) => desired.has(path2)), "Downloaded release assets disagree with its manifest.");
+    const writes = [], removes = [];
+    const previous2 = /* @__PURE__ */ new Map();
+    for (const path2 of [.../* @__PURE__ */ new Set([...paths2, ...installed.owned])].sort()) {
+      const destination2 = `bin/${path2}`;
+      let current;
+      try {
+        current = await context.environment.files.read(destination2);
+      } catch (error2) {
+        if (!(error2 instanceof AppError && error2.code === "NOT_FOUND")) throw error2;
+      }
+      if (current) previous2.set(destination2, current);
+      const next = desired.get(path2);
+      if (!next && current) removes.push({ path: destination2, expectedRevision: current.revision });
+      else if (next && next.revision !== current?.revision) writes.push({ path: destination2, bytes: next.bytes, ...current ? { expectedRevision: current.revision } : {} });
+    }
+    const result = await context.environment.commit({ guards: [{ path: "bin", expectedRevision: installed.revision }], writes, removes }, { operation: "apply", previous: previous2 });
+    return {
+      installedVersion: installed.version,
+      releaseVersion: version2,
+      checksum: release2.checksum,
+      changed: writes.length + removes.length > 0,
+      dryRun: result.dryRun,
+      changes: result.changes,
+      revision: result.dryRun ? installed.revision : (await context.environment.files.stat("bin")).revision,
+      restartRequired: !result.dryRun && writes.length + removes.length > 0
+    };
+  }
+}
+const execute = node_util.promisify(childProcess.execFile);
+const runTool = async (file, args, options2) => {
+  const { stdout } = await execute(file, args, { ...options2, encoding: "utf8" });
+  return { stdout };
+};
+const base = "https://github.com/Luis85/agent-cli/releases";
+const curl = ["--fail", "--location", "--silent", "--show-error", "--proto", "=https", "--max-time", "180", "--max-filesize", "67108864"];
+function githubReleases(policy, run2 = runTool) {
+  return {
+    async latest() {
+      try {
+        const { stdout } = await run2("curl", [...curl, `${base}/latest`, "--output", node_os.devNull, "--write-out", "%{url_effective}"], { timeout: 19e4 });
+        const version2 = /^https:\/\/github\.com\/Luis85\/agent-cli\/releases\/tag\/v(\d+\.\d+\.\d+)$/.exec(stdout)?.[1];
+        requireUpdate(version2, "GitHub did not return a stable Forge release.");
+        return releaseVersion(version2);
+      } catch (error2) {
+        if (error2 instanceof AppError) throw error2;
+        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not check GitHub Releases. Check network access and curl, then retry.");
+      }
+    },
+    async download(version2) {
+      releaseVersion(version2);
+      const staging = await promises$1.mkdtemp(path$3.join(node_os.tmpdir(), "forge-update-"));
+      try {
+        const name2 = `forge-${version2}.tar.gz`, archive = path$3.join(staging, name2);
+        for (const filename of [name2, `${name2}.sha256`]) await run2("curl", [...curl, `${base}/download/v${version2}/${filename}`, "--output", path$3.join(staging, filename)], { timeout: 19e4 });
+        const bytes = await promises$1.readFile(archive), checksum = node_crypto.createHash("sha256").update(bytes).digest("hex");
+        requireUpdate((await promises$1.readFile(`${archive}.sha256`, "utf8")).trim() === `${checksum}  ${name2}`, "Release checksum verification failed; no app files were changed.");
+        const { stdout: listing } = await run2("tar", ["-tzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
+        requireUpdate(listing.trim().split(/\r?\n/).every((path2) => path2.startsWith("bin/") && !path2.includes("\\") && !path2.includes(":") && !path2.split("/").some((part) => part === "." || part === "..")), "Release archive contains an unsafe path.");
+        const { stdout: detailed } = await run2("tar", ["-tvzf", name2], { cwd: staging, maxBuffer: 8 * 1024 * 1024 });
+        requireUpdate(detailed.trim().split(/\r?\n/).every((line) => ["-", "d"].includes(line[0])), "Release archive contains a link or special file.");
+        await run2("tar", ["-xzf", name2, "--no-same-owner", "--no-same-permissions"], { cwd: staging });
+        const root = path$3.join(staging, "bin");
+        const pkg = JSON.parse(await promises$1.readFile(path$3.join(root, "package.json"), "utf8"));
+        requireUpdate(pkg !== null && typeof pkg === "object" && "name" in pkg && pkg.name === "forge-bundle" && "version" in pkg && pkg.version === version2, "Release package version differs from the requested version.");
+        const { stdout } = await run2(process.execPath, [path$3.join(root, "forge.js"), "--version"], { timeout: 3e4 });
+        requireUpdate(JSON.parse(stdout).data?.version === version2, "The downloaded app cannot execute on this Node version.");
+        const paths2 = distributionFiles(JSON.parse(await promises$1.readFile(path$3.join(root, "data/distribution.json"), "utf8")), policy);
+        const files = [];
+        for (const path2 of paths2) {
+          const entry2 = await promises$1.lstat(path$3.join(root, path2));
+          requireUpdate(entry2.isFile() && !entry2.isSymbolicLink(), "A release asset is not a regular file.");
+          const bytes2 = await promises$1.readFile(path$3.join(root, path2));
+          files.push({ path: path2, bytes: bytes2, revision: node_crypto.createHash("sha256").update(bytes2).digest("hex") });
+        }
+        return { version: version2, checksum, files };
+      } catch (error2) {
+        if (error2 instanceof AppError) throw error2;
+        throw updateError("UPDATE_DOWNLOAD_FAILED", "Could not download or unpack the release. Check network access, curl, tar and available disk space; existing app files were preserved.");
+      } finally {
+        await promises$1.rm(staging, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      }
+    }
+  };
+}
+const updateCheckSchema = {
+  type: "object",
+  required: ["installedVersion", "releaseVersion", "available", "revision", "releaseUrl"],
+  additionalProperties: false,
+  properties: { installedVersion: { type: "string" }, releaseVersion: { type: "string" }, available: { type: "boolean" }, revision: { type: "string" }, releaseUrl: { type: "string" } }
+};
+const updateApplySchema = {
+  type: "object",
+  required: ["installedVersion", "releaseVersion", "checksum", "changed", "dryRun", "changes", "revision", "restartRequired"],
+  additionalProperties: false,
+  properties: {
+    installedVersion: { type: "string" },
+    releaseVersion: { type: "string" },
+    checksum: { type: "string" },
+    changed: { type: "boolean" },
+    dryRun: { type: "boolean" },
+    changes: { type: "array", items: { type: "object" } },
+    revision: { type: "string" },
+    restartRequired: { type: "boolean" }
+  }
+};
+function updateCommand(updater) {
+  return {
+    id: "update",
+    description: "Check GitHub Releases and upgrade this workspace app while preserving local settings.",
+    usage: "update [check [--release-version <version>] | apply --release-version <version> --if-match <revision>]",
+    scope: "workspace",
+    discovery: true,
+    mutating: false,
+    defaultAction: "check",
+    unknownAction: "INVALID_ARGUMENT",
+    args: [{ name: "action", description: "check (default) or apply.", enum: ["check", "apply"] }],
+    actions: {
+      check: {
+        description: "Inspect the installed revision and latest stable GitHub release without changing the app.",
+        output: updateCheckSchema,
+        options: { "release-version": option$1.string("Check this pinned stable release instead of resolving latest.") }
+      },
+      apply: {
+        description: "Download, verify and apply a pinned release as one guarded batch; preserve mutable workspace data.",
+        mutating: true,
+        destructive: true,
+        idempotent: true,
+        output: updateApplySchema,
+        options: {
+          "release-version": option$1.string("Stable GitHub release version to install, such as 0.1.0.", { required: true }),
+          "if-match": option$1.string("Installed bin folder revision returned by update check; required before upgrading.", { required: true })
+        }
+      }
+    },
+    errors: ["INVALID_ARGUMENT", "INVALID_PATH", "NOT_FOUND", "CONFLICT", "UNSAFE_PATH", "DESTINATION_EXISTS", "UPDATE_INVALID", "UPDATE_DOWNLOAD_FAILED", "UPDATE_SCOPE_INVALID"],
+    async run(args, flags, context) {
+      arity(args, 0, 1);
+      const action2 = args[0] ?? "check";
+      ensure(action2 === "check" || action2 === "apply", "INVALID_ARGUMENT", "Use update check or update apply.");
+      if (action2 === "check") return updater.check(context, value$2(flags, "release-version"));
+      const version2 = releaseVersion(value$2(flags, "release-version", true));
+      const revision2 = value$2(flags, "if-match", true);
+      ensure(/^[a-f0-9]{64}$/.test(revision2), "INVALID_ARGUMENT", "--if-match must be the SHA-256 folder revision from update check.");
+      return updater.apply(context, version2, revision2);
+    }
+  };
+}
+const updatesStrings = { de: {
+  manifest: { name: "App-Aktualisierungen", description: "Das portable Programm aus GitHub Releases mit Revisionsschutz aktualisieren und Arbeitsbereichsdaten erhalten." },
+  commands: { update: "GitHub Releases prüfen und das Programm dieses Arbeitsbereichs aktualisieren; lokale Einstellungen bleiben erhalten." },
+  actions: {
+    "update check": "Installierte Revision und neueste stabile GitHub-Version ohne Änderungen am Programm prüfen.",
+    "update apply": "Eine feste Version herunterladen, prüfen und als geschützten Stapel anwenden; veränderbare Arbeitsbereichsdaten erhalten."
+  },
+  descriptions: {
+    "check (default) or apply.": "check (Standard) oder apply.",
+    "Check this pinned stable release instead of resolving latest.": "Diese feste stabile Version statt der neuesten Version prüfen.",
+    "Stable GitHub release version to install, such as 0.1.0.": "Zu installierende stabile GitHub-Version, etwa 0.1.0.",
+    "Installed bin folder revision returned by update check; required before upgrading.": "Installierte bin-Ordnerrevision aus update check; vor der Aktualisierung erforderlich."
+  },
+  errors: {
+    UPDATE_DOWNLOAD_FAILED: { summary: "Die GitHub-Version konnte nicht abgerufen werden.", hint: "Netzwerkzugriff, curl, tar und Speicherplatz prüfen; anschließend erneut versuchen." },
+    UPDATE_INVALID: { summary: "Die Version oder das Archiv ist ungültig.", hint: "Stabile Version, Prüfsumme und Verteilungsmanifest prüfen; das bestehende Programm bleibt erhalten." },
+    UPDATE_SCOPE_INVALID: { summary: "Der Zielarbeitsbereich hat keine installierte Forge-Verteilung.", hint: "Zuerst eine Version installieren oder --root auf den richtigen Arbeitsbereich setzen." }
+  }
+} };
+function updatesPlugin(policy) {
+  return {
+    manifest: {
+      id: "updates",
+      name: "App updates",
+      version: "0.1.0",
+      minAppVersion: "0.1.0",
+      core: true,
+      author: "The Forge",
+      description: "Upgrade the portable app from GitHub Releases with revision guards while preserving workspace data."
+    },
+    strings: updatesStrings,
+    create: () => ({
+      commands: [updateCommand(new AppUpdate(githubReleases(policy), policy))],
+      errors: [
+        { code: "UPDATE_DOWNLOAD_FAILED", category: "external", summary: "The GitHub release could not be fetched.", hint: "Check network access, curl, tar and disk space, then retry." },
+        { code: "UPDATE_INVALID", category: "input", summary: "The release version or archive is invalid.", hint: "Inspect the stable release version, checksum and distribution manifest; the existing app was preserved." },
+        { code: "UPDATE_SCOPE_INVALID", category: "input", summary: "The target workspace has no installed Forge distribution.", hint: "Install a release first or use --root to select the correct workspace." }
+      ]
+    })
+  };
+}
+const schemaVersion = 1;
+const requiredAssets = ["forge.js", "forge-runtime.js", "forge-server.cjs", "package.json", "config/default.json", "data/distribution.json", "webviews/admin/index.html", "webviews/admin/manifest.json", "webviews/admin/THIRD-PARTY-NOTICES.md", "browser-runtime/playwright-core/index.js", "browser-runtime/playwright-core/package.json", "browser-runtime/playwright-core/browsers.json", "browser-runtime/playwright-core/lib/coreBundle.js"];
+const ownedAssetPattern = "^(?:forge(?:-runtime)?\\.js|forge-server\\.cjs|package\\.json|config/default\\.json|skills/.+|webviews/admin/.+|browser-runtime/playwright-core/.+|data/(?:LICENSE|README\\.md|THIRD-PARTY-NOTICES\\.md|distribution\\.json|(?:docs|types|licenses)/.+))$";
+const distributionPolicy = {
+  schemaVersion,
+  requiredAssets,
+  ownedAssetPattern
+};
+function nodeLockFiles(root, warn) {
+  return async (path2, command2) => {
+    const target = await (await NodeFiles.at(root)).resolvePath(path2);
+    await promises$1.mkdir(path$3.dirname(target), { recursive: true });
+    const token = await acquireLock(target, () => ({ command: command2 }), path2, (lock) => warn(recoveredLockMessage(lock)));
+    return async () => await releaseLock(target, token) === "released";
+  };
+}
+const retryable = /* @__PURE__ */ new Set([429, 503]);
+function retryAfter(value2, now = Date.now()) {
+  if (value2 === null || value2.trim() === "") return null;
+  const seconds = Number(value2.trim());
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
+  const date2 = Date.parse(value2);
+  return Number.isNaN(date2) ? null : Math.max(0, date2 - now);
+}
+class FetchHttpClient {
+  fetch;
+  sleep;
+  retries;
+  timeoutMs;
+  maxDelayMs;
+  constructor(options2 = {}) {
+    this.fetch = options2.fetch ?? ((url2, init) => globalThis.fetch(url2, init));
+    this.sleep = options2.sleep ?? ((milliseconds) => new Promise((resolve2) => {
+      setTimeout(resolve2, milliseconds);
+    }));
+    this.retries = options2.retries ?? 3;
+    this.timeoutMs = options2.timeoutMs ?? 3e4;
+    this.maxDelayMs = options2.maxDelayMs ?? 6e4;
+  }
+  async request(request) {
+    const retries = request.retry ?? request.method === "GET" ? this.retries : 0;
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.attempt(request);
+      if (!retryable.has(response.status) || attempt >= retries) return response;
+      const asked = retryAfter(response.headers["retry-after"] ?? null);
+      await this.sleep(Math.min(asked ?? 1e3 * 2 ** attempt, this.maxDelayMs));
+    }
+  }
+  async attempt(request) {
+    const timeout2 = request.timeoutMs ?? this.timeoutMs;
+    let response;
+    try {
+      response = await this.fetch(request.url, {
+        method: request.method,
+        ...request.headers ? { headers: { ...request.headers } } : {},
+        ...request.body === void 0 ? {} : { body: request.body },
+        signal: AbortSignal.timeout(timeout2),
+        redirect: "manual"
+      });
+    } catch (error2) {
+      const reason = error2 instanceof Error && (error2.name === "TimeoutError" || error2.name === "AbortError") ? `timed out after ${timeout2} ms` : "could not connect";
+      throw new Error(`${request.method} ${request.url} ${reason}.`);
+    }
+    const headers = {};
+    response.headers.forEach((value2, name2) => {
+      headers[name2.toLowerCase()] = value2;
+    });
+    return { status: response.status, headers, body: await response.text() };
+  }
+}
+const relativePath$1 = string$3().min(1).transform((value2) => value2.replace(/\/+$/, "")).refine((value2) => {
+  try {
+    vaultPath(value2);
+    return true;
+  } catch {
+    return false;
+  }
+}, "Must be a contained workspace-relative path.");
+const pluginIds = array(string$3().regex(/^[a-z][a-z0-9-]*$/)).refine((ids) => new Set(ids).size === ids.length, "Duplicate plugin IDs.").default([]);
+const configSchema = strictObject({
+  schemaVersion: literal$1(1).default(1),
+  paths: strictObject({
+    projects: relativePath$1.refine((value2) => value2.toLowerCase() !== "bin" && !value2.toLowerCase().startsWith("bin/"), "Projects must be outside the fixed bin directory.").default("projects")
+  }).prefault({}),
+  settings: strictObject({ language: _enum(["en", "de"]).default("en"), json: boolean().default(false), dryRun: boolean().default(false), events: _enum(eventOutputLevels).default("changes") }).prefault({}),
+  // Plugin sections are validated against the schemas that registered plugins declare once they load.
+  plugins: strictObject({
+    enabled: pluginIds,
+    disabled: pluginIds,
+    settings: record$2(string$3().regex(/^[a-z][a-z0-9-]*$/, "Use a plugin id."), unknown()).default({})
+  }).prefault({})
+});
+async function loadConfig(options2) {
+  const root = options2.root !== void 0 ? path$3.resolve(options2.cwd, options2.root) : path$3.resolve(path$3.dirname(options2.defaultPath), "..");
+  const path2 = path$3.resolve(root, "bin/config.json");
+  let content2;
+  let exists2 = true;
+  try {
+    content2 = JSON.parse(await promises$1.readFile(path2, "utf8"));
+  } catch (error2) {
+    if (error2.code === "ENOENT") {
+      content2 = {};
+      exists2 = false;
+    } else throw forgeError("INVALID_CONFIG", `Cannot read configuration ${path2}: ${errorMessage(error2)}`);
+  }
+  const parsed2 = configSchema.safeParse(content2);
+  if (!parsed2.success) throw forgeError("INVALID_CONFIG", parsed2.error.issues.map((issue2) => `${issue2.path.join(".") || "config"}: ${issue2.message}`).join("; "));
+  const config2 = parsed2.data;
+  return { path: exists2 ? path2 : null, root, config: config2 };
+}
+const ownedAsset = new RegExp(distributionPolicy.ownedAssetPattern);
+async function readSetupArtifacts(bundleDir) {
+  const root = await promises$1.lstat(bundleDir);
+  ensure(root.isDirectory() && !root.isSymbolicLink(), "INVALID_SETUP", "The bin folder must be a regular directory.");
+  const readAsset2 = async (path2) => {
+    vaultPath(path2);
+    ensure(ownedAsset.test(path2), "INVALID_SETUP", `Not a distribution asset: ${path2}`);
+    const segments2 = path2.split("/");
+    let current = bundleDir;
+    for (const [index2, segment2] of segments2.entries()) {
+      current = path$3.join(current, segment2);
+      const entry2 = await promises$1.lstat(current).catch((error2) => {
+        if (error2.code !== "ENOENT" && error2.code !== "ENOTDIR") throw error2;
+        throw forgeError("INVALID_SETUP", `The distribution is incomplete: bin/${path2} is missing. Copy the complete bin folder of a release, or rebuild it, then run setup again.`, { path: `bin/${path2}` });
+      });
+      ensure(!entry2.isSymbolicLink() && (index2 === segments2.length - 1 ? entry2.isFile() : entry2.isDirectory()), "INVALID_SETUP", `Distribution paths must contain only regular files and directories: ${path2}`);
+    }
+    return promises$1.readFile(current);
+  };
+  let manifest;
+  try {
+    manifest = JSON.parse(new TextDecoder().decode(await readAsset2("data/distribution.json")));
+  } catch (error2) {
+    if (!(error2 instanceof SyntaxError)) throw error2;
+    throw forgeError("INVALID_SETUP", "bin/data/distribution.json is not valid JSON. Copy the complete bin folder of a release, or rebuild it.", { path: "bin/data/distribution.json" });
+  }
+  ensure(typeof manifest === "object" && manifest !== null && "schemaVersion" in manifest && manifest.schemaVersion === distributionPolicy.schemaVersion && "files" in manifest && Array.isArray(manifest.files), "INVALID_SETUP", "The distribution manifest is invalid. Rebuild or download the complete bin folder.");
+  const files = manifest.files;
+  ensure(files.every((path2) => typeof path2 === "string") && new Set(files).size === files.length, "INVALID_SETUP", "The distribution manifest must contain unique paths.");
+  ensure(distributionPolicy.requiredAssets.every((path2) => files.includes(path2)), "INVALID_SETUP", "The distribution manifest is incomplete.");
+  const artifacts = [];
+  for (const path2 of files) artifacts.push({ path: path2, bytes: await readAsset2(path2) });
+  return artifacts;
+}
+const snapshotFormat = 2;
+const racyWindowMs = 2e3;
+const aliasesKey = (aliases) => JSON.stringify([...aliases]);
+const outcomeKey = (path2, revision2) => `${fileKind(path2)}:${revision2}`;
+function unchangedFile(stored, current, checkedAtMs) {
+  return stored !== void 0 && current !== void 0 && stored.stamp !== null && stored.stamp === current.stamp && current.changedMs < checkedAtMs - racyWindowMs;
+}
+const text$4 = (value2) => typeof value2 === "string";
+function storedLinks(value2) {
+  return isRecord$1(value2) && Array.isArray(value2.paths) && value2.paths.every(text$4) && text$4(value2.aliases) && isRecord$1(value2.sources) && Object.values(value2.sources).every(Array.isArray);
+}
+function snapshotFile$1(value2) {
+  return isRecord$1(value2) && (value2.stamp === null || text$4(value2.stamp)) && text$4(value2.revision);
+}
+function storedOutcome(value2) {
+  if (!isRecord$1(value2)) return false;
+  if (isRecord$1(value2.metadata)) return Array.isArray(value2.positions) && Object.keys(value2).length === 2;
+  return isRecord$1(value2.issue) && text$4(value2.issue.code) && text$4(value2.issue.message) && Object.keys(value2).length === 1;
+}
+function readSnapshot(value2, key) {
+  if (!isRecord$1(value2) || value2.format !== snapshotFormat || value2.key !== key) return null;
+  if (typeof value2.checkedAtMs !== "number" || !Number.isFinite(value2.checkedAtMs)) return null;
+  if (!isRecord$1(value2.files) || !Object.values(value2.files).every(snapshotFile$1)) return null;
+  if (!isRecord$1(value2.outcomes) || !Object.values(value2.outcomes).every(storedOutcome)) return null;
+  if (value2.links !== null && !storedLinks(value2.links)) return null;
+  return value2;
+}
+const positioned = ["links", "embeds", "referenceLinks", "tags", "headings", "sections", "listItems"];
+function encodeOutcome(outcome) {
+  if (!("metadata" in outcome)) return outcome;
+  const positions2 = [];
+  const index2 = ({ start: start2, end: end2 }) => positions2.push(start2.line, start2.col, start2.offset, end2.line, end2.col, end2.offset) / 6 - 1;
+  const source2 = outcome.metadata, metadata2 = { ...source2 };
+  for (const key of positioned) {
+    const items2 = source2[key];
+    if (items2) metadata2[key] = items2.map((item) => ({ ...item, position: index2(item.position) }));
+  }
+  if (source2.blocks) metadata2.blocks = Object.fromEntries(Object.entries(source2.blocks).map(([id2, block]) => [id2, { ...block, position: index2(block.position) }]));
+  if (source2.frontmatterPosition) metadata2.frontmatterPosition = index2(source2.frontmatterPosition);
+  return { metadata: metadata2, positions: positions2 };
+}
+function decodeOutcome(stored) {
+  if (!("metadata" in stored)) return stored;
+  const { metadata: metadata2, positions: positions2 } = stored;
+  if (!Array.isArray(positions2) || positions2.length % 6 !== 0) return void 0;
+  const count2 = positions2.length / 6;
+  const position2 = (value2) => {
+    if (typeof value2 !== "number" || !Number.isInteger(value2) || value2 < 0 || value2 >= count2) return void 0;
+    const at = value2 * 6;
+    return { start: { line: positions2[at], col: positions2[at + 1], offset: positions2[at + 2] }, end: { line: positions2[at + 3], col: positions2[at + 4], offset: positions2[at + 5] } };
+  };
+  const decode2 = (item) => {
+    const value2 = position2(item.position);
+    if (value2 === void 0) return false;
+    item.position = value2;
+    return true;
+  };
+  for (const key of positioned) {
+    const items2 = metadata2[key];
+    if (items2 !== void 0 && !(Array.isArray(items2) && items2.every(decode2))) return void 0;
+  }
+  const blocks = metadata2.blocks;
+  if (blocks !== void 0 && !Object.values(blocks).every(decode2)) return void 0;
+  if (metadata2.frontmatterPosition !== void 0) {
+    const value2 = position2(metadata2.frontmatterPosition);
+    if (value2 === void 0) return void 0;
+    metadata2.frontmatterPosition = value2;
+  }
+  return { metadata: metadata2 };
+}
+function encodeResolution(resolution, index2) {
+  if (resolution.status === "external") return null;
+  if (resolution.status === "resolved") return resolution.via === "path" ? index2(resolution.path) : -1 - index2(resolution.path);
+  if (resolution.reason === "missing") return ["missing", resolution.linkpath];
+  return [resolution.via, resolution.linkpath, ...resolution.candidates.map(index2)];
+}
+function decodeResolution(stored, paths2) {
+  const path2 = (value2) => typeof value2 === "number" && Number.isInteger(value2) && value2 >= 0 && value2 < paths2.length ? paths2[value2] : void 0;
+  if (stored === null) return { status: "external" };
+  if (typeof stored === "number") {
+    const resolved = path2(stored < 0 ? -1 - stored : stored);
+    return resolved === void 0 ? void 0 : { status: "resolved", path: resolved, via: stored < 0 ? "alias" : "path" };
+  }
+  if (!Array.isArray(stored) || typeof stored[1] !== "string") return void 0;
+  const [reason, linkpath, ...indexes2] = stored;
+  if (reason === "missing") return stored.length === 2 ? { status: "unresolved", linkpath, reason } : void 0;
+  if (reason !== "path" && reason !== "alias") return void 0;
+  const candidates2 = indexes2.map(path2);
+  return candidates2.length > 1 && candidates2.every((item) => item !== void 0) ? { status: "unresolved", linkpath, reason: "ambiguous", via: reason, candidates: candidates2 } : void 0;
+}
+class ParseResults {
+  constructor(options2) {
+    this.options = options2;
+  }
+  options;
+  previous;
+  /** The previous snapshot once `previous` settled; undefined before. */
+  loaded;
+  records = /* @__PURE__ */ new Map();
+  /** Stored outcomes decoded so far, by outcome key; undefined for one that could not be decoded. */
+  decoded = /* @__PURE__ */ new Map();
+  checkedAtMs = 0;
+  changed = false;
+  /** The scope's files with stamps from the store for those `stamped` accepts, or the repository listing without stamps. */
+  async listing(list2, stamped) {
+    if (this.options === void 0) return { checkedAtMs: null, files: (await list2()).map((path2) => ({ path: path2 })) };
+    const listing = await this.options.store.listing(stamped);
+    this.checkedAtMs = listing.checkedAtMs;
+    return listing;
+  }
+  /** The previous snapshot, loaded once; null without a store or when it is missing, unreadable or for another key. */
+  stored() {
+    const options2 = this.options;
+    this.previous ??= (options2 === void 0 ? Promise.resolve(null) : options2.store.load().then((value2) => readSnapshot(value2, options2.key), () => null)).then((snapshot) => {
+      this.loaded = snapshot;
+      return snapshot;
+    });
+    return this.previous;
+  }
+  /**
+   * The stored outcome of a file whose stamp is unchanged since the previous snapshot, recorded as current. Answers
+   * from the loaded snapshot without waiting, so call it once `stored()` has settled; before that it reuses nothing.
+   */
+  unchanged(path2, stamp) {
+    const previous2 = this.loaded;
+    const stored = previous2 && Object.hasOwn(previous2.files, path2) ? previous2.files[path2] : void 0;
+    if (!previous2 || !unchangedFile(stored, stamp, previous2.checkedAtMs)) return void 0;
+    const outcome = this.outcome(previous2, outcomeKey(path2, stored.revision));
+    if (outcome !== void 0) this.records.set(path2, { stamp: stamp.stamp, revision: stored.revision });
+    return outcome;
+  }
+  /** The stored outcome for content of `revision` at `path`, or undefined when it must be parsed. */
+  async reusable(path2, revision2) {
+    const previous2 = await this.stored();
+    return previous2 ? this.outcome(previous2, outcomeKey(path2, revision2)) : void 0;
+  }
+  /**
+   * Records that the index holds `revision` for `path`, read after `stamp` was taken (null: no stamp). The snapshot
+   * becomes outdated when the record differs from the stored one, or when storing it would let the next load trust
+   * the stamp. A file that stays inside the racy window, such as one with a future timestamp, is read again on every
+   * load but does not rewrite an otherwise unchanged snapshot.
+   */
+  read(path2, revision2, stamp) {
+    if (this.options === void 0) return;
+    const record2 = { stamp: stamp?.stamp ?? null, revision: revision2 };
+    this.records.set(path2, record2);
+    const before = this.loaded && Object.hasOwn(this.loaded.files, path2) ? this.loaded.files[path2] : void 0;
+    const same2 = before !== void 0 && before.stamp === record2.stamp && before.revision === revision2;
+    const undecodable = this.decoded.has(outcomeKey(path2, revision2)) && this.decoded.get(outcomeKey(path2, revision2)) === void 0;
+    if (!same2 || undecodable || stamp !== null && stamp.changedMs < this.checkedAtMs - racyWindowMs) this.changed = true;
+  }
+  /** The recorded revision of an indexed path, if any. */
+  revision(path2) {
+    return this.records.get(path2)?.revision;
+  }
+  forget(path2) {
+    if (this.records.delete(path2)) this.changed = true;
+  }
+  /** The vault's paths or aliases changed, so the stored link resolutions no longer match. */
+  outdated() {
+    this.changed = true;
+  }
+  /**
+   * After the files are indexed: the stored resolutions of each source whose content is unchanged since the stored
+   * snapshot, provided the index has the stored vault paths (in order) and aliases. Otherwise the snapshot is
+   * outdated and nothing is reused.
+   */
+  async links(paths2, aliases) {
+    const previous2 = await this.stored(), links2 = previous2?.links;
+    if (!previous2 || !links2 || links2.aliases !== aliases || links2.paths.length !== paths2.length || links2.paths.some((path2, position2) => path2 !== paths2[position2])) {
+      this.changed = true;
+      return () => void 0;
+    }
+    return (source2) => Object.hasOwn(links2.sources, source2) && Object.hasOwn(previous2.files, source2) && previous2.files[source2].revision === this.revision(source2) ? links2.sources[source2] : void 0;
+  }
+  /** After a build: a missing previous snapshot or a file that left the vault makes the snapshot outdated. */
+  async built() {
+    const previous2 = await this.stored();
+    if (previous2 === null || Object.keys(previous2.files).some((path2) => !this.records.has(path2))) this.changed = true;
+  }
+  /**
+   * Stores the index's current outcomes and `links` unless nothing may or needs to be written: no store, a dry run,
+   * or nothing that differs from the previous snapshot. A failed save throws and leaves the state outdated.
+   */
+  async persist(outcomeOf, links2) {
+    if (this.options === void 0 || !this.options.save || !this.changed) return;
+    await this.options.store.save(this.next(this.options.key, outcomeOf, links2()));
+    this.changed = false;
+  }
+  next(key, outcomeOf, links2) {
+    const files = [], outcomes = /* @__PURE__ */ new Map();
+    for (const [path2, record2] of this.records) {
+      const outcome = outcomeOf(path2);
+      if (outcome === void 0) continue;
+      files.push([path2, record2]);
+      const stored = outcomeKey(path2, record2.revision);
+      if (!outcomes.has(stored)) outcomes.set(stored, encodeOutcome(outcome));
+    }
+    return { format: snapshotFormat, key, checkedAtMs: this.checkedAtMs, files: Object.fromEntries(files), outcomes: Object.fromEntries(outcomes), links: links2 };
+  }
+  /** A stored outcome, decoded once per key: files with the same content share it. */
+  outcome(previous2, key) {
+    if (!Object.hasOwn(previous2.outcomes, key)) return void 0;
+    if (!this.decoded.has(key)) this.decoded.set(key, decodeOutcome(previous2.outcomes[key]));
+    return this.decoded.get(key);
+  }
+}
+const pendingFileReads = 16;
+const workspaceDistribution = "bin";
+function vaultMember(path2, workspaceRoot) {
+  const segments2 = path2.split("/");
+  return !segments2.some((part) => part.startsWith(".")) && !(workspaceRoot && segments2.length > 1 && segments2[0].toLowerCase() === workspaceDistribution);
+}
+const missing = (error2) => error2 instanceof AppError && error2.code === "NOT_FOUND";
+const counts = () => /* @__PURE__ */ Object.create(null);
+const vaultOrder = (paths2) => [...paths2].sort();
+async function eachConcurrently(items2, limit, work) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items2.length) }, async () => {
+    while (next < items2.length) await work(items2[next++]);
+  }));
+}
+function orderedReferences(cache) {
+  const body = [
+    ...(cache.links ?? []).map((reference) => ({ kind: "link", reference })),
+    ...(cache.embeds ?? []).map((reference) => ({ kind: "embed", reference }))
+  ].sort((a, b) => a.reference.position.start.offset - b.reference.position.start.offset);
+  return [
+    ...body,
+    ...(cache.frontmatterLinks ?? []).map((reference) => ({ kind: "frontmatter", reference })),
+    ...(cache.canvasLinks ?? []).map((reference) => ({ kind: "canvas", reference }))
+  ];
+}
+class VaultMetadata {
+  constructor(repository, parser2, options2 = {}) {
+    this.repository = repository;
+    this.parser = parser2;
+    const workspaceRoot = options2.workspaceRoot ?? false;
+    this.workspaceRoot = workspaceRoot;
+    this.revisionOf = options2.revisionOf;
+    this.member = (path2) => vaultMember(path2, workspaceRoot);
+    this.results = new ParseResults(options2.snapshots);
+  }
+  repository;
+  parser;
+  resolvedLinks = /* @__PURE__ */ Object.create(null);
+  unresolvedLinks = /* @__PURE__ */ Object.create(null);
+  paths = [];
+  caches = /* @__PURE__ */ new Map();
+  problems = /* @__PURE__ */ new Map();
+  outgoing = /* @__PURE__ */ new Map();
+  incoming = /* @__PURE__ */ new Map();
+  /** The link index over `paths` and `aliasMap`, built on first use after each reindex. */
+  builtIndex;
+  aliasMap = /* @__PURE__ */ new Map();
+  /** `aliasesKey` of `aliasMap`. */
+  aliases = aliasesKey(/* @__PURE__ */ new Map());
+  loading;
+  pending = Promise.resolve();
+  member;
+  workspaceRoot;
+  results;
+  revisionOf;
+  load() {
+    this.loading ??= this.build();
+    return this.loading.then(() => this);
+  }
+  async vaultFiles() {
+    if (this.loading) return (await this.load()).files();
+    return (await this.repository.list()).filter(this.member);
+  }
+  async parseFile(file) {
+    if (!this.member(file.path) || !this.parser.indexes(file.path)) return null;
+    const revision2 = this.revisionOf?.(file.bytes);
+    if (revision2 !== void 0 && this.loading) {
+      await this.load();
+      if (this.results.revision(file.path) === revision2) return this.caches.get(file.path) ?? null;
+    }
+    const outcome = (revision2 === void 0 ? void 0 : await this.results.reusable(file.path, revision2)) ?? this.outcome(file.path, file.bytes);
+    return "metadata" in outcome ? outcome.metadata : null;
+  }
+  /**
+   * Stores the parse results of a loaded index when anything was read or changed since the stored snapshot; does
+   * nothing without a store, during a dry run, before the first load or after a failed load (the command reports
+   * that failure). A failed save throws and stores nothing.
+   */
+  async persist() {
+    if (!this.loading) return;
+    try {
+      await this.loading;
+    } catch {
+      return;
+    }
+    await this.pending;
+    await this.results.persist((path2) => {
+      const metadata2 = this.caches.get(path2), issue2 = this.problems.get(path2);
+      return metadata2 ? { metadata: metadata2 } : issue2 ? { issue: { code: issue2.code, message: issue2.message } } : void 0;
+    }, () => this.storedLinks());
+  }
+  /** Every source's resolutions by the place of each reference among its ordered references (externals included). */
+  storedLinks() {
+    const positions2 = new Map(this.paths.map((path2, position2) => [path2, position2]));
+    const sources = this.sources().map((source2) => {
+      const references = this.outgoing.get(source2) ?? [];
+      let next = 0;
+      return [source2, orderedReferences(this.caches.get(source2)).map((item) => references[next]?.reference === item.reference ? encodeResolution(references[next++].resolution, (path2) => positions2.get(path2)) : null)];
+    });
+    return { paths: [...this.paths], aliases: this.aliases, sources: Object.fromEntries(sources) };
+  }
+  parseContent(path2, bytes) {
+    return this.parser.indexes(path2) ? this.parser.parse(path2, bytes) : null;
+  }
+  async fork(repository) {
+    const fork = new VaultMetadata(repository, this.parser, { workspaceRoot: this.workspaceRoot, ...this.revisionOf ? { revisionOf: this.revisionOf } : {} });
+    if (!this.loading) return fork;
+    await this.load();
+    await this.pending;
+    fork.paths = [...this.paths];
+    for (const [path2, cache] of this.caches) fork.caches.set(path2, cache);
+    for (const [path2, issue2] of this.problems) fork.problems.set(path2, issue2);
+    for (const [path2, references] of this.outgoing) fork.outgoing.set(path2, references);
+    for (const [path2, sources] of this.incoming) fork.incoming.set(path2, new Set(sources));
+    Object.assign(fork.resolvedLinks, this.resolvedLinks);
+    Object.assign(fork.unresolvedLinks, this.unresolvedLinks);
+    fork.builtIndex = this.builtIndex;
+    fork.aliasMap = this.aliasMap;
+    fork.aliases = this.aliases;
+    fork.loading = Promise.resolve();
+    return fork;
+  }
+  update(changes2) {
+    if (!this.loading) return Promise.resolve(null);
+    const result = this.pending.then(() => this.loading).then(() => this.apply(changes2));
+    this.pending = result.catch(() => void 0);
+    return result;
+  }
+  invalidate(paths2) {
+    return this.update(paths2.map((path2) => ({ path: path2, operation: "updated" })));
+  }
+  files() {
+    return this.paths;
+  }
+  getFileCache(path2) {
+    return this.caches.get(path2) ?? null;
+  }
+  issues() {
+    return vaultOrder(this.problems.keys()).map((path2) => this.problems.get(path2));
+  }
+  references(sourcePath) {
+    return this.outgoing.get(sourcePath) ?? [];
+  }
+  getFirstLinkpathDest(linkpath, sourcePath) {
+    const result = resolveLinkpath(this.index, linkpath, sourcePath);
+    return result.status === "resolved" ? result.path : null;
+  }
+  getClosestLinkpathDest(linkpath, sourcePath) {
+    return closestDestination(resolveLinkpath(this.index, linkpath, sourcePath), sourcePath);
+  }
+  fileToLinktext(path2, sourcePath, omitMdExtension = true) {
+    return fileToLinktext(this.index, path2, sourcePath, omitMdExtension);
+  }
+  backlinks(path2) {
+    return vaultOrder(this.incoming.get(path2) ?? []).filter((source2) => source2 !== path2).flatMap((source2) => this.references(source2).filter((item) => item.resolution.status === "resolved" && item.resolution.path === path2).map((item) => ({ ...item, source: source2 })));
+  }
+  /**
+   * Lists the vault, then takes each indexed file's parse result from the stored snapshot when its stamp is
+   * unchanged, else reads it and reuses a stored result of the same content revision or parses it.
+   */
+  async build() {
+    const listing = await this.results.listing(() => this.repository.list(), (path2) => this.member(path2) && this.parser.indexes(path2));
+    const stamps = /* @__PURE__ */ new Map();
+    for (const file of listing.files) if ("stamp" in file) stamps.set(file.path, file);
+    this.paths = listing.files.map((file) => file.path).filter(this.member);
+    await this.results.stored();
+    const changed = this.paths.filter((path2) => {
+      if (!this.parser.indexes(path2)) return false;
+      const unchanged = this.results.unchanged(path2, stamps.get(path2));
+      if (unchanged !== void 0) this.adopt(path2, unchanged);
+      return unchanged === void 0;
+    });
+    await eachConcurrently(changed, pendingFileReads, async (path2) => {
+      const stamp = stamps.get(path2);
+      const file = await this.repository.read(path2);
+      this.adopt(path2, await this.results.reusable(path2, file.revision) ?? this.outcome(path2, file.bytes));
+      this.results.read(path2, file.revision, stamp ?? null);
+    });
+    await this.results.built();
+    this.reindex();
+    const stored = await this.results.links(this.paths, this.aliases);
+    for (const source2 of this.sources()) this.resolve(source2, stored(source2));
+  }
+  outcome(path2, bytes) {
+    try {
+      return { metadata: this.parser.parse(path2, bytes) };
+    } catch (error2) {
+      return { issue: { code: error2 instanceof AppError ? error2.code : "INVALID_FILE", message: errorMessage(error2) } };
+    }
+  }
+  adopt(path2, outcome) {
+    if ("metadata" in outcome) {
+      this.caches.set(path2, outcome.metadata);
+      this.problems.delete(path2);
+    } else {
+      this.caches.delete(path2);
+      this.problems.set(path2, { path: path2, ...outcome.issue });
+    }
+  }
+  async apply(changes2) {
+    const touched = /* @__PURE__ */ new Set(), removed = /* @__PURE__ */ new Set();
+    for (const change2 of changes2) {
+      if (change2.operation === "renamed") {
+        removed.add(change2.oldPath);
+        touched.add(change2.path);
+      } else if (change2.operation === "deleted") removed.add(change2.path);
+      else touched.add(change2.path);
+    }
+    for (const path2 of touched) removed.delete(path2);
+    const before = new Set(this.paths), aliasesBefore = new Map([...touched, ...removed].map((path2) => [path2, this.aliasKey(path2)]));
+    const contents = /* @__PURE__ */ new Map();
+    await eachConcurrently([...touched].filter(this.member), pendingFileReads, async (path2) => {
+      try {
+        contents.set(path2, await this.repository.read(path2));
+      } catch (error2) {
+        if (!missing(error2)) throw error2;
+        removed.add(path2);
+      }
+    });
+    const changed = [], deleted = [];
+    const prevCaches = /* @__PURE__ */ Object.create(null);
+    for (const path2 of removed) {
+      if (!before.has(path2)) continue;
+      prevCaches[path2] = this.caches.get(path2) ?? null;
+      this.caches.delete(path2);
+      this.problems.delete(path2);
+      this.forget(path2);
+      this.results.forget(path2);
+      deleted.push(path2);
+    }
+    for (const [path2, file] of contents) {
+      if (!this.parser.indexes(path2)) continue;
+      this.adopt(path2, this.outcome(path2, file.bytes));
+      this.results.read(path2, file.revision, null);
+      changed.push(path2);
+    }
+    const paths2 = vaultOrder(/* @__PURE__ */ new Set([...this.paths.filter((path2) => !removed.has(path2)), ...contents.keys()]));
+    const pathsChanged = paths2.length !== this.paths.length || paths2.some((path2, position2) => path2 !== this.paths[position2]);
+    const aliasesChanged = [...aliasesBefore].some(([path2, key]) => key !== this.aliasKey(path2));
+    this.paths = paths2;
+    for (const path2 of changed) if (!this.caches.has(path2)) this.forget(path2);
+    let resolved;
+    if (pathsChanged || aliasesChanged) {
+      this.results.outdated();
+      this.reindex();
+      const previous2 = new Map(this.sources().map((source2) => [source2, this.resolutionKey(source2)]));
+      for (const source2 of this.sources()) this.resolve(source2);
+      resolved = this.sources().filter((source2) => contents.has(source2) || previous2.get(source2) !== this.resolutionKey(source2));
+    } else {
+      resolved = vaultOrder(changed.filter((path2) => this.caches.has(path2)));
+      for (const source2 of resolved) this.resolve(source2);
+    }
+    this.reorder();
+    return { changed: vaultOrder(changed), deleted: vaultOrder(deleted), resolved, prevCaches };
+  }
+  aliasKey(path2) {
+    return JSON.stringify(this.caches.get(path2)?.aliases ?? []);
+  }
+  resolutionKey(source2) {
+    const references = this.outgoing.get(source2);
+    return references && JSON.stringify(references.map((item) => item.resolution));
+  }
+  sources() {
+    return this.paths.filter((path2) => this.caches.has(path2));
+  }
+  /** Takes the current paths and aliases for the link index, which is built when a link is first resolved. */
+  reindex() {
+    this.aliasMap = new Map(this.sources().flatMap((path2) => {
+      const names2 = this.caches.get(path2).aliases;
+      return names2?.length ? [[path2, names2]] : [];
+    }));
+    this.aliases = aliasesKey(this.aliasMap);
+    this.builtIndex = void 0;
+  }
+  // Paths are replaced, never mutated, and change only together with a reindex, so the lazy index stays current.
+  get index() {
+    this.builtIndex ??= linkIndex(this.paths, this.aliasMap);
+    return this.builtIndex;
+  }
+  /**
+   * Re-resolves one parsed source and replaces its link counts and backlink entries. `stored` resolutions, one per
+   * ordered reference, come from a snapshot of the same paths, aliases and content; a malformed one is recomputed.
+   */
+  resolve(source2, stored) {
+    this.unlink(source2);
+    const ordered2 = orderedReferences(this.caches.get(source2)), known2 = stored?.length === ordered2.length ? stored : void 0;
+    const references = [];
+    for (const [place, item] of ordered2.entries()) {
+      const syntax2 = item.reference.syntax, relative = syntax2 !== "wikilink" && syntax2 !== "canvas";
+      const resolution = (known2 && decodeResolution(known2[place], this.paths)) ?? resolveLinkpath(this.index, item.reference.link, source2, { relative, aliases: true });
+      if (resolution.status !== "external") references.push({ ...item, resolution });
+    }
+    const resolved = counts(), unresolved = counts();
+    for (const { resolution } of references) {
+      if (resolution.status === "resolved") {
+        resolved[resolution.path] = (resolved[resolution.path] ?? 0) + 1;
+        const sources = this.incoming.get(resolution.path) ?? /* @__PURE__ */ new Set();
+        this.incoming.set(resolution.path, sources.add(source2));
+      } else if (resolution.status === "unresolved") unresolved[resolution.linkpath] = (unresolved[resolution.linkpath] ?? 0) + 1;
+    }
+    this.outgoing.set(source2, references);
+    this.resolvedLinks[source2] = resolved;
+    this.unresolvedLinks[source2] = unresolved;
+  }
+  unlink(source2) {
+    for (const item of this.outgoing.get(source2) ?? []) {
+      if (item.resolution.status === "resolved") this.incoming.get(item.resolution.path)?.delete(source2);
+    }
+  }
+  /** Removes a source's outgoing references and link counts. */
+  forget(source2) {
+    this.unlink(source2);
+    this.outgoing.delete(source2);
+    delete this.resolvedLinks[source2];
+    delete this.unresolvedLinks[source2];
+  }
+  /** Keeps the link maps' key order equal to a fresh build after sources were added. */
+  reorder() {
+    for (const maps of [this.resolvedLinks, this.unresolvedLinks]) {
+      const entries2 = this.sources().map((source2) => [source2, maps[source2]]);
+      for (const [source2, value2] of entries2) {
+        delete maps[source2];
+        maps[source2] = value2;
+      }
+    }
+  }
+}
+const record = (cache) => JSON.parse(JSON.stringify(cache));
+function metadataChanges({ renames, changes: changes2 }) {
+  return [
+    ...renames.map(({ from, to }) => ({ path: to, oldPath: from, operation: "renamed" })),
+    ...changes2.map(({ path: path2, operation: operation2 }) => ({ path: path2, operation: operation2 }))
+  ];
+}
+class MetadataCacheEvents {
+  constructor(events2, index2) {
+    this.events = events2;
+    this.index = index2;
+  }
+  events;
+  index;
+  async committed({ renames, changes: changes2 }) {
+    const update = await this.index.update(metadataChanges({ renames, changes: changes2 }));
+    if (!update) return;
+    const cache = await this.index.load();
+    const written = new Set(changes2.map((change2) => change2.path)), indexed2 = new Set(cache.files());
+    const movedOnly = new Set(renames.filter((rename2) => !written.has(rename2.to)).map((rename2) => rename2.to));
+    const movedAway = new Set(renames.filter((rename2) => indexed2.has(rename2.to)).map((rename2) => rename2.from));
+    for (const path2 of update.changed) {
+      if (movedOnly.has(path2)) continue;
+      const metadata2 = cache.getFileCache(path2);
+      if (metadata2) await publishHostEvent(this.events, "metadataCache.changed", { path: path2, cache: record(metadata2) });
+    }
+    for (const path2 of update.deleted) {
+      if (movedAway.has(path2)) continue;
+      const previous2 = update.prevCaches[path2] ?? null;
+      await publishHostEvent(this.events, "metadataCache.deleted", { path: path2, prevCache: previous2 && record(previous2) });
+    }
+    for (const path2 of update.resolved) await publishHostEvent(this.events, "metadataCache.resolve", { path: path2 });
+    await publishHostEvent(this.events, "metadataCache.resolved", {});
   }
 }
 const UNDEFINED_CODE_POINTS = /* @__PURE__ */ new Set([
@@ -63603,7 +63613,7 @@ function sectionType(node2, source2) {
   return node2.type;
 }
 function markdownStructure(text2, tree, lines2) {
-  const sections2 = [], headings = [], blocks2 = [], listItems2 = [];
+  const sections2 = [], headings = [], blocks = [], listItems2 = [];
   const lastLineId = (span) => blockId.exec(text2.slice(Math.max(span.start, lines2.lineStart(lines2.line(span.end))), span.end))?.[1];
   for (const node2 of tree.children ?? []) {
     const span = { start: start(node2), end: end(node2) }, source2 = text2.slice(span.start, span.end);
@@ -63617,10 +63627,10 @@ function markdownStructure(text2, tree, lines2) {
       const previous2 = sections2.at(-1);
       if (id2 && previous2 && source2.trim() === `^${id2}`) {
         previous2.id = id2;
-        blocks2.push({ id: id2, start: previous2.start, end: previous2.end });
+        blocks.push({ id: id2, start: previous2.start, end: previous2.end });
       } else if (id2) {
         section2.id = id2;
-        blocks2.push({ id: id2, ...span });
+        blocks.push({ id: id2, ...span });
       }
     }
     sections2.push(section2);
@@ -63633,7 +63643,7 @@ function markdownStructure(text2, tree, lines2) {
       const marker = task.exec(text2.slice(span.start, lines2.lineEnd(lines2.line(span.start))))?.[1];
       const id2 = content2.length ? lastLineId(span) : void 0;
       listItems2.push({ parentLine, listLine, ...span, ...marker === void 0 ? {} : { task: marker }, ...id2 ? { id: id2 } : {} });
-      if (id2) blocks2.push({ id: id2, ...span });
+      if (id2) blocks.push({ id: id2, ...span });
       for (const child of item.children ?? []) if (child.type === "list") items2(child, lines2.line(span.start));
     }
   };
@@ -63642,7 +63652,7 @@ function markdownStructure(text2, tree, lines2) {
     else if (node2.type !== "code") node2.children?.forEach(visit2);
   };
   visit2(tree);
-  return { sections: sections2, headings, blocks: blocks2, listItems: listItems2 };
+  return { sections: sections2, headings, blocks, listItems: listItems2 };
 }
 const nonEmpty = (key, value2) => value2.length ? { [key]: value2 } : {};
 function frontmatterLinks(properties2) {
@@ -63690,8 +63700,8 @@ function markdownMetadata(content2, properties2, body) {
     ...id2 ? { id: id2 } : {},
     ...at(span)
   }));
-  const blocks2 = {};
-  for (const { id: id2, ...span } of structure.blocks) blocks2[id2.toLowerCase()] ??= { id: id2, ...at(span) };
+  const blocks = {};
+  for (const { id: id2, ...span } of structure.blocks) blocks[id2.toLowerCase()] ??= { id: id2, ...at(span) };
   const aliases = frontmatterAliases(properties2);
   return {
     ...nonEmpty("links", found.references.filter((item) => !item.embed).map(link2)),
@@ -63700,7 +63710,7 @@ function markdownMetadata(content2, properties2, body) {
     ...nonEmpty("referenceLinks", found.definitions.map(({ id: id2, link: link22, original, ...span }) => ({ id: id2, link: link22, original, ...at(span) }))),
     ...nonEmpty("tags", found.tags.map(({ tag, ...span }) => ({ tag, ...at(span) }))),
     ...nonEmpty("headings", structure.headings.map(({ heading: heading2, level, ...span }) => ({ heading: heading2, level, ...at(span) }))),
-    ...Object.keys(blocks2).length ? { blocks: blocks2 } : {},
+    ...Object.keys(blocks).length ? { blocks } : {},
     ...nonEmpty("sections", sections2),
     ...nonEmpty("listItems", listItems2),
     ...result,
@@ -68566,7 +68576,7 @@ function catalogCommands(registry2) {
     } },
     { id: "formats", description: "Native Obsidian formats and supported operations.", usage: "formats", ...discovery$1, run(args) {
       arity(args, 0);
-      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
+      return { nativeFormats, structured: ["md", "canvas", "base"], text: textExtensions, textFilenames, textFiles: "UTF-8 read, literal edit, append and full replacement with unified dry-run diffs; files that are not valid UTF-8 read as base64 attachments.", attachments: "Lossless byte read, copy, replace and embed; no built-in transcoding, rendering or PDF content editing.", otherFiles: "Opaque bytes; plugins can provide additional processing." };
     } }
   ];
 }
