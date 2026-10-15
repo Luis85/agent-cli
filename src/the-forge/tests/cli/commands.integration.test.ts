@@ -42,7 +42,7 @@ beforeEach(async () => {
 describe('extracted command boundaries', () => {
   it('retains command discovery order and discovers contributions registered after assembly', async () => {
     expect([...registry.commands.keys()]).toEqual(['config', 'setup', 'project', 'workflows', 'server',
-      'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'read-many', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
+      'help', 'schema', 'formats', 'list', 'read', 'validate', 'create', 'write', 'edit', 'properties', 'patch', 'apply', 'read-many', 'stat', 'delete', 'move', 'rename', 'make', 'events', 'plugins']);
     registry.add(registry.generators, { id: 'custom.fixture', description: 'Late generator', generate: () => [] });
     registry.add(registry.commands, { id: 'custom.run', description: 'Late command', usage: 'custom.run', run: () => null });
     const schema = await registry.commands.get('schema')!.run([], {}, context);

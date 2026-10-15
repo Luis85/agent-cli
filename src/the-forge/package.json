@@ -23,13 +23,14 @@
     "install:release": "node scripts/install-forge.mjs",
     "lint": "node scripts/quality/lint.mjs",
     "analyze": "node scripts/quality/analyze.mjs",
-    "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck",
+    "check:fast": "npm run check:structure && npm run lint && npm run analyze && npm run typecheck && npm run check:contracts",
     "check:structure": "node scripts/quality/structure.mjs --source-layout forge",
     "eval": "node scripts/eval/run.mjs",
     "bench": "node scripts/bench/metadata.mjs",
     "showcase": "node scripts/showcase.mjs",
     "showcase:check": "node scripts/showcase.mjs --check",
     "vendor:docker-agent": "node scripts/vendor-docker-agent.mjs",
+    "check:contracts": "vitest run tests/cli/commands.integration.test.ts tests/cli/localization-parity.integration.test.ts tests/cli/localization.integration.test.ts tests/evals/harness.unit.test.ts tests/documentation/consistency.integration.test.ts tests/cli/command-metadata.unit.test.ts tests/cli/input-schema.unit.test.ts",
     "mutate": "stryker run"
   },
   "dependencies": {
