@@ -74,6 +74,18 @@ describe('release index rows', () => {
     expect([own.get('A')!.done, own.get('B')!.done, own.get('D')!.done]).toEqual([unconfigured, figure(0), unconfigured]);
   });
 
+  it('counts requirements members done by the requirements done values while the test workflow has its own key', () => {
+    const shipped = { 'r/R.md': { type: 'Release' }, 'w/P.md': { type: 'PBI', status: 'Shipped', release: '[[R]]' } };
+    expect(index(shipped, { stateProperty: 'note.status', doneValues: 'Shipped', testStateProperty: 'note.tstate' }).rows[0]!.done).toEqual(figure(1));
+  });
+
+  it('breaks a target tie by rank, wherever the releases sit in the tree', () => {
+    const tree = {
+      'w/Epic.md': { type: 'Epic', order: 5 }, 'r/Late.md': { type: 'Release', order: 1, parent: '[[Epic]]', target: '2026-12-01' }, 'r/Early.md': { type: 'Release', order: 2, target: '2026-12-01' },
+    };
+    expect(index(tree).rows.map(row => row.name)).toEqual(['Late', 'Early']);
+  });
+
   it('collects unresolved memberships among the notes the filter returned', () => {
     const extra = { ...notes, 'w/Two.md': { type: 'PBI', release: ['[[A]]', '[[B]]'] }, 'w/Ghost.md': { type: 'PBI', release: '[[Nowhere]]' }, 'w/Out.md': { type: 'Epic' }, 'w/In.md': { type: 'PBI', parent: '[[Out]]', release: '[[A]]' } };
     const outside = { ...extra, 'w/Out.md': { type: 'Epic', release: '[[Nowhere]]' } };

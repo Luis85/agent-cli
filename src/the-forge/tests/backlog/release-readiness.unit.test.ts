@@ -17,6 +17,7 @@ const notes: Record<string, Record<string, unknown>> = {
   'w/Tested.md': { type: 'PBI', status: 'Open', dependsOn: '[[Passed]]' }, 'w/Untested.md': { type: 'PBI', status: 'Open', dependsOn: '[[Pending]]' },
   't/Suite.md': { type: 'Test suite' }, 't/Passed.md': { type: 'Test case', parent: '[[Suite]]', status: 'Open', tstate: 'Done' },
   't/Pending.md': { type: 'Test case', parent: '[[Suite]]', status: 'Done', tstate: 'Open' },
+  'w/Scalar.md': { type: 'PBI', status: 'Open', dependsOn: 5 },
   'w/Tiny.md': { type: 'PBI', status: 'Done', effort: 1.5e-10 }, 'w/Many.md': { type: 'PBI', status: 'Done', effort: 12.25 }, 'w/Huge.md': { type: 'PBI', effort: 3e21 },
 };
 const source: NoteSource = {
@@ -80,6 +81,16 @@ describe('release readiness', () => {
       .toEqual({ key: 'blocked', verdict: 'partly', cleared: 1, outstanding: 1, unreadable: 0, outstandingPaths: ['w/Untested.md'] });
   });
 
+  it('reads each prerequisite in its own workflow when only the test workflow clears', () => {
+    const testOnly = { testStateProperty: 'note.tstate' };
+    expect(readiness(['Tested'], allRelease, testOnly).criteria[1]).toEqual({ key: 'blocked', verdict: 'satisfied', cleared: 1, outstanding: 0, unreadable: 0, outstandingPaths: [] });
+    expect(readiness(['Ready'], allRelease, testOnly).criteria[1]).toEqual({ key: 'blocked', verdict: 'not', cleared: 0, outstanding: 1, unreadable: 1, outstandingPaths: ['w/Ready.md'] });
+  });
+
+  it('counts a scalar prerequisite that is not text as unreadable', () => {
+    expect(readiness(['Scalar']).criteria[1]).toEqual({ key: 'blocked', verdict: 'not', cleared: 0, outstanding: 1, unreadable: 1, outstandingPaths: ['w/Scalar.md'] });
+  });
+
   it('totals estimates exactly, whatever their exponent', () => {
     expect(readiness(['Tiny', 'Many'])).toMatchObject({ estimatedEffort: 12.25000000015, completedEffort: 12.25000000015 });
     expect(readiness(['Huge', 'Many'])).toMatchObject({ estimatedEffort: 3e21, completedEffort: 12.25 });
@@ -108,6 +119,8 @@ describe('release notes source marker', () => {
     expect(generatedSource(first.replace('Generated', 'Written'))).toBeNull();
     expect(generatedSource(first.replace('"s"', '"%2Ds"'))).toBeNull();
     expect(generatedSource(first.replace('"s"', '"a-b"'))).toBe('a-b');
+    expect(generatedSource(first.replace('"s"', '"s\rt"'))).toBeNull();
+    expect(generatedSource(marker('a\uFEFFb'))).toBe('a\uFEFFb');
   });
 
   it('places notes in the normalized notes folder', () => {

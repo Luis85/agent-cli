@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyState, lockPath, parseState, pathOfRemote, renameEntries, serializeState, statePath } from '../../src/plugins/backlog/domain/sync-state.ts';
+import { REMOTE_BASE, UNSETTLED_REV, emptyState, lockPath, parseState, pathOfRemote, renameEntries, serializeState, statePath } from '../../src/plugins/backlog/domain/sync-state.ts';
 
 const entry = (id: string) => ({ id, url: `https://dev.azure.com/o/p/_workitems/edit/${id}`, rev: '3', fields: { title: 'abc', state: 'def' } });
 const stateText = (items: unknown) => JSON.stringify({ version: 1, connection: 'contoso', items });
@@ -14,6 +14,11 @@ describe('the sync state file', () => {
     expect(statePath('ado')).toBe('.forge/sync/ado.json');
     expect(lockPath('ado')).toBe('.forge/sync/ado.lock');
     expect(emptyState('ado')).toStrictEqual({ version: 1, connection: 'ado', items: {} });
+  });
+
+  it('keeps the persisted remote-base prefix and unsettled revision stable', () => {
+    expect(REMOTE_BASE).toBe('remote:');
+    expect(UNSETTLED_REV).toBe('0');
   });
 
   it('serializes deterministically, items by path and fields by name', () => {
