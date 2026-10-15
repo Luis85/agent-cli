@@ -98,7 +98,7 @@ The level shapes only the serialized response. Listener delivery, `replay` and t
 node bin/forge.js read assets/diagram.png --json | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);if(!r.ok)process.exit(1);process.stdout.write(Buffer.from(r.data.document.content,"base64"));})' > exported.png
 ```
 
-`read`, `read-many`, `stat` and `apply` accept invocation-local `--project <id>` without changing saved selection. Use the same explicit target for reads, preview and apply: revision hashes identify bytes, not projects. Plan filenames and operation paths resolve inside that target; stdin plans use the same scope. Unknown targets fail without fallback. See [target projects](../how-to/target-projects.md).
+`read`, `read-many`, `stat` and `apply` accept invocation-local `--project <id>` without changing saved selection. Use the same explicit target for reads, preview and apply: revision hashes identify bytes, not projects. Plan filenames and operation paths resolve inside that target; stdin plans use the same scope. Unknown targets fail without fallback. Writers in every project share the workspace writer lock, so an overlapping write may fail with retryable `WORKSPACE_BUSY`. See [target projects](../how-to/target-projects.md).
 
 `read-many` returns `{files:[...],bytes}` with the default `read` shape for each file. It reads sequentially and fails the whole response on an invalid input, duplicate path or exceeded budget. Its individual revisions do not form an atomic filesystem snapshot. The byte budget counts raw file bytes, not JSON/base64 size; files are read into memory before aggregate size validation. Use smaller bundles for large files.
 

@@ -2,7 +2,7 @@
 
 [Documentation](../index.md) · How-to
 
-Use `--project <id>` with `read`, `read-many`, `stat` and `apply` to resolve paths in a named managed project without changing the saved selection. This is useful when several agents share a workspace. Each invocation resolves its own target, and its response reports the executed `context.project` and `context.root`.
+Use `--project <id>` with `read`, `read-many`, `stat` and `apply` to resolve paths in a named managed project without changing the saved selection. This is useful when several agents share a workspace. Each invocation resolves its own target, and its response reports the executed `context.project` and `context.root`. Reads in different projects run concurrently. Writes do not become independent: every writer, whatever its project, takes the same workspace writer lock (`.agent-cli.lock` at the workspace root), so a write that overlaps another may fail with `WORKSPACE_BUSY` (exit 4). Retry it while `error.retryable` is `true`; see the [write contract](../reference/cli.md#write-contract).
 
 ```sh
 node bin/forge.js read src/example.ts --project alpha --json

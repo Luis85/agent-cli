@@ -67,10 +67,12 @@ describe('portable explicit read/apply project targeting', () => {
     await unchangedSelection();
   }, 30_000);
 
-  it('routes simultaneous reads and guarded writes independently without persisting either override', async () => {
+  it('routes simultaneous reads and successive guarded writes to their projects without persisting either override', async () => {
     const projects = ['alpha', 'beta'];
     const reads = await Promise.all(projects.map(project => run(['read', 'same.txt', '--project', project])));
-    const writes = await Promise.all(projects.map((project, index) => run(['apply', '-', '--project', project], plan(`${project}\n`, reads[index]!.body.data.revision))));
+    // Writers in different projects share the workspace-root lock and may get a retryable WORKSPACE_BUSY when they overlap.
+    const writes = [];
+    for (const [index, project] of projects.entries()) writes.push(await run(['apply', '-', '--project', project], plan(`${project}\n`, reads[index]!.body.data.revision)));
     for (const [index, project] of projects.entries()) {
       expect(reads[index]!.status).toBe(0);
       expect(reads[index]!.body.context.project.name).toBe(project);
